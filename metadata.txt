@@ -1,9 +1,12 @@
 [general]
 name=Archeolog'IA pipeline
-description=This plugin adds a basemap layer to QGIS.
-version=1.0
+description=Pipeline de traitement LiDAR pour générer MNT / densité / indices RVT et (optionnel) détection par computer vision.
+about=Transposition progressive de l'application Tkinter "Pipeline LIDAR - Traitement MNT" vers un plugin QGIS. Permet de configurer les sources (IGN LAZ / LAZ locaux / MNT existants / RVT existants), lancer le pipeline, et produire des rasters (MNT, densité, M-HS, SVF, SLO, LD, VAT) avec exports optionnels (JPG+JGW).
+version=0.1.0
 qgisMinimumVersion=3.0
 supportsQt6=True
-author=Valentin VIEUX	
+author=Valentin VIEUX
 email=valentin.vieux.pro@outlook.com
-icon=logo.png
+icon=icon.png
+category=Analysis
+tags=lidar,archaeology,pipeline,dtm,mnt,rvt

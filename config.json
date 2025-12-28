@@ -1,0 +1,83 @@
+{
+  "app": {
+    "files": {
+      "output_dir": "",
+      "data_mode": "ign_laz",
+      "input_file": "",
+      "local_laz_dir": "",
+      "existing_mnt_dir": "",
+      "existing_rvt_dir": ""
+    }
+  },
+  "processing": {
+    "mnt_resolution": 0.5,
+    "density_resolution": 1.0,
+    "tile_overlap": 20,
+    "filter_expression": "Classification = 2 OR Classification = 6 OR Classification = 66 OR Classification = 67 OR Classification = 9",
+    "products": {
+      "MNT": true,
+      "DENSITE": true,
+      "M_HS": true,
+      "SVF": true,
+      "SLO": true,
+      "LD": true,
+      "VAT": false
+    },
+    "output_formats": {
+      "jpg": {
+        "M_HS": true,
+        "SVF": true,
+        "SLO": true,
+        "LD": true,
+        "VAT": true
+      }
+    }
+  },
+  "computer_vision": {
+    "enabled": true,
+    "selected_model": "",
+    "target_rvt": "LD",
+    "confidence_threshold": 0.3,
+    "iou_threshold": 0.5,
+    "generate_annotated_images": false,
+    "generate_shapefiles": false,
+    "models_dir": "",
+    "sahi": {
+      "slice_height": 750,
+      "slice_width": 750,
+      "overlap_ratio": 0.2
+    }
+  },
+  "rvt_params": {
+    "mdh": {
+      "num_directions": 1,
+      "sun_elevation": 35,
+      "ve_factor": 1,
+      "save_as_8bit": true
+    },
+    "svf": {
+      "noise_remove": 0,
+      "num_directions": 16,
+      "radius": 10,
+      "ve_factor": 1,
+      "save_as_8bit": true
+    },
+    "slope": {
+      "unit": 0,
+      "ve_factor": 1,
+      "save_as_8bit": true
+    },
+    "ldo": {
+      "angular_res": 15,
+      "min_radius": 10,
+      "max_radius": 20,
+      "observer_h": 1.7,
+      "ve_factor": 1,
+      "save_as_8bit": true
+    },
+    "vat": {
+      "terrain_type": 0,
+      "save_as_8bit": true
+    }
+  }
+}

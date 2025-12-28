@@ -1,4 +1,4 @@
-from .main import BasemapLoaderPlugin
+from .main import ArcheologiaPipelinePlugin
 
 def classFactory(iface):
-    return BasemapLoaderPlugin(iface)
+    return ArcheologiaPipelinePlugin(iface)

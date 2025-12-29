@@ -1,9 +1,9 @@
 {
   "app": {
     "files": {
-      "output_dir": "",
+      "output_dir": "D:/pipeline_results/output_test",
       "data_mode": "ign_laz",
-      "input_file": "",
+      "input_file": "D:/pipeline_results/data/data_tests/tests.txt",
       "local_laz_dir": "",
       "existing_mnt_dir": "",
       "existing_rvt_dir": ""
@@ -16,10 +16,10 @@
     "filter_expression": "Classification = 2 OR Classification = 6 OR Classification = 66 OR Classification = 67 OR Classification = 9",
     "products": {
       "MNT": true,
-      "DENSITE": true,
-      "M_HS": true,
-      "SVF": true,
-      "SLO": true,
+      "DENSITE": false,
+      "M_HS": false,
+      "SVF": false,
+      "SLO": false,
       "LD": true,
       "VAT": false
     },
@@ -35,16 +35,16 @@
   },
   "computer_vision": {
     "enabled": true,
-    "selected_model": "",
+    "selected_model": "C:\\Users\\valen\\AppData\\Roaming\\QGIS\\QGIS3\\profiles\\default\\python\\plugins\\archeologia-pipeline-lidar-processing\\models\\run_18\\weights\\best.pt",
     "target_rvt": "LD",
     "confidence_threshold": 0.3,
     "iou_threshold": 0.5,
     "generate_annotated_images": false,
     "generate_shapefiles": false,
-    "models_dir": "",
+    "models_dir": "C:\\Users\\valen\\AppData\\Roaming\\QGIS\\QGIS3\\profiles\\default\\python\\plugins\\archeologia-pipeline-lidar-processing\\models",
     "sahi": {
       "slice_height": 750,
-      "slice_width": 750,
+      "slice_width": 757,
       "overlap_ratio": 0.2
     }
   },
@@ -52,7 +52,7 @@
     "mdh": {
       "num_directions": 1,
       "sun_elevation": 35,
-      "ve_factor": 1,
+      "ve_factor": 5,
       "save_as_8bit": true
     },
     "svf": {

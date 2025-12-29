@@ -1,7 +1,7 @@
-from pathlib import Path
 import logging
 import threading
 import time
+from pathlib import Path
 
 from qgis.PyQt.QtCore import Qt, QObject, pyqtSignal
 from qgis.PyQt.QtWidgets import (
@@ -112,18 +112,6 @@ class MainDialog(QDialog):
         self.specific_source_row = self._row_widget(self.specific_source_edit, self.specific_source_btn)
         self._sources_layout.addRow("Source spécifique:", self.specific_source_row)
         self.specific_source_label = self._sources_layout.labelForField(self.specific_source_row)
-
-        self.models_dir_edit = QLineEdit()
-        self.models_dir_btn = QPushButton("Parcourir")
-        self.models_dir_btn.clicked.connect(self._browse_models_dir)
-        self._sources_layout.addRow(
-            "Dossier modèles YOLO:",
-            self._row_widget(self.models_dir_edit, self.models_dir_btn),
-        )
-
-        self.reset_sources_btn = QPushButton("Remettre par défaut")
-        self.reset_sources_btn.clicked.connect(self._reset_sources_config)
-        self._sources_layout.addRow("", self.reset_sources_btn)
 
         config_layout.addWidget(sources_group)
 
@@ -390,6 +378,14 @@ class MainDialog(QDialog):
         cv_group_layout.addWidget(cv_content)
         cv_group.toggled.connect(lambda checked, w=cv_content: w.setVisible(checked))
         config_layout.addWidget(cv_group)
+        config_layout.addStretch(1)
+
+        logs_group = QGroupBox("Logs")
+        logs_layout = QVBoxLayout(logs_group)
+        self.logs_text = QPlainTextEdit()
+        self.logs_text.setReadOnly(True)
+        logs_layout.addWidget(self.logs_text)
+        layout.addWidget(logs_group, 1)
 
         buttons_row = QWidget()
         buttons_layout = QHBoxLayout(buttons_row)
@@ -419,16 +415,7 @@ class MainDialog(QDialog):
         self.progress_bar.setValue(0)
         buttons_layout.addWidget(self.progress_bar, 1)
 
-        config_layout.addWidget(buttons_row)
-
-        config_layout.addStretch(1)
-
-        logs_group = QGroupBox("Logs")
-        logs_layout = QVBoxLayout(logs_group)
-        self.logs_text = QPlainTextEdit()
-        self.logs_text.setReadOnly(True)
-        logs_layout.addWidget(self.logs_text)
-        layout.addWidget(logs_group, 1)
+        layout.addWidget(buttons_row, 0)
 
         self._load_into_widgets()
         self._wire_autosave()
@@ -478,7 +465,7 @@ class MainDialog(QDialog):
         self.output_dir_edit.textChanged.connect(self._on_any_changed)
         self.data_mode_combo.currentIndexChanged.connect(self._on_data_mode_changed)
         self.specific_source_edit.textChanged.connect(self._on_specific_source_changed)
-        # models_dir_edit est géré par _on_models_dir_changed pour rafraîchir la liste des modèles
+        # dossier modèles: embarqué dans le plugin (pas de champ UI)
 
         self.mnt_resolution_spin.valueChanged.connect(self._on_any_changed)
         self.density_resolution_spin.valueChanged.connect(self._on_any_changed)
@@ -530,8 +517,6 @@ class MainDialog(QDialog):
         self.cv_slice_width_spin.valueChanged.connect(self._on_any_changed)
         self.cv_overlap_spin.valueChanged.connect(self._on_any_changed)
 
-        self.models_dir_edit.textChanged.connect(self._on_models_dir_changed)
-
         self.product_mhs_cb.toggled.connect(self._on_rvt_products_changed)
         self.product_svf_cb.toggled.connect(self._on_rvt_products_changed)
         self.product_slo_cb.toggled.connect(self._on_rvt_products_changed)
@@ -549,13 +534,6 @@ class MainDialog(QDialog):
             return
         self._save_specific_source_only()
         self._refresh_path_validations()
-
-    def _on_models_dir_changed(self) -> None:
-        if self._loading:
-            return
-        self._refresh_models()
-        self._refresh_path_validations()
-        self._save_from_widgets()
 
     def _on_rvt_products_changed(self) -> None:
         if self._loading:
@@ -583,25 +561,47 @@ class MainDialog(QDialog):
         self.cv_overlap_spin.setEnabled(enabled)
 
     def _refresh_models(self) -> None:
-        models_dir = (self.models_dir_edit.text() or "").strip()
-        p = Path(models_dir) if models_dir else None
-        current = self.cv_model_combo.currentData() or ""
+        p = self._plugin_root / "models"
+        current = str(self.cv_model_combo.currentData() or "")
 
-        items: list[str] = []
-        if p is not None and p.exists() and p.is_dir():
-            for ext in ("*.pt", "*.onnx", "*.engine"):
-                items.extend([x.name for x in sorted(p.glob(ext))])
+        items: list[tuple[str, str]] = []
+        if p.exists() and p.is_dir():
+            # Format old_src: models/<model_name>/weights/best.pt (+ args.yaml)
+            for model_dir in p.iterdir():
+                if not model_dir.is_dir():
+                    continue
+                weights_file = model_dir / "weights" / "best.pt"
+                args_file = model_dir / "args.yaml"
+                if weights_file.exists() and weights_file.is_file():
+                    # args.yaml est présent dans old_src mais on ne le rend pas obligatoire
+                    items.append((model_dir.name, str(weights_file)))
+
+            # Fallback: si on a des poids directement dans models/ (ou autre structure)
+            if not items:
+                for ext in ("*.pt", "*.onnx", "*.engine"):
+                    for f in p.rglob(ext):
+                        if f.is_file():
+                            items.append((f.name, str(f)))
+
+        # Ordre déterministe
+        items = sorted({(label, path) for label, path in items}, key=lambda t: t[0].lower())
 
         self._loading = True
         try:
             self.cv_model_combo.clear()
-            for name in items:
-                self.cv_model_combo.addItem(name, name)
-            desired = current or self._cv_selected_model_from_config
+            for label, path in items:
+                self.cv_model_combo.addItem(label, path)
+
+            desired = str(current or self._cv_selected_model_from_config or "")
             if desired:
                 idx = self.cv_model_combo.findData(desired)
                 if idx >= 0:
                     self.cv_model_combo.setCurrentIndex(idx)
+                else:
+                    # Compat: si on a sauvegardé seulement le nom du modèle
+                    idx = self.cv_model_combo.findText(desired)
+                    if idx >= 0:
+                        self.cv_model_combo.setCurrentIndex(idx)
         finally:
             self._loading = False
 
@@ -671,7 +671,6 @@ class MainDialog(QDialog):
 
     def _refresh_path_validations(self) -> None:
         self._set_lineedit_path_state(self.output_dir_edit, expect_dir=True)
-        self._set_lineedit_path_state(self.models_dir_edit, expect_dir=True)
 
         mode = self.data_mode_combo.currentData() or self._current_mode or "ign_laz"
         _, _, is_file = self._mode_mapping(mode)
@@ -713,7 +712,6 @@ class MainDialog(QDialog):
             self.data_mode_combo.setCurrentIndex(idx if idx >= 0 else 0)
 
             cv = self._config.get("computer_vision") or {}
-            self.models_dir_edit.setText(cv.get("models_dir") or "")
             self.cv_enabled_cb.setChecked(bool(cv.get("enabled", False)))
             self.cv_confidence_spin.setValue(float(cv.get("confidence_threshold", 0.3)))
             self.cv_iou_spin.setValue(float(cv.get("iou_threshold", 0.5)))
@@ -804,7 +802,7 @@ class MainDialog(QDialog):
         cv["iou_threshold"] = float(self.cv_iou_spin.value())
         cv["generate_annotated_images"] = self.cv_generate_annotated_cb.isChecked()
         cv["generate_shapefiles"] = self.cv_generate_shp_cb.isChecked()
-        cv["models_dir"] = self.models_dir_edit.text().strip()
+        cv["models_dir"] = str(self._plugin_root / "models")
 
         sahi = cv.setdefault("sahi", {})
         sahi["slice_height"] = int(self.cv_slice_height_spin.value())
@@ -898,11 +896,6 @@ class MainDialog(QDialog):
             if directory:
                 self.specific_source_edit.setText(directory)
 
-    def _browse_models_dir(self) -> None:
-        directory = QFileDialog.getExistingDirectory(self, "Sélectionner le dossier des modèles YOLO")
-        if directory:
-            self.models_dir_edit.setText(directory)
-
     def _reset_general_config(self) -> None:
         self._loading = True
         try:
@@ -924,33 +917,6 @@ class MainDialog(QDialog):
             self._loading = False
         self._save_from_widgets()
         self._logger.info("Configuration générale remise par défaut")
-
-    def _reset_sources_config(self) -> None:
-        defaults = self._config_manager.default_config()
-        files = (defaults.get("app") or {}).get("files") or {}
-        cv = defaults.get("computer_vision") or {}
-
-        self._loading = True
-        try:
-            self.output_dir_edit.setText(files.get("output_dir") or "")
-
-            mode = files.get("data_mode") or "ign_laz"
-            idx = self.data_mode_combo.findData(mode)
-            self.data_mode_combo.setCurrentIndex(idx if idx >= 0 else 0)
-
-            self.models_dir_edit.setText(cv.get("models_dir") or "")
-
-            self._current_mode = self.data_mode_combo.currentData() or "ign_laz"
-            key, _, _ = self._mode_mapping(self._current_mode)
-            self.specific_source_edit.setText(files.get(key) or "")
-        finally:
-            self._loading = False
-
-        self._refresh_models()
-        self._refresh_path_validations()
-        self._save_specific_source_only()
-        self._save_from_widgets()
-        self._logger.info("Sources et chemins remis par défaut")
 
     def _reset_rvt_config(self) -> None:
         defaults = self._config_manager.default_config()
@@ -1050,8 +1016,46 @@ class MainDialog(QDialog):
         def worker():
             try:
                 files = (self._config.get("app") or {}).get("files") or {}
-                self._logger.info(f"Mode: {files.get('data_mode')}")
-                self._logger.info(f"Sortie: {files.get('output_dir')}")
+                mode = files.get("data_mode")
+                output_dir_str = (files.get("output_dir") or "").strip()
+
+                self._logger.info(f"Mode: {mode}")
+                self._logger.info(f"Sortie: {output_dir_str}")
+
+                if mode == "ign_laz":
+                    from ..pipeline.ign_downloader import download_ign_dalles
+
+                    input_file = (files.get("input_file") or "").strip()
+                    if not input_file:
+                        self._logger.error("Mode IGN sélectionné mais aucun fichier de liste d'URLs n'est configuré")
+                        return
+                    if not output_dir_str:
+                        self._logger.error("Aucun dossier de sortie n'est configuré")
+                        return
+
+                    input_path = Path(input_file)
+                    if not input_path.exists():
+                        self._logger.error(f"Fichier dalles IGN introuvable: {input_path}")
+                        return
+
+                    output_dir = Path(output_dir_str)
+                    output_dir.mkdir(parents=True, exist_ok=True)
+
+                    result = download_ign_dalles(
+                        input_file=input_path,
+                        output_dir=output_dir,
+                        log=lambda m: self._logger.info(m),
+                        progress=lambda p: self._log_emitter.progress.emit(int(p)),
+                        stage=lambda s: self._log_emitter.stage.emit(str(s)),
+                        cancel=lambda: self._cancel_event.is_set(),
+                    )
+
+                    self._log_emitter.stage.emit("Terminé")
+                    self._log_emitter.progress.emit(100)
+                    self._logger.info(
+                        f"Téléchargement IGN terminé: {result.downloaded} téléchargés, {result.skipped_existing} déjà présents (total {result.total}). Fichier trié: {result.sorted_list_file}"
+                    )
+                    return
 
                 self._log_emitter.stage.emit("Préparation")
                 self._log_emitter.progress.emit(10)

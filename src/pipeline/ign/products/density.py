@@ -1,0 +1,83 @@
+from __future__ import annotations
+
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any, Callable, Dict, Optional, Tuple
+
+from ..pdal_validation import validate_las_or_laz_with_pdal
+from .qgis_processing import run_qgis_algorithm
+
+
+LogFn = Callable[[str], None]
+
+
+@dataclass(frozen=True)
+class DensityResult:
+    density_path: Path
+
+
+def _extract_xy_from_tile_name(tile_name: str) -> Tuple[int, int]:
+    parts = tile_name.split("_")
+    if len(parts) < 4:
+        raise ValueError(f"Nom de dalle inattendu: {tile_name}")
+    return int(parts[2]), int(parts[3])
+
+
+def create_density_map(
+    *,
+    input_laz_path: Path,
+    temp_dir: Path,
+    current_tile_name: str,
+    density_resolution: float,
+    tile_overlap_percent: float,
+    filter_expression: str,
+    log: LogFn = lambda _: None,
+    feedback: Optional[Any] = None,
+    context: Optional[Any] = None,
+) -> DensityResult:
+    output_file = f"{current_tile_name}_densite.tif"
+    output_path = temp_dir / output_file
+
+    if output_path.exists():
+        return DensityResult(density_path=output_path)
+
+    if not input_laz_path.exists():
+        raise FileNotFoundError(f"Fichier d'entrée densité introuvable: {input_laz_path}")
+
+    ok, msg = validate_las_or_laz_with_pdal(input_laz_path)
+    if not ok:
+        raise IOError(f"Fichier d'entrée densité illisible/corrompu via PDAL: {input_laz_path} ({msg})")
+
+    temp_dir.mkdir(parents=True, exist_ok=True)
+
+    margin_percent = float(tile_overlap_percent) / 100.0
+    margin_meters = 1000.0 * margin_percent
+
+    x_km, y_km = _extract_xy_from_tile_name(current_tile_name)
+
+    base_xmin = x_km * 1000
+    base_xmax = (x_km + 1) * 1000
+    base_ymin = (y_km - 1) * 1000
+    base_ymax = y_km * 1000
+
+    extended_xmin = base_xmin - margin_meters
+    extended_xmax = base_xmax + margin_meters
+    extended_ymin = base_ymin - margin_meters
+    extended_ymax = base_ymax + margin_meters
+
+    log(f"Création densité avec marge {margin_percent * 100}% ({margin_meters}m)")
+
+    parameters: Dict[str, Any] = {
+        "INPUT": str(input_laz_path),
+        "OUTPUT": str(output_path),
+        "BOUNDS": f"{extended_xmin},{extended_ymin},{extended_xmax},{extended_ymax}",
+        "RESOLUTION": str(density_resolution),
+        "FILTER_EXPRESSION": filter_expression,
+    }
+
+    run_qgis_algorithm("pdal:density", parameters, feedback=feedback, context=context)
+
+    if not output_path.exists():
+        raise RuntimeError(f"Échec création densité: fichier non créé: {output_path}")
+
+    return DensityResult(density_path=output_path)

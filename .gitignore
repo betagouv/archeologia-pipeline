@@ -1,3 +1,37 @@
 __pycache__/
 *.pyc
 .vscode/
+dist/
+
+# PyInstaller
+build/
+*.spec
+
+# Virtual environments
+.venv/
+.venv_*/
+venv/
+env/
+ENV/
+
+# Python tooling caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Logs
+*.log
+pipeline_log_*.txt
+
+# Local outputs / temp
+temp/
+results/
+output/
+output_test/
+
+# OS files
+Thumbs.db
+Desktop.ini
+
+third_party/cv_runner/windows/cv_runner.exe
+third_party/cv_runner/windows/*.exe

@@ -2,13 +2,14 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, Iterable, List, Optional, Tuple
+from typing import Callable, List, Optional, Tuple
 
 import shutil
 import time
 import urllib.parse
 import urllib.request
 
+from .coords_fallback import build_sorted_records_with_fallback
 from .pdal_validation import validate_las_or_laz_with_pdal
 
 
@@ -55,7 +56,9 @@ def parse_ign_input_file(input_file: Path, sorted_output_file: Path, log: LogFn 
     if not input_file.exists():
         raise FileNotFoundError(f"Fichier d'entrée non trouvé: {input_file}")
 
-    temp_data: List[Tuple[int, int, str, str]] = []
+    # On ne force pas l'extraction des coords ici: elles peuvent être absentes.
+    # Le tri final (fichier_tri.txt) sera fait après téléchargement, avec fallback PDAL.
+    raw_items: List[Tuple[str, str]] = []
 
     with input_file.open("r", encoding="utf-8") as f:
         for raw in f:
@@ -78,31 +81,10 @@ def parse_ign_input_file(input_file: Path, sorted_output_file: Path, log: LogFn 
             if not filename:
                 log(f"Ligne ignorée (nom de fichier introuvable): {line}")
                 continue
+            raw_items.append((filename, url))
 
-            p = Path(filename)
-            name_no_ext = Path(p.stem).stem
-            parts = name_no_ext.split("_")
-            if len(parts) < 4:
-                log(f"Impossible d'extraire les coordonnées de: {filename}")
-                continue
-
-            try:
-                x = int(parts[2])
-                y = int(parts[3])
-            except Exception:
-                log(f"Impossible d'extraire les coordonnées de: {filename}")
-                continue
-
-            temp_data.append((x, y, filename, url))
-
-    temp_data.sort(key=lambda t: (t[0], t[1]))
-
-    sorted_output_file.parent.mkdir(parents=True, exist_ok=True)
-    with sorted_output_file.open("w", encoding="utf-8") as f:
-        for _, _, filename, url in temp_data:
-            f.write(f"{filename},{url}\n")
-
-    return [(filename, url) for _, _, filename, url in temp_data]
+    # Compat: on ne génère plus le fichier trié ici (le tri dépend du fallback post-download)
+    return raw_items
 
 
 def _is_local_url(url: str) -> Optional[Path]:
@@ -224,21 +206,9 @@ def download_ign_dalles(
     stage: StageFn = _default_stage,
     cancel: CancelFn = _default_cancel,
 ) -> IgnDownloadResult:
-    """Télécharge les dalles du mode IGN LAZ.
-
-    Entrée: fichier texte acceptant:
-    - "nom_fichier,URL"
-    - "URL" seule (nom déduit)
-
-    Sortie:
-    - {output_dir}/dalles/<fichiers .laz>
-    - {output_dir}/fichier_tri.txt
-    """
-
     if not output_dir.exists():
         output_dir.mkdir(parents=True, exist_ok=True)
 
-    # Nommage identique à old_src/pipeline_lidar.py
     dalles_dir = output_dir / "dalles"
     sorted_list = output_dir / "fichier_tri.txt"
 
@@ -271,6 +241,18 @@ def download_ign_dalles(
             skipped += 1
         else:
             downloaded += 1
+
+    # Tri final + fallback coords (Option B): si coords absentes, on infère via PDAL et on renomme le fichier.
+    stage("Tri des fichiers (post-téléchargement)")
+
+    records = build_sorted_records_with_fallback(file_list=file_list, dalles_dir=dalles_dir, cancel=cancel, log=log)
+    if not records:
+        raise ValueError("Impossible de déterminer les coordonnées des dalles (nom de fichier + fallback PDAL)")
+
+    sorted_list.parent.mkdir(parents=True, exist_ok=True)
+    with sorted_list.open("w", encoding="utf-8") as f:
+        for rec in records:
+            f.write(f"{rec.filename},{rec.url}\n")
 
     progress(100)
 

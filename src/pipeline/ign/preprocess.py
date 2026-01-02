@@ -1,0 +1,396 @@
+from __future__ import annotations
+
+import json
+import shutil
+import subprocess
+import tempfile
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Callable, Dict, List, Optional, Tuple
+
+from ..coords import extract_xy_from_filename, infer_xy_from_file
+from .downloader import download_one
+from .pdal_validation import (
+    run_pdal_command_cancellable,
+    validate_las_or_laz_with_pdal,
+)
+
+
+LogFn = Callable[[str], None]
+CancelFn = Callable[[], bool]
+
+
+@dataclass(frozen=True)
+class IgnPreprocessResult:
+    merged_dir: Path
+    temp_dir: Path
+    merged_files: List[Path]
+
+
+def _default_log(_: str) -> None:
+    return
+
+
+def _default_cancel() -> bool:
+    return False
+
+
+def calculate_neighbor_coordinates(x: str, y: str) -> List[Tuple[int, int, int]]:
+    min_x = int(f"1{x}") - 10000
+    min_y = int(f"1{y}") - 10000
+
+    neighbors: List[Tuple[int, int, int]] = []
+    place_dalle = 0
+
+    for dx in [-1, 0, 1]:
+        for dy in [-1, 0, 1]:
+            if dx == 0 and dy == 0:
+                continue
+            place_dalle += 1
+            voisin_x = min_x + dx
+            voisin_y = min_y + dy
+            neighbors.append((voisin_x, voisin_y, place_dalle))
+
+    return neighbors
+
+
+def format_coordinate(coord: int) -> str:
+    return f"{coord:04d}"
+
+
+def find_neighbor_file(sorted_list_file: Path, voisin_x: int, voisin_y: int, log: LogFn = _default_log) -> Optional[Tuple[str, str]]:
+    coord_x = format_coordinate(voisin_x)
+    coord_y = format_coordinate(voisin_y)
+    search_pattern = f"{coord_x}_{coord_y}"
+
+    try:
+        with sorted_list_file.open("r", encoding="utf-8") as f:
+            for line in f:
+                if search_pattern in line:
+                    parts = line.strip().split(",", 1)
+                    if len(parts) == 2:
+                        return parts[0], parts[1]
+    except FileNotFoundError:
+        log(f"Fichier trié non trouvé: {sorted_list_file}")
+
+    return None
+
+
+def calculate_crop_bounds(voisin_x: int, voisin_y: int, place_dalle: int, margin_m: int) -> Dict[str, str]:
+    bounds: Dict[str, str] = {}
+
+    if place_dalle == 1:
+        xnum = int(f"1{voisin_x:04d}") - 10000
+        bounds["xmin"] = f"{xnum:04d}{(1000 - margin_m):03d}"
+        xnum2 = int(f"1{voisin_x:04d}") - 10000 + 1
+        bounds["xmax"] = f"{xnum2:04d}000"
+        ynum = int(f"1{voisin_y:04d}") - 10000 - 1
+        bounds["ymin"] = f"{ynum:04d}{(1000 - margin_m):03d}"
+        bounds["ymax"] = f"{voisin_y:04d}000"
+
+    elif place_dalle == 2:
+        xnum = int(f"1{voisin_x:04d}") - 10000
+        bounds["xmin"] = f"{xnum:04d}{(1000 - margin_m):03d}"
+        xnum2 = int(f"1{voisin_x:04d}") - 10000 + 1
+        bounds["xmax"] = f"{xnum2:04d}000"
+        ynum = int(f"1{voisin_y:04d}") - 10000 - 1
+        bounds["ymin"] = f"{ynum:04d}000"
+        bounds["ymax"] = f"{voisin_y:04d}000"
+
+    elif place_dalle == 3:
+        xnum = int(f"1{voisin_x:04d}") - 10000
+        bounds["xmin"] = f"{xnum:04d}{(1000 - margin_m):03d}"
+        xnum2 = int(f"1{voisin_x:04d}") - 10000 + 1
+        bounds["xmax"] = f"{xnum2:04d}000"
+        ynum = int(f"1{voisin_y:04d}") - 10000 - 1
+        bounds["ymin"] = f"{ynum:04d}000"
+        ynum2 = int(f"1{voisin_y:04d}") - 10000 - 1
+        bounds["ymax"] = f"{ynum2:04d}{margin_m:03d}"
+
+    elif place_dalle == 4:
+        bounds["xmin"] = f"{voisin_x:04d}000"
+        xnum = int(f"1{voisin_x:04d}") - 10000 + 1
+        bounds["xmax"] = f"{xnum:04d}000"
+        ynum = int(f"1{voisin_y:04d}") - 10000 - 1
+        bounds["ymin"] = f"{ynum:04d}{(1000 - margin_m):03d}"
+        bounds["ymax"] = f"{voisin_y:04d}000"
+
+    elif place_dalle == 5:
+        bounds["xmin"] = f"{voisin_x:04d}000"
+        xnum = int(f"1{voisin_x:04d}") - 10000 + 1
+        bounds["xmax"] = f"{xnum:04d}000"
+        ynum = int(f"1{voisin_y:04d}") - 10000 - 1
+        bounds["ymin"] = f"{ynum:04d}000"
+        ynum2 = int(f"1{voisin_y:04d}") - 10000 - 1
+        bounds["ymax"] = f"{ynum2:04d}{margin_m:03d}"
+
+    elif place_dalle == 6:
+        xnum = int(f"1{voisin_x:04d}") - 10000
+        bounds["xmin"] = f"{xnum:04d}000"
+        bounds["xmax"] = f"{xnum:04d}{margin_m:03d}"
+        ynum = int(f"1{voisin_y:04d}") - 10000 - 1
+        bounds["ymin"] = f"{ynum:04d}{(1000 - margin_m):03d}"
+        bounds["ymax"] = f"{voisin_y:04d}000"
+
+    elif place_dalle == 7:
+        xnum = int(f"1{voisin_x:04d}") - 10000
+        bounds["xmin"] = f"{xnum:04d}000"
+        bounds["xmax"] = f"{xnum:04d}{margin_m:03d}"
+        ynum = int(f"1{voisin_y:04d}") - 10000 - 1
+        bounds["ymin"] = f"{ynum:04d}000"
+        bounds["ymax"] = f"{voisin_y:04d}000"
+
+    else:
+        xnum = int(f"1{voisin_x:04d}") - 10000
+        bounds["xmin"] = f"{xnum:04d}000"
+        bounds["xmax"] = f"{xnum:04d}{margin_m:03d}"
+        ynum = int(f"1{voisin_y:04d}") - 10000 - 1
+        bounds["ymin"] = f"{ynum:04d}000"
+        ynum2 = int(f"1{voisin_y:04d}") - 10000 - 1
+        bounds["ymax"] = f"{ynum2:04d}{margin_m:03d}"
+
+    return bounds
+
+
+def _pdal_exe() -> str:
+    p = shutil.which("pdal")
+    if not p:
+        raise FileNotFoundError("pdal executable not found in PATH")
+    return p
+
+
+def crop_neighbor_tile(
+    *,
+    input_path: Path,
+    output_path: Path,
+    bounds: Dict[str, str],
+    log: LogFn = _default_log,
+    cancel: CancelFn = _default_cancel,
+) -> bool:
+    if cancel():
+        return False
+
+    if output_path.exists():
+        ok, _ = validate_las_or_laz_with_pdal(output_path)
+        if ok:
+            return True
+        try:
+            output_path.unlink()
+        except Exception:
+            pass
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    pipeline_config = {
+        "pipeline": [
+            {"type": "readers.las", "filename": str(input_path)},
+            {
+                "type": "filters.crop",
+                "bounds": f"([{bounds['xmin']},{bounds['xmax']}],[{bounds['ymin']},{bounds['ymax']}])",
+            },
+            {"type": "writers.las", "filename": str(output_path), "compression": "laszip"},
+        ]
+    }
+
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False, encoding="utf-8") as tf:
+        json.dump(pipeline_config, tf, indent=2)
+        pipeline_file = tf.name
+
+    try:
+        cmd = [_pdal_exe(), "pipeline", pipeline_file]
+        result = run_pdal_command_cancellable(cmd, cancel=cancel)
+        if result.returncode != 0:
+            log(f"Erreur PDAL crop (code {result.returncode})")
+            if result.stderr:
+                log(result.stderr.strip())
+            return False
+
+        ok, msg = validate_las_or_laz_with_pdal(output_path)
+        if not ok:
+            log(f"Fichier voisin rogné invalide via PDAL: {output_path.name}")
+            if msg:
+                log(f"PDAL: {msg}")
+            return False
+
+        return True
+    finally:
+        try:
+            Path(pipeline_file).unlink()
+        except Exception:
+            pass
+
+
+def merge_tiles(
+    *,
+    central_path: Path,
+    neighbor_paths: List[Path],
+    output_path: Path,
+    log: LogFn = _default_log,
+    cancel: CancelFn = _default_cancel,
+) -> bool:
+    if cancel():
+        return False
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    if output_path.exists():
+        ok, _ = validate_las_or_laz_with_pdal(output_path)
+        if ok:
+            return True
+        try:
+            output_path.unlink()
+        except Exception:
+            pass
+
+    ok_c, msg_c = validate_las_or_laz_with_pdal(central_path)
+    if not ok_c:
+        log(f"Fichier central invalide via PDAL: {central_path.name}")
+        if msg_c:
+            log(f"PDAL: {msg_c}")
+        return False
+
+    valid_files: List[Path] = [central_path]
+    for p in neighbor_paths:
+        if cancel():
+            return False
+        ok, _ = validate_las_or_laz_with_pdal(p)
+        if ok:
+            valid_files.append(p)
+
+    if len(valid_files) <= 1:
+        shutil.copy2(str(central_path), str(output_path))
+        return True
+
+    cmd = [_pdal_exe(), "merge"] + [str(p) for p in valid_files] + [str(output_path)]
+    result = run_pdal_command_cancellable(cmd, cancel=cancel)
+    if result.returncode != 0:
+        log(f"Erreur PDAL merge (code {result.returncode})")
+        if result.stderr:
+            log(result.stderr.strip())
+        return False
+
+    ok_out, msg_out = validate_las_or_laz_with_pdal(output_path)
+    if not ok_out:
+        log(f"Fichier fusionné invalide via PDAL: {output_path.name}")
+        if msg_out:
+            log(f"PDAL: {msg_out}")
+        return False
+
+    return True
+
+
+def prepare_merged_tiles(
+    *,
+    sorted_list_file: Path,
+    dalles_dir: Path,
+    output_dir: Path,
+    tile_overlap_percent: float,
+    log: LogFn = _default_log,
+    cancel: CancelFn = _default_cancel,
+) -> IgnPreprocessResult:
+    temp_dir = output_dir / "temp"
+    temp_dir.mkdir(parents=True, exist_ok=True)
+    merged_dir = temp_dir
+
+    margin_m = max(0, min(999, int(round(1000.0 * float(tile_overlap_percent) / 100.0))))
+
+    merged_files: List[Path] = []
+
+    with sorted_list_file.open("r", encoding="utf-8") as f:
+        lines = [ln.strip() for ln in f if ln.strip()]
+
+    total = len(lines)
+    for idx, line in enumerate(lines, start=1):
+        if cancel():
+            break
+
+        parts = line.split(",", 1)
+        if len(parts) != 2:
+            continue
+
+        filename, _url = parts[0].strip(), parts[1].strip()
+        base_tile_name = filename.replace(".copc.laz", "").replace(".laz", "")
+
+        central_path = dalles_dir / filename
+        if not central_path.exists():
+            raise FileNotFoundError(f"Fichier central introuvable: {central_path}")
+
+        x, y = _extract_coordinates(filename, dalles_dir=dalles_dir, log=log, cancel=cancel)
+        tile_name = base_tile_name
+        if len(base_tile_name.split("_")) < 4:
+            tile_name = f"LHD_FXX_{x}_{y}"
+
+        log(f"=== Pré-traitement dalle {idx}/{total}: {tile_name} ===")
+        neighbors = calculate_neighbor_coordinates(x, y)
+
+        cropped_neighbors: List[Path] = []
+        for voisin_x, voisin_y, place_dalle in neighbors:
+            if cancel():
+                break
+
+            neigh = find_neighbor_file(sorted_list_file, voisin_x, voisin_y, log=log)
+            if not neigh:
+                continue
+
+            neighbor_file, neighbor_url = neigh
+            neighbor_input = dalles_dir / neighbor_file
+            if not neighbor_input.exists():
+                ok, _was_skipped = download_one(
+                    neighbor_url,
+                    neighbor_file,
+                    dalles_dir,
+                    log=log,
+                    cancel=cancel,
+                )
+                if not ok:
+                    continue
+                if not neighbor_input.exists():
+                    continue
+
+            bounds = calculate_crop_bounds(voisin_x, voisin_y, place_dalle, margin_m)
+            output_file = f"{tile_name}_neighbor_{place_dalle}.laz"
+            neighbor_output = temp_dir / output_file
+
+            if crop_neighbor_tile(
+                input_path=neighbor_input,
+                output_path=neighbor_output,
+                bounds=bounds,
+                log=log,
+                cancel=cancel,
+            ):
+                cropped_neighbors.append(neighbor_output)
+
+        merged_path = merged_dir / f"{tile_name}_merged.laz"
+        if not merge_tiles(
+            central_path=central_path,
+            neighbor_paths=cropped_neighbors,
+            output_path=merged_path,
+            log=log,
+            cancel=cancel,
+        ):
+            raise RuntimeError(f"Échec merge pour {tile_name}")
+
+        merged_files.append(merged_path)
+
+    return IgnPreprocessResult(merged_dir=merged_dir, temp_dir=temp_dir, merged_files=merged_files)
+
+
+def _extract_coordinates(
+    filename: str,
+    *,
+    dalles_dir: Path,
+    log: LogFn = _default_log,
+    cancel: CancelFn = _default_cancel,
+) -> Tuple[str, str]:
+    inferred = infer_xy_from_file(dalles_dir / filename, cancel=cancel)
+    if inferred is not None:
+        x_str = f"{int(inferred.x_km):04d}"
+        y_str = f"{int(inferred.y_km):04d}"
+        log(f"Coordonnées inférées via metadata pour {filename}: x={x_str}, y={y_str}")
+        return x_str, y_str
+
+    xy = extract_xy_from_filename(filename)
+    if xy is not None:
+        return f"{int(xy.x_km):04d}", f"{int(xy.y_km):04d}"
+
+    raise ValueError(f"Impossible d'extraire / inférer les coordonnées de: {filename}")

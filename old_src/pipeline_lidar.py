@@ -1163,7 +1163,7 @@ class LidarPipeline:
         extended_ymin = base_ymin - margin_meters
         extended_ymax = base_ymax + margin_meters
         
-        self.logger.info(f"Création MNT avec marge {margin_percent*100}% ({margin_meters}m)")
+        self.logger.info(f"Création MNT avec marge {margin_percent*100}%")
         self.logger.info(f"Zone étendue: {extended_xmin},{extended_ymin},{extended_xmax},{extended_ymax}")
         
         parameters = {

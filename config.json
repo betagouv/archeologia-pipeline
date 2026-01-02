@@ -2,11 +2,11 @@
   "app": {
     "files": {
       "output_dir": "D:/pipeline_results/output_test",
-      "data_mode": "ign_laz",
+      "data_mode": "existing_rvt",
       "input_file": "D:/pipeline_results/data/data_tests/tests.txt",
-      "local_laz_dir": "",
-      "existing_mnt_dir": "",
-      "existing_rvt_dir": ""
+      "local_laz_dir": "D:/pipeline_results/output_test/dalles",
+      "existing_mnt_dir": "D:/pipeline_results/output_test/MNT/tif",
+      "existing_rvt_dir": "D:/pipeline_results/output_test/LD/tif"
     }
   },
   "processing": {
@@ -37,22 +37,23 @@
     "enabled": true,
     "selected_model": "C:\\Users\\valen\\AppData\\Roaming\\QGIS\\QGIS3\\profiles\\default\\python\\plugins\\archeologia-pipeline-lidar-processing\\models\\run_18\\weights\\best.pt",
     "target_rvt": "LD",
-    "confidence_threshold": 0.3,
+    "confidence_threshold": 0.1,
     "iou_threshold": 0.5,
-    "generate_annotated_images": false,
-    "generate_shapefiles": false,
+    "generate_annotated_images": true,
+    "generate_shapefiles": true,
     "models_dir": "C:\\Users\\valen\\AppData\\Roaming\\QGIS\\QGIS3\\profiles\\default\\python\\plugins\\archeologia-pipeline-lidar-processing\\models",
     "sahi": {
-      "slice_height": 750,
-      "slice_width": 757,
+      "slice_height": 640,
+      "slice_width": 640,
       "overlap_ratio": 0.2
-    }
+    },
+    "export_runner_config": true
   },
   "rvt_params": {
     "mdh": {
-      "num_directions": 1,
+      "num_directions": 16,
       "sun_elevation": 35,
-      "ve_factor": 5,
+      "ve_factor": 1,
       "save_as_8bit": true
     },
     "svf": {

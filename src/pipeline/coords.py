@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
+import math
 from pathlib import Path
 from shutil import which
 import subprocess
@@ -35,8 +36,17 @@ def extract_xy_from_filename(filename: str) -> Optional[CoordsResult]:
 
 def _infer_xy_from_bounds(xmin: float, ymax: float) -> Optional[CoordsResult]:
     try:
-        x_km = int(float(xmin) // 1000)
-        y_km = int(float(ymax) // 1000)
+        snap_tol_m = 5.0
+
+        def _km_index(value_m: float) -> int:
+            v = float(value_m)
+            nearest_km = round(v / 1000.0)
+            if abs(v - (nearest_km * 1000.0)) <= snap_tol_m:
+                return int(nearest_km)
+            return int(math.floor(v / 1000.0))
+
+        x_km = _km_index(xmin)
+        y_km = _km_index(ymax)
         return CoordsResult(x_km=x_km, y_km=y_km)
     except Exception:
         return None

@@ -33,6 +33,41 @@ def _subprocess_kwargs_no_window() -> Dict[str, Any]:
     return kwargs
 
 
+def build_raster_pyramids(
+    raster_file: Path,
+    *,
+    levels: List[int] | None = None,
+    log: LogFn = lambda _: None,
+) -> bool:
+    try:
+        gdaladdo = shutil.which("gdaladdo")
+        if not gdaladdo:
+            log("gdaladdo introuvable: génération pyramides ignorée")
+            return False
+
+        if levels is None or len(levels) == 0:
+            levels = [2, 4, 8, 16, 32, 64]
+
+        if not raster_file.exists():
+            return False
+
+        cmd = [
+            str(gdaladdo),
+            "-r",
+            "average",
+            str(raster_file),
+            *[str(l) for l in levels],
+        ]
+        r = subprocess.run(cmd, capture_output=True, text=True, **_subprocess_kwargs_no_window())
+        if r.returncode != 0:
+            log(f"Échec gdaladdo (pyramides) pour {raster_file.name}: {r.stderr or r.stdout}")
+            return False
+        return True
+    except Exception as e:
+        log(f"Erreur génération pyramides (gdaladdo) pour {raster_file.name}: {e}")
+        return False
+
+
 def _convert_tif_to_jpg(input_tif: Path, output_jpg: Path) -> bool:
     try:
         from .convert_tif_to_jpg import convert_tif_to_jpg
@@ -106,6 +141,7 @@ def copy_final_products_to_results(
     output_structure: Dict[str, Any],
     output_formats: Dict[str, Any],
     rvt_params: Dict[str, Any],
+    pyramids_config: Dict[str, Any] | None = None,
     log: LogFn = lambda _: None,
 ) -> Dict[str, Any]:
     x, y = _extract_xy_from_tile_name(current_tile_name)
@@ -140,6 +176,26 @@ def copy_final_products_to_results(
 
     out_formats_tif = bool(output_formats.get("tif", True))
     jpg_cfg = output_formats.get("jpg", {}) if isinstance(output_formats.get("jpg", {}), dict) else {}
+
+    pyramids_enabled = False
+    pyramids_levels: List[int] = [2, 4, 8, 16, 32, 64]
+    try:
+        cfg = pyramids_config or {}
+        pyramids_enabled = bool(cfg.get("enabled", False))
+        raw_levels = cfg.get("levels", None)
+        if isinstance(raw_levels, (list, tuple)):
+            parsed = []
+            for v in raw_levels:
+                try:
+                    iv = int(v)
+                except Exception:
+                    continue
+                if iv > 1:
+                    parsed.append(iv)
+            if parsed:
+                pyramids_levels = parsed
+    except Exception:
+        pyramids_enabled = False
 
     created_jpgs: List[Path] = []
     created_jpgs_by_product: Dict[str, List[Path]] = {}
@@ -178,6 +234,8 @@ def copy_final_products_to_results(
             if input_path_cropped.exists() and not tif_path.exists():
                 shutil.copy2(str(input_path_cropped), str(tif_path))
                 log(f"TIF rogné copié: {tif_path.relative_to(results_dir)}")
+                if pyramids_enabled:
+                    build_raster_pyramids(tif_path, levels=pyramids_levels, log=log)
 
         should_jpg = bool(jpg_cfg.get(product_name, False))
         if should_jpg:

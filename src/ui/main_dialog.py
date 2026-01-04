@@ -191,6 +191,20 @@ class MainDialog(QDialog):
         filter_form.addRow("Expression filtre:", self.filter_expression_edit)
         general_layout.addLayout(filter_form)
 
+        pyramids_row = QWidget()
+        pyramids_layout = QHBoxLayout(pyramids_row)
+        pyramids_layout.setContentsMargins(0, 0, 0, 0)
+        pyramids_layout.addWidget(QLabel("Pyramides raster:"))
+        self.pyramids_enabled_cb = QCheckBox("Activer")
+        pyramids_layout.addWidget(self.pyramids_enabled_cb)
+        pyramids_layout.addSpacing(12)
+        pyramids_layout.addWidget(QLabel("Niveaux:"))
+        self.pyramids_levels_edit = QLineEdit()
+        self.pyramids_levels_edit.setPlaceholderText("2,4,8,16,32,64")
+        pyramids_layout.addWidget(self.pyramids_levels_edit)
+        pyramids_layout.addStretch(1)
+        general_layout.addWidget(pyramids_row)
+
         products_row = QWidget()
         products_layout = QHBoxLayout(products_row)
         products_layout.setContentsMargins(0, 0, 0, 0)
@@ -772,6 +786,17 @@ class MainDialog(QDialog):
             self.tile_overlap_spin.setValue(int(processing.get("tile_overlap", 20)))
             self.filter_expression_edit.setText(processing.get("filter_expression") or "")
 
+            pyramids = (processing.get("pyramids") or {})
+            self.pyramids_enabled_cb.setChecked(bool(pyramids.get("enabled", False)))
+            levels = pyramids.get("levels", [2, 4, 8, 16, 32, 64])
+            if isinstance(levels, (list, tuple)):
+                try:
+                    self.pyramids_levels_edit.setText(",".join([str(int(v)) for v in levels if str(v).strip()]))
+                except Exception:
+                    self.pyramids_levels_edit.setText("2,4,8,16,32,64")
+            else:
+                self.pyramids_levels_edit.setText("2,4,8,16,32,64")
+
             products = processing.get("products") or {}
             self.product_mnt_cb.setChecked(bool(products.get("MNT", True)))
             self.product_densite_cb.setChecked(bool(products.get("DENSITE", True)))
@@ -858,6 +883,23 @@ class MainDialog(QDialog):
         processing["density_resolution"] = float(self.density_resolution_spin.value())
         processing["tile_overlap"] = int(self.tile_overlap_spin.value())
         processing["filter_expression"] = self.filter_expression_edit.text().strip()
+
+        pyramids = processing.setdefault("pyramids", {})
+        pyramids["enabled"] = self.pyramids_enabled_cb.isChecked()
+        raw_levels = self.pyramids_levels_edit.text().strip()
+        parsed_levels: list[int] = []
+        if raw_levels:
+            for part in raw_levels.replace(";", ",").split(","):
+                part = part.strip()
+                if not part:
+                    continue
+                try:
+                    v = int(part)
+                except Exception:
+                    continue
+                if v > 1:
+                    parsed_levels.append(v)
+        pyramids["levels"] = parsed_levels if parsed_levels else [2, 4, 8, 16, 32, 64]
 
         products = processing.setdefault("products", {})
         products["MNT"] = self.product_mnt_cb.isChecked()
@@ -951,6 +993,9 @@ class MainDialog(QDialog):
             self.filter_expression_edit.setText(
                 "Classification = 2 OR Classification = 6 OR Classification = 66 OR Classification = 67 OR Classification = 9"
             )
+
+            self.pyramids_enabled_cb.setChecked(False)
+            self.pyramids_levels_edit.setText("2,4,8,16,32,64")
 
             self.product_mnt_cb.setChecked(True)
             self.product_densite_cb.setChecked(True)
@@ -1299,6 +1344,7 @@ class MainDialog(QDialog):
                                     output_structure=output_structure,
                                     output_formats=output_formats,
                                     rvt_params=rvt_params,
+                                    pyramids_config=(processing.get("pyramids") or {}),
                                     log=lambda m: self._logger.info(m),
                                 )
 
@@ -1385,58 +1431,6 @@ class MainDialog(QDialog):
                         self._logger.info(
                             f"Fusion IGN terminée: {len(merged_result.merged_files)} fichiers fusionnés. Dossier: {merged_result.merged_dir}"
                         )
-                    else:
-                        self._logger.info(f"Mode {mode} terminé")
-                    return
-
-                if mode == "existing_mnt":
-                    from ..pipeline.modes.existing_mnt import run_existing_mnt
-
-                    existing_mnt_dir_str = (files.get("existing_mnt_dir") or "").strip()
-                    if not existing_mnt_dir_str:
-                        self._logger.error("Mode existing_mnt sélectionné mais aucun dossier MNT n'est configuré")
-                        return
-                    if not output_dir_str:
-                        self._logger.error("Aucun dossier de sortie n'est configuré")
-                        return
-
-                    output_dir = Path(output_dir_str)
-                    output_dir.mkdir(parents=True, exist_ok=True)
-
-                    processing = (self._config.get("processing") or {})
-                    products = (processing.get("products") or {})
-                    if not isinstance(products, dict):
-                        products = {}
-
-                    output_structure = processing.get("output_structure", {})
-                    if not isinstance(output_structure, dict):
-                        output_structure = {}
-                    output_formats = processing.get("output_formats", {})
-                    if not isinstance(output_formats, dict):
-                        output_formats = {}
-
-                    rvt_params = self._config.get("rvt_params") or {}
-                    if not isinstance(rvt_params, dict):
-                        rvt_params = {}
-
-                    self._log_emitter.stage.emit("Traitement MNT existants")
-                    self._log_emitter.progress.emit(0)
-
-                    res = run_existing_mnt(
-                        existing_mnt_dir=Path(existing_mnt_dir_str),
-                        output_dir=output_dir,
-                        products=products,
-                        output_structure=output_structure,
-                        output_formats=output_formats,
-                        rvt_params=rvt_params,
-                        log=lambda m: self._logger.info(m),
-                    )
-
-                    cv_config = self._config.get("computer_vision") or {}
-                    if not isinstance(cv_config, dict):
-                        cv_config = {}
-                    cv_enabled = bool(cv_config.get("enabled", False))
-                    cv_generate_shp = bool(cv_config.get("generate_shapefiles", False))
 
                     if cv_enabled:
                         try:
@@ -1472,6 +1466,56 @@ class MainDialog(QDialog):
                     self._logger.info(f"Mode existing_mnt terminé: {res.total} MNT traités")
                     return
 
+                if mode == "existing_mnt":
+                    from ..pipeline.modes.existing_mnt import run_existing_mnt
+
+                    existing_mnt_dir_str = (files.get("existing_mnt_dir") or "").strip()
+                    if not existing_mnt_dir_str:
+                        self._logger.error("Mode existing_mnt sélectionné mais aucun dossier MNT n'est configuré")
+                        return
+                    if not output_dir_str:
+                        self._logger.error("Aucun dossier de sortie n'est configuré")
+                        return
+
+                    output_dir = Path(output_dir_str)
+                    output_dir.mkdir(parents=True, exist_ok=True)
+
+                    processing_cfg = (self._config.get("processing") or {})
+                    output_structure = processing_cfg.get("output_structure", {})
+                    if not isinstance(output_structure, dict):
+                        output_structure = {}
+
+                    output_formats = processing_cfg.get("output_formats", {})
+                    if not isinstance(output_formats, dict):
+                        output_formats = {}
+
+                    rvt_params = self._config.get("rvt_params") or {}
+                    if not isinstance(rvt_params, dict):
+                        rvt_params = {}
+
+                    cv_config = self._config.get("computer_vision") or {}
+                    if not isinstance(cv_config, dict):
+                        cv_config = {}
+
+                    self._log_emitter.stage.emit("Computer Vision (existing MNT)")
+                    self._log_emitter.progress.emit(0)
+
+                    res = run_existing_mnt(
+                        existing_mnt_dir=Path(existing_mnt_dir_str),
+                        output_dir=output_dir,
+                        products=products_cfg,
+                        output_structure=output_structure,
+                        output_formats=output_formats,
+                        pyramids_config=(processing_cfg.get("pyramids") or {}),
+                        rvt_params=rvt_params,
+                        log=lambda m: self._logger.info(m),
+                    )
+
+                    self._log_emitter.stage.emit("Terminé")
+                    self._log_emitter.progress.emit(100)
+                    self._logger.info(f"Mode existing_mnt terminé: {res.total} MNT traités")
+                    return
+
                 if mode == "existing_rvt":
                     from ..pipeline.modes.existing_rvt import run_existing_rvt
 
@@ -1486,8 +1530,8 @@ class MainDialog(QDialog):
                     output_dir = Path(output_dir_str)
                     output_dir.mkdir(parents=True, exist_ok=True)
 
-                    processing = (self._config.get("processing") or {})
-                    output_structure = processing.get("output_structure", {})
+                    processing_cfg = (self._config.get("processing") or {})
+                    output_structure = processing_cfg.get("output_structure", {})
                     if not isinstance(output_structure, dict):
                         output_structure = {}
 

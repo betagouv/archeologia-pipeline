@@ -65,6 +65,7 @@ def run_preflight(
     need_pdal_cli = mode in ("ign_laz", "local_laz")
     need_gdalwarp = mode in ("ign_laz", "local_laz", "existing_mnt")
     need_gdal_translate = mode in ("ign_laz", "local_laz", "existing_mnt", "existing_rvt")
+    need_gdaladdo = mode in ("ign_laz", "local_laz", "existing_mnt", "existing_rvt")
 
     need_processing = mode in ("ign_laz", "local_laz", "existing_mnt")
 
@@ -105,6 +106,17 @@ def run_preflight(
                 ok=bool(p),
                 details=p or "not found in PATH",
                 critical=(mode in ("existing_mnt", "existing_rvt")),
+            )
+        )
+
+    if need_gdaladdo:
+        p = _check_exe("gdaladdo")
+        results.append(
+            CheckResult(
+                name="gdaladdo",
+                ok=bool(p),
+                details=p or "not found in PATH",
+                critical=False,
             )
         )
 

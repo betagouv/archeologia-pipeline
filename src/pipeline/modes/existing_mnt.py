@@ -63,6 +63,7 @@ def run_existing_mnt(
     products: Dict[str, bool],
     output_structure: Dict[str, Any],
     output_formats: Dict[str, Any],
+    pyramids_config: Dict[str, Any] | None = None,
     rvt_params: Dict[str, Any],
     log: LogFn = lambda _: None,
 ) -> ExistingMntResult:
@@ -123,6 +124,7 @@ def run_existing_mnt(
             output_structure=output_structure,
             output_formats=output_formats,
             rvt_params=rvt_params,
+            pyramids_config=pyramids_config,
             log=log,
         )
 

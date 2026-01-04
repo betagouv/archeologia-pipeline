@@ -2,8 +2,8 @@
   "app": {
     "files": {
       "output_dir": "D:/pipeline_results/output_test",
-      "data_mode": "existing_rvt",
-      "input_file": "D:/pipeline_results/data/data_tests/tests.txt",
+      "data_mode": "ign_laz",
+      "input_file": "D:/pipeline_results/data/data_tests/tests - Copie.txt",
       "local_laz_dir": "D:/pipeline_results/output_test/dalles",
       "existing_mnt_dir": "D:/pipeline_results/output_test/MNT/tif",
       "existing_rvt_dir": "D:/pipeline_results/output_test/LD/tif"
@@ -14,6 +14,17 @@
     "density_resolution": 1.0,
     "tile_overlap": 20,
     "filter_expression": "Classification = 2 OR Classification = 6 OR Classification = 66 OR Classification = 67 OR Classification = 9",
+    "pyramids": {
+      "enabled": true,
+      "levels": [
+        2,
+        4,
+        8,
+        16,
+        32,
+        64
+      ]
+    },
     "products": {
       "MNT": true,
       "DENSITE": false,

@@ -25,6 +25,10 @@ class ConfigManager:
                 "density_resolution": 1.0,
                 "tile_overlap": 20,
                 "filter_expression": "Classification = 2 OR Classification = 6 OR Classification = 66 OR Classification = 67 OR Classification = 9",
+                "pyramids": {
+                    "enabled": False,
+                    "levels": [2, 4, 8, 16, 32, 64],
+                },
                 "products": {
                     "MNT": True,
                     "DENSITE": True,

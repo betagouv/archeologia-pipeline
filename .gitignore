@@ -35,3 +35,7 @@ Desktop.ini
 
 third_party/cv_runner/windows/cv_runner.exe
 third_party/cv_runner/windows/*.exe
+
+old_src/
+models/**
+!models/.gitkeep

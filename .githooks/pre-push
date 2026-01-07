@@ -1,0 +1,15 @@
+#!/usr/bin/env sh
+set -eu
+
+# Talisman pre-push hook.
+# Requires 'talisman' to be available in PATH.
+
+if ! command -v talisman >/dev/null 2>&1; then
+  echo "[talisman] ERROR: 'talisman' not found in PATH."
+  echo "[talisman] Install it, or disable hooksPath if you really must push without scanning." 
+  exit 1
+fi
+
+# Run the official talisman githook mode.
+# It will scan what is being pushed and block on potential secrets.
+talisman --githook pre-push "$@"

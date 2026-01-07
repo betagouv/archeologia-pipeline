@@ -994,15 +994,15 @@ class MainDialog(QDialog):
                 "Classification = 2 OR Classification = 6 OR Classification = 66 OR Classification = 67 OR Classification = 9"
             )
 
-            self.pyramids_enabled_cb.setChecked(False)
+            self.pyramids_enabled_cb.setChecked(True)
             self.pyramids_levels_edit.setText("2,4,8,16,32,64")
 
             self.product_mnt_cb.setChecked(True)
-            self.product_densite_cb.setChecked(True)
-            self.product_mhs_cb.setChecked(True)
-            self.product_svf_cb.setChecked(True)
-            self.product_slo_cb.setChecked(True)
-            self.product_ld_cb.setChecked(True)
+            self.product_densite_cb.setChecked(False)
+            self.product_mhs_cb.setChecked(False)
+            self.product_svf_cb.setChecked(False)
+            self.product_slo_cb.setChecked(False)
+            self.product_ld_cb.setChecked(False)
             self.product_vat_cb.setChecked(False)
         finally:
             self._loading = False

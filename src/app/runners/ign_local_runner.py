@@ -5,6 +5,7 @@ from pathlib import Path
 from ..cancel_token import CancelToken
 from ..progress_reporter import ProgressReporter
 from ..run_context import RunContext
+from ..services.cv_service import ComputerVisionService
 
 
 class IgnOrLocalRunner:
@@ -122,13 +123,11 @@ class IgnOrLocalRunner:
 
             rvt_params = ctx.rvt_params or {}
 
-            cv_config = ctx.cv_cfg or {}
-            cv_enabled = bool(cv_config.get("enabled", False))
-            cv_target_rvt = str(cv_config.get("target_rvt", "LD"))
-            cv_generate_shapefiles = bool(cv_config.get("generate_shapefiles", False))
-            cv_labels_dir = None
-            cv_shp_dir = None
-            cv_tif_transform_data = {}
+            cv_service = ComputerVisionService(
+                cv_config=ctx.cv_cfg or {},
+                output_dir=ctx.output_dir,
+                log=lambda m: reporter.info(m),
+            )
 
             reporter.stage("Traitement des dalles")
             if ctx.mode == "ign_laz":
@@ -204,84 +203,49 @@ class IgnOrLocalRunner:
                         log=lambda m: reporter.info(m),
                     )
 
-                    if cv_enabled and bool(products_cfg.get(cv_target_rvt, False)):
+                    if cv_service.enabled and cv_service.should_process_product(cv_service.target_rvt):
                         created_by_product = (export_info or {}).get("created_jpgs_by_product") or {}
                         created_jpgs = []
-                        if isinstance(created_by_product, dict) and cv_target_rvt in created_by_product:
-                            created_jpgs = created_by_product.get(cv_target_rvt) or []
+                        if isinstance(created_by_product, dict) and cv_service.target_rvt in created_by_product:
+                            created_jpgs = created_by_product.get(cv_service.target_rvt) or []
                         if not created_jpgs:
                             created_jpgs = (export_info or {}).get("created_jpgs") or []
 
                         tif_transform_data = (export_info or {}).get("tif_transform_data") or {}
-                        if isinstance(tif_transform_data, dict):
-                            cv_tif_transform_data.update(tif_transform_data)
 
                         for jpg_path in created_jpgs:
-                            try:
-                                if jpg_path is None:
-                                    continue
-
-                                from ...pipeline.cv.runner import run_cv_on_folder
-
-                                jpg_dir_path = Path(jpg_path).parent
-                                rvt_base_dir = jpg_dir_path.parent
-
-                                if str(rvt_base_dir.name).upper() != str(cv_target_rvt).upper():
-                                    continue
-
-                                if cv_labels_dir is None:
-                                    cv_labels_dir = jpg_dir_path
-                                if cv_shp_dir is None:
-                                    cv_shp_dir = rvt_base_dir / "shapefiles"
-
-                                run_cv_on_folder(
-                                    jpg_dir=jpg_dir_path,
-                                    cv_config=cv_config,
-                                    target_rvt=cv_target_rvt,
-                                    rvt_base_dir=rvt_base_dir,
-                                    tif_transform_data=cv_tif_transform_data,
-                                    single_jpg=Path(jpg_path),
-                                    run_shapefile_dedup=False,
-                                    log=lambda m: reporter.info(m),
-                                )
-                            except Exception as e:
-                                reporter.error(f"Erreur Computer Vision: {e}")
+                            if jpg_path is None:
+                                continue
+                            jpg_dir_path = Path(jpg_path).parent
+                            rvt_base_dir = jpg_dir_path.parent
+                            if str(rvt_base_dir.name).upper() != cv_service.target_rvt.upper():
+                                continue
+                            cv_service.process_single_jpg(
+                                jpg_path=Path(jpg_path),
+                                rvt_base_dir=rvt_base_dir,
+                                tif_transform_data=tif_transform_data,
+                            )
 
                 if ctx.mode == "ign_laz":
                     frac_done = i / max(1, total_mnt)
                     pct_done = int(round(products_range[0] + (products_range[1] - products_range[0]) * frac_done))
                     reporter.progress(pct_done)
 
-            if cv_enabled and cv_generate_shapefiles and cv_labels_dir is not None and cv_shp_dir is not None:
+            if cv_service.enabled and cv_service.generate_shapefiles:
                 if ctx.mode == "ign_laz":
                     reporter.stage("Finalisation (shapefiles)")
                     reporter.progress(finalize_range[0])
-                try:
-                    from ...pipeline.cv.runner import deduplicate_cv_shapefiles_final
-
-                    deduplicate_cv_shapefiles_final(
-                        labels_dir=cv_labels_dir,
-                        shp_dir=cv_shp_dir,
-                        target_rvt=cv_target_rvt,
-                        cv_config=cv_config,
-                        tif_transform_data=cv_tif_transform_data,
-                        temp_dir=ctx.output_dir / "temp",
-                        crs="EPSG:2154",
-                        log=lambda m: reporter.info(m),
-                    )
-                except Exception as e:
-                    reporter.error(f"Erreur déduplication shapefiles CV: {e}")
+                cv_service.finalize(temp_dir=ctx.output_dir / "temp")
 
             reporter.progress(100)
 
-            if cv_enabled:
+            if cv_service.enabled:
                 try:
                     from ...pipeline.modes.existing_rvt import run_existing_rvt
 
-                    target_rvt = str((cv_config or {}).get("target_rvt", "LD"))
                     rvt_cfg = output_structure.get("RVT", {}) if isinstance(output_structure, dict) else {}
                     base_dir_name = str(rvt_cfg.get("base_dir", "RVT"))
-                    type_dir_name = str(rvt_cfg.get(target_rvt, target_rvt))
+                    type_dir_name = str(rvt_cfg.get(cv_service.target_rvt, cv_service.target_rvt))
                     generated_rvt_tif_dir = (ctx.output_dir / "results") / base_dir_name / type_dir_name / "tif"
 
                     if not generated_rvt_tif_dir.exists() or not generated_rvt_tif_dir.is_dir():
@@ -292,11 +256,11 @@ class IgnOrLocalRunner:
                         run_existing_rvt(
                             existing_rvt_dir=generated_rvt_tif_dir,
                             output_dir=ctx.output_dir,
-                            cv_config=cv_config,
+                            cv_config=ctx.cv_cfg or {},
                             output_structure=output_structure,
                             log=lambda m: reporter.info(m),
                         )
-                        if cv_generate_shapefiles:
+                        if cv_service.generate_shapefiles:
                             reporter.info("Computer Vision (existing MNT): shapefiles générés")
                 except Exception as e:
                     reporter.error(f"Erreur Computer Vision (existing MNT): {e}")

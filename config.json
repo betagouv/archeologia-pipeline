@@ -1,9 +1,9 @@
 {
   "app": {
     "files": {
-      "output_dir": "",
-      "data_mode": "existing_rvt",
-      "input_file": "",
+      "output_dir": "D:/pipeline_results/output_dreux",
+      "data_mode": "ign_laz",
+      "input_file": "D:/pipeline_results/data/dreux/dalles_Dreux.txt",
       "local_laz_dir": "",
       "existing_mnt_dir": "",
       "existing_rvt_dir": ""
@@ -31,7 +31,7 @@
       "M_HS": false,
       "SVF": false,
       "SLO": false,
-      "LD": false,
+      "LD": true,
       "VAT": false
     },
     "output_formats": {

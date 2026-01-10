@@ -1456,14 +1456,13 @@ class MainDialog(QDialog):
                                     output_structure=output_structure,
                                     log=lambda m: self._logger.info(m),
                                 )
-                                if cv_generate_shp:
+                                if cv_generate_shapefiles:
                                     self._logger.info("Computer Vision (existing MNT): shapefiles générés")
                         except Exception as e:
                             self._logger.error(f"Erreur Computer Vision (existing MNT): {e}")
 
                     self._log_emitter.stage.emit("Terminé")
                     self._log_emitter.progress.emit(100)
-                    self._logger.info(f"Mode existing_mnt terminé: {res.total} MNT traités")
                     return
 
                 if mode == "existing_mnt":

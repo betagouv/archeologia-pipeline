@@ -122,6 +122,24 @@ Le runner est construit à partir de `cv_runner_cli.py` via PyInstaller.
 3. Builder avec le fichier spec (`cv_runner.spec`).
 4. Copier le binaire généré vers `third_party/cv_runner/windows/cv_runner.exe`.
 
+Commande exacte (à exécuter à la racine du dépôt) :
+
+```bash
+py -m PyInstaller --noconfirm --clean cv_runner.spec
+```
+
+Le binaire généré se trouve ensuite ici :
+
+```text
+dist/cv_runner/cv_runner.exe
+```
+
+Copie attendue par le plugin :
+
+```text
+third_party/cv_runner/windows/cv_runner.exe
+```
+
 Notes :
 
 - Le préflight détecte automatiquement la présence de `third_party/cv_runner/windows/cv_runner.exe`.

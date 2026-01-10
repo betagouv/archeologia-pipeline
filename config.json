@@ -1,16 +1,16 @@
 {
   "app": {
     "files": {
-      "output_dir": "D:/pipeline_results/output_dreux",
+      "output_dir": "D:/pipeline_results/output_test",
       "data_mode": "ign_laz",
-      "input_file": "D:/pipeline_results/data/dreux/dalles_Dreux.txt",
-      "local_laz_dir": "",
-      "existing_mnt_dir": "",
-      "existing_rvt_dir": ""
+      "input_file": "D:/pipeline_results/data/data_tests/tests - Copie.txt",
+      "local_laz_dir": "c",
+      "existing_mnt_dir": "d",
+      "existing_rvt_dir": "e"
     }
   },
   "processing": {
-    "mnt_resolution": 0.5,
+    "mnt_resolution": 2.0,
     "density_resolution": 1.0,
     "tile_overlap": 20,
     "filter_expression": "Classification = 2 OR Classification = 6 OR Classification = 66 OR Classification = 67 OR Classification = 9",
@@ -27,35 +27,35 @@
     },
     "products": {
       "MNT": true,
-      "DENSITE": false,
-      "M_HS": false,
-      "SVF": false,
-      "SLO": false,
+      "DENSITE": true,
+      "M_HS": true,
+      "SVF": true,
+      "SLO": true,
       "LD": true,
-      "VAT": false
+      "VAT": true
     },
     "output_formats": {
       "jpg": {
-        "M_HS": true,
-        "SVF": true,
-        "SLO": true,
-        "LD": true,
-        "VAT": true
+        "M_HS": false,
+        "SVF": false,
+        "SLO": false,
+        "LD": false,
+        "VAT": false
       }
     }
   },
   "computer_vision": {
-    "enabled": true,
-    "selected_model": "C:\\Users\\valen\\AppData\\Roaming\\QGIS\\QGIS3\\profiles\\default\\python\\plugins\\archeologia-pipeline-lidar-processing\\models\\run_18\\weights\\best.pt",
+    "enabled": false,
+    "selected_model": "C:\\Users\\valen\\AppData\\Roaming\\QGIS\\QGIS3\\profiles\\default\\python\\plugins\\archeologia-pipeline-lidar-processing\\models\\tranchee-instance-segmentation-train-v0-added-epochs\\weights\\best.pt",
     "target_rvt": "LD",
-    "confidence_threshold": 0.1,
+    "confidence_threshold": 0.3,
     "iou_threshold": 0.5,
-    "generate_annotated_images": true,
-    "generate_shapefiles": true,
+    "generate_annotated_images": false,
+    "generate_shapefiles": false,
     "models_dir": "C:\\Users\\valen\\AppData\\Roaming\\QGIS\\QGIS3\\profiles\\default\\python\\plugins\\archeologia-pipeline-lidar-processing\\models",
     "sahi": {
-      "slice_height": 640,
-      "slice_width": 640,
+      "slice_height": 750,
+      "slice_width": 750,
       "overlap_ratio": 0.2
     },
     "export_runner_config": true

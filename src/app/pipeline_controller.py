@@ -9,6 +9,7 @@ from typing import Iterator, Optional
 from .cancel_token import CancelToken
 from .progress_reporter import ProgressReporter
 from .run_context import RunContext
+from .structured_logger import StructuredLogger, create_structured_logger
 
 
 @contextmanager
@@ -49,9 +50,13 @@ def file_logging(output_dir: Optional[Path], reporter: ProgressReporter) -> Iter
 
 class PipelineController:
     def run(self, ctx: RunContext, reporter: ProgressReporter, cancel: CancelToken) -> None:
-        reporter.info(f"Mode: {ctx.mode}")
-        reporter.info(f"Sortie: {str(ctx.output_dir) if ctx.output_dir is not None else ''}")
+        slog = create_structured_logger(reporter.info)
+        
+        output_str = str(ctx.output_dir) if ctx.output_dir is not None else ""
+        slog.start_pipeline(ctx.mode, output_str)
 
+        slog.section("VÉRIFICATION DES DÉPENDANCES", "info")
+        
         from ..pipeline.preflight import run_preflight
 
         if not run_preflight(
@@ -60,9 +65,10 @@ class PipelineController:
             products=ctx.products_cfg,
             log=lambda m: reporter.info(m),
         ):
+            slog.end_pipeline(success=False)
             return
 
         from .runners.registry import get_runner
 
         runner = get_runner(ctx.mode)
-        runner.run(ctx=ctx, reporter=reporter, cancel=cancel)
+        runner.run(ctx=ctx, reporter=reporter, cancel=cancel, slog=slog)

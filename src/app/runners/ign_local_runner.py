@@ -1,15 +1,26 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import TYPE_CHECKING, Optional
 
 from ..cancel_token import CancelToken
+from ..cancellable_feedback import create_cancellable_feedback
 from ..progress_reporter import ProgressReporter
 from ..run_context import RunContext
 from ..services.cv_service import ComputerVisionService
 
+if TYPE_CHECKING:
+    from ..structured_logger import StructuredLogger
+
 
 class IgnOrLocalRunner:
-    def run(self, ctx: RunContext, reporter: ProgressReporter, cancel: CancelToken) -> None:
+    def run(
+        self,
+        ctx: RunContext,
+        reporter: ProgressReporter,
+        cancel: CancelToken,
+        slog: Optional["StructuredLogger"] = None,
+    ) -> None:
         if ctx.output_dir is None:
             reporter.error("Aucun dossier de sortie n'est configuré")
             return
@@ -20,6 +31,8 @@ class IgnOrLocalRunner:
             products = {}
 
         need_mnt = bool(products.get("MNT", True)) or any(bool(products.get(k, False)) for k in ("M_HS", "SVF", "SLO", "LD", "VAT"))
+        
+        feedback = create_cancellable_feedback(cancel.is_cancelled)
 
         download_range = (0, 25)
         merge_range = (25, 35)
@@ -129,16 +142,24 @@ class IgnOrLocalRunner:
                 log=lambda m: reporter.info(m),
             )
 
-            reporter.stage("Traitement des dalles")
+            if slog:
+                slog.section("TRAITEMENT DES DALLES", "process")
+            else:
+                reporter.stage("Traitement des dalles")
             if ctx.mode == "ign_laz":
                 reporter.progress(products_range[0])
             else:
                 reporter.progress(0)
 
             total_mnt = len(merged_result.merged_files)
+            active_products = [k for k, v in products.items() if v]
+            
             for i, merged_path in enumerate(merged_result.merged_files, start=1):
                 if cancel.is_cancelled():
-                    reporter.info("Annulation demandée")
+                    if slog:
+                        slog.warning("Annulation demandée par l'utilisateur")
+                    else:
+                        reporter.info("Annulation demandée")
                     break
 
                 if ctx.mode == "ign_laz":
@@ -150,7 +171,10 @@ class IgnOrLocalRunner:
                     reporter.progress(pct)
 
                 tile_name = merged_path.name.replace(".copc.laz", "").replace(".laz", "")
-                reporter.stage(f"Traitement dalle {i}/{total_mnt}: {tile_name}")
+                if slog:
+                    slog.tile_start(i, total_mnt, tile_name)
+                else:
+                    reporter.stage(f"Traitement dalle {i}/{total_mnt}: {tile_name}")
 
                 create_terrain_model(
                     input_laz_path=merged_path,
@@ -160,7 +184,15 @@ class IgnOrLocalRunner:
                     tile_overlap_percent=tile_overlap,
                     filter_expression=str(filter_expression),
                     log=lambda m: reporter.info(m),
+                    feedback=feedback,
                 )
+                
+                if cancel.is_cancelled():
+                    if slog:
+                        slog.warning("Annulation demandée par l'utilisateur")
+                    else:
+                        reporter.info("Annulation demandée")
+                    break
 
                 products_cfg = products if isinstance(products, dict) else {}
                 if bool(products_cfg.get("DENSITE", False)):
@@ -172,7 +204,15 @@ class IgnOrLocalRunner:
                         tile_overlap_percent=tile_overlap,
                         filter_expression=str(filter_expression),
                         log=lambda m: reporter.info(m),
+                        feedback=feedback,
                     )
+                    
+                    if cancel.is_cancelled():
+                        if slog:
+                            slog.warning("Annulation demandée par l'utilisateur")
+                        else:
+                            reporter.info("Annulation demandée")
+                        break
 
                 create_visualization_products(
                     temp_dir=ctx.output_dir / "temp",
@@ -180,7 +220,15 @@ class IgnOrLocalRunner:
                     products=products_cfg,
                     rvt_params=rvt_params,
                     log=lambda m: reporter.info(m),
+                    feedback=feedback,
                 )
+                
+                if cancel.is_cancelled():
+                    if slog:
+                        slog.warning("Annulation demandée par l'utilisateur")
+                    else:
+                        reporter.info("Annulation demandée")
+                    break
 
                 cropped = crop_final_products(
                     temp_dir=ctx.output_dir / "temp",
@@ -226,6 +274,9 @@ class IgnOrLocalRunner:
                                 tif_transform_data=tif_transform_data,
                             )
 
+                if slog:
+                    slog.tile_end(tile_name, active_products)
+                    
                 if ctx.mode == "ign_laz":
                     frac_done = i / max(1, total_mnt)
                     pct_done = int(round(products_range[0] + (products_range[1] - products_range[0]) * frac_done))
@@ -265,12 +316,21 @@ class IgnOrLocalRunner:
                 except Exception as e:
                     reporter.error(f"Erreur Computer Vision (existing MNT): {e}")
 
-        reporter.stage("Terminé")
         reporter.progress(100)
-        if ctx.mode == "ign_laz":
-            reporter.info(
-                f"Téléchargement IGN terminé: {result.downloaded} téléchargés, {result.skipped_existing} déjà présents (total {result.total}). Fichier trié: {result.sorted_list_file}"
+        
+        if slog:
+            slog.end_pipeline(
+                success=True,
+                tiles_processed=len(merged_result.merged_files) if 'merged_result' in dir() else 0,
+                tiles_total=len(merged_result.merged_files) if 'merged_result' in dir() else 0,
+                products=active_products if 'active_products' in dir() else None,
             )
-            reporter.info(
-                f"Fusion IGN terminée: {len(merged_result.merged_files)} fichiers fusionnés. Dossier: {merged_result.merged_dir}"
-            )
+        else:
+            reporter.stage("Terminé")
+            if ctx.mode == "ign_laz":
+                reporter.info(
+                    f"Téléchargement IGN terminé: {result.downloaded} téléchargés, {result.skipped_existing} déjà présents (total {result.total}). Fichier trié: {result.sorted_list_file}"
+                )
+                reporter.info(
+                    f"Fusion IGN terminée: {len(merged_result.merged_files)} fichiers fusionnés. Dossier: {merged_result.merged_dir}"
+                )

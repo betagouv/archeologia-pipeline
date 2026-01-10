@@ -1,0 +1,263 @@
+================================================================================
+                    TESTS MANUELS - PLUGIN ARCHEOLOG'IA PIPELINE
+================================================================================
+
+Pré-requis:
+- QGIS 3.x installé
+- Plugin activé dans QGIS
+- PDAL, GDAL (gdalwarp, gdal_translate, gdaladdo) dans le PATH
+- Fichiers de test disponibles (LAZ, MNT, RVT selon les modes)
+
+================================================================================
+1. TESTS DE CHARGEMENT DU PLUGIN
+================================================================================
+
+[ ] 1.1 Démarrage QGIS
+    - Ouvrir QGIS
+    - Vérifier qu'aucune erreur n'apparaît dans la console Python
+    - Vérifier que le plugin apparaît dans le menu Extensions
+
+[ ] 1.2 Ouverture du plugin
+    - Cliquer sur le menu/icône du plugin
+    - Vérifier que la fenêtre MainDialog s'ouvre sans erreur
+    - Vérifier que tous les onglets sont visibles et accessibles
+
+[ ] 1.3 Fermeture et réouverture
+    - Fermer la fenêtre du plugin
+    - Rouvrir le plugin
+    - Vérifier que la configuration précédente est conservée
+
+================================================================================
+2. TESTS DE L'INTERFACE UTILISATEUR
+================================================================================
+
+[ ] 2.1 Changement de mode
+    - Sélectionner chaque mode (ign_laz, local_laz, existing_mnt, existing_rvt)
+    - Vérifier que les champs spécifiques au mode s'affichent correctement
+    - Vérifier que le label du champ source change selon le mode
+
+[ ] 2.2 Sélection du dossier de sortie
+    - Cliquer sur le bouton de sélection du dossier de sortie
+    - Sélectionner un dossier valide
+    - Vérifier que le chemin s'affiche correctement
+
+[ ] 2.3 Configuration des produits
+    - Cocher/décocher chaque produit (MNT, DENSITE, M_HS, SVF, SLO, LD, VAT)
+    - Vérifier que les cases à cocher fonctionnent
+
+[ ] 2.4 Configuration des paramètres RVT
+    - Modifier les paramètres de chaque onglet RVT (MDH, SVF, Slope, LDO, VAT)
+    - Vérifier que les spinbox acceptent les valeurs
+
+[ ] 2.5 Configuration Computer Vision
+    - Activer/désactiver la CV
+    - Sélectionner un modèle (si disponible)
+    - Modifier les seuils (confidence, IOU)
+
+================================================================================
+3. TESTS DE SAUVEGARDE/CHARGEMENT CONFIG
+================================================================================
+
+[ ] 3.1 Sauvegarde manuelle
+    - Modifier plusieurs paramètres
+    - Cliquer sur le bouton Sauvegarder
+    - Fermer et rouvrir le plugin
+    - Vérifier que les paramètres sont conservés
+
+[ ] 3.2 Reset configuration générale
+    - Cliquer sur "Réinitialiser config générale"
+    - Vérifier que les valeurs par défaut sont restaurées
+
+[ ] 3.3 Reset configuration RVT
+    - Cliquer sur "Réinitialiser config RVT"
+    - Vérifier que les valeurs RVT par défaut sont restaurées
+
+[ ] 3.4 Pas de sauvegarde auto sur Run
+    - Modifier un paramètre
+    - Cliquer sur Run (puis Cancel immédiatement)
+    - Fermer et rouvrir le plugin
+    - Vérifier que le paramètre modifié N'EST PAS sauvegardé
+
+================================================================================
+4. TESTS DU PREFLIGHT
+================================================================================
+
+[ ] 4.1 Preflight avec dépendances OK
+    - S'assurer que PDAL et GDAL sont dans le PATH
+    - Lancer le pipeline
+    - Vérifier que le preflight passe sans erreur
+
+[ ] 4.2 Preflight avec dépendance manquante
+    - Retirer temporairement PDAL du PATH
+    - Lancer le pipeline en mode ign_laz
+    - Vérifier qu'une erreur est affichée dans les logs
+
+================================================================================
+5. TESTS MODE IGN_LAZ
+================================================================================
+
+Pré-requis: Fichier de liste de dalles IGN valide
+
+[ ] 5.1 Lancement avec fichier valide
+    - Sélectionner le mode ign_laz
+    - Configurer le fichier d'entrée (liste de dalles)
+    - Configurer le dossier de sortie
+    - Activer MNT + LD
+    - Lancer le pipeline
+    - Vérifier la progression dans les logs
+    - Vérifier les fichiers générés dans le dossier de sortie
+
+[ ] 5.2 Annulation en cours
+    - Lancer le pipeline
+    - Cliquer sur Annuler pendant l'exécution
+    - Vérifier que le pipeline s'arrête proprement
+
+[ ] 5.3 Génération de tous les produits
+    - Activer tous les produits (MNT, DENSITE, M_HS, SVF, SLO, LD, VAT)
+    - Lancer le pipeline
+    - Vérifier que tous les produits sont générés
+
+================================================================================
+6. TESTS MODE LOCAL_LAZ
+================================================================================
+
+Pré-requis: Dossier contenant des fichiers LAZ/LAS
+
+[ ] 6.1 Lancement avec dossier valide
+    - Sélectionner le mode local_laz
+    - Configurer le dossier de LAZ locaux
+    - Configurer le dossier de sortie
+    - Activer MNT + LD
+    - Lancer le pipeline
+    - Vérifier les fichiers générés
+
+[ ] 6.2 Dossier vide ou invalide
+    - Configurer un dossier vide ou inexistant
+    - Lancer le pipeline
+    - Vérifier qu'une erreur appropriée est affichée
+
+================================================================================
+7. TESTS MODE EXISTING_MNT
+================================================================================
+
+Pré-requis: Dossier contenant des fichiers MNT (GeoTIFF)
+
+[ ] 7.1 Lancement avec MNT valide
+    - Sélectionner le mode existing_mnt
+    - Configurer le dossier de MNT existants
+    - Configurer le dossier de sortie
+    - Activer LD + SVF
+    - Lancer le pipeline
+    - Vérifier que les produits RVT sont générés
+
+[ ] 7.2 Génération JPG
+    - Activer l'export JPG pour LD
+    - Lancer le pipeline
+    - Vérifier que les fichiers JPG et JGW sont générés
+
+================================================================================
+8. TESTS MODE EXISTING_RVT
+================================================================================
+
+Pré-requis: Dossier contenant des fichiers RVT (GeoTIFF)
+
+[ ] 8.1 Lancement avec RVT valide
+    - Sélectionner le mode existing_rvt
+    - Configurer le dossier de RVT existants
+    - Configurer le dossier de sortie
+    - Lancer le pipeline
+    - Vérifier le traitement
+
+================================================================================
+9. TESTS COMPUTER VISION (si runner disponible)
+================================================================================
+
+Pré-requis: 
+- Runner CV disponible (third_party/cv_runner/windows/cv_runner.exe)
+- Modèle YOLO dans le dossier models/
+
+[ ] 9.1 CV sur mode ign_laz/local_laz
+    - Activer la CV
+    - Sélectionner un modèle
+    - Configurer target_rvt = LD
+    - Activer generate_shapefiles
+    - Lancer le pipeline
+    - Vérifier que les détections sont générées
+    - Vérifier que les shapefiles sont créés
+
+[ ] 9.2 CV sur mode existing_rvt
+    - Activer la CV
+    - Lancer le pipeline sur des RVT existants
+    - Vérifier les détections
+
+[ ] 9.3 CV désactivée
+    - Désactiver la CV
+    - Lancer le pipeline
+    - Vérifier qu'aucune détection n'est effectuée
+
+================================================================================
+10. TESTS DES PYRAMIDES
+================================================================================
+
+Pré-requis: gdaladdo disponible dans le PATH
+
+[ ] 10.1 Pyramides activées
+    - Activer les pyramides
+    - Configurer les niveaux (ex: 2,4,8,16)
+    - Lancer le pipeline
+    - Vérifier que les GeoTIFF contiennent des overviews (gdalinfo)
+
+[ ] 10.2 Pyramides désactivées
+    - Désactiver les pyramides
+    - Lancer le pipeline
+    - Vérifier que les GeoTIFF n'ont pas d'overviews
+
+================================================================================
+11. TESTS DE ROBUSTESSE
+================================================================================
+
+[ ] 11.1 Dossier de sortie en lecture seule
+    - Configurer un dossier sans droits d'écriture
+    - Lancer le pipeline
+    - Vérifier qu'une erreur appropriée est affichée
+
+[ ] 11.2 Espace disque insuffisant
+    - Simuler un manque d'espace
+    - Vérifier le comportement du plugin
+
+[ ] 11.3 Fichiers corrompus
+    - Fournir un fichier LAZ/MNT corrompu
+    - Vérifier que l'erreur est gérée proprement
+
+================================================================================
+12. TESTS DES LOGS
+================================================================================
+
+[ ] 12.1 Logs dans l'interface
+    - Lancer un pipeline
+    - Vérifier que les logs s'affichent dans la zone de texte
+
+[ ] 12.2 Fichier de log
+    - Lancer un pipeline
+    - Vérifier qu'un fichier pipeline.log est créé dans le dossier de sortie
+
+================================================================================
+RÉSUMÉ DES TESTS
+================================================================================
+
+Total tests: 35
+Tests passés: [ ] / 35
+Tests échoués: [ ] / 35
+
+Notes:
+_____________________________________________________________________________
+_____________________________________________________________________________
+_____________________________________________________________________________
+_____________________________________________________________________________
+
+Date du test: ____________________
+Testeur: ____________________
+Version QGIS: ____________________
+Version plugin: ____________________
+
+================================================================================

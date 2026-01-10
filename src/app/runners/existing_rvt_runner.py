@@ -1,14 +1,24 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import TYPE_CHECKING, Optional
 
 from ..cancel_token import CancelToken
 from ..progress_reporter import ProgressReporter
 from ..run_context import RunContext
 
+if TYPE_CHECKING:
+    from ..structured_logger import StructuredLogger
+
 
 class ExistingRvtRunner:
-    def run(self, ctx: RunContext, reporter: ProgressReporter, cancel: CancelToken) -> None:
+    def run(
+        self,
+        ctx: RunContext,
+        reporter: ProgressReporter,
+        cancel: CancelToken,
+        slog: Optional["StructuredLogger"] = None,
+    ) -> None:
         from ...pipeline.modes.existing_rvt import run_existing_rvt
 
         existing_rvt_dir_str = str((ctx.files_cfg.get("existing_rvt_dir") or "")).strip()

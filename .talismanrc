@@ -10,7 +10,7 @@ fileignoreconfig:
 - filename: src/pipeline/cv/conversion_shp.py
   checksum: 6ae87f50a53457dc2c9ae74be37607496efd5c43400eb07d6a79dd7e1958fc45
 - filename: src/ui/main_dialog.py
-  checksum: f3c1a27f6bbe30642b45ab7ce34c9c9a059a6c6177b8c5b68293d194716cdbf3
+  checksum: 1fadc00648b9667211f32bec366ed8b9a595f2749f9bef7f8e78d7371e14d0c8
 - filename: old_src/pipeline_lidar.py
   checksum: 32886bc946b5454875a787ee56a0174d2a4e1fad5a7a2209df6639d52a2c4dd2
 version: "1.0"

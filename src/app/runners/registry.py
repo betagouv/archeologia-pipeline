@@ -20,4 +20,4 @@ def get_runner(mode: str) -> ModeRunner:
     m = str(mode or "").strip()
     if m in _RUNNERS:
         return _RUNNERS[m]
-    return IgnOrLocalRunner()
+    raise ValueError(f"Unknown mode: {mode!r}")

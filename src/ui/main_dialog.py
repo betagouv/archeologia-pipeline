@@ -951,6 +951,103 @@ class MainDialog(QDialog):
 
         self._config_manager.save(self._config)
 
+    def _sync_config_from_widgets(self) -> None:
+        app = self._config.setdefault("app", {})
+        files = app.setdefault("files", {})
+
+        files["output_dir"] = self.output_dir_edit.text().strip()
+        files["data_mode"] = self.data_mode_combo.currentData()
+
+        mode = self.data_mode_combo.currentData() or self._current_mode or "ign_laz"
+        key, _, _ = self._mode_mapping(str(mode))
+        files[key] = self.specific_source_edit.text().strip()
+
+        cv = self._config.setdefault("computer_vision", {})
+        cv["enabled"] = self.cv_enabled_cb.isChecked()
+        cv["selected_model"] = str(self.cv_model_combo.currentData() or "")
+        cv["target_rvt"] = str(self.cv_target_rvt_combo.currentData() or "LD")
+        cv["confidence_threshold"] = float(self.cv_confidence_spin.value())
+        cv["iou_threshold"] = float(self.cv_iou_spin.value())
+        cv["generate_annotated_images"] = self.cv_generate_annotated_cb.isChecked()
+        cv["generate_shapefiles"] = self.cv_generate_shp_cb.isChecked()
+        cv["models_dir"] = str(self._plugin_root / "models")
+
+        sahi = cv.setdefault("sahi", {})
+        sahi["slice_height"] = int(self.cv_slice_height_spin.value())
+        sahi["slice_width"] = int(self.cv_slice_width_spin.value())
+        sahi["overlap_ratio"] = float(self.cv_overlap_spin.value())
+
+        processing = self._config.setdefault("processing", {})
+        processing["mnt_resolution"] = float(self.mnt_resolution_spin.value())
+        processing["density_resolution"] = float(self.density_resolution_spin.value())
+        processing["tile_overlap"] = int(self.tile_overlap_spin.value())
+        processing["filter_expression"] = self.filter_expression_edit.text().strip()
+
+        pyramids = processing.setdefault("pyramids", {})
+        pyramids["enabled"] = self.pyramids_enabled_cb.isChecked()
+        raw_levels = self.pyramids_levels_edit.text().strip()
+        parsed_levels: list[int] = []
+        if raw_levels:
+            for part in raw_levels.replace(";", ",").split(","):
+                part = part.strip()
+                if not part:
+                    continue
+                try:
+                    v = int(part)
+                except Exception:
+                    continue
+                if v > 1:
+                    parsed_levels.append(v)
+        pyramids["levels"] = parsed_levels if parsed_levels else [2, 4, 8, 16, 32, 64]
+
+        products = processing.setdefault("products", {})
+        products["MNT"] = self.product_mnt_cb.isChecked()
+        products["DENSITE"] = self.product_densite_cb.isChecked()
+        products["M_HS"] = self.product_mhs_cb.isChecked()
+        products["SVF"] = self.product_svf_cb.isChecked()
+        products["SLO"] = self.product_slo_cb.isChecked()
+        products["LD"] = self.product_ld_cb.isChecked()
+        products["VAT"] = self.product_vat_cb.isChecked()
+
+        output_formats = processing.setdefault("output_formats", {})
+        jpg = output_formats.setdefault("jpg", {})
+        jpg["M_HS"] = self.jpg_mhs_cb.isChecked()
+        jpg["SVF"] = self.jpg_svf_cb.isChecked()
+        jpg["SLO"] = self.jpg_slo_cb.isChecked()
+        jpg["LD"] = self.jpg_ld_cb.isChecked()
+        jpg["VAT"] = self.jpg_vat_cb.isChecked()
+
+        rvt = self._config.setdefault("rvt_params", {})
+        mdh = rvt.setdefault("mdh", {})
+        mdh["num_directions"] = int(self.mdh_num_directions_spin.value())
+        mdh["sun_elevation"] = int(self.mdh_sun_elevation_spin.value())
+        mdh["ve_factor"] = int(self.mdh_ve_factor_spin.value())
+        mdh["save_as_8bit"] = self.mdh_save_8bit_cb.isChecked()
+
+        svf = rvt.setdefault("svf", {})
+        svf["noise_remove"] = int(self.svf_noise_remove_spin.value())
+        svf["num_directions"] = int(self.svf_num_directions_spin.value())
+        svf["radius"] = int(self.svf_radius_spin.value())
+        svf["ve_factor"] = int(self.svf_ve_factor_spin.value())
+        svf["save_as_8bit"] = self.svf_save_8bit_cb.isChecked()
+
+        slope = rvt.setdefault("slope", {})
+        slope["unit"] = int(self.slope_unit_combo.currentData())
+        slope["ve_factor"] = int(self.slope_ve_factor_spin.value())
+        slope["save_as_8bit"] = self.slope_save_8bit_cb.isChecked()
+
+        ldo = rvt.setdefault("ldo", {})
+        ldo["angular_res"] = int(self.ldo_angular_res_spin.value())
+        ldo["min_radius"] = int(self.ldo_min_radius_spin.value())
+        ldo["max_radius"] = int(self.ldo_max_radius_spin.value())
+        ldo["observer_h"] = float(self.ldo_observer_h_spin.value())
+        ldo["ve_factor"] = int(self.ldo_ve_factor_spin.value())
+        ldo["save_as_8bit"] = self.ldo_save_8bit_cb.isChecked()
+
+        vat = rvt.setdefault("vat", {})
+        vat["terrain_type"] = int(self.vat_terrain_type_combo.currentData())
+        vat["save_as_8bit"] = self.vat_save_8bit_cb.isChecked()
+
     def _save_specific_source_only(self) -> None:
         mode = self.data_mode_combo.currentData() or self._current_mode or "ign_laz"
         key, _, _ = self._mode_mapping(mode)
@@ -1098,8 +1195,7 @@ class MainDialog(QDialog):
         if not self.run_btn.isEnabled():
             return
 
-        self._save_specific_source_only()
-        self._save_from_widgets()
+        self._sync_config_from_widgets()
         self._cancel_event.clear()
         self._set_run_enabled(False)
         self._logger.info("Lancement du pipeline (stub)")
@@ -1109,476 +1205,16 @@ class MainDialog(QDialog):
             root_logger = None
             root_prev_level = None
             try:
-                files = (self._config.get("app") or {}).get("files") or {}
-                mode = files.get("data_mode")
-                output_dir_str = (files.get("output_dir") or "").strip()
-
-                if output_dir_str:
-                    output_dir = Path(output_dir_str)
-                    output_dir.mkdir(parents=True, exist_ok=True)
-                    ts = time.strftime("%Y%m%d_%H%M%S")
-                    log_path = output_dir / f"pipeline_log_{ts}.txt"
-                    file_handler = logging.FileHandler(str(log_path), encoding="utf-8")
-                    file_handler.setLevel(logging.INFO)
-                    file_handler.setFormatter(logging.Formatter("%(asctime)s - %(levelname)s - %(message)s"))
-                    root_logger = logging.getLogger()
-                    root_prev_level = root_logger.level
-                    if root_prev_level > logging.INFO:
-                        root_logger.setLevel(logging.INFO)
-                    root_logger.addHandler(file_handler)
-                    self._logger.info(f"Logs écrits dans: {log_path}")
-
-                self._logger.info(f"Mode: {mode}")
-                self._logger.info(f"Sortie: {output_dir_str}")
-
-                processing_cfg = (self._config.get("processing") or {})
-                products_cfg = (processing_cfg.get("products") or {})
-                if not isinstance(products_cfg, dict):
-                    products_cfg = {}
-                cv_cfg = self._config.get("computer_vision") or {}
-                if not isinstance(cv_cfg, dict):
-                    cv_cfg = {}
-
-                from ..pipeline.preflight import run_preflight
-
-                if not run_preflight(
-                    mode=str(mode),
-                    cv_config=cv_cfg,
-                    products=products_cfg,
-                    log=lambda m: self._logger.info(m),
-                ):
-                    return
-
-                if mode in ("ign_laz", "local_laz"):
-                    from ..pipeline.ign.downloader import download_ign_dalles
-                    from ..pipeline.ign.preprocess import prepare_merged_tiles
-
-                    from ..pipeline.modes.local_laz import run_local_laz
-
-                    input_file = (files.get("input_file") or "").strip()
-                    local_dir_str = (files.get("local_laz_dir") or "").strip()
-                    if not output_dir_str:
-                        self._logger.error("Aucun dossier de sortie n'est configuré")
-                        return
-
-                    output_dir = Path(output_dir_str)
-
-                    if mode == "ign_laz":
-                        # Progress ranges (global %)
-                        download_range = (0, 25)
-                        merge_range = (25, 35)
-                        products_range = (35, 95)
-                        finalize_range = (95, 100)
-
-                        if not input_file:
-                            self._logger.error("Mode IGN sélectionné mais aucun fichier de liste d'URLs n'est configuré")
-                            return
-                        input_path = Path(input_file)
-                        if not input_path.exists():
-                            self._logger.error(f"Fichier dalles IGN introuvable: {input_path}")
-                            return
-
-                        result = download_ign_dalles(
-                            input_file=input_path,
-                            output_dir=output_dir,
-                            log=lambda m: self._logger.info(m),
-                            progress=lambda p: self._log_emitter.progress.emit(
-                                int(download_range[0] + (download_range[1] - download_range[0]) * (int(p) / 100.0))
-                            ),
-                            stage=lambda s: self._log_emitter.stage.emit(str(s)),
-                            cancel=lambda: self._cancel_event.is_set(),
-                        )
-                    else:
-                        if not local_dir_str:
-                            self._logger.error("Mode local_laz sélectionné mais aucun dossier nuages locaux n'est configuré")
-                            return
-                        local_dir = Path(local_dir_str)
-                        self._log_emitter.stage.emit("Indexation des nuages locaux")
-                        self._log_emitter.progress.emit(0)
-                        result = run_local_laz(
-                            local_laz_dir=local_dir,
-                            output_dir=output_dir,
-                            log=lambda m: self._logger.info(m),
-                        )
-
-                    processing = (self._config.get("processing") or {})
-                    tile_overlap = processing.get("tile_overlap", 5)
-                    try:
-                        tile_overlap = float(tile_overlap)
-                    except Exception:
-                        tile_overlap = 5.0
-
-                    self._log_emitter.stage.emit("Fusion (voisins + merge)")
-                    if mode == "ign_laz":
-                        self._log_emitter.progress.emit(merge_range[0])
-                    else:
-                        self._log_emitter.progress.emit(0)
-
-                    merged_result = prepare_merged_tiles(
-                        sorted_list_file=result.sorted_list_file,
-                        dalles_dir=result.dalles_dir,
-                        output_dir=output_dir,
-                        tile_overlap_percent=tile_overlap,
-                        log=lambda m: self._logger.info(m),
-                        cancel=lambda: self._cancel_event.is_set(),
-                    )
-
-                    if mode == "ign_laz":
-                        self._log_emitter.progress.emit(merge_range[1])
-
-                    products = (processing.get("products") or {})
-                    need_mnt = bool(products.get("MNT", True)) or any(
-                        bool(products.get(k, False)) for k in ("M_HS", "SVF", "SLO", "LD", "VAT")
-                    )
-
-                    if need_mnt and merged_result.merged_files:
-                        from ..pipeline.ign.products.mnt import create_terrain_model
-                        from ..pipeline.ign.products.density import create_density_map
-                        from ..pipeline.ign.products.indices import create_visualization_products
-                        from ..pipeline.ign.products.crop import crop_final_products
-                        from ..pipeline.ign.products.results import copy_final_products_to_results
-
-                        mnt_resolution = processing.get("mnt_resolution", 0.5)
-                        try:
-                            mnt_resolution = float(mnt_resolution)
-                        except Exception:
-                            mnt_resolution = 0.5
-
-                        filter_expression = processing.get(
-                            "filter_expression",
-                            "Classification = 2 OR Classification = 6 OR Classification = 66 OR Classification = 67 OR Classification = 9",
-                        )
-
-                        density_resolution = processing.get("density_resolution", 1.0)
-                        try:
-                            density_resolution = float(density_resolution)
-                        except Exception:
-                            density_resolution = 1.0
-
-                        output_structure = processing.get("output_structure", {})
-                        if not isinstance(output_structure, dict):
-                            output_structure = {}
-                        output_formats = processing.get("output_formats", {})
-                        if not isinstance(output_formats, dict):
-                            output_formats = {}
-
-                        rvt_params = self._config.get("rvt_params") or {}
-                        if not isinstance(rvt_params, dict):
-                            rvt_params = {}
-
-                        cv_config = self._config.get("computer_vision") or {}
-                        if not isinstance(cv_config, dict):
-                            cv_config = {}
-                        cv_enabled = bool(cv_config.get("enabled", False))
-                        cv_target_rvt = str(cv_config.get("target_rvt", "LD"))
-                        cv_generate_shapefiles = bool(cv_config.get("generate_shapefiles", False))
-                        cv_labels_dir = None
-                        cv_shp_dir = None
-                        cv_tif_transform_data = {}
-
-                        self._log_emitter.stage.emit("Traitement des dalles")
-                        if mode == "ign_laz":
-                            self._log_emitter.progress.emit(products_range[0])
-                        else:
-                            self._log_emitter.progress.emit(0)
-
-                        total_mnt = len(merged_result.merged_files)
-                        for i, merged_path in enumerate(merged_result.merged_files, start=1):
-                            if self._cancel_event.is_set():
-                                self._logger.info("Annulation demandée")
-                                break
-
-                            if mode == "ign_laz":
-                                frac = (i - 1) / max(1, total_mnt)
-                                pct = int(round(products_range[0] + (products_range[1] - products_range[0]) * frac))
-                                self._log_emitter.progress.emit(pct)
-                            else:
-                                pct = int(round(100.0 * (i - 1) / max(1, total_mnt)))
-                                self._log_emitter.progress.emit(pct)
-
-                            tile_name = merged_path.name.replace(".copc.laz", "").replace(".laz", "")
-                            self._log_emitter.stage.emit(f"Traitement dalle {i}/{total_mnt}: {tile_name}")
-                            mnt_res = create_terrain_model(
-                                input_laz_path=merged_path,
-                                temp_dir=output_dir / "temp",
-                                current_tile_name=tile_name,
-                                mnt_resolution=mnt_resolution,
-                                tile_overlap_percent=tile_overlap,
-                                filter_expression=str(filter_expression),
-                                log=lambda m: self._logger.info(m),
-                            )
-
-                            products_cfg = products if isinstance(products, dict) else {}
-                            if bool(products_cfg.get("DENSITE", False)):
-                                create_density_map(
-                                    input_laz_path=merged_path,
-                                    temp_dir=output_dir / "temp",
-                                    current_tile_name=tile_name,
-                                    density_resolution=density_resolution,
-                                    tile_overlap_percent=tile_overlap,
-                                    filter_expression=str(filter_expression),
-                                    log=lambda m: self._logger.info(m),
-                                )
-
-                            create_visualization_products(
-                                temp_dir=output_dir / "temp",
-                                current_tile_name=tile_name,
-                                products=products_cfg,
-                                rvt_params=rvt_params,
-                                log=lambda m: self._logger.info(m),
-                            )
-
-                            cropped = crop_final_products(
-                                temp_dir=output_dir / "temp",
-                                current_tile_name=tile_name,
-                                products=products_cfg,
-                                rvt_params=rvt_params,
-                                log=lambda m: self._logger.info(m),
-                            )
-                            if cropped:
-                                export_info = copy_final_products_to_results(
-                                    temp_dir=output_dir / "temp",
-                                    output_dir=output_dir,
-                                    current_tile_name=tile_name,
-                                    products=products_cfg,
-                                    output_structure=output_structure,
-                                    output_formats=output_formats,
-                                    rvt_params=rvt_params,
-                                    pyramids_config=(processing.get("pyramids") or {}),
-                                    log=lambda m: self._logger.info(m),
-                                )
-
-                                if cv_enabled and bool(products_cfg.get(cv_target_rvt, False)):
-                                    created_by_product = (export_info or {}).get("created_jpgs_by_product") or {}
-                                    created_jpgs = []
-                                    if isinstance(created_by_product, dict) and cv_target_rvt in created_by_product:
-                                        created_jpgs = created_by_product.get(cv_target_rvt) or []
-                                    if not created_jpgs:
-                                        created_jpgs = (export_info or {}).get("created_jpgs") or []
-                                    tif_transform_data = (export_info or {}).get("tif_transform_data") or {}
-                                    if isinstance(tif_transform_data, dict):
-                                        cv_tif_transform_data.update(tif_transform_data)
-                                    for jpg_path in created_jpgs:
-                                        try:
-                                            if jpg_path is None:
-                                                continue
-
-                                            if not str(jpg_path).lower().replace("\\", "/").endswith("/jpg"):
-                                                # Robustesse: si on reçoit autre chose qu'un fichier JPG, on ignore
-                                                pass
-
-                                            from ..pipeline.cv.runner import run_cv_on_folder
-
-                                            jpg_dir_path = Path(jpg_path).parent
-                                            rvt_base_dir = jpg_dir_path.parent
-
-                                            # Sécurité: ne lancer la CV que sur le RVT sélectionné
-                                            if str(rvt_base_dir.name).upper() != str(cv_target_rvt).upper():
-                                                continue
-
-                                            if cv_labels_dir is None:
-                                                cv_labels_dir = jpg_dir_path
-                                            if cv_shp_dir is None:
-                                                cv_shp_dir = rvt_base_dir / "shapefiles"
-
-                                            run_cv_on_folder(
-                                                jpg_dir=jpg_dir_path,
-                                                cv_config=cv_config,
-                                                target_rvt=cv_target_rvt,
-                                                rvt_base_dir=rvt_base_dir,
-                                                tif_transform_data=cv_tif_transform_data,
-                                                single_jpg=Path(jpg_path),
-                                                run_shapefile_dedup=False,
-                                                log=lambda m: self._logger.info(m),
-                                            )
-                                        except Exception as e:
-                                            self._logger.error(f"Erreur Computer Vision: {e}")
-
-                            # After finishing this tile, bump progress a bit (monotonic)
-                            if mode == "ign_laz":
-                                frac_done = i / max(1, total_mnt)
-                                pct_done = int(round(products_range[0] + (products_range[1] - products_range[0]) * frac_done))
-                                self._log_emitter.progress.emit(pct_done)
-
-                        if cv_enabled and cv_generate_shapefiles and cv_labels_dir is not None and cv_shp_dir is not None:
-                            if mode == "ign_laz":
-                                self._log_emitter.stage.emit("Finalisation (shapefiles)")
-                                self._log_emitter.progress.emit(finalize_range[0])
-                            try:
-                                from ..pipeline.cv.runner import deduplicate_cv_shapefiles_final
-
-                                deduplicate_cv_shapefiles_final(
-                                    labels_dir=cv_labels_dir,
-                                    shp_dir=cv_shp_dir,
-                                    target_rvt=cv_target_rvt,
-                                    cv_config=cv_config,
-                                    tif_transform_data=cv_tif_transform_data,
-                                    temp_dir=output_dir / "temp",
-                                    crs="EPSG:2154",
-                                    log=lambda m: self._logger.info(m),
-                                )
-                            except Exception as e:
-                                self._logger.error(f"Erreur déduplication shapefiles CV: {e}")
-
-                        self._log_emitter.progress.emit(100)
-
-                    self._log_emitter.stage.emit("Terminé")
-                    self._log_emitter.progress.emit(100)
-                    if mode == "ign_laz":
-                        self._logger.info(
-                            f"Téléchargement IGN terminé: {result.downloaded} téléchargés, {result.skipped_existing} déjà présents (total {result.total}). Fichier trié: {result.sorted_list_file}"
-                        )
-                        self._logger.info(
-                            f"Fusion IGN terminée: {len(merged_result.merged_files)} fichiers fusionnés. Dossier: {merged_result.merged_dir}"
-                        )
-
-                    if cv_enabled:
-                        try:
-                            from ..pipeline.modes.existing_rvt import run_existing_rvt
-
-                            target_rvt = str((cv_config or {}).get("target_rvt", "LD"))
-                            rvt_cfg = output_structure.get("RVT", {}) if isinstance(output_structure, dict) else {}
-                            base_dir_name = str(rvt_cfg.get("base_dir", "RVT"))
-                            type_dir_name = str(rvt_cfg.get(target_rvt, target_rvt))
-                            generated_rvt_tif_dir = (output_dir / "results") / base_dir_name / type_dir_name / "tif"
-
-                            if not generated_rvt_tif_dir.exists() or not generated_rvt_tif_dir.is_dir():
-                                self._logger.error(
-                                    f"Computer Vision demandée mais aucun dossier RVT/TIF trouvé: {generated_rvt_tif_dir}"
-                                )
-                            else:
-                                self._log_emitter.stage.emit("Computer Vision (existing MNT)")
-                                self._log_emitter.progress.emit(90)
-                                run_existing_rvt(
-                                    existing_rvt_dir=generated_rvt_tif_dir,
-                                    output_dir=output_dir,
-                                    cv_config=cv_config,
-                                    output_structure=output_structure,
-                                    log=lambda m: self._logger.info(m),
-                                )
-                                if cv_generate_shapefiles:
-                                    self._logger.info("Computer Vision (existing MNT): shapefiles générés")
-                        except Exception as e:
-                            self._logger.error(f"Erreur Computer Vision (existing MNT): {e}")
-
-                    self._log_emitter.stage.emit("Terminé")
-                    self._log_emitter.progress.emit(100)
-                    return
-
-                if mode == "existing_mnt":
-                    from ..pipeline.modes.existing_mnt import run_existing_mnt
-
-                    existing_mnt_dir_str = (files.get("existing_mnt_dir") or "").strip()
-                    if not existing_mnt_dir_str:
-                        self._logger.error("Mode existing_mnt sélectionné mais aucun dossier MNT n'est configuré")
-                        return
-                    if not output_dir_str:
-                        self._logger.error("Aucun dossier de sortie n'est configuré")
-                        return
-
-                    output_dir = Path(output_dir_str)
-                    output_dir.mkdir(parents=True, exist_ok=True)
-
-                    processing_cfg = (self._config.get("processing") or {})
-                    output_structure = processing_cfg.get("output_structure", {})
-                    if not isinstance(output_structure, dict):
-                        output_structure = {}
-
-                    output_formats = processing_cfg.get("output_formats", {})
-                    if not isinstance(output_formats, dict):
-                        output_formats = {}
-
-                    rvt_params = self._config.get("rvt_params") or {}
-                    if not isinstance(rvt_params, dict):
-                        rvt_params = {}
-
-                    cv_config = self._config.get("computer_vision") or {}
-                    if not isinstance(cv_config, dict):
-                        cv_config = {}
-
-                    self._log_emitter.stage.emit("Computer Vision (existing MNT)")
-                    self._log_emitter.progress.emit(0)
-
-                    res = run_existing_mnt(
-                        existing_mnt_dir=Path(existing_mnt_dir_str),
-                        output_dir=output_dir,
-                        products=products_cfg,
-                        output_structure=output_structure,
-                        output_formats=output_formats,
-                        pyramids_config=(processing_cfg.get("pyramids") or {}),
-                        rvt_params=rvt_params,
-                        log=lambda m: self._logger.info(m),
-                    )
-
-                    self._log_emitter.stage.emit("Terminé")
-                    self._log_emitter.progress.emit(100)
-                    self._logger.info(f"Mode existing_mnt terminé: {res.total} MNT traités")
-                    return
-
-                if mode == "existing_rvt":
-                    from ..pipeline.modes.existing_rvt import run_existing_rvt
-
-                    existing_rvt_dir_str = (files.get("existing_rvt_dir") or "").strip()
-                    if not existing_rvt_dir_str:
-                        self._logger.error("Mode existing_rvt sélectionné mais aucun dossier RVT n'est configuré")
-                        return
-                    if not output_dir_str:
-                        self._logger.error("Aucun dossier de sortie n'est configuré")
-                        return
-
-                    output_dir = Path(output_dir_str)
-                    output_dir.mkdir(parents=True, exist_ok=True)
-
-                    processing_cfg = (self._config.get("processing") or {})
-                    output_structure = processing_cfg.get("output_structure", {})
-                    if not isinstance(output_structure, dict):
-                        output_structure = {}
-
-                    cv_config = self._config.get("computer_vision") or {}
-                    if not isinstance(cv_config, dict):
-                        cv_config = {}
-
-                    self._log_emitter.stage.emit("Computer Vision (existing RVT)")
-                    self._log_emitter.progress.emit(0)
-
-                    res = run_existing_rvt(
-                        existing_rvt_dir=Path(existing_rvt_dir_str),
-                        output_dir=output_dir,
-                        cv_config=cv_config,
-                        output_structure=output_structure,
-                        log=lambda m: self._logger.info(m),
-                    )
-
-                    self._log_emitter.stage.emit("Terminé")
-                    self._log_emitter.progress.emit(100)
-                    self._logger.info(f"Mode existing_rvt terminé: {res.total_images} images")
-                    return
-
-                self._log_emitter.stage.emit("Préparation")
-                self._log_emitter.progress.emit(10)
-                time.sleep(0.4)
-                if self._cancel_event.is_set():
-                    self._logger.info("Pipeline annulé")
-                    return
-
-                self._logger.info("(stub) Préparation...")
-                self._log_emitter.stage.emit("Traitement")
-                self._log_emitter.progress.emit(40)
-                time.sleep(0.4)
-                if self._cancel_event.is_set():
-                    self._logger.info("Pipeline annulé")
-                    return
-
-                self._logger.info("(stub) Traitement...")
-                self._log_emitter.stage.emit("Finalisation")
-                self._log_emitter.progress.emit(80)
-                time.sleep(0.4)
-                if self._cancel_event.is_set():
-                    self._logger.info("Pipeline annulé")
-                    return
-
-                self._log_emitter.progress.emit(100)
-                self._logger.info("Pipeline terminé (stub)")
+                from ..app.cancel_token import CancelToken
+                from ..app.pipeline_controller import PipelineController, file_logging
+                from ..app.qt_progress_reporter import QtProgressReporter
+                from ..app.run_context import build_run_context
+
+                reporter = QtProgressReporter(self._logger, self._log_emitter)
+                ctx = build_run_context(self._config)
+                with file_logging(ctx.output_dir, reporter):
+                    PipelineController().run(ctx=ctx, reporter=reporter, cancel=CancelToken(self._cancel_event))
+                return
             except Exception:
                 self._logger.exception("Erreur pendant l'exécution du pipeline (stub)")
             finally:

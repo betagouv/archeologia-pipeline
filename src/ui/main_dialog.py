@@ -1201,9 +1201,6 @@ class MainDialog(QDialog):
         self._logger.info("Lancement du pipeline (stub)")
 
         def worker():
-            file_handler = None
-            root_logger = None
-            root_prev_level = None
             try:
                 from ..app.cancel_token import CancelToken
                 from ..app.pipeline_controller import PipelineController, file_logging
@@ -1214,22 +1211,9 @@ class MainDialog(QDialog):
                 ctx = build_run_context(self._config)
                 with file_logging(ctx.output_dir, reporter):
                     PipelineController().run(ctx=ctx, reporter=reporter, cancel=CancelToken(self._cancel_event))
-                return
             except Exception:
-                self._logger.exception("Erreur pendant l'exécution du pipeline (stub)")
+                self._logger.exception("Erreur pendant l'exécution du pipeline")
             finally:
-                try:
-                    if file_handler is not None:
-                        if root_logger is not None:
-                            root_logger.removeHandler(file_handler)
-                        file_handler.close()
-                except Exception:
-                    pass
-                try:
-                    if root_logger is not None and root_prev_level is not None:
-                        root_logger.setLevel(root_prev_level)
-                except Exception:
-                    pass
                 self._log_emitter.run_enabled.emit(True)
 
         threading.Thread(target=worker, daemon=True).start()

@@ -254,7 +254,6 @@ git config core.hooksPath .githooks
 
 Ensuite, un `git push` déclenchera automatiquement Talisman et pourra bloquer le push si un secret est détecté.
 
-
 ## Dépannage
 
 - **Préflight KO** : vérifier que `pdal`, `gdalwarp`, `gdal_translate` sont accessibles dans le `PATH`.
@@ -263,6 +262,106 @@ Ensuite, un `git push` déclenchera automatiquement Talisman et pourra bloquer l
 - **Computer vision** :
   - soit fournir le runner externe dans `third_party/cv_runner/...`
   - soit installer les dépendances Python dans l’environnement QGIS.
+
+## Architecture
+
+### Diagramme de flux
+
+```mermaid
+flowchart TD
+    subgraph QGIS["QGIS Application"]
+        A[QGIS démarre] --> B[Charge les plugins]
+        B --> C["ArcheologiaPipelinePlugin"]
+        C --> D["initGui()"]
+    end
+
+    subgraph UI["Interface Utilisateur"]
+        E["Clic sur plugin"] --> F["MainDialog"]
+        F --> G{"Action ?"}
+        G -->|"Run"| H["_on_run_clicked()"]
+        G -->|"Save"| I["_save_from_widgets()"]
+        G -->|"Cancel"| J["_cancel_event.set()"]
+    end
+
+    subgraph Pipeline["Pipeline Execution"]
+        H --> K["build_run_context()"]
+        K --> L["PipelineController.run()"]
+        L --> M["run_preflight()"]
+        M --> N{"Mode ?"}
+        N -->|"ign_laz / local_laz"| O["IgnOrLocalRunner"]
+        N -->|"existing_mnt"| P["ExistingMntRunner"]
+        N -->|"existing_rvt"| Q["ExistingRvtRunner"]
+    end
+
+    subgraph Processing["Traitement"]
+        O --> R["Téléchargement / Fusion tuiles"]
+        R --> S["create_terrain_model()"]
+        S --> T["create_visualization_products()"]
+        T --> U["copy_final_products_to_results()"]
+        U --> V{"CV enabled ?"}
+        V -->|"Oui"| W["ComputerVisionService"]
+        V -->|"Non"| X["Terminé"]
+        W --> X
+    end
+
+    subgraph CV["Computer Vision"]
+        W --> Y["process_single_jpg()"]
+        Y --> Z["run_cv_on_folder()"]
+        Z --> AA{"Runner externe ?"}
+        AA -->|"Oui"| AB["cv_runner.exe"]
+        AA -->|"Non"| AC["Python fallback"]
+        AB --> AD["Inférence YOLO"]
+        AC --> AD
+        AD --> AE["finalize() → shapefiles"]
+    end
+```
+
+### Structure des fichiers
+
+```text
+src/
+├── app/                          # Orchestration pipeline
+│   ├── cancel_token.py           # Encapsule threading.Event
+│   ├── pipeline_controller.py    # Orchestre preflight + dispatch
+│   ├── progress_reporter.py      # Protocol pour reporting
+│   ├── qt_progress_reporter.py   # Implémentation Qt
+│   ├── run_context.py            # Dataclass config pipeline
+│   ├── runners/
+│   │   ├── base.py               # ModeRunner Protocol
+│   │   ├── registry.py           # get_runner(mode)
+│   │   ├── ign_local_runner.py   # ign_laz + local_laz
+│   │   ├── existing_mnt_runner.py
+│   │   └── existing_rvt_runner.py
+│   └── services/
+│       └── cv_service.py         # ComputerVisionService
+│
+├── pipeline/                     # Logique métier
+│   ├── cv/                       # Computer vision
+│   ├── ign/                      # Téléchargement + produits
+│   ├── modes/                    # Modes existing_mnt, existing_rvt
+│   └── preflight.py              # Vérification dépendances
+│
+└── ui/
+    └── main_dialog.py            # Interface Qt
+```
+
+## Tests
+
+Le projet utilise **pytest** pour les tests unitaires et d'intégration.
+
+```bash
+# Installer pytest
+pip install pytest
+
+# Exécuter tous les tests
+python -m pytest tests/ -v
+
+# Tests unitaires uniquement
+python -m pytest tests/unit/ -v
+
+# Tests d'intégration uniquement
+python -m pytest tests/integration/ -v
+```
 
 ## Licence
 

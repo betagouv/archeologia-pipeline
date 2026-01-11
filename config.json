@@ -4,13 +4,13 @@
       "output_dir": "D:/pipeline_results/output_test",
       "data_mode": "ign_laz",
       "input_file": "D:/pipeline_results/data/data_tests/tests - Copie.txt",
-      "local_laz_dir": "c",
-      "existing_mnt_dir": "d",
-      "existing_rvt_dir": "e"
+      "local_laz_dir": "D:/pipeline_results/output_test/dalles",
+      "existing_mnt_dir": "D:/pipeline_results/output_test/existing_MNT",
+      "existing_rvt_dir": "D:/pipeline_results/output_test/existing_RVT"
     }
   },
   "processing": {
-    "mnt_resolution": 2.0,
+    "mnt_resolution": 0.5,
     "density_resolution": 1.0,
     "tile_overlap": 20,
     "filter_expression": "Classification = 2 OR Classification = 6 OR Classification = 66 OR Classification = 67 OR Classification = 9",
@@ -27,12 +27,12 @@
     },
     "products": {
       "MNT": true,
-      "DENSITE": true,
-      "M_HS": true,
+      "DENSITE": false,
+      "M_HS": false,
       "SVF": true,
-      "SLO": true,
+      "SLO": false,
       "LD": true,
-      "VAT": true
+      "VAT": false
     },
     "output_formats": {
       "jpg": {
@@ -45,17 +45,17 @@
     }
   },
   "computer_vision": {
-    "enabled": false,
+    "enabled": true,
     "selected_model": "C:\\Users\\valen\\AppData\\Roaming\\QGIS\\QGIS3\\profiles\\default\\python\\plugins\\archeologia-pipeline-lidar-processing\\models\\tranchee-instance-segmentation-train-v0-added-epochs\\weights\\best.pt",
-    "target_rvt": "LD",
-    "confidence_threshold": 0.3,
+    "target_rvt": "SVF",
+    "confidence_threshold": 0.1,
     "iou_threshold": 0.5,
-    "generate_annotated_images": false,
-    "generate_shapefiles": false,
+    "generate_annotated_images": true,
+    "generate_shapefiles": true,
     "models_dir": "C:\\Users\\valen\\AppData\\Roaming\\QGIS\\QGIS3\\profiles\\default\\python\\plugins\\archeologia-pipeline-lidar-processing\\models",
     "sahi": {
-      "slice_height": 750,
-      "slice_width": 750,
+      "slice_height": 640,
+      "slice_width": 640,
       "overlap_ratio": 0.2
     },
     "export_runner_config": true

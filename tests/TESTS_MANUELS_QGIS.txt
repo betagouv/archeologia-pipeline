@@ -150,11 +150,6 @@ Pré-requis: Dossier contenant des fichiers MNT (GeoTIFF)
     - Lancer le pipeline
     - Vérifier que les produits RVT sont générés
 
-[ ] 7.2 Génération JPG
-    - Activer l'export JPG pour LD
-    - Lancer le pipeline
-    - Vérifier que les fichiers JPG et JGW sont générés
-
 ================================================================================
 8. TESTS MODE EXISTING_RVT
 ================================================================================

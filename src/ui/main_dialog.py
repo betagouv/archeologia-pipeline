@@ -249,12 +249,10 @@ class MainDialog(QDialog):
         self.mdh_ve_factor_spin = NoWheelSpinBox()
         self.mdh_ve_factor_spin.setRange(1, 100)
         self.mdh_save_8bit_cb = QCheckBox("Sauver en 8bit")
-        self.jpg_mhs_cb = QCheckBox("Exporter en JPG (+JGW)")
         mdh_form.addRow("Nombre directions:", self.mdh_num_directions_spin)
         mdh_form.addRow("Élévation solaire:", self.mdh_sun_elevation_spin)
         mdh_form.addRow("Facteur VE:", self.mdh_ve_factor_spin)
         mdh_form.addRow("", self.mdh_save_8bit_cb)
-        mdh_form.addRow("", self.jpg_mhs_cb)
         self.rvt_tabs.addTab(mdh_tab, "M-HS")
 
         svf_tab = QWidget()
@@ -268,13 +266,11 @@ class MainDialog(QDialog):
         self.svf_ve_factor_spin = NoWheelSpinBox()
         self.svf_ve_factor_spin.setRange(1, 100)
         self.svf_save_8bit_cb = QCheckBox("Sauver en 8bit")
-        self.jpg_svf_cb = QCheckBox("Exporter en JPG (+JGW)")
         svf_form.addRow("Suppression bruit:", self.svf_noise_remove_spin)
         svf_form.addRow("Nombre directions:", self.svf_num_directions_spin)
         svf_form.addRow("Rayon:", self.svf_radius_spin)
         svf_form.addRow("Facteur VE:", self.svf_ve_factor_spin)
         svf_form.addRow("", self.svf_save_8bit_cb)
-        svf_form.addRow("", self.jpg_svf_cb)
         self.rvt_tabs.addTab(svf_tab, "SVF")
 
         slope_tab = QWidget()
@@ -285,11 +281,9 @@ class MainDialog(QDialog):
         self.slope_ve_factor_spin = NoWheelSpinBox()
         self.slope_ve_factor_spin.setRange(1, 100)
         self.slope_save_8bit_cb = QCheckBox("Sauver en 8bit")
-        self.jpg_slo_cb = QCheckBox("Exporter en JPG (+JGW)")
         slope_form.addRow("Unité:", self.slope_unit_combo)
         slope_form.addRow("Facteur VE:", self.slope_ve_factor_spin)
         slope_form.addRow("", self.slope_save_8bit_cb)
-        slope_form.addRow("", self.jpg_slo_cb)
         self.rvt_tabs.addTab(slope_tab, "Slope")
 
         ld_tab = QWidget()
@@ -307,14 +301,12 @@ class MainDialog(QDialog):
         self.ldo_ve_factor_spin = NoWheelSpinBox()
         self.ldo_ve_factor_spin.setRange(1, 100)
         self.ldo_save_8bit_cb = QCheckBox("Sauver en 8bit")
-        self.jpg_ld_cb = QCheckBox("Exporter en JPG (+JGW)")
         ld_form.addRow("Résolution angulaire:", self.ldo_angular_res_spin)
         ld_form.addRow("Rayon min:", self.ldo_min_radius_spin)
         ld_form.addRow("Rayon max:", self.ldo_max_radius_spin)
         ld_form.addRow("Hauteur observateur:", self.ldo_observer_h_spin)
         ld_form.addRow("Facteur VE:", self.ldo_ve_factor_spin)
         ld_form.addRow("", self.ldo_save_8bit_cb)
-        ld_form.addRow("", self.jpg_ld_cb)
         self.rvt_tabs.addTab(ld_tab, "LD")
 
         vat_tab = QWidget()
@@ -324,10 +316,8 @@ class MainDialog(QDialog):
         self.vat_terrain_type_combo.addItem("Plat", 1)
         self.vat_terrain_type_combo.addItem("Pentu", 2)
         self.vat_save_8bit_cb = QCheckBox("Sauver en 8bit")
-        self.jpg_vat_cb = QCheckBox("Exporter en JPG (+JGW)")
         vat_form.addRow("Type de terrain:", self.vat_terrain_type_combo)
         vat_form.addRow("", self.vat_save_8bit_cb)
-        vat_form.addRow("", self.jpg_vat_cb)
         self.rvt_tabs.addTab(vat_tab, "VAT")
 
         rvt_layout.addWidget(self.rvt_tabs)
@@ -525,19 +515,16 @@ class MainDialog(QDialog):
         self.mdh_sun_elevation_spin.valueChanged.connect(self._on_any_changed)
         self.mdh_ve_factor_spin.valueChanged.connect(self._on_any_changed)
         self.mdh_save_8bit_cb.toggled.connect(self._on_any_changed)
-        self.jpg_mhs_cb.toggled.connect(self._on_any_changed)
 
         self.svf_noise_remove_spin.valueChanged.connect(self._on_any_changed)
         self.svf_num_directions_spin.valueChanged.connect(self._on_any_changed)
         self.svf_radius_spin.valueChanged.connect(self._on_any_changed)
         self.svf_ve_factor_spin.valueChanged.connect(self._on_any_changed)
         self.svf_save_8bit_cb.toggled.connect(self._on_any_changed)
-        self.jpg_svf_cb.toggled.connect(self._on_any_changed)
 
         self.slope_unit_combo.currentIndexChanged.connect(self._on_any_changed)
         self.slope_ve_factor_spin.valueChanged.connect(self._on_any_changed)
         self.slope_save_8bit_cb.toggled.connect(self._on_any_changed)
-        self.jpg_slo_cb.toggled.connect(self._on_any_changed)
 
         self.ldo_angular_res_spin.valueChanged.connect(self._on_any_changed)
         self.ldo_min_radius_spin.valueChanged.connect(self._on_any_changed)
@@ -545,11 +532,9 @@ class MainDialog(QDialog):
         self.ldo_observer_h_spin.valueChanged.connect(self._on_any_changed)
         self.ldo_ve_factor_spin.valueChanged.connect(self._on_any_changed)
         self.ldo_save_8bit_cb.toggled.connect(self._on_any_changed)
-        self.jpg_ld_cb.toggled.connect(self._on_any_changed)
 
         self.vat_terrain_type_combo.currentIndexChanged.connect(self._on_any_changed)
         self.vat_save_8bit_cb.toggled.connect(self._on_any_changed)
-        self.jpg_vat_cb.toggled.connect(self._on_any_changed)
 
         self.cv_enabled_cb.toggled.connect(self._on_cv_enabled_changed)
         self.cv_model_combo.currentIndexChanged.connect(self._on_any_changed)
@@ -724,13 +709,14 @@ class MainDialog(QDialog):
         self._refresh_path_validations()
 
     def _refresh_path_validations(self) -> None:
-        self._set_lineedit_path_state(self.output_dir_edit, expect_dir=True)
+        # Le dossier de sortie sera créé s'il n'existe pas, donc pas de validation rouge
+        self._set_lineedit_path_state(self.output_dir_edit, expect_dir=True, allow_create=True)
 
         mode = self.data_mode_combo.currentData() or self._current_mode or "ign_laz"
         _, _, is_file = self._mode_mapping(mode)
         self._set_lineedit_path_state(self.specific_source_edit, expect_dir=not is_file)
 
-    def _set_lineedit_path_state(self, edit: QLineEdit, expect_dir: bool) -> None:
+    def _set_lineedit_path_state(self, edit: QLineEdit, expect_dir: bool, allow_create: bool = False) -> None:
         text = (edit.text() or "").strip()
         if not text:
             edit.setStyleSheet("")
@@ -738,6 +724,12 @@ class MainDialog(QDialog):
 
         p = Path(text)
         ok = p.exists() and (p.is_dir() if expect_dir else p.is_file())
+        
+        # Si allow_create=True et c'est un dossier, on accepte même s'il n'existe pas
+        if not ok and allow_create and expect_dir:
+            # Vérifier que le chemin parent existe ou est valide
+            ok = True  # Le dossier sera créé automatiquement
+        
         if ok:
             edit.setStyleSheet("")
         else:
@@ -776,8 +768,8 @@ class MainDialog(QDialog):
             self._cv_target_rvt_from_config = cv.get("target_rvt") or ""
 
             sahi = cv.get("sahi") or {}
-            self.cv_slice_height_spin.setValue(int(sahi.get("slice_height", 750)))
-            self.cv_slice_width_spin.setValue(int(sahi.get("slice_width", 750)))
+            self.cv_slice_height_spin.setValue(int(sahi.get("slice_height", 640)))
+            self.cv_slice_width_spin.setValue(int(sahi.get("slice_width", 640)))
             self.cv_overlap_spin.setValue(float(sahi.get("overlap_ratio", 0.2)))
 
             processing = self._config.get("processing") or {}
@@ -805,13 +797,6 @@ class MainDialog(QDialog):
             self.product_slo_cb.setChecked(bool(products.get("SLO", True)))
             self.product_ld_cb.setChecked(bool(products.get("LD", True)))
             self.product_vat_cb.setChecked(bool(products.get("VAT", False)))
-
-            jpg = ((processing.get("output_formats") or {}).get("jpg") or {})
-            self.jpg_mhs_cb.setChecked(bool(jpg.get("M_HS", True)))
-            self.jpg_svf_cb.setChecked(bool(jpg.get("SVF", True)))
-            self.jpg_slo_cb.setChecked(bool(jpg.get("SLO", True)))
-            self.jpg_ld_cb.setChecked(bool(jpg.get("LD", True)))
-            self.jpg_vat_cb.setChecked(bool(jpg.get("VAT", True)))
 
             rvt = self._config.get("rvt_params") or {}
             mdh = rvt.get("mdh") or {}
@@ -910,14 +895,6 @@ class MainDialog(QDialog):
         products["LD"] = self.product_ld_cb.isChecked()
         products["VAT"] = self.product_vat_cb.isChecked()
 
-        output_formats = processing.setdefault("output_formats", {})
-        jpg = output_formats.setdefault("jpg", {})
-        jpg["M_HS"] = self.jpg_mhs_cb.isChecked()
-        jpg["SVF"] = self.jpg_svf_cb.isChecked()
-        jpg["SLO"] = self.jpg_slo_cb.isChecked()
-        jpg["LD"] = self.jpg_ld_cb.isChecked()
-        jpg["VAT"] = self.jpg_vat_cb.isChecked()
-
         rvt = self._config.setdefault("rvt_params", {})
         mdh = rvt.setdefault("mdh", {})
         mdh["num_directions"] = int(self.mdh_num_directions_spin.value())
@@ -1008,14 +985,6 @@ class MainDialog(QDialog):
         products["SLO"] = self.product_slo_cb.isChecked()
         products["LD"] = self.product_ld_cb.isChecked()
         products["VAT"] = self.product_vat_cb.isChecked()
-
-        output_formats = processing.setdefault("output_formats", {})
-        jpg = output_formats.setdefault("jpg", {})
-        jpg["M_HS"] = self.jpg_mhs_cb.isChecked()
-        jpg["SVF"] = self.jpg_svf_cb.isChecked()
-        jpg["SLO"] = self.jpg_slo_cb.isChecked()
-        jpg["LD"] = self.jpg_ld_cb.isChecked()
-        jpg["VAT"] = self.jpg_vat_cb.isChecked()
 
         rvt = self._config.setdefault("rvt_params", {})
         mdh = rvt.setdefault("mdh", {})
@@ -1108,8 +1077,6 @@ class MainDialog(QDialog):
 
     def _reset_rvt_config(self) -> None:
         defaults = self._config_manager.default_config()
-        processing = defaults.get("processing") or {}
-        jpg = ((processing.get("output_formats") or {}).get("jpg") or {})
         rvt = defaults.get("rvt_params") or {}
 
         self._loading = True
@@ -1119,7 +1086,6 @@ class MainDialog(QDialog):
             self.mdh_sun_elevation_spin.setValue(int(mdh.get("sun_elevation", 35)))
             self.mdh_ve_factor_spin.setValue(int(mdh.get("ve_factor", 1)))
             self.mdh_save_8bit_cb.setChecked(bool(mdh.get("save_as_8bit", True)))
-            self.jpg_mhs_cb.setChecked(bool(jpg.get("M_HS", True)))
 
             svf = rvt.get("svf") or {}
             self.svf_noise_remove_spin.setValue(int(svf.get("noise_remove", 0)))
@@ -1127,7 +1093,6 @@ class MainDialog(QDialog):
             self.svf_radius_spin.setValue(int(svf.get("radius", 10)))
             self.svf_ve_factor_spin.setValue(int(svf.get("ve_factor", 1)))
             self.svf_save_8bit_cb.setChecked(bool(svf.get("save_as_8bit", True)))
-            self.jpg_svf_cb.setChecked(bool(jpg.get("SVF", True)))
 
             slope = rvt.get("slope") or {}
             unit = int(slope.get("unit", 0))
@@ -1135,7 +1100,6 @@ class MainDialog(QDialog):
             self.slope_unit_combo.setCurrentIndex(idx_unit if idx_unit >= 0 else 0)
             self.slope_ve_factor_spin.setValue(int(slope.get("ve_factor", 1)))
             self.slope_save_8bit_cb.setChecked(bool(slope.get("save_as_8bit", True)))
-            self.jpg_slo_cb.setChecked(bool(jpg.get("SLO", True)))
 
             ldo = rvt.get("ldo") or {}
             self.ldo_angular_res_spin.setValue(int(ldo.get("angular_res", 15)))
@@ -1144,14 +1108,12 @@ class MainDialog(QDialog):
             self.ldo_observer_h_spin.setValue(float(ldo.get("observer_h", 1.7)))
             self.ldo_ve_factor_spin.setValue(int(ldo.get("ve_factor", 1)))
             self.ldo_save_8bit_cb.setChecked(bool(ldo.get("save_as_8bit", True)))
-            self.jpg_ld_cb.setChecked(bool(jpg.get("LD", True)))
 
             vat = rvt.get("vat") or {}
             terrain = int(vat.get("terrain_type", 0))
             idx_terrain = self.vat_terrain_type_combo.findData(terrain)
             self.vat_terrain_type_combo.setCurrentIndex(idx_terrain if idx_terrain >= 0 else 0)
             self.vat_save_8bit_cb.setChecked(bool(vat.get("save_as_8bit", True)))
-            self.jpg_vat_cb.setChecked(bool(jpg.get("VAT", True)))
         finally:
             self._loading = False
 
@@ -1174,8 +1136,8 @@ class MainDialog(QDialog):
             self._cv_target_rvt_from_config = cv.get("target_rvt") or "LD"
 
             sahi = cv.get("sahi") or {}
-            self.cv_slice_height_spin.setValue(int(sahi.get("slice_height", 750)))
-            self.cv_slice_width_spin.setValue(int(sahi.get("slice_width", 750)))
+            self.cv_slice_height_spin.setValue(int(sahi.get("slice_height", 640)))
+            self.cv_slice_width_spin.setValue(int(sahi.get("slice_width", 640)))
             self.cv_overlap_spin.setValue(float(sahi.get("overlap_ratio", 0.2)))
         finally:
             self._loading = False

@@ -64,6 +64,8 @@ class PipelineController:
             cv_config=ctx.cv_cfg,
             products=ctx.products_cfg,
             log=lambda m: reporter.info(m),
+            files_config=ctx.files_cfg,
+            output_dir=ctx.output_dir,
         ):
             slog.end_pipeline(success=False)
             return

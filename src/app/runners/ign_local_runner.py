@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional
 
@@ -21,6 +22,8 @@ class IgnOrLocalRunner:
         cancel: CancelToken,
         slog: Optional["StructuredLogger"] = None,
     ) -> None:
+        start_time = time.time()
+
         if ctx.output_dir is None:
             reporter.error("Aucun dossier de sortie n'est configuré")
             return
@@ -50,6 +53,13 @@ class IgnOrLocalRunner:
             if not input_path.exists():
                 reporter.error(f"Fichier dalles IGN introuvable: {input_path}")
                 return
+            if slog:
+                slog.section("TÉLÉCHARGEMENT DES DALLES IGN", "download")
+            else:
+                reporter.info("")
+                reporter.info("════════════════════════════════════════════════════════════")
+                reporter.info("📥 TÉLÉCHARGEMENT DES DALLES IGN")
+                reporter.info("════════════════════════════════════════════════════════════")
             result = download_ign_dalles(
                 input_file=input_path,
                 output_dir=ctx.output_dir,
@@ -69,7 +79,14 @@ class IgnOrLocalRunner:
                 return
 
             local_dir = Path(local_dir_str)
-            reporter.stage("Indexation des nuages locaux")
+            if slog:
+                slog.section("INDEXATION DES NUAGES LOCAUX", "download")
+            else:
+                reporter.info("")
+                reporter.info("════════════════════════════════════════════════════════════")
+                reporter.info("📂 INDEXATION DES NUAGES LOCAUX")
+                reporter.info("════════════════════════════════════════════════════════════")
+                reporter.stage("Indexation des nuages locaux")
             reporter.progress(0)
             result = run_local_laz(
                 local_laz_dir=local_dir,
@@ -85,7 +102,14 @@ class IgnOrLocalRunner:
         except Exception:
             tile_overlap = 5.0
 
-        reporter.stage("Fusion (voisins + merge)")
+        if slog:
+            slog.section("FUSION DES TUILES", "process")
+        else:
+            reporter.info("")
+            reporter.info("════════════════════════════════════════════════════════════")
+            reporter.info("🔧 FUSION DES TUILES")
+            reporter.info("════════════════════════════════════════════════════════════")
+            reporter.stage("Fusion (voisins + merge)")
         if ctx.mode == "ign_laz":
             reporter.progress(merge_range[0])
         else:
@@ -145,6 +169,10 @@ class IgnOrLocalRunner:
             if slog:
                 slog.section("TRAITEMENT DES DALLES", "process")
             else:
+                reporter.info("")
+                reporter.info("════════════════════════════════════════════════════════════")
+                reporter.info("🔧 TRAITEMENT DES DALLES")
+                reporter.info("════════════════════════════════════════════════════════════")
                 reporter.stage("Traitement des dalles")
             if ctx.mode == "ign_laz":
                 reporter.progress(products_range[0])
@@ -302,7 +330,14 @@ class IgnOrLocalRunner:
                     if not generated_rvt_tif_dir.exists() or not generated_rvt_tif_dir.is_dir():
                         reporter.error(f"Computer Vision demandée mais aucun dossier RVT/TIF trouvé: {generated_rvt_tif_dir}")
                     else:
-                        reporter.stage("Computer Vision (existing MNT)")
+                        if slog:
+                            slog.section("COMPUTER VISION", "cv")
+                        else:
+                            reporter.info("")
+                            reporter.info("════════════════════════════════════════════════════════════")
+                            reporter.info("🤖 COMPUTER VISION")
+                            reporter.info("════════════════════════════════════════════════════════════")
+                        reporter.stage("Computer Vision")
                         reporter.progress(90)
                         run_existing_rvt(
                             existing_rvt_dir=generated_rvt_tif_dir,
@@ -318,19 +353,27 @@ class IgnOrLocalRunner:
 
         reporter.progress(100)
         
+        # Calcul des statistiques finales
+        elapsed = time.time() - start_time
+        tiles_processed = len(merged_result.merged_files) if 'merged_result' in dir() and merged_result else 0
+        products_list = active_products if 'active_products' in dir() else []
+
         if slog:
             slog.end_pipeline(
                 success=True,
-                tiles_processed=len(merged_result.merged_files) if 'merged_result' in dir() else 0,
-                tiles_total=len(merged_result.merged_files) if 'merged_result' in dir() else 0,
-                products=active_products if 'active_products' in dir() else None,
+                tiles_processed=tiles_processed,
+                tiles_total=tiles_processed,
+                products=products_list,
             )
         else:
+            # Section finale
+            reporter.info("")
+            reporter.info("════════════════════════════════════════════════════════════")
+            reporter.info("✅ PIPELINE TERMINÉ AVEC SUCCÈS")
+            reporter.info("════════════════════════════════════════════════════════════")
+            reporter.info(f"  ⏱️ Durée totale : {elapsed:.1f}s")
+            reporter.info(f"  📄 Dalles traitées : {tiles_processed}")
+            reporter.info(f"  📦 Produits : {', '.join(products_list) if products_list else 'aucun'}")
+            reporter.info("════════════════════════════════════════════════════════════")
+            reporter.info("")
             reporter.stage("Terminé")
-            if ctx.mode == "ign_laz":
-                reporter.info(
-                    f"Téléchargement IGN terminé: {result.downloaded} téléchargés, {result.skipped_existing} déjà présents (total {result.total}). Fichier trié: {result.sorted_list_file}"
-                )
-                reporter.info(
-                    f"Fusion IGN terminée: {len(merged_result.merged_files)} fichiers fusionnés. Dossier: {merged_result.merged_dir}"
-                )

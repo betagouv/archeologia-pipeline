@@ -113,3 +113,40 @@ def require_valid_las_or_laz_with_pdal(path: Path, timeout_s: int = 60) -> None:
     ok, msg = validate_las_or_laz_with_pdal(path, timeout_s=timeout_s)
     if not ok:
         raise IOError(msg)
+
+
+def get_laz_bounds(path: Path, timeout_s: int = 60) -> Optional[Tuple[float, float, float, float]]:
+    """
+    Récupère les bounds (xmin, ymin, xmax, ymax) d'un fichier LAZ via PDAL.
+    Retourne None si impossible de lire les bounds.
+    """
+    import json
+    
+    pdal = which("pdal")
+    if not pdal:
+        return None
+
+    cmd = [pdal, "info", "--metadata", str(path)]
+    try:
+        r = run_pdal_command(cmd, timeout_s=timeout_s)
+    except Exception:
+        return None
+
+    if r.returncode != 0:
+        return None
+
+    try:
+        data = json.loads(r.stdout or "{}")
+        metadata = data.get("metadata", {})
+        
+        minx = metadata.get("minx")
+        miny = metadata.get("miny")
+        maxx = metadata.get("maxx")
+        maxy = metadata.get("maxy")
+        
+        if all(v is not None for v in [minx, miny, maxx, maxy]):
+            return (float(minx), float(miny), float(maxx), float(maxy))
+    except Exception:
+        pass
+    
+    return None

@@ -12,7 +12,7 @@ from typing import Any, Callable, Dict, Optional, Tuple
 LogFn = Callable[[str], None]
 
 
-def _find_external_cv_runner() -> Optional[Path]:
+def _find_external_cv_runner(log: Optional[LogFn] = None) -> Optional[Path]:
     plugin_root = Path(__file__).resolve().parents[3]
     candidates = []
     if os.name == "nt":
@@ -23,7 +23,11 @@ def _find_external_cv_runner() -> Optional[Path]:
         try:
             if p.exists() and p.is_file():
                 return p
-        except Exception:
+            elif log:
+                log(f"Computer Vision: runner non trouvé à {p}")
+        except Exception as e:
+            if log:
+                log(f"Computer Vision: erreur vérification runner {p}: {e}")
             continue
     return None
 
@@ -84,7 +88,7 @@ def run_cv_on_folder(
     run_shapefile_dedup: bool = True,
     log: LogFn = lambda _: None,
 ) -> None:
-    ext = _find_external_cv_runner()
+    ext = _find_external_cv_runner(log=log)
     if ext is not None:
         log(f"Computer Vision: utilisation runner externe -> {ext}")
         payload: Dict[str, Any] = {
@@ -158,8 +162,8 @@ def run_cv_on_folder(
     generate_shapefiles = bool(cv_config.get("generate_shapefiles", False))
 
     sahi_config = cv_config.get("sahi", {}) if isinstance(cv_config.get("sahi", {}), dict) else {}
-    slice_height = int(sahi_config.get("slice_height", 750))
-    slice_width = int(sahi_config.get("slice_width", 750))
+    slice_height = int(sahi_config.get("slice_height", 640))
+    slice_width = int(sahi_config.get("slice_width", 640))
     overlap_ratio = float(sahi_config.get("overlap_ratio", 0.2))
 
     models_dir = Path(cv_config.get("models_dir", "models"))

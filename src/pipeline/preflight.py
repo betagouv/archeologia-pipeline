@@ -58,8 +58,11 @@ def run_preflight(
     cv_config: Dict,
     products: Dict,
     log: LogFn,
+    files_config: Optional[Dict] = None,
+    output_dir: Optional[Path] = None,
 ) -> bool:
     results: List[CheckResult] = []
+    files_cfg = files_config or {}
 
     cv_enabled = bool((cv_config or {}).get("enabled", False))
     need_pdal_cli = mode in ("ign_laz", "local_laz")
@@ -163,17 +166,81 @@ def run_preflight(
         except Exception as e:
             results.append(CheckResult(name="python:geopandas", ok=False, details=repr(e), critical=False))
 
-    log("=== Préflight check: dépendances ===")
+    # Vérification des chemins selon le mode
+    if output_dir is not None:
+        if output_dir.exists():
+            results.append(CheckResult(name="Dossier de sortie", ok=True, details=str(output_dir), critical=True))
+        else:
+            # On peut créer le dossier, donc ce n'est pas critique
+            results.append(CheckResult(name="Dossier de sortie", ok=True, details=f"{output_dir} (sera créé)", critical=True))
+
+    if mode == "ign_laz":
+        input_file = str(files_cfg.get("input_file", "")).strip()
+        if input_file:
+            p = Path(input_file)
+            if p.exists() and p.is_file():
+                results.append(CheckResult(name="Fichier liste URLs IGN", ok=True, details=str(p), critical=True))
+            else:
+                results.append(CheckResult(name="Fichier liste URLs IGN", ok=False, details=f"introuvable: {p}", critical=True))
+        else:
+            results.append(CheckResult(name="Fichier liste URLs IGN", ok=False, details="non configuré", critical=True))
+
+    elif mode == "local_laz":
+        local_dir = str(files_cfg.get("local_laz_dir", "")).strip()
+        if local_dir:
+            p = Path(local_dir)
+            if p.exists() and p.is_dir():
+                laz_files = list(p.glob("*.laz")) + list(p.glob("*.las")) + list(p.glob("*.LAZ")) + list(p.glob("*.LAS"))
+                if laz_files:
+                    results.append(CheckResult(name="Dossier LAZ locaux", ok=True, details=f"{p} ({len(laz_files)} fichiers)", critical=True))
+                else:
+                    results.append(CheckResult(name="Dossier LAZ locaux", ok=False, details=f"{p} (aucun fichier LAZ/LAS trouvé)", critical=True))
+            else:
+                results.append(CheckResult(name="Dossier LAZ locaux", ok=False, details=f"introuvable: {p}", critical=True))
+        else:
+            results.append(CheckResult(name="Dossier LAZ locaux", ok=False, details="non configuré", critical=True))
+
+    elif mode == "existing_mnt":
+        mnt_dir = str(files_cfg.get("existing_mnt_dir", "")).strip()
+        if mnt_dir:
+            p = Path(mnt_dir)
+            if p.exists() and p.is_dir():
+                tif_files = list(p.glob("*.tif")) + list(p.glob("*.TIF")) + list(p.glob("*.tiff"))
+                if tif_files:
+                    results.append(CheckResult(name="Dossier MNT existants", ok=True, details=f"{p} ({len(tif_files)} fichiers)", critical=True))
+                else:
+                    results.append(CheckResult(name="Dossier MNT existants", ok=False, details=f"{p} (aucun fichier TIF trouvé)", critical=True))
+            else:
+                results.append(CheckResult(name="Dossier MNT existants", ok=False, details=f"introuvable: {p}", critical=True))
+        else:
+            results.append(CheckResult(name="Dossier MNT existants", ok=False, details="non configuré", critical=True))
+
+    elif mode == "existing_rvt":
+        rvt_dir = str(files_cfg.get("existing_rvt_dir", "")).strip()
+        if rvt_dir:
+            p = Path(rvt_dir)
+            if p.exists() and p.is_dir():
+                tif_files = list(p.glob("*.tif")) + list(p.glob("*.TIF")) + list(p.glob("*.tiff"))
+                if tif_files:
+                    results.append(CheckResult(name="Dossier RVT existants", ok=True, details=f"{p} ({len(tif_files)} fichiers)", critical=True))
+                else:
+                    results.append(CheckResult(name="Dossier RVT existants", ok=False, details=f"{p} (aucun fichier TIF trouvé)", critical=True))
+            else:
+                results.append(CheckResult(name="Dossier RVT existants", ok=False, details=f"introuvable: {p}", critical=True))
+        else:
+            results.append(CheckResult(name="Dossier RVT existants", ok=False, details="non configuré", critical=True))
+
+    log("=== Préflight check: dépendances et chemins ===")
     any_critical_fail = False
     for r in results:
-        status = "OK" if r.ok else "KO"
+        status = "✓" if r.ok else "✗"
         crit = "CRITIQUE" if r.critical else "optionnel"
         log(f"[{status}] {r.name} ({crit}) -> {r.details}")
         if r.critical and not r.ok:
             any_critical_fail = True
 
     if any_critical_fail:
-        log("❌ Préflight check: au moins une dépendance CRITIQUE est manquante. Arrêt.")
+        log("❌ Préflight check: au moins une vérification CRITIQUE a échoué. Arrêt.")
         return False
 
     log("✅ Préflight check: OK")

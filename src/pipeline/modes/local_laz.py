@@ -23,7 +23,8 @@ def build_sorted_list_from_local_laz(
     sorted_list_file: Path,
     log: LogFn = lambda _: None,
 ) -> LocalLazResult:
-    laz_files = list(local_dir.glob("*.laz")) + list(local_dir.glob("*.las")) + list(local_dir.glob("*.copc.laz"))
+    laz_files_set = set(local_dir.glob("*.laz")) | set(local_dir.glob("*.las"))
+    laz_files = list(laz_files_set)
     if not laz_files:
         raise FileNotFoundError(f"Aucun fichier LAZ/LAS trouvé dans {local_dir}")
 

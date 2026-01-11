@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Dict, Optional, Tuple
 
-from ..pdal_validation import validate_las_or_laz_with_pdal
+from ..pdal_validation import get_laz_bounds, validate_las_or_laz_with_pdal
 from .qgis_processing import run_qgis_algorithm
 
 
@@ -51,14 +51,26 @@ def create_density_map(
     temp_dir.mkdir(parents=True, exist_ok=True)
 
     margin_percent = float(tile_overlap_percent) / 100.0
+    # Marge toujours basée sur 1km (taille d'une dalle IGN standard)
     margin_meters = 1000.0 * margin_percent
-
-    x_km, y_km = _extract_xy_from_tile_name(current_tile_name)
-
-    base_xmin = x_km * 1000
-    base_xmax = (x_km + 1) * 1000
-    base_ymin = (y_km - 1) * 1000
-    base_ymax = y_km * 1000
+    
+    # Lire les bounds réels du fichier LAZ (important pour les dalles fusionnées)
+    laz_bounds = get_laz_bounds(input_laz_path)
+    
+    if laz_bounds is not None:
+        base_xmin, base_ymin, base_xmax, base_ymax = laz_bounds
+        # Arrondir aux km pour avoir des bounds propres
+        base_xmin = float(int(base_xmin / 1000) * 1000)
+        base_ymin = float(int(base_ymin / 1000) * 1000)
+        base_xmax = float((int(base_xmax / 1000) + 1) * 1000)
+        base_ymax = float((int(base_ymax / 1000) + 1) * 1000)
+    else:
+        # Fallback: calculer à partir du nom (pour une dalle simple de 1km)
+        x_km, y_km = _extract_xy_from_tile_name(current_tile_name)
+        base_xmin = float(x_km * 1000)
+        base_xmax = float((x_km + 1) * 1000)
+        base_ymin = float((y_km - 1) * 1000)
+        base_ymax = float(y_km * 1000)
 
     extended_xmin = base_xmin - margin_meters
     extended_xmax = base_xmax + margin_meters

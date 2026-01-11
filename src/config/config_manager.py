@@ -38,15 +38,6 @@ class ConfigManager:
                     "LD": False,
                     "VAT": False,
                 },
-                "output_formats": {
-                    "jpg": {
-                        "M_HS": False,
-                        "SVF": False,
-                        "SLO": False,
-                        "LD": False,
-                        "VAT": False,
-                    }
-                },
             },
             "computer_vision": {
                 "enabled": False,
@@ -58,8 +49,8 @@ class ConfigManager:
                 "generate_shapefiles": False,
                 "models_dir": "models",
                 "sahi": {
-                    "slice_height": 750,
-                    "slice_width": 750,
+                    "slice_height": 640,
+                    "slice_width": 640,
                     "overlap_ratio": 0.2,
                 },
             },

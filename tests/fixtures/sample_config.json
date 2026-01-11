@@ -1,0 +1,57 @@
+{
+    "app": {
+        "files": {
+            "data_mode": "ign_laz",
+            "output_dir": "",
+            "input_file": "",
+            "local_laz_dir": "",
+            "existing_mnt_dir": "",
+            "existing_rvt_dir": ""
+        }
+    },
+    "processing": {
+        "mnt_resolution": 0.5,
+        "density_resolution": 1.0,
+        "tile_overlap": 5,
+        "filter_expression": "Classification = 2 OR Classification = 6",
+        "products": {
+            "MNT": true,
+            "DENSITE": false,
+            "M_HS": true,
+            "SVF": true,
+            "SLO": true,
+            "LD": true,
+            "VAT": false
+        },
+        "output_formats": {
+            "jpg": {
+                "LD": true,
+                "VAT": false
+            }
+        },
+        "pyramids": {
+            "enabled": true,
+            "levels": [2, 4, 8]
+        }
+    },
+    "computer_vision": {
+        "enabled": false,
+        "selected_model": "",
+        "target_rvt": "LD",
+        "confidence_threshold": 0.3,
+        "iou_threshold": 0.5,
+        "generate_annotated_images": false,
+        "generate_shapefiles": false,
+        "models_dir": "models"
+    },
+    "rvt_params": {
+        "mdh": {
+            "num_directions": 16,
+            "sun_elevation": 35
+        },
+        "svf": {
+            "num_directions": 16,
+            "radius": 10
+        }
+    }
+}

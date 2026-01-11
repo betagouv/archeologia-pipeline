@@ -1399,7 +1399,12 @@ def create_shapefile_from_detections(
             qgs_path = index_root / 'detections_validation.qgs'
             with open(qgs_path, 'wb') as f:
                 f.write(pretty)
-            logger.info(f"Projet QGIS généré: {qgs_path}")
+            logger.info("════════════════════════════════════════════════════════════")
+            logger.info("📋 PROJET QGIS GÉNÉRÉ")
+            logger.info("════════════════════════════════════════════════════════════")
+            logger.info(f"   Fichier: {qgs_path}")
+            logger.info("   Ce projet contient les couches de détection et les rasters RVT.")
+            logger.info("   Ouvrez-le dans QGIS pour valider les détections.")
         except Exception as e:
             logger.warning(f"Échec génération du projet QGIS: {e}")
 

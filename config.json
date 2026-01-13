@@ -58,7 +58,14 @@
       "slice_width": 640,
       "overlap_ratio": 0.2
     },
-    "export_runner_config": true
+    "size_filter": {
+      "enabled": true,
+      "max_meters": 15.0
+    },
+    "export_runner_config": true,
+    "selected_classes": [
+      "tranchée"
+    ]
   },
   "rvt_params": {
     "mdh": {

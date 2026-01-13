@@ -8,9 +8,9 @@ fileignoreconfig:
 - filename: old_src/conversion_shp.py
   checksum: 3a4e979bcc8691785c1b636fb2eabfc2060640a72b0013e3e97c2327d4aa2fe0
 - filename: src/pipeline/cv/conversion_shp.py
-  checksum: d049f94e0de0b6406eed9d0ff0fff61b6318c511653d57ab8c03b7f68bc4fe6b
+  checksum: 9d0c9a3975886c32a191db1d519e9ce5e8dddb8790790904fec0cba7ad4e9c9e
 - filename: src/ui/main_dialog.py
-  checksum: a520a7a0495bb87e2caff22165c2b8e7d2b89b1b32acd6be7f17caf4884b42a7
+  checksum: 10f1d0dfa52eb8749e4f75425ae5913af4926e328de7b962557e7041e97dc368
 - filename: old_src/pipeline_lidar.py
   checksum: 32886bc946b5454875a787ee56a0174d2a4e1fad5a7a2209df6639d52a2c4dd2
 - filename: tests/TESTS_MANUELS_QGIS.txt

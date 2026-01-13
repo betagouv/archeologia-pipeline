@@ -321,6 +321,7 @@ def deduplicate_cv_shapefiles_final(
     create_fn = getattr(shp_mod, "create_shapefile_from_detections", None)
     if callable(create_fn):
         out_shp = shp_dir / f"detections_{target_rvt}.shp"
+        selected_classes = (cv_config or {}).get("selected_classes") or None
         try:
             create_fn(
                 labels_dir=str(labels_dir),
@@ -329,6 +330,7 @@ def deduplicate_cv_shapefiles_final(
                 crs=str(crs),
                 temp_dir=str(temp_dir) if temp_dir is not None else None,
                 class_names=class_names,
+                selected_classes=selected_classes,
             )
             qgs_root = shp_dir.parent if shp_dir.name.lower() in {"shapefiles", "shp"} else shp_dir
             qgs_path = qgs_root / "detections_validation.qgs"
@@ -341,11 +343,17 @@ def deduplicate_cv_shapefiles_final(
     dedup_fn = getattr(shp_mod, "deduplicate_shapefiles_final", None)
     if callable(dedup_fn) and shapefile_paths:
         try:
+            size_filter_cfg = (cv_config or {}).get("size_filter", {}) if isinstance((cv_config or {}).get("size_filter"), dict) else {}
+            size_filter_enabled = bool(size_filter_cfg.get("enabled", False))
+            size_filter_max_meters = float(size_filter_cfg.get("max_meters", 50.0))
+            
             dedup_fn(
                 labels_dir=str(labels_dir),
                 shapefile_paths=shapefile_paths,
                 iou_threshold=0.1,
                 crs=str(crs),
+                size_filter_enabled=size_filter_enabled,
+                size_filter_max_meters=size_filter_max_meters,
             )
         except Exception as e:
             log(f"Computer Vision: déduplication shapefiles ignorée (erreur): {e}")

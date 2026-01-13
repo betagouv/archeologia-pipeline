@@ -463,6 +463,8 @@ def deduplicate_shapefiles_final(
     shapefile_paths: List[str],
     iou_threshold: float = 0.1,
     crs: str = "EPSG:2154",
+    size_filter_enabled: bool = False,
+    size_filter_max_meters: float = 50.0,
 ) -> None:
     _deduplicate_shapefiles_by_tile_extents(
         labels_dir=labels_dir,
@@ -470,6 +472,106 @@ def deduplicate_shapefiles_final(
         iou_threshold=iou_threshold,
         crs=crs,
     )
+    
+    if size_filter_enabled:
+        _filter_shapefiles_by_size(
+            shapefile_paths=shapefile_paths,
+            max_size_meters=size_filter_max_meters,
+            crs=crs,
+        )
+
+
+def _filter_shapefiles_by_size(
+    shapefile_paths: List[str],
+    max_size_meters: float = 50.0,
+    crs: str = "EPSG:2154",
+) -> None:
+    """
+    Filtre les détections trop grandes (faux positifs) en fonction de leur taille en mètres.
+    Les géométries dont la plus grande dimension (largeur ou hauteur de la bbox) dépasse max_size_meters
+    sont déplacées dans un shapefile séparé suffixé "_filtered_oversized" pour visualisation.
+    
+    Args:
+        shapefile_paths: Liste des chemins vers les shapefiles à filtrer
+        max_size_meters: Taille maximale autorisée en mètres (dimension max de la bbox)
+        crs: Système de coordonnées
+    """
+    logger = logging.getLogger(__name__)
+    logger.info(f"Filtrage par taille: déplacement des détections > {max_size_meters} m vers shapefiles séparés")
+    
+    total_removed = 0
+    all_oversized = []
+    
+    for shp in shapefile_paths:
+        shp_path = Path(shp)
+        if not shp_path.exists():
+            continue
+        
+        try:
+            gdf = gpd.read_file(str(shp_path))
+            if len(gdf) == 0:
+                continue
+            
+            initial_count = len(gdf)
+            
+            def get_max_dimension(geom):
+                """Retourne la plus grande dimension (largeur ou hauteur) de la bbox en mètres."""
+                if geom is None or not hasattr(geom, 'bounds'):
+                    return 0.0
+                try:
+                    minx, miny, maxx, maxy = geom.bounds
+                    width = abs(maxx - minx)
+                    height = abs(maxy - miny)
+                    return max(width, height)
+                except Exception:
+                    return 0.0
+            
+            gdf['__max_dim'] = gdf.geometry.apply(get_max_dimension)
+            gdf_filtered = gdf[gdf['__max_dim'] <= max_size_meters].copy()
+            gdf_oversized = gdf[gdf['__max_dim'] > max_size_meters].copy()
+            
+            gdf_filtered = gdf_filtered.drop(columns=['__max_dim'], errors='ignore')
+            gdf_oversized = gdf_oversized.drop(columns=['__max_dim'], errors='ignore')
+            
+            removed_count = len(gdf_oversized)
+            total_removed += removed_count
+            
+            if removed_count > 0:
+                logger.info(f"Filtrage taille: {removed_count} détection(s) déplacée(s) depuis {shp_path.name} (>{max_size_meters}m)")
+                
+                gdf_oversized['__src_class'] = shp_path.stem
+                all_oversized.append(gdf_oversized)
+                
+                _remove_shapefile_set(shp_path)
+                if gdf_filtered.crs is None:
+                    try:
+                        gdf_filtered = gdf_filtered.set_crs(crs, allow_override=True)
+                    except Exception:
+                        pass
+                gdf_filtered.to_file(str(shp_path))
+            
+        except Exception as e:
+            logger.warning(f"Échec filtrage par taille pour {shp_path}: {e}")
+    
+    if total_removed > 0 and all_oversized:
+        try:
+            combined_oversized = gpd.GeoDataFrame(pd.concat(all_oversized, ignore_index=True), geometry="geometry")
+            if combined_oversized.crs is None:
+                try:
+                    combined_oversized = combined_oversized.set_crs(crs, allow_override=True)
+                except Exception:
+                    pass
+            
+            first_shp = Path(shapefile_paths[0])
+            oversized_path = first_shp.parent / "detections_filtered_oversized.shp"
+            _remove_shapefile_set(oversized_path)
+            combined_oversized.to_file(str(oversized_path))
+            
+            logger.info(f"Filtrage par taille terminé: {total_removed} détection(s) déplacée(s) vers {oversized_path.name}")
+        except Exception as e:
+            logger.warning(f"Échec création du shapefile des détections filtrées: {e}")
+    else:
+        logger.info("Filtrage par taille: aucune détection filtrée")
 
 
 def _normalize_class_label(label: str) -> str:
@@ -487,6 +589,7 @@ def create_shapefile_from_detections(
     crs: str = "EPSG:2154",
     temp_dir: str = None,
     class_names: dict = None,
+    selected_classes: list = None,
 ) -> bool:
     """
     Crée des shapefiles géoréférencés à partir des fichiers de détection YOLO
@@ -501,6 +604,7 @@ def create_shapefile_from_detections(
         crs (str): Système de coordonnées (défaut: "EPSG:2154")
         temp_dir (str): Répertoire Temp contenant les TIF sources pour géoréférencement
         class_names (dict): Dictionnaire des noms de classes {class_id: "nom_classe"}
+        selected_classes (list): Liste des noms de classes à inclure (None = toutes)
     
     Returns:
         bool: True si succès, False sinon
@@ -944,6 +1048,12 @@ def create_shapefile_from_detections(
                 class_name = f"classe_{class_id + 1}"
 
             class_name = _normalize_class_label(class_name)
+            
+            # Filtrer par classes sélectionnées si spécifié
+            if selected_classes is not None and len(selected_classes) > 0:
+                if class_name not in selected_classes:
+                    logger.info(f"Classe '{class_name}' ignorée (non sélectionnée)")
+                    continue
             
             # Nom du shapefile pour cette classe
             class_shapefile = output_dir / f"{output_path.stem}_{class_name}.shp"

@@ -15,6 +15,8 @@ from qgis.PyQt.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLineEdit,
+    QListWidget,
+    QListWidgetItem,
     QPlainTextEdit,
     QPushButton,
     QProgressBar,
@@ -352,6 +354,24 @@ class MainDialog(QDialog):
         self.cv_target_rvt_combo = NoWheelComboBox()
         cv_form.addRow("RVT cible:", self.cv_target_rvt_combo)
 
+        classes_group = QGroupBox("Classes à détecter")
+        classes_layout = QVBoxLayout(classes_group)
+        self.cv_classes_list = QListWidget()
+        self.cv_classes_list.setMaximumHeight(100)
+        classes_layout.addWidget(self.cv_classes_list)
+        classes_btn_row = QWidget()
+        classes_btn_layout = QHBoxLayout(classes_btn_row)
+        classes_btn_layout.setContentsMargins(0, 0, 0, 0)
+        self.cv_classes_select_all_btn = QPushButton("Tout sélectionner")
+        self.cv_classes_select_all_btn.clicked.connect(self._select_all_classes)
+        self.cv_classes_deselect_all_btn = QPushButton("Tout désélectionner")
+        self.cv_classes_deselect_all_btn.clicked.connect(self._deselect_all_classes)
+        classes_btn_layout.addWidget(self.cv_classes_select_all_btn)
+        classes_btn_layout.addWidget(self.cv_classes_deselect_all_btn)
+        classes_btn_layout.addStretch(1)
+        classes_layout.addWidget(classes_btn_row)
+        cv_form.addRow(classes_group)
+
         thresholds_row = QWidget()
         thresholds_layout = QHBoxLayout(thresholds_row)
         thresholds_layout.setContentsMargins(0, 0, 0, 0)
@@ -395,6 +415,25 @@ class MainDialog(QDialog):
         sahi_form.addRow("Largeur slice:", self.cv_slice_width_spin)
         sahi_form.addRow("Chevauchement:", self.cv_overlap_spin)
         cv_layout.addWidget(sahi_group)
+
+        size_filter_group = QGroupBox("Filtrage par taille")
+        size_filter_layout = QVBoxLayout(size_filter_group)
+        self.cv_size_filter_enabled_cb = QCheckBox("Activer le filtrage par taille (supprime les détections trop grandes)")
+        size_filter_layout.addWidget(self.cv_size_filter_enabled_cb)
+        size_filter_row = QWidget()
+        size_filter_row_layout = QHBoxLayout(size_filter_row)
+        size_filter_row_layout.setContentsMargins(0, 0, 0, 0)
+        size_filter_row_layout.addWidget(QLabel("Taille max:"))
+        self.cv_size_filter_max_spin = NoWheelDoubleSpinBox()
+        self.cv_size_filter_max_spin.setDecimals(1)
+        self.cv_size_filter_max_spin.setRange(1.0, 1000.0)
+        self.cv_size_filter_max_spin.setSingleStep(5.0)
+        self.cv_size_filter_max_spin.setValue(50.0)
+        size_filter_row_layout.addWidget(self.cv_size_filter_max_spin)
+        size_filter_row_layout.addWidget(QLabel("mètres"))
+        size_filter_row_layout.addStretch(1)
+        size_filter_layout.addWidget(size_filter_row)
+        cv_layout.addWidget(size_filter_group)
 
         self.reset_cv_btn = QPushButton("Remettre par défaut")
         self.reset_cv_btn.clicked.connect(self._reset_cv_config)
@@ -538,6 +577,7 @@ class MainDialog(QDialog):
 
         self.cv_enabled_cb.toggled.connect(self._on_cv_enabled_changed)
         self.cv_model_combo.currentIndexChanged.connect(self._on_any_changed)
+        self.cv_model_combo.currentIndexChanged.connect(self._refresh_model_classes)
         self.cv_target_rvt_combo.currentIndexChanged.connect(self._on_any_changed)
         self.cv_confidence_spin.valueChanged.connect(self._on_any_changed)
         self.cv_iou_spin.valueChanged.connect(self._on_any_changed)
@@ -634,6 +674,85 @@ class MainDialog(QDialog):
                         self.cv_model_combo.setCurrentIndex(idx)
         finally:
             self._loading = False
+        
+        self._refresh_model_classes()
+
+    def _refresh_model_classes(self) -> None:
+        """Charge les classes disponibles pour le modèle sélectionné."""
+        self.cv_classes_list.clear()
+        
+        model_path = str(self.cv_model_combo.currentData() or "")
+        if not model_path:
+            return
+        
+        model_file = Path(model_path)
+        if not model_file.exists():
+            return
+        
+        model_dir = model_file.parent
+        if model_dir.name == "weights":
+            model_dir = model_dir.parent
+        
+        class_names = []
+        for candidate in (
+            model_dir / "classes.txt",
+            model_dir / "classes.txt.txt",
+            model_dir / "class_names.txt",
+            model_dir / "class_names.txt.txt",
+        ):
+            try:
+                if candidate.exists() and candidate.is_file():
+                    lines = [ln.strip() for ln in candidate.read_text(encoding="utf-8-sig").splitlines()]
+                    class_names = [ln for ln in lines if ln]
+                    if class_names:
+                        break
+            except Exception:
+                continue
+        
+        if not class_names:
+            try:
+                import json
+                for candidate in (model_dir / "classes.json", model_dir / "class_names.json"):
+                    if candidate.exists() and candidate.is_file():
+                        parsed = json.loads(candidate.read_text(encoding="utf-8"))
+                        if isinstance(parsed, list):
+                            class_names = [str(c) for c in parsed]
+                        elif isinstance(parsed, dict):
+                            class_names = [str(parsed[k]) for k in sorted(parsed.keys(), key=lambda x: int(x) if str(x).isdigit() else x)]
+                        if class_names:
+                            break
+            except Exception:
+                pass
+        
+        cv_config = self._config.get("computer_vision") or {}
+        selected_classes = cv_config.get("selected_classes") or []
+        
+        for class_name in class_names:
+            item = QListWidgetItem(class_name)
+            item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
+            if not selected_classes or class_name in selected_classes:
+                item.setCheckState(Qt.CheckState.Checked)
+            else:
+                item.setCheckState(Qt.CheckState.Unchecked)
+            self.cv_classes_list.addItem(item)
+
+    def _select_all_classes(self) -> None:
+        for i in range(self.cv_classes_list.count()):
+            item = self.cv_classes_list.item(i)
+            item.setCheckState(Qt.CheckState.Checked)
+
+    def _deselect_all_classes(self) -> None:
+        for i in range(self.cv_classes_list.count()):
+            item = self.cv_classes_list.item(i)
+            item.setCheckState(Qt.CheckState.Unchecked)
+
+    def _get_selected_classes(self) -> list:
+        selected = []
+        for i in range(self.cv_classes_list.count()):
+            item = self.cv_classes_list.item(i)
+            if item.checkState() == Qt.CheckState.Checked:
+                selected.append(item.text())
+        return selected
 
     def _update_available_rvt_targets(self) -> None:
         mapping = [
@@ -772,6 +891,10 @@ class MainDialog(QDialog):
             self.cv_slice_width_spin.setValue(int(sahi.get("slice_width", 640)))
             self.cv_overlap_spin.setValue(float(sahi.get("overlap_ratio", 0.2)))
 
+            size_filter = cv.get("size_filter") or {}
+            self.cv_size_filter_enabled_cb.setChecked(bool(size_filter.get("enabled", False)))
+            self.cv_size_filter_max_spin.setValue(float(size_filter.get("max_meters", 50.0)))
+
             processing = self._config.get("processing") or {}
             self.mnt_resolution_spin.setValue(float(processing.get("mnt_resolution", 0.5)))
             self.density_resolution_spin.setValue(float(processing.get("density_resolution", 1.0)))
@@ -863,6 +986,12 @@ class MainDialog(QDialog):
         sahi["slice_width"] = int(self.cv_slice_width_spin.value())
         sahi["overlap_ratio"] = float(self.cv_overlap_spin.value())
 
+        size_filter = cv.setdefault("size_filter", {})
+        size_filter["enabled"] = self.cv_size_filter_enabled_cb.isChecked()
+        size_filter["max_meters"] = float(self.cv_size_filter_max_spin.value())
+
+        cv["selected_classes"] = self._get_selected_classes()
+
         processing = self._config.setdefault("processing", {})
         processing["mnt_resolution"] = float(self.mnt_resolution_spin.value())
         processing["density_resolution"] = float(self.density_resolution_spin.value())
@@ -953,6 +1082,12 @@ class MainDialog(QDialog):
         sahi["slice_height"] = int(self.cv_slice_height_spin.value())
         sahi["slice_width"] = int(self.cv_slice_width_spin.value())
         sahi["overlap_ratio"] = float(self.cv_overlap_spin.value())
+
+        size_filter = cv.setdefault("size_filter", {})
+        size_filter["enabled"] = self.cv_size_filter_enabled_cb.isChecked()
+        size_filter["max_meters"] = float(self.cv_size_filter_max_spin.value())
+
+        cv["selected_classes"] = self._get_selected_classes()
 
         processing = self._config.setdefault("processing", {})
         processing["mnt_resolution"] = float(self.mnt_resolution_spin.value())

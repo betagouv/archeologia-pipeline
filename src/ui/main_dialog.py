@@ -17,6 +17,7 @@ from qgis.PyQt.QtWidgets import (
     QLineEdit,
     QListWidget,
     QListWidgetItem,
+    QMessageBox,
     QPlainTextEdit,
     QPushButton,
     QProgressBar,
@@ -345,9 +346,14 @@ class MainDialog(QDialog):
         model_layout = QHBoxLayout(model_row)
         model_layout.setContentsMargins(0, 0, 0, 0)
         self.cv_model_combo = NoWheelComboBox()
+        self.cv_model_info_btn = QPushButton("ℹ")
+        self.cv_model_info_btn.setFixedWidth(30)
+        self.cv_model_info_btn.setToolTip("Afficher les paramètres d'entraînement du modèle")
+        self.cv_model_info_btn.clicked.connect(self._show_model_training_info)
         self.cv_refresh_models_btn = QPushButton("Actualiser")
         self.cv_refresh_models_btn.clicked.connect(self._refresh_models)
         model_layout.addWidget(self.cv_model_combo, 1)
+        model_layout.addWidget(self.cv_model_info_btn, 0)
         model_layout.addWidget(self.cv_refresh_models_btn, 0)
         cv_form.addRow("Modèle:", model_row)
 
@@ -620,6 +626,7 @@ class MainDialog(QDialog):
     def _apply_cv_enabled_state(self) -> None:
         enabled = self.cv_enabled_cb.isChecked()
         self.cv_model_combo.setEnabled(enabled)
+        self.cv_model_info_btn.setEnabled(enabled)
         self.cv_refresh_models_btn.setEnabled(enabled)
         self.cv_target_rvt_combo.setEnabled(enabled)
         self.cv_confidence_spin.setEnabled(enabled)
@@ -735,6 +742,148 @@ class MainDialog(QDialog):
             else:
                 item.setCheckState(Qt.CheckState.Unchecked)
             self.cv_classes_list.addItem(item)
+
+    def _show_model_training_info(self) -> None:
+        """Affiche les paramètres d'entraînement du modèle sélectionné."""
+        import json
+        
+        model_path = str(self.cv_model_combo.currentData() or "")
+        model_name = self.cv_model_combo.currentText()
+        
+        if not model_path:
+            QMessageBox.information(
+                self,
+                "Information modèle",
+                "Aucun modèle sélectionné."
+            )
+            return
+        
+        model_file = Path(model_path)
+        if not model_file.exists():
+            QMessageBox.warning(
+                self,
+                "Information modèle",
+                f"Le fichier du modèle n'existe pas:\n{model_path}"
+            )
+            return
+        
+        model_dir = model_file.parent
+        if model_dir.name == "weights":
+            model_dir = model_dir.parent
+        
+        training_params_file = model_dir / "training_params.json"
+        
+        if not training_params_file.exists():
+            QMessageBox.information(
+                self,
+                f"Information - {model_name}",
+                "Aucune information sur les paramètres d'entraînement n'est disponible pour ce modèle.\n\n"
+                f"Fichier attendu:\n{training_params_file}"
+            )
+            return
+        
+        try:
+            with training_params_file.open("r", encoding="utf-8") as f:
+                params = json.load(f)
+        except Exception as e:
+            QMessageBox.warning(
+                self,
+                "Erreur",
+                f"Impossible de lire les paramètres d'entraînement:\n{e}"
+            )
+            return
+        
+        info_lines = [f"Paramètres d'entraînement du modèle: {model_name}\n"]
+        
+        if "description" in params:
+            info_lines.append(f"{params['description']}\n")
+        
+        if "creation_date" in params:
+            info_lines.append(f"📅 Date de création: {params['creation_date']}")
+        
+        info_lines.append("=" * 50)
+        
+        if "mnt" in params:
+            mnt = params["mnt"]
+            info_lines.append("\n📊 Paramètres MNT:")
+            info_lines.append(f"  • Résolution: {mnt.get('resolution', 'N/A')} m")
+            if "filter_expression" in mnt:
+                info_lines.append(f"  • Filtre: {mnt['filter_expression']}")
+        
+        if "rvt" in params:
+            rvt = params["rvt"]
+            rvt_type = rvt.get("type", "N/A")
+            info_lines.append(f"\n🖼️ Paramètres RVT ({rvt_type}):")
+            
+            rvt_params = rvt.get("params", {})
+            
+            if rvt_type == "LD":
+                info_lines.append(f"  • Résolution angulaire: {rvt_params.get('angular_res', 'N/A')}°")
+                info_lines.append(f"  • Rayon min: {rvt_params.get('min_radius', 'N/A')} px")
+                info_lines.append(f"  • Rayon max: {rvt_params.get('max_radius', 'N/A')} px")
+                info_lines.append(f"  • Hauteur observateur: {rvt_params.get('observer_h', 'N/A')} m")
+            elif rvt_type == "SVF":
+                info_lines.append(f"  • Suppression bruit: {rvt_params.get('noise_remove', 'N/A')}")
+                info_lines.append(f"  • Nombre directions: {rvt_params.get('num_directions', 'N/A')}")
+                info_lines.append(f"  • Rayon: {rvt_params.get('radius', 'N/A')} px")
+            elif rvt_type == "M_HS" or rvt_type == "M-HS":
+                info_lines.append(f"  • Nombre directions: {rvt_params.get('num_directions', 'N/A')}")
+                info_lines.append(f"  • Élévation solaire: {rvt_params.get('sun_elevation', 'N/A')}°")
+            elif rvt_type == "SLO" or rvt_type == "Slope":
+                unit_val = rvt_params.get('unit', 0)
+                unit_str = "Degrés" if unit_val == 0 else "Pourcentage"
+                info_lines.append(f"  • Unité: {unit_str}")
+            elif rvt_type == "VAT":
+                terrain_val = rvt_params.get('terrain_type', 0)
+                terrain_str = ["Général", "Plat", "Pentu"][terrain_val] if terrain_val in [0, 1, 2] else "N/A"
+                info_lines.append(f"  • Type de terrain: {terrain_str}")
+            
+            if "ve_factor" in rvt_params:
+                info_lines.append(f"  • Facteur VE: {rvt_params['ve_factor']}")
+            if "save_as_8bit" in rvt_params:
+                info_lines.append(f"  • Sauvegarde 8bit: {'Oui' if rvt_params['save_as_8bit'] else 'Non'}")
+        
+        dialog = QDialog(self)
+        dialog.setWindowTitle(f"Information - {model_name}")
+        dialog.setMinimumWidth(500)
+        
+        dialog_layout = QVBoxLayout(dialog)
+        
+        info_label = QLabel("\n".join(info_lines))
+        info_label.setWordWrap(True)
+        info_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        dialog_layout.addWidget(info_label)
+        
+        btn_layout = QHBoxLayout()
+        
+        open_folder_btn = QPushButton("📂 Ouvrir le dossier des métriques")
+        open_folder_btn.clicked.connect(lambda: self._open_model_folder(model_dir))
+        btn_layout.addWidget(open_folder_btn)
+        
+        btn_layout.addStretch(1)
+        
+        close_btn = QPushButton("Fermer")
+        close_btn.clicked.connect(dialog.accept)
+        btn_layout.addWidget(close_btn)
+        
+        dialog_layout.addLayout(btn_layout)
+        
+        dialog.exec()
+
+    def _open_model_folder(self, folder_path: Path) -> None:
+        """Ouvre le dossier du modèle dans l'explorateur de fichiers."""
+        import os
+        import subprocess
+        import sys
+        
+        folder_str = str(folder_path)
+        
+        if sys.platform == "win32":
+            os.startfile(folder_str)
+        elif sys.platform == "darwin":
+            subprocess.run(["open", folder_str])
+        else:
+            subprocess.run(["xdg-open", folder_str])
 
     def _select_all_classes(self) -> None:
         for i in range(self.cv_classes_list.count()):

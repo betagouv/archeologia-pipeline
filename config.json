@@ -46,7 +46,7 @@
   },
   "computer_vision": {
     "enabled": true,
-    "selected_model": "C:\\Users\\valen\\AppData\\Roaming\\QGIS\\QGIS3\\profiles\\default\\python\\plugins\\archeologia-pipeline-lidar-processing\\models\\tranchee-instance-segmentation-train-v0-added-epochs\\weights\\best.pt",
+    "selected_model": "C:\\Users\\valen\\AppData\\Roaming\\QGIS\\QGIS3\\profiles\\default\\python\\plugins\\archeologia-pipeline-lidar-processing\\models\\run_18\\weights\\best.pt",
     "target_rvt": "SVF",
     "confidence_threshold": 0.1,
     "iou_threshold": 0.5,
@@ -64,7 +64,8 @@
     },
     "export_runner_config": true,
     "selected_classes": [
-      "tranchée"
+      "charbonnière",
+      "four"
     ]
   },
   "rvt_params": {

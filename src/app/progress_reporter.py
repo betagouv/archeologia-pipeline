@@ -12,6 +12,8 @@ class ProgressReporter(Protocol):
 
     def progress(self, pct: int) -> None: ...
 
+    def load_layers(self, vrt_paths: list, shapefile_paths: list) -> None: ...
+
 
 class NullProgressReporter:
     def info(self, msg: str) -> None:
@@ -24,4 +26,7 @@ class NullProgressReporter:
         return
 
     def progress(self, pct: int) -> None:
+        return
+
+    def load_layers(self, vrt_paths: list, shapefile_paths: list) -> None:
         return

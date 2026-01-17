@@ -37,6 +37,7 @@ class _QtLogEmitter(QObject):
     progress = pyqtSignal(int)
     stage = pyqtSignal(str)
     run_enabled = pyqtSignal(bool)
+    load_layers = pyqtSignal(list, list)  # (vrt_paths, shapefile_paths)
 
 
 class QtLogHandler(logging.Handler):
@@ -114,6 +115,7 @@ class MainDialog(QDialog):
         self._log_emitter.progress.connect(self._set_progress)
         self._log_emitter.stage.connect(self._set_stage)
         self._log_emitter.run_enabled.connect(self._set_run_enabled)
+        self._log_emitter.load_layers.connect(self._load_layers_to_project)
         self._qt_log_handler = QtLogHandler(self._log_emitter)
         self._qt_log_handler.setFormatter(logging.Formatter("%(asctime)s - %(levelname)s - %(message)s"))
         if not any(isinstance(h, QtLogHandler) for h in self._logger.handlers):
@@ -185,6 +187,13 @@ class MainDialog(QDialog):
         resolutions_layout.addWidget(QLabel("Marge:"))
         resolutions_layout.addWidget(self.tile_overlap_spin)
         resolutions_layout.addWidget(QLabel("%"))
+        resolutions_layout.addSpacing(12)
+
+        resolutions_layout.addWidget(QLabel("Workers:"))
+        self.max_workers_spin = NoWheelSpinBox()
+        self.max_workers_spin.setRange(1, 16)
+        self.max_workers_spin.setToolTip("Nombre de téléchargements/prétraitements parallèles (1-16)")
+        resolutions_layout.addWidget(self.max_workers_spin)
         resolutions_layout.addStretch(1)
 
         general_layout.addWidget(resolutions_row)
@@ -422,14 +431,22 @@ class MainDialog(QDialog):
         sahi_form.addRow("Chevauchement:", self.cv_overlap_spin)
         cv_layout.addWidget(sahi_group)
 
-        size_filter_group = QGroupBox("Filtrage par taille")
+        size_filter_group = QGroupBox("Filtrage par taille des détections")
         size_filter_layout = QVBoxLayout(size_filter_group)
-        self.cv_size_filter_enabled_cb = QCheckBox("Activer le filtrage par taille (supprime les détections trop grandes)")
+        size_filter_desc = QLabel(
+            "Supprime du shapefile final les détections dont la plus grande dimension "
+            "(largeur ou hauteur de la bounding box) dépasse le seuil défini. "
+            "Utile pour éliminer les faux positifs de grande taille (ex: routes, parcelles)."
+        )
+        size_filter_desc.setWordWrap(True)
+        size_filter_desc.setStyleSheet("color: #666; font-size: 11px; margin-bottom: 5px;")
+        size_filter_layout.addWidget(size_filter_desc)
+        self.cv_size_filter_enabled_cb = QCheckBox("Activer le filtrage par taille")
         size_filter_layout.addWidget(self.cv_size_filter_enabled_cb)
         size_filter_row = QWidget()
         size_filter_row_layout = QHBoxLayout(size_filter_row)
         size_filter_row_layout.setContentsMargins(0, 0, 0, 0)
-        size_filter_row_layout.addWidget(QLabel("Taille max:"))
+        size_filter_row_layout.addWidget(QLabel("Taille max (plus grande dimension):"))
         self.cv_size_filter_max_spin = NoWheelDoubleSpinBox()
         self.cv_size_filter_max_spin.setDecimals(1)
         self.cv_size_filter_max_spin.setRange(1.0, 1000.0)
@@ -533,6 +550,109 @@ class MainDialog(QDialog):
             self.stage_label.setText("")
             self.progress_bar.setValue(0)
 
+    def _load_layers_to_project(self, vrt_paths: list, shapefile_paths: list) -> None:
+        """Charge les couches VRT et shapefiles dans le projet QGIS courant."""
+        try:
+            from qgis.core import QgsProject, QgsRasterLayer, QgsVectorLayer
+
+            project = QgsProject.instance()
+            loaded_count = 0
+
+            # Charger les VRT (couches raster)
+            for vrt_path in vrt_paths:
+                if not vrt_path:
+                    continue
+                vrt_path_str = str(vrt_path)
+                # Extraire un nom lisible depuis le chemin
+                # Ex: results/RVT/LD/tif/index.vrt -> "LD"
+                parts = vrt_path_str.replace("\\", "/").split("/")
+                layer_name = "index"
+                for i, part in enumerate(parts):
+                    if part == "tif" and i > 0:
+                        layer_name = parts[i - 1]
+                        break
+                    elif part == "MNT":
+                        layer_name = "MNT"
+                        break
+
+                layer = QgsRasterLayer(vrt_path_str, layer_name, "gdal")
+                if layer.isValid():
+                    project.addMapLayer(layer)
+                    loaded_count += 1
+                    self._logger.info(f"Couche raster chargée: {layer_name}")
+                else:
+                    self._logger.warning(f"Impossible de charger le VRT: {vrt_path_str}")
+
+            # Charger les shapefiles (couches vecteur) avec style par classe
+            # Palettes identiques à conversion_shp.py
+            palettes = [
+                ['255,255,0', '255,204,0', '255,153,0', '255,102,0', '255,0,0'],      # Jaune -> Rouge
+                ['204,229,255', '153,204,255', '102,178,255', '51,153,255', '0,102,204'],  # Bleus
+                ['235,224,255', '204,179,255', '178,128,255', '153,77,255', '102,0,204'],  # Violets
+                ['204,255,204', '153,255,153', '102,204,102', '51,153,51', '0,102,0'],     # Verts
+                ['240,240,240', '200,200,200', '160,160,160', '120,120,120', '80,80,80'], # Gris
+                ['255,235,204', '255,204,153', '230,170,115', '204,136,85', '153,85,34'], # Bruns
+            ]
+
+            for shp_idx, shp_path in enumerate(shapefile_paths):
+                if not shp_path:
+                    continue
+                shp_path_str = str(shp_path)
+                # Extraire le nom du fichier sans extension
+                from pathlib import Path
+                layer_name = Path(shp_path_str).stem
+
+                layer = QgsVectorLayer(shp_path_str, layer_name, "ogr")
+                if layer.isValid():
+                    # Appliquer le style avec la palette correspondant à l'index de classe
+                    self._apply_confidence_style(layer, palettes[shp_idx % len(palettes)])
+                    
+                    project.addMapLayer(layer)
+                    loaded_count += 1
+                    self._logger.info(f"Couche vecteur chargée: {layer_name} (palette {shp_idx % len(palettes)})")
+                else:
+                    self._logger.warning(f"Impossible de charger le shapefile: {shp_path_str}")
+
+            if loaded_count > 0:
+                self._logger.info(f"✅ {loaded_count} couche(s) ajoutée(s) au projet QGIS")
+
+        except Exception as e:
+            self._logger.error(f"Erreur lors du chargement des couches: {e}")
+
+    def _apply_confidence_style(self, layer, palette: list) -> None:
+        """Applique un style catégorisé par confiance avec la palette spécifiée."""
+        try:
+            from qgis.core import (
+                QgsCategorizedSymbolRenderer,
+                QgsRendererCategory,
+                QgsSymbol,
+                QgsFillSymbol,
+                QgsSimpleLineSymbolLayer,
+            )
+            from qgis.PyQt.QtGui import QColor
+
+            categories = []
+            conf_bins = ['[0:0.2[', '[0.2:0.4[', '[0.4:0.6[', '[0.6:0.8[', '[0.8:1]']
+
+            for i, (conf_bin, rgb) in enumerate(zip(conf_bins, palette)):
+                # Créer un symbole de contour (ligne) sans remplissage
+                symbol = QgsFillSymbol.createSimple({
+                    'color': '0,0,0,0',  # Transparent
+                    'outline_color': f'{rgb},255',
+                    'outline_width': '0.6',
+                    'outline_style': 'solid',
+                })
+                
+                category = QgsRendererCategory(conf_bin, symbol, conf_bin)
+                categories.append(category)
+
+            renderer = QgsCategorizedSymbolRenderer('conf_bin', categories)
+            layer.setRenderer(renderer)
+            layer.triggerRepaint()
+
+        except Exception as e:
+            self._logger.warning(f"Impossible d'appliquer le style: {e}")
+
     def _row_widget(self, edit: QLineEdit, button: QPushButton) -> QWidget:
         w = QWidget()
         l = QHBoxLayout(w)
@@ -550,6 +670,7 @@ class MainDialog(QDialog):
         self.mnt_resolution_spin.valueChanged.connect(self._on_any_changed)
         self.density_resolution_spin.valueChanged.connect(self._on_any_changed)
         self.tile_overlap_spin.valueChanged.connect(self._on_any_changed)
+        self.max_workers_spin.valueChanged.connect(self._on_any_changed)
         self.filter_expression_edit.textChanged.connect(self._on_any_changed)
 
         self.product_mnt_cb.toggled.connect(self._on_any_changed)
@@ -1048,6 +1169,7 @@ class MainDialog(QDialog):
             self.mnt_resolution_spin.setValue(float(processing.get("mnt_resolution", 0.5)))
             self.density_resolution_spin.setValue(float(processing.get("density_resolution", 1.0)))
             self.tile_overlap_spin.setValue(int(processing.get("tile_overlap", 20)))
+            self.max_workers_spin.setValue(int(processing.get("max_workers", 4)))
             self.filter_expression_edit.setText(processing.get("filter_expression") or "")
 
             pyramids = (processing.get("pyramids") or {})
@@ -1145,6 +1267,7 @@ class MainDialog(QDialog):
         processing["mnt_resolution"] = float(self.mnt_resolution_spin.value())
         processing["density_resolution"] = float(self.density_resolution_spin.value())
         processing["tile_overlap"] = int(self.tile_overlap_spin.value())
+        processing["max_workers"] = int(self.max_workers_spin.value())
         processing["filter_expression"] = self.filter_expression_edit.text().strip()
 
         pyramids = processing.setdefault("pyramids", {})
@@ -1242,6 +1365,7 @@ class MainDialog(QDialog):
         processing["mnt_resolution"] = float(self.mnt_resolution_spin.value())
         processing["density_resolution"] = float(self.density_resolution_spin.value())
         processing["tile_overlap"] = int(self.tile_overlap_spin.value())
+        processing["max_workers"] = int(self.max_workers_spin.value())
         processing["filter_expression"] = self.filter_expression_edit.text().strip()
 
         pyramids = processing.setdefault("pyramids", {})
@@ -1340,6 +1464,7 @@ class MainDialog(QDialog):
             self.mnt_resolution_spin.setValue(0.5)
             self.density_resolution_spin.setValue(1.0)
             self.tile_overlap_spin.setValue(20)
+            self.max_workers_spin.setValue(4)
             self.filter_expression_edit.setText(
                 "Classification = 2 OR Classification = 6 OR Classification = 66 OR Classification = 67 OR Classification = 9"
             )

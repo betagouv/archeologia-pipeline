@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import time
 from pathlib import Path
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from ..cancel_token import CancelToken
 from ..cancellable_feedback import create_cancellable_feedback
@@ -22,6 +22,10 @@ class IgnOrLocalRunner:
         cancel: CancelToken,
         slog: Optional["StructuredLogger"] = None,
     ) -> None:
+        # Vider le cache de validation PDAL au début de chaque run
+        from ...pipeline.ign.pdal_validation import clear_validation_cache
+        clear_validation_cache()
+
         start_time = time.time()
 
         if ctx.output_dir is None:
@@ -60,6 +64,8 @@ class IgnOrLocalRunner:
                 reporter.info("════════════════════════════════════════════════════════════")
                 reporter.info("📥 TÉLÉCHARGEMENT DES DALLES IGN")
                 reporter.info("════════════════════════════════════════════════════════════")
+            reporter.stage("Téléchargement des dalles")
+            max_workers = processing.get("max_workers", 4)
             result = download_ign_dalles(
                 input_file=input_path,
                 output_dir=ctx.output_dir,
@@ -69,6 +75,7 @@ class IgnOrLocalRunner:
                 ),
                 stage=lambda s: reporter.stage(str(s)),
                 cancel=lambda: cancel.is_cancelled(),
+                max_workers=max_workers,
             )
         else:
             from ...pipeline.modes.local_laz import run_local_laz
@@ -115,6 +122,7 @@ class IgnOrLocalRunner:
         else:
             reporter.progress(0)
 
+        max_workers = processing.get("max_workers", 4)
         merged_result = prepare_merged_tiles(
             sorted_list_file=result.sorted_list_file,
             dalles_dir=result.dalles_dir,
@@ -122,18 +130,14 @@ class IgnOrLocalRunner:
             tile_overlap_percent=tile_overlap,
             log=lambda m: reporter.info(m),
             cancel=lambda: cancel.is_cancelled(),
+            stage=lambda s: reporter.stage(s),
+            max_workers=max_workers,
         )
 
         if ctx.mode == "ign_laz":
             reporter.progress(merge_range[1])
 
         if need_mnt and merged_result.merged_files:
-            from ...pipeline.ign.products.crop import crop_final_products
-            from ...pipeline.ign.products.density import create_density_map
-            from ...pipeline.ign.products.indices import create_visualization_products
-            from ...pipeline.ign.products.mnt import create_terrain_model
-            from ...pipeline.ign.products.results import copy_final_products_to_results
-
             mnt_resolution = processing.get("mnt_resolution", 0.5)
             try:
                 mnt_resolution = float(mnt_resolution)
@@ -179,30 +183,28 @@ class IgnOrLocalRunner:
             else:
                 reporter.progress(0)
 
+            from ...pipeline.ign.products.crop import crop_final_products
+            from ...pipeline.ign.products.density import create_density_map
+            from ...pipeline.ign.products.indices import create_visualization_products
+            from ...pipeline.ign.products.mnt import create_terrain_model
+            from ...pipeline.ign.products.results import copy_final_products_to_results
+
             total_mnt = len(merged_result.merged_files)
             active_products = [k for k, v in products.items() if v]
-            
+            products_cfg = products if isinstance(products, dict) else {}
+
             for i, merged_path in enumerate(merged_result.merged_files, start=1):
                 if cancel.is_cancelled():
-                    if slog:
-                        slog.warning("Annulation demandée par l'utilisateur")
-                    else:
-                        reporter.info("Annulation demandée")
                     break
 
-                if ctx.mode == "ign_laz":
-                    frac = (i - 1) / max(1, total_mnt)
-                    pct = int(round(products_range[0] + (products_range[1] - products_range[0]) * frac))
-                    reporter.progress(pct)
-                else:
-                    pct = int(round(100.0 * (i - 1) / max(1, total_mnt)))
-                    reporter.progress(pct)
-
                 tile_name = merged_path.name.replace(".copc.laz", "").replace(".laz", "")
+
+                # Mise à jour du stage avec la dalle courante
+                reporter.stage(f"Traitement dalle {i}/{total_mnt}")
+
+                # Démarrer le timer pour cette dalle
                 if slog:
                     slog.tile_start(i, total_mnt, tile_name)
-                else:
-                    reporter.stage(f"Traitement dalle {i}/{total_mnt}: {tile_name}")
 
                 create_terrain_model(
                     input_laz_path=merged_path,
@@ -214,16 +216,11 @@ class IgnOrLocalRunner:
                     log=lambda m: reporter.info(m),
                     feedback=feedback,
                 )
-                
+
                 if cancel.is_cancelled():
-                    if slog:
-                        slog.warning("Annulation demandée par l'utilisateur")
-                    else:
-                        reporter.info("Annulation demandée")
                     break
 
-                products_cfg = products if isinstance(products, dict) else {}
-                if bool(products_cfg.get("DENSITE", False)):
+                if products_cfg.get("DENSITE", False):
                     create_density_map(
                         input_laz_path=merged_path,
                         temp_dir=ctx.output_dir / "temp",
@@ -234,12 +231,8 @@ class IgnOrLocalRunner:
                         log=lambda m: reporter.info(m),
                         feedback=feedback,
                     )
-                    
+
                     if cancel.is_cancelled():
-                        if slog:
-                            slog.warning("Annulation demandée par l'utilisateur")
-                        else:
-                            reporter.info("Annulation demandée")
                         break
 
                 create_visualization_products(
@@ -250,12 +243,8 @@ class IgnOrLocalRunner:
                     log=lambda m: reporter.info(m),
                     feedback=feedback,
                 )
-                
+
                 if cancel.is_cancelled():
-                    if slog:
-                        slog.warning("Annulation demandée par l'utilisateur")
-                    else:
-                        reporter.info("Annulation demandée")
                     break
 
                 cropped = crop_final_products(
@@ -266,6 +255,7 @@ class IgnOrLocalRunner:
                     log=lambda m: reporter.info(m),
                 )
 
+                export_info: Dict[str, Any] = {}
                 if cropped:
                     export_info = copy_final_products_to_results(
                         temp_dir=ctx.output_dir / "temp",
@@ -279,36 +269,39 @@ class IgnOrLocalRunner:
                         log=lambda m: reporter.info(m),
                     )
 
-                    if cv_service.enabled and cv_service.should_process_product(cv_service.target_rvt):
-                        created_by_product = (export_info or {}).get("created_jpgs_by_product") or {}
-                        created_jpgs = []
-                        if isinstance(created_by_product, dict) and cv_service.target_rvt in created_by_product:
-                            created_jpgs = created_by_product.get(cv_service.target_rvt) or []
-                        if not created_jpgs:
-                            created_jpgs = (export_info or {}).get("created_jpgs") or []
-
-                        tif_transform_data = (export_info or {}).get("tif_transform_data") or {}
-
-                        for jpg_path in created_jpgs:
-                            if jpg_path is None:
-                                continue
-                            jpg_dir_path = Path(jpg_path).parent
-                            rvt_base_dir = jpg_dir_path.parent
-                            if str(rvt_base_dir.name).upper() != cv_service.target_rvt.upper():
-                                continue
-                            cv_service.process_single_jpg(
-                                jpg_path=Path(jpg_path),
-                                rvt_base_dir=rvt_base_dir,
-                                tif_transform_data=tif_transform_data,
-                            )
-
                 if slog:
                     slog.tile_end(tile_name, active_products)
-                    
+
+                # Traitement CV si activé
+                if cv_service.enabled and cv_service.should_process_product(cv_service.target_rvt):
+                    created_by_product = export_info.get("created_jpgs_by_product") or {}
+                    created_jpgs: List[Path] = []
+                    if isinstance(created_by_product, dict) and cv_service.target_rvt in created_by_product:
+                        created_jpgs = created_by_product.get(cv_service.target_rvt) or []
+                    if not created_jpgs:
+                        created_jpgs = export_info.get("created_jpgs") or []
+
+                    tif_transform_data = export_info.get("tif_transform_data") or {}
+
+                    for jpg_path in created_jpgs:
+                        if jpg_path is None:
+                            continue
+                        jpg_dir_path = Path(jpg_path).parent
+                        rvt_base_dir = jpg_dir_path.parent
+                        if str(rvt_base_dir.name).upper() != cv_service.target_rvt.upper():
+                            continue
+                        cv_service.process_single_jpg(
+                            jpg_path=Path(jpg_path),
+                            rvt_base_dir=rvt_base_dir,
+                            tif_transform_data=tif_transform_data,
+                        )
+
                 if ctx.mode == "ign_laz":
-                    frac_done = i / max(1, total_mnt)
-                    pct_done = int(round(products_range[0] + (products_range[1] - products_range[0]) * frac_done))
-                    reporter.progress(pct_done)
+                    frac = i / max(1, total_mnt)
+                    pct = int(round(products_range[0] + (products_range[1] - products_range[0]) * frac))
+                else:
+                    pct = int(round(100.0 * i / max(1, total_mnt)))
+                reporter.progress(pct)
 
             if cv_service.enabled and cv_service.generate_shapefiles:
                 if ctx.mode == "ign_laz":
@@ -352,6 +345,36 @@ class IgnOrLocalRunner:
                     reporter.error(f"Erreur Computer Vision (existing MNT): {e}")
 
         reporter.progress(100)
+
+        # Création des fichiers VRT pour indexer les dalles par produit
+        vrt_paths: List[str] = []
+        shapefile_paths: List[str] = []
+
+        if ctx.mode in ("ign_laz", "local_laz"):
+            from ...pipeline.ign.products.results import build_vrt_index
+            reporter.stage("Création des index VRT")
+            reporter.info("Création des fichiers VRT d'indexation...")
+            results_dir = ctx.output_dir / "results"
+            if results_dir.exists():
+                # VRT pour chaque dossier de produit TIF - collecter TOUS les VRT créés
+                for tif_dir in results_dir.rglob("tif"):
+                    if tif_dir.is_dir() and list(tif_dir.glob("*.tif")):
+                        build_vrt_index(tif_dir, pattern="*.tif", output_name="index.vrt", log=lambda m: reporter.info(m))
+                        vrt_path = tif_dir / "index.vrt"
+                        if vrt_path.exists():
+                            vrt_paths.append(str(vrt_path))
+                # VRT pour chaque dossier JPG (images géoréférencées)
+                for jpg_dir in results_dir.rglob("jpg"):
+                    if jpg_dir.is_dir() and list(jpg_dir.glob("*.jpg")):
+                        build_vrt_index(jpg_dir, pattern="*.jpg", output_name="index.vrt", log=lambda m: reporter.info(m))
+                # VRT pour annotated_images si présent
+                annotated_dir = results_dir / "annotated_images"
+                if annotated_dir.exists() and list(annotated_dir.glob("*.jpg")):
+                    build_vrt_index(annotated_dir, pattern="*.jpg", output_name="index.vrt", log=lambda m: reporter.info(m))
+
+                # Collecter les shapefiles de détection CV
+                for shp_file in results_dir.rglob("*.shp"):
+                    shapefile_paths.append(str(shp_file))
         
         # Calcul des statistiques finales
         elapsed = time.time() - start_time
@@ -377,3 +400,12 @@ class IgnOrLocalRunner:
             reporter.info("════════════════════════════════════════════════════════════")
             reporter.info("")
             reporter.stage("Terminé")
+
+        # Charger les couches dans le projet QGIS courant
+        if vrt_paths or shapefile_paths:
+            reporter.stage("Chargement des couches")
+            reporter.info(f"Chargement de {len(vrt_paths)} VRT et {len(shapefile_paths)} shapefile(s) dans QGIS...")
+            try:
+                reporter.load_layers(vrt_paths, shapefile_paths)
+            except Exception as e:
+                reporter.info(f"Note: Chargement des couches non disponible ({e})")

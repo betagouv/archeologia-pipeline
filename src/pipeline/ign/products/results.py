@@ -33,6 +33,40 @@ def _subprocess_kwargs_no_window() -> Dict[str, Any]:
     return kwargs
 
 
+def build_vrt_index(
+    folder: Path,
+    *,
+    pattern: str = "*.tif",
+    output_name: str = "index.vrt",
+    log: LogFn = lambda _: None,
+) -> bool:
+    """
+    Crée un fichier VRT (Virtual Raster) indexant tous les fichiers correspondant au pattern.
+    Permet de charger toutes les dalles d'un coup dans QGIS.
+    """
+    try:
+        gdalbuildvrt = shutil.which("gdalbuildvrt")
+        if not gdalbuildvrt:
+            log("gdalbuildvrt introuvable: création VRT ignorée")
+            return False
+
+        files = sorted(folder.glob(pattern))
+        if not files:
+            return False
+
+        vrt_path = folder / output_name
+        cmd = [str(gdalbuildvrt), str(vrt_path)] + [str(f) for f in files]
+        r = subprocess.run(cmd, capture_output=True, text=True, **_subprocess_kwargs_no_window())
+        if r.returncode != 0:
+            log(f"Échec gdalbuildvrt pour {folder.name}: {r.stderr or r.stdout}")
+            return False
+        log(f"VRT créé: {vrt_path.relative_to(folder.parent)}")
+        return True
+    except Exception as e:
+        log(f"Erreur création VRT pour {folder.name}: {e}")
+        return False
+
+
 def build_raster_pyramids(
     raster_file: Path,
     *,

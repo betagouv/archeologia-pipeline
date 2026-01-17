@@ -1315,7 +1315,7 @@ def create_shapefile_from_detections(
             style_selection = None
             style_customprops = None
             try:
-                style_path = Path(__file__).parents[3] / 'models' / 'style_detections.qml'
+                style_path = Path(__file__).parents[2] / 'resources' / 'styles' / 'style_detections.qml'
                 if style_path.exists():
                     style_tree = et_parse(str(style_path))
                     style_root = style_tree.getroot()
@@ -1481,21 +1481,23 @@ def create_shapefile_from_detections(
                 if style_customprops is not None:
                     ml.append(copy.deepcopy(style_customprops))
 
-            # 2) Ajouter ensuite les TIF comme couches raster (en dessous des shapefiles)
-            for tif_path in tif_files:
-                tif_path = Path(tif_path)
+            # 2) Ajouter le VRT comme couche raster unique (en dessous des shapefiles)
+            #    Utilise index.vrt s'il existe, sinon fallback sur les TIF individuels
+            vrt_path = tif_dir / "index.vrt" if tif_dir.exists() else None
+            if vrt_path and vrt_path.exists():
+                # Utiliser le VRT (une seule couche pour toutes les dalles)
                 try:
-                    tif_ds = os.path.relpath(str(tif_path.resolve()), start=str(index_root.resolve()))
-                    tif_ds = tif_ds.replace('\\', '/')
+                    vrt_ds = os.path.relpath(str(vrt_path.resolve()), start=str(index_root.resolve()))
+                    vrt_ds = vrt_ds.replace('\\', '/')
                 except Exception:
-                    tif_ds = str(tif_path.resolve())
-                raster_id = tif_path.stem
-                SubElement(layer_tree, 'layer-tree-layer', attrib={'id': raster_id, 'name': raster_id})
+                    vrt_ds = str(vrt_path.resolve())
+                raster_id = "index_rvt"
+                SubElement(layer_tree, 'layer-tree-layer', attrib={'id': raster_id, 'name': 'Dalles RVT (index)'})
 
                 ml_raster = SubElement(maplayers, 'maplayer', attrib={'type': 'raster'})
                 SubElement(ml_raster, 'id').text = raster_id
-                SubElement(ml_raster, 'layername').text = raster_id
-                SubElement(ml_raster, 'datasource').text = tif_ds
+                SubElement(ml_raster, 'layername').text = 'Dalles RVT (index)'
+                SubElement(ml_raster, 'datasource').text = vrt_ds
                 SubElement(ml_raster, 'provider').text = 'gdal'
                 try:
                     srs_r = SubElement(ml_raster, 'srs')
@@ -1503,6 +1505,29 @@ def create_shapefile_from_detections(
                     SubElement(sref_r, 'authid').text = crs
                 except Exception:
                     pass
+            else:
+                # Fallback: ajouter les TIF individuellement si pas de VRT
+                for tif_path in tif_files:
+                    tif_path = Path(tif_path)
+                    try:
+                        tif_ds = os.path.relpath(str(tif_path.resolve()), start=str(index_root.resolve()))
+                        tif_ds = tif_ds.replace('\\', '/')
+                    except Exception:
+                        tif_ds = str(tif_path.resolve())
+                    raster_id = tif_path.stem
+                    SubElement(layer_tree, 'layer-tree-layer', attrib={'id': raster_id, 'name': raster_id})
+
+                    ml_raster = SubElement(maplayers, 'maplayer', attrib={'type': 'raster'})
+                    SubElement(ml_raster, 'id').text = raster_id
+                    SubElement(ml_raster, 'layername').text = raster_id
+                    SubElement(ml_raster, 'datasource').text = tif_ds
+                    SubElement(ml_raster, 'provider').text = 'gdal'
+                    try:
+                        srs_r = SubElement(ml_raster, 'srs')
+                        sref_r = SubElement(srs_r, 'spatialrefsys')
+                        SubElement(sref_r, 'authid').text = crs
+                    except Exception:
+                        pass
 
             xml_bytes = tostring(project, encoding='utf-8')
             pretty = minidom.parseString(xml_bytes).toprettyxml(indent='  ', encoding='utf-8')

@@ -1,5 +1,5 @@
 [general]
-name=Archeolog'IA pipeline
+name=archeologia-pipeline-lidar-processing
 description=Plugin QGIS de traitement LiDAR : génération MNT/densité et indices RVT (M-HS, SVF, SLO, LD, VAT) avec exports (GeoTIFF, JPG+JGW), pyramides GDAL et option computer vision (YOLO).
 about=Plugin QGIS pour automatiser un pipeline de production raster à partir de dalles LiDAR (IGN LAZ ou LAZ/LAS locaux) ou de rasters existants (MNT/RVT). Il génère des produits MNT et densité, ainsi que des indices RVT (M-HS, SVF, SLO, LD, VAT), avec exports GeoTIFF et optionnellement JPG + world file (JGW). Possibilité de créer des pyramides (overviews) GDAL pour améliorer l’affichage dans QGIS. Option computer vision : exploitation des JPG (YOLO détection/segmentation) via runner externe ou dépendances Python.
 version=0.1.0

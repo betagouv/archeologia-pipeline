@@ -1,16 +1,67 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-from pathlib import Path
-from typing import Callable, List, Optional, Tuple
-
+import os
+import re
 import shutil
+import threading
 import time
 import urllib.parse
 import urllib.request
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Callable, Dict, List, Optional, Tuple
 
 from .coords_fallback import build_sorted_records_with_fallback
+
+
 from .pdal_validation import validate_las_or_laz_with_pdal
+
+
+def _extract_real_url(url: str) -> str:
+    """Extract the real URL from various wrapper/protection services.
+    
+    Handles:
+    - Proofpoint urldefense.com (v2, v3)
+    - Google Safe Browsing redirects
+    - Microsoft SafeLinks
+    - Generic URL wrappers with embedded URLs
+    - Direct URLs (returned as-is)
+    """
+    url = url.strip()
+    
+    # Proofpoint urldefense v3: https://urldefense.com/v3/__<real_url>__;...
+    match = re.search(r"urldefense\.com/v3/__(.+?)(?:__;|$)", url)
+    if match:
+        return match.group(1)
+    
+    # Proofpoint urldefense v2: https://urldefense.proofpoint.com/v2/url?u=<encoded>&...
+    match = re.search(r"urldefense\.proofpoint\.com/v2/url\?u=([^&]+)", url)
+    if match:
+        decoded = match.group(1).replace("-", "%").replace("_", "/")
+        return urllib.parse.unquote(decoded)
+    
+    # Microsoft SafeLinks: https://...safelinks.protection.outlook.com/?url=<encoded>&...
+    match = re.search(r"safelinks\.protection\.outlook\.com/?\?url=([^&]+)", url)
+    if match:
+        return urllib.parse.unquote(match.group(1))
+    
+    # Google redirect: https://www.google.com/url?q=<encoded>&...
+    match = re.search(r"google\.com/url\?[^&]*q=([^&]+)", url)
+    if match:
+        return urllib.parse.unquote(match.group(1))
+    
+    # Generic: try to find an embedded https://data.geopf.fr or similar IGN URL
+    match = re.search(r"(https?://data\.geopf\.fr/[^\s\"'<>]+\.(?:laz|las|copc\.laz))", url, re.IGNORECASE)
+    if match:
+        return match.group(1)
+    
+    # Fallback: look for any embedded https:// URL ending in .laz or .las
+    match = re.search(r"(https?://[^\s\"'<>]+\.(?:laz|las|copc\.laz))", url, re.IGNORECASE)
+    if match:
+        return match.group(1)
+    
+    return url
 
 
 LogFn = Callable[[str], None]
@@ -72,6 +123,8 @@ def parse_ign_input_file(input_file: Path, sorted_output_file: Path, log: LogFn 
                 url = url.strip()
             else:
                 url = line
+                # Extract real URL from wrappers (urldefense, SafeLinks, etc.)
+                url = _extract_real_url(url)
                 try:
                     parsed = urllib.parse.urlparse(url)
                     filename = Path(parsed.path).name
@@ -157,7 +210,9 @@ def download_one(
 
         try:
             req = urllib.request.Request(url, headers={"User-Agent": "QGIS-ArcheologiaPipeline/1.0"})
-            with urllib.request.urlopen(req, timeout=timeout_s) as r:
+            proxy_handler = urllib.request.ProxyHandler(urllib.request.getproxies())
+            opener = urllib.request.build_opener(proxy_handler)
+            with opener.open(req, timeout=timeout_s) as r:
                 with open(dest, "wb") as f:
                     while True:
                         if cancel():
@@ -197,6 +252,24 @@ def download_one(
     return False, False
 
 
+@dataclass
+class _DownloadTask:
+    """Tâche de téléchargement pour un fichier."""
+    index: int
+    filename: str
+    url: str
+
+
+@dataclass
+class _DownloadResult:
+    """Résultat du téléchargement d'un fichier."""
+    index: int
+    filename: str
+    success: bool
+    skipped: bool
+    error: Optional[str] = None
+
+
 def download_ign_dalles(
     *,
     input_file: Path,
@@ -205,6 +278,7 @@ def download_ign_dalles(
     progress: ProgressFn = _default_progress,
     stage: StageFn = _default_stage,
     cancel: CancelFn = _default_cancel,
+    max_workers: Optional[int] = None,
 ) -> IgnDownloadResult:
     if not output_dir.exists():
         output_dir.mkdir(parents=True, exist_ok=True)
@@ -222,25 +296,73 @@ def download_ign_dalles(
 
     stage("Téléchargement")
 
-    downloaded = 0
-    skipped = 0
+    # Configuration parallélisation
+    if max_workers is None:
+        max_workers = min(4, max(1, os.cpu_count() or 1))
+    
+    log(f"Téléchargement parallèle: {max_workers} worker(s) pour {total} fichier(s)")
 
-    for idx, (filename, url) in enumerate(file_list, start=1):
-        if cancel():
-            log("Annulation demandée")
-            break
+    # Lock pour synchroniser les logs et le compteur
+    log_lock = threading.Lock()
+    completed_count = [0]
+    downloaded = [0]
+    skipped = [0]
+    first_error: List[Optional[str]] = [None]
 
-        pct = int(round(100.0 * (idx - 1) / max(1, total)))
-        progress(pct)
+    def thread_safe_log(msg: str) -> None:
+        with log_lock:
+            log(msg)
 
-        ok, was_skipped = download_one(url, filename, dalles_dir, log=log, cancel=cancel)
-        if not ok:
-            raise RuntimeError(f"Échec du téléchargement: {filename}")
+    def update_progress_and_counts(result: _DownloadResult) -> None:
+        with log_lock:
+            completed_count[0] += 1
+            if result.success:
+                if result.skipped:
+                    skipped[0] += 1
+                else:
+                    downloaded[0] += 1
+            elif first_error[0] is None:
+                first_error[0] = result.error
+            pct = int(round(100.0 * completed_count[0] / max(1, total)))
+            progress(pct)
 
-        if was_skipped:
-            skipped += 1
-        else:
-            downloaded += 1
+    # Préparer les tâches
+    tasks = [
+        _DownloadTask(index=idx, filename=filename, url=url)
+        for idx, (filename, url) in enumerate(file_list, start=1)
+    ]
+
+    # Exécution parallèle
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        future_to_task = {
+            executor.submit(
+                _download_task_worker,
+                task,
+                dalles_dir,
+                thread_safe_log,
+                cancel,
+            ): task
+            for task in tasks
+        }
+
+        for future in as_completed(future_to_task):
+            if cancel():
+                executor.shutdown(wait=False, cancel_futures=True)
+                break
+
+            try:
+                result = future.result()
+                update_progress_and_counts(result)
+            except Exception as e:
+                task = future_to_task[future]
+                thread_safe_log(f"Exception téléchargement {task.filename}: {e}")
+                with log_lock:
+                    if first_error[0] is None:
+                        first_error[0] = str(e)
+
+    # Vérifier s'il y a eu une erreur
+    if first_error[0] is not None:
+        raise RuntimeError(f"Échec du téléchargement: {first_error[0]}")
 
     # Tri final + fallback coords (Option B): si coords absentes, on infère via PDAL et on renomme le fichier.
     stage("Tri des fichiers (post-téléchargement)")
@@ -260,6 +382,38 @@ def download_ign_dalles(
         dalles_dir=dalles_dir,
         sorted_list_file=sorted_list,
         total=total,
-        downloaded=downloaded,
-        skipped_existing=skipped,
+        downloaded=downloaded[0],
+        skipped_existing=skipped[0],
     )
+
+
+def _download_task_worker(
+    task: _DownloadTask,
+    dalles_dir: Path,
+    log: LogFn,
+    cancel: CancelFn,
+) -> _DownloadResult:
+    """Worker pour télécharger un fichier. Thread-safe (HTTP requests)."""
+    try:
+        ok, was_skipped = download_one(
+            url=task.url,
+            filename=task.filename,
+            dalles_dir=dalles_dir,
+            log=log,
+            cancel=cancel,
+        )
+        return _DownloadResult(
+            index=task.index,
+            filename=task.filename,
+            success=ok,
+            skipped=was_skipped,
+            error=None if ok else f"Échec téléchargement {task.filename}",
+        )
+    except Exception as e:
+        return _DownloadResult(
+            index=task.index,
+            filename=task.filename,
+            success=False,
+            skipped=False,
+            error=str(e),
+        )

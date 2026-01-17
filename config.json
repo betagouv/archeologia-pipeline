@@ -1,9 +1,9 @@
 {
   "app": {
     "files": {
-      "output_dir": "D:/pipeline_results/output_test",
+      "output_dir": "D:/pipeline_results/results_Mont_de_la_croix",
       "data_mode": "ign_laz",
-      "input_file": "D:/pipeline_results/data/data_tests/tests - Copie.txt",
+      "input_file": "D:/pipeline_results/data/Mont_de_la_croix/LIDAR_IGN_dalles_Mont_de_la_Croix.txt",
       "local_laz_dir": "D:/pipeline_results/output_test/dalles",
       "existing_mnt_dir": "D:/pipeline_results/output_test/existing_MNT",
       "existing_rvt_dir": "D:/pipeline_results/output_test/existing_RVT"
@@ -29,7 +29,7 @@
       "MNT": true,
       "DENSITE": false,
       "M_HS": false,
-      "SVF": true,
+      "SVF": false,
       "SLO": false,
       "LD": true,
       "VAT": false
@@ -42,12 +42,13 @@
         "LD": false,
         "VAT": false
       }
-    }
+    },
+    "max_workers": 4
   },
   "computer_vision": {
     "enabled": true,
     "selected_model": "C:\\Users\\valen\\AppData\\Roaming\\QGIS\\QGIS3\\profiles\\default\\python\\plugins\\archeologia-pipeline-lidar-processing\\models\\run_18\\weights\\best.pt",
-    "target_rvt": "SVF",
+    "target_rvt": "LD",
     "confidence_threshold": 0.1,
     "iou_threshold": 0.5,
     "generate_annotated_images": true,
@@ -59,7 +60,7 @@
       "overlap_ratio": 0.2
     },
     "size_filter": {
-      "enabled": true,
+      "enabled": false,
       "max_meters": 15.0
     },
     "export_runner_config": true,

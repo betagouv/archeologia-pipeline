@@ -2,14 +2,50 @@ from __future__ import annotations
 
 import os
 import subprocess
+import threading
 import time
 from pathlib import Path
 from shutil import which
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
 
 class PipelineCancelled(Exception):
     pass
+
+
+# Cache thread-safe pour les fichiers déjà validés
+# Clé: chemin absolu du fichier + mtime (pour détecter les modifications)
+_validation_cache: Set[str] = set()
+_validation_cache_lock = threading.Lock()
+
+
+def _get_cache_key(path: Path) -> str:
+    """Génère une clé de cache basée sur le chemin et la date de modification."""
+    try:
+        mtime = path.stat().st_mtime
+        return f"{path.resolve()}:{mtime}"
+    except Exception:
+        return str(path.resolve())
+
+
+def clear_validation_cache() -> None:
+    """Vide le cache de validation (utile entre les runs)."""
+    with _validation_cache_lock:
+        _validation_cache.clear()
+
+
+def is_validated(path: Path) -> bool:
+    """Vérifie si un fichier a déjà été validé."""
+    key = _get_cache_key(path)
+    with _validation_cache_lock:
+        return key in _validation_cache
+
+
+def mark_validated(path: Path) -> None:
+    """Marque un fichier comme validé."""
+    key = _get_cache_key(path)
+    with _validation_cache_lock:
+        _validation_cache.add(key)
 
 
 def _pdal_subprocess_kwargs() -> Dict[str, Any]:
@@ -88,12 +124,19 @@ def run_pdal_command_cancellable(
             pass
 
 
-def validate_las_or_laz_with_pdal(path: Path, timeout_s: int = 60) -> Tuple[bool, str]:
+def validate_las_or_laz_with_pdal(
+    path: Path, timeout_s: int = 60, use_cache: bool = True
+) -> Tuple[bool, str]:
+    # Vérifier le cache d'abord
+    if use_cache and is_validated(path):
+        return True, "ok (cached)"
+
     pdal = which("pdal")
     if not pdal:
         return False, "pdal executable not found in PATH"
 
-    cmd = [pdal, "info", "--metadata", str(path)]
+    # Utiliser --all pour une validation plus complète qui détecte les EVLR corrompus
+    cmd = [pdal, "info", "--all", str(path)]
     try:
         r = run_pdal_command(cmd, timeout_s=timeout_s)
     except Exception as e:
@@ -105,6 +148,14 @@ def validate_las_or_laz_with_pdal(path: Path, timeout_s: int = 60) -> Tuple[bool
     if r.returncode != 0:
         msg = err or out or f"pdal returned code {r.returncode}"
         return False, msg
+
+    # Vérifier aussi les warnings/erreurs dans stderr (EVLR corrompus)
+    if err and ("EVLR" in err or "End of file" in err or "Couldn't read" in err):
+        return False, err
+
+    # Marquer comme validé dans le cache
+    if use_cache:
+        mark_validated(path)
 
     return True, "ok"
 

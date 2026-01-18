@@ -1,12 +1,46 @@
+# This file contains metadata for your plugin.
+
+# This file should be included when you package your plugin.# Mandatory items:
+
 [general]
-name=Archeolog'IA pipeline
-description=Plugin QGIS de traitement LiDAR : génération MNT/densité et indices RVT (M-HS, SVF, SLO, LD, VAT) avec exports (GeoTIFF, JPG+JGW), pyramides GDAL et option computer vision (YOLO).
-about=Plugin QGIS pour automatiser un pipeline de production raster à partir de dalles LiDAR (IGN LAZ ou LAZ/LAS locaux) ou de rasters existants (MNT/RVT). Il génère des produits MNT et densité, ainsi que des indices RVT (M-HS, SVF, SLO, LD, VAT), avec exports GeoTIFF et optionnellement JPG + world file (JGW). Possibilité de créer des pyramides (overviews) GDAL pour améliorer l’affichage dans QGIS. Option computer vision : exploitation des JPG (YOLO détection/segmentation) via runner externe ou dépendances Python.
-version=0.1.0
+name=Archeolog'IA
 qgisMinimumVersion=3.0
-supportsQt6=True
+description=Plugin traitement
+version=0.1.0
 author=Valentin VIEUX
 email=valentin.vieux.pro@outlook.com
+
+about=Plugin QGIS pour automatiser un pipeline de production raster à partir de dalles LiDAR (IGN LAZ ou LAZ/LAS locaux) ou de rasters existants (MNT/RVT). Il génère des produits MNT et densité, ainsi que des indices RVT (M-HS, SVF, SLO, LD, VAT), avec exports GeoTIFF et optionnellement JPG + world file (JGW). Possibilité de créer des pyramides (overviews) GDAL pour améliorer l’affichage dans QGIS. Option computer vision : exploitation des JPG (YOLO détection/segmentation) via runner externe ou dépendances Python.
+
+tracker=https://github.com/betagouv/archeologia-pipeline/issues
+repository=https://github.com/betagouv/archeologia-pipeline
+# End of mandatory metadata
+
+# Recommended items:
+
+hasProcessingProvider=no
+# Uncomment the following line and add your changelog:
+# changelog=
+
+# Tags are comma separated with spaces allowed
+tags=python,lidar,archaeology,pipeline,dtm,mnt,rvt
+
+homepage=https://beta.gouv.fr/startups/archeolog-ia.html
+category=Raster
 icon=icon.png
-category=Analysis
-tags=lidar,archaeology,pipeline,dtm,mnt,rvt
+# experimental flag
+experimental=False
+
+# deprecated flag (applies to the whole plugin, not just a single version)
+deprecated=False
+
+# Since QGIS 3.8, a comma separated list of plugins to be installed
+# (or upgraded) can be specified.
+# Check the documentation for more information.
+plugin_dependencies=rvt-qgis
+
+Category of the plugin: Raster, Vector, Database or Web
+category=Raster
+
+# If the plugin can run on QGIS Server.
+server=False

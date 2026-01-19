@@ -20,3 +20,13 @@ fileignoreconfig:
 - filename: src/pipeline/ign/preprocess.py
   checksum: 78f032231fec59c6d9c469f8f1329cb2a9b1430201c7bdb4391dcb905329f8b7
 version: "1.0"
+fileignoreconfig:  
+- filename: src/pipeline/ign/downloader.py  
+  checksum: 0468a01e68d850a1ab86e33b33a213a97d7418fb56550a79e64485c3ec1f8bf3  
+- filename: src/ui/main_dialog.py  
+  checksum: 28f1866c35f00c4c5fc89c22da7ec50dcce8861e8871a60bbfda65a2dbc09778 
+fileignoreconfig:  
+- filename: src/pipeline/ign/downloader.py  
+  checksum: 0468a01e68d850a1ab86e33b33a213a97d7418fb56550a79e64485c3ec1f8bf3  
+- filename: src/ui/main_dialog.py  
+  checksum: 28f1866c35f00c4c5fc89c22da7ec50dcce8861e8871a60bbfda65a2dbc09778 

@@ -109,6 +109,7 @@ class MainDialog(QDialog):
 
         self._logger = logging.getLogger("archeologia_pipeline")
         self._logger.setLevel(logging.INFO)
+        self._logger.propagate = False
 
         self._log_emitter = _QtLogEmitter()
         self._log_emitter.message.connect(self._append_log)

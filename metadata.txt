@@ -1,12 +1,31 @@
+# This file contains metadata for the plugin.
+
+#
+# Mandatory items:
+#
+
 [general]
-name=archeologia-pipeline-lidar-processing
-description=Plugin QGIS de traitement LiDAR : génération MNT/densité et indices RVT (M-HS, SVF, SLO, LD, VAT) avec exports (GeoTIFF, JPG+JGW), pyramides GDAL et option computer vision (YOLO).
-about=Plugin QGIS pour automatiser un pipeline de production raster à partir de dalles LiDAR (IGN LAZ ou LAZ/LAS locaux) ou de rasters existants (MNT/RVT). Il génère des produits MNT et densité, ainsi que des indices RVT (M-HS, SVF, SLO, LD, VAT), avec exports GeoTIFF et optionnellement JPG + world file (JGW). Possibilité de créer des pyramides (overviews) GDAL pour améliorer l’affichage dans QGIS. Option computer vision : exploitation des JPG (YOLO détection/segmentation) via runner externe ou dépendances Python.
-version=0.1.0
+name=ArchéologIA
 qgisMinimumVersion=3.0
-supportsQt6=True
+description=Détection de sites archéologiques par réseaux de neurones
+version=0.1.0
 author=Valentin VIEUX
 email=valentin.vieux.pro@outlook.com
+about=Plugin pour automatiser la production d'indices de visualisation (à l'aide du plugin Relief Visualization Toolbox) à partir de données LiDAR ou de MNT et pour détecter des sites archéologiques à l'aide de réseaux de neurones (YOLO détection ou segmentation)
+tracker=https://github.com/betagouv/archeologia-pipeline/issues
+repository=https://github.com/betagouv/archeologia-pipeline
+
+#
+# Recommended items:
+#
+
+hasProcessingProvider=no
+# changelog=
+tags=python,lidar,archaeology,dtm,dsm,ai
+homepage=https://beta.gouv.fr/startups/archeolog-ia.html
+category=Raster
 icon=icon.png
-category=Analysis
-tags=lidar,archaeology,pipeline,dtm,mnt,rvt
+experimental=False
+deprecated=False
+plugin_dependencies=Relief Visualization Toolbox
+server=False

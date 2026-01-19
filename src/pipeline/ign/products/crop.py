@@ -90,18 +90,42 @@ def crop_final_products(
         if not src_path.exists():
             continue
 
-        cmd = [
-            gdalwarp,
-            "-te",
-            xmin_r,
-            ymin_r,
-            xmax_r,
-            ymax_r,
-            str(src_path),
-            str(dst_path),
-            "-of",
-            "GTiff",
-        ]
+        # Compression spécifique pour MNT: LERC_ZSTD avec tolérance 1cm
+        # (précision LiDAR HD: 0-10cm absolu, 0-5cm relatif)
+        if product_name == "MNT":
+            cmd = [
+                gdalwarp,
+                "-te",
+                xmin_r,
+                ymin_r,
+                xmax_r,
+                ymax_r,
+                str(src_path),
+                str(dst_path),
+                "-of",
+                "GTiff",
+                "-co",
+                "COMPRESS=LERC_ZSTD",
+                "-co",
+                "MAX_Z_ERROR=0.01",
+            ]
+        else:
+            cmd = [
+                gdalwarp,
+                "-te",
+                xmin_r,
+                ymin_r,
+                xmax_r,
+                ymax_r,
+                str(src_path),
+                str(dst_path),
+                "-of",
+                "GTiff",
+                "-co",
+                "COMPRESS=ZSTD",
+                "-co",
+                "PREDICTOR=2",
+            ]
 
         result = subprocess.run(cmd, capture_output=True, text=True, **_subprocess_kwargs_no_window())
         if result.returncode != 0:

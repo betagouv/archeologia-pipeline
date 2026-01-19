@@ -8,11 +8,17 @@ fileignoreconfig:
 - filename: old_src/conversion_shp.py
   checksum: 3a4e979bcc8691785c1b636fb2eabfc2060640a72b0013e3e97c2327d4aa2fe0
 - filename: src/pipeline/cv/conversion_shp.py
-  checksum: d049f94e0de0b6406eed9d0ff0fff61b6318c511653d57ab8c03b7f68bc4fe6b
+  checksum: 0a255a627e050d5e0d98bb8905589b2fc7ae8bad156ef653654ba66688bbd427
 - filename: src/ui/main_dialog.py
-  checksum: a520a7a0495bb87e2caff22165c2b8e7d2b89b1b32acd6be7f17caf4884b42a7
+  checksum: 28f1866c35f00c4c5fc89c22da7ec50dcce8861e8871a60bbfda65a2dbc09778
 - filename: old_src/pipeline_lidar.py
   checksum: 32886bc946b5454875a787ee56a0174d2a4e1fad5a7a2209df6639d52a2c4dd2
 - filename: tests/TESTS_MANUELS_QGIS.txt
   checksum: 4a7e2b200c36e7404ab02725fc8ac59db8c8138f0d118bafd3408ab47d9761df
+- filename: src/pipeline/ign/pdal_validation.py
+  checksum: 3179abb49b07cb15b108ac3ffece544741997357cf3a533d400513c995bd618e
+- filename: src/pipeline/ign/preprocess.py
+  checksum: 78f032231fec59c6d9c469f8f1329cb2a9b1430201c7bdb4391dcb905329f8b7
+- filename: src/pipeline/ign/downloader.py
+  checksum: 0468a01e68d850a1ab86e33b33a213a97d7418fb56550a79e64485c3ec1f8bf3
 version: "1.0"

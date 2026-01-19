@@ -46,6 +46,28 @@ def _subprocess_kwargs_no_window() -> Dict[str, Any]:
     return kwargs
 
 
+def write_world_file_from_transform(image_path: Path, pixel_width: float, pixel_height: float, x_origin: float, y_origin: float) -> Optional[Path]:
+    """
+    Crée un fichier world (.jgw pour JPEG, .pgw pour PNG) à partir des données de transformation.
+    Utilise le même format que create_world_file_from_tif dans convert_tif_to_jpg.py.
+    """
+    suffix = image_path.suffix.lower()
+    world_ext_map = {".jpg": ".jgw", ".jpeg": ".jgw", ".png": ".pgw"}
+    world_ext = world_ext_map.get(suffix)
+    if not world_ext:
+        return None
+    
+    world_path = image_path.with_suffix(world_ext)
+    with open(world_path, "w") as f:
+        f.write(f"{pixel_width:.10f}\n")
+        f.write(f"0.0000000000\n")  # row_rotation
+        f.write(f"0.0000000000\n")  # col_rotation
+        f.write(f"{pixel_height:.10f}\n")
+        f.write(f"{x_origin:.10f}\n")
+        f.write(f"{y_origin:.10f}\n")
+    return world_path
+
+
 def extract_tif_transform_data(reference_tif_path: Path) -> Tuple[Optional[float], Optional[float], Optional[float], Optional[float]]:
     try:
         import rasterio  # type: ignore
@@ -131,6 +153,29 @@ def run_cv_on_folder(
                         log(f"[cv_runner][stderr] {line}")
             if r.returncode != 0:
                 raise RuntimeError(f"cv_runner failed (code={r.returncode})")
+            
+            # Créer les fichiers world pour les images annotées générées par le cv_runner
+            generate_annotated = bool((cv_config or {}).get("generate_annotated_images", False))
+            if generate_annotated and tif_transform_data:
+                base = rvt_base_dir or jpg_dir.parent
+                annotated_dir = Path(base) / "annotated_images"
+                if annotated_dir.exists():
+                    for annotated_img in annotated_dir.glob("*.jpg"):
+                        # Le nom de l'image annotée est: {original_stem}_detections.jpg
+                        # On doit retrouver le stem original pour chercher dans tif_transform_data
+                        stem = annotated_img.stem
+                        if stem.endswith("_detections"):
+                            original_stem = stem[:-11]  # Enlever "_detections"
+                        else:
+                            original_stem = stem
+                        transform = tif_transform_data.get(original_stem)
+                        if transform and len(transform) == 4:
+                            pixel_width, pixel_height, x_origin, y_origin = transform
+                            world_path = write_world_file_from_transform(
+                                annotated_img, pixel_width, pixel_height, x_origin, y_origin
+                            )
+                            if world_path:
+                                log(f"Fichier world créé: {world_path.name}")
             return
         except Exception as e:
             log(f"Computer Vision: échec runner externe, fallback Python interne: {e}")
@@ -245,6 +290,18 @@ def run_cv_on_folder(
         )
         if ok:
             success_count += 1
+            # Créer le fichier world pour géoréférencer l'image annotée
+            if generate_annotated_images and annotated_output_dir is not None:
+                annotated_path = Path(detection_output_path)
+                if annotated_path.exists() and tif_transform_data:
+                    # Chercher les données de transformation pour cette image
+                    jpg_stem = jpg_file.stem
+                    transform = tif_transform_data.get(jpg_stem)
+                    if transform and len(transform) == 4:
+                        pixel_width, pixel_height, x_origin, y_origin = transform
+                        world_path = write_world_file_from_transform(annotated_path, pixel_width, pixel_height, x_origin, y_origin)
+                        if world_path:
+                            log(f"Fichier world créé: {world_path.name}")
 
     if scan_all and success_count == 0 and skipped_already_processed == len(jpg_files):
         return
@@ -321,6 +378,7 @@ def deduplicate_cv_shapefiles_final(
     create_fn = getattr(shp_mod, "create_shapefile_from_detections", None)
     if callable(create_fn):
         out_shp = shp_dir / f"detections_{target_rvt}.shp"
+        selected_classes = (cv_config or {}).get("selected_classes") or None
         try:
             create_fn(
                 labels_dir=str(labels_dir),
@@ -329,6 +387,7 @@ def deduplicate_cv_shapefiles_final(
                 crs=str(crs),
                 temp_dir=str(temp_dir) if temp_dir is not None else None,
                 class_names=class_names,
+                selected_classes=selected_classes,
             )
             qgs_root = shp_dir.parent if shp_dir.name.lower() in {"shapefiles", "shp"} else shp_dir
             qgs_path = qgs_root / "detections_validation.qgs"
@@ -341,11 +400,17 @@ def deduplicate_cv_shapefiles_final(
     dedup_fn = getattr(shp_mod, "deduplicate_shapefiles_final", None)
     if callable(dedup_fn) and shapefile_paths:
         try:
+            size_filter_cfg = (cv_config or {}).get("size_filter", {}) if isinstance((cv_config or {}).get("size_filter"), dict) else {}
+            size_filter_enabled = bool(size_filter_cfg.get("enabled", False))
+            size_filter_max_meters = float(size_filter_cfg.get("max_meters", 50.0))
+            
             dedup_fn(
                 labels_dir=str(labels_dir),
                 shapefile_paths=shapefile_paths,
                 iou_threshold=0.1,
                 crs=str(crs),
+                size_filter_enabled=size_filter_enabled,
+                size_filter_max_meters=size_filter_max_meters,
             )
         except Exception as e:
             log(f"Computer Vision: déduplication shapefiles ignorée (erreur): {e}")

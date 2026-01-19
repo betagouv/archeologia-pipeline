@@ -15,6 +15,9 @@ from qgis.PyQt.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLineEdit,
+    QListWidget,
+    QListWidgetItem,
+    QMessageBox,
     QPlainTextEdit,
     QPushButton,
     QProgressBar,
@@ -34,6 +37,7 @@ class _QtLogEmitter(QObject):
     progress = pyqtSignal(int)
     stage = pyqtSignal(str)
     run_enabled = pyqtSignal(bool)
+    load_layers = pyqtSignal(list, list)  # (vrt_paths, shapefile_paths)
 
 
 class QtLogHandler(logging.Handler):
@@ -105,12 +109,14 @@ class MainDialog(QDialog):
 
         self._logger = logging.getLogger("archeologia_pipeline")
         self._logger.setLevel(logging.INFO)
+        self._logger.propagate = False
 
         self._log_emitter = _QtLogEmitter()
         self._log_emitter.message.connect(self._append_log)
         self._log_emitter.progress.connect(self._set_progress)
         self._log_emitter.stage.connect(self._set_stage)
         self._log_emitter.run_enabled.connect(self._set_run_enabled)
+        self._log_emitter.load_layers.connect(self._load_layers_to_project)
         self._qt_log_handler = QtLogHandler(self._log_emitter)
         self._qt_log_handler.setFormatter(logging.Formatter("%(asctime)s - %(levelname)s - %(message)s"))
         if not any(isinstance(h, QtLogHandler) for h in self._logger.handlers):
@@ -182,6 +188,13 @@ class MainDialog(QDialog):
         resolutions_layout.addWidget(QLabel("Marge:"))
         resolutions_layout.addWidget(self.tile_overlap_spin)
         resolutions_layout.addWidget(QLabel("%"))
+        resolutions_layout.addSpacing(12)
+
+        resolutions_layout.addWidget(QLabel("Workers:"))
+        self.max_workers_spin = NoWheelSpinBox()
+        self.max_workers_spin.setRange(1, 16)
+        self.max_workers_spin.setToolTip("Nombre de téléchargements/prétraitements parallèles (1-16)")
+        resolutions_layout.addWidget(self.max_workers_spin)
         resolutions_layout.addStretch(1)
 
         general_layout.addWidget(resolutions_row)
@@ -343,14 +356,37 @@ class MainDialog(QDialog):
         model_layout = QHBoxLayout(model_row)
         model_layout.setContentsMargins(0, 0, 0, 0)
         self.cv_model_combo = NoWheelComboBox()
+        self.cv_model_info_btn = QPushButton("ℹ")
+        self.cv_model_info_btn.setFixedWidth(30)
+        self.cv_model_info_btn.setToolTip("Afficher les paramètres d'entraînement du modèle")
+        self.cv_model_info_btn.clicked.connect(self._show_model_training_info)
         self.cv_refresh_models_btn = QPushButton("Actualiser")
         self.cv_refresh_models_btn.clicked.connect(self._refresh_models)
         model_layout.addWidget(self.cv_model_combo, 1)
+        model_layout.addWidget(self.cv_model_info_btn, 0)
         model_layout.addWidget(self.cv_refresh_models_btn, 0)
         cv_form.addRow("Modèle:", model_row)
 
         self.cv_target_rvt_combo = NoWheelComboBox()
         cv_form.addRow("RVT cible:", self.cv_target_rvt_combo)
+
+        classes_group = QGroupBox("Classes à détecter")
+        classes_layout = QVBoxLayout(classes_group)
+        self.cv_classes_list = QListWidget()
+        self.cv_classes_list.setMaximumHeight(100)
+        classes_layout.addWidget(self.cv_classes_list)
+        classes_btn_row = QWidget()
+        classes_btn_layout = QHBoxLayout(classes_btn_row)
+        classes_btn_layout.setContentsMargins(0, 0, 0, 0)
+        self.cv_classes_select_all_btn = QPushButton("Tout sélectionner")
+        self.cv_classes_select_all_btn.clicked.connect(self._select_all_classes)
+        self.cv_classes_deselect_all_btn = QPushButton("Tout désélectionner")
+        self.cv_classes_deselect_all_btn.clicked.connect(self._deselect_all_classes)
+        classes_btn_layout.addWidget(self.cv_classes_select_all_btn)
+        classes_btn_layout.addWidget(self.cv_classes_deselect_all_btn)
+        classes_btn_layout.addStretch(1)
+        classes_layout.addWidget(classes_btn_row)
+        cv_form.addRow(classes_group)
 
         thresholds_row = QWidget()
         thresholds_layout = QHBoxLayout(thresholds_row)
@@ -395,6 +431,33 @@ class MainDialog(QDialog):
         sahi_form.addRow("Largeur slice:", self.cv_slice_width_spin)
         sahi_form.addRow("Chevauchement:", self.cv_overlap_spin)
         cv_layout.addWidget(sahi_group)
+
+        size_filter_group = QGroupBox("Filtrage par taille des détections")
+        size_filter_layout = QVBoxLayout(size_filter_group)
+        size_filter_desc = QLabel(
+            "Supprime du shapefile final les détections dont la plus grande dimension "
+            "(largeur ou hauteur de la bounding box) dépasse le seuil défini. "
+            "Utile pour éliminer les faux positifs de grande taille (ex: routes, parcelles)."
+        )
+        size_filter_desc.setWordWrap(True)
+        size_filter_desc.setStyleSheet("color: #666; font-size: 11px; margin-bottom: 5px;")
+        size_filter_layout.addWidget(size_filter_desc)
+        self.cv_size_filter_enabled_cb = QCheckBox("Activer le filtrage par taille")
+        size_filter_layout.addWidget(self.cv_size_filter_enabled_cb)
+        size_filter_row = QWidget()
+        size_filter_row_layout = QHBoxLayout(size_filter_row)
+        size_filter_row_layout.setContentsMargins(0, 0, 0, 0)
+        size_filter_row_layout.addWidget(QLabel("Taille max (plus grande dimension):"))
+        self.cv_size_filter_max_spin = NoWheelDoubleSpinBox()
+        self.cv_size_filter_max_spin.setDecimals(1)
+        self.cv_size_filter_max_spin.setRange(1.0, 1000.0)
+        self.cv_size_filter_max_spin.setSingleStep(5.0)
+        self.cv_size_filter_max_spin.setValue(50.0)
+        size_filter_row_layout.addWidget(self.cv_size_filter_max_spin)
+        size_filter_row_layout.addWidget(QLabel("mètres"))
+        size_filter_row_layout.addStretch(1)
+        size_filter_layout.addWidget(size_filter_row)
+        cv_layout.addWidget(size_filter_group)
 
         self.reset_cv_btn = QPushButton("Remettre par défaut")
         self.reset_cv_btn.clicked.connect(self._reset_cv_config)
@@ -488,6 +551,109 @@ class MainDialog(QDialog):
             self.stage_label.setText("")
             self.progress_bar.setValue(0)
 
+    def _load_layers_to_project(self, vrt_paths: list, shapefile_paths: list) -> None:
+        """Charge les couches VRT et shapefiles dans le projet QGIS courant."""
+        try:
+            from qgis.core import QgsProject, QgsRasterLayer, QgsVectorLayer
+
+            project = QgsProject.instance()
+            loaded_count = 0
+
+            # Charger les VRT (couches raster)
+            for vrt_path in vrt_paths:
+                if not vrt_path:
+                    continue
+                vrt_path_str = str(vrt_path)
+                # Extraire un nom lisible depuis le chemin
+                # Ex: results/RVT/LD/tif/index.vrt -> "LD"
+                parts = vrt_path_str.replace("\\", "/").split("/")
+                layer_name = "index"
+                for i, part in enumerate(parts):
+                    if part == "tif" and i > 0:
+                        layer_name = parts[i - 1]
+                        break
+                    elif part == "MNT":
+                        layer_name = "MNT"
+                        break
+
+                layer = QgsRasterLayer(vrt_path_str, layer_name, "gdal")
+                if layer.isValid():
+                    project.addMapLayer(layer)
+                    loaded_count += 1
+                    self._logger.info(f"Couche raster chargée: {layer_name}")
+                else:
+                    self._logger.warning(f"Impossible de charger le VRT: {vrt_path_str}")
+
+            # Charger les shapefiles (couches vecteur) avec style par classe
+            # Palettes identiques à conversion_shp.py
+            palettes = [
+                ['255,255,0', '255,204,0', '255,153,0', '255,102,0', '255,0,0'],      # Jaune -> Rouge
+                ['204,229,255', '153,204,255', '102,178,255', '51,153,255', '0,102,204'],  # Bleus
+                ['235,224,255', '204,179,255', '178,128,255', '153,77,255', '102,0,204'],  # Violets
+                ['204,255,204', '153,255,153', '102,204,102', '51,153,51', '0,102,0'],     # Verts
+                ['240,240,240', '200,200,200', '160,160,160', '120,120,120', '80,80,80'], # Gris
+                ['255,235,204', '255,204,153', '230,170,115', '204,136,85', '153,85,34'], # Bruns
+            ]
+
+            for shp_idx, shp_path in enumerate(shapefile_paths):
+                if not shp_path:
+                    continue
+                shp_path_str = str(shp_path)
+                # Extraire le nom du fichier sans extension
+                from pathlib import Path
+                layer_name = Path(shp_path_str).stem
+
+                layer = QgsVectorLayer(shp_path_str, layer_name, "ogr")
+                if layer.isValid():
+                    # Appliquer le style avec la palette correspondant à l'index de classe
+                    self._apply_confidence_style(layer, palettes[shp_idx % len(palettes)])
+                    
+                    project.addMapLayer(layer)
+                    loaded_count += 1
+                    self._logger.info(f"Couche vecteur chargée: {layer_name} (palette {shp_idx % len(palettes)})")
+                else:
+                    self._logger.warning(f"Impossible de charger le shapefile: {shp_path_str}")
+
+            if loaded_count > 0:
+                self._logger.info(f"✅ {loaded_count} couche(s) ajoutée(s) au projet QGIS")
+
+        except Exception as e:
+            self._logger.error(f"Erreur lors du chargement des couches: {e}")
+
+    def _apply_confidence_style(self, layer, palette: list) -> None:
+        """Applique un style catégorisé par confiance avec la palette spécifiée."""
+        try:
+            from qgis.core import (
+                QgsCategorizedSymbolRenderer,
+                QgsRendererCategory,
+                QgsSymbol,
+                QgsFillSymbol,
+                QgsSimpleLineSymbolLayer,
+            )
+            from qgis.PyQt.QtGui import QColor
+
+            categories = []
+            conf_bins = ['[0:0.2[', '[0.2:0.4[', '[0.4:0.6[', '[0.6:0.8[', '[0.8:1]']
+
+            for i, (conf_bin, rgb) in enumerate(zip(conf_bins, palette)):
+                # Créer un symbole de contour (ligne) sans remplissage
+                symbol = QgsFillSymbol.createSimple({
+                    'color': '0,0,0,0',  # Transparent
+                    'outline_color': f'{rgb},255',
+                    'outline_width': '0.6',
+                    'outline_style': 'solid',
+                })
+                
+                category = QgsRendererCategory(conf_bin, symbol, conf_bin)
+                categories.append(category)
+
+            renderer = QgsCategorizedSymbolRenderer('conf_bin', categories)
+            layer.setRenderer(renderer)
+            layer.triggerRepaint()
+
+        except Exception as e:
+            self._logger.warning(f"Impossible d'appliquer le style: {e}")
+
     def _row_widget(self, edit: QLineEdit, button: QPushButton) -> QWidget:
         w = QWidget()
         l = QHBoxLayout(w)
@@ -505,6 +671,7 @@ class MainDialog(QDialog):
         self.mnt_resolution_spin.valueChanged.connect(self._on_any_changed)
         self.density_resolution_spin.valueChanged.connect(self._on_any_changed)
         self.tile_overlap_spin.valueChanged.connect(self._on_any_changed)
+        self.max_workers_spin.valueChanged.connect(self._on_any_changed)
         self.filter_expression_edit.textChanged.connect(self._on_any_changed)
 
         self.product_mnt_cb.toggled.connect(self._on_any_changed)
@@ -538,6 +705,7 @@ class MainDialog(QDialog):
 
         self.cv_enabled_cb.toggled.connect(self._on_cv_enabled_changed)
         self.cv_model_combo.currentIndexChanged.connect(self._on_any_changed)
+        self.cv_model_combo.currentIndexChanged.connect(self._refresh_model_classes)
         self.cv_target_rvt_combo.currentIndexChanged.connect(self._on_any_changed)
         self.cv_confidence_spin.valueChanged.connect(self._on_any_changed)
         self.cv_iou_spin.valueChanged.connect(self._on_any_changed)
@@ -580,6 +748,7 @@ class MainDialog(QDialog):
     def _apply_cv_enabled_state(self) -> None:
         enabled = self.cv_enabled_cb.isChecked()
         self.cv_model_combo.setEnabled(enabled)
+        self.cv_model_info_btn.setEnabled(enabled)
         self.cv_refresh_models_btn.setEnabled(enabled)
         self.cv_target_rvt_combo.setEnabled(enabled)
         self.cv_confidence_spin.setEnabled(enabled)
@@ -634,6 +803,227 @@ class MainDialog(QDialog):
                         self.cv_model_combo.setCurrentIndex(idx)
         finally:
             self._loading = False
+        
+        self._refresh_model_classes()
+
+    def _refresh_model_classes(self) -> None:
+        """Charge les classes disponibles pour le modèle sélectionné."""
+        self.cv_classes_list.clear()
+        
+        model_path = str(self.cv_model_combo.currentData() or "")
+        if not model_path:
+            return
+        
+        model_file = Path(model_path)
+        if not model_file.exists():
+            return
+        
+        model_dir = model_file.parent
+        if model_dir.name == "weights":
+            model_dir = model_dir.parent
+        
+        class_names = []
+        for candidate in (
+            model_dir / "classes.txt",
+            model_dir / "classes.txt.txt",
+            model_dir / "class_names.txt",
+            model_dir / "class_names.txt.txt",
+        ):
+            try:
+                if candidate.exists() and candidate.is_file():
+                    lines = [ln.strip() for ln in candidate.read_text(encoding="utf-8-sig").splitlines()]
+                    class_names = [ln for ln in lines if ln]
+                    if class_names:
+                        break
+            except Exception:
+                continue
+        
+        if not class_names:
+            try:
+                import json
+                for candidate in (model_dir / "classes.json", model_dir / "class_names.json"):
+                    if candidate.exists() and candidate.is_file():
+                        parsed = json.loads(candidate.read_text(encoding="utf-8"))
+                        if isinstance(parsed, list):
+                            class_names = [str(c) for c in parsed]
+                        elif isinstance(parsed, dict):
+                            class_names = [str(parsed[k]) for k in sorted(parsed.keys(), key=lambda x: int(x) if str(x).isdigit() else x)]
+                        if class_names:
+                            break
+            except Exception:
+                pass
+        
+        cv_config = self._config.get("computer_vision") or {}
+        selected_classes = cv_config.get("selected_classes") or []
+        
+        for class_name in class_names:
+            item = QListWidgetItem(class_name)
+            item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
+            if not selected_classes or class_name in selected_classes:
+                item.setCheckState(Qt.CheckState.Checked)
+            else:
+                item.setCheckState(Qt.CheckState.Unchecked)
+            self.cv_classes_list.addItem(item)
+
+    def _show_model_training_info(self) -> None:
+        """Affiche les paramètres d'entraînement du modèle sélectionné."""
+        import json
+        
+        model_path = str(self.cv_model_combo.currentData() or "")
+        model_name = self.cv_model_combo.currentText()
+        
+        if not model_path:
+            QMessageBox.information(
+                self,
+                "Information modèle",
+                "Aucun modèle sélectionné."
+            )
+            return
+        
+        model_file = Path(model_path)
+        if not model_file.exists():
+            QMessageBox.warning(
+                self,
+                "Information modèle",
+                f"Le fichier du modèle n'existe pas:\n{model_path}"
+            )
+            return
+        
+        model_dir = model_file.parent
+        if model_dir.name == "weights":
+            model_dir = model_dir.parent
+        
+        training_params_file = model_dir / "training_params.json"
+        
+        if not training_params_file.exists():
+            QMessageBox.information(
+                self,
+                f"Information - {model_name}",
+                "Aucune information sur les paramètres d'entraînement n'est disponible pour ce modèle.\n\n"
+                f"Fichier attendu:\n{training_params_file}"
+            )
+            return
+        
+        try:
+            with training_params_file.open("r", encoding="utf-8") as f:
+                params = json.load(f)
+        except Exception as e:
+            QMessageBox.warning(
+                self,
+                "Erreur",
+                f"Impossible de lire les paramètres d'entraînement:\n{e}"
+            )
+            return
+        
+        info_lines = [f"Paramètres d'entraînement du modèle: {model_name}\n"]
+        
+        if "description" in params:
+            info_lines.append(f"{params['description']}\n")
+        
+        if "creation_date" in params:
+            info_lines.append(f"📅 Date de création: {params['creation_date']}")
+        
+        info_lines.append("=" * 50)
+        
+        if "mnt" in params:
+            mnt = params["mnt"]
+            info_lines.append("\n📊 Paramètres MNT:")
+            info_lines.append(f"  • Résolution: {mnt.get('resolution', 'N/A')} m")
+            if "filter_expression" in mnt:
+                info_lines.append(f"  • Filtre: {mnt['filter_expression']}")
+        
+        if "rvt" in params:
+            rvt = params["rvt"]
+            rvt_type = rvt.get("type", "N/A")
+            info_lines.append(f"\n🖼️ Paramètres RVT ({rvt_type}):")
+            
+            rvt_params = rvt.get("params", {})
+            
+            if rvt_type == "LD":
+                info_lines.append(f"  • Résolution angulaire: {rvt_params.get('angular_res', 'N/A')}°")
+                info_lines.append(f"  • Rayon min: {rvt_params.get('min_radius', 'N/A')} px")
+                info_lines.append(f"  • Rayon max: {rvt_params.get('max_radius', 'N/A')} px")
+                info_lines.append(f"  • Hauteur observateur: {rvt_params.get('observer_h', 'N/A')} m")
+            elif rvt_type == "SVF":
+                info_lines.append(f"  • Suppression bruit: {rvt_params.get('noise_remove', 'N/A')}")
+                info_lines.append(f"  • Nombre directions: {rvt_params.get('num_directions', 'N/A')}")
+                info_lines.append(f"  • Rayon: {rvt_params.get('radius', 'N/A')} px")
+            elif rvt_type == "M_HS" or rvt_type == "M-HS":
+                info_lines.append(f"  • Nombre directions: {rvt_params.get('num_directions', 'N/A')}")
+                info_lines.append(f"  • Élévation solaire: {rvt_params.get('sun_elevation', 'N/A')}°")
+            elif rvt_type == "SLO" or rvt_type == "Slope":
+                unit_val = rvt_params.get('unit', 0)
+                unit_str = "Degrés" if unit_val == 0 else "Pourcentage"
+                info_lines.append(f"  • Unité: {unit_str}")
+            elif rvt_type == "VAT":
+                terrain_val = rvt_params.get('terrain_type', 0)
+                terrain_str = ["Général", "Plat", "Pentu"][terrain_val] if terrain_val in [0, 1, 2] else "N/A"
+                info_lines.append(f"  • Type de terrain: {terrain_str}")
+            
+            if "ve_factor" in rvt_params:
+                info_lines.append(f"  • Facteur VE: {rvt_params['ve_factor']}")
+            if "save_as_8bit" in rvt_params:
+                info_lines.append(f"  • Sauvegarde 8bit: {'Oui' if rvt_params['save_as_8bit'] else 'Non'}")
+        
+        dialog = QDialog(self)
+        dialog.setWindowTitle(f"Information - {model_name}")
+        dialog.setMinimumWidth(500)
+        
+        dialog_layout = QVBoxLayout(dialog)
+        
+        info_label = QLabel("\n".join(info_lines))
+        info_label.setWordWrap(True)
+        info_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        dialog_layout.addWidget(info_label)
+        
+        btn_layout = QHBoxLayout()
+        
+        open_folder_btn = QPushButton("📂 Ouvrir le dossier des métriques")
+        open_folder_btn.clicked.connect(lambda: self._open_model_folder(model_dir))
+        btn_layout.addWidget(open_folder_btn)
+        
+        btn_layout.addStretch(1)
+        
+        close_btn = QPushButton("Fermer")
+        close_btn.clicked.connect(dialog.accept)
+        btn_layout.addWidget(close_btn)
+        
+        dialog_layout.addLayout(btn_layout)
+        
+        dialog.exec()
+
+    def _open_model_folder(self, folder_path: Path) -> None:
+        """Ouvre le dossier du modèle dans l'explorateur de fichiers."""
+        import os
+        import subprocess
+        import sys
+        
+        folder_str = str(folder_path)
+        
+        if sys.platform == "win32":
+            os.startfile(folder_str)
+        elif sys.platform == "darwin":
+            subprocess.run(["open", folder_str])
+        else:
+            subprocess.run(["xdg-open", folder_str])
+
+    def _select_all_classes(self) -> None:
+        for i in range(self.cv_classes_list.count()):
+            item = self.cv_classes_list.item(i)
+            item.setCheckState(Qt.CheckState.Checked)
+
+    def _deselect_all_classes(self) -> None:
+        for i in range(self.cv_classes_list.count()):
+            item = self.cv_classes_list.item(i)
+            item.setCheckState(Qt.CheckState.Unchecked)
+
+    def _get_selected_classes(self) -> list:
+        selected = []
+        for i in range(self.cv_classes_list.count()):
+            item = self.cv_classes_list.item(i)
+            if item.checkState() == Qt.CheckState.Checked:
+                selected.append(item.text())
+        return selected
 
     def _update_available_rvt_targets(self) -> None:
         mapping = [
@@ -772,10 +1162,15 @@ class MainDialog(QDialog):
             self.cv_slice_width_spin.setValue(int(sahi.get("slice_width", 640)))
             self.cv_overlap_spin.setValue(float(sahi.get("overlap_ratio", 0.2)))
 
+            size_filter = cv.get("size_filter") or {}
+            self.cv_size_filter_enabled_cb.setChecked(bool(size_filter.get("enabled", False)))
+            self.cv_size_filter_max_spin.setValue(float(size_filter.get("max_meters", 50.0)))
+
             processing = self._config.get("processing") or {}
             self.mnt_resolution_spin.setValue(float(processing.get("mnt_resolution", 0.5)))
             self.density_resolution_spin.setValue(float(processing.get("density_resolution", 1.0)))
             self.tile_overlap_spin.setValue(int(processing.get("tile_overlap", 20)))
+            self.max_workers_spin.setValue(int(processing.get("max_workers", 4)))
             self.filter_expression_edit.setText(processing.get("filter_expression") or "")
 
             pyramids = (processing.get("pyramids") or {})
@@ -863,10 +1258,17 @@ class MainDialog(QDialog):
         sahi["slice_width"] = int(self.cv_slice_width_spin.value())
         sahi["overlap_ratio"] = float(self.cv_overlap_spin.value())
 
+        size_filter = cv.setdefault("size_filter", {})
+        size_filter["enabled"] = self.cv_size_filter_enabled_cb.isChecked()
+        size_filter["max_meters"] = float(self.cv_size_filter_max_spin.value())
+
+        cv["selected_classes"] = self._get_selected_classes()
+
         processing = self._config.setdefault("processing", {})
         processing["mnt_resolution"] = float(self.mnt_resolution_spin.value())
         processing["density_resolution"] = float(self.density_resolution_spin.value())
         processing["tile_overlap"] = int(self.tile_overlap_spin.value())
+        processing["max_workers"] = int(self.max_workers_spin.value())
         processing["filter_expression"] = self.filter_expression_edit.text().strip()
 
         pyramids = processing.setdefault("pyramids", {})
@@ -954,10 +1356,17 @@ class MainDialog(QDialog):
         sahi["slice_width"] = int(self.cv_slice_width_spin.value())
         sahi["overlap_ratio"] = float(self.cv_overlap_spin.value())
 
+        size_filter = cv.setdefault("size_filter", {})
+        size_filter["enabled"] = self.cv_size_filter_enabled_cb.isChecked()
+        size_filter["max_meters"] = float(self.cv_size_filter_max_spin.value())
+
+        cv["selected_classes"] = self._get_selected_classes()
+
         processing = self._config.setdefault("processing", {})
         processing["mnt_resolution"] = float(self.mnt_resolution_spin.value())
         processing["density_resolution"] = float(self.density_resolution_spin.value())
         processing["tile_overlap"] = int(self.tile_overlap_spin.value())
+        processing["max_workers"] = int(self.max_workers_spin.value())
         processing["filter_expression"] = self.filter_expression_edit.text().strip()
 
         pyramids = processing.setdefault("pyramids", {})
@@ -1056,6 +1465,7 @@ class MainDialog(QDialog):
             self.mnt_resolution_spin.setValue(0.5)
             self.density_resolution_spin.setValue(1.0)
             self.tile_overlap_spin.setValue(20)
+            self.max_workers_spin.setValue(4)
             self.filter_expression_edit.setText(
                 "Classification = 2 OR Classification = 6 OR Classification = 66 OR Classification = 67 OR Classification = 9"
             )

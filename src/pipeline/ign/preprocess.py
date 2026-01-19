@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import subprocess
 import tempfile
+import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from ..coords import extract_xy_from_filename, infer_xy_from_file
 from .downloader import download_one
@@ -279,6 +282,169 @@ def merge_tiles(
     return True
 
 
+@dataclass
+class _PreprocessTask:
+    """Tâche de prétraitement pour une dalle."""
+    index: int
+    total: int
+    filename: str
+    url: str
+    tile_name: str
+    x: str
+    y: str
+    central_path: Path
+    temp_dir: Path
+    merged_dir: Path
+    margin_m: int
+    dalles_dir: Path
+
+
+@dataclass
+class _PreprocessResult:
+    """Résultat du prétraitement d'une dalle."""
+    index: int
+    tile_name: str
+    merged_path: Optional[Path]
+    success: bool
+    error: Optional[str] = None
+
+
+def _process_single_tile_preprocess(
+    task: _PreprocessTask,
+    file_index: Dict[str, Tuple[str, str]],
+    log: LogFn,
+    cancel: CancelFn,
+) -> _PreprocessResult:
+    """
+    Traite le prétraitement d'une seule dalle (crop voisins + merge).
+    Utilise uniquement PDAL (subprocess externe) → thread-safe.
+    """
+    try:
+        if cancel():
+            return _PreprocessResult(
+                index=task.index,
+                tile_name=task.tile_name,
+                merged_path=None,
+                success=False,
+                error="Annulation demandée",
+            )
+
+        log(f"[Dalle {task.index}/{task.total}] Début prétraitement: {task.tile_name}")
+
+        neighbors = calculate_neighbor_coordinates(task.x, task.y)
+
+        cropped_neighbors: List[Path] = []
+        for voisin_x, voisin_y, place_dalle in neighbors:
+            if cancel():
+                return _PreprocessResult(
+                    index=task.index,
+                    tile_name=task.tile_name,
+                    merged_path=None,
+                    success=False,
+                    error="Annulation demandée",
+                )
+
+            # Recherche rapide via l'index dict
+            coord_key = f"{format_coordinate(voisin_x)}_{format_coordinate(voisin_y)}"
+            neigh = file_index.get(coord_key)
+            if not neigh:
+                continue
+
+            neighbor_file, neighbor_url = neigh
+            neighbor_input = task.dalles_dir / neighbor_file
+            if not neighbor_input.exists():
+                ok, _was_skipped = download_one(
+                    neighbor_url,
+                    neighbor_file,
+                    task.dalles_dir,
+                    log=lambda m: log(f"[{task.tile_name}] {m}"),
+                    cancel=cancel,
+                )
+                if not ok or not neighbor_input.exists():
+                    continue
+
+            bounds = calculate_crop_bounds(voisin_x, voisin_y, place_dalle, task.margin_m)
+            output_file = f"{task.tile_name}_neighbor_{place_dalle}.laz"
+            neighbor_output = task.temp_dir / output_file
+
+            if crop_neighbor_tile(
+                input_path=neighbor_input,
+                output_path=neighbor_output,
+                bounds=bounds,
+                log=lambda m: log(f"[{task.tile_name}] {m}"),
+                cancel=cancel,
+            ):
+                cropped_neighbors.append(neighbor_output)
+
+        merged_path = task.merged_dir / f"{task.tile_name}_merged.laz"
+        if not merge_tiles(
+            central_path=task.central_path,
+            neighbor_paths=cropped_neighbors,
+            output_path=merged_path,
+            log=lambda m: log(f"[{task.tile_name}] {m}"),
+            cancel=cancel,
+        ):
+            return _PreprocessResult(
+                index=task.index,
+                tile_name=task.tile_name,
+                merged_path=None,
+                success=False,
+                error=f"Échec merge pour {task.tile_name}",
+            )
+
+        log(f"[Dalle {task.index}/{task.total}] Prétraitement terminé: {task.tile_name}")
+
+        return _PreprocessResult(
+            index=task.index,
+            tile_name=task.tile_name,
+            merged_path=merged_path,
+            success=True,
+        )
+
+    except Exception as e:
+        return _PreprocessResult(
+            index=task.index,
+            tile_name=task.tile_name,
+            merged_path=None,
+            success=False,
+            error=str(e),
+        )
+
+
+def _build_file_index(sorted_list_file: Path) -> Dict[str, Tuple[str, str]]:
+    """
+    Construit un index dict {coord_key: (filename, url)} pour recherche O(1).
+    coord_key = "XXXX_YYYY" (ex: "0948_6633")
+    """
+    index: Dict[str, Tuple[str, str]] = {}
+    try:
+        with sorted_list_file.open("r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                parts = line.split(",", 1)
+                if len(parts) != 2:
+                    continue
+                filename, url = parts[0].strip(), parts[1].strip()
+                # Extraire les coordonnées du nom de fichier
+                # Format attendu: LHD_FXX_XXXX_YYYY_...
+                name_parts = filename.replace(".copc.laz", "").replace(".laz", "").split("_")
+                if len(name_parts) >= 4:
+                    coord_key = f"{name_parts[2]}_{name_parts[3]}"
+                    index[coord_key] = (filename, url)
+    except Exception:
+        pass
+    return index
+
+
+StageFn = Callable[[str], None]
+
+
+def _default_stage(_: str) -> None:
+    return
+
+
 def prepare_merged_tiles(
     *,
     sorted_list_file: Path,
@@ -287,6 +453,8 @@ def prepare_merged_tiles(
     tile_overlap_percent: float,
     log: LogFn = _default_log,
     cancel: CancelFn = _default_cancel,
+    max_workers: Optional[int] = None,
+    stage: StageFn = _default_stage,
 ) -> IgnPreprocessResult:
     temp_dir = output_dir / "temp"
     temp_dir.mkdir(parents=True, exist_ok=True)
@@ -294,21 +462,22 @@ def prepare_merged_tiles(
 
     margin_m = max(0, min(999, int(round(1000.0 * float(tile_overlap_percent) / 100.0))))
 
-    merged_files: List[Path] = []
+    # Construire l'index pour recherche rapide des voisins
+    file_index = _build_file_index(sorted_list_file)
 
     with sorted_list_file.open("r", encoding="utf-8") as f:
         lines = [ln.strip() for ln in f if ln.strip()]
 
     total = len(lines)
+    
+    # Préparer les tâches
+    tasks: List[_PreprocessTask] = []
     for idx, line in enumerate(lines, start=1):
-        if cancel():
-            break
-
         parts = line.split(",", 1)
         if len(parts) != 2:
             continue
 
-        filename, _url = parts[0].strip(), parts[1].strip()
+        filename, url = parts[0].strip(), parts[1].strip()
         base_tile_name = filename.replace(".copc.laz", "").replace(".laz", "")
 
         central_path = dalles_dir / filename
@@ -320,57 +489,80 @@ def prepare_merged_tiles(
         if len(base_tile_name.split("_")) < 4:
             tile_name = f"LHD_FXX_{x}_{y}"
 
-        log(f"=== Pré-traitement dalle {idx}/{total}: {tile_name} ===")
-        neighbors = calculate_neighbor_coordinates(x, y)
+        tasks.append(_PreprocessTask(
+            index=idx,
+            total=total,
+            filename=filename,
+            url=url,
+            tile_name=tile_name,
+            x=x,
+            y=y,
+            central_path=central_path,
+            temp_dir=temp_dir,
+            merged_dir=merged_dir,
+            margin_m=margin_m,
+            dalles_dir=dalles_dir,
+        ))
 
-        cropped_neighbors: List[Path] = []
-        for voisin_x, voisin_y, place_dalle in neighbors:
+    # Configuration parallélisation
+    # PDAL est un subprocess externe → thread-safe
+    if max_workers is None:
+        max_workers = min(4, max(1, os.cpu_count() or 1))
+    
+    log(f"Prétraitement parallèle: {max_workers} worker(s) pour {total} dalle(s)")
+
+    # Lock pour synchroniser les logs et le compteur
+    log_lock = threading.Lock()
+    completed_count = [0]
+    
+    def thread_safe_log(msg: str) -> None:
+        with log_lock:
+            log(msg)
+
+    def update_stage_count() -> None:
+        with log_lock:
+            completed_count[0] += 1
+            stage(f"Fusion dalle {completed_count[0]}/{total}")
+
+    # Exécution parallèle
+    merged_files: List[Path] = []
+    results_by_index: Dict[int, _PreprocessResult] = {}
+
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        future_to_task = {
+            executor.submit(
+                _process_single_tile_preprocess,
+                task,
+                file_index,
+                thread_safe_log,
+                cancel,
+            ): task
+            for task in tasks
+        }
+
+        for future in as_completed(future_to_task):
             if cancel():
+                executor.shutdown(wait=False, cancel_futures=True)
                 break
 
-            neigh = find_neighbor_file(sorted_list_file, voisin_x, voisin_y, log=log)
-            if not neigh:
-                continue
+            task = future_to_task[future]
+            try:
+                result = future.result()
+                results_by_index[result.index] = result
+                update_stage_count()
+                
+                if not result.success:
+                    thread_safe_log(f"Échec prétraitement dalle {result.tile_name}: {result.error}")
+            except Exception as e:
+                thread_safe_log(f"Exception prétraitement dalle {task.tile_name}: {e}")
 
-            neighbor_file, neighbor_url = neigh
-            neighbor_input = dalles_dir / neighbor_file
-            if not neighbor_input.exists():
-                ok, _was_skipped = download_one(
-                    neighbor_url,
-                    neighbor_file,
-                    dalles_dir,
-                    log=log,
-                    cancel=cancel,
-                )
-                if not ok:
-                    continue
-                if not neighbor_input.exists():
-                    continue
-
-            bounds = calculate_crop_bounds(voisin_x, voisin_y, place_dalle, margin_m)
-            output_file = f"{tile_name}_neighbor_{place_dalle}.laz"
-            neighbor_output = temp_dir / output_file
-
-            if crop_neighbor_tile(
-                input_path=neighbor_input,
-                output_path=neighbor_output,
-                bounds=bounds,
-                log=log,
-                cancel=cancel,
-            ):
-                cropped_neighbors.append(neighbor_output)
-
-        merged_path = merged_dir / f"{tile_name}_merged.laz"
-        if not merge_tiles(
-            central_path=central_path,
-            neighbor_paths=cropped_neighbors,
-            output_path=merged_path,
-            log=log,
-            cancel=cancel,
-        ):
-            raise RuntimeError(f"Échec merge pour {tile_name}")
-
-        merged_files.append(merged_path)
+    # Reconstituer la liste dans l'ordre original
+    for idx in sorted(results_by_index.keys()):
+        result = results_by_index[idx]
+        if result.success and result.merged_path is not None:
+            merged_files.append(result.merged_path)
+        elif result.error and "Annulation" not in (result.error or ""):
+            raise RuntimeError(result.error)
 
     return IgnPreprocessResult(merged_dir=merged_dir, temp_dir=temp_dir, merged_files=merged_files)
 

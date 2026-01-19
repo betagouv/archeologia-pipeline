@@ -125,7 +125,7 @@ def run_pdal_command_cancellable(
 
 
 def validate_las_or_laz_with_pdal(
-    path: Path, timeout_s: int = 60, use_cache: bool = True
+    path: Path, timeout_s: int = 300, use_cache: bool = True
 ) -> Tuple[bool, str]:
     # Vérifier le cache d'abord
     if use_cache and is_validated(path):
@@ -135,8 +135,8 @@ def validate_las_or_laz_with_pdal(
     if not pdal:
         return False, "pdal executable not found in PATH"
 
-    # Utiliser --all pour une validation plus complète qui détecte les EVLR corrompus
-    cmd = [pdal, "info", "--all", str(path)]
+    # Utiliser --metadata pour une validation rapide (--all est trop lent sur gros fichiers)
+    cmd = [pdal, "info", "--metadata", str(path)]
     try:
         r = run_pdal_command(cmd, timeout_s=timeout_s)
     except Exception as e:

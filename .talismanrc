@@ -16,17 +16,9 @@ fileignoreconfig:
 - filename: tests/TESTS_MANUELS_QGIS.txt
   checksum: 4a7e2b200c36e7404ab02725fc8ac59db8c8138f0d118bafd3408ab47d9761df
 - filename: src/pipeline/ign/pdal_validation.py
-  checksum: 3179abb49b07cb15b108ac3ffece544741997357cf3a533d400513c995bd618e
+  checksum: 6abec30c8121e54219b7dc717e35ce2318e8bb196b91aeafbecdce8fd868db58
 - filename: src/pipeline/ign/preprocess.py
-  checksum: 78f032231fec59c6d9c469f8f1329cb2a9b1430201c7bdb4391dcb905329f8b7
+  checksum: f8ca9e8b3e8d85eb333fd66b195e519abf5b5985f492f916c864d7c37b04463b
+- filename: src/pipeline/ign/downloader.py
+  checksum: c86350e51cdfdc09dfaf3259fb0d230501f4fdd2c63adf45ba33aa822ca151b7
 version: "1.0"
-fileignoreconfig:  
-- filename: src/pipeline/ign/downloader.py  
-  checksum: 0468a01e68d850a1ab86e33b33a213a97d7418fb56550a79e64485c3ec1f8bf3  
-- filename: src/ui/main_dialog.py  
-  checksum: 28f1866c35f00c4c5fc89c22da7ec50dcce8861e8871a60bbfda65a2dbc09778 
-fileignoreconfig:  
-- filename: src/pipeline/ign/downloader.py  
-  checksum: 0468a01e68d850a1ab86e33b33a213a97d7418fb56550a79e64485c3ec1f8bf3  
-- filename: src/ui/main_dialog.py  
-  checksum: 28f1866c35f00c4c5fc89c22da7ec50dcce8861e8871a60bbfda65a2dbc09778 

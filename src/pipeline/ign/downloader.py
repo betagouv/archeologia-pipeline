@@ -279,9 +279,10 @@ def download_one(
     dest = dalles_dir / filename
 
     if dest.exists():
+        log(f"🔍 Validation PDAL de {filename}...")
         ok, msg = _is_valid_with_pdal(dest)
         if ok:
-            log(f"✅ {filename} déjà téléchargé")
+            log(f"✅ {filename} déjà téléchargé (validation OK)")
             return True, True
         log(f"⚠️ Fichier existant invalide via PDAL ({filename}) -> suppression et nouveau téléchargement")
         if msg:
@@ -295,6 +296,7 @@ def download_one(
     if local is not None:
         log(f"📥 Copie du fichier local {local} vers {dest}...")
         shutil.copy2(str(local), str(dest))
+        log(f"🔍 Validation PDAL de {filename}...")
         ok, msg = _is_valid_with_pdal(dest)
         if not ok:
             log(f"❌ Fichier copié mais invalide via PDAL: {filename}")
@@ -355,6 +357,7 @@ def download_one(
                                 break
                             f.write(chunk)
 
+            log(f"🔍 Validation PDAL de {filename}...")
             ok, msg = _is_valid_with_pdal(dest)
             if not ok:
                 log(f"⚠️ Fichier invalide via PDAL après téléchargement ({filename}) -> suppression")

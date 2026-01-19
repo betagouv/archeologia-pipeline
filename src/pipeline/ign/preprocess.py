@@ -204,6 +204,8 @@ def crop_neighbor_tile(
         result = run_pdal_command_cancellable(cmd, cancel=cancel)
         if result.returncode != 0:
             log(f"Erreur PDAL crop (code {result.returncode})")
+            if result.returncode == 3221225477:
+                log("PDAL a crashé (0xC0000005). Conseil: relancez le pipeline avec moins de workers (ex: max_workers=2).")
             if result.stderr:
                 log(result.stderr.strip())
             return False
@@ -268,6 +270,10 @@ def merge_tiles(
     result = run_pdal_command_cancellable(cmd, cancel=cancel)
     if result.returncode != 0:
         log(f"Erreur PDAL merge (code {result.returncode})")
+        log("💡 Conseil: réduisez max_workers dans config.json (ex: max_workers=1 ou 2) pour éviter les crashs mémoire.")
+        if result.returncode in (3221225477, 3221226505):
+            # 0xC0000005 = ACCESS_VIOLATION, 0xC0000409 = STACK_BUFFER_OVERRUN
+            log("PDAL a crashé (erreur mémoire).")
         if result.stderr:
             log(result.stderr.strip())
         return False

@@ -2,9 +2,9 @@
   "app": {
     "files": {
       "output_dir": "D:/pipeline_results/results_cambous",
-      "data_mode": "ign_laz",
+      "data_mode": "local_laz",
       "input_file": "D:/pipeline_results/data/cambous/cambous.txt.txt",
-      "local_laz_dir": "D:/pipeline_results/output_test/dalles",
+      "local_laz_dir": "D:/pipeline_results/results_cambous/dalles",
       "existing_mnt_dir": "D:/pipeline_results/output_test/existing_MNT",
       "existing_rvt_dir": "D:/pipeline_results/output_test/existing_RVT"
     }
@@ -43,7 +43,7 @@
         "VAT": false
       }
     },
-    "max_workers": 4
+    "max_workers": 2
   },
   "computer_vision": {
     "enabled": true,

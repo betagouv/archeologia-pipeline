@@ -10,6 +10,14 @@ from pathlib import Path
 from typing import List, Dict, Optional, Tuple
 import tempfile
 
+from .class_utils import get_num_classes_from_model, detect_indexing_offset
+from .cv_output import (
+    get_detection_output_path,
+    save_empty_outputs,
+    save_detections_to_files,
+    save_annotated_image,
+)
+
 logger = logging.getLogger(__name__)
 
 
@@ -25,60 +33,8 @@ def _get_ultralytics_task(model_path: str) -> Optional[str]:
     return None
 
 
-def _save_empty_outputs(image_path: str, output_path: str, jpg_folder_path: Optional[str] = None):
-    try:
-        image_name = Path(image_path).stem
-        if jpg_folder_path:
-            labels_txt = Path(jpg_folder_path) / f"{image_name}.txt"
-            labels_json = Path(jpg_folder_path) / f"{image_name}.json"
-        else:
-            output_path_obj = Path(output_path)
-            labels_txt = output_path_obj.with_suffix('.txt')
-            labels_json = output_path_obj.with_suffix('.json')
-
-        if not labels_txt.exists():
-            labels_txt.write_text("")
-            logger.info(f"Fichier labels vide créé (aucune détection): {labels_txt}")
-
-        try:
-            from PIL import Image
-            with Image.open(image_path) as img:
-                img_width, img_height = img.size
-        except Exception:
-            img_width, img_height = None, None
-
-        payload = {
-            "image_path": image_path,
-            "image_dimensions": {"width": img_width, "height": img_height},
-            "detections": []
-        }
-        labels_json.write_text(json.dumps(payload, indent=2))
-        logger.info(f"JSON vide créé (aucune détection): {labels_json}")
-    except Exception as write_e:
-        logger.warning(f"Impossible d'écrire les sorties vides pour {image_path}: {write_e}")
-
-
-def get_detection_output_path(jpg_path: str, target_rvt: str, annotated_output_dir: str = None) -> str:
-    """
-    Génère le chemin de sortie pour les détections dans le dossier annotated_images
-
-    Args:
-        jpg_path: Chemin vers l'image JPG
-        target_rvt: Type de produit RVT (LDO, SVF, etc.)
-        annotated_output_dir: Répertoire de sortie pour les images annotées
-
-    Returns:
-        Chemin vers le fichier de détection de sortie dans annotated_images
-    """
-    jpg_file = Path(jpg_path)
-    detection_name = jpg_file.stem + "_detections.jpg"
-
-    if annotated_output_dir:
-        detection_path = Path(annotated_output_dir) / detection_name
-    else:
-        detection_path = jpg_file.parent / detection_name
-
-    return str(detection_path)
+# Alias pour compatibilité avec le code existant
+_save_empty_outputs = save_empty_outputs
 
 
 def run_inference(image_path: str, model_path: str, args_path: str, output_path: str,

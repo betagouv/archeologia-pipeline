@@ -1,12 +1,12 @@
 {
   "app": {
     "files": {
-      "output_dir": "D:/pipeline_results/results_cambous",
-      "data_mode": "local_laz",
-      "input_file": "D:/pipeline_results/data/cambous/cambous.txt.txt",
-      "local_laz_dir": "D:/pipeline_results/results_cambous/dalles",
-      "existing_mnt_dir": "D:/pipeline_results/output_test/existing_MNT",
-      "existing_rvt_dir": "D:/pipeline_results/output_test/existing_RVT"
+      "output_dir": "D:/pipeline_results/output_TA_LHD",
+      "data_mode": "existing_rvt",
+      "input_file": "D:/Rambouillet_Archeo/rambouillet_dalles.txt",
+      "local_laz_dir": "D:/pipeline_results/output_70_Vosges_saunoises_LHD/dalles",
+      "existing_mnt_dir": "D:/Rambouillet_Archeo/output_dalles/results/MNT/tif",
+      "existing_rvt_dir": "D:/pipeline_results/output_TA_LHD/results/RVT/LD/tif"
     }
   },
   "processing": {
@@ -32,7 +32,8 @@
       "SVF": false,
       "SLO": false,
       "LD": true,
-      "VAT": false
+      "VAT": false,
+      "SLRM": false
     },
     "output_formats": {
       "jpg": {
@@ -43,17 +44,17 @@
         "VAT": false
       }
     },
-    "max_workers": 2
+    "max_workers": 3
   },
   "computer_vision": {
     "enabled": true,
-    "selected_model": "C:\\Users\\valen\\AppData\\Roaming\\QGIS\\QGIS3\\profiles\\default\\python\\plugins\\archeologia-pipeline-lidar-processing\\models\\run_18\\weights\\best.pt",
+    "selected_model": "C:\\Users\\valen\\AppData\\Roaming\\QGIS\\QGIS3\\profiles\\default\\python\\plugins\\archeologia-pipeline\\models\\help_to_label_70_Vosges_4_rf_detr\\weights\\best.pt",
     "target_rvt": "LD",
-    "confidence_threshold": 0.1,
+    "confidence_threshold": 0.4,
     "iou_threshold": 0.5,
     "generate_annotated_images": true,
     "generate_shapefiles": true,
-    "models_dir": "C:\\Users\\valen\\AppData\\Roaming\\QGIS\\QGIS3\\profiles\\default\\python\\plugins\\archeologia-pipeline-lidar-processing\\models",
+    "models_dir": "C:\\Users\\valen\\AppData\\Roaming\\QGIS\\QGIS3\\profiles\\default\\python\\plugins\\archeologia-pipeline\\models",
     "sahi": {
       "slice_height": 640,
       "slice_width": 640,
@@ -66,8 +67,24 @@
     "export_runner_config": true,
     "selected_classes": [
       "charbonnière",
+      "circular_depression",
       "four"
-    ]
+    ],
+    "model_classes_config": {
+      "tranchee-instance-segmentation-train-v0-added-epochs": [
+        "tranchée"
+      ],
+      "help_to_label_70_Vosges_4_rf_detr": [
+        "charbonnière",
+        "charbonnière_Vosges",
+        "circular_depression",
+        "four"
+      ],
+      "run_18": [
+        "charbonnière",
+        "four"
+      ]
+    }
   },
   "rvt_params": {
     "mdh": {
@@ -98,6 +115,11 @@
     },
     "vat": {
       "terrain_type": 0,
+      "save_as_8bit": true
+    },
+    "slrm": {
+      "radius": 21,
+      "ve_factor": 1,
       "save_as_8bit": true
     }
   }

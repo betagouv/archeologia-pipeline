@@ -47,10 +47,12 @@ Le plugin s’exécute dans QGIS et s’appuie sur des outils externes. Un contr
 
 Deux options :
 
-- Runner externe : `third_party/cv_runner/windows/cv_runner.exe` (Windows) / `third_party/cv_runner/linux/cv_runner` (Linux)
-- Ou dépendances Python dans l’environnement de QGIS (si pas de runner externe) :
-  - `ultralytics`, `sahi`, `PIL` (Pillow)
+- **Runner ONNX externe** (recommandé) : `third_party/cv_runner_onnx/windows/cv_runner_onnx.exe` (Windows) / `third_party/cv_runner_onnx/linux/cv_runner_onnx` (Linux)
+- Ou dépendances Python dans l'environnement de QGIS (si pas de runner externe) :
+  - `onnxruntime`, `sahi`, `PIL` (Pillow)
   - `geopandas` (optionnel)
+
+**Note** : Les modèles doivent être exportés au format ONNX avant utilisation (voir section dédiée).
 
 ## Installation
 
@@ -94,60 +96,108 @@ Certaines étapes reposent sur des exécutables dans le `PATH` :
 - `gdal_translate` requis pour `existing_mnt` / `existing_rvt`
 - `gdaladdo` optionnel (pyramides / overviews). Si absent, la génération de pyramides est ignorée.
 
-## Computer vision : runner + modèles YOLO
+## Computer vision : runner ONNX + modèles
 
 ### Activer la computer vision
 
-La computer vision est optionnelle. Quand elle est activée, le pipeline peut lancer une étape de détection/segmentation à partir des images (JPG) exportées.
+La computer vision est optionnelle. Quand elle est activée, le pipeline peut lancer une étape de détection à partir des images (JPG) exportées.
 
-Le plugin supporte :
+Le plugin utilise un **runner ONNX unifié** qui supporte les modèles YOLO et RF-DETR exportés au format ONNX.
 
-- un **runner externe** (recommandé)
-- ou des dépendances Python installées dans l’environnement Python de QGIS
+### Export des modèles vers ONNX
 
-### Création du runner (Windows)
+Avant d'utiliser le runner, vous devez exporter vos modèles PyTorch (.pt) vers le format ONNX.
+
+#### 1. Créer un environnement virtuel dédié à l'export
+
+```bash
+cd <racine_du_plugin>
+python -m venv .venv_export
+
+# Windows
+.venv_export\Scripts\activate
+
+# Linux/Mac
+source .venv_export/bin/activate
+```
+
+#### 2. Installer les dépendances d'export
+
+**Pour YOLO uniquement :**
+```bash
+pip install ultralytics onnx onnxsim
+```
+
+**Pour RF-DETR uniquement :**
+```bash
+pip install rfdetr torch onnx onnxsim pyyaml
+```
+
+**Pour les deux (complet) :**
+```bash
+pip install ultralytics rfdetr torch onnx onnxsim pyyaml
+```
+
+#### 3. Exporter le modèle
+
+```bash
+# Exporter un modèle YOLO
+python runner_onnx\export_to_onnx.py --model models\mon_modele\weights\best.pt --output models\mon_modele\weights\best.onnx
+
+# Exporter un modèle RF-DETR
+python runner_onnx\export_to_onnx.py --model models\mon_modele_rfdetr\weights\best.pt --output models\mon_modele_rfdetr\weights\best.onnx
+
+# Options supplémentaires
+python runner_onnx\export_to_onnx.py --model best.pt --output model.onnx --imgsz 640 --simplify
+```
+
+Le script détecte automatiquement le type de modèle (YOLO ou RF-DETR).
+
+### Création du runner ONNX (Windows)
 
 Objectif : produire un exécutable :
 
 ```text
-third_party/cv_runner/windows/cv_runner.exe
+third_party/cv_runner_onnx/windows/cv_runner_onnx.exe
 ```
 
-Le runner est construit à partir de `cv_runner_cli.py` via PyInstaller.
+#### Compilation automatique
 
-Étapes (exemple) :
-
-1. Créer un environnement Python dédié (en dehors de QGIS) et y installer les dépendances.
-2. Installer PyInstaller.
-3. Builder avec le fichier spec (`cv_runner.spec`).
-4. Copier le binaire généré vers `third_party/cv_runner/windows/cv_runner.exe`.
-
-Commande exacte (à exécuter à la racine du dépôt) :
+Le script `runner_onnx/build.py` automatise la création du runner :
 
 ```bash
-py -m PyInstaller --noconfirm --clean cv_runner.spec
+cd runner_onnx
+
+# Compiler le runner (CPU)
+python build.py
+
+# Compiler le runner avec support GPU
+python build.py --gpu
+
+# Nettoyer les builds précédents
+python build.py --clean
 ```
 
-Le binaire généré se trouve ensuite ici :
+Le script :
+1. Crée un environnement virtuel isolé (`.venv_onnx`)
+2. Installe les dépendances nécessaires
+3. Compile le runner avec PyInstaller
+4. Copie le binaire vers `third_party/cv_runner_onnx/windows/`
 
-```text
-dist/cv_runner/cv_runner.exe
+**Taille du binaire** : ~1 GB (inclut les dépendances SAHI et ONNX Runtime)
+
+#### Compilation manuelle (alternative)
+
+```bash
+cd runner_onnx
+python -m venv .venv_onnx
+.venv_onnx\Scripts\activate
+pip install pyinstaller onnxruntime sahi pillow numpy pyyaml shapely geopandas fiona
+python -m PyInstaller --clean cv_runner_onnx.spec
+copy dist\cv_runner_onnx.exe ..\third_party\cv_runner_onnx\windows\
 ```
 
-Copie attendue par le plugin :
-
-```text
-third_party/cv_runner/windows/cv_runner.exe
-```
-
-Notes :
-
-- Le préflight détecte automatiquement la présence de `third_party/cv_runner/windows/cv_runner.exe`.
-- Si le runner n’est pas présent, le plugin tente de s’appuyer sur les dépendances Python dans QGIS (moins reproductible).
-
-### Modèles YOLO (dossier `models/`)
-
-Si tu utilises la fonctionnalité computer vision, tu dois ajouter tes modèles (détection ou segmentation) dans le dossier `models/`.
+### Modèles (dossier `models/`)
 
 Structure attendue (1 modèle = 1 dossier) :
 
@@ -157,13 +207,9 @@ models/
     args.yaml
     classes.txt
     weights/
-      best.pt
+      best.pt      # Modèle PyTorch original
+      best.onnx    # Modèle exporté (requis pour le runner)
 ```
-
-Important :
-
-- Le code s’attend par défaut à un fichier de poids nommé **`best.pt`** (format Ultralytics).
-- Si tes poids sont en **`best.pth`**, renomme-les en `best.pt` (ou adapte le code si tu veux supporter `best.pth`).
 
 Le fichier `classes.txt` doit contenir **un nom de classe par ligne** :
 
@@ -171,6 +217,30 @@ Le fichier `classes.txt` doit contenir **un nom de classe par ligne** :
 nomclasse1
 nomclasse2
 ...
+```
+
+### Configuration
+
+Dans `config.json`, le modèle doit pointer vers le fichier `.onnx` :
+
+```json
+{
+  "cv": {
+    "enabled": true,
+    "selected_model": "models/mon_modele/weights/best.onnx"
+  }
+}
+```
+
+Ou vers le dossier du modèle (le runner cherchera automatiquement `best.onnx`) :
+
+```json
+{
+  "cv": {
+    "enabled": true,
+    "selected_model": "mon_modele"
+  }
+}
 ```
 
 ## Utilisation
@@ -260,8 +330,8 @@ Ensuite, un `git push` déclenchera automatiquement Talisman et pourra bloquer l
 - **Pyramides absentes** : vérifier la présence de `gdaladdo` et que l’option pyramides est activée.
 - **RVT indisponible** : vérifier que les algorithmes RVT sont disponibles via QGIS Processing.
 - **Computer vision** :
-  - soit fournir le runner externe dans `third_party/cv_runner/...`
-  - soit installer les dépendances Python dans l’environnement QGIS.
+  - soit fournir le runner externe dans `third_party/cv_runner_onnx/...`
+  - soit installer les dépendances Python (`onnxruntime`, `sahi`) dans l’environnement QGIS
 
 ## Architecture
 
@@ -293,26 +363,56 @@ flowchart TD
         N -->|"existing_rvt"| Q["ExistingRvtRunner"]
     end
 
-    subgraph Processing["Traitement"]
-        O --> R["Téléchargement / Fusion tuiles"]
-        R --> S["create_terrain_model()"]
-        S --> T["create_visualization_products()"]
-        T --> U["copy_final_products_to_results()"]
-        U --> V{"CV enabled ?"}
-        V -->|"Oui"| W["ComputerVisionService"]
-        V -->|"Non"| X["Terminé"]
-        W --> X
+    subgraph IgnLocal["Mode ign_laz / local_laz"]
+        O --> R1{"ign_laz ?"}
+        R1 -->|"Oui"| R2["download_ign_dalles()"]
+        R1 -->|"Non"| R3["run_local_laz()"]
+        R2 --> R4["prepare_merged_tiles()"]
+        R3 --> R4
+        R4 --> R5["Boucle par dalle"]
+        R5 --> R6["create_terrain_model()"]
+        R6 --> R7{"DENSITE ?"}
+        R7 -->|"Oui"| R8["create_density_map()"]
+        R7 -->|"Non"| R9["create_visualization_products()"]
+        R8 --> R9
+        R9 --> R10["crop_final_products()"]
+        R10 --> R11["copy_final_products_to_results()"]
+        R11 --> R12{"CV enabled ?"}
+        R12 -->|"Oui"| R13["process_single_jpg()"]
+        R12 -->|"Non"| R14["Dalle suivante"]
+        R13 --> R14
+        R14 --> R5
+    end
+
+    subgraph ExistingMnt["Mode existing_mnt"]
+        P --> P1["run_existing_mnt()"]
+        P1 --> P2{"CV enabled ?"}
+        P2 -->|"Oui"| P3["run_existing_rvt()"]
+        P2 -->|"Non"| P4["build_vrt_index()"]
+        P3 --> P4
+    end
+
+    subgraph ExistingRvt["Mode existing_rvt"]
+        Q --> Q1["run_existing_rvt()"]
+        Q1 --> Q2["build_vrt_index()"]
     end
 
     subgraph CV["Computer Vision"]
-        W --> Y["process_single_jpg()"]
-        Y --> Z["run_cv_on_folder()"]
-        Z --> AA{"Runner externe ?"}
-        AA -->|"Oui"| AB["cv_runner.exe"]
-        AA -->|"Non"| AC["Python fallback"]
-        AB --> AD["Inférence YOLO"]
-        AC --> AD
-        AD --> AE["finalize() → shapefiles"]
+        R13 --> CV1["run_cv_on_folder()"]
+        CV1 --> CV2{"Runner externe ?"}
+        CV2 -->|"Oui"| CV3["cv_runner_onnx.exe"]
+        CV2 -->|"Non"| CV4["Python fallback"]
+        CV3 --> CV5["Inférence ONNX"]
+        CV4 --> CV5
+        CV5 --> CV6["finalize() → shapefiles"]
+        CV6 --> CV7["deduplicate_cv_shapefiles_final()"]
+    end
+
+    subgraph Finalize["Finalisation"]
+        R14 --> F1["build_vrt_index()"]
+        P4 --> F1
+        Q2 --> F1
+        F1 --> F2["load_layers() → QGIS"]
     end
 ```
 

@@ -106,9 +106,28 @@ class ExistingMntRunner:
                         cv_config=cv_config,
                         output_structure=output_structure,
                         log=lambda m: reporter.info(m),
+                        cancel_check=cancel.is_cancelled,
                     )
             except Exception as e:
                 reporter.error(f"Erreur Computer Vision: {e}")
+
+        # Création des fichiers VRT pour indexer les dalles par produit
+        from ...pipeline.ign.products.results import build_vrt_index
+        reporter.info("Création des fichiers VRT d'indexation...")
+        results_dir = ctx.output_dir / "results"
+        if results_dir.exists():
+            # VRT pour chaque dossier de produit TIF
+            for tif_dir in results_dir.rglob("tif"):
+                if tif_dir.is_dir() and list(tif_dir.glob("*.tif")):
+                    build_vrt_index(tif_dir, pattern="*.tif", output_name="index.vrt", log=lambda m: reporter.info(m))
+            # VRT pour chaque dossier JPG (images géoréférencées)
+            for jpg_dir in results_dir.rglob("jpg"):
+                if jpg_dir.is_dir() and list(jpg_dir.glob("*.jpg")):
+                    build_vrt_index(jpg_dir, pattern="*.jpg", output_name="index.vrt", log=lambda m: reporter.info(m))
+            # VRT pour annotated_images si présent
+            annotated_dir = results_dir / "annotated_images"
+            if annotated_dir.exists() and list(annotated_dir.glob("*.jpg")):
+                build_vrt_index(annotated_dir, pattern="*.jpg", output_name="index.vrt", log=lambda m: reporter.info(m))
 
         # Section finale
         elapsed = time.time() - start_time

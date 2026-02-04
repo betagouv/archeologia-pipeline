@@ -8,6 +8,8 @@ import tempfile
 import subprocess
 import copy
 
+from .class_utils import load_class_names_from_model, detect_indexing_offset, BASE_COLOR_PALETTE, get_color_for_confidence
+
 # DIAGNOSTIC DÉTAILLÉ POUR PYINSTALLER - IMPORTS CRITIQUES
 logger = logging.getLogger(__name__)
 
@@ -70,7 +72,17 @@ except Exception as import_e:
     raise
 
 
-def _confidence_bucket(confidence_value: Optional[float]) -> Tuple[Optional[str], Optional[str]]:
+def _confidence_bucket(confidence_value: Optional[float], color_index: int = 0) -> Tuple[Optional[str], Optional[str]]:
+    """
+    Retourne l'intervalle de confiance et le nom de couleur pour les shapefiles.
+    
+    Args:
+        confidence_value: Valeur de confiance (0.0-1.0)
+        color_index: Index de la couleur de base pour cette classe (0-11)
+        
+    Returns:
+        Tuple (intervalle, nom_couleur) ex: ("[0.8:1]", "color0_high")
+    """
     if confidence_value is None:
         return None, None
     try:
@@ -82,16 +94,16 @@ def _confidence_bucket(confidence_value: Optional[float]) -> Tuple[Optional[str]
     if c > 1.0 and c <= 10.0:
         c = c / 10.0
 
-    # Intervalles de 0.2
+    # Intervalles de 0.2 avec nom de couleur basé sur l'index de classe
     if c < 0.2:
-        return "[0:0.2[", "yellow"
+        return "[0:0.2[", f"color{color_index}_low"
     if c < 0.4:
-        return "[0.2:0.4[", "yellow_orange"
+        return "[0.2:0.4[", f"color{color_index}_medium_low"
     if c < 0.6:
-        return "[0.4:0.6[", "orange"
+        return "[0.4:0.6[", f"color{color_index}_medium"
     if c < 0.8:
-        return "[0.6:0.8[", "orange_red"
-    return "[0.8:1]", "red"
+        return "[0.6:0.8[", f"color{color_index}_medium_high"
+    return "[0.8:1]", f"color{color_index}_high"
 
 
 def read_world_file(world_file_path: str) -> Tuple[Optional[float], Optional[float], Optional[float], Optional[float]]:
@@ -590,6 +602,7 @@ def create_shapefile_from_detections(
     temp_dir: str = None,
     class_names: dict = None,
     selected_classes: list = None,
+    class_colors: list = None,
 ) -> bool:
     """
     Crée des shapefiles géoréférencés à partir des fichiers de détection YOLO
@@ -1005,7 +1018,12 @@ def create_shapefile_from_detections(
 
                         if confidence is not None:
                             detection_attrs["confidence"] = confidence
-                        conf_bin, conf_color = _confidence_bucket(confidence)
+                        # Déterminer l'index de couleur pour cette classe
+                        if class_colors and 0 <= class_id_int < len(class_colors):
+                            color_idx = class_colors[class_id_int]
+                        else:
+                            color_idx = class_id_int
+                        conf_bin, conf_color = _confidence_bucket(confidence, color_idx)
                         detection_attrs["conf_bin"] = conf_bin
                         detection_attrs["conf_color"] = conf_color
 
@@ -1031,13 +1049,41 @@ def create_shapefile_from_detections(
         created_shapefiles = []
         
         # Aplatir la structure par tuiles pour créer les shapefiles
-        data_by_class = {}
+        data_by_class_id = {}
         for class_id, tiles_dict in data_by_class_and_tile.items():
-            data_by_class[class_id] = []
+            data_by_class_id[class_id] = []
             for tile_key, detections in tiles_dict.items():
-                data_by_class[class_id].extend(detections)
+                data_by_class_id[class_id].extend(detections)
         
-        for class_id, detections in data_by_class.items():
+        # Log des class_id détectés pour diagnostic
+        logger.info(f"Class IDs détectés dans les fichiers: {sorted(data_by_class_id.keys())}")
+        if isinstance(class_names, list):
+            logger.info(f"Noms de classes disponibles (0-indexé): {list(enumerate(class_names))}")
+        
+        # Détection automatique des class IDs 1-indexés via class_utils
+        # Note: Normalement, les fichiers .txt sont déjà normalisés à l'écriture par computer_vision.py
+        # Ce code reste en place comme filet de sécurité pour les fichiers .txt externes
+        detected_ids = list(data_by_class_id.keys())
+        num_classes = len(class_names) if isinstance(class_names, list) else 0
+        offset = detect_indexing_offset(detected_ids, num_classes) if num_classes > 0 and detected_ids else 0
+        
+        if offset != 0:
+            # Reconstruire data_by_class_id avec les IDs décalés
+            data_by_class_id_shifted = {}
+            for old_id, dets in data_by_class_id.items():
+                new_id = old_id + offset  # offset est négatif (-1) pour 1-indexé
+                # Mettre à jour model_pred dans chaque détection
+                for det in dets:
+                    if isinstance(class_names, list) and 0 <= new_id < len(class_names):
+                        det["model_pred"] = _normalize_class_label(class_names[new_id])
+                data_by_class_id_shifted[new_id] = dets
+            data_by_class_id = data_by_class_id_shifted
+            logger.info(f"Class IDs après décalage: {sorted(data_by_class_id.keys())}")
+        
+        # Regrouper les détections par NOM de classe (pas par class_id)
+        # Cela permet de fusionner les classes avec le même nom dans le même shapefile
+        data_by_class_name = {}
+        for class_id, detections in data_by_class_id.items():
             # Récupérer le nom de classe selon le type de class_names.
             # PRIORITÉ: class_names fourni par le dossier du modèle. Sinon: libellé numérique.
             if isinstance(class_names, dict):
@@ -1049,6 +1095,14 @@ def create_shapefile_from_detections(
 
             class_name = _normalize_class_label(class_name)
             
+            # Regrouper par nom de classe
+            if class_name not in data_by_class_name:
+                data_by_class_name[class_name] = []
+            data_by_class_name[class_name].extend(detections)
+        
+        logger.info(f"Classes regroupées par nom: {list(data_by_class_name.keys())}")
+        
+        for class_name, detections in data_by_class_name.items():
             # Filtrer par classes sélectionnées si spécifié
             if selected_classes is not None and len(selected_classes) > 0:
                 if class_name not in selected_classes:
@@ -1286,12 +1340,55 @@ def create_shapefile_from_detections(
                 index_root = Path(output_shapefile).parent
 
             # Dossier contenant les TIF de l'indice (ex: .../RVT/LD/tif)
+            # Chercher le dossier tif dans index_root ou ses parents (results/RVT/LD/tif)
             tif_dir = index_root / "tif"
             tif_files = []
+            vrt_found = None
+            
+            # Si tif_dir n'existe pas, chercher dans les parents (cas où shapefiles est à côté de tif)
+            if not tif_dir.exists():
+                # Essayer de trouver un dossier "tif" frère ou dans les parents
+                for parent in [index_root] + list(index_root.parents)[:3]:
+                    candidate = parent / "tif"
+                    if candidate.exists() and candidate.is_dir():
+                        tif_dir = candidate
+                        break
+            
+            # Chercher aussi le VRT directement via rglob si pas trouvé
+            if not (tif_dir.exists() and (tif_dir / "index.vrt").exists()):
+                # Chercher index.vrt dans index_root et ses parents
+                for search_root in [index_root] + list(index_root.parents)[:3]:
+                    try:
+                        vrt_candidates = list(search_root.glob("**/tif/index.vrt"))
+                        if vrt_candidates:
+                            vrt_found = vrt_candidates[0]
+                            tif_dir = vrt_found.parent
+                            logger.info(f"[QGIS Project] VRT trouvé via recherche: {vrt_found}")
+                            break
+                    except Exception:
+                        continue
+            
             if tif_dir.exists() and tif_dir.is_dir():
                 tif_files = sorted(tif_dir.glob("*.tif"))
 
             project = Element('qgis', attrib={'version': '3.34.0', 'projectname': 'detections_validation'})
+
+            # Calculer l'étendue combinée des shapefiles pour le zoom initial
+            combined_extent = None
+            for shp in created_shapefiles:
+                try:
+                    shp_gdf = gpd.read_file(shp)
+                    if not shp_gdf.empty:
+                        bounds = shp_gdf.total_bounds  # [minx, miny, maxx, maxy]
+                        if combined_extent is None:
+                            combined_extent = list(bounds)
+                        else:
+                            combined_extent[0] = min(combined_extent[0], bounds[0])
+                            combined_extent[1] = min(combined_extent[1], bounds[1])
+                            combined_extent[2] = max(combined_extent[2], bounds[2])
+                            combined_extent[3] = max(combined_extent[3], bounds[3])
+                except Exception:
+                    pass
 
             try:
                 props = SubElement(project, 'properties')
@@ -1328,28 +1425,24 @@ def create_shapefile_from_detections(
             except Exception as style_e:
                 logger.warning(f"Échec du chargement du style QML des détections: {style_e}")
 
-            def _apply_confidence_symbology(maplayer_el) -> None:
+            def _apply_confidence_symbology(maplayer_el, color_index: int = 0) -> None:
                 """Applique un renderer catégorisé QGIS sur le champ conf_bin.
 
                 Le style_detections.qml actuel est de type singleSymbol, donc on force ici
-                un rendu low/mid/high.
+                un rendu low/mid/high avec des couleurs basées sur l'index de couleur de la classe.
+                
+                Args:
+                    maplayer_el: Élément XML maplayer
+                    color_index: Index de la couleur de base (0-11) depuis class_colors
                 """
                 try:
-                    palettes = [
-                        ['255,255,0', '255,204,0', '255,153,0', '255,102,0', '255,0,0'],
-                        ['204,229,255', '153,204,255', '102,178,255', '51,153,255', '0,102,204'],
-                        ['235,224,255', '204,179,255', '178,128,255', '153,77,255', '102,0,204'],
-                        ['204,255,204', '153,255,153', '102,204,102', '51,153,51', '0,102,0'],
-                        ['240,240,240', '200,200,200', '160,160,160', '120,120,120', '80,80,80'],
-                        ['255,235,204', '255,204,153', '230,170,115', '204,136,85', '153,85,34'],
-                    ]
-
-                    palette_rgb = palettes[0]
-                    try:
-                        palette_index = int(maplayer_el.get('dataSourcePaletteIndex'))
-                        palette_rgb = palettes[palette_index % len(palettes)]
-                    except Exception:
-                        palette_rgb = palettes[0]
+                    # Générer la palette de 5 couleurs (low -> high) à partir de la couleur de base
+                    # Confiances: 0.1, 0.3, 0.5, 0.7, 0.9
+                    confidence_levels = [0.1, 0.3, 0.5, 0.7, 0.9]
+                    palette_rgb = []
+                    for conf in confidence_levels:
+                        r, g, b = get_color_for_confidence(color_index, conf)
+                        palette_rgb.append(f"{r},{g},{b}")
 
                     renderer = SubElement(
                         maplayer_el,
@@ -1474,7 +1567,19 @@ def create_shapefile_from_detections(
                 SubElement(editable, 'field', attrib={'name': 'conf_bin', 'editable': '0'})
                 SubElement(editable, 'field', attrib={'name': 'conf_color', 'editable': '0'})
 
-                _apply_confidence_symbology(ml)
+                # Déterminer l'index de couleur pour ce shapefile (basé sur l'index de la classe)
+                # Le nom du shapefile est de la forme "detections_LD_classe_X" ou "detections_LD_nomclasse"
+                shp_color_index = shp_idx  # Par défaut, utiliser l'index du shapefile
+                if class_colors:
+                    # Essayer de trouver l'index de classe depuis le nom du shapefile
+                    for cls_idx, cls_name in enumerate(all_classes):
+                        if cls_name.lower() in layer_id.lower():
+                            if cls_idx < len(class_colors):
+                                shp_color_index = class_colors[cls_idx]
+                            else:
+                                shp_color_index = cls_idx
+                            break
+                _apply_confidence_symbology(ml, shp_color_index)
 
                 if style_selection is not None:
                     ml.append(copy.deepcopy(style_selection))
@@ -1484,27 +1589,114 @@ def create_shapefile_from_detections(
             # 2) Ajouter le VRT comme couche raster unique (en dessous des shapefiles)
             #    Utilise index.vrt s'il existe, sinon fallback sur les TIF individuels
             vrt_path = tif_dir / "index.vrt" if tif_dir.exists() else None
+            logger.info(f"[QGIS Project] index_root={index_root}")
+            logger.info(f"[QGIS Project] tif_dir={tif_dir}, exists={tif_dir.exists() if tif_dir else False}")
+            logger.info(f"[QGIS Project] vrt_path={vrt_path}, exists={vrt_path.exists() if vrt_path else False}")
+            logger.info(f"[QGIS Project] tif_files count={len(tif_files)}")
             if vrt_path and vrt_path.exists():
                 # Utiliser le VRT (une seule couche pour toutes les dalles)
+                # Chemin relatif depuis index_root (où sera le .qgs)
                 try:
-                    vrt_ds = os.path.relpath(str(vrt_path.resolve()), start=str(index_root.resolve()))
-                    vrt_ds = vrt_ds.replace('\\', '/')
+                    vrt_ds_rel = os.path.relpath(str(vrt_path.resolve()), start=str(index_root.resolve()))
+                    vrt_ds_rel = vrt_ds_rel.replace('\\', '/')
                 except Exception:
-                    vrt_ds = str(vrt_path.resolve())
-                raster_id = "index_rvt"
-                SubElement(layer_tree, 'layer-tree-layer', attrib={'id': raster_id, 'name': 'Dalles RVT (index)'})
+                    vrt_ds_rel = str(vrt_path.resolve()).replace('\\', '/')
+                
+                # Préfixer avec ./ pour chemin relatif
+                vrt_ds = "./" + vrt_ds_rel if not vrt_ds_rel.startswith('.') else vrt_ds_rel
+                
+                raster_id = "index_rvt_layer"
+                raster_name = "Dalles RVT (index)"
+                
+                # Ajouter dans layer-tree
+                SubElement(layer_tree, 'layer-tree-layer', attrib={
+                    'id': raster_id, 
+                    'name': raster_name,
+                    'checked': 'Qt::Checked',
+                    'expanded': '1',
+                    'source': vrt_ds,
+                    'providerKey': 'gdal',
+                    'legend_exp': '',
+                    'patch_size': '-1,-1',
+                    'legend_split_behavior': '0',
+                })
 
-                ml_raster = SubElement(maplayers, 'maplayer', attrib={'type': 'raster'})
+                # Créer le maplayer raster complet
+                ml_raster = SubElement(maplayers, 'maplayer', attrib={
+                    'type': 'raster',
+                    'autoRefreshMode': 'Disabled',
+                    'autoRefreshTime': '0',
+                    'refreshOnNotifyEnabled': '0',
+                    'refreshOnNotifyMessage': '',
+                    'hasScaleBasedVisibilityFlag': '0',
+                    'styleCategories': 'AllStyleCategories',
+                    'minScale': '1e+08',
+                    'maxScale': '0',
+                    'legendPlaceholderImage': '',
+                })
                 SubElement(ml_raster, 'id').text = raster_id
-                SubElement(ml_raster, 'layername').text = 'Dalles RVT (index)'
                 SubElement(ml_raster, 'datasource').text = vrt_ds
+                SubElement(ml_raster, 'layername').text = raster_name
                 SubElement(ml_raster, 'provider').text = 'gdal'
+                
+                # Ajouter les flags requis pour QGIS
+                flags = SubElement(ml_raster, 'flags')
+                SubElement(flags, 'Identifiable').text = '1'
+                SubElement(flags, 'Removable').text = '1'
+                SubElement(flags, 'Searchable').text = '1'
+                SubElement(flags, 'Private').text = '0'
+                
+                # SRS complet
                 try:
                     srs_r = SubElement(ml_raster, 'srs')
-                    sref_r = SubElement(srs_r, 'spatialrefsys')
+                    sref_r = SubElement(srs_r, 'spatialrefsys', attrib={'nativeFormat': 'Wkt'})
                     SubElement(sref_r, 'authid').text = crs
+                    SubElement(sref_r, 'srid').text = crs.split(':')[1] if ':' in crs else '2154'
                 except Exception:
                     pass
+                
+                # Pipe de rendu (singlebandgray comme dans le fichier de référence)
+                pipe = SubElement(ml_raster, 'pipe')
+                provider_elem = SubElement(pipe, 'provider')
+                SubElement(provider_elem, 'resampling', attrib={
+                    'zoomedInResamplingMethod': 'nearestNeighbour',
+                    'zoomedOutResamplingMethod': 'nearestNeighbour',
+                    'maxOversampling': '2',
+                    'enabled': 'false',
+                })
+                renderer = SubElement(pipe, 'rasterrenderer', attrib={
+                    'type': 'singlebandgray',
+                    'gradient': 'BlackToWhite',
+                    'grayBand': '1',
+                    'opacity': '1',
+                    'alphaBand': '-1',
+                    'nodataColor': '',
+                })
+                SubElement(renderer, 'rasterTransparency')
+                minmax = SubElement(renderer, 'minMaxOrigin')
+                SubElement(minmax, 'limits').text = 'MinMax'
+                SubElement(minmax, 'extent').text = 'WholeRaster'
+                SubElement(minmax, 'statAccuracy').text = 'Estimated'
+                SubElement(minmax, 'cumulativeCutLower').text = '0.02'
+                SubElement(minmax, 'cumulativeCutUpper').text = '0.98'
+                SubElement(minmax, 'stdDevFactor').text = '2'
+                ce = SubElement(renderer, 'contrastEnhancement')
+                SubElement(ce, 'minValue').text = '0'
+                SubElement(ce, 'maxValue').text = '255'
+                SubElement(ce, 'algorithm').text = 'StretchToMinimumMaximum'
+                
+                SubElement(pipe, 'brightnesscontrast', attrib={'contrast': '0', 'brightness': '0', 'gamma': '1'})
+                SubElement(pipe, 'huesaturation', attrib={
+                    'saturation': '0', 'grayscaleMode': '0', 'invertColors': '0',
+                    'colorizeOn': '0', 'colorizeRed': '255', 'colorizeGreen': '128',
+                    'colorizeBlue': '128', 'colorizeStrength': '100',
+                })
+                SubElement(pipe, 'rasterresampler', attrib={'maxOversampling': '2'})
+                SubElement(pipe, 'resamplingStage').text = 'resamplingFilter'
+                
+                SubElement(ml_raster, 'blendMode').text = '0'
+                
+                logger.info(f"[QGIS Project] VRT datasource={vrt_ds}")
             else:
                 # Fallback: ajouter les TIF individuellement si pas de VRT
                 for tif_path in tif_files:
@@ -1528,6 +1720,29 @@ def create_shapefile_from_detections(
                         SubElement(sref_r, 'authid').text = crs
                     except Exception:
                         pass
+
+            # Ajouter l'étendue initiale du projet (zoom sur les résultats)
+            if combined_extent is not None:
+                try:
+                    # Ajouter une marge de 5%
+                    width = combined_extent[2] - combined_extent[0]
+                    height = combined_extent[3] - combined_extent[1]
+                    margin_x = width * 0.05
+                    margin_y = height * 0.05
+                    
+                    mapcanvas = SubElement(project, 'mapcanvas', attrib={'name': 'theMapCanvas', 'annotationsVisible': '1'})
+                    extent = SubElement(mapcanvas, 'extent')
+                    SubElement(extent, 'xmin').text = str(combined_extent[0] - margin_x)
+                    SubElement(extent, 'ymin').text = str(combined_extent[1] - margin_y)
+                    SubElement(extent, 'xmax').text = str(combined_extent[2] + margin_x)
+                    SubElement(extent, 'ymax').text = str(combined_extent[3] + margin_y)
+                    
+                    # Définir le CRS du canvas
+                    dest_crs = SubElement(mapcanvas, 'destinationsrs')
+                    sref_canvas = SubElement(dest_crs, 'spatialrefsys', attrib={'nativeFormat': 'Wkt'})
+                    SubElement(sref_canvas, 'authid').text = crs
+                except Exception as extent_e:
+                    logger.warning(f"Impossible de définir l'étendue du projet: {extent_e}")
 
             xml_bytes = tostring(project, encoding='utf-8')
             pretty = minidom.parseString(xml_bytes).toprettyxml(indent='  ', encoding='utf-8')

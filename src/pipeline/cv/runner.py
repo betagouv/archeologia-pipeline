@@ -13,22 +13,31 @@ LogFn = Callable[[str], None]
 
 
 def _find_external_cv_runner(log: Optional[LogFn] = None) -> Optional[Path]:
+    """
+    Trouve le runner ONNX externe.
+    
+    Args:
+        log: Fonction de logging
+    
+    Returns:
+        Chemin vers le runner ONNX ou None si non trouvé
+    """
     plugin_root = Path(__file__).resolve().parents[3]
-    candidates = []
+    
     if os.name == "nt":
-        candidates.append(plugin_root / "third_party" / "cv_runner" / "windows" / "cv_runner.exe")
+        candidate = plugin_root / "third_party" / "cv_runner_onnx" / "windows" / "cv_runner_onnx.exe"
     else:
-        candidates.append(plugin_root / "third_party" / "cv_runner" / "linux" / "cv_runner")
-    for p in candidates:
-        try:
-            if p.exists() and p.is_file():
-                return p
-            elif log:
-                log(f"Computer Vision: runner non trouvé à {p}")
-        except Exception as e:
-            if log:
-                log(f"Computer Vision: erreur vérification runner {p}: {e}")
-            continue
+        candidate = plugin_root / "third_party" / "cv_runner_onnx" / "linux" / "cv_runner_onnx"
+    
+    try:
+        if candidate.exists() and candidate.is_file():
+            return candidate
+        elif log:
+            log(f"Computer Vision: runner ONNX non trouvé à {candidate}")
+    except Exception as e:
+        if log:
+            log(f"Computer Vision: erreur vérification runner ONNX {candidate}: {e}")
+    
     return None
 
 
@@ -99,6 +108,47 @@ def extract_tif_transform_data(reference_tif_path: Path) -> Tuple[Optional[float
     return None, None, None, None
 
 
+def _is_onnx_model(cv_config: Dict[str, Any]) -> bool:
+    """
+    Vérifie si le modèle sélectionné est un modèle ONNX.
+    """
+    try:
+        selected_model = str((cv_config or {}).get("selected_model", "")).strip()
+        if not selected_model:
+            return False
+        
+        model_path = Path(selected_model)
+        
+        # Vérifier si c'est directement un fichier .onnx
+        if model_path.suffix.lower() == ".onnx":
+            return True
+        
+        # Vérifier si un fichier .onnx existe à côté du .pt
+        if model_path.exists() and model_path.is_file():
+            onnx_path = model_path.with_suffix(".onnx")
+            if onnx_path.exists():
+                return True
+        
+        # Chercher dans le dossier models
+        models_dir = Path((cv_config or {}).get("models_dir", "models"))
+        candidates = [
+            models_dir / selected_model / "weights" / "best.onnx",
+            models_dir / selected_model / "best.onnx",
+            models_dir / f"{selected_model}.onnx",
+        ]
+        
+        for candidate in candidates:
+            if candidate.exists():
+                return True
+    except Exception:
+        pass
+    
+    return False
+
+
+CancelCheckFn = Callable[[], bool]
+
+
 def run_cv_on_folder(
     *,
     jpg_dir: Path,
@@ -109,7 +159,40 @@ def run_cv_on_folder(
     single_jpg: Optional[Path] = None,
     run_shapefile_dedup: bool = True,
     log: LogFn = lambda _: None,
+    cancel_check: Optional[CancelCheckFn] = None,
 ) -> None:
+    # Vérifier si c'est un modèle ONNX
+    is_onnx = _is_onnx_model(cv_config)
+    
+    if is_onnx:
+        log("Computer Vision: modèle ONNX détecté")
+    
+    # Générer le fichier classes.txt dans le dossier JPG (format YOLO pour Roboflow)
+    # Fait au début pour que ce soit disponible quel que soit le runner utilisé
+    try:
+        from .class_utils import load_class_names_from_model
+        selected_model = cv_config.get("selected_model", "")
+        models_dir = Path(cv_config.get("models_dir", "models"))
+        model_path = Path(selected_model)
+        if model_path.exists() and model_path.is_file():
+            weights_path = model_path
+        else:
+            weights_path = models_dir / str(selected_model) / "weights" / "best.pt"
+        
+        if weights_path.exists():
+            class_names = load_class_names_from_model(weights_path)
+            if class_names:
+                classes_file = jpg_dir / "classes.txt"
+                if not classes_file.exists():
+                    if isinstance(class_names, dict):
+                        sorted_names = [class_names[k] for k in sorted(class_names.keys())]
+                        classes_file.write_text("\n".join(sorted_names), encoding="utf-8")
+                    elif isinstance(class_names, (list, tuple)):
+                        classes_file.write_text("\n".join(str(n) for n in class_names), encoding="utf-8")
+                    log(f"Fichier classes.txt créé: {classes_file}")
+    except Exception as e:
+        log(f"Avertissement: impossible de créer classes.txt: {e}")
+    
     ext = _find_external_cv_runner(log=log)
     if ext is not None:
         log(f"Computer Vision: utilisation runner externe -> {ext}")
@@ -142,17 +225,95 @@ def run_cv_on_folder(
 
         try:
             cmd = [str(ext), "--config", str(cfg_path)]
-            r = subprocess.run(cmd, capture_output=True, text=True, **_subprocess_kwargs_no_window())
-            if r.stdout:
-                for line in r.stdout.splitlines():
-                    if line.strip():
+            # Utiliser Popen pour lire la sortie en temps réel
+            process = subprocess.Popen(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                bufsize=1,  # Line buffered
+                **_subprocess_kwargs_no_window()
+            )
+            
+            # Lire stdout en temps réel et parser les messages de progression
+            cancelled = False
+            if process.stdout:
+                for line in process.stdout:
+                    # Vérifier l'annulation à chaque ligne
+                    if cancel_check and cancel_check():
+                        log("Computer Vision: Annulation demandée, arrêt du processus...")
+                        process.terminate()
+                        try:
+                            process.wait(timeout=5)
+                        except subprocess.TimeoutExpired:
+                            process.kill()
+                        cancelled = True
+                        break
+                    
+                    line = line.rstrip()
+                    if not line:
+                        continue
+                    
+                    # Parser les messages de progression pour un affichage plus lisible
+                    if line.startswith("progress="):
+                        # Format: progress=X/Y image=name.jpg status=processing|done|skipped detections=N
+                        try:
+                            parts = line.split()
+                            progress_part = parts[0].split("=")[1]  # "X/Y"
+                            current, total = progress_part.split("/")
+                            image_name = parts[1].split("=")[1] if len(parts) > 1 else ""
+                            status = parts[2].split("=")[1] if len(parts) > 2 else ""
+                            
+                            if status == "processing":
+                                log(f"Computer Vision: [{current}/{total}] Analyse de {image_name}...")
+                            elif status == "done":
+                                dets = parts[3].split("=")[1] if len(parts) > 3 else "0"
+                                log(f"Computer Vision: [{current}/{total}] {image_name} -> {dets} détection(s)")
+                            elif status == "skipped":
+                                log(f"Computer Vision: [{current}/{total}] {image_name} (déjà traité)")
+                            else:
+                                log(f"[cv_runner] {line}")
+                        except Exception:
+                            log(f"[cv_runner] {line}")
+                    elif line.startswith("summary:"):
+                        # Format: summary: success=X processed=Y skipped=Z total_detections=N
+                        try:
+                            parts = line.replace("summary:", "").strip().split()
+                            info = {p.split("=")[0]: p.split("=")[1] for p in parts}
+                            log(f"Computer Vision: Terminé - {info.get('success', '?')} images traitées, {info.get('total_detections', '?')} détections au total")
+                        except Exception:
+                            log(f"[cv_runner] {line}")
+                    elif line.startswith("images="):
+                        total_imgs = line.split("=")[1]
+                        log(f"Computer Vision: {total_imgs} images à analyser")
+                    elif line.startswith("model_path="):
+                        model = Path(line.split("=")[1]).name
+                        log(f"Computer Vision: Modèle -> {model}")
+                    elif line.startswith("class_names="):
+                        log(f"Computer Vision: Classes -> {line.split('=')[1]}")
+                    elif "ERROR" in line or "error" in line.lower():
                         log(f"[cv_runner] {line}")
-            if r.stderr:
-                for line in r.stderr.splitlines():
+                    elif line.startswith("legend_created="):
+                        log(f"Computer Vision: Légende créée")
+                    else:
+                        # Autres messages moins importants - ne pas afficher par défaut
+                        pass
+            
+            # Si annulé, lever une exception
+            if cancelled:
+                raise RuntimeError("Computer Vision: Annulé par l'utilisateur")
+            
+            # Attendre la fin et récupérer stderr
+            _, stderr = process.communicate()
+            if stderr:
+                for line in stderr.splitlines():
                     if line.strip():
                         log(f"[cv_runner][stderr] {line}")
-            if r.returncode != 0:
-                raise RuntimeError(f"cv_runner failed (code={r.returncode})")
+            
+            if process.returncode != 0:
+                raise RuntimeError(f"cv_runner failed (code={process.returncode})")
             
             # Créer les fichiers world pour les images annotées générées par le cv_runner
             generate_annotated = bool((cv_config or {}).get("generate_annotated_images", False))
@@ -186,12 +347,17 @@ def run_cv_on_folder(
                 pass
 
     expected = (
-        "third_party/cv_runner/windows/cv_runner.exe" if os.name == "nt" else "third_party/cv_runner/linux/cv_runner"
+        "third_party/cv_runner_onnx/windows/cv_runner_onnx.exe" if os.name == "nt" else "third_party/cv_runner_onnx/linux/cv_runner_onnx"
     )
     log(f"Computer Vision: runner externe absent (attendu: {expected})")
 
-    from . import computer_vision as cv_mod
-    log(f"Computer Vision: fallback interne -> src.pipeline.cv.computer_vision")
+    # Choisir le module approprié selon le type de modèle
+    if is_onnx:
+        from . import computer_vision_onnx as cv_mod
+        log(f"Computer Vision: fallback interne ONNX -> src.pipeline.cv.computer_vision_onnx")
+    else:
+        from . import computer_vision as cv_mod
+        log(f"Computer Vision: fallback interne YOLO -> src.pipeline.cv.computer_vision")
 
     enabled = bool((cv_config or {}).get("enabled", False))
     if not enabled:
@@ -227,6 +393,16 @@ def run_cv_on_folder(
     if not args_path.exists():
         raise FileNotFoundError(f"Fichier de configuration du modèle non trouvé: {args_path}")
 
+    # Charger les noms et couleurs de classes depuis le modèle
+    from .class_utils import load_class_names_from_model, load_class_colors_from_model
+    class_names = load_class_names_from_model(weights_path)
+    class_colors = load_class_colors_from_model(weights_path)
+    
+    # DEBUG: Afficher dans la console Python
+    print(f"[RUNNER] class_names={class_names}", flush=True)
+    print(f"[RUNNER] class_colors={class_colors}", flush=True)
+    log(f"Computer Vision: class_names={class_names}, class_colors={class_colors}")
+
     annotated_output_dir: Optional[Path] = None
     shapefile_output_dir: Optional[Path] = None
 
@@ -257,12 +433,14 @@ def run_cv_on_folder(
     success_count = 0
     skipped_already_processed = 0
 
+    from .cv_output import get_detection_output_path
+    
     for jpg_file in jpg_files:
         image_name = jpg_file.stem
         labels_txt = jpg_dir / f"{image_name}.txt"
         labels_json = jpg_dir / f"{image_name}.json"
 
-        detection_output_path = cv_mod.get_detection_output_path(
+        detection_output_path = get_detection_output_path(
             str(jpg_file),
             target_rvt,
             str(annotated_output_dir) if annotated_output_dir else None,
@@ -273,21 +451,41 @@ def run_cv_on_folder(
             skipped_already_processed += 1
             continue
 
-        log(f"Inférence CV sur: {jpg_file.name}")
-        ok = cv_mod.run_inference(
-            image_path=str(jpg_file),
-            model_path=str(weights_path),
-            args_path=str(args_path),
-            output_path=detection_output_path,
-            confidence_threshold=confidence_threshold,
-            slice_height=slice_height,
-            slice_width=slice_width,
-            overlap_ratio=overlap_ratio,
-            generate_annotated_images=generate_annotated_images,
-            annotated_output_dir=str(annotated_output_dir) if annotated_output_dir else None,
-            iou_threshold=iou_threshold,
-            jpg_folder_path=str(jpg_dir),
-        )
+        log(f"Inférence CV sur: {jpg_file.name} (SAHI: {slice_width}x{slice_height}, overlap={overlap_ratio})")
+        
+        if is_onnx:
+            # Inférence ONNX
+            ok = cv_mod.run_onnx_inference(
+                image_path=str(jpg_file),
+                model_path=str(weights_path),
+                output_path=detection_output_path,
+                confidence_threshold=confidence_threshold,
+                slice_height=slice_height,
+                slice_width=slice_width,
+                overlap_ratio=overlap_ratio,
+                generate_annotated_images=generate_annotated_images,
+                annotated_output_dir=str(annotated_output_dir) if annotated_output_dir else None,
+                iou_threshold=iou_threshold,
+                jpg_folder_path=str(jpg_dir),
+                class_names=class_names,
+                class_colors=class_colors,
+            )
+        else:
+            # Inférence YOLO
+            ok = cv_mod.run_inference(
+                image_path=str(jpg_file),
+                model_path=str(weights_path),
+                args_path=str(args_path),
+                output_path=detection_output_path,
+                confidence_threshold=confidence_threshold,
+                slice_height=slice_height,
+                slice_width=slice_width,
+                overlap_ratio=overlap_ratio,
+                generate_annotated_images=generate_annotated_images,
+                annotated_output_dir=str(annotated_output_dir) if annotated_output_dir else None,
+                iou_threshold=iou_threshold,
+                jpg_folder_path=str(jpg_dir),
+            )
         if ok:
             success_count += 1
             # Créer le fichier world pour géoréférencer l'image annotée
@@ -333,6 +531,7 @@ def deduplicate_cv_shapefiles_final(
     log(f"Computer Vision: conversion shapefile -> src.pipeline.cv.conversion_shp")
 
     class_names = None
+    class_colors = None
     try:
         if isinstance(cv_config, dict):
             selected_model = str(cv_config.get("selected_model", "")).strip()
@@ -367,6 +566,12 @@ def deduplicate_cv_shapefiles_final(
                                 break
                     except Exception:
                         continue
+                
+                # Charger les couleurs de classes depuis args.yaml
+                from .class_utils import load_class_colors_from_model
+                class_colors = load_class_colors_from_model(weights_path)
+                if class_colors:
+                    log(f"Computer Vision: couleurs de classes chargées: {class_colors}")
     except Exception as e:
         log(f"Computer Vision: impossible de récupérer les noms de classes depuis le modèle: {e}")
 
@@ -388,6 +593,7 @@ def deduplicate_cv_shapefiles_final(
                 temp_dir=str(temp_dir) if temp_dir is not None else None,
                 class_names=class_names,
                 selected_classes=selected_classes,
+                class_colors=class_colors,
             )
             qgs_root = shp_dir.parent if shp_dir.name.lower() in {"shapefiles", "shp"} else shp_dir
             qgs_path = qgs_root / "detections_validation.qgs"

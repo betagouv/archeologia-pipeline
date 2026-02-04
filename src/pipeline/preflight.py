@@ -36,19 +36,19 @@ def _check_import(module_name: str) -> str:
 
 
 def _find_external_cv_runner() -> Optional[Path]:
+    """Trouve le runner ONNX externe."""
     plugin_root = Path(__file__).resolve().parents[2]
-    candidates: List[Path] = []
+    
     if os.name == "nt":
-        candidates.append(plugin_root / "third_party" / "cv_runner" / "windows" / "cv_runner.exe")
+        candidate = plugin_root / "third_party" / "cv_runner_onnx" / "windows" / "cv_runner_onnx.exe"
     else:
-        candidates.append(plugin_root / "third_party" / "cv_runner" / "linux" / "cv_runner")
-
-    for p in candidates:
-        try:
-            if p.exists() and p.is_file():
-                return p
-        except Exception:
-            continue
+        candidate = plugin_root / "third_party" / "cv_runner_onnx" / "linux" / "cv_runner_onnx"
+    
+    try:
+        if candidate.exists() and candidate.is_file():
+            return candidate
+    except Exception:
+        pass
     return None
 
 
@@ -123,7 +123,7 @@ def run_preflight(
             )
         )
 
-    need_rvt = bool(products.get("M_HS", False) or products.get("SVF", False) or products.get("SLO", False) or products.get("LD", False) or products.get("VAT", False))
+    need_rvt = bool(products.get("M_HS", False) or products.get("SVF", False) or products.get("SLO", False) or products.get("LD", False) or products.get("SLRM", False) or products.get("VAT", False))
     if need_rvt and mode in ("ign_laz", "local_laz", "existing_mnt"):
         try:
             _check_import("processing")
@@ -134,15 +134,17 @@ def run_preflight(
     if cv_enabled:
         runner = _find_external_cv_runner()
         if runner is not None:
-            results.append(CheckResult(name="cv_runner (external)", ok=True, details=str(runner), critical=True))
+            results.append(CheckResult(name="cv_runner_onnx (external)", ok=True, details=str(runner), critical=False))
         else:
             expected = (
-                "third_party/cv_runner/windows/cv_runner.exe" if os.name == "nt" else "third_party/cv_runner/linux/cv_runner"
+                "third_party/cv_runner_onnx/windows/cv_runner_onnx.exe" if os.name == "nt" else "third_party/cv_runner_onnx/linux/cv_runner_onnx"
             )
-            results.append(CheckResult(name="cv_runner (external)", ok=False, details=f"not found (expected: {expected})", critical=False))
+            results.append(CheckResult(name="cv_runner_onnx (external)", ok=False, details=f"not found (expected: {expected})", critical=False))
 
+        # Vérifier les dépendances Python pour le fallback (si pas de runner externe)
+        # Note: ultralytics n'est plus requis, on utilise onnxruntime
         deps_critical = runner is None
-        for mod in ("ultralytics", "sahi", "PIL"):
+        for mod in ("onnxruntime", "PIL"):
             if runner is not None:
                 results.append(
                     CheckResult(

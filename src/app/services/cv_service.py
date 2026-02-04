@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Any, Callable, Dict, Optional, Tuple
 
 LogFn = Callable[[str], None]
+CancelCheckFn = Callable[[], bool]
 
 
 class ComputerVisionService:
@@ -12,10 +13,12 @@ class ComputerVisionService:
         cv_config: Dict[str, Any],
         output_dir: Path,
         log: LogFn = lambda _: None,
+        cancel_check: Optional[CancelCheckFn] = None,
     ):
         self._config = cv_config or {}
         self._output_dir = output_dir
         self._log = log
+        self._cancel_check = cancel_check
         self._tif_transform_data: Dict[str, Tuple[float, float, float, float]] = {}
         self._labels_dir: Optional[Path] = None
         self._shp_dir: Optional[Path] = None
@@ -67,6 +70,7 @@ class ComputerVisionService:
                 single_jpg=jpg_path,
                 run_shapefile_dedup=False,
                 log=self._log,
+                cancel_check=self._cancel_check,
             )
         except Exception as e:
             self._log(f"Erreur Computer Vision: {e}")
@@ -100,6 +104,7 @@ class ComputerVisionService:
                 single_jpg=None,
                 run_shapefile_dedup=False,
                 log=self._log,
+                cancel_check=self._cancel_check,
             )
         except Exception as e:
             self._log(f"Erreur Computer Vision: {e}")

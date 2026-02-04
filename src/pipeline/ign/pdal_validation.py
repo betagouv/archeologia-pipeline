@@ -166,6 +166,40 @@ def require_valid_las_or_laz_with_pdal(path: Path, timeout_s: int = 60) -> None:
         raise IOError(msg)
 
 
+def validate_laz_deep(path: Path, timeout_s: int = 600) -> Tuple[bool, str]:
+    """
+    Validation profonde d'un fichier LAZ via pdal info --all.
+    Force la lecture de toutes les données, détecte les fichiers tronqués.
+    Plus lent que validate_las_or_laz_with_pdal mais détecte les corruptions.
+    
+    Retourne (True, "ok") si valide, (False, message) sinon.
+    """
+    pdal = which("pdal")
+    if not pdal:
+        return False, "pdal executable not found in PATH"
+
+    cmd = [pdal, "info", "--all", str(path)]
+    try:
+        r = run_pdal_command(cmd, timeout_s=timeout_s)
+    except Exception as e:
+        return False, f"pdal info --all failed: {e!r}"
+
+    # Code 0xC0000005 (3221225477) = ACCESS_VIOLATION = fichier corrompu/tronqué
+    if r.returncode == 3221225477:
+        return False, "Fichier corrompu (ACCESS_VIOLATION lors de la lecture)"
+    
+    # Code 0xC0000409 (3221226505) = STACK_BUFFER_OVERRUN
+    if r.returncode == 3221226505:
+        return False, "Fichier corrompu (STACK_BUFFER_OVERRUN lors de la lecture)"
+
+    if r.returncode != 0:
+        err = (r.stderr or "").strip()
+        msg = err or f"pdal info --all returned code {r.returncode}"
+        return False, msg
+
+    return True, "ok"
+
+
 def get_laz_bounds(path: Path, timeout_s: int = 60) -> Optional[Tuple[float, float, float, float]]:
     """
     Récupère les bounds (xmin, ymin, xmax, ymax) d'un fichier LAZ via PDAL.

@@ -568,7 +568,7 @@ def prepare_merged_tiles(
         if result.success and result.merged_path is not None:
             merged_files.append(result.merged_path)
         elif result.error and "Annulation" not in (result.error or ""):
-            raise RuntimeError(result.error)
+            raise RuntimeError(f"[Dalle {result.index}/{total}] {result.tile_name}: {result.error}")
 
     return IgnPreprocessResult(merged_dir=merged_dir, temp_dir=temp_dir, merged_files=merged_files)
 

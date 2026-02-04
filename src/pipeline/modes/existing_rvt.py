@@ -12,6 +12,7 @@ from ..coords import extract_xy_from_filename, infer_xy_from_file
 
 
 LogFn = Callable[[str], None]
+CancelCheckFn = Callable[[], bool]
 
 
 @dataclass(frozen=True)
@@ -58,6 +59,7 @@ def run_existing_rvt(
     cv_config: Dict[str, Any],
     output_structure: Dict[str, Any],
     log: LogFn = lambda _: None,
+    cancel_check: CancelCheckFn | None = None,
 ) -> ExistingRvtResult:
     if not existing_rvt_dir.exists() or not existing_rvt_dir.is_dir():
         raise FileNotFoundError(f"Dossier RVT inexistant ou invalide: {existing_rvt_dir}")
@@ -157,6 +159,7 @@ def run_existing_rvt(
             pass
 
     from ..cv.runner import deduplicate_cv_shapefiles_final, run_cv_on_folder
+    from ..ign.products.results import build_vrt_index
 
     effective_cv_config = dict(cv_config or {})
     effective_cv_config["scan_all"] = True
@@ -169,7 +172,17 @@ def run_existing_rvt(
         tif_transform_data=tif_transform_data,
         run_shapefile_dedup=False,
         log=log,
+        cancel_check=cancel_check,
     )
+
+    # Créer le VRT AVANT de générer les shapefiles/projet QGIS
+    # pour que le projet QGIS puisse référencer le VRT au lieu des TIF individuels
+    if rvt_output_dir is not None:
+        tif_out_dir = rvt_output_dir / "tif"
+        if tif_out_dir.exists() and list(tif_out_dir.glob("*.tif")):
+            build_vrt_index(tif_out_dir, pattern="*.tif", output_name="index.vrt", log=log)
+        if jpg_output_dir.exists() and list(jpg_output_dir.glob("*.jpg")):
+            build_vrt_index(jpg_output_dir, pattern="*.jpg", output_name="index.vrt", log=log)
 
     if bool(effective_cv_config.get("generate_shapefiles", False)) and rvt_output_dir is not None:
         deduplicate_cv_shapefiles_final(

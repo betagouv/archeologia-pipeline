@@ -27,7 +27,7 @@ except ImportError:
 from .coords_fallback import build_sorted_records_with_fallback
 
 
-from .pdal_validation import validate_las_or_laz_with_pdal
+from .pdal_validation import validate_las_or_laz_with_pdal, validate_laz_deep
 
 
 def _extract_real_url(url: str) -> str:
@@ -236,6 +236,11 @@ def parse_ign_input_file(input_file: Path, sorted_output_file: Path, log: LogFn 
                 except Exception:
                     filename = ""
 
+            # Ignorer les lignes qui ne contiennent pas d'URL valide (ex: en-têtes CSV)
+            if not url.startswith(("http://", "https://")):
+                log(f"Ligne ignorée (pas une URL valide): {line}")
+                continue
+
             if not filename:
                 log(f"Ligne ignorée (nom de fichier introuvable): {line}")
                 continue
@@ -279,18 +284,30 @@ def download_one(
     dest = dalles_dir / filename
 
     if dest.exists():
-        log(f"🔍 Validation PDAL de {filename}...")
+        log(f"🔍 Validation PDAL rapide de {filename}...")
         ok, msg = _is_valid_with_pdal(dest)
-        if ok:
-            log(f"✅ {filename} déjà téléchargé (validation OK)")
-            return True, True
-        log(f"⚠️ Fichier existant invalide via PDAL ({filename}) -> suppression et nouveau téléchargement")
-        if msg:
-            log(f"PDAL: {msg}")
-        try:
-            dest.unlink()
-        except Exception:
-            pass
+        if not ok:
+            log(f"⚠️ Fichier existant invalide via PDAL ({filename}) -> suppression et nouveau téléchargement")
+            if msg:
+                log(f"PDAL: {msg}")
+            try:
+                dest.unlink()
+            except Exception:
+                pass
+        else:
+            # Validation profonde pour détecter les fichiers tronqués
+            log(f"🔍 Validation PDAL profonde de {filename}...")
+            ok_deep, msg_deep = validate_laz_deep(dest)
+            if ok_deep:
+                log(f"✅ {filename} déjà téléchargé (validation complète OK)")
+                return True, True
+            log(f"⚠️ Fichier existant tronqué/corrompu ({filename}) -> suppression et nouveau téléchargement")
+            if msg_deep:
+                log(f"PDAL: {msg_deep}")
+            try:
+                dest.unlink()
+            except Exception:
+                pass
 
     local = _is_local_url(url)
     if local is not None:
@@ -357,7 +374,7 @@ def download_one(
                                 break
                             f.write(chunk)
 
-            log(f"🔍 Validation PDAL de {filename}...")
+            log(f"🔍 Validation PDAL rapide de {filename}...")
             ok, msg = _is_valid_with_pdal(dest)
             if not ok:
                 log(f"⚠️ Fichier invalide via PDAL après téléchargement ({filename}) -> suppression")
@@ -368,6 +385,19 @@ def download_one(
                 except Exception:
                     pass
                 raise IOError(f"pdal-invalid: {msg}")
+
+            # Validation profonde pour détecter les fichiers tronqués
+            log(f"🔍 Validation PDAL profonde de {filename} (lecture complète)...")
+            ok_deep, msg_deep = validate_laz_deep(dest)
+            if not ok_deep:
+                log(f"⚠️ Fichier tronqué/corrompu détecté ({filename}) -> suppression")
+                if msg_deep:
+                    log(f"PDAL: {msg_deep}")
+                try:
+                    dest.unlink()
+                except Exception:
+                    pass
+                raise IOError(f"pdal-deep-invalid: {msg_deep}")
 
             return True, False
         except Exception as e:
@@ -440,7 +470,7 @@ def download_ign_dalles(
     completed_count = [0]
     downloaded = [0]
     skipped = [0]
-    first_error: List[Optional[str]] = [None]
+    failed = [0]
 
     def thread_safe_log(msg: str) -> None:
         with log_lock:
@@ -454,8 +484,8 @@ def download_ign_dalles(
                     skipped[0] += 1
                 else:
                     downloaded[0] += 1
-            elif first_error[0] is None:
-                first_error[0] = result.error
+            else:
+                failed[0] += 1
             pct = int(round(100.0 * completed_count[0] / max(1, total)))
             progress(pct)
 
@@ -489,14 +519,16 @@ def download_ign_dalles(
                 update_progress_and_counts(result)
             except Exception as e:
                 task = future_to_task[future]
-                thread_safe_log(f"Exception téléchargement {task.filename}: {e}")
+                thread_safe_log(f"⚠️ Fichier ignoré (téléchargement échoué) {task.filename}: {e}")
                 with log_lock:
-                    if first_error[0] is None:
-                        first_error[0] = str(e)
+                    failed[0] += 1
+                    completed_count[0] += 1
+                    pct = int(round(100.0 * completed_count[0] / max(1, total)))
+                    progress(pct)
 
-    # Vérifier s'il y a eu une erreur
-    if first_error[0] is not None:
-        raise RuntimeError(f"Échec du téléchargement: {first_error[0]}")
+    # Log des fichiers échoués (mais on continue)
+    if failed[0] > 0:
+        log(f"⚠️ {failed[0]} fichier(s) ignoré(s) (téléchargement échoué ou invalide)")
 
     # Tri final + fallback coords (Option B): si coords absentes, on infère via PDAL et on renomme le fichier.
     stage("Tri des fichiers (post-téléchargement)")

@@ -5,7 +5,12 @@ dist/
 
 # PyInstaller
 build/
-*.spec
+runners/build/
+runners/dist_*/
+runners/.venv_*/
+runner_onnx/build/
+runner_onnx/dist/
+runner_onnx/.venv_*/
 
 # Virtual environments
 .venv/
@@ -33,9 +38,13 @@ output_test/
 Thumbs.db
 Desktop.ini
 
-third_party/cv_runner/windows/cv_runner.exe
 third_party/cv_runner/windows/*.exe
+third_party/cv_runner/linux/*
+third_party/cv_runner_rfdetr/windows/*.exe
+third_party/cv_runner_rfdetr/linux/*
+third_party/cv_runner_onnx/windows/*.exe
+third_party/cv_runner_onnx/linux/*
 
 old_src/
 models/**
-!models/.gitkeep
+!models/.gitkeeprunner_onnx/ 

@@ -8,17 +8,25 @@ fileignoreconfig:
 - filename: old_src/conversion_shp.py
   checksum: 3a4e979bcc8691785c1b636fb2eabfc2060640a72b0013e3e97c2327d4aa2fe0
 - filename: src/pipeline/cv/conversion_shp.py
-  checksum: 0a255a627e050d5e0d98bb8905589b2fc7ae8bad156ef653654ba66688bbd427
+  checksum: c47a29f7e54fe75c32e8b98e4b4fdd92c3f71a821f413705ff4257ffa34113c7
 - filename: src/ui/main_dialog.py
-  checksum: 6ad816af9f5205fa971150a4ebac66926346b0408b0ce13b7bb887e864d49736
+  checksum: f109068851f594eefeb4e4827b3f8b547cd1fdff6be43cc1046abf7f2aafbd04
 - filename: old_src/pipeline_lidar.py
   checksum: 32886bc946b5454875a787ee56a0174d2a4e1fad5a7a2209df6639d52a2c4dd2
 - filename: tests/TESTS_MANUELS_QGIS.txt
   checksum: 4a7e2b200c36e7404ab02725fc8ac59db8c8138f0d118bafd3408ab47d9761df
 - filename: src/pipeline/ign/pdal_validation.py
-  checksum: 6abec30c8121e54219b7dc717e35ce2318e8bb196b91aeafbecdce8fd868db58
+  checksum: 016f309259bdd1196c6634132d518795b5bcc959895db7638d3488246dfe8ccd
 - filename: src/pipeline/ign/preprocess.py
-  checksum: f8ca9e8b3e8d85eb333fd66b195e519abf5b5985f492f916c864d7c37b04463b
+  checksum: f364ba65a53d4a76787301bd9cdf1bdb9b2f0c191614dc10ffdb231f0c12804b
 - filename: src/pipeline/ign/downloader.py
-  checksum: c86350e51cdfdc09dfaf3259fb0d230501f4fdd2c63adf45ba33aa822ca151b7
+  checksum: 7b3894e619338343698b21e20fb258659ea2f4eab4eef88b241c684effed3de4
+- filename: src/pipeline/cv/computer_vision_rfdetr.py
+  checksum: 3c3de1d9bab52f155e9cc9f5f54a60f43c2ea784d485f8959603bbdc5e07d768
+- filename: src/pipeline/cv/computer_vision_onnx.py
+  checksum: 9ef1e1cb40ec604cab3810b32e36c0356fecc7b057e25eb58b276114e98dd189
+- filename: src/pipeline/cv/class_utils.py
+  checksum: dc66c9593f163451757dc9c48a2b8e2136ec196b4a2d460df84b7b53ad8f73c0
+- filename: runner_onnx/export_to_onnx.py
+  checksum: 401c937d414a10c8020d64a9b09d664818b9e84766eafe7352711235d383e852
 version: "1.0"

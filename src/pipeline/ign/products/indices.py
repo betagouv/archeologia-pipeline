@@ -128,6 +128,20 @@ def create_visualization_products(
             run_qgis_algorithm("rvt:rvt_ld", params, feedback=feedback, context=context)
         outputs["LD"] = out
 
+    if products.get("SLRM", False):
+        out = temp_dir / f"{current_tile_name}_SLRM.tif"
+        if not out.exists():
+            slrm = (rvt_params or {}).get("slrm", {})
+            params = {
+                "INPUT": str(input_path),
+                "OUTPUT": str(out),
+                "RADIUS": _as_int(slrm.get("radius", 20), 20),
+                "VE_FACTOR": _as_int(slrm.get("ve_factor", 1), 1),
+                "SAVE_AS_8BIT": _as_bool(slrm.get("save_as_8bit", True), True),
+            }
+            run_qgis_algorithm("rvt:rvt_slrm", params, feedback=feedback, context=context)
+        outputs["SLRM"] = out
+
     if products.get("VAT", False):
         vat = (rvt_params or {}).get("vat", {})
         terrain_type = _as_int(vat.get("terrain_type", 0), 0)

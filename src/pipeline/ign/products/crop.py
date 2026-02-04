@@ -69,13 +69,14 @@ def crop_final_products(
         "SVF": (f"{current_tile_name}_SVF.tif", f"LHD_FXX_{x}_{y}_SVF_A_LAMB93.tif"),
         "SLO": (f"{current_tile_name}_Slope.tif", f"LHD_FXX_{x}_{y}_SLO_A_LAMB93.tif"),
         "LD": (f"{current_tile_name}_LD.tif", f"LHD_FXX_{x}_{y}_LD_A_LAMB93.tif"),
+        "SLRM": (f"{current_tile_name}_SLRM.tif", f"LHD_FXX_{x}_{y}_SLRM_A_LAMB93.tif"),
         "DENSITE": (f"{current_tile_name}_densite.tif", f"LHD_FXX_{x}_{y}_densite_A_LAMB93.tif"),
         "VAT": (f"{current_tile_name}_VAT{preset_suffix}.tif", f"LHD_FXX_{x}_{y}_VAT_A_LAMB93.tif"),
     }
 
     cropped: Dict[str, Path] = {}
 
-    for product_name in ["MNT", "DENSITE", "M_HS", "SVF", "SLO", "LD", "VAT"]:
+    for product_name in ["MNT", "DENSITE", "M_HS", "SVF", "SLO", "LD", "SLRM", "VAT"]:
         if not products.get(product_name, False):
             continue
 

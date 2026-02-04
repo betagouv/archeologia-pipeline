@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import subprocess
 import shutil
+import tempfile
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Tuple
 
@@ -55,8 +56,21 @@ def build_vrt_index(
             return False
 
         vrt_path = folder / output_name
-        cmd = [str(gdalbuildvrt), str(vrt_path)] + [str(f) for f in files]
-        r = subprocess.run(cmd, capture_output=True, text=True, **_subprocess_kwargs_no_window())
+        
+        # Use -input_file_list to avoid Windows command line length limit (WinError 206)
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False, encoding='utf-8') as f:
+            for file in files:
+                f.write(str(file) + '\n')
+            filelist_path = f.name
+        
+        try:
+            cmd = [str(gdalbuildvrt), "-input_file_list", filelist_path, str(vrt_path)]
+            r = subprocess.run(cmd, capture_output=True, text=True, **_subprocess_kwargs_no_window())
+        finally:
+            try:
+                os.unlink(filelist_path)
+            except OSError:
+                pass
         if r.returncode != 0:
             log(f"Échec gdalbuildvrt pour {folder.name}: {r.stderr or r.stdout}")
             return False
@@ -190,6 +204,7 @@ def copy_final_products_to_results(
         "SVF": f"LHD_FXX_{x}_{y}_SVF_A_LAMB93.tif",
         "SLO": f"LHD_FXX_{x}_{y}_SLO_A_LAMB93.tif",
         "LD": f"LHD_FXX_{x}_{y}_LD_A_LAMB93.tif",
+        "SLRM": f"LHD_FXX_{x}_{y}_SLRM_A_LAMB93.tif",
         "VAT": f"LHD_FXX_{x}_{y}_VAT_A_LAMB93.tif",
     }
 
@@ -205,6 +220,7 @@ def copy_final_products_to_results(
         "SVF": f"{current_tile_name}_SVF.tif",
         "SLO": f"{current_tile_name}_Slope.tif",
         "LD": f"{current_tile_name}_LD.tif",
+        "SLRM": f"{current_tile_name}_SLRM.tif",
         "VAT": f"{current_tile_name}_VAT{preset_suffix}.tif",
     }
 
@@ -235,7 +251,7 @@ def copy_final_products_to_results(
     created_jpgs_by_product: Dict[str, List[Path]] = {}
     tif_transform_data: Dict[str, Tuple[float, float, float, float]] = {}
 
-    for product_name in ["MNT", "DENSITE", "M_HS", "SVF", "SLO", "LD", "VAT"]:
+    for product_name in ["MNT", "DENSITE", "M_HS", "SVF", "SLO", "LD", "SLRM", "VAT"]:
         if not products.get(product_name, False):
             continue
 

@@ -28,9 +28,9 @@ class QtProgressReporter:
         except Exception:
             pass
 
-    def load_layers(self, vrt_paths: list, shapefile_paths: list) -> None:
+    def load_layers(self, vrt_paths: list, shapefile_paths: list, class_colors: list = None) -> None:
         """Émet le signal pour charger les couches dans le projet QGIS."""
         try:
-            self._emitter.load_layers.emit(vrt_paths, shapefile_paths)
+            self._emitter.load_layers.emit(vrt_paths, shapefile_paths, class_colors or [])
         except Exception:
             pass

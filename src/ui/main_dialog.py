@@ -37,7 +37,7 @@ class _QtLogEmitter(QObject):
     progress = pyqtSignal(int)
     stage = pyqtSignal(str)
     run_enabled = pyqtSignal(bool)
-    load_layers = pyqtSignal(list, list)  # (vrt_paths, shapefile_paths)
+    load_layers = pyqtSignal(list, list, list)  # (vrt_paths, shapefile_paths, class_colors)
 
 
 class QtLogHandler(logging.Handler):
@@ -229,6 +229,7 @@ class MainDialog(QDialog):
         self.product_svf_cb = QCheckBox("SVF")
         self.product_slo_cb = QCheckBox("SLO")
         self.product_ld_cb = QCheckBox("LD")
+        self.product_slrm_cb = QCheckBox("SLRM")
         self.product_vat_cb = QCheckBox("VAT")
 
         products_layout.addWidget(self.product_mnt_cb)
@@ -237,6 +238,7 @@ class MainDialog(QDialog):
         products_layout.addWidget(self.product_svf_cb)
         products_layout.addWidget(self.product_slo_cb)
         products_layout.addWidget(self.product_ld_cb)
+        products_layout.addWidget(self.product_slrm_cb)
         products_layout.addWidget(self.product_vat_cb)
         products_layout.addStretch(1)
         general_layout.addWidget(products_row)
@@ -321,6 +323,18 @@ class MainDialog(QDialog):
         ld_form.addRow("Facteur VE:", self.ldo_ve_factor_spin)
         ld_form.addRow("", self.ldo_save_8bit_cb)
         self.rvt_tabs.addTab(ld_tab, "LD")
+
+        slrm_tab = QWidget()
+        slrm_form = QFormLayout(slrm_tab)
+        self.slrm_radius_spin = NoWheelSpinBox()
+        self.slrm_radius_spin.setRange(1, 100000)
+        self.slrm_ve_factor_spin = NoWheelSpinBox()
+        self.slrm_ve_factor_spin.setRange(1, 100)
+        self.slrm_save_8bit_cb = QCheckBox("Sauver en 8bit")
+        slrm_form.addRow("Rayon:", self.slrm_radius_spin)
+        slrm_form.addRow("Facteur VE:", self.slrm_ve_factor_spin)
+        slrm_form.addRow("", self.slrm_save_8bit_cb)
+        self.rvt_tabs.addTab(slrm_tab, "SLRM")
 
         vat_tab = QWidget()
         vat_form = QFormLayout(vat_tab)
@@ -551,13 +565,17 @@ class MainDialog(QDialog):
             self.stage_label.setText("")
             self.progress_bar.setValue(0)
 
-    def _load_layers_to_project(self, vrt_paths: list, shapefile_paths: list) -> None:
+    def _load_layers_to_project(self, vrt_paths: list, shapefile_paths: list, class_colors: list = None) -> None:
         """Charge les couches VRT et shapefiles dans le projet QGIS courant."""
         try:
-            from qgis.core import QgsProject, QgsRasterLayer, QgsVectorLayer
+            from qgis.core import QgsProject, QgsRasterLayer, QgsVectorLayer, QgsRectangle
+            from ..pipeline.cv.class_utils import BASE_COLOR_PALETTE, get_color_for_confidence
 
             project = QgsProject.instance()
             loaded_count = 0
+            combined_extent = QgsRectangle()
+            loaded_layers = []
+            class_colors = class_colors or []
 
             # Charger les VRT (couches raster)
             for vrt_path in vrt_paths:
@@ -576,70 +594,165 @@ class MainDialog(QDialog):
                         layer_name = "MNT"
                         break
 
+                # Vérifier si une couche avec ce nom et cette source existe déjà
+                existing_layers = project.mapLayersByName(layer_name)
+                already_loaded = False
+                for existing in existing_layers:
+                    if existing.source() == vrt_path_str:
+                        already_loaded = True
+                        # Utiliser l'étendue de la couche existante pour le zoom
+                        if combined_extent.isNull():
+                            combined_extent = existing.extent()
+                        else:
+                            combined_extent.combineExtentWith(existing.extent())
+                        break
+                
+                if already_loaded:
+                    self._logger.info(f"Couche raster déjà présente: {layer_name}")
+                    continue
+
                 layer = QgsRasterLayer(vrt_path_str, layer_name, "gdal")
                 if layer.isValid():
                     project.addMapLayer(layer)
+                    loaded_layers.append(layer)
+                    # Combiner les étendues
+                    if combined_extent.isNull():
+                        combined_extent = layer.extent()
+                    else:
+                        combined_extent.combineExtentWith(layer.extent())
                     loaded_count += 1
                     self._logger.info(f"Couche raster chargée: {layer_name}")
                 else:
                     self._logger.warning(f"Impossible de charger le VRT: {vrt_path_str}")
 
             # Charger les shapefiles (couches vecteur) avec style par classe
-            # Palettes identiques à conversion_shp.py
-            palettes = [
-                ['255,255,0', '255,204,0', '255,153,0', '255,102,0', '255,0,0'],      # Jaune -> Rouge
-                ['204,229,255', '153,204,255', '102,178,255', '51,153,255', '0,102,204'],  # Bleus
-                ['235,224,255', '204,179,255', '178,128,255', '153,77,255', '102,0,204'],  # Violets
-                ['204,255,204', '153,255,153', '102,204,102', '51,153,51', '0,102,0'],     # Verts
-                ['240,240,240', '200,200,200', '160,160,160', '120,120,120', '80,80,80'], # Gris
-                ['255,235,204', '255,204,153', '230,170,115', '204,136,85', '153,85,34'], # Bruns
-            ]
+            # Utilise BASE_COLOR_PALETTE de class_utils.py (source unique de vérité)
+            # L'index de couleur est extrait de l'attribut conf_color du shapefile (format: color{idx}_level)
 
-            for shp_idx, shp_path in enumerate(shapefile_paths):
+            for shp_path in shapefile_paths:
                 if not shp_path:
                     continue
                 shp_path_str = str(shp_path)
                 # Extraire le nom du fichier sans extension
                 from pathlib import Path
                 layer_name = Path(shp_path_str).stem
+                
+                # Extraire le nom de classe depuis le nom du fichier (ex: detections_LD_charbonnière -> charbonnière)
+                # Format attendu: detections_{RVT}_{class_name}
+                parts = layer_name.split("_")
+                if len(parts) >= 3 and parts[0] == "detections":
+                    class_name = "_".join(parts[2:])  # Rejoindre au cas où le nom contient des underscores
+                else:
+                    class_name = layer_name
+                
+                # Extraire l'index de couleur depuis l'attribut conf_color du shapefile
+                # Format: color{idx}_{level} (ex: color2_high, color4_medium)
+                color_idx = 0  # Fallback
+                try:
+                    import re
+                    # Lire le premier feature pour extraire conf_color
+                    temp_layer = QgsVectorLayer(shp_path_str, "temp", "ogr")
+                    if temp_layer.isValid() and temp_layer.featureCount() > 0:
+                        for feat in temp_layer.getFeatures():
+                            conf_color_val = feat.attribute("conf_color")
+                            if conf_color_val:
+                                # Extraire l'index depuis "color{idx}_level"
+                                match = re.match(r"color(\d+)_", str(conf_color_val))
+                                if match:
+                                    color_idx = int(match.group(1))
+                            break  # On n'a besoin que du premier feature
+                    del temp_layer
+                except Exception as e:
+                    self._logger.warning(f"Impossible d'extraire conf_color de {layer_name}: {e}")
+
+                # Vérifier si une couche avec ce nom et cette source existe déjà
+                existing_layers = project.mapLayersByName(layer_name)
+                already_loaded = False
+                for existing in existing_layers:
+                    if existing.source() == shp_path_str:
+                        already_loaded = True
+                        # Utiliser l'étendue de la couche existante pour le zoom
+                        if combined_extent.isNull():
+                            combined_extent = existing.extent()
+                        else:
+                            combined_extent.combineExtentWith(existing.extent())
+                        break
+                
+                if already_loaded:
+                    self._logger.info(f"Couche vecteur déjà présente: {layer_name}")
+                    continue
 
                 layer = QgsVectorLayer(shp_path_str, layer_name, "ogr")
                 if layer.isValid():
-                    # Appliquer le style avec la palette correspondant à l'index de classe
-                    self._apply_confidence_style(layer, palettes[shp_idx % len(palettes)])
+                    # Appliquer le style avec la couleur correspondant à la classe (depuis BASE_COLOR_PALETTE)
+                    self._apply_confidence_style_unified(layer, color_idx, get_color_for_confidence)
                     
                     project.addMapLayer(layer)
+                    loaded_layers.append(layer)
+                    # Combiner les étendues
+                    if combined_extent.isNull():
+                        combined_extent = layer.extent()
+                    else:
+                        combined_extent.combineExtentWith(layer.extent())
                     loaded_count += 1
-                    self._logger.info(f"Couche vecteur chargée: {layer_name} (palette {shp_idx % len(palettes)})")
+                    base_color = BASE_COLOR_PALETTE[color_idx % len(BASE_COLOR_PALETTE)]
+                    self._logger.info(f"Couche vecteur chargée: {layer_name} (classe={class_name}, couleur={color_idx} RGB{base_color})")
                 else:
                     self._logger.warning(f"Impossible de charger le shapefile: {shp_path_str}")
 
             if loaded_count > 0:
                 self._logger.info(f"✅ {loaded_count} couche(s) ajoutée(s) au projet QGIS")
+                
+                # Zoomer sur l'étendue combinée des couches chargées
+                if not combined_extent.isNull():
+                    try:
+                        from qgis.utils import iface
+                        if iface and iface.mapCanvas():
+                            # Ajouter une marge de 5% autour de l'étendue
+                            combined_extent.scale(1.05)
+                            iface.mapCanvas().setExtent(combined_extent)
+                            iface.mapCanvas().refresh()
+                            self._logger.info("🔍 Zoom sur l'étendue des résultats")
+                    except Exception as zoom_err:
+                        self._logger.warning(f"Impossible de zoomer: {zoom_err}")
 
         except Exception as e:
             self._logger.error(f"Erreur lors du chargement des couches: {e}")
 
-    def _apply_confidence_style(self, layer, palette: list) -> None:
-        """Applique un style catégorisé par confiance avec la palette spécifiée."""
+    def _apply_confidence_style_unified(self, layer, color_idx: int, get_color_for_confidence_fn) -> None:
+        """Applique un style catégorisé par confiance avec BASE_COLOR_PALETTE.
+        
+        Args:
+            layer: Couche QGIS
+            color_idx: Index de la couleur de base (0-11) depuis BASE_COLOR_PALETTE
+            get_color_for_confidence_fn: Fonction get_color_for_confidence de class_utils
+        """
         try:
             from qgis.core import (
                 QgsCategorizedSymbolRenderer,
                 QgsRendererCategory,
-                QgsSymbol,
                 QgsFillSymbol,
-                QgsSimpleLineSymbolLayer,
             )
-            from qgis.PyQt.QtGui import QColor
 
             categories = []
-            conf_bins = ['[0:0.2[', '[0.2:0.4[', '[0.4:0.6[', '[0.6:0.8[', '[0.8:1]']
+            # Confiances représentatives pour chaque intervalle: 0.1, 0.3, 0.5, 0.7, 0.9
+            conf_bins_with_conf = [
+                ('[0:0.2[', 0.1),
+                ('[0.2:0.4[', 0.3),
+                ('[0.4:0.6[', 0.5),
+                ('[0.6:0.8[', 0.7),
+                ('[0.8:1]', 0.9),
+            ]
 
-            for i, (conf_bin, rgb) in enumerate(zip(conf_bins, palette)):
+            for conf_bin, conf_value in conf_bins_with_conf:
+                # Obtenir la couleur RGB depuis BASE_COLOR_PALETTE avec variation de luminosité
+                r, g, b = get_color_for_confidence_fn(color_idx, conf_value)
+                rgb_str = f'{r},{g},{b}'
+                
                 # Créer un symbole de contour (ligne) sans remplissage
                 symbol = QgsFillSymbol.createSimple({
                     'color': '0,0,0,0',  # Transparent
-                    'outline_color': f'{rgb},255',
+                    'outline_color': f'{rgb_str},255',
                     'outline_width': '0.6',
                     'outline_style': 'solid',
                 })
@@ -811,6 +924,9 @@ class MainDialog(QDialog):
         self.cv_classes_list.clear()
         
         model_path = str(self.cv_model_combo.currentData() or "")
+        
+        # Mémoriser le modèle actuel pour la prochaine fois
+        self._current_model_path = model_path
         if not model_path:
             return
         
@@ -853,16 +969,13 @@ class MainDialog(QDialog):
             except Exception:
                 pass
         
-        cv_config = self._config.get("computer_vision") or {}
-        selected_classes = cv_config.get("selected_classes") or []
-        
-        for class_name in class_names:
+        # Dédupliquer les noms de classes (ex: deux "charbonnière" -> une seule entrée)
+        # Toutes les classes uniques sont cochées par défaut
+        unique_class_names = list(dict.fromkeys(class_names))  # Préserve l'ordre, supprime les doublons
+        for class_name in unique_class_names:
             item = QListWidgetItem(class_name)
             item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
-            if not selected_classes or class_name in selected_classes:
-                item.setCheckState(Qt.CheckState.Checked)
-            else:
-                item.setCheckState(Qt.CheckState.Unchecked)
+            item.setCheckState(Qt.CheckState.Checked)
             self.cv_classes_list.addItem(item)
 
     def _show_model_training_info(self) -> None:
@@ -1025,12 +1138,24 @@ class MainDialog(QDialog):
                 selected.append(item.text())
         return selected
 
+    def _get_model_name_from_path(self, model_path: str) -> str:
+        """Extrait le nom du modèle depuis son chemin."""
+        if not model_path:
+            return ""
+        model_file = Path(model_path)
+        if model_file.name == "best.pt" or model_file.name == "best.onnx":
+            # Structure: models/model_name/weights/best.pt
+            if model_file.parent.name == "weights":
+                return model_file.parent.parent.name
+        return model_file.stem
+
     def _update_available_rvt_targets(self) -> None:
         mapping = [
             ("M_HS", "M-HS"),
             ("SVF", "SVF"),
             ("SLO", "SLO"),
             ("LD", "LD"),
+            ("SLRM", "SLRM"),
             ("VAT", "VAT"),
         ]
 
@@ -1039,6 +1164,7 @@ class MainDialog(QDialog):
             "SVF": self.product_svf_cb.isChecked(),
             "SLO": self.product_slo_cb.isChecked(),
             "LD": self.product_ld_cb.isChecked(),
+            "SLRM": self.product_slrm_cb.isChecked(),
             "VAT": self.product_vat_cb.isChecked(),
         }
 
@@ -1191,6 +1317,7 @@ class MainDialog(QDialog):
             self.product_svf_cb.setChecked(bool(products.get("SVF", True)))
             self.product_slo_cb.setChecked(bool(products.get("SLO", True)))
             self.product_ld_cb.setChecked(bool(products.get("LD", True)))
+            self.product_slrm_cb.setChecked(bool(products.get("SLRM", False)))
             self.product_vat_cb.setChecked(bool(products.get("VAT", False)))
 
             rvt = self._config.get("rvt_params") or {}
@@ -1221,6 +1348,11 @@ class MainDialog(QDialog):
             self.ldo_observer_h_spin.setValue(float(ldo.get("observer_h", 1.7)))
             self.ldo_ve_factor_spin.setValue(int(ldo.get("ve_factor", 1)))
             self.ldo_save_8bit_cb.setChecked(bool(ldo.get("save_as_8bit", True)))
+
+            slrm = rvt.get("slrm") or {}
+            self.slrm_radius_spin.setValue(int(slrm.get("radius", 20)))
+            self.slrm_ve_factor_spin.setValue(int(slrm.get("ve_factor", 1)))
+            self.slrm_save_8bit_cb.setChecked(bool(slrm.get("save_as_8bit", True)))
 
             vat = rvt.get("vat") or {}
             terrain = int(vat.get("terrain_type", 0))
@@ -1262,8 +1394,6 @@ class MainDialog(QDialog):
         size_filter["enabled"] = self.cv_size_filter_enabled_cb.isChecked()
         size_filter["max_meters"] = float(self.cv_size_filter_max_spin.value())
 
-        cv["selected_classes"] = self._get_selected_classes()
-
         processing = self._config.setdefault("processing", {})
         processing["mnt_resolution"] = float(self.mnt_resolution_spin.value())
         processing["density_resolution"] = float(self.density_resolution_spin.value())
@@ -1295,6 +1425,7 @@ class MainDialog(QDialog):
         products["SVF"] = self.product_svf_cb.isChecked()
         products["SLO"] = self.product_slo_cb.isChecked()
         products["LD"] = self.product_ld_cb.isChecked()
+        products["SLRM"] = self.product_slrm_cb.isChecked()
         products["VAT"] = self.product_vat_cb.isChecked()
 
         rvt = self._config.setdefault("rvt_params", {})
@@ -1323,6 +1454,11 @@ class MainDialog(QDialog):
         ldo["observer_h"] = float(self.ldo_observer_h_spin.value())
         ldo["ve_factor"] = int(self.ldo_ve_factor_spin.value())
         ldo["save_as_8bit"] = self.ldo_save_8bit_cb.isChecked()
+
+        slrm = rvt.setdefault("slrm", {})
+        slrm["radius"] = int(self.slrm_radius_spin.value())
+        slrm["ve_factor"] = int(self.slrm_ve_factor_spin.value())
+        slrm["save_as_8bit"] = self.slrm_save_8bit_cb.isChecked()
 
         vat = rvt.setdefault("vat", {})
         vat["terrain_type"] = int(self.vat_terrain_type_combo.currentData())
@@ -1360,8 +1496,6 @@ class MainDialog(QDialog):
         size_filter["enabled"] = self.cv_size_filter_enabled_cb.isChecked()
         size_filter["max_meters"] = float(self.cv_size_filter_max_spin.value())
 
-        cv["selected_classes"] = self._get_selected_classes()
-
         processing = self._config.setdefault("processing", {})
         processing["mnt_resolution"] = float(self.mnt_resolution_spin.value())
         processing["density_resolution"] = float(self.density_resolution_spin.value())
@@ -1393,6 +1527,7 @@ class MainDialog(QDialog):
         products["SVF"] = self.product_svf_cb.isChecked()
         products["SLO"] = self.product_slo_cb.isChecked()
         products["LD"] = self.product_ld_cb.isChecked()
+        products["SLRM"] = self.product_slrm_cb.isChecked()
         products["VAT"] = self.product_vat_cb.isChecked()
 
         rvt = self._config.setdefault("rvt_params", {})
@@ -1421,6 +1556,11 @@ class MainDialog(QDialog):
         ldo["observer_h"] = float(self.ldo_observer_h_spin.value())
         ldo["ve_factor"] = int(self.ldo_ve_factor_spin.value())
         ldo["save_as_8bit"] = self.ldo_save_8bit_cb.isChecked()
+
+        slrm = rvt.setdefault("slrm", {})
+        slrm["radius"] = int(self.slrm_radius_spin.value())
+        slrm["ve_factor"] = int(self.slrm_ve_factor_spin.value())
+        slrm["save_as_8bit"] = self.slrm_save_8bit_cb.isChecked()
 
         vat = rvt.setdefault("vat", {})
         vat["terrain_type"] = int(self.vat_terrain_type_combo.currentData())
@@ -1479,6 +1619,7 @@ class MainDialog(QDialog):
             self.product_svf_cb.setChecked(False)
             self.product_slo_cb.setChecked(False)
             self.product_ld_cb.setChecked(False)
+            self.product_slrm_cb.setChecked(False)
             self.product_vat_cb.setChecked(False)
         finally:
             self._loading = False
@@ -1518,6 +1659,11 @@ class MainDialog(QDialog):
             self.ldo_observer_h_spin.setValue(float(ldo.get("observer_h", 1.7)))
             self.ldo_ve_factor_spin.setValue(int(ldo.get("ve_factor", 1)))
             self.ldo_save_8bit_cb.setChecked(bool(ldo.get("save_as_8bit", True)))
+
+            slrm = rvt.get("slrm") or {}
+            self.slrm_radius_spin.setValue(int(slrm.get("radius", 20)))
+            self.slrm_ve_factor_spin.setValue(int(slrm.get("ve_factor", 1)))
+            self.slrm_save_8bit_cb.setChecked(bool(slrm.get("save_as_8bit", True)))
 
             vat = rvt.get("vat") or {}
             terrain = int(vat.get("terrain_type", 0))
@@ -1568,6 +1714,23 @@ class MainDialog(QDialog):
             return
 
         self._sync_config_from_widgets()
+
+        # Récupérer les classes sélectionnées depuis l'interface (pas de sauvegarde persistante)
+        cv_cfg = self._config.setdefault("computer_vision", {})
+        if cv_cfg.get("enabled", False):
+            selected_classes = self._get_selected_classes()
+            cv_cfg["selected_classes"] = selected_classes  # Passer au runner
+            if not selected_classes:
+                from qgis.PyQt.QtWidgets import QMessageBox
+                QMessageBox.warning(
+                    self,
+                    "Avertissement",
+                    "La Computer Vision est activée mais aucune classe n'est sélectionnée.\n\n"
+                    "Veuillez sélectionner au moins une classe dans l'onglet Computer Vision, "
+                    "ou désactiver la Computer Vision.",
+                )
+                return
+
         self._cancel_event.clear()
         self._set_run_enabled(False)
         self._logger.info("Lancement du pipeline (stub)")

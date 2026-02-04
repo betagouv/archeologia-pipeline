@@ -168,6 +168,7 @@ class IgnOrLocalRunner:
                 cv_config=ctx.cv_cfg or {},
                 output_dir=ctx.output_dir,
                 log=lambda m: reporter.info(m),
+                cancel_check=cancel.is_cancelled,
             )
 
             if slog:
@@ -338,6 +339,7 @@ class IgnOrLocalRunner:
                             cv_config=ctx.cv_cfg or {},
                             output_structure=output_structure,
                             log=lambda m: reporter.info(m),
+                            cancel_check=cancel.is_cancelled,
                         )
                         if cv_service.generate_shapefiles:
                             reporter.info("Computer Vision (existing MNT): shapefiles générés")
@@ -372,9 +374,29 @@ class IgnOrLocalRunner:
                 if annotated_dir.exists() and list(annotated_dir.glob("*.jpg")):
                     build_vrt_index(annotated_dir, pattern="*.jpg", output_name="index.vrt", log=lambda m: reporter.info(m))
 
-                # Collecter les shapefiles de détection CV
-                for shp_file in results_dir.rglob("*.shp"):
-                    shapefile_paths.append(str(shp_file))
+                # Collecter les shapefiles de détection CV (uniquement du dossier shapefiles principal)
+                # Chercher le target_rvt depuis cv_config
+                cv_cfg = ctx.cv_cfg or {}
+                target_rvt = str(cv_cfg.get("target_rvt", "LD"))
+                shapefiles_dir = results_dir / "RVT" / target_rvt / "shapefiles"
+                if shapefiles_dir.exists():
+                    for shp_file in shapefiles_dir.glob("*.shp"):
+                        shapefile_paths.append(str(shp_file))
+        
+        # Charger les couleurs de classes depuis le modèle
+        class_colors = None
+        try:
+            from ...pipeline.cv.class_utils import load_class_colors_from_model
+            cv_cfg = ctx.cv_cfg or {}
+            selected_model = str(cv_cfg.get("selected_model", "")).strip()
+            models_dir = Path(cv_cfg.get("models_dir", "models"))
+            weights_path = Path(selected_model)
+            if not weights_path.exists() or not weights_path.is_file():
+                weights_path = models_dir / selected_model / "weights" / "best.pt"
+            if weights_path.exists():
+                class_colors = load_class_colors_from_model(weights_path)
+        except Exception:
+            pass
         
         # Calcul des statistiques finales
         elapsed = time.time() - start_time
@@ -406,6 +428,6 @@ class IgnOrLocalRunner:
             reporter.stage("Chargement des couches")
             reporter.info(f"Chargement de {len(vrt_paths)} VRT et {len(shapefile_paths)} shapefile(s) dans QGIS...")
             try:
-                reporter.load_layers(vrt_paths, shapefile_paths)
+                reporter.load_layers(vrt_paths, shapefile_paths, class_colors)
             except Exception as e:
                 reporter.info(f"Note: Chargement des couches non disponible ({e})")

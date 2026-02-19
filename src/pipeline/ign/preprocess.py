@@ -17,10 +17,7 @@ from .pdal_validation import (
     run_pdal_command_cancellable,
     validate_las_or_laz_with_pdal,
 )
-
-
-LogFn = Callable[[str], None]
-CancelFn = Callable[[], bool]
+from ..types import LogFn, CancelFn
 
 
 @dataclass(frozen=True)

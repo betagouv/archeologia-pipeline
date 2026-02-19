@@ -16,6 +16,157 @@ from typing import Dict, List, Optional, Tuple, Union
 logger = logging.getLogger(__name__)
 
 
+def resolve_cv_runs(cv_config: Dict) -> List[Dict]:
+    """
+    Résout la liste des runs CV depuis la configuration.
+    
+    Chaque run est un dict cv_config complet avec son propre
+    ``selected_model`` et ``target_rvt``.
+    
+    Rétrocompatible : si ``runs`` est absent ou vide, utilise
+    ``selected_model`` + ``target_rvt`` comme unique run.
+    """
+    if not isinstance(cv_config, dict):
+        return []
+
+    runs_raw = cv_config.get("runs")
+    if not isinstance(runs_raw, list) or not runs_raw:
+        # Ancien format mono-modèle
+        model = str(cv_config.get("selected_model") or "").strip()
+        rvt = str(cv_config.get("target_rvt") or "LD").strip()
+        if not model:
+            return []
+        run_cfg = dict(cv_config, selected_model=model, target_rvt=rvt)
+        model_path = _resolve_model_path_for_sahi(model, cv_config)
+        if model_path:
+            run_cfg["sahi"] = load_sahi_config_from_model(model_path)
+        return [run_cfg]
+
+    result = []
+    for run in runs_raw:
+        if not isinstance(run, dict):
+            continue
+        model = str(run.get("model") or "").strip()
+        if not model:
+            continue
+        rvt = str(run.get("target_rvt") or "LD").strip()
+        # Construire un cv_config complet pour ce run
+        run_cfg = dict(cv_config, selected_model=model, target_rvt=rvt)
+        # Propager les champs spécifiques au run (ex: selected_classes)
+        if "selected_classes" in run:
+            run_cfg["selected_classes"] = run["selected_classes"]
+        # Charger la config SAHI depuis le dossier du modèle
+        model_path = _resolve_model_path_for_sahi(model, cv_config)
+        if model_path:
+            run_cfg["sahi"] = load_sahi_config_from_model(model_path)
+        result.append(run_cfg)
+    return result
+
+
+def _resolve_model_path_for_sahi(model: str, cv_config: Dict) -> Optional[Path]:
+    """
+    Résout le chemin du modèle pour charger sa config SAHI.
+    Utilise la même logique que resolve_model_weights_path.
+    """
+    model_p = Path(model)
+    if model_p.exists():
+        return model_p
+    models_dir = Path((cv_config or {}).get("models_dir", "models"))
+    candidate = models_dir / model
+    if candidate.exists():
+        return candidate
+    # Essayer avec weights/best.onnx
+    for ext in ("best.onnx", "best.pt"):
+        w = models_dir / model / "weights" / ext
+        if w.exists():
+            return w
+    return None
+
+
+def _resolve_model_dir(model_path: Union[str, Path]) -> Path:
+    """
+    Résout le dossier racine du modèle à partir d'un chemin de fichier weights
+    ou d'un dossier modèle.
+    
+    Structure typique : model_name/weights/best.pt → model_name/
+    """
+    model_path = Path(model_path)
+    if model_path.is_file():
+        if model_path.parent.name == "weights":
+            return model_path.parent.parent
+        return model_path.parent
+    return model_path
+
+
+def resolve_model_weights_path(cv_config: Dict) -> Optional[Path]:
+    """
+    Résout le chemin complet vers le fichier weights du modèle CV
+    à partir de la configuration.
+    
+    Cherche dans l'ordre :
+    1. Chemin direct si le fichier existe
+    2. models_dir / selected_model / weights / best.onnx
+    3. models_dir / selected_model / weights / best.pt
+    
+    Returns:
+        Path vers le fichier weights ou None si non trouvé
+    """
+    selected_model = str((cv_config or {}).get("selected_model", "")).strip()
+    if not selected_model:
+        return None
+    
+    model_path = Path(selected_model)
+    if model_path.exists() and model_path.is_file():
+        return model_path
+    
+    models_dir = Path((cv_config or {}).get("models_dir", "models"))
+    
+    # Chercher best.onnx en priorité, puis best.pt
+    for ext in ("best.onnx", "best.pt"):
+        candidate = models_dir / selected_model / "weights" / ext
+        if candidate.exists():
+            return candidate
+    
+    # Fallback : chemin par défaut (même s'il n'existe pas encore)
+    return models_dir / selected_model / "weights" / "best.pt"
+
+
+def load_sahi_config_from_model(model_path: Union[str, Path]) -> Dict:
+    """
+    Charge la configuration SAHI depuis le args.yaml du modèle.
+    
+    Args:
+        model_path: Chemin vers le fichier weights ou le dossier du modèle
+        
+    Returns:
+        Dict avec slice_height, slice_width, overlap_ratio.
+        Valeurs par défaut (640, 640, 0.2) si non trouvé.
+    """
+    defaults = {"slice_height": 640, "slice_width": 640, "overlap_ratio": 0.2}
+    model_dir = _resolve_model_dir(model_path)
+    args_file = model_dir / "args.yaml"
+    if not args_file.exists():
+        logger.debug(f"Pas de args.yaml dans {model_dir}, SAHI par défaut")
+        return defaults
+    try:
+        import yaml
+        with open(args_file, 'r', encoding='utf-8') as f:
+            args = yaml.safe_load(f)
+        if isinstance(args, dict):
+            sahi = args.get("sahi")
+            if isinstance(sahi, dict):
+                result = {
+                    "slice_height": int(sahi.get("slice_height", defaults["slice_height"])),
+                    "slice_width": int(sahi.get("slice_width", defaults["slice_width"])),
+                    "overlap_ratio": float(sahi.get("overlap_ratio", defaults["overlap_ratio"])),
+                }
+                logger.info(f"SAHI config chargée depuis {args_file.name}: {result}")
+                return result
+    except Exception as e:
+        logger.warning(f"Erreur lecture SAHI depuis args.yaml: {e}")
+    return defaults
+
+
 def is_rfdetr_model(model_path: Union[str, Path]) -> bool:
     """
     Détecte si le modèle est un modèle RF-DETR en lisant args.yaml.
@@ -28,16 +179,7 @@ def is_rfdetr_model(model_path: Union[str, Path]) -> bool:
     Returns:
         True si RF-DETR, False sinon (YOLO par défaut)
     """
-    model_path = Path(model_path)
-    
-    # Déterminer le dossier du modèle
-    if model_path.is_file():
-        if model_path.parent.name == "weights":
-            model_dir = model_path.parent.parent
-        else:
-            model_dir = model_path.parent
-    else:
-        model_dir = model_path
+    model_dir = _resolve_model_dir(model_path)
     
     # Chercher args.yaml
     args_file = model_dir / "args.yaml"
@@ -76,18 +218,7 @@ def load_class_names_from_model(model_path: Union[str, Path]) -> Optional[List[s
     Returns:
         Liste des noms de classes (0-indexée) ou None si non trouvé
     """
-    model_path = Path(model_path)
-    
-    # Déterminer le dossier du modèle
-    if model_path.is_file():
-        # Si c'est un fichier (best.pt), remonter au dossier parent du modèle
-        # Structure typique: model_name/weights/best.pt
-        if model_path.parent.name == "weights":
-            model_dir = model_path.parent.parent
-        else:
-            model_dir = model_path.parent
-    else:
-        model_dir = model_path
+    model_dir = _resolve_model_dir(model_path)
     
     if not model_dir.exists():
         logger.warning(f"Dossier modèle introuvable: {model_dir}")
@@ -293,12 +424,29 @@ def _lighten_color(rgb: Tuple[int, int, int], factor: float) -> Tuple[int, int, 
     )
 
 
+def _darken_color(rgb: Tuple[int, int, int], factor: float) -> Tuple[int, int, int]:
+    """Assombrit une couleur RGB par un facteur (0=original, 1=noir)."""
+    r, g, b = rgb
+    return (
+        int(r * (1 - factor)),
+        int(g * (1 - factor)),
+        int(b * (1 - factor)),
+    )
+
+
 def get_color_for_confidence(base_color_index: int, confidence: float) -> Tuple[int, int, int]:
     """
     Retourne une couleur RGB basée sur l'index de couleur et la confiance.
     
     Plus la confiance est haute, plus la couleur est saturée (foncée).
     Plus la confiance est basse, plus la couleur est claire.
+    
+    Écart accentué:
+    - Confiance >= 0.8: couleur assombrie (30%)
+    - Confiance 0.6-0.8: couleur assombrie légèrement (15%)
+    - Confiance 0.4-0.6: couleur de base
+    - Confiance 0.2-0.4: couleur éclaircie (50%)
+    - Confiance < 0.2: couleur très claire (90%)
     
     Args:
         base_color_index: Index de la couleur de base (0-11)
@@ -314,11 +462,22 @@ def get_color_for_confidence(base_color_index: int, confidence: float) -> Tuple[
         confidence = confidence / 10.0 if confidence <= 10.0 else 1.0
     confidence = max(0.0, min(1.0, confidence))
     
-    # Facteur d'éclaircissement inversé (haute confiance = couleur saturée)
-    # Max 85% d'éclaircissement pour une variation plus importante
-    lighten_factor = (1.0 - confidence) * 0.85
-    
-    return _lighten_color(base_color, lighten_factor)
+    # Écart accentué avec assombrissement pour haute confiance et éclaircissement pour basse
+    if confidence >= 0.8:
+        # Haute confiance: couleur foncée (assombrie de 30%)
+        return _darken_color(base_color, 0.30)
+    elif confidence >= 0.6:
+        # Confiance moyenne-haute: légèrement assombrie (15%)
+        return _darken_color(base_color, 0.15)
+    elif confidence >= 0.4:
+        # Confiance moyenne: couleur de base
+        return base_color
+    elif confidence >= 0.2:
+        # Confiance moyenne-basse: éclaircie (35%)
+        return _lighten_color(base_color, 0.35)
+    else:
+        # Basse confiance: claire (65%)
+        return _lighten_color(base_color, 0.65)
 
 
 def load_class_colors_from_model(model_path: Union[str, Path]) -> Optional[List[int]]:
@@ -334,23 +493,10 @@ def load_class_colors_from_model(model_path: Union[str, Path]) -> Optional[List[
     Returns:
         Liste des indices de couleurs (0-11) par classe, ou None si non défini
     """
-    model_path = Path(model_path)
-    print(f"[CLASS_UTILS] load_class_colors_from_model: model_path={model_path}", flush=True)
+    model_dir = _resolve_model_dir(model_path)
     
-    # Déterminer le dossier du modèle
-    if model_path.is_file():
-        if model_path.parent.name == "weights":
-            model_dir = model_path.parent.parent
-        else:
-            model_dir = model_path.parent
-    else:
-        model_dir = model_path
-    
-    # Chercher args.yaml
     args_file = model_dir / "args.yaml"
-    print(f"[CLASS_UTILS] args_file={args_file}, exists={args_file.exists()}", flush=True)
     if not args_file.exists():
-        print(f"[CLASS_UTILS] args.yaml not found, returning None", flush=True)
         return None
     
     try:
@@ -358,13 +504,9 @@ def load_class_colors_from_model(model_path: Union[str, Path]) -> Optional[List[
         with open(args_file, 'r', encoding='utf-8') as f:
             args = yaml.safe_load(f)
         
-        print(f"[CLASS_UTILS] args.yaml loaded, keys={list(args.keys()) if isinstance(args, dict) else 'not a dict'}", flush=True)
-        
         if isinstance(args, dict) and "class_colors" in args:
             colors = args["class_colors"]
-            print(f"[CLASS_UTILS] class_colors found in args.yaml: {colors}", flush=True)
             if isinstance(colors, list):
-                # Valider que ce sont des entiers dans la plage valide
                 result = []
                 for c in colors:
                     try:
@@ -372,13 +514,9 @@ def load_class_colors_from_model(model_path: Union[str, Path]) -> Optional[List[
                         result.append(idx % len(BASE_COLOR_PALETTE))
                     except (ValueError, TypeError):
                         result.append(0)
-                print(f"[CLASS_UTILS] class_colors validated: {result}", flush=True)
                 logger.info(f"Couleurs de classes chargées depuis args.yaml: {result}")
                 return result
-        else:
-            print(f"[CLASS_UTILS] class_colors NOT found in args.yaml", flush=True)
     except Exception as e:
-        print(f"[CLASS_UTILS] Error reading args.yaml: {e}", flush=True)
         logger.warning(f"Erreur lecture class_colors depuis args.yaml: {e}")
     
     return None

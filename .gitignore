@@ -1,16 +1,11 @@
 __pycache__/
 *.pyc
 .vscode/
-dist/
 
-# PyInstaller
-build/
-runners/build/
-runners/dist_*/
-runners/.venv_*/
-runner_onnx/build/
-runner_onnx/dist/
-runner_onnx/.venv_*/
+# PyInstaller (dev/runner_onnx build artifacts)
+dev/runner_onnx/build/
+dev/runner_onnx/dist/
+dev/runner_onnx/.venv_*/
 
 # Virtual environments
 .venv/
@@ -37,14 +32,12 @@ output_test/
 # OS files
 Thumbs.db
 Desktop.ini
+.DS_Store
 
-third_party/cv_runner/windows/*.exe
-third_party/cv_runner/linux/*
-third_party/cv_runner_rfdetr/windows/*.exe
-third_party/cv_runner_rfdetr/linux/*
+# Compiled CV runner binaries
 third_party/cv_runner_onnx/windows/*.exe
 third_party/cv_runner_onnx/linux/*
 
-old_src/
+# Models (large files, not versioned)
 models/**
-!models/.gitkeeprunner_onnx/ 
+!models/.gitkeep

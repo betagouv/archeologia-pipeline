@@ -76,10 +76,8 @@ def _extract_real_url(url: str) -> str:
     return url
 
 
-LogFn = Callable[[str], None]
-ProgressFn = Callable[[int], None]
+from ..types import LogFn, ProgressFn, CancelFn
 StageFn = Callable[[str], None]
-CancelFn = Callable[[], bool]
 
 
 @dataclass(frozen=True)

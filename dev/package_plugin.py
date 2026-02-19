@@ -9,8 +9,8 @@ import zipfile
 from pathlib import Path
 from datetime import datetime
 
-# Dossier racine du plugin
-PLUGIN_ROOT = Path(__file__).parent
+# Dossier racine du plugin (ce script est dans dev/)
+PLUGIN_ROOT = Path(__file__).resolve().parent.parent
 
 # Nom du plugin (sera le nom du dossier dans le ZIP une fois dézippé)
 PLUGIN_NAME = "archeologia"
@@ -23,24 +23,21 @@ EXCLUDE_DIRS = {
     ".git",
     ".githooks",
     ".pytest_cache",
-    ".venv_export",
-    ".venv_onnx",
-    ".venv_rfdetr",
     "__pycache__",
-    "runners",  # Ancien système de runners PyTorch
+    "dev",       # Tout l'outillage développeur (requirements, runner_onnx, package_plugin)
     "tests",
-    "build",  # Dossier de build PyInstaller
     ".venv",
     "node_modules",
 }
 
 EXCLUDE_FILES = {
     ".gitignore",
+    ".gitkeep",
     ".talismanrc",
     "conftest.py",
+    "config.json",
     "pytest.ini",
-    "setup.cfg",
-    "package_plugin.py",  # Ce script lui-même
+    "run_tests.py",
     ".DS_Store",
     "Thumbs.db",
 }
@@ -57,18 +54,6 @@ EXCLUDE_EXTENSIONS = {
     ".log",
 }
 
-# Fichiers/dossiers spécifiques à exclure dans runner_onnx (garder seulement dist/)
-RUNNER_ONNX_EXCLUDE = {
-    ".venv_onnx",
-    "build",
-    "build.py",
-    "cv_runner_onnx.spec",
-    "cv_runner_onnx_cli.py",
-    "debug_onnx.py",
-    "export_to_onnx.py",
-}
-
-
 def should_exclude(path: Path, relative_path: str) -> bool:
     """Vérifie si un fichier/dossier doit être exclu."""
     name = path.name
@@ -84,17 +69,6 @@ def should_exclude(path: Path, relative_path: str) -> bool:
     # Exclure par extension
     if path.is_file() and path.suffix in EXCLUDE_EXTENSIONS:
         return True
-    
-    # Exclure les fichiers de dev dans runner_onnx (sauf dist/)
-    if "runner_onnx" in relative_path:
-        # Garder uniquement dist/ et README.md dans runner_onnx
-        parts = Path(relative_path).parts
-        if len(parts) >= 2 and parts[0] == "runner_onnx":
-            if parts[1] in RUNNER_ONNX_EXCLUDE:
-                return True
-            # Exclure tout sauf dist/ et README.md au premier niveau de runner_onnx
-            if len(parts) == 2 and parts[1] not in ("dist", "README.md"):
-                return True
     
     # Exclure les fichiers .pt et .pth (modèles PyTorch) - on garde seulement .onnx
     if path.is_file() and path.suffix in (".pt", ".pth"):

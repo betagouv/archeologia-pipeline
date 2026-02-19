@@ -6,9 +6,7 @@ from typing import Any, Callable, Dict, Optional, Tuple
 
 from ..pdal_validation import get_laz_bounds, validate_las_or_laz_with_pdal
 from .qgis_processing import run_qgis_algorithm
-
-
-LogFn = Callable[[str], None]
+from ...types import LogFn
 
 
 @dataclass(frozen=True)

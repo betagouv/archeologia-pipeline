@@ -8,7 +8,7 @@ if os.path.isfile(SPECPATH):
     SPEC_DIR = os.path.dirname(SPECPATH)
 else:
     SPEC_DIR = SPECPATH
-PLUGIN_ROOT = os.path.abspath(os.path.join(SPEC_DIR, '..'))
+PLUGIN_ROOT = os.path.abspath(os.path.join(SPEC_DIR, '..', '..'))
 
 # Hidden imports - sahi_lite est inclus dans src/pipeline/cv/
 # On n'a plus besoin de sahi (remplacé par sahi_lite numpy-only)
@@ -27,6 +27,12 @@ hiddenimports = [
     'geopandas',
     'fiona',
     'pyproj',
+    'pyogrio',
+    'pyogrio._geometry',
+    'pyogrio._io',
+    'pyogrio._ogr',
+    'pyogrio.raw',
+    'pyogrio.geopandas',
 ]
 
 a = Analysis(

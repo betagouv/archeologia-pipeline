@@ -5,10 +5,9 @@ import os
 import shutil
 from pathlib import Path
 from dataclasses import dataclass
-from typing import Callable, Dict, List, Optional
+from typing import Dict, List, Optional
 
-
-LogFn = Callable[[str], None]
+from .types import LogFn
 
 
 @dataclass(frozen=True)
@@ -21,6 +20,43 @@ class CheckResult:
 
 def _check_exe(name: str) -> Optional[str]:
     return shutil.which(name)
+
+
+def _check_input_path(
+    files_cfg: Dict,
+    key: str,
+    label: str,
+    *,
+    expect_dir: bool = True,
+    extensions: Optional[List[str]] = None,
+    results: List[CheckResult],
+) -> None:
+    """Vérifie qu'un chemin d'entrée existe et contient les fichiers attendus."""
+    raw = str(files_cfg.get(key, "")).strip()
+    if not raw:
+        results.append(CheckResult(name=label, ok=False, details="non configuré", critical=True))
+        return
+    p = Path(raw)
+    if expect_dir:
+        if not p.exists() or not p.is_dir():
+            results.append(CheckResult(name=label, ok=False, details=f"introuvable: {p}", critical=True))
+            return
+        if extensions:
+            found: List[Path] = []
+            for ext in extensions:
+                found.extend(p.glob(f"*.{ext}"))
+            if found:
+                results.append(CheckResult(name=label, ok=True, details=f"{p} ({len(found)} fichiers)", critical=True))
+            else:
+                exts = "/".join(extensions).upper()
+                results.append(CheckResult(name=label, ok=False, details=f"{p} (aucun fichier {exts} trouvé)", critical=True))
+        else:
+            results.append(CheckResult(name=label, ok=True, details=str(p), critical=True))
+    else:
+        if p.exists() and p.is_file():
+            results.append(CheckResult(name=label, ok=True, details=str(p), critical=True))
+        else:
+            results.append(CheckResult(name=label, ok=False, details=f"introuvable: {p}", critical=True))
 
 
 def _check_import(module_name: str) -> str:
@@ -36,20 +72,9 @@ def _check_import(module_name: str) -> str:
 
 
 def _find_external_cv_runner() -> Optional[Path]:
-    """Trouve le runner ONNX externe."""
-    plugin_root = Path(__file__).resolve().parents[2]
-    
-    if os.name == "nt":
-        candidate = plugin_root / "third_party" / "cv_runner_onnx" / "windows" / "cv_runner_onnx.exe"
-    else:
-        candidate = plugin_root / "third_party" / "cv_runner_onnx" / "linux" / "cv_runner_onnx"
-    
-    try:
-        if candidate.exists() and candidate.is_file():
-            return candidate
-    except Exception:
-        pass
-    return None
+    """Trouve le runner ONNX externe (délègue à cv.runner)."""
+    from .cv.runner import _find_external_cv_runner as _find
+    return _find()
 
 
 def run_preflight(
@@ -71,6 +96,7 @@ def run_preflight(
     need_gdaladdo = mode in ("ign_laz", "local_laz", "existing_mnt", "existing_rvt")
 
     need_processing = mode in ("ign_laz", "local_laz", "existing_mnt")
+    _processing_ok: Optional[bool] = None  # cache pour éviter le double import
 
     if need_pdal_cli:
         p = _check_exe("pdal")
@@ -86,8 +112,10 @@ def run_preflight(
     if need_processing:
         try:
             _check_import("processing")
+            _processing_ok = True
             results.append(CheckResult(name="QGIS processing", ok=True, details="import ok", critical=True))
         except Exception as e:
+            _processing_ok = False
             results.append(CheckResult(name="QGIS processing", ok=False, details=repr(e), critical=True))
 
     if need_gdalwarp:
@@ -125,11 +153,16 @@ def run_preflight(
 
     need_rvt = bool(products.get("M_HS", False) or products.get("SVF", False) or products.get("SLO", False) or products.get("LD", False) or products.get("SLRM", False) or products.get("VAT", False))
     if need_rvt and mode in ("ign_laz", "local_laz", "existing_mnt"):
-        try:
-            _check_import("processing")
+        if _processing_ok is True:
             results.append(CheckResult(name="RVT algos (via processing)", ok=True, details="expected available in QGIS", critical=False))
-        except Exception as e:
-            results.append(CheckResult(name="RVT algos (via processing)", ok=False, details=repr(e), critical=False))
+        elif _processing_ok is False:
+            results.append(CheckResult(name="RVT algos (via processing)", ok=False, details="processing import failed (see above)", critical=False))
+        else:
+            try:
+                _check_import("processing")
+                results.append(CheckResult(name="RVT algos (via processing)", ok=True, details="expected available in QGIS", critical=False))
+            except Exception as e:
+                results.append(CheckResult(name="RVT algos (via processing)", ok=False, details=repr(e), critical=False))
 
     if cv_enabled:
         runner = _find_external_cv_runner()
@@ -142,7 +175,6 @@ def run_preflight(
             results.append(CheckResult(name="cv_runner_onnx (external)", ok=False, details=f"not found (expected: {expected})", critical=False))
 
         # Vérifier les dépendances Python pour le fallback (si pas de runner externe)
-        # Note: ultralytics n'est plus requis, on utilise onnxruntime
         deps_critical = runner is None
         for mod in ("onnxruntime", "PIL"):
             if runner is not None:
@@ -177,60 +209,13 @@ def run_preflight(
             results.append(CheckResult(name="Dossier de sortie", ok=True, details=f"{output_dir} (sera créé)", critical=True))
 
     if mode == "ign_laz":
-        input_file = str(files_cfg.get("input_file", "")).strip()
-        if input_file:
-            p = Path(input_file)
-            if p.exists() and p.is_file():
-                results.append(CheckResult(name="Fichier liste URLs IGN", ok=True, details=str(p), critical=True))
-            else:
-                results.append(CheckResult(name="Fichier liste URLs IGN", ok=False, details=f"introuvable: {p}", critical=True))
-        else:
-            results.append(CheckResult(name="Fichier liste URLs IGN", ok=False, details="non configuré", critical=True))
-
+        _check_input_path(files_cfg, "input_file", "Fichier liste URLs IGN", expect_dir=False, results=results)
     elif mode == "local_laz":
-        local_dir = str(files_cfg.get("local_laz_dir", "")).strip()
-        if local_dir:
-            p = Path(local_dir)
-            if p.exists() and p.is_dir():
-                laz_files = list(p.glob("*.laz")) + list(p.glob("*.las")) + list(p.glob("*.LAZ")) + list(p.glob("*.LAS"))
-                if laz_files:
-                    results.append(CheckResult(name="Dossier LAZ locaux", ok=True, details=f"{p} ({len(laz_files)} fichiers)", critical=True))
-                else:
-                    results.append(CheckResult(name="Dossier LAZ locaux", ok=False, details=f"{p} (aucun fichier LAZ/LAS trouvé)", critical=True))
-            else:
-                results.append(CheckResult(name="Dossier LAZ locaux", ok=False, details=f"introuvable: {p}", critical=True))
-        else:
-            results.append(CheckResult(name="Dossier LAZ locaux", ok=False, details="non configuré", critical=True))
-
+        _check_input_path(files_cfg, "local_laz_dir", "Dossier LAZ locaux", extensions=["laz", "las", "LAZ", "LAS"], results=results)
     elif mode == "existing_mnt":
-        mnt_dir = str(files_cfg.get("existing_mnt_dir", "")).strip()
-        if mnt_dir:
-            p = Path(mnt_dir)
-            if p.exists() and p.is_dir():
-                tif_files = list(p.glob("*.tif")) + list(p.glob("*.TIF")) + list(p.glob("*.tiff"))
-                if tif_files:
-                    results.append(CheckResult(name="Dossier MNT existants", ok=True, details=f"{p} ({len(tif_files)} fichiers)", critical=True))
-                else:
-                    results.append(CheckResult(name="Dossier MNT existants", ok=False, details=f"{p} (aucun fichier TIF trouvé)", critical=True))
-            else:
-                results.append(CheckResult(name="Dossier MNT existants", ok=False, details=f"introuvable: {p}", critical=True))
-        else:
-            results.append(CheckResult(name="Dossier MNT existants", ok=False, details="non configuré", critical=True))
-
+        _check_input_path(files_cfg, "existing_mnt_dir", "Dossier MNT existants", extensions=["tif", "TIF", "tiff"], results=results)
     elif mode == "existing_rvt":
-        rvt_dir = str(files_cfg.get("existing_rvt_dir", "")).strip()
-        if rvt_dir:
-            p = Path(rvt_dir)
-            if p.exists() and p.is_dir():
-                tif_files = list(p.glob("*.tif")) + list(p.glob("*.TIF")) + list(p.glob("*.tiff"))
-                if tif_files:
-                    results.append(CheckResult(name="Dossier RVT existants", ok=True, details=f"{p} ({len(tif_files)} fichiers)", critical=True))
-                else:
-                    results.append(CheckResult(name="Dossier RVT existants", ok=False, details=f"{p} (aucun fichier TIF trouvé)", critical=True))
-            else:
-                results.append(CheckResult(name="Dossier RVT existants", ok=False, details=f"introuvable: {p}", critical=True))
-        else:
-            results.append(CheckResult(name="Dossier RVT existants", ok=False, details="non configuré", critical=True))
+        _check_input_path(files_cfg, "existing_rvt_dir", "Dossier RVT existants", extensions=["tif", "TIF", "tiff"], results=results)
 
     log("=== Préflight check: dépendances et chemins ===")
     any_critical_fail = False

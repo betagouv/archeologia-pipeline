@@ -1,0 +1,29 @@
+# =============================================================================
+# Archeolog'IA Pipeline — Toutes les dépendances développeur
+# =============================================================================
+# Installe TOUT d'un coup (tests + export + compilation runner).
+#
+#   python -m venv .venv
+#   .venv\Scripts\activate        (Windows)
+#   source .venv/bin/activate     (Linux/macOS)
+#   pip install -r dev/requirements.txt
+#
+# Pour n'installer qu'un sous-ensemble, utilisez le fichier ciblé :
+#   pip install -r dev/requirements/test.txt      # Tests & lint uniquement
+#   pip install -r dev/requirements/export.txt    # Export modèles → ONNX
+#   pip install -r dev/requirements/build.txt     # Compilation runner ONNX
+# =============================================================================
+
+-r requirements/test.txt
+-r requirements/export.txt
+-r requirements/build.txt
+
+# ---------------------------------------------------------------------------
+# Dépendances optionnelles (décommenter si nécessaire)
+# ---------------------------------------------------------------------------
+# rasterio>=1.3                   # Lecture raster avancée (geo_utils fallback)
+#
+# Note : les dépendances QGIS (qgis.core, osgeo, processing) sont fournies
+# par l'installation QGIS et ne figurent pas ici.
+# Note : ultralytics n'est plus utilisé à l'exécution — uniquement pour
+# l'export de modèles → ONNX (requirements/export.txt).

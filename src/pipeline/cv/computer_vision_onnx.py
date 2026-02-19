@@ -1,6 +1,7 @@
 """
-Module de computer vision ONNX pour la détection d'objets sur les images RVT.
+Module de computer vision ONNX pour la détection d'objets et la segmentation sémantique sur les images RVT.
 Ce module utilise ONNX Runtime pour l'inférence, permettant un runner léger et unifié.
+Supporte: YOLO (détection), RF-DETR (détection), SegFormer/SMP (segmentation sémantique).
 """
 
 import json
@@ -74,24 +75,26 @@ def _preprocess_image(pil_image, target_size: Tuple[int, int], model_type: str =
     Args:
         pil_image: Image PIL
         target_size: (width, height) cible
-        model_type: "yolo" ou "rfdetr" - détermine la normalisation
+        model_type: "yolo", "rfdetr", "segformer" ou "smp" - détermine la normalisation
     
     Returns:
         Tensor numpy [1, 3, H, W] normalisé
     """
-    from PIL import Image
+    import cv2
     
-    # Redimensionner
-    img_resized = pil_image.resize(target_size, Image.BILINEAR)
+    # Redimensionner avec cv2 (INTER_LINEAR) pour correspondre à Albumentations
+    # utilisé pendant l'entraînement (A.Resize utilise cv2.INTER_LINEAR par défaut)
+    img_array = np.array(pil_image)
+    img_array = cv2.resize(img_array, target_size, interpolation=cv2.INTER_LINEAR)
     
-    # Convertir en numpy
-    img_array = np.array(img_resized).astype(np.float32)
+    # Convertir en float32
+    img_array = img_array.astype(np.float32)
     
     # Normaliser [0, 255] -> [0, 1]
     img_array = img_array / 255.0
     
-    # RF-DETR utilise la normalisation ImageNet
-    if model_type == "rfdetr":
+    # RF-DETR, SegFormer et SMP utilisent la normalisation ImageNet
+    if model_type in ("rfdetr", "segformer", "smp"):
         mean = np.array([0.485, 0.456, 0.406], dtype=np.float32)
         std = np.array([0.229, 0.224, 0.225], dtype=np.float32)
         img_array = (img_array - mean) / std
@@ -176,6 +179,7 @@ def _postprocess_rfdetr(
     model_width: int,
     model_height: int,
     confidence_threshold: float,
+    class_offset: int = 1,
 ) -> List[Dict]:
     """
     Post-traite les sorties RF-DETR ONNX.
@@ -262,13 +266,18 @@ def _postprocess_rfdetr(
         x2 = max(0, min(x2, img_width))
         y2 = max(0, min(y2, img_height))
         
-        # Ignorer les boxes invalides
-        if x2 <= x1 or y2 <= y1:
+        # Ignorer les boxes invalides ou trop petites (< 10 pixels)
+        box_width = x2 - x1
+        box_height = y2 - y1
+        min_box_size = 10  # pixels
+        if box_width < min_box_size or box_height < min_box_size:
+            logger.debug(f"RF-DETR: box trop petite ignorée - w={box_width:.1f}, h={box_height:.1f}, class={int(class_ids[i])}")
             continue
         
-        # RF-DETR: les class IDs sont 1-indexés (0 = background), donc on soustrait 1
-        # pour obtenir des indices 0-indexés compatibles avec classes.txt
-        class_id = int(class_ids[i]) - 1
+        # RF-DETR: appliquer le décalage de classe (class_offset)
+        # - class_offset=1 (défaut): modèles avec background à l'index 0, on soustrait 1
+        # - class_offset=0: modèles sans background, on garde les indices tels quels
+        class_id = int(class_ids[i]) - class_offset
         if class_id < 0:
             continue  # Ignorer les détections de classe "background"
         
@@ -279,6 +288,531 @@ def _postprocess_rfdetr(
         })
     
     return detections
+
+
+def _postprocess_segformer(
+    outputs: List[np.ndarray],
+    img_width: int,
+    img_height: int,
+    model_width: int,
+    model_height: int,
+    confidence_threshold: float,
+    bg_bias: float = 0.0,
+) -> Tuple[np.ndarray, List[Dict]]:
+    """
+    Post-traite les sorties SegFormer ONNX.
+    
+    SegFormer output: logits [1, num_classes, H, W] où H, W sont la taille du modèle / 4
+    
+    Returns:
+        Tuple (segmentation_mask, detections_as_polygons)
+        - segmentation_mask: [H, W] avec les class IDs
+        - detections_as_polygons: Liste de détections avec polygones pour les shapefiles
+    """
+    import cv2
+    
+    output = outputs[0]  # [1, num_classes, H, W]
+    
+    if len(output.shape) == 4:
+        output = output[0]  # [num_classes, H, W]
+    
+    num_classes, mask_h, mask_w = output.shape
+    logger.info(f"SegFormer: output shape = {output.shape}, num_classes = {num_classes}")
+    
+    # Appliquer softmax pour obtenir les probabilités
+    exp_output = np.exp(output - np.max(output, axis=0, keepdims=True))
+    probs = exp_output / np.sum(exp_output, axis=0, keepdims=True)  # [num_classes, H, W]
+    
+    # Redimensionner les probabilités par classe à la taille de l'image originale
+    # Utiliser cv2 (INTER_LINEAR) pour cohérence avec Albumentations (entraînement)
+    probs_resized = np.zeros((num_classes, img_height, img_width), dtype=np.float32)
+    for c in range(num_classes):
+        probs_resized[c] = cv2.resize(probs[c], (img_width, img_height), interpolation=cv2.INTER_LINEAR)
+    
+    # Appliquer le biais anti-background (réduit la proba du background avant argmax)
+    if bg_bias > 0.0:
+        probs_resized[0] -= bg_bias
+        probs_resized[0] = np.clip(probs_resized[0], 0.0, 1.0)
+        logger.info(f"SegFormer: bg_bias={bg_bias} appliqué (pénalité background)")
+    
+    # Obtenir la classe prédite et la confiance pour chaque pixel
+    segmentation_mask = np.argmax(probs_resized, axis=0).astype(np.uint8)  # [H, W]
+    confidence_mask = np.max(probs_resized, axis=0)  # [H, W]
+    
+    # Convertir le masque en polygones pour chaque classe (sauf background = 0)
+    detections = _mask_to_polygons(
+        segmentation_mask, 
+        confidence_mask, 
+        confidence_threshold,
+        img_width,
+        img_height,
+    )
+    
+    logger.info(f"SegFormer: {len(detections)} polygones extraits")
+    
+    return segmentation_mask, detections
+
+
+def _mask_to_polygons(
+    segmentation_mask: np.ndarray,
+    confidence_mask: np.ndarray,
+    confidence_threshold: float,
+    img_width: int,
+    img_height: int,
+    min_area: int = 25,
+) -> List[Dict]:
+    """
+    Convertit un masque de segmentation en polygones.
+    
+    Args:
+        segmentation_mask: [H, W] avec les class IDs
+        confidence_mask: [H, W] avec les probabilités
+        confidence_threshold: Seuil de confiance minimum
+        img_width, img_height: Dimensions de l'image
+        min_area: Aire minimum pour un polygone (en pixels)
+    
+    Returns:
+        Liste de détections avec polygones
+    """
+    try:
+        import cv2
+    except ImportError:
+        logger.warning("OpenCV non disponible, conversion masque->polygones impossible")
+        return []
+    
+    detections = []
+    unique_classes = np.unique(segmentation_mask)
+    
+    for class_id in unique_classes:
+        if class_id == 0:  # Ignorer le background
+            continue
+        
+        # Créer un masque binaire pour cette classe
+        binary_mask = (segmentation_mask == class_id).astype(np.uint8)
+        
+        # Appliquer le seuil de confiance
+        class_confidence = confidence_mask * binary_mask
+        binary_mask = (class_confidence >= confidence_threshold).astype(np.uint8)
+        
+        if binary_mask.sum() == 0:
+            continue
+        
+        # Trouver les contours
+        contours, _ = cv2.findContours(binary_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        
+        for contour in contours:
+            area = cv2.contourArea(contour)
+            if area < min_area:
+                continue
+            
+            if len(contour) < 3:
+                continue
+            
+            # Convertir en liste de coordonnées normalisées [x1, y1, x2, y2, ...]
+            # Pas de simplification pour garder la précision maximale
+            polygon = []
+            for point in contour:
+                x = float(point[0][0]) / img_width
+                y = float(point[0][1]) / img_height
+                polygon.extend([x, y])
+            
+            # Segmentation sémantique: confiance fixée à 1.00
+            # (pas de confiance per-instance, chaque polygone est une région segmentée)
+            mean_confidence = 1.0
+            
+            # Calculer la bounding box
+            x, y, w, h = cv2.boundingRect(contour)
+            bbox = [float(x), float(y), float(x + w), float(y + h)]
+            
+            detections.append({
+                "class_id": int(class_id) - 1,  # 0-indexed (background était 0)
+                "confidence": mean_confidence,
+                "polygon": polygon,
+                "bbox": bbox,
+                "area": float(area),
+            })
+    
+    return detections
+
+
+def _save_segmentation_annotated_image(
+    pil_image,
+    segmentation_mask: np.ndarray,
+    detections: List[Dict],
+    output_path: str,
+    class_names: List[str] = None,
+    class_colors: List[int] = None,
+    alpha: float = 0.5,
+    jpeg_quality: int = 95,
+) -> None:
+    """
+    Sauvegarde une image annotée avec le masque de segmentation superposé.
+    
+    Args:
+        pil_image: Image PIL source
+        segmentation_mask: [H, W] avec les class IDs
+        detections: Liste des détections avec polygones (pour les contours)
+        output_path: Chemin de sortie
+        class_names: Liste des noms de classes
+        class_colors: Liste des indices de couleurs par classe
+        alpha: Transparence du masque (0-1)
+        jpeg_quality: Qualité JPEG
+    """
+    try:
+        from PIL import Image, ImageDraw
+        from .class_utils import get_class_color, BASE_COLOR_PALETTE
+        
+        img_copy = pil_image.copy().convert("RGBA")
+        img_width, img_height = img_copy.size
+        
+        # Créer un overlay pour le masque de segmentation
+        overlay = Image.new("RGBA", (img_width, img_height), (0, 0, 0, 0))
+        overlay_pixels = overlay.load()
+        
+        # Colorier chaque pixel selon sa classe
+        unique_classes = np.unique(segmentation_mask)
+        for class_id in unique_classes:
+            if class_id == 0:  # Ignorer le background
+                continue
+            
+            # Obtenir la couleur pour cette classe (0-indexed dans class_colors)
+            color = get_class_color(int(class_id) - 1, class_colors)
+            rgba_color = (*color, int(255 * alpha))
+            
+            # Appliquer la couleur aux pixels de cette classe
+            mask_indices = np.where(segmentation_mask == class_id)
+            for y, x in zip(mask_indices[0], mask_indices[1]):
+                if 0 <= x < img_width and 0 <= y < img_height:
+                    overlay_pixels[x, y] = rgba_color
+        
+        # Fusionner l'overlay avec l'image
+        img_with_mask = Image.alpha_composite(img_copy, overlay)
+        
+        # Dessiner les contours des polygones
+        draw = ImageDraw.Draw(img_with_mask)
+        for det in detections:
+            if "polygon" not in det:
+                continue
+            
+            polygon = det["polygon"]
+            class_id = det.get("class_id", 0)
+            color = get_class_color(class_id, class_colors)
+            
+            # Convertir les coordonnées normalisées en pixels
+            points = []
+            for i in range(0, len(polygon), 2):
+                x = int(polygon[i] * img_width)
+                y = int(polygon[i + 1] * img_height)
+                points.append((x, y))
+            
+            if len(points) >= 3:
+                # Dessiner le contour du polygone
+                draw.polygon(points, outline=color, width=2)
+        
+        # Convertir en RGB pour sauvegarder en JPEG
+        img_final = img_with_mask.convert("RGB")
+        
+        Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+        
+        if output_path.lower().endswith(('.jpg', '.jpeg')):
+            img_final.save(output_path, quality=jpeg_quality, optimize=True)
+        else:
+            img_final.save(output_path)
+        
+        logger.info(f"Image segmentation annotée sauvegardée: {output_path}")
+        
+    except Exception as e:
+        logger.warning(f"Impossible de sauvegarder l'image annotée: {e}")
+        import traceback
+        traceback.print_exc()
+
+
+def _run_segformer_with_sahi(
+    pil_image,
+    session,
+    input_name: str,
+    model_width: int,
+    model_height: int,
+    slice_width: int,
+    slice_height: int,
+    overlap_ratio: float,
+    confidence_threshold: float,
+    merge_polygons: bool = True,
+    model_type: str = "smp",
+    bg_bias: float = 0.0,
+) -> Tuple[np.ndarray, List[Dict]]:
+    """
+    Exécute SegFormer avec SAHI slicing et fusionne les masques.
+    
+    Args:
+        pil_image: Image PIL source
+        session: Session ONNX
+        input_name: Nom de l'entrée du modèle
+        model_width, model_height: Taille d'entrée du modèle
+        slice_width, slice_height: Taille des tuiles SAHI
+        overlap_ratio: Ratio de chevauchement
+        confidence_threshold: Seuil de confiance
+        merge_polygons: Fusionner les polygones adjacents (formes linéaires)
+    
+    Returns:
+        Tuple (segmentation_mask, detections)
+    """
+    import cv2
+    from PIL import Image
+    
+    img_width, img_height = pil_image.size
+    img_array = np.array(pil_image)
+    
+    # Découper l'image en tuiles avec SAHI
+    sliced_images, orig_height, orig_width = sahi_lite_slice_image(
+        image=img_array,
+        slice_height=slice_height,
+        slice_width=slice_width,
+        overlap_height_ratio=overlap_ratio,
+        overlap_width_ratio=overlap_ratio,
+    )
+    
+    logger.info(f"SegFormer SAHI: {len(sliced_images)} tuiles à traiter")
+    
+    # Accumuler les probabilités par classe séparément [num_classes, H, W]
+    # C'est la méthode correcte : on somme les probas par classe puis on prend argmax
+    global_probs = None  # Initialisé à la première tuile (quand on connaît num_classes)
+    vote_count = np.zeros((img_height, img_width), dtype=np.float32)
+    num_classes = None
+    
+    for idx, sliced_img in enumerate(sliced_images):
+        slice_pil = Image.fromarray(sliced_img.image)
+        slice_w, slice_h = slice_pil.size
+        start_x, start_y = sliced_img.starting_pixel
+        
+        # Prétraiter et inférer
+        input_tensor = _preprocess_image(slice_pil, (model_width, model_height), model_type)
+        outputs = session.run(None, {input_name: input_tensor})
+        
+        # Post-traiter pour obtenir les probabilités de cette tuile
+        output = outputs[0]
+        if len(output.shape) == 4:
+            output = output[0]  # [num_classes, H, W]
+        
+        # Initialiser global_probs à la première tuile
+        if global_probs is None:
+            num_classes = output.shape[0]
+            global_probs = np.zeros((num_classes, img_height, img_width), dtype=np.float32)
+        
+        # Softmax pour obtenir les probabilités
+        exp_output = np.exp(output - np.max(output, axis=0, keepdims=True))
+        probs = exp_output / np.sum(exp_output, axis=0, keepdims=True)  # [num_classes, H, W]
+        
+        # Redimensionner chaque canal de probabilité à la taille de la tuile originale
+        # Utiliser cv2 (INTER_LINEAR) pour cohérence avec le preprocessing
+        probs_resized = np.zeros((num_classes, slice_h, slice_w), dtype=np.float32)
+        for c in range(num_classes):
+            probs_resized[c] = cv2.resize(probs[c], (slice_w, slice_h), interpolation=cv2.INTER_LINEAR)
+        
+        # Accumuler dans le masque global
+        end_x = min(start_x + slice_w, img_width)
+        end_y = min(start_y + slice_h, img_height)
+        actual_w = end_x - start_x
+        actual_h = end_y - start_y
+        
+        # Sommer les probabilités par classe (vote correct)
+        global_probs[:, start_y:end_y, start_x:end_x] += probs_resized[:, :actual_h, :actual_w]
+        vote_count[start_y:end_y, start_x:end_x] += 1.0
+        
+        if (idx + 1) % 10 == 0:
+            logger.info(f"SegFormer SAHI: {idx + 1}/{len(sliced_images)} tuiles traitées")
+    
+    # Normaliser par le nombre de votes (moyenne des probabilités)
+    vote_count = np.maximum(vote_count, 1.0)  # Éviter division par zéro
+    for c in range(num_classes):
+        global_probs[c] /= vote_count
+    
+    # Appliquer le biais anti-background (réduit la proba du background avant argmax)
+    if bg_bias > 0.0:
+        global_probs[0] -= bg_bias
+        global_probs[0] = np.clip(global_probs[0], 0.0, 1.0)
+        logger.info(f"SegFormer SAHI: bg_bias={bg_bias} appliqué (pénalité background)")
+    
+    # Classe finale = argmax des probabilités moyennes par classe
+    final_mask = np.argmax(global_probs, axis=0).astype(np.uint8)  # [H, W]
+    final_confidence = np.max(global_probs, axis=0)  # [H, W]
+    
+    # Appliquer le seuil de confiance
+    final_mask[final_confidence < confidence_threshold] = 0
+    
+    logger.info(f"SegFormer SAHI: masque fusionné {final_mask.shape}")
+    
+    # Convertir le masque en polygones
+    detections = _mask_to_polygons(
+        final_mask, final_confidence, confidence_threshold, img_width, img_height
+    )
+    
+    # Fusionner les polygones adjacents si demandé (pour les formes linéaires)
+    if merge_polygons and detections:
+        detections = _merge_adjacent_polygons(detections, img_width, img_height)
+    
+    return final_mask, detections
+
+
+def _merge_adjacent_polygons(
+    detections: List[Dict],
+    img_width: int,
+    img_height: int,
+    buffer_distance: float = 0.001,  # 0.1% de l'image (précision maximale)
+) -> List[Dict]:
+    """
+    Fusionne les polygones adjacents de même classe (pour les formes linéaires).
+    
+    Utilise une approche conservative pour éviter les artefacts géométriques:
+    - Buffer petit pour connecter uniquement les polygones vraiment adjacents
+    - Simplification des géométries après fusion
+    - Filtrage des polygones aberrants (triangles fins, etc.)
+    
+    Args:
+        detections: Liste des détections avec polygones
+        img_width, img_height: Dimensions de l'image
+        buffer_distance: Distance de buffer pour la fusion (en fraction de l'image)
+    
+    Returns:
+        Liste des détections avec polygones fusionnés
+    """
+    try:
+        from shapely.geometry import Polygon as ShapelyPolygon
+        from shapely.ops import unary_union
+        from shapely.validation import make_valid
+    except ImportError:
+        logger.warning("shapely non disponible, fusion des polygones ignorée")
+        return detections
+    
+    # Grouper les détections par classe
+    by_class = {}
+    for det in detections:
+        class_id = det.get("class_id", 0)
+        if class_id not in by_class:
+            by_class[class_id] = []
+        by_class[class_id].append(det)
+    
+    merged_detections = []
+    buffer_px = buffer_distance * max(img_width, img_height)
+    min_area = 25  # Aire minimale en pixels²
+    
+    for class_id, class_dets in by_class.items():
+        # Convertir les polygones normalisés en géométries Shapely (SANS buffer initial)
+        shapely_polys = []
+        confidences = []
+        original_areas = []
+        
+        for det in class_dets:
+            polygon = det.get("polygon", [])
+            if len(polygon) < 6:  # Minimum 3 points
+                continue
+            
+            # Convertir coordonnées normalisées en pixels
+            coords = []
+            for i in range(0, len(polygon), 2):
+                x = polygon[i] * img_width
+                y = polygon[i + 1] * img_height
+                coords.append((x, y))
+            
+            if len(coords) >= 3:
+                try:
+                    poly = ShapelyPolygon(coords)
+                    if not poly.is_valid:
+                        poly = make_valid(poly)
+                    if poly.is_valid and not poly.is_empty and poly.area >= min_area:
+                        shapely_polys.append(poly)
+                        confidences.append(det.get("confidence", 0.5))
+                        original_areas.append(poly.area)
+                except Exception:
+                    continue
+        
+        if not shapely_polys:
+            continue
+        
+        # Calculer l'aire totale originale pour validation
+        total_original_area = sum(original_areas)
+        
+        # Fusionner les polygones qui se touchent ou sont très proches
+        try:
+            # Appliquer un petit buffer, fusionner, puis réduire
+            buffered_polys = [p.buffer(buffer_px, join_style=2) for p in shapely_polys]  # join_style=2 = mitre
+            merged = unary_union(buffered_polys)
+            
+            # Réduire le buffer pour revenir à la taille originale
+            merged = merged.buffer(-buffer_px, join_style=2)
+            
+            # Extraire les polygones résultants (pas de simplification)
+            if merged.is_empty:
+                # Fallback: garder les originaux
+                merged_detections.extend(class_dets)
+                continue
+            
+            # Gérer MultiPolygon, Polygon, ou GeometryCollection
+            if merged.geom_type == 'MultiPolygon':
+                polys = list(merged.geoms)
+            elif merged.geom_type == 'Polygon':
+                polys = [merged]
+            elif merged.geom_type == 'GeometryCollection':
+                polys = [g for g in merged.geoms if g.geom_type == 'Polygon']
+            else:
+                merged_detections.extend(class_dets)
+                continue
+            
+            # Confiance moyenne pour cette classe
+            avg_confidence = sum(confidences) / len(confidences) if confidences else 0.5
+            
+            for poly in polys:
+                if poly.is_empty or poly.area < min_area:
+                    continue
+                
+                # Filtrer les polygones aberrants (triangles fins, artefacts)
+                # Ratio isopérimétrique: 4*pi*area/perimeter² = 1 pour un cercle, ~0.78 pour un carré
+                # Les triangles très fins ont un ratio très bas
+                if poly.length > 0:
+                    compactness = 4 * 3.14159 * poly.area / (poly.length ** 2)
+                    if compactness < 0.005:  # Filtrer uniquement les artefacts extrêmes
+                        logger.debug(f"Polygone filtré (compactness={compactness:.3f})")
+                        continue
+                
+                # Vérifier que le polygone n'est pas aberrant (aire >> aire originale)
+                if poly.area > total_original_area * 2:
+                    logger.warning(f"Polygone aberrant filtré (aire={poly.area:.0f} >> originale={total_original_area:.0f})")
+                    continue
+                
+                # Convertir en coordonnées normalisées
+                try:
+                    coords = list(poly.exterior.coords)
+                except Exception:
+                    continue
+                    
+                polygon_norm = []
+                for x, y in coords[:-1]:  # Exclure le point de fermeture
+                    # Clamp aux limites de l'image
+                    x = max(0, min(x, img_width))
+                    y = max(0, min(y, img_height))
+                    polygon_norm.extend([x / img_width, y / img_height])
+                
+                if len(polygon_norm) < 6:  # Minimum 3 points
+                    continue
+                
+                # Calculer la bbox
+                minx, miny, maxx, maxy = poly.bounds
+                
+                merged_detections.append({
+                    "class_id": class_id,
+                    "confidence": avg_confidence,
+                    "polygon": polygon_norm,
+                    "bbox": [minx, miny, maxx, maxy],
+                    "area": poly.area,
+                })
+                
+        except Exception as e:
+            logger.warning(f"Erreur fusion polygones classe {class_id}: {e}")
+            # Fallback: garder les détections originales
+            merged_detections.extend(class_dets)
+    
+    logger.info(f"Fusion polygones: {len(detections)} -> {len(merged_detections)}")
+    return merged_detections
 
 
 def _apply_nms(detections: List[Dict], iou_threshold: float) -> List[Dict]:
@@ -388,8 +922,96 @@ def run_onnx_inference(
         
         # Détecter le type de modèle
         model_type = model_meta.get("model_type", "yolo")
-        logger.info(f"ONNX: modèle {model_type}, taille {model_width}x{model_height}")
+        task = model_meta.get("task", "detect")
+        logger.info(f"ONNX: modèle {model_type}, taille {model_width}x{model_height}, task={task}")
         
+        # =====================================================================
+        # Mode SEGMENTATION SÉMANTIQUE (SegFormer)
+        # =====================================================================
+        if model_type in ("segformer", "smp") or task == "semantic_segmentation":
+            logger.info(f"ONNX: mode segmentation sémantique")
+            
+            # Paramètres de segmentation depuis les métadonnées du modèle
+            use_sahi = model_meta.get("use_sahi", True)
+            merge_polygons = model_meta.get("merge_polygons", True)
+            bg_bias = float(model_meta.get("bg_bias", 0.0))
+            
+            # Override per-model du confidence_threshold
+            model_confidence = model_meta.get("confidence_threshold")
+            if model_confidence is not None:
+                confidence_threshold = float(model_confidence)
+            logger.info(f"Segmentation: confidence_threshold={confidence_threshold}, bg_bias={bg_bias}")
+            
+            if use_sahi and (img_width > model_width * 1.5 or img_height > model_height * 1.5):
+                # =========================================================
+                # Mode SAHI: découper l'image en tuiles et fusionner les masques
+                # =========================================================
+                logger.info(f"SegFormer SAHI: image {img_width}x{img_height} -> tuiles {slice_width}x{slice_height}")
+                
+                segmentation_mask, all_detections = _run_segformer_with_sahi(
+                    pil_image=pil_image,
+                    session=session,
+                    input_name=input_name,
+                    model_width=model_width,
+                    model_height=model_height,
+                    slice_width=slice_width,
+                    slice_height=slice_height,
+                    overlap_ratio=overlap_ratio,
+                    confidence_threshold=confidence_threshold,
+                    merge_polygons=merge_polygons,
+                    model_type=model_type,
+                    bg_bias=bg_bias,
+                )
+            else:
+                # =========================================================
+                # Mode direct: image entière (petites images)
+                # =========================================================
+                logger.info(f"SegFormer direct: image {img_width}x{img_height}")
+                
+                input_tensor = _preprocess_image(pil_image, (model_width, model_height), model_type)
+                outputs = session.run(None, {input_name: input_tensor})
+                
+                segmentation_mask, all_detections = _postprocess_segformer(
+                    outputs, img_width, img_height, model_width, model_height, confidence_threshold,
+                    bg_bias=bg_bias,
+                )
+            
+            logger.info(f"SegFormer: {len(all_detections)} polygones détectés")
+            
+            # Sauvegarder les résultats
+            if not all_detections:
+                logger.info(f"ONNX: aucune détection dans {Path(image_path).name}")
+                save_empty_outputs(image_path=image_path, output_path=output_path, jpg_folder_path=jpg_folder_path)
+                return (False, 0) if return_count else False
+            
+            num_detections = len(all_detections)
+            
+            # Sauvegarder les fichiers (avec polygones)
+            save_detections_to_files(
+                image_path=image_path,
+                output_path=output_path,
+                detections=all_detections,
+                img_width=img_width,
+                img_height=img_height,
+                jpg_folder_path=jpg_folder_path,
+                task="segment",
+                model_type=model_type,
+            )
+            
+            logger.info(f"SegFormer: {num_detections} polygones sauvegardés pour {Path(image_path).name}")
+            
+            # Générer l'image annotée avec masque de segmentation
+            if generate_annotated_images:
+                _save_segmentation_annotated_image(
+                    pil_image, segmentation_mask, all_detections, output_path, 
+                    class_names=class_names, class_colors=class_colors
+                )
+            
+            return (True, num_detections) if return_count else True
+        
+        # =====================================================================
+        # Mode DÉTECTION (YOLO, RF-DETR)
+        # =====================================================================
         # Utiliser sahi_lite pour le slicing (numpy-only, pas de dépendance torch)
         img_array = np.array(pil_image)
         sliced_images, orig_height, orig_width = sahi_lite_slice_image(
@@ -418,7 +1040,8 @@ def run_onnx_inference(
             
             # Post-traiter selon le type de modèle
             if model_type == "rfdetr":
-                dets = _postprocess_rfdetr(outputs, slice_w, slice_h, model_width, model_height, confidence_threshold)
+                class_offset = model_meta.get("class_offset", 1)  # défaut: 1 pour compatibilité
+                dets = _postprocess_rfdetr(outputs, slice_w, slice_h, model_width, model_height, confidence_threshold, class_offset)
             else:
                 dets = _postprocess_yolo(outputs, slice_w, slice_h, model_width, model_height, confidence_threshold)
             

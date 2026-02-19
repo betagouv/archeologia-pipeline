@@ -19,33 +19,32 @@ from pathlib import Path
 
 
 RUNNER_DIR = Path(__file__).resolve().parent
-PLUGIN_ROOT = RUNNER_DIR.parent
+DEV_DIR = RUNNER_DIR.parent
+PLUGIN_ROOT = DEV_DIR.parent
+REQUIREMENTS_BUILD = DEV_DIR / "requirements" / "build.txt"
 
-# Dépendances légères pour le runner ONNX
-# Note: sahi et torch ont été remplacés par sahi_lite (numpy-only)
-ONNX_DEPS_CPU = [
-    "pyinstaller",
-    "onnxruntime",
-    "pillow",
-    "numpy",
-    "pyyaml",
-    "shapely",
-    "geopandas",
-    "fiona",
-    "opencv-python-headless",  # Pour le dessin des annotations
-]
 
-ONNX_DEPS_GPU = [
-    "pyinstaller",
-    "onnxruntime-gpu",
-    "pillow",
-    "numpy",
-    "pyyaml",
-    "shapely",
-    "geopandas",
-    "fiona",
-    "opencv-python-headless",  # Pour le dessin des annotations
-]
+def _read_deps(use_gpu: bool = False) -> list:
+    """Lit les dépendances depuis requirements/build.txt.
+
+    Si *use_gpu* est True, remplace ``onnxruntime`` par ``onnxruntime-gpu``.
+    """
+    if not REQUIREMENTS_BUILD.exists():
+        print(f"[WARN] {REQUIREMENTS_BUILD} introuvable, utilisation des dépendances par défaut")
+        deps = [
+            "pyinstaller", "onnxruntime", "pillow", "numpy",
+            "pyyaml", "opencv-python-headless", "shapely", "geopandas", "fiona",
+        ]
+    else:
+        deps = []
+        for line in REQUIREMENTS_BUILD.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            deps.append(line)
+    if use_gpu:
+        deps = [d.replace("onnxruntime", "onnxruntime-gpu") if d.startswith("onnxruntime") else d for d in deps]
+    return deps
 
 
 def run_cmd(cmd: list, cwd: Path = None) -> int:
@@ -132,7 +131,7 @@ def build_onnx_runner(use_gpu: bool = False) -> bool:
     python_exe, pip_exe = create_venv(venv_path)
     
     # Installer les dépendances
-    deps = ONNX_DEPS_GPU if use_gpu else ONNX_DEPS_CPU
+    deps = _read_deps(use_gpu=use_gpu)
     if install_deps(pip_exe, deps) != 0:
         print("[ERROR] Échec de l'installation des dépendances")
         return False

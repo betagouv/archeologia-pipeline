@@ -18,6 +18,15 @@ if sys.platform == "win32":
     sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
     sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8", errors="replace")
 
+# Forcer UTF-8 pour GDAL/fiona (évite les SystemError avec noms de classes accentués)
+import os as _os
+_os.environ.setdefault("GDAL_FILENAME_IS_UTF8", "YES")
+_os.environ.setdefault("SHAPE_ENCODING", "UTF-8")
+_os.environ.setdefault("PYTHONIOENCODING", "utf-8")
+_os.environ.setdefault("PGCLIENTENCODING", "UTF-8")
+# Empêcher GDAL de charger les plugins DLL d'OSGeo4W (incompatibles avec le GDAL bundlé)
+_os.environ["GDAL_DRIVER_PATH"] = "disable"
+
 
 def _try_import_version(mod_name: str) -> str:
     try:
@@ -242,6 +251,24 @@ def main() -> int:
     slice_width = int(sahi_cfg.get("slice_width", 750))
     overlap_ratio = float(sahi_cfg.get("overlap_ratio", 0.2))
 
+    # Charger les métadonnées du modèle pour les paramètres de segmentation
+    model_meta = {}
+    meta_path = model_path.with_suffix('.json')
+    if meta_path.exists():
+        try:
+            model_meta = json.loads(meta_path.read_text(encoding="utf-8"))
+        except Exception:
+            pass
+
+    is_segmentation = model_meta.get("model_type") in ("segformer", "smp") or model_meta.get("task") == "semantic_segmentation"
+    use_sahi_meta = model_meta.get("use_sahi", True)
+
+    if is_segmentation:
+        bg_bias = float(model_meta.get("bg_bias", 0.0))
+        model_conf = model_meta.get("confidence_threshold")
+        effective_conf = float(model_conf) if model_conf is not None else confidence_threshold
+        _print(f"seg_params=confidence_threshold={effective_conf} bg_bias={bg_bias} use_sahi={use_sahi_meta}")
+
     scan_all = bool(cv_config.get("scan_all", False))
     jpg_files = _iter_jpgs(jpg_dir=jpg_dir, single_jpg=single_jpg, scan_all=scan_all)
     jpg_files = [p for p in jpg_files if p.exists()]
@@ -302,12 +329,25 @@ def main() -> int:
             import traceback
             traceback.print_exc()
 
+        # Déterminer le mode d'inférence pour le log
+        infer_mode = ""
+        if is_segmentation:
+            try:
+                from PIL import Image as _PILImg
+                with _PILImg.open(str(jpg_file)) as _tmp:
+                    _iw, _ih = _tmp.size
+                _mw = model_meta.get("image_size", 640)
+                infer_mode = "sahi" if (use_sahi_meta and (_iw > _mw * 1.5 or _ih > _mw * 1.5)) else "direct"
+            except Exception:
+                infer_mode = "sahi" if use_sahi_meta else "direct"
+
+        mode_suffix = f" mode={infer_mode}" if infer_mode else ""
         if ok:
             success_count += 1
             total_detections += num_dets
-            _print(f"progress={idx}/{total_images} image={jpg_file.name} status=done detections={num_dets}")
+            _print(f"progress={idx}/{total_images} image={jpg_file.name} status=done detections={num_dets}{mode_suffix}")
         else:
-            _print(f"progress={idx}/{total_images} image={jpg_file.name} status=done detections=0")
+            _print(f"progress={idx}/{total_images} image={jpg_file.name} status=done detections=0{mode_suffix}")
 
     _print(f"summary: success={success_count} processed={processed_count} skipped={skipped_already_processed} total_detections={total_detections}")
 

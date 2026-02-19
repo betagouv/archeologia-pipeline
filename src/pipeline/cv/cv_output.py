@@ -223,11 +223,7 @@ def save_annotated_image(
             except Exception:
                 font = ImageFont.load_default()
         
-        # Log pour debug des couleurs (print pour être visible dans le runner compilé et console Python QGIS)
-        print(f"[CV_OUTPUT] save_annotated_image: class_colors={class_colors} (type={type(class_colors).__name__ if class_colors else 'None'})", flush=True)
-        print(f"[CV_OUTPUT] save_annotated_image: class_names={class_names}", flush=True)
-        print(f"[CV_OUTPUT] save_annotated_image: detections count={len(detections)}", flush=True)
-        logger.info(f"save_annotated_image: class_colors={class_colors} (type={type(class_colors).__name__ if class_colors else 'None'})")
+        logger.debug(f"save_annotated_image: class_colors={class_colors}, class_names={class_names}, detections={len(detections)}")
         
         for det in detections:
             if "bbox" in det:

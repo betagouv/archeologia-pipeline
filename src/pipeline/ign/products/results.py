@@ -7,31 +7,15 @@ import tempfile
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Tuple
 
-from ...cv.runner import extract_tif_transform_data
+from ...coords import extract_xy_from_tile_name as _extract_xy_from_tile_name
+from ...geo_utils import extract_tif_transform_data
+from ...subprocess_utils import subprocess_kwargs_no_window
+from .rvt_naming import get_rvt_temp_filename, get_rvt_param_suffix, get_rvt_source_and_dest_filenames
+from ...types import LogFn
 
 
-LogFn = Callable[[str], None]
-
-
-def _extract_xy_from_tile_name(tile_name: str) -> Tuple[str, str]:
-    parts = tile_name.split("_")
-    if len(parts) < 4:
-        raise ValueError(f"Nom de dalle inattendu: {tile_name}")
-    return parts[2], parts[3]
-
-
-def _subprocess_kwargs_no_window() -> Dict[str, Any]:
-    if os.name != "nt":
-        return {}
-    kwargs: Dict[str, Any] = {"creationflags": subprocess.CREATE_NO_WINDOW}
-    try:
-        si = subprocess.STARTUPINFO()
-        si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-        si.wShowWindow = 0
-        kwargs["startupinfo"] = si
-    except Exception:
-        pass
-    return kwargs
+# _extract_xy_from_tile_name importé depuis coords
+# _subprocess_kwargs_no_window importé depuis subprocess_utils
 
 
 def build_vrt_index(
@@ -65,7 +49,7 @@ def build_vrt_index(
         
         try:
             cmd = [str(gdalbuildvrt), "-input_file_list", filelist_path, str(vrt_path)]
-            r = subprocess.run(cmd, capture_output=True, text=True, **_subprocess_kwargs_no_window())
+            r = subprocess.run(cmd, capture_output=True, text=True, **subprocess_kwargs_no_window())
         finally:
             try:
                 os.unlink(filelist_path)
@@ -106,7 +90,7 @@ def build_raster_pyramids(
             str(raster_file),
             *[str(l) for l in levels],
         ]
-        r = subprocess.run(cmd, capture_output=True, text=True, **_subprocess_kwargs_no_window())
+        r = subprocess.run(cmd, capture_output=True, text=True, **subprocess_kwargs_no_window())
         if r.returncode != 0:
             log(f"Échec gdaladdo (pyramides) pour {raster_file.name}: {r.stderr or r.stdout}")
             return False
@@ -148,7 +132,7 @@ def _convert_tif_to_jpg(input_tif: Path, output_jpg: Path) -> bool:
                 str(input_tif),
                 str(output_jpg),
             ]
-            subprocess.run(cmd, check=False, **_subprocess_kwargs_no_window())
+            subprocess.run(cmd, check=False, **subprocess_kwargs_no_window())
             return output_jpg.exists()
         except Exception:
             return False
@@ -197,32 +181,14 @@ def copy_final_products_to_results(
     results_dir = output_dir / "results"
     results_dir.mkdir(parents=True, exist_ok=True)
 
-    source_files_cropped: Dict[str, str] = {
-        "MNT": f"LHD_FXX_{x}_{y}_MNT_A_0M50_LAMB93_IGN69.tif",
-        "DENSITE": f"LHD_FXX_{x}_{y}_densite_A_LAMB93.tif",
-        "M_HS": f"LHD_FXX_{x}_{y}_M-HS_A_LAMB93.tif",
-        "SVF": f"LHD_FXX_{x}_{y}_SVF_A_LAMB93.tif",
-        "SLO": f"LHD_FXX_{x}_{y}_SLO_A_LAMB93.tif",
-        "LD": f"LHD_FXX_{x}_{y}_LD_A_LAMB93.tif",
-        "SLRM": f"LHD_FXX_{x}_{y}_SLRM_A_LAMB93.tif",
-        "VAT": f"LHD_FXX_{x}_{y}_VAT_A_LAMB93.tif",
-    }
-
-    vat_params = (rvt_params or {}).get("vat", {})
-    terrain_type = str(vat_params.get("terrain_type", 0))
-    blend_combination = str(vat_params.get("blend_combination", 0))
-    preset_suffix = f"_T{terrain_type}_B{blend_combination}"
-
-    source_files_uncropped: Dict[str, str] = {
-        "MNT": f"{current_tile_name}_MNT.tif",
-        "DENSITE": f"{current_tile_name}_densite.tif",
-        "M_HS": f"{current_tile_name}_hillshade.tif",
-        "SVF": f"{current_tile_name}_SVF.tif",
-        "SLO": f"{current_tile_name}_Slope.tif",
-        "LD": f"{current_tile_name}_LD.tif",
-        "SLRM": f"{current_tile_name}_SLRM.tif",
-        "VAT": f"{current_tile_name}_VAT{preset_suffix}.tif",
-    }
+    # Générer les noms de fichiers avec paramètres pour invalider le cache
+    all_products = ["MNT", "DENSITE", "M_HS", "SVF", "SLO", "LD", "SLRM", "VAT"]
+    source_files_cropped: Dict[str, str] = {}
+    source_files_uncropped: Dict[str, str] = {}
+    for product in all_products:
+        uncropped, cropped = get_rvt_source_and_dest_filenames(product, current_tile_name, x, y, rvt_params)
+        source_files_uncropped[product] = uncropped
+        source_files_cropped[product] = cropped
 
     out_formats_tif = bool(output_formats.get("tif", True))
     jpg_cfg = output_formats.get("jpg", {}) if isinstance(output_formats.get("jpg", {}), dict) else {}
@@ -266,16 +232,14 @@ def copy_final_products_to_results(
         else:
             rvt_conf = output_structure.get("RVT", {}) if isinstance(output_structure.get("RVT", {}), dict) else {}
             rvt_base = str(rvt_conf.get("base_dir", "RVT"))
-            rvt_subdir = str(rvt_conf.get(product_name, product_name))
+            rvt_subdir_base = str(rvt_conf.get(product_name, product_name))
+            # Ajouter les paramètres au nom du dossier pour différencier les configurations
+            param_suffix = get_rvt_param_suffix(product_name, rvt_params)
+            rvt_subdir = f"{rvt_subdir_base}{param_suffix}" if param_suffix else rvt_subdir_base
             base_dir = results_dir / rvt_base / rvt_subdir
 
-        if product_name == "MNT":
-            output_base = f"LHD_FXX_{x}_{y}_MNT_A_0M50_LAMB93_IGN69"
-        elif product_name == "DENSITE":
-            output_base = f"LHD_FXX_{x}_{y}_densite_A_LAMB93"
-        else:
-            display_name = "M-HS" if product_name == "M_HS" else product_name
-            output_base = f"LHD_FXX_{x}_{y}_{display_name}_A_LAMB93"
+        # Utiliser le nom du fichier croppé (sans extension) comme base
+        output_base = cropped_name.replace(".tif", "")
 
         if out_formats_tif:
             tif_dir = base_dir / "tif"

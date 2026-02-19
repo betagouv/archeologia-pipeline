@@ -40,3 +40,8 @@ class TestGetRunner:
     def test_mode_is_case_sensitive(self):
         with pytest.raises(ValueError, match="Unknown mode"):
             get_runner("IGN_LAZ")
+
+    def test_returns_fresh_instances(self):
+        r1 = get_runner("ign_laz")
+        r2 = get_runner("ign_laz")
+        assert r1 is not r2

@@ -7,6 +7,8 @@ from typing import TYPE_CHECKING, Optional
 from ..cancel_token import CancelToken
 from ..progress_reporter import ProgressReporter
 from ..run_context import RunContext
+from ..services.finalize_service import finalize_pipeline
+from .helpers import log_section
 
 if TYPE_CHECKING:
     from ..structured_logger import StructuredLogger
@@ -39,94 +41,49 @@ class ExistingRvtRunner:
 
         cv_config = ctx.cv_cfg or {}
         target_rvt = str(cv_config.get("target_rvt", "LD"))
-        
-        # Charger les couleurs de classes depuis le modèle
-        class_colors = None
-        try:
-            from ...pipeline.cv.class_utils import load_class_colors_from_model
-            selected_model = str(cv_config.get("selected_model", "")).strip()
-            models_dir = Path(cv_config.get("models_dir", "models"))
-            weights_path = Path(selected_model)
-            if not weights_path.exists() or not weights_path.is_file():
-                weights_path = models_dir / selected_model / "weights" / "best.pt"
-            if weights_path.exists():
-                class_colors = load_class_colors_from_model(weights_path)
-        except Exception:
-            pass
 
-        # Section: Computer Vision
-        if slog:
-            slog.section("COMPUTER VISION (RVT EXISTANTS)", "cv")
-        else:
-            reporter.info("")
-            reporter.info("════════════════════════════════════════════════════════════")
-            reporter.info("🤖 COMPUTER VISION (RVT EXISTANTS)")
-            reporter.info("════════════════════════════════════════════════════════════")
+        # Collecter tous les RVT cibles uniques depuis les runs
+        from ...pipeline.cv.class_utils import resolve_cv_runs
+        cv_runs = resolve_cv_runs(cv_config)
+        active_rvts = list(dict.fromkeys(
+            r.get("target_rvt", target_rvt) for r in cv_runs
+        )) or [target_rvt]
 
-        reporter.stage("Computer Vision (existing RVT)")
+        # Section: Traitement RVT existants
+        log_section("TRAITEMENT RVT EXISTANTS", "cv", slog=slog, reporter=reporter)
+
+        reporter.stage("Traitement RVT existants")
         reporter.progress(0)
 
-        res = run_existing_rvt(
-            existing_rvt_dir=Path(existing_rvt_dir_str),
+        total_images = 0
+        for run_idx, run_cfg in enumerate(cv_runs, start=1):
+            if cancel.is_cancelled():
+                break
+
+            run_model = run_cfg.get("selected_model", "?")
+            run_rvt = run_cfg.get("target_rvt", target_rvt)
+            reporter.info(f"Computer Vision: run {run_idx}/{len(cv_runs)} — modèle={run_model}, RVT={run_rvt}")
+
+            res = run_existing_rvt(
+                existing_rvt_dir=Path(existing_rvt_dir_str),
+                output_dir=ctx.output_dir,
+                cv_config=run_cfg,
+                output_structure=output_structure,
+                log=lambda m: reporter.info(m),
+                cancel_check=cancel.is_cancelled,
+                rvt_params=ctx.rvt_params or {},
+            )
+            total_images = max(total_images, res.total_images)
+
+        # Finalisation commune (VRT + shapefiles + load_layers)
+        finalize_pipeline(
             output_dir=ctx.output_dir,
-            cv_config=cv_config,
-            output_structure=output_structure,
-            log=lambda m: reporter.info(m),
-            cancel_check=cancel.is_cancelled,
+            cv_cfg=cv_config,
+            rvt_params=ctx.rvt_params or {},
+            reporter=reporter,
+            slog=slog,
+            start_time=start_time,
+            tiles_processed=total_images,
+            active_products=active_rvts,
+            extra_label="Images traitées",
         )
-
-        # Création des fichiers VRT pour indexer les dalles par produit
-        from ...pipeline.ign.products.results import build_vrt_index
-        from typing import List
-        reporter.info("Création des fichiers VRT d'indexation...")
-        
-        vrt_paths: List[str] = []
-        shapefile_paths: List[str] = []
-        
-        results_dir = ctx.output_dir / "results"
-        if results_dir.exists():
-            # VRT pour chaque dossier de produit TIF - collecter TOUS les VRT créés
-            for tif_dir in results_dir.rglob("tif"):
-                if tif_dir.is_dir() and list(tif_dir.glob("*.tif")):
-                    build_vrt_index(tif_dir, pattern="*.tif", output_name="index.vrt", log=lambda m: reporter.info(m))
-                    vrt_path = tif_dir / "index.vrt"
-                    if vrt_path.exists():
-                        vrt_paths.append(str(vrt_path))
-            # VRT pour chaque dossier JPG (images géoréférencées)
-            for jpg_dir in results_dir.rglob("jpg"):
-                if jpg_dir.is_dir() and list(jpg_dir.glob("*.jpg")):
-                    build_vrt_index(jpg_dir, pattern="*.jpg", output_name="index.vrt", log=lambda m: reporter.info(m))
-            # VRT pour annotated_images si présent
-            annotated_dir = results_dir / "annotated_images"
-            if annotated_dir.exists() and list(annotated_dir.glob("*.jpg")):
-                build_vrt_index(annotated_dir, pattern="*.jpg", output_name="index.vrt", log=lambda m: reporter.info(m))
-
-            # Collecter les shapefiles de détection CV (uniquement du dossier shapefiles principal)
-            shapefiles_dir = results_dir / "RVT" / target_rvt / "shapefiles"
-            if shapefiles_dir.exists():
-                for shp_file in shapefiles_dir.glob("*.shp"):
-                    shapefile_paths.append(str(shp_file))
-
-        # Section finale
-        elapsed = time.time() - start_time
-        reporter.info("")
-        reporter.info("════════════════════════════════════════════════════════════")
-        reporter.info("✅ PIPELINE TERMINÉ AVEC SUCCÈS")
-        reporter.info("════════════════════════════════════════════════════════════")
-        reporter.info(f"  ⏱️ Durée totale : {elapsed:.1f}s")
-        reporter.info(f"  📄 Images traitées : {res.total_images}")
-        reporter.info(f"  📦 RVT cible : {target_rvt}")
-        reporter.info("════════════════════════════════════════════════════════════")
-        reporter.info("")
-
-        # Charger les couches dans le projet QGIS courant
-        if vrt_paths or shapefile_paths:
-            reporter.stage("Chargement des couches")
-            reporter.info(f"Chargement de {len(vrt_paths)} VRT et {len(shapefile_paths)} shapefile(s) dans QGIS...")
-            try:
-                reporter.load_layers(vrt_paths, shapefile_paths, class_colors)
-            except Exception as e:
-                reporter.info(f"Note: Chargement des couches non disponible ({e})")
-
-        reporter.stage("Terminé")
-        reporter.progress(100)

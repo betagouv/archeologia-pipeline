@@ -6,18 +6,24 @@ import math
 from pathlib import Path
 from shutil import which
 import subprocess
-from typing import Callable, Optional, Tuple
+from typing import Optional, Tuple
 
 from .ign.pdal_validation import run_pdal_command_cancellable
-
-
-CancelFn = Callable[[], bool]
+from .types import CancelFn
 
 
 @dataclass(frozen=True)
 class CoordsResult:
     x_km: int
     y_km: int
+
+
+def extract_xy_from_tile_name(tile_name: str) -> Tuple[str, str]:
+    """Extrait les coordonnées (x, y) d'un nom de dalle type 'LHD_FXX_0840_6520_...'."""
+    parts = tile_name.split("_")
+    if len(parts) < 4:
+        raise ValueError(f"Nom de dalle inattendu: {tile_name}")
+    return parts[2], parts[3]
 
 
 def extract_xy_from_filename(filename: str) -> Optional[CoordsResult]:
@@ -215,8 +221,5 @@ def infer_xy_from_file(path: Path, *, cancel: Optional[CancelFn] = None) -> Opti
 
     if ext in {".jpg", ".jpeg"}:
         return infer_xy_from_world_file(path)
-
-    if ext == ".laz" and path.name.lower().endswith(".copc.laz"):
-        return infer_xy_from_pdal(path, cancel=cancel)
 
     return None

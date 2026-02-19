@@ -7,6 +7,8 @@ from typing import TYPE_CHECKING, Optional
 from ..cancel_token import CancelToken
 from ..progress_reporter import ProgressReporter
 from ..run_context import RunContext
+from ..services.finalize_service import finalize_pipeline
+from .helpers import log_section
 
 if TYPE_CHECKING:
     from ..structured_logger import StructuredLogger
@@ -40,37 +42,48 @@ class ExistingRvtRunner:
         cv_config = ctx.cv_cfg or {}
         target_rvt = str(cv_config.get("target_rvt", "LD"))
 
-        # Section: Computer Vision
-        if slog:
-            slog.section("COMPUTER VISION (RVT EXISTANTS)", "cv")
-        else:
-            reporter.info("")
-            reporter.info("════════════════════════════════════════════════════════════")
-            reporter.info("🤖 COMPUTER VISION (RVT EXISTANTS)")
-            reporter.info("════════════════════════════════════════════════════════════")
+        # Collecter tous les RVT cibles uniques depuis les runs
+        from ...pipeline.cv.class_utils import resolve_cv_runs
+        cv_runs = resolve_cv_runs(cv_config)
+        active_rvts = list(dict.fromkeys(
+            r.get("target_rvt", target_rvt) for r in cv_runs
+        )) or [target_rvt]
 
-        reporter.stage("Computer Vision (existing RVT)")
+        # Section: Traitement RVT existants
+        log_section("TRAITEMENT RVT EXISTANTS", "cv", slog=slog, reporter=reporter)
+
+        reporter.stage("Traitement RVT existants")
         reporter.progress(0)
 
-        res = run_existing_rvt(
-            existing_rvt_dir=Path(existing_rvt_dir_str),
+        total_images = 0
+        for run_idx, run_cfg in enumerate(cv_runs, start=1):
+            if cancel.is_cancelled():
+                break
+
+            run_model = run_cfg.get("selected_model", "?")
+            run_rvt = run_cfg.get("target_rvt", target_rvt)
+            reporter.info(f"Computer Vision: run {run_idx}/{len(cv_runs)} — modèle={run_model}, RVT={run_rvt}")
+
+            res = run_existing_rvt(
+                existing_rvt_dir=Path(existing_rvt_dir_str),
+                output_dir=ctx.output_dir,
+                cv_config=run_cfg,
+                output_structure=output_structure,
+                log=lambda m: reporter.info(m),
+                cancel_check=cancel.is_cancelled,
+                rvt_params=ctx.rvt_params or {},
+            )
+            total_images = max(total_images, res.total_images)
+
+        # Finalisation commune (VRT + shapefiles + load_layers)
+        finalize_pipeline(
             output_dir=ctx.output_dir,
-            cv_config=cv_config,
-            output_structure=output_structure,
-            log=lambda m: reporter.info(m),
+            cv_cfg=cv_config,
+            rvt_params=ctx.rvt_params or {},
+            reporter=reporter,
+            slog=slog,
+            start_time=start_time,
+            tiles_processed=total_images,
+            active_products=active_rvts,
+            extra_label="Images traitées",
         )
-
-        # Section finale
-        elapsed = time.time() - start_time
-        reporter.info("")
-        reporter.info("════════════════════════════════════════════════════════════")
-        reporter.info("✅ PIPELINE TERMINÉ AVEC SUCCÈS")
-        reporter.info("════════════════════════════════════════════════════════════")
-        reporter.info(f"  ⏱️ Durée totale : {elapsed:.1f}s")
-        reporter.info(f"  📄 Images traitées : {res.total_images}")
-        reporter.info(f"  📦 RVT cible : {target_rvt}")
-        reporter.info("════════════════════════════════════════════════════════════")
-        reporter.info("")
-
-        reporter.stage("Terminé")
-        reporter.progress(100)

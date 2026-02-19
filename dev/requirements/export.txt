@@ -1,0 +1,12 @@
+# Export de modèles vers ONNX (runner_onnx/export_to_onnx.py)
+ultralytics>=8.0
+onnx>=1.14
+onnxruntime>=1.16
+onnxsim>=0.4
+onnxscript>=0.1
+torch>=2.0
+torchvision>=0.15
+pyyaml>=6.0
+segmentation-models-pytorch>=0.3  # Export SMP (DeepLabV3+, UNet, etc.)
+# rfdetr                          # Décommenter si export RF-DETR nécessaire
+# transformers>=4.30              # Décommenter si export SegFormer nécessaire

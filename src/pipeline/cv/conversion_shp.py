@@ -6,71 +6,47 @@ import re
 import json
 import tempfile
 import subprocess
-import copy
 
-# DIAGNOSTIC DÉTAILLÉ POUR PYINSTALLER - IMPORTS CRITIQUES
+# Forcer UTF-8 pour GDAL/fiona (évite les SystemError avec noms de classes accentués sous PyInstaller)
+os.environ.setdefault("GDAL_FILENAME_IS_UTF8", "YES")
+os.environ.setdefault("SHAPE_ENCODING", "UTF-8")
+
+from .class_utils import load_class_names_from_model, detect_indexing_offset
+
 logger = logging.getLogger(__name__)
 
-# Test des imports critiques avec diagnostic complet
-try:
-    logger.info("🔍 DIAGNOSTIC CONVERSION_SHP: Test des imports critiques...")
-
-    # Test pandas d'abord
-    logger.info("   📦 Import pandas...")
-    import pandas as pd
-
-    logger.info(f"   ✅ pandas importé: {pd.__version__}")
-
-    # Test des modules pandas critiques
-    critical_modules = [
-        "pandas._libs.window.aggregations",
-        "pandas._libs.window",
-        "pandas._libs.lib",
-        "pandas._libs.algos",
-        "pandas._libs.groupby",
-        "pandas._libs.ops",
-        "pandas.core.groupby.ops",
-    ]
-
-    for mod in critical_modules:
-        try:
-            __import__(mod)
-            logger.info(f"   ✅ {mod} disponible")
-        except Exception as mod_e:
-            logger.error(f"   ❌ {mod}: {mod_e}")
-            logger.error(f"      Type: {type(mod_e).__name__}")
-
-    # Test shapely
-    logger.info("   📦 Import shapely...")
-    from shapely.geometry import Point, Polygon
-
-    logger.info("   ✅ shapely importé")
-
-    # Test geopandas (le plus critique)
-    logger.info("   📦 Import geopandas...")
-    import geopandas as gpd
-
-    logger.info(f"   ✅ geopandas importé: {gpd.__version__}")
-
-    logger.info("✅ DIAGNOSTIC CONVERSION_SHP: Tous les imports réussis")
-
-except Exception as import_e:
-    logger.error(f"❌ ERREUR IMPORT CONVERSION_SHP: {import_e}")
-    logger.error(f"   Type d'erreur: {type(import_e).__name__}")
-
-    # Traceback détaillé
-    import traceback
-
-    tb_lines = traceback.format_exc().split("\n")
-    for i, line in enumerate(tb_lines):
-        if line.strip():
-            logger.error(f"   TB[{i}]: {line}")
-
-    # Re-raise l'erreur pour que le module ne se charge pas
-    raise
+import pandas as pd
+from shapely.geometry import Point, Polygon
+import geopandas as gpd
 
 
-def _confidence_bucket(confidence_value: Optional[float]) -> Tuple[Optional[str], Optional[str]]:
+def _safe_to_file(gdf: gpd.GeoDataFrame, path: str, **kwargs) -> None:
+    """Écrit un GeoDataFrame en shapefile en préférant pyogrio (compatible PyInstaller)."""
+    try:
+        gdf.to_file(path, engine="pyogrio", **kwargs)
+    except Exception:
+        gdf.to_file(path, engine="fiona", **kwargs)
+
+
+def _safe_read_file(path: str, **kwargs) -> gpd.GeoDataFrame:
+    """Lit un shapefile en préférant pyogrio (compatible PyInstaller)."""
+    try:
+        return gpd.read_file(path, engine="pyogrio", **kwargs)
+    except Exception:
+        return gpd.read_file(path, engine="fiona", **kwargs)
+
+
+def _confidence_bucket(confidence_value: Optional[float], color_index: int = 0) -> Tuple[Optional[str], Optional[str]]:
+    """
+    Retourne l'intervalle de confiance et le nom de couleur pour les shapefiles.
+    
+    Args:
+        confidence_value: Valeur de confiance (0.0-1.0)
+        color_index: Index de la couleur de base pour cette classe (0-11)
+        
+    Returns:
+        Tuple (intervalle, nom_couleur) ex: ("[0.8:1]", "color0_high")
+    """
     if confidence_value is None:
         return None, None
     try:
@@ -82,16 +58,16 @@ def _confidence_bucket(confidence_value: Optional[float]) -> Tuple[Optional[str]
     if c > 1.0 and c <= 10.0:
         c = c / 10.0
 
-    # Intervalles de 0.2
+    # Intervalles de 0.2 avec nom de couleur basé sur l'index de classe
     if c < 0.2:
-        return "[0:0.2[", "yellow"
+        return "[0:0.2[", f"color{color_index}_low"
     if c < 0.4:
-        return "[0.2:0.4[", "yellow_orange"
+        return "[0.2:0.4[", f"color{color_index}_medium_low"
     if c < 0.6:
-        return "[0.4:0.6[", "orange"
+        return "[0.4:0.6[", f"color{color_index}_medium"
     if c < 0.8:
-        return "[0.6:0.8[", "orange_red"
-    return "[0.8:1]", "red"
+        return "[0.6:0.8[", f"color{color_index}_medium_high"
+    return "[0.8:1]", f"color{color_index}_high"
 
 
 def read_world_file(world_file_path: str) -> Tuple[Optional[float], Optional[float], Optional[float], Optional[float]]:
@@ -332,7 +308,7 @@ def _deduplicate_shapefiles_by_tile_extents(
             if not shp_path.exists():
                 continue
             try:
-                gdf = gpd.read_file(str(shp_path))
+                gdf = _safe_read_file(str(shp_path))
                 if len(gdf) == 0:
                     continue
                 gdf = gdf.copy()
@@ -433,7 +409,104 @@ def _deduplicate_shapefiles_by_tile_extents(
                 )
 
         if not to_drop_global:
+            # Même si rien à supprimer, nettoyer les colonnes internes des shapefiles
+            for shp in shapefile_paths:
+                shp_path = Path(shp)
+                if not shp_path.exists():
+                    continue
+                try:
+                    gdf = _safe_read_file(str(shp_path))
+                    internal_cols = ["__src_txt", "__src_line", "__src_shp", "__src_idx"]
+                    cols_to_drop = [c for c in internal_cols if c in gdf.columns]
+                    if cols_to_drop:
+                        gdf = gdf.drop(columns=cols_to_drop, errors="ignore")
+                        _remove_shapefile_set(shp_path)
+                        _safe_to_file(gdf, str(shp_path))
+                except Exception:
+                    pass
             return
+
+        # Collecter les lignes à supprimer des fichiers .txt
+        # Format: {txt_path: set(line_indices)}
+        txt_lines_to_remove = {}
+        for idx in to_drop_global:
+            if "__src_txt" in all_gdf.columns and "__src_line" in all_gdf.columns:
+                src_txt = all_gdf.at[idx, "__src_txt"]
+                src_line = all_gdf.at[idx, "__src_line"]
+                if src_txt and src_line is not None:
+                    try:
+                        src_line_int = int(src_line)
+                        if src_txt not in txt_lines_to_remove:
+                            txt_lines_to_remove[src_txt] = set()
+                        txt_lines_to_remove[src_txt].add(src_line_int)
+                    except (ValueError, TypeError):
+                        pass
+
+        # Mettre à jour les fichiers .txt en supprimant les lignes dédupliquées
+        # Les fichiers peuvent être dans le dossier labels ou dans le dossier jpg
+        def _update_txt_and_json(txt_file: Path, lines_to_remove: set) -> None:
+            """Met à jour un fichier .txt et son .json correspondant."""
+            if not txt_file.exists():
+                return
+            
+            try:
+                with open(txt_file, "r", encoding="utf-8") as f:
+                    all_lines = f.readlines()
+                
+                # Garder seulement les lignes qui ne sont pas dans lines_to_remove
+                new_lines = [
+                    line for i, line in enumerate(all_lines) 
+                    if i not in lines_to_remove
+                ]
+                
+                removed_count = len(all_lines) - len(new_lines)
+                if removed_count > 0:
+                    with open(txt_file, "w", encoding="utf-8") as f:
+                        f.writelines(new_lines)
+                    logger.info(
+                        f"Fichier .txt mis à jour: {txt_file} - {removed_count} ligne(s) supprimée(s)"
+                    )
+                    
+                    # Mettre à jour aussi le fichier .json correspondant si présent
+                    json_file = txt_file.with_suffix(".json")
+                    if json_file.exists():
+                        try:
+                            with open(json_file, "r", encoding="utf-8") as f:
+                                json_data = json.load(f)
+                            
+                            if "detections" in json_data and isinstance(json_data["detections"], list):
+                                new_detections = [
+                                    det for i, det in enumerate(json_data["detections"])
+                                    if i not in lines_to_remove
+                                ]
+                                json_data["detections"] = new_detections
+                                
+                                with open(json_file, "w", encoding="utf-8") as f:
+                                    json.dump(json_data, f, indent=2)
+                                logger.info(
+                                    f"Fichier .json mis à jour: {json_file} - {removed_count} détection(s) supprimée(s)"
+                                )
+                        except Exception as json_e:
+                            logger.warning(f"Impossible de mettre à jour le fichier JSON {json_file}: {json_e}")
+            except Exception as e:
+                logger.warning(f"Impossible de mettre à jour le fichier .txt {txt_file}: {e}")
+
+        for txt_path, lines_to_remove in txt_lines_to_remove.items():
+            txt_file = Path(txt_path)
+            
+            # 1. Mettre à jour le fichier dans le dossier labels (source)
+            _update_txt_and_json(txt_file, lines_to_remove)
+            
+            # 2. Mettre à jour aussi le fichier correspondant dans le dossier jpg
+            # Le dossier jpg est généralement au même niveau que labels
+            labels_parent = txt_file.parent.parent
+            jpg_dir = labels_parent / "jpg"
+            if jpg_dir.exists():
+                # Le nom du fichier dans jpg n'a pas le suffixe "_detections"
+                base_name = txt_file.stem.replace("_detections", "")
+                jpg_txt_file = jpg_dir / f"{base_name}.txt"
+                if jpg_txt_file.exists() and jpg_txt_file != txt_file:
+                    _update_txt_and_json(jpg_txt_file, lines_to_remove)
 
         remaining = all_gdf.drop(index=list(to_drop_global)).copy()
 
@@ -442,8 +515,9 @@ def _deduplicate_shapefiles_by_tile_extents(
             if not shp_path.exists():
                 continue
             out_gdf = remaining[remaining["__src_shp"] == str(shp_path)].copy()
-            if "__src_shp" in out_gdf.columns:
-                out_gdf = out_gdf.drop(columns=["__src_shp", "__src_idx"], errors="ignore")
+            # Supprimer toutes les colonnes internes
+            internal_cols = ["__src_shp", "__src_idx", "__src_txt", "__src_line"]
+            out_gdf = out_gdf.drop(columns=[c for c in internal_cols if c in out_gdf.columns], errors="ignore")
             try:
                 _remove_shapefile_set(shp_path)
                 if out_gdf.crs is None:
@@ -451,7 +525,7 @@ def _deduplicate_shapefiles_by_tile_extents(
                         out_gdf = out_gdf.set_crs(crs, allow_override=True)
                     except Exception:
                         pass
-                out_gdf.to_file(str(shp_path))
+                _safe_to_file(out_gdf, str(shp_path))
             except Exception as e:
                 logger.warning(f"Échec réécriture shapefile après déduplication finale: {shp_path} ({e})")
     except Exception as e:
@@ -508,7 +582,7 @@ def _filter_shapefiles_by_size(
             continue
         
         try:
-            gdf = gpd.read_file(str(shp_path))
+            gdf = _safe_read_file(str(shp_path))
             if len(gdf) == 0:
                 continue
             
@@ -548,7 +622,7 @@ def _filter_shapefiles_by_size(
                         gdf_filtered = gdf_filtered.set_crs(crs, allow_override=True)
                     except Exception:
                         pass
-                gdf_filtered.to_file(str(shp_path))
+                _safe_to_file(gdf_filtered, str(shp_path))
             
         except Exception as e:
             logger.warning(f"Échec filtrage par taille pour {shp_path}: {e}")
@@ -565,7 +639,7 @@ def _filter_shapefiles_by_size(
             first_shp = Path(shapefile_paths[0])
             oversized_path = first_shp.parent / "detections_filtered_oversized.shp"
             _remove_shapefile_set(oversized_path)
-            combined_oversized.to_file(str(oversized_path))
+            _safe_to_file(combined_oversized, str(oversized_path))
             
             logger.info(f"Filtrage par taille terminé: {total_removed} détection(s) déplacée(s) vers {oversized_path.name}")
         except Exception as e:
@@ -590,6 +664,7 @@ def create_shapefile_from_detections(
     temp_dir: str = None,
     class_names: dict = None,
     selected_classes: list = None,
+    class_colors: list = None,
 ) -> bool:
     """
     Crée des shapefiles géoréférencés à partir des fichiers de détection YOLO
@@ -760,8 +835,6 @@ def create_shapefile_from_detections(
                             logger.warning(f"❌ Erreur rasterio pour {tif_file}: {e}")
                             # Fallback: utiliser gdalinfo CLI si rasterio échoue (cas PyInstaller)
                             try:
-                                import subprocess
-                                import json
                                 import shutil
 
                                 gdalinfo = shutil.which('gdalinfo') or shutil.which(r'C:\\OSGeo4W\\bin\\gdalinfo.exe')
@@ -812,9 +885,8 @@ def create_shapefile_from_detections(
             
             if json_file.exists():
                 try:
-                    import json as json_module
                     with open(json_file, 'r') as f:
-                        json_data = json_module.load(f)
+                        json_data = json.load(f)
                         # Indexer les détections par leur position dans la liste
                         detections_list = json_data.get('detections', [])
                         for idx, detection in enumerate(detections_list):
@@ -1001,11 +1073,19 @@ def create_shapefile_from_detections(
                             "model_pred": class_name,
                             "model_name": model_name,
                             "geometry": bbox_polygon,
+                            # Métadonnées pour synchronisation avec fichiers .txt
+                            "__src_txt": str(label_file),
+                            "__src_line": line_num - 1,  # Index 0-based
                         }
 
                         if confidence is not None:
                             detection_attrs["confidence"] = confidence
-                        conf_bin, conf_color = _confidence_bucket(confidence)
+                        # Déterminer l'index de couleur pour cette classe
+                        if class_colors and 0 <= class_id_int < len(class_colors):
+                            color_idx = class_colors[class_id_int]
+                        else:
+                            color_idx = class_id_int
+                        conf_bin, conf_color = _confidence_bucket(confidence, color_idx)
                         detection_attrs["conf_bin"] = conf_bin
                         detection_attrs["conf_color"] = conf_color
 
@@ -1031,13 +1111,41 @@ def create_shapefile_from_detections(
         created_shapefiles = []
         
         # Aplatir la structure par tuiles pour créer les shapefiles
-        data_by_class = {}
+        data_by_class_id = {}
         for class_id, tiles_dict in data_by_class_and_tile.items():
-            data_by_class[class_id] = []
+            data_by_class_id[class_id] = []
             for tile_key, detections in tiles_dict.items():
-                data_by_class[class_id].extend(detections)
+                data_by_class_id[class_id].extend(detections)
         
-        for class_id, detections in data_by_class.items():
+        # Log des class_id détectés pour diagnostic
+        logger.info(f"Class IDs détectés dans les fichiers: {sorted(data_by_class_id.keys())}")
+        if isinstance(class_names, list):
+            logger.info(f"Noms de classes disponibles (0-indexé): {list(enumerate(class_names))}")
+        
+        # Détection automatique des class IDs 1-indexés via class_utils
+        # Note: Normalement, les fichiers .txt sont déjà normalisés à l'écriture par computer_vision_onnx.py
+        # Ce code reste en place comme filet de sécurité pour les fichiers .txt externes
+        detected_ids = list(data_by_class_id.keys())
+        num_classes = len(class_names) if isinstance(class_names, list) else 0
+        offset = detect_indexing_offset(detected_ids, num_classes) if num_classes > 0 and detected_ids else 0
+        
+        if offset != 0:
+            # Reconstruire data_by_class_id avec les IDs décalés
+            data_by_class_id_shifted = {}
+            for old_id, dets in data_by_class_id.items():
+                new_id = old_id + offset  # offset est négatif (-1) pour 1-indexé
+                # Mettre à jour model_pred dans chaque détection
+                for det in dets:
+                    if isinstance(class_names, list) and 0 <= new_id < len(class_names):
+                        det["model_pred"] = _normalize_class_label(class_names[new_id])
+                data_by_class_id_shifted[new_id] = dets
+            data_by_class_id = data_by_class_id_shifted
+            logger.info(f"Class IDs après décalage: {sorted(data_by_class_id.keys())}")
+        
+        # Regrouper les détections par NOM de classe (pas par class_id)
+        # Cela permet de fusionner les classes avec le même nom dans le même shapefile
+        data_by_class_name = {}
+        for class_id, detections in data_by_class_id.items():
             # Récupérer le nom de classe selon le type de class_names.
             # PRIORITÉ: class_names fourni par le dossier du modèle. Sinon: libellé numérique.
             if isinstance(class_names, dict):
@@ -1049,6 +1157,14 @@ def create_shapefile_from_detections(
 
             class_name = _normalize_class_label(class_name)
             
+            # Regrouper par nom de classe
+            if class_name not in data_by_class_name:
+                data_by_class_name[class_name] = []
+            data_by_class_name[class_name].extend(detections)
+        
+        logger.info(f"Classes regroupées par nom: {list(data_by_class_name.keys())}")
+        
+        for class_name, detections in data_by_class_name.items():
             # Filtrer par classes sélectionnées si spécifié
             if selected_classes is not None and len(selected_classes) > 0:
                 if class_name not in selected_classes:
@@ -1126,6 +1242,9 @@ def create_shapefile_from_detections(
                     except Exception:
                         gdf["confidence"] = gdf["confidence"].astype(str)
 
+                # Note: Les colonnes __src_txt et __src_line sont conservées pour la déduplication
+                # Elles seront supprimées après la déduplication finale
+
                 if len(gdf) == 0:
                     logger.warning(
                         f"Aucune géométrie valide après nettoyage pour la classe '{class_name}' - shapefile non écrit"
@@ -1168,7 +1287,7 @@ def create_shapefile_from_detections(
                         logger.error(f"   ❌ {mod}: {mod_e}")
                 
                 _remove_shapefile_set(class_shapefile)
-                gdf.to_file(str(class_shapefile))
+                _safe_to_file(gdf, str(class_shapefile))
                 logger.info(f"✅ Shapefile créé avec succès: {class_shapefile}")
                 
             except Exception as save_e:
@@ -1188,7 +1307,7 @@ def create_shapefile_from_detections(
                     # Essayer sans CRS
                     gdf_no_crs = gdf.copy()
                     gdf_no_crs.crs = None
-                    gdf_no_crs.to_file(str(class_shapefile))
+                    _safe_to_file(gdf_no_crs, str(class_shapefile))
                     logger.info("✅ Sauvegarde alternative réussie (sans CRS)")
                 except Exception as alt_e:
                     logger.error(f"❌ Sauvegarde alternative échouée: {alt_e}")
@@ -1267,281 +1386,14 @@ def create_shapefile_from_detections(
         logger.info(f"📊 {total_detections} détections dans {processed_files} fichiers")
 
         # Générer un projet QGIS avec Value Map pour les champs (validation, model_pred, correction_prediction)
-        try:
-            from xml.etree.ElementTree import Element, SubElement, tostring, parse as et_parse
-            import xml.dom.minidom as minidom
-            import os
-
-            # Déterminer la racine de l'indice RVT (parent du dossier shapefiles)
-            index_root = None
-            if created_shapefiles:
-                first_shp = Path(created_shapefiles[0])
-                shp_parent = first_shp.parent
-                if shp_parent.name.lower() in {"shapefiles", "shp"}:
-                    index_root = shp_parent.parent
-                else:
-                    index_root = shp_parent
-            else:
-                # Fallback: utiliser le parent du chemin de sortie de base
-                index_root = Path(output_shapefile).parent
-
-            # Dossier contenant les TIF de l'indice (ex: .../RVT/LD/tif)
-            tif_dir = index_root / "tif"
-            tif_files = []
-            if tif_dir.exists() and tif_dir.is_dir():
-                tif_files = sorted(tif_dir.glob("*.tif"))
-
-            project = Element('qgis', attrib={'version': '3.34.0', 'projectname': 'detections_validation'})
-
-            try:
-                props = SubElement(project, 'properties')
-                paths = SubElement(props, 'Paths')
-                SubElement(paths, 'Absolute').text = '0'
-            except Exception:
-                pass
-
-            # Définir le CRS du projet (utilise le paramètre crs, ex. "EPSG:2154")
-            try:
-                project_crs = SubElement(project, 'projectCrs')
-                SubElement(project_crs, 'authid').text = crs
-            except Exception:
-                pass
-
-            layer_tree = SubElement(project, 'layer-tree-group', attrib={'name': ''})
-            maplayers = SubElement(project, 'projectlayers')
-
-            # Charger le style QML des détections si disponible
-            style_renderer = None
-            style_selection = None
-            style_customprops = None
-            try:
-                style_path = Path(__file__).parents[2] / 'resources' / 'styles' / 'style_detections.qml'
-                if style_path.exists():
-                    style_tree = et_parse(str(style_path))
-                    style_root = style_tree.getroot()
-                    style_renderer = style_root.find('renderer-v2')
-                    style_selection = style_root.find('selection')
-                    style_customprops = style_root.find('customproperties')
-                    logger.info(f"Style QML des détections chargé depuis {style_path}")
-                else:
-                    logger.info("Style QML des détections introuvable (models/style_detections.qml)")
-            except Exception as style_e:
-                logger.warning(f"Échec du chargement du style QML des détections: {style_e}")
-
-            def _apply_confidence_symbology(maplayer_el) -> None:
-                """Applique un renderer catégorisé QGIS sur le champ conf_bin.
-
-                Le style_detections.qml actuel est de type singleSymbol, donc on force ici
-                un rendu low/mid/high.
-                """
-                try:
-                    palettes = [
-                        ['255,255,0', '255,204,0', '255,153,0', '255,102,0', '255,0,0'],
-                        ['204,229,255', '153,204,255', '102,178,255', '51,153,255', '0,102,204'],
-                        ['235,224,255', '204,179,255', '178,128,255', '153,77,255', '102,0,204'],
-                        ['204,255,204', '153,255,153', '102,204,102', '51,153,51', '0,102,0'],
-                        ['240,240,240', '200,200,200', '160,160,160', '120,120,120', '80,80,80'],
-                        ['255,235,204', '255,204,153', '230,170,115', '204,136,85', '153,85,34'],
-                    ]
-
-                    palette_rgb = palettes[0]
-                    try:
-                        palette_index = int(maplayer_el.get('dataSourcePaletteIndex'))
-                        palette_rgb = palettes[palette_index % len(palettes)]
-                    except Exception:
-                        palette_rgb = palettes[0]
-
-                    renderer = SubElement(
-                        maplayer_el,
-                        'renderer-v2',
-                        attrib={
-                            'type': 'categorizedSymbol',
-                            'attr': 'conf_bin',
-                            'forceraster': '0',
-                            'referencescale': '-1',
-                            'symbollevels': '0',
-                            'enableorderby': '0',
-                        },
-                    )
-
-                    categories = SubElement(renderer, 'categories')
-                    SubElement(categories, 'category', attrib={'value': '[0:0.2[', 'label': '[0:0.2[', 'symbol': '0', 'render': 'true'})
-                    SubElement(categories, 'category', attrib={'value': '[0.2:0.4[', 'label': '[0.2:0.4[', 'symbol': '1', 'render': 'true'})
-                    SubElement(categories, 'category', attrib={'value': '[0.4:0.6[', 'label': '[0.4:0.6[', 'symbol': '2', 'render': 'true'})
-                    SubElement(categories, 'category', attrib={'value': '[0.6:0.8[', 'label': '[0.6:0.8[', 'symbol': '3', 'render': 'true'})
-                    SubElement(categories, 'category', attrib={'value': '[0.8:1]', 'label': '[0.8:1]', 'symbol': '4', 'render': 'true'})
-
-                    symbols = SubElement(renderer, 'symbols')
-
-                    def _add_symbol(symbol_name: str, rgb: str) -> None:
-                        sym = SubElement(symbols, 'symbol', attrib={'type': 'fill', 'name': symbol_name, 'alpha': '1', 'clip_to_extent': '1', 'force_rhr': '0'})
-                        layer = SubElement(sym, 'layer', attrib={'class': 'SimpleLine', 'enabled': '1', 'locked': '0', 'pass': '0'})
-                        opt = SubElement(layer, 'Option', attrib={'type': 'Map'})
-                        SubElement(opt, 'Option', attrib={'name': 'line_color', 'value': f"{rgb},255", 'type': 'QString'})
-                        SubElement(opt, 'Option', attrib={'name': 'line_style', 'value': 'solid', 'type': 'QString'})
-                        SubElement(opt, 'Option', attrib={'name': 'line_width', 'value': '0.6', 'type': 'QString'})
-                        SubElement(opt, 'Option', attrib={'name': 'line_width_unit', 'value': 'MM', 'type': 'QString'})
-
-                    _add_symbol('0', palette_rgb[0])
-                    _add_symbol('1', palette_rgb[1])
-                    _add_symbol('2', palette_rgb[2])
-                    _add_symbol('3', palette_rgb[3])
-                    _add_symbol('4', palette_rgb[4])
-
-                except Exception as sym_e:
-                    logger.warning(f"Impossible d'appliquer la symbologie confiance: {sym_e}")
-
-            # 1) Ajouter d'abord les shapefiles de détection comme couches vecteur
-            #    afin qu'ils soient affichés au-dessus des rasters dans QGIS
-            for shp_idx, shp in enumerate(created_shapefiles):
-                shp_path = Path(shp)
-                try:
-                    shp_ds = os.path.relpath(str(shp_path.resolve()), start=str(index_root.resolve()))
-                    shp_ds = shp_ds.replace('\\', '/')
-                except Exception:
-                    shp_ds = str(shp_path.resolve())
-                layer_id = shp_path.stem
-                SubElement(layer_tree, 'layer-tree-layer', attrib={'id': layer_id, 'name': layer_id})
-
-                ml = SubElement(maplayers, 'maplayer', attrib={'type': 'vector'})
-                ml.set('dataSourcePaletteIndex', str(shp_idx % 6))
-                SubElement(ml, 'id').text = layer_id
-                SubElement(ml, 'layername').text = layer_id
-                SubElement(ml, 'datasource').text = shp_ds
-                SubElement(ml, 'provider').text = 'ogr'
-                try:
-                    srs = SubElement(ml, 'srs')
-                    sref = SubElement(srs, 'spatialrefsys')
-                    SubElement(sref, 'authid').text = crs
-                except Exception:
-                    pass
-                SubElement(ml, 'displayfield').text = 'model_pred'
-                SubElement(ml, 'previewExpression').text = '"model_pred"'
-                fcfg = SubElement(ml, 'fieldConfiguration')
-                f_val = SubElement(fcfg, 'field', attrib={'name': 'validation'})
-                ew_val = SubElement(f_val, 'editWidget', attrib={'type': 'ValueMap'})
-                cfg_val = SubElement(ew_val, 'config')
-                opt_val_root = SubElement(cfg_val, 'Option', attrib={'type': 'Map'})
-                opt_val_map = SubElement(opt_val_root, 'Option', attrib={'name': 'map', 'type': 'List'})
-                for label in ["oui", "non", "peut-être"]:
-                    item = SubElement(opt_val_map, 'Option', attrib={'type': 'Map'})
-                    SubElement(item, 'Option', attrib={'name': label, 'type': 'QString', 'value': label})
-                SubElement(opt_val_root, 'Option', attrib={'name': 'AllowNull', 'type': 'bool', 'value': 'true'})
-                f_pred = SubElement(fcfg, 'field', attrib={'name': 'model_pred'})
-                ew_pred = SubElement(f_pred, 'editWidget', attrib={'type': 'ValueMap'})
-                cfg_pred = SubElement(ew_pred, 'config')
-                opt_pred_root = SubElement(cfg_pred, 'Option', attrib={'type': 'Map'})
-                opt_pred_map = SubElement(opt_pred_root, 'Option', attrib={'name': 'map', 'type': 'Map'})
-                for label in all_classes:
-                    SubElement(opt_pred_map, 'Option', attrib={'name': label, 'type': 'QString', 'value': label})
-                SubElement(opt_pred_root, 'Option', attrib={'name': 'AllowNull', 'type': 'bool', 'value': 'false'})
-                SubElement(fcfg, 'field', attrib={'name': 'model_name'})
-                f_corr = SubElement(fcfg, 'field', attrib={'name': 'corr_pred'})
-                ew_corr = SubElement(f_corr, 'editWidget', attrib={'type': 'ValueMap'})
-                cfg_corr = SubElement(ew_corr, 'config')
-                opt_corr_root = SubElement(cfg_corr, 'Option', attrib={'type': 'Map'})
-                opt_corr_map = SubElement(opt_corr_root, 'Option', attrib={'name': 'map', 'type': 'Map'})
-                for label in all_classes:
-                    SubElement(opt_corr_map, 'Option', attrib={'name': label, 'type': 'QString', 'value': label})
-                SubElement(opt_corr_root, 'Option', attrib={'name': 'AllowNull', 'type': 'bool', 'value': 'true'})
-
-                aliases = SubElement(ml, 'aliases')
-                SubElement(aliases, 'alias', attrib={'field': 'corr_pred', 'index': '-1', 'name': 'correction_prediction'})
-                SubElement(aliases, 'alias', attrib={'field': 'confidence', 'index': '-1', 'name': 'confiance'})
-                SubElement(aliases, 'alias', attrib={'field': 'conf_bin', 'index': '-1', 'name': 'tranche_confiance'})
-                SubElement(aliases, 'alias', attrib={'field': 'conf_color', 'index': '-1', 'name': 'couleur_confiance'})
-                SubElement(aliases, 'alias', attrib={'field': 'model_name', 'index': '-1', 'name': 'modele_detection'})
-
-                aef = SubElement(ml, 'attributeEditorForm')
-                aec = SubElement(aef, 'attributeEditorContainer', attrib={'name': '', 'groupBox': '0', 'visibilityExpressionEnabled': '0'})
-                SubElement(aec, 'attributeEditorField', attrib={'name': 'model_name', 'index': '-1', 'showLabel': '1'})
-                SubElement(aec, 'attributeEditorField', attrib={'name': 'model_pred', 'index': '-1', 'showLabel': '1'})
-                SubElement(aec, 'attributeEditorField', attrib={'name': 'validation', 'index': '-1', 'showLabel': '1'})
-                aef_corr = SubElement(aec, 'attributeEditorField', attrib={'name': 'corr_pred', 'index': '-1', 'showLabel': '1', 'visibilityExpressionEnabled': '1'})
-                SubElement(aef_corr, 'visibilityExpression').text = '"validation" IN (\'non\', \'peut-être\')'
-                SubElement(aec, 'attributeEditorField', attrib={'name': 'confidence', 'index': '-1', 'showLabel': '1'})
-                SubElement(aec, 'attributeEditorField', attrib={'name': 'conf_bin', 'index': '-1', 'showLabel': '1'})
-                SubElement(aec, 'attributeEditorField', attrib={'name': 'conf_color', 'index': '-1', 'showLabel': '1'})
-
-                SubElement(ml, 'editorlayout').text = 'tablayout'
-
-                editable = SubElement(ml, 'editable')
-                SubElement(editable, 'field', attrib={'name': 'validation', 'editable': '1'})
-                SubElement(editable, 'field', attrib={'name': 'model_pred', 'editable': '0'})
-                SubElement(editable, 'field', attrib={'name': 'model_name', 'editable': '0'})
-                SubElement(editable, 'field', attrib={'name': 'corr_pred', 'editable': '1'})
-                SubElement(editable, 'field', attrib={'name': 'confidence', 'editable': '0'})
-                SubElement(editable, 'field', attrib={'name': 'conf_bin', 'editable': '0'})
-                SubElement(editable, 'field', attrib={'name': 'conf_color', 'editable': '0'})
-
-                _apply_confidence_symbology(ml)
-
-                if style_selection is not None:
-                    ml.append(copy.deepcopy(style_selection))
-                if style_customprops is not None:
-                    ml.append(copy.deepcopy(style_customprops))
-
-            # 2) Ajouter le VRT comme couche raster unique (en dessous des shapefiles)
-            #    Utilise index.vrt s'il existe, sinon fallback sur les TIF individuels
-            vrt_path = tif_dir / "index.vrt" if tif_dir.exists() else None
-            if vrt_path and vrt_path.exists():
-                # Utiliser le VRT (une seule couche pour toutes les dalles)
-                try:
-                    vrt_ds = os.path.relpath(str(vrt_path.resolve()), start=str(index_root.resolve()))
-                    vrt_ds = vrt_ds.replace('\\', '/')
-                except Exception:
-                    vrt_ds = str(vrt_path.resolve())
-                raster_id = "index_rvt"
-                SubElement(layer_tree, 'layer-tree-layer', attrib={'id': raster_id, 'name': 'Dalles RVT (index)'})
-
-                ml_raster = SubElement(maplayers, 'maplayer', attrib={'type': 'raster'})
-                SubElement(ml_raster, 'id').text = raster_id
-                SubElement(ml_raster, 'layername').text = 'Dalles RVT (index)'
-                SubElement(ml_raster, 'datasource').text = vrt_ds
-                SubElement(ml_raster, 'provider').text = 'gdal'
-                try:
-                    srs_r = SubElement(ml_raster, 'srs')
-                    sref_r = SubElement(srs_r, 'spatialrefsys')
-                    SubElement(sref_r, 'authid').text = crs
-                except Exception:
-                    pass
-            else:
-                # Fallback: ajouter les TIF individuellement si pas de VRT
-                for tif_path in tif_files:
-                    tif_path = Path(tif_path)
-                    try:
-                        tif_ds = os.path.relpath(str(tif_path.resolve()), start=str(index_root.resolve()))
-                        tif_ds = tif_ds.replace('\\', '/')
-                    except Exception:
-                        tif_ds = str(tif_path.resolve())
-                    raster_id = tif_path.stem
-                    SubElement(layer_tree, 'layer-tree-layer', attrib={'id': raster_id, 'name': raster_id})
-
-                    ml_raster = SubElement(maplayers, 'maplayer', attrib={'type': 'raster'})
-                    SubElement(ml_raster, 'id').text = raster_id
-                    SubElement(ml_raster, 'layername').text = raster_id
-                    SubElement(ml_raster, 'datasource').text = tif_ds
-                    SubElement(ml_raster, 'provider').text = 'gdal'
-                    try:
-                        srs_r = SubElement(ml_raster, 'srs')
-                        sref_r = SubElement(srs_r, 'spatialrefsys')
-                        SubElement(sref_r, 'authid').text = crs
-                    except Exception:
-                        pass
-
-            xml_bytes = tostring(project, encoding='utf-8')
-            pretty = minidom.parseString(xml_bytes).toprettyxml(indent='  ', encoding='utf-8')
-            qgs_path = index_root / 'detections_validation.qgs'
-            with open(qgs_path, 'wb') as f:
-                f.write(pretty)
-            logger.info("════════════════════════════════════════════════════════════")
-            logger.info("📋 PROJET QGIS GÉNÉRÉ")
-            logger.info("════════════════════════════════════════════════════════════")
-            logger.info(f"   Fichier: {qgs_path}")
-            logger.info("   Ce projet contient les couches de détection et les rasters RVT.")
-            logger.info("   Ouvrez-le dans QGIS pour valider les détections.")
-        except Exception as e:
-            logger.warning(f"Échec génération du projet QGIS: {e}")
+        from .qgs_project import generate_qgs_project
+        generate_qgs_project(
+            created_shapefiles=created_shapefiles,
+            output_shapefile=output_shapefile,
+            all_classes=all_classes,
+            crs=crs,
+            class_colors=class_colors,
+        )
 
         return True
         

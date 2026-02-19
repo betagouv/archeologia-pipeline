@@ -70,6 +70,11 @@ class PipelineController:
             slog.end_pipeline(success=False)
             return
 
+        if cancel.is_cancelled():
+            reporter.info("Annulation demandée avant le lancement du pipeline.")
+            slog.end_pipeline(success=False)
+            return
+
         from .runners.registry import get_runner
 
         runner = get_runner(ctx.mode)

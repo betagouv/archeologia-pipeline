@@ -1,36 +1,18 @@
 from __future__ import annotations
 
-import os
-import subprocess
 import shutil
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, Dict, List
+from typing import Any, Dict, List
 
-from ..cv.runner import extract_tif_transform_data
+from ..geo_utils import extract_tif_transform_data
 from ..coords import extract_xy_from_filename, infer_xy_from_file
-
-
-LogFn = Callable[[str], None]
+from ..types import LogFn, CancelCheckFn
 
 
 @dataclass(frozen=True)
 class ExistingRvtResult:
     total_images: int
-
-
-def _subprocess_kwargs_no_window() -> Dict[str, Any]:
-    if os.name != "nt":
-        return {}
-    kwargs: Dict[str, Any] = {"creationflags": subprocess.CREATE_NO_WINDOW}
-    try:
-        si = subprocess.STARTUPINFO()
-        si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-        si.wShowWindow = 0
-        kwargs["startupinfo"] = si
-    except Exception:
-        pass
-    return kwargs
 
 
 def _convert_tif_to_jpg_with_world(input_tif: Path, output_jpg: Path) -> None:
@@ -51,6 +33,24 @@ def _normalized_rvt_name(*, tif_path: Path, target_rvt: str) -> str:
     return f"LHD_FXX_{int(xy.x_km):04d}_{int(xy.y_km):04d}_{target_rvt}_A_LAMB93{tif_path.suffix}"
 
 
+def _cleanup_orphans(directory: Path | None, glob_pattern: str, kept_names: set[str]) -> None:
+    """Supprime les fichiers orphelins (vides ou à nom numérique) non produits par cette exécution."""
+    if directory is None or not directory.exists():
+        return
+    try:
+        for p in directory.glob(glob_pattern):
+            if p.name in kept_names:
+                continue
+            is_empty = p.stat().st_size == 0
+            if is_empty or p.stem.isdigit():
+                try:
+                    p.unlink()
+                except Exception:
+                    pass
+    except Exception:
+        pass
+
+
 def run_existing_rvt(
     *,
     existing_rvt_dir: Path,
@@ -58,6 +58,8 @@ def run_existing_rvt(
     cv_config: Dict[str, Any],
     output_structure: Dict[str, Any],
     log: LogFn = lambda _: None,
+    cancel_check: CancelCheckFn | None = None,
+    rvt_params: Dict[str, Any] | None = None,
 ) -> ExistingRvtResult:
     if not existing_rvt_dir.exists() or not existing_rvt_dir.is_dir():
         raise FileNotFoundError(f"Dossier RVT inexistant ou invalide: {existing_rvt_dir}")
@@ -66,45 +68,42 @@ def run_existing_rvt(
     if not tif_files:
         raise FileNotFoundError(f"Aucun fichier TIF/TIFF trouvé dans {existing_rvt_dir} pour le mode existing_rvt")
 
-    if not bool((cv_config or {}).get("enabled", False)):
-        raise RuntimeError("Mode existing_rvt sélectionné mais la computer vision est désactivée")
-
+    cv_enabled = bool((cv_config or {}).get("enabled", False))
     target_rvt = str((cv_config or {}).get("target_rvt", "LD"))
 
     rvt_output_dir: Path | None = None
     try:
+        from ..ign.products.rvt_naming import get_rvt_param_suffix
         rvt_cfg = output_structure.get("RVT", {}) if isinstance(output_structure, dict) else {}
         base_dir_name = str(rvt_cfg.get("base_dir", "RVT"))
-        type_dir_name = str(rvt_cfg.get(target_rvt, target_rvt))
+        type_dir_base = str(rvt_cfg.get(target_rvt, target_rvt))
+        param_suffix = get_rvt_param_suffix(target_rvt, rvt_params or {}) if rvt_params else ""
+        type_dir_name = f"{type_dir_base}{param_suffix}" if param_suffix else type_dir_base
         rvt_output_dir = (output_dir / "results") / base_dir_name / type_dir_name
         rvt_output_dir.mkdir(parents=True, exist_ok=True)
     except Exception:
         rvt_output_dir = None
 
-    if rvt_output_dir is not None:
-        try:
-            tif_out_dir = rvt_output_dir / "tif"
-            tif_out_dir.mkdir(parents=True, exist_ok=True)
-            for tif_path in tif_files:
-                dest = tif_out_dir / tif_path.name
-                if not dest.exists():
-                    shutil.copy2(str(tif_path), str(dest))
-        except Exception:
-            pass
-
     jpg_output_dir = (rvt_output_dir / "jpg") if rvt_output_dir is not None else existing_rvt_dir
     jpg_output_dir.mkdir(parents=True, exist_ok=True)
+
+    tif_out_dir = (rvt_output_dir / "tif") if rvt_output_dir is not None else None
+    if tif_out_dir is not None:
+        tif_out_dir.mkdir(parents=True, exist_ok=True)
 
     jpg_files: List[Path] = []
     tif_transform_data: Dict[str, Any] = {}
     kept_tif_names: set[str] = set()
     kept_jpg_names: set[str] = set()
+
     for tif_path in tif_files:
+        if cancel_check is not None and cancel_check():
+            log("Annulation demandée, arrêt du traitement RVT.")
+            break
+
         effective_tif_path = tif_path
-        if rvt_output_dir is not None:
+        if tif_out_dir is not None:
             try:
-                tif_out_dir = rvt_output_dir / "tif"
-                tif_out_dir.mkdir(parents=True, exist_ok=True)
                 normalized_name = _normalized_rvt_name(tif_path=tif_path, target_rvt=target_rvt)
                 dest = tif_out_dir / normalized_name
                 if dest.name != tif_path.name:
@@ -126,60 +125,28 @@ def run_existing_rvt(
         if all(v is not None for v in (pixel_width, pixel_height, x_origin, y_origin)):
             tif_transform_data[jpg_path.stem] = (float(pixel_width), float(pixel_height), float(x_origin), float(y_origin))
 
-    if rvt_output_dir is not None:
-        try:
-            tif_out_dir = rvt_output_dir / "tif"
-            for p in tif_out_dir.glob("*.tif"):
-                if p.name in kept_tif_names:
-                    continue
-                try:
-                    size = int(p.stat().st_size)
-                except Exception:
-                    size = -1
-                if size == 0 or p.stem.isdigit():
-                    try:
-                        p.unlink()
-                    except Exception:
-                        pass
-        except Exception:
-            pass
+    # Nettoyage des fichiers orphelins (vides ou numériques) non produits par cette exécution
+    _cleanup_orphans(tif_out_dir, "*.tif", kept_tif_names)
+    _cleanup_orphans(jpg_output_dir, "*.jpg", kept_jpg_names)
 
-        try:
-            for p in jpg_output_dir.glob("*.jpg"):
-                if p.name in kept_jpg_names:
-                    continue
-                if p.stem.isdigit():
-                    try:
-                        p.unlink()
-                    except Exception:
-                        pass
-        except Exception:
-            pass
+    # Computer Vision (uniquement si activée)
+    # La déduplication shapefile est gérée par run_cv_on_folder (run_shapefile_dedup=True).
+    # La création des VRT est déléguée à finalize_pipeline() pour éviter le double travail.
+    if cv_enabled and not (cancel_check is not None and cancel_check()):
+        from ..cv.runner import run_cv_on_folder
 
-    from ..cv.runner import deduplicate_cv_shapefiles_final, run_cv_on_folder
+        # cv_config est déjà un run_cfg unique (le caller boucle sur les runs)
+        cv_config["scan_all"] = True
 
-    effective_cv_config = dict(cv_config or {})
-    effective_cv_config["scan_all"] = True
-
-    run_cv_on_folder(
-        jpg_dir=jpg_output_dir,
-        cv_config=effective_cv_config,
-        target_rvt=target_rvt,
-        rvt_base_dir=rvt_output_dir,
-        tif_transform_data=tif_transform_data,
-        run_shapefile_dedup=False,
-        log=log,
-    )
-
-    if bool(effective_cv_config.get("generate_shapefiles", False)) and rvt_output_dir is not None:
-        deduplicate_cv_shapefiles_final(
-            labels_dir=jpg_output_dir,
-            shp_dir=rvt_output_dir / "shapefiles",
-            target_rvt=target_rvt,
+        run_cv_on_folder(
+            jpg_dir=jpg_output_dir,
             cv_config=cv_config,
+            target_rvt=target_rvt,
+            rvt_base_dir=rvt_output_dir,
             tif_transform_data=tif_transform_data,
-            crs="EPSG:2154",
+            run_shapefile_dedup=True,
             log=log,
+            cancel_check=cancel_check,
         )
 
     return ExistingRvtResult(total_images=len(jpg_files))

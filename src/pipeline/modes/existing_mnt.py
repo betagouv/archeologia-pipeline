@@ -8,12 +8,11 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from ..coords import extract_xy_from_filename, infer_xy_from_file
+from ..subprocess_utils import subprocess_kwargs_no_window
 from ..ign.products.crop import crop_final_products
 from ..ign.products.indices import create_visualization_products
 from ..ign.products.results import copy_final_products_to_results
-
-
-LogFn = Callable[[str], None]
+from ..types import CancelCheckFn, LogFn
 
 
 @dataclass(frozen=True)
@@ -21,18 +20,7 @@ class ExistingMntResult:
     total: int
 
 
-def _subprocess_kwargs_no_window() -> Dict[str, Any]:
-    if os.name != "nt":
-        return {}
-    kwargs: Dict[str, Any] = {"creationflags": subprocess.CREATE_NO_WINDOW}
-    try:
-        si = subprocess.STARTUPINFO()
-        si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-        si.wShowWindow = 0
-        kwargs["startupinfo"] = si
-    except Exception:
-        pass
-    return kwargs
+# _subprocess_kwargs_no_window importé depuis subprocess_utils
 
 
 def _infer_tile_coords_from_mnt(mnt_path: Path, log: LogFn) -> Tuple[Optional[str], Optional[str], Optional[str]]:
@@ -66,6 +54,7 @@ def run_existing_mnt(
     pyramids_config: Dict[str, Any] | None = None,
     rvt_params: Dict[str, Any],
     log: LogFn = lambda _: None,
+    cancel_check: CancelCheckFn | None = None,
 ) -> ExistingMntResult:
     if not existing_mnt_dir.exists() or not existing_mnt_dir.is_dir():
         raise FileNotFoundError(f"Dossier MNT inexistant ou invalide: {existing_mnt_dir}")
@@ -79,7 +68,12 @@ def run_existing_mnt(
 
     gdal_translate = shutil.which("gdal_translate")
 
+    processed = 0
     for mnt_path in mnt_files:
+        if cancel_check is not None and cancel_check():
+            log("Annulation demandée, arrêt du traitement MNT.")
+            break
+
         x_str, y_str, tile_name = _infer_tile_coords_from_mnt(mnt_path, log)
         if not x_str or not y_str or not tile_name:
             raise ValueError(f"Impossible de déduire les coordonnées pour le MNT: {mnt_path.name}")
@@ -94,7 +88,7 @@ def run_existing_mnt(
                 if not gdal_translate:
                     raise FileNotFoundError("gdal_translate executable not found in PATH")
                 cmd = [gdal_translate, str(mnt_path), str(temp_mnt_path)]
-                r = subprocess.run(cmd, capture_output=True, text=True, **_subprocess_kwargs_no_window())
+                r = subprocess.run(cmd, capture_output=True, text=True, **subprocess_kwargs_no_window())
                 if r.returncode != 0:
                     raise RuntimeError(r.stderr or r.stdout)
             else:
@@ -108,6 +102,10 @@ def run_existing_mnt(
             log=log,
         )
 
+        if cancel_check is not None and cancel_check():
+            log("Annulation demandée après création des indices RVT.")
+            break
+
         crop_final_products(
             temp_dir=temp_dir,
             current_tile_name=current_tile_name,
@@ -115,6 +113,10 @@ def run_existing_mnt(
             rvt_params=rvt_params,
             log=log,
         )
+
+        if cancel_check is not None and cancel_check():
+            log("Annulation demandée après le crop.")
+            break
 
         copy_final_products_to_results(
             temp_dir=temp_dir,
@@ -128,4 +130,6 @@ def run_existing_mnt(
             log=log,
         )
 
-    return ExistingMntResult(total=len(mnt_files))
+        processed += 1
+
+    return ExistingMntResult(total=processed)

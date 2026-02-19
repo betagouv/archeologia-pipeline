@@ -2,19 +2,176 @@ from __future__ import annotations
 
 import time
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, Optional
 
 from ..cancel_token import CancelToken
 from ..cancellable_feedback import create_cancellable_feedback
 from ..progress_reporter import ProgressReporter
 from ..run_context import RunContext
-from ..services.cv_service import ComputerVisionService
+from ..services.finalize_service import finalize_pipeline
+from .helpers import log_section, safe_float, resolve_rvt_tif_dir
 
 if TYPE_CHECKING:
     from ..structured_logger import StructuredLogger
 
 
 class IgnOrLocalRunner:
+    # ------------------------------------------------------------------ #
+    #  Traitement d'une dalle individuelle                                #
+    # ------------------------------------------------------------------ #
+    @staticmethod
+    def _process_tile(
+        *,
+        merged_path: Path,
+        output_dir: Path,
+        tile_overlap: float,
+        mnt_resolution: float,
+        density_resolution: float,
+        filter_expression: str,
+        products_cfg: Dict[str, Any],
+        output_structure: Dict[str, Any],
+        output_formats: Dict[str, Any],
+        rvt_params: Dict[str, Any],
+        pyramids_config: Dict[str, Any],
+        reporter: ProgressReporter,
+        cancel: CancelToken,
+        feedback: Any,
+        slog: Optional["StructuredLogger"],
+        tile_index: int,
+        total_tiles: int,
+        active_products: list,
+    ) -> None:
+        from ...pipeline.ign.products.crop import crop_final_products
+        from ...pipeline.ign.products.density import create_density_map
+        from ...pipeline.ign.products.indices import create_visualization_products
+        from ...pipeline.ign.products.mnt import create_terrain_model
+        from ...pipeline.ign.products.results import copy_final_products_to_results
+
+        tile_name = merged_path.name.replace(".copc.laz", "").replace(".laz", "")
+        temp_dir = output_dir / "temp"
+
+        reporter.stage(f"Traitement dalle {tile_index}/{total_tiles}")
+        if slog:
+            slog.tile_start(tile_index, total_tiles, tile_name)
+
+        create_terrain_model(
+            input_laz_path=merged_path,
+            temp_dir=temp_dir,
+            current_tile_name=tile_name,
+            mnt_resolution=mnt_resolution,
+            tile_overlap_percent=tile_overlap,
+            filter_expression=str(filter_expression),
+            log=lambda m: reporter.info(m),
+            feedback=feedback,
+        )
+
+        if cancel.is_cancelled():
+            return
+
+        if products_cfg.get("DENSITE", False):
+            create_density_map(
+                input_laz_path=merged_path,
+                temp_dir=temp_dir,
+                current_tile_name=tile_name,
+                density_resolution=density_resolution,
+                tile_overlap_percent=tile_overlap,
+                filter_expression=str(filter_expression),
+                log=lambda m: reporter.info(m),
+                feedback=feedback,
+            )
+
+            if cancel.is_cancelled():
+                return
+
+        create_visualization_products(
+            temp_dir=temp_dir,
+            current_tile_name=tile_name,
+            products=products_cfg,
+            rvt_params=rvt_params,
+            log=lambda m: reporter.info(m),
+            feedback=feedback,
+        )
+
+        if cancel.is_cancelled():
+            return
+
+        cropped = crop_final_products(
+            temp_dir=temp_dir,
+            current_tile_name=tile_name,
+            products=products_cfg,
+            rvt_params=rvt_params,
+            log=lambda m: reporter.info(m),
+        )
+
+        if cropped:
+            copy_final_products_to_results(
+                temp_dir=temp_dir,
+                output_dir=output_dir,
+                current_tile_name=tile_name,
+                products=products_cfg,
+                output_structure=output_structure,
+                output_formats=output_formats,
+                rvt_params=rvt_params,
+                pyramids_config=pyramids_config,
+                log=lambda m: reporter.info(m),
+            )
+
+        if slog:
+            slog.tile_end(tile_name, active_products)
+
+    # ------------------------------------------------------------------ #
+    #  Lancement de la Computer Vision globale (post-boucle)              #
+    # ------------------------------------------------------------------ #
+    @staticmethod
+    def _run_post_cv(
+        *,
+        ctx: RunContext,
+        output_structure: Dict[str, Any],
+        rvt_params: Dict[str, Any],
+        reporter: ProgressReporter,
+        cancel: CancelToken,
+        slog: Optional["StructuredLogger"],
+    ) -> None:
+        from ...pipeline.modes.existing_rvt import run_existing_rvt
+        from ...pipeline.cv.class_utils import resolve_cv_runs
+
+        cv_cfg = ctx.cv_cfg or {}
+        cv_runs = resolve_cv_runs(cv_cfg)
+        if not cv_runs:
+            reporter.info("Computer Vision: aucun modèle configuré dans les runs")
+            return
+
+        log_section("COMPUTER VISION", "cv", slog=slog, reporter=reporter)
+        reporter.stage("Computer Vision")
+        reporter.progress(90)
+
+        for run_idx, run_cfg in enumerate(cv_runs, start=1):
+            if cancel.is_cancelled():
+                break
+
+            run_model = run_cfg.get("selected_model", "?")
+            run_rvt = run_cfg.get("target_rvt", "LD")
+            reporter.info(f"Computer Vision: run {run_idx}/{len(cv_runs)} — modèle={run_model}, RVT={run_rvt}")
+
+            generated_rvt_tif_dir = resolve_rvt_tif_dir(ctx.output_dir, run_rvt, output_structure, rvt_params)
+
+            if not generated_rvt_tif_dir.exists() or not generated_rvt_tif_dir.is_dir():
+                reporter.error(f"Computer Vision: dossier RVT/TIF non trouvé pour {run_rvt}: {generated_rvt_tif_dir}")
+                continue
+
+            run_existing_rvt(
+                existing_rvt_dir=generated_rvt_tif_dir,
+                output_dir=ctx.output_dir,
+                cv_config=run_cfg,
+                output_structure=output_structure,
+                log=lambda m: reporter.info(m),
+                cancel_check=cancel.is_cancelled,
+                rvt_params=rvt_params,
+            )
+
+    # ------------------------------------------------------------------ #
+    #  Point d'entrée principal                                           #
+    # ------------------------------------------------------------------ #
     def run(
         self,
         ctx: RunContext,
@@ -44,7 +201,6 @@ class IgnOrLocalRunner:
         download_range = (0, 25)
         merge_range = (25, 35)
         products_range = (35, 95)
-        finalize_range = (95, 100)
 
         if ctx.mode == "ign_laz":
             from ...pipeline.ign.downloader import download_ign_dalles
@@ -57,15 +213,9 @@ class IgnOrLocalRunner:
             if not input_path.exists():
                 reporter.error(f"Fichier dalles IGN introuvable: {input_path}")
                 return
-            if slog:
-                slog.section("TÉLÉCHARGEMENT DES DALLES IGN", "download")
-            else:
-                reporter.info("")
-                reporter.info("════════════════════════════════════════════════════════════")
-                reporter.info("📥 TÉLÉCHARGEMENT DES DALLES IGN")
-                reporter.info("════════════════════════════════════════════════════════════")
+            log_section("TÉLÉCHARGEMENT DES DALLES IGN", "download", slog=slog, reporter=reporter)
             reporter.stage("Téléchargement des dalles")
-            max_workers = processing.get("max_workers", 4)
+            max_workers = safe_float(processing.get("max_workers", 4), 4)
             result = download_ign_dalles(
                 input_file=input_path,
                 output_dir=ctx.output_dir,
@@ -86,14 +236,8 @@ class IgnOrLocalRunner:
                 return
 
             local_dir = Path(local_dir_str)
-            if slog:
-                slog.section("INDEXATION DES NUAGES LOCAUX", "download")
-            else:
-                reporter.info("")
-                reporter.info("════════════════════════════════════════════════════════════")
-                reporter.info("📂 INDEXATION DES NUAGES LOCAUX")
-                reporter.info("════════════════════════════════════════════════════════════")
-                reporter.stage("Indexation des nuages locaux")
+            log_section("INDEXATION DES NUAGES LOCAUX", "download", slog=slog, reporter=reporter)
+            reporter.stage("Indexation des nuages locaux")
             reporter.progress(0)
             result = run_local_laz(
                 local_laz_dir=local_dir,
@@ -103,20 +247,10 @@ class IgnOrLocalRunner:
 
         from ...pipeline.ign.preprocess import prepare_merged_tiles
 
-        tile_overlap = processing.get("tile_overlap", 5)
-        try:
-            tile_overlap = float(tile_overlap)
-        except Exception:
-            tile_overlap = 5.0
+        tile_overlap = safe_float(processing.get("tile_overlap", 5), 5.0)
 
-        if slog:
-            slog.section("FUSION DES TUILES", "process")
-        else:
-            reporter.info("")
-            reporter.info("════════════════════════════════════════════════════════════")
-            reporter.info("🔧 FUSION DES TUILES")
-            reporter.info("════════════════════════════════════════════════════════════")
-            reporter.stage("Fusion (voisins + merge)")
+        log_section("FUSION DES TUILES", "process", slog=slog, reporter=reporter)
+        reporter.stage("Fusion (voisins + merge)")
         if ctx.mode == "ign_laz":
             reporter.progress(merge_range[0])
         else:
@@ -137,23 +271,17 @@ class IgnOrLocalRunner:
         if ctx.mode == "ign_laz":
             reporter.progress(merge_range[1])
 
+        active_products: list = []
+
         if need_mnt and merged_result.merged_files:
-            mnt_resolution = processing.get("mnt_resolution", 0.5)
-            try:
-                mnt_resolution = float(mnt_resolution)
-            except Exception:
-                mnt_resolution = 0.5
+            mnt_resolution = safe_float(processing.get("mnt_resolution", 0.5), 0.5)
 
             filter_expression = processing.get(
                 "filter_expression",
                 "Classification = 2 OR Classification = 6 OR Classification = 66 OR Classification = 67 OR Classification = 9",
             )
 
-            density_resolution = processing.get("density_resolution", 1.0)
-            try:
-                density_resolution = float(density_resolution)
-            except Exception:
-                density_resolution = 1.0
+            density_resolution = safe_float(processing.get("density_resolution", 1.0), 1.0)
 
             output_structure = processing.get("output_structure", {})
             if not isinstance(output_structure, dict):
@@ -163,138 +291,42 @@ class IgnOrLocalRunner:
                 output_formats = {}
 
             rvt_params = ctx.rvt_params or {}
+            products_cfg = products if isinstance(products, dict) else {}
+            active_products = [k for k, v in products_cfg.items() if v]
 
-            cv_service = ComputerVisionService(
-                cv_config=ctx.cv_cfg or {},
-                output_dir=ctx.output_dir,
-                log=lambda m: reporter.info(m),
-            )
-
-            if slog:
-                slog.section("TRAITEMENT DES DALLES", "process")
-            else:
-                reporter.info("")
-                reporter.info("════════════════════════════════════════════════════════════")
-                reporter.info("🔧 TRAITEMENT DES DALLES")
-                reporter.info("════════════════════════════════════════════════════════════")
-                reporter.stage("Traitement des dalles")
+            log_section("TRAITEMENT DES DALLES", "process", slog=slog, reporter=reporter)
+            reporter.stage("Traitement des dalles")
             if ctx.mode == "ign_laz":
                 reporter.progress(products_range[0])
             else:
                 reporter.progress(0)
 
-            from ...pipeline.ign.products.crop import crop_final_products
-            from ...pipeline.ign.products.density import create_density_map
-            from ...pipeline.ign.products.indices import create_visualization_products
-            from ...pipeline.ign.products.mnt import create_terrain_model
-            from ...pipeline.ign.products.results import copy_final_products_to_results
-
             total_mnt = len(merged_result.merged_files)
-            active_products = [k for k, v in products.items() if v]
-            products_cfg = products if isinstance(products, dict) else {}
 
             for i, merged_path in enumerate(merged_result.merged_files, start=1):
                 if cancel.is_cancelled():
                     break
 
-                tile_name = merged_path.name.replace(".copc.laz", "").replace(".laz", "")
-
-                # Mise à jour du stage avec la dalle courante
-                reporter.stage(f"Traitement dalle {i}/{total_mnt}")
-
-                # Démarrer le timer pour cette dalle
-                if slog:
-                    slog.tile_start(i, total_mnt, tile_name)
-
-                create_terrain_model(
-                    input_laz_path=merged_path,
-                    temp_dir=ctx.output_dir / "temp",
-                    current_tile_name=tile_name,
+                self._process_tile(
+                    merged_path=merged_path,
+                    output_dir=ctx.output_dir,
+                    tile_overlap=tile_overlap,
                     mnt_resolution=mnt_resolution,
-                    tile_overlap_percent=tile_overlap,
+                    density_resolution=density_resolution,
                     filter_expression=str(filter_expression),
-                    log=lambda m: reporter.info(m),
-                    feedback=feedback,
-                )
-
-                if cancel.is_cancelled():
-                    break
-
-                if products_cfg.get("DENSITE", False):
-                    create_density_map(
-                        input_laz_path=merged_path,
-                        temp_dir=ctx.output_dir / "temp",
-                        current_tile_name=tile_name,
-                        density_resolution=density_resolution,
-                        tile_overlap_percent=tile_overlap,
-                        filter_expression=str(filter_expression),
-                        log=lambda m: reporter.info(m),
-                        feedback=feedback,
-                    )
-
-                    if cancel.is_cancelled():
-                        break
-
-                create_visualization_products(
-                    temp_dir=ctx.output_dir / "temp",
-                    current_tile_name=tile_name,
-                    products=products_cfg,
+                    products_cfg=products_cfg,
+                    output_structure=output_structure,
+                    output_formats=output_formats,
                     rvt_params=rvt_params,
-                    log=lambda m: reporter.info(m),
+                    pyramids_config=(processing.get("pyramids") or {}),
+                    reporter=reporter,
+                    cancel=cancel,
                     feedback=feedback,
+                    slog=slog,
+                    tile_index=i,
+                    total_tiles=total_mnt,
+                    active_products=active_products,
                 )
-
-                if cancel.is_cancelled():
-                    break
-
-                cropped = crop_final_products(
-                    temp_dir=ctx.output_dir / "temp",
-                    current_tile_name=tile_name,
-                    products=products_cfg,
-                    rvt_params=rvt_params,
-                    log=lambda m: reporter.info(m),
-                )
-
-                export_info: Dict[str, Any] = {}
-                if cropped:
-                    export_info = copy_final_products_to_results(
-                        temp_dir=ctx.output_dir / "temp",
-                        output_dir=ctx.output_dir,
-                        current_tile_name=tile_name,
-                        products=products_cfg,
-                        output_structure=output_structure,
-                        output_formats=output_formats,
-                        rvt_params=rvt_params,
-                        pyramids_config=(processing.get("pyramids") or {}),
-                        log=lambda m: reporter.info(m),
-                    )
-
-                if slog:
-                    slog.tile_end(tile_name, active_products)
-
-                # Traitement CV si activé
-                if cv_service.enabled and cv_service.should_process_product(cv_service.target_rvt):
-                    created_by_product = export_info.get("created_jpgs_by_product") or {}
-                    created_jpgs: List[Path] = []
-                    if isinstance(created_by_product, dict) and cv_service.target_rvt in created_by_product:
-                        created_jpgs = created_by_product.get(cv_service.target_rvt) or []
-                    if not created_jpgs:
-                        created_jpgs = export_info.get("created_jpgs") or []
-
-                    tif_transform_data = export_info.get("tif_transform_data") or {}
-
-                    for jpg_path in created_jpgs:
-                        if jpg_path is None:
-                            continue
-                        jpg_dir_path = Path(jpg_path).parent
-                        rvt_base_dir = jpg_dir_path.parent
-                        if str(rvt_base_dir.name).upper() != cv_service.target_rvt.upper():
-                            continue
-                        cv_service.process_single_jpg(
-                            jpg_path=Path(jpg_path),
-                            rvt_base_dir=rvt_base_dir,
-                            tif_transform_data=tif_transform_data,
-                        )
 
                 if ctx.mode == "ign_laz":
                     frac = i / max(1, total_mnt)
@@ -303,109 +335,31 @@ class IgnOrLocalRunner:
                     pct = int(round(100.0 * i / max(1, total_mnt)))
                 reporter.progress(pct)
 
-            if cv_service.enabled and cv_service.generate_shapefiles:
-                if ctx.mode == "ign_laz":
-                    reporter.stage("Finalisation (shapefiles)")
-                    reporter.progress(finalize_range[0])
-                cv_service.finalize(temp_dir=ctx.output_dir / "temp")
-
-            reporter.progress(100)
-
-            if cv_service.enabled:
+            # Computer Vision globale (post-boucle)
+            cv_cfg = ctx.cv_cfg or {}
+            cv_enabled = bool(cv_cfg.get("enabled", False))
+            if cv_enabled and not cancel.is_cancelled():
                 try:
-                    from ...pipeline.modes.existing_rvt import run_existing_rvt
-
-                    rvt_cfg = output_structure.get("RVT", {}) if isinstance(output_structure, dict) else {}
-                    base_dir_name = str(rvt_cfg.get("base_dir", "RVT"))
-                    type_dir_name = str(rvt_cfg.get(cv_service.target_rvt, cv_service.target_rvt))
-                    generated_rvt_tif_dir = (ctx.output_dir / "results") / base_dir_name / type_dir_name / "tif"
-
-                    if not generated_rvt_tif_dir.exists() or not generated_rvt_tif_dir.is_dir():
-                        reporter.error(f"Computer Vision demandée mais aucun dossier RVT/TIF trouvé: {generated_rvt_tif_dir}")
-                    else:
-                        if slog:
-                            slog.section("COMPUTER VISION", "cv")
-                        else:
-                            reporter.info("")
-                            reporter.info("════════════════════════════════════════════════════════════")
-                            reporter.info("🤖 COMPUTER VISION")
-                            reporter.info("════════════════════════════════════════════════════════════")
-                        reporter.stage("Computer Vision")
-                        reporter.progress(90)
-                        run_existing_rvt(
-                            existing_rvt_dir=generated_rvt_tif_dir,
-                            output_dir=ctx.output_dir,
-                            cv_config=ctx.cv_cfg or {},
-                            output_structure=output_structure,
-                            log=lambda m: reporter.info(m),
-                        )
-                        if cv_service.generate_shapefiles:
-                            reporter.info("Computer Vision (existing MNT): shapefiles générés")
+                    self._run_post_cv(
+                        ctx=ctx,
+                        output_structure=output_structure,
+                        rvt_params=rvt_params,
+                        reporter=reporter,
+                        cancel=cancel,
+                        slog=slog,
+                    )
                 except Exception as e:
-                    reporter.error(f"Erreur Computer Vision (existing MNT): {e}")
+                    reporter.error(f"Erreur Computer Vision: {e}")
 
-        reporter.progress(100)
-
-        # Création des fichiers VRT pour indexer les dalles par produit
-        vrt_paths: List[str] = []
-        shapefile_paths: List[str] = []
-
-        if ctx.mode in ("ign_laz", "local_laz"):
-            from ...pipeline.ign.products.results import build_vrt_index
-            reporter.stage("Création des index VRT")
-            reporter.info("Création des fichiers VRT d'indexation...")
-            results_dir = ctx.output_dir / "results"
-            if results_dir.exists():
-                # VRT pour chaque dossier de produit TIF - collecter TOUS les VRT créés
-                for tif_dir in results_dir.rglob("tif"):
-                    if tif_dir.is_dir() and list(tif_dir.glob("*.tif")):
-                        build_vrt_index(tif_dir, pattern="*.tif", output_name="index.vrt", log=lambda m: reporter.info(m))
-                        vrt_path = tif_dir / "index.vrt"
-                        if vrt_path.exists():
-                            vrt_paths.append(str(vrt_path))
-                # VRT pour chaque dossier JPG (images géoréférencées)
-                for jpg_dir in results_dir.rglob("jpg"):
-                    if jpg_dir.is_dir() and list(jpg_dir.glob("*.jpg")):
-                        build_vrt_index(jpg_dir, pattern="*.jpg", output_name="index.vrt", log=lambda m: reporter.info(m))
-                # VRT pour annotated_images si présent
-                annotated_dir = results_dir / "annotated_images"
-                if annotated_dir.exists() and list(annotated_dir.glob("*.jpg")):
-                    build_vrt_index(annotated_dir, pattern="*.jpg", output_name="index.vrt", log=lambda m: reporter.info(m))
-
-                # Collecter les shapefiles de détection CV
-                for shp_file in results_dir.rglob("*.shp"):
-                    shapefile_paths.append(str(shp_file))
-        
-        # Calcul des statistiques finales
-        elapsed = time.time() - start_time
-        tiles_processed = len(merged_result.merged_files) if 'merged_result' in dir() and merged_result else 0
-        products_list = active_products if 'active_products' in dir() else []
-
-        if slog:
-            slog.end_pipeline(
-                success=True,
-                tiles_processed=tiles_processed,
-                tiles_total=tiles_processed,
-                products=products_list,
-            )
-        else:
-            # Section finale
-            reporter.info("")
-            reporter.info("════════════════════════════════════════════════════════════")
-            reporter.info("✅ PIPELINE TERMINÉ AVEC SUCCÈS")
-            reporter.info("════════════════════════════════════════════════════════════")
-            reporter.info(f"  ⏱️ Durée totale : {elapsed:.1f}s")
-            reporter.info(f"  📄 Dalles traitées : {tiles_processed}")
-            reporter.info(f"  📦 Produits : {', '.join(products_list) if products_list else 'aucun'}")
-            reporter.info("════════════════════════════════════════════════════════════")
-            reporter.info("")
-            reporter.stage("Terminé")
-
-        # Charger les couches dans le projet QGIS courant
-        if vrt_paths or shapefile_paths:
-            reporter.stage("Chargement des couches")
-            reporter.info(f"Chargement de {len(vrt_paths)} VRT et {len(shapefile_paths)} shapefile(s) dans QGIS...")
-            try:
-                reporter.load_layers(vrt_paths, shapefile_paths)
-            except Exception as e:
-                reporter.info(f"Note: Chargement des couches non disponible ({e})")
+        # Finalisation commune (VRT + shapefiles + load_layers)
+        finalize_pipeline(
+            output_dir=ctx.output_dir,
+            cv_cfg=ctx.cv_cfg or {},
+            rvt_params=ctx.rvt_params or {},
+            reporter=reporter,
+            slog=slog,
+            start_time=start_time,
+            tiles_processed=len(merged_result.merged_files) if merged_result else 0,
+            active_products=active_products,
+            extra_label="Dalles traitées",
+        )

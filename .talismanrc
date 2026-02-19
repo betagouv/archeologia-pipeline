@@ -1,24 +1,54 @@
 fileignoreconfig:
 - filename: src/pipeline/modes/local_laz.py
-  checksum: 9440c42bf93a3c0398277af700ce9f2f1e418bbd5006ffc4549033c9d739cc7f
+  checksum: e85737748bf429880c54b0279aa662f4d25816c2dd864ade9ddb39c506c14f83
 - filename: src/pipeline/ign/coords_fallback.py
-  checksum: 67adef92af8c64be52228e59826b5f566236d05e26818658ea0ae8bc4e6a449f
+  checksum: 2e1959d43bcfa05076134bfa27b62e6222285d054453945800a01d0dccffe76d
 - filename: old_src/computer_vision.py
   checksum: 3f8b391fa2640a739f68645b46acb945ab30501788e11646141dcdc9697d5786
 - filename: old_src/conversion_shp.py
   checksum: 3a4e979bcc8691785c1b636fb2eabfc2060640a72b0013e3e97c2327d4aa2fe0
 - filename: src/pipeline/cv/conversion_shp.py
-  checksum: 0a255a627e050d5e0d98bb8905589b2fc7ae8bad156ef653654ba66688bbd427
+  checksum: 7e9ec36bb4104fa0a32789c449718513c59d5c62ddf6c9d2b4f1ca27ba1b9ce5
 - filename: src/ui/main_dialog.py
-  checksum: 28f1866c35f00c4c5fc89c22da7ec50dcce8861e8871a60bbfda65a2dbc09778
+  checksum: 7400025f033a1b9e1f2c692c7ebd5449861551851b14bc40cacb763701f9ac16
 - filename: old_src/pipeline_lidar.py
   checksum: 32886bc946b5454875a787ee56a0174d2a4e1fad5a7a2209df6639d52a2c4dd2
 - filename: tests/TESTS_MANUELS_QGIS.txt
-  checksum: 4a7e2b200c36e7404ab02725fc8ac59db8c8138f0d118bafd3408ab47d9761df
+  checksum: 1442712c380217c0b579abd4945c778c7a17003cb6abdcd8f04462bb1f0e75de
 - filename: src/pipeline/ign/pdal_validation.py
-  checksum: 3179abb49b07cb15b108ac3ffece544741997357cf3a533d400513c995bd618e
+  checksum: 016f309259bdd1196c6634132d518795b5bcc959895db7638d3488246dfe8ccd
 - filename: src/pipeline/ign/preprocess.py
-  checksum: 78f032231fec59c6d9c469f8f1329cb2a9b1430201c7bdb4391dcb905329f8b7
+  checksum: 2e3d7b635e6bdfe668be9557296f2f6488539ab1192bf172ba9ca1fb44fb3f4b
 - filename: src/pipeline/ign/downloader.py
-  checksum: 0468a01e68d850a1ab86e33b33a213a97d7418fb56550a79e64485c3ec1f8bf3
+  checksum: e5f874adb722ebc4b3e2b748b6a0f6590f3d90473424fecaa4b565ffcb7293b6
+- filename: src/pipeline/cv/computer_vision_rfdetr.py
+  checksum: 3c3de1d9bab52f155e9cc9f5f54a60f43c2ea784d485f8959603bbdc5e07d768
+- filename: src/pipeline/cv/computer_vision_onnx.py
+  checksum: ccc39a5b59dbdb3c2475dff3e1a90f4c742d7d8abda11cde77cacb22da6862e9
+- filename: src/pipeline/cv/class_utils.py
+  checksum: c2216fd4175b7c56db37afeb2f5d879aefba74eff96b89b8178846c9bd8c93a0
+- filename: runner_onnx/export_to_onnx.py
+  checksum: 401c937d414a10c8020d64a9b09d664818b9e84766eafe7352711235d383e852
+- filename: dev/image_test/LHD_FXX_0943_6761_LD_A_LAMB93.jpg
+  checksum: f3900025a7768c4b8d8178c4680d3a5ae14273c1f8b9ed61d7c82d5b287e39d5
+- filename: dev/image_test/LHD_FXX_0615_6837_LD_A_LAMB93.jpg
+  checksum: ad8556bd93c69301a248ed9a2895553481c9c867637e6d5fc52f610a24393642
+- filename: dev/image_test/LHD_FXX_0615_6835_LD_A_LAMB93 - Copie.jpg
+  checksum: ddbc0cd40112be680cee8df8bfdda8d6eba35c9c9e1878e2c47ee2332006ec08
+- filename: tests/unit/test_preflight.py
+  checksum: d2fce1b59ade7ad77e109b43bcb3d4e772c9b73ac117124f66f190655f75b42a
+- filename: src/app/services/finalize_service.py
+  checksum: a19eb93ee8d30f0aca64be8ef60700b082e590c241b3c85374ee3f2d45ae7d9b
+- filename: src/pipeline/ign/products/indices.py
+  checksum: 1b1e907afbb6f35d90f9d0b56504ed9deefcbe6cc49b88d089be94fbe06e6d3a
+- filename: src/pipeline/preflight.py
+  checksum: 1d37d268d303b1f0d6bda4e4d09f74ad84c532f3ffc5a5087da84692b3714dd9
+- filename: dev/runner_onnx/export_to_onnx.py
+  checksum: 8ea1b12409f0df4ae4177e9f4467374fdb18c5e919a9d79e66cdbeff249387a4
+- filename: dev/image_test/LHD_FXX_0615_6836_LD_A_LAMB93.jpg
+  checksum: edd9d12e571e3538e6286abc3321356188830236bc5356d1fa0a3f6268df8731
+- filename: dev/image_test/LHD_FXX_0943_6761_LD_A_LAMB93 - Copie.jpg
+  checksum: d999649572b0dd5db3fbdf926f2fe5923f1e4e80c219866c653cd3fd10baae7d
+- filename: dev/image_test/LHD_FXX_0615_6837_LD_A_LAMB93 - Copie.jpg
+  checksum: 730d3a47d72d3295392bc9c82f6290fdc035943531186829285f03532b6d2825
 version: "1.0"

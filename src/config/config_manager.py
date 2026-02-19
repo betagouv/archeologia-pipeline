@@ -36,11 +36,13 @@ class ConfigManager:
                     "SVF": False,
                     "SLO": False,
                     "LD": False,
+                    "SLRM": False,
                     "VAT": False,
                 },
             },
             "computer_vision": {
                 "enabled": False,
+                "runs": [],
                 "selected_model": "",
                 "target_rvt": "LD",
                 "confidence_threshold": 0.3,
@@ -81,6 +83,11 @@ class ConfigManager:
                     "ve_factor": 1,
                     "save_as_8bit": True,
                 },
+                "slrm": {
+                    "radius": 20,
+                    "ve_factor": 1,
+                    "save_as_8bit": True,
+                },
                 "vat": {
                     "terrain_type": 0,
                     "save_as_8bit": True,
@@ -102,12 +109,30 @@ class ConfigManager:
 
         cfg = self.default_config()
         self._deep_update(cfg, data)
+        self._migrate_cv_runs(cfg)
         return cfg
 
     def save(self, config: Dict[str, Any]) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         with self.path.open("w", encoding="utf-8") as f:
             json.dump(config, f, indent=2, ensure_ascii=False)
+
+    @staticmethod
+    def _migrate_cv_runs(cfg: Dict[str, Any]) -> None:
+        """Migre l'ancien format mono-modèle vers le nouveau format 'runs'."""
+        cv = cfg.get("computer_vision")
+        if not isinstance(cv, dict):
+            return
+        runs = cv.get("runs")
+        if isinstance(runs, list) and runs:
+            return  # Déjà migré
+        # Migration: selected_model + target_rvt -> runs[0]
+        model = str(cv.get("selected_model") or "").strip()
+        rvt = str(cv.get("target_rvt") or "LD").strip()
+        if model:
+            cv["runs"] = [{"model": model, "target_rvt": rvt}]
+        else:
+            cv["runs"] = []
 
     def _deep_update(self, base: Dict[str, Any], other: Dict[str, Any]) -> Dict[str, Any]:
         for k, v in other.items():

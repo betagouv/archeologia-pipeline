@@ -3,12 +3,10 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, List, Optional, Tuple
+from typing import List, Optional, Tuple
 
 from ..coords import extract_xy_from_filename, infer_xy_from_file
-
-
-CancelFn = Callable[[], bool]
+from ..types import CancelFn
 
 
 @dataclass(frozen=True)

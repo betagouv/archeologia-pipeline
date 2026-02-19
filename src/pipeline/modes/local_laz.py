@@ -5,9 +5,7 @@ from pathlib import Path
 from typing import Callable, List, Tuple
 
 from ..coords import extract_xy_from_filename, infer_xy_from_file
-
-
-LogFn = Callable[[str], None]
+from ..types import LogFn
 
 
 @dataclass(frozen=True)

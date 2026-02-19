@@ -6,29 +6,14 @@ import subprocess
 from pathlib import Path
 from typing import Any, Callable, Dict, Optional, Tuple
 
-
-LogFn = Callable[[str], None]
-
-
-def _subprocess_kwargs_no_window() -> Dict[str, Any]:
-    if os.name != "nt":
-        return {}
-    kwargs: Dict[str, Any] = {"creationflags": subprocess.CREATE_NO_WINDOW}
-    try:
-        si = subprocess.STARTUPINFO()
-        si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-        si.wShowWindow = 0
-        kwargs["startupinfo"] = si
-    except Exception:
-        pass
-    return kwargs
+from ...coords import extract_xy_from_tile_name as _extract_xy_from_tile_name
+from ...subprocess_utils import subprocess_kwargs_no_window
+from .rvt_naming import get_rvt_source_and_dest_filenames
+from ...types import LogFn
 
 
-def _extract_xy_from_tile_name(tile_name: str) -> Tuple[str, str]:
-    parts = tile_name.split("_")
-    if len(parts) < 4:
-        raise ValueError(f"Nom de dalle inattendu: {tile_name}")
-    return parts[2], parts[3]
+# _extract_xy_from_tile_name importé depuis coords
+# _subprocess_kwargs_no_window importé depuis subprocess_utils
 
 
 def crop_final_products(
@@ -58,28 +43,16 @@ def crop_final_products(
     xmax_r = str(target_xmax)
     ymax_r = str(target_ymax)
 
-    vat_params = (rvt_params or {}).get("vat", {})
-    terrain_type = str(vat_params.get("terrain_type", 0))
-    blend_combination = str(vat_params.get("blend_combination", 0))
-    preset_suffix = f"_T{terrain_type}_B{blend_combination}"
-
-    all_files: Dict[str, Tuple[str, str]] = {
-        "MNT": (f"{current_tile_name}_MNT.tif", f"LHD_FXX_{x}_{y}_MNT_A_0M50_LAMB93_IGN69.tif"),
-        "M_HS": (f"{current_tile_name}_hillshade.tif", f"LHD_FXX_{x}_{y}_M-HS_A_LAMB93.tif"),
-        "SVF": (f"{current_tile_name}_SVF.tif", f"LHD_FXX_{x}_{y}_SVF_A_LAMB93.tif"),
-        "SLO": (f"{current_tile_name}_Slope.tif", f"LHD_FXX_{x}_{y}_SLO_A_LAMB93.tif"),
-        "LD": (f"{current_tile_name}_LD.tif", f"LHD_FXX_{x}_{y}_LD_A_LAMB93.tif"),
-        "DENSITE": (f"{current_tile_name}_densite.tif", f"LHD_FXX_{x}_{y}_densite_A_LAMB93.tif"),
-        "VAT": (f"{current_tile_name}_VAT{preset_suffix}.tif", f"LHD_FXX_{x}_{y}_VAT_A_LAMB93.tif"),
-    }
-
+    # Utiliser la fonction utilitaire pour générer les noms de fichiers avec paramètres
     cropped: Dict[str, Path] = {}
 
-    for product_name in ["MNT", "DENSITE", "M_HS", "SVF", "SLO", "LD", "VAT"]:
+    for product_name in ["MNT", "DENSITE", "M_HS", "SVF", "SLO", "LD", "SLRM", "VAT"]:
         if not products.get(product_name, False):
             continue
 
-        src_name, dst_name = all_files[product_name]
+        src_name, dst_name = get_rvt_source_and_dest_filenames(
+            product_name, current_tile_name, x, y, rvt_params
+        )
         src_path = temp_dir / src_name
         dst_path = temp_dir / dst_name
 
@@ -88,6 +61,12 @@ def crop_final_products(
             continue
 
         if not src_path.exists():
+            log(f"Fichier source introuvable pour {product_name}: {src_path.name}")
+            continue
+        
+        # Vérifier que le fichier n'est pas vide/corrompu
+        if src_path.stat().st_size == 0:
+            log(f"Fichier source vide pour {product_name}: {src_path.name}")
             continue
 
         # Compression spécifique pour MNT: LERC_ZSTD avec tolérance 1cm
@@ -127,7 +106,7 @@ def crop_final_products(
                 "PREDICTOR=2",
             ]
 
-        result = subprocess.run(cmd, capture_output=True, text=True, **_subprocess_kwargs_no_window())
+        result = subprocess.run(cmd, capture_output=True, text=True, **subprocess_kwargs_no_window())
         if result.returncode != 0:
             raise RuntimeError(f"Erreur gdalwarp ({product_name}): {result.stderr or result.stdout}")
 

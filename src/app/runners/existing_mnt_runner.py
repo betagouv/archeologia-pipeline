@@ -7,6 +7,8 @@ from typing import TYPE_CHECKING, Optional
 from ..cancel_token import CancelToken
 from ..progress_reporter import ProgressReporter
 from ..run_context import RunContext
+from ..services.finalize_service import finalize_pipeline
+from .helpers import log_section, resolve_rvt_tif_dir
 
 if TYPE_CHECKING:
     from ..structured_logger import StructuredLogger
@@ -48,13 +50,7 @@ class ExistingMntRunner:
         active_products = [k for k in ("MNT", "M_HS", "SVF", "SLO", "LD", "VAT") if products.get(k, False)]
 
         # Section: Traitement MNT
-        if slog:
-            slog.section("TRAITEMENT DES MNT EXISTANTS", "mnt")
-        else:
-            reporter.info("")
-            reporter.info("════════════════════════════════════════════════════════════")
-            reporter.info("🔧 TRAITEMENT DES MNT EXISTANTS")
-            reporter.info("════════════════════════════════════════════════════════════")
+        log_section("TRAITEMENT DES MNT EXISTANTS", "mnt", slog=slog, reporter=reporter)
 
         reporter.stage("Traitement MNT existants")
         reporter.progress(0)
@@ -68,59 +64,67 @@ class ExistingMntRunner:
             pyramids_config=(processing_cfg.get("pyramids") or {}),
             rvt_params=rvt_params,
             log=lambda m: reporter.info(m),
+            cancel_check=cancel.is_cancelled,
         )
 
         reporter.info(f"✅ {res.total} MNT traités")
 
+        if cancel.is_cancelled():
+            reporter.info("Pipeline annulé après traitement MNT.")
+            return
+
         # Lancer la CV si activée
         cv_config = ctx.cv_cfg or {}
         cv_enabled = bool(cv_config.get("enabled", False))
-        target_rvt = str(cv_config.get("target_rvt", "LD"))
 
         if cv_enabled:
             try:
                 from ...pipeline.modes.existing_rvt import run_existing_rvt
+                from ...pipeline.cv.class_utils import resolve_cv_runs
 
-                rvt_cfg = output_structure.get("RVT", {}) if isinstance(output_structure, dict) else {}
-                base_dir_name = str(rvt_cfg.get("base_dir", "RVT"))
-                type_dir_name = str(rvt_cfg.get(target_rvt, target_rvt))
-                generated_rvt_tif_dir = (ctx.output_dir / "results") / base_dir_name / type_dir_name / "tif"
-
-                if not generated_rvt_tif_dir.exists() or not generated_rvt_tif_dir.is_dir():
-                    reporter.error(f"Computer Vision demandée mais aucun dossier RVT/TIF trouvé: {generated_rvt_tif_dir}")
+                cv_runs = resolve_cv_runs(cv_config)
+                if not cv_runs:
+                    reporter.info("Computer Vision: aucun modèle configuré dans les runs")
                 else:
-                    # Section: Computer Vision
-                    if slog:
-                        slog.section("COMPUTER VISION", "cv")
-                    else:
-                        reporter.info("")
-                        reporter.info("════════════════════════════════════════════════════════════")
-                        reporter.info("🤖 COMPUTER VISION")
-                        reporter.info("════════════════════════════════════════════════════════════")
-
+                    log_section("COMPUTER VISION", "cv", slog=slog, reporter=reporter)
                     reporter.stage("Computer Vision")
                     reporter.progress(80)
-                    run_existing_rvt(
-                        existing_rvt_dir=generated_rvt_tif_dir,
-                        output_dir=ctx.output_dir,
-                        cv_config=cv_config,
-                        output_structure=output_structure,
-                        log=lambda m: reporter.info(m),
-                    )
+
+                    for run_idx, run_cfg in enumerate(cv_runs, start=1):
+                        if cancel.is_cancelled():
+                            break
+
+                        run_model = run_cfg.get("selected_model", "?")
+                        run_rvt = run_cfg.get("target_rvt", "LD")
+                        reporter.info(f"Computer Vision: run {run_idx}/{len(cv_runs)} — modèle={run_model}, RVT={run_rvt}")
+
+                        generated_rvt_tif_dir = resolve_rvt_tif_dir(ctx.output_dir, run_rvt, output_structure, rvt_params)
+
+                        if not generated_rvt_tif_dir.exists() or not generated_rvt_tif_dir.is_dir():
+                            reporter.error(f"Computer Vision: dossier RVT/TIF non trouvé pour {run_rvt}: {generated_rvt_tif_dir}")
+                            continue
+
+                        run_existing_rvt(
+                            existing_rvt_dir=generated_rvt_tif_dir,
+                            output_dir=ctx.output_dir,
+                            cv_config=run_cfg,
+                            output_structure=output_structure,
+                            log=lambda m: reporter.info(m),
+                            cancel_check=cancel.is_cancelled,
+                            rvt_params=rvt_params,
+                        )
             except Exception as e:
                 reporter.error(f"Erreur Computer Vision: {e}")
 
-        # Section finale
-        elapsed = time.time() - start_time
-        reporter.info("")
-        reporter.info("════════════════════════════════════════════════════════════")
-        reporter.info("✅ PIPELINE TERMINÉ AVEC SUCCÈS")
-        reporter.info("════════════════════════════════════════════════════════════")
-        reporter.info(f"  ⏱️ Durée totale : {elapsed:.1f}s")
-        reporter.info(f"  📄 MNT traités : {res.total}")
-        reporter.info(f"  📦 Produits : {', '.join(active_products) if active_products else 'aucun'}")
-        reporter.info("════════════════════════════════════════════════════════════")
-        reporter.info("")
-
-        reporter.stage("Terminé")
-        reporter.progress(100)
+        # Finalisation commune (VRT + shapefiles + load_layers)
+        finalize_pipeline(
+            output_dir=ctx.output_dir,
+            cv_cfg=ctx.cv_cfg or {},
+            rvt_params=rvt_params,
+            reporter=reporter,
+            slog=slog,
+            start_time=start_time,
+            tiles_processed=res.total,
+            active_products=active_products,
+            extra_label="MNT traités",
+        )

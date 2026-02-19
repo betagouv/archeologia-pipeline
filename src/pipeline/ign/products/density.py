@@ -6,9 +6,8 @@ from typing import Any, Callable, Dict, Optional, Tuple
 
 from ..pdal_validation import get_laz_bounds, validate_las_or_laz_with_pdal
 from .qgis_processing import run_qgis_algorithm
-
-
-LogFn = Callable[[str], None]
+from ...coords import extract_xy_from_tile_name as _extract_xy_str
+from ...types import LogFn
 
 
 @dataclass(frozen=True)
@@ -17,10 +16,8 @@ class DensityResult:
 
 
 def _extract_xy_from_tile_name(tile_name: str) -> Tuple[int, int]:
-    parts = tile_name.split("_")
-    if len(parts) < 4:
-        raise ValueError(f"Nom de dalle inattendu: {tile_name}")
-    return int(parts[2]), int(parts[3])
+    x, y = _extract_xy_str(tile_name)
+    return int(x), int(y)
 
 
 def create_density_map(

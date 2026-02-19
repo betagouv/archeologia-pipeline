@@ -17,10 +17,7 @@ from .pdal_validation import (
     run_pdal_command_cancellable,
     validate_las_or_laz_with_pdal,
 )
-
-
-LogFn = Callable[[str], None]
-CancelFn = Callable[[], bool]
+from ..types import LogFn, CancelFn
 
 
 @dataclass(frozen=True)
@@ -204,6 +201,8 @@ def crop_neighbor_tile(
         result = run_pdal_command_cancellable(cmd, cancel=cancel)
         if result.returncode != 0:
             log(f"Erreur PDAL crop (code {result.returncode})")
+            if result.returncode == 3221225477:
+                log("PDAL a crashé (0xC0000005). Conseil: relancez le pipeline avec moins de workers (ex: max_workers=2).")
             if result.stderr:
                 log(result.stderr.strip())
             return False
@@ -268,6 +267,10 @@ def merge_tiles(
     result = run_pdal_command_cancellable(cmd, cancel=cancel)
     if result.returncode != 0:
         log(f"Erreur PDAL merge (code {result.returncode})")
+        log("💡 Conseil: réduisez max_workers dans config.json (ex: max_workers=1 ou 2) pour éviter les crashs mémoire.")
+        if result.returncode in (3221225477, 3221226505):
+            # 0xC0000005 = ACCESS_VIOLATION, 0xC0000409 = STACK_BUFFER_OVERRUN
+            log("PDAL a crashé (erreur mémoire).")
         if result.stderr:
             log(result.stderr.strip())
         return False
@@ -562,7 +565,7 @@ def prepare_merged_tiles(
         if result.success and result.merged_path is not None:
             merged_files.append(result.merged_path)
         elif result.error and "Annulation" not in (result.error or ""):
-            raise RuntimeError(result.error)
+            raise RuntimeError(f"[Dalle {result.index}/{total}] {result.tile_name}: {result.error}")
 
     return IgnPreprocessResult(merged_dir=merged_dir, temp_dir=temp_dir, merged_files=merged_files)
 

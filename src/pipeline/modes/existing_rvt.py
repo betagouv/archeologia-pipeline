@@ -60,6 +60,7 @@ def run_existing_rvt(
     log: LogFn = lambda _: None,
     cancel_check: CancelCheckFn | None = None,
     rvt_params: Dict[str, Any] | None = None,
+    global_color_map: Dict[str, Any] | None = None,
 ) -> ExistingRvtResult:
     if not existing_rvt_dir.exists() or not existing_rvt_dir.is_dir():
         raise FileNotFoundError(f"Dossier RVT inexistant ou invalide: {existing_rvt_dir}")
@@ -96,7 +97,10 @@ def run_existing_rvt(
     kept_tif_names: set[str] = set()
     kept_jpg_names: set[str] = set()
 
-    for tif_path in tif_files:
+    total_tif = len(tif_files)
+    log(f"Traitement de {total_tif} fichiers TIF…")
+
+    for idx, tif_path in enumerate(tif_files):
         if cancel_check is not None and cancel_check():
             log("Annulation demandée, arrêt du traitement RVT.")
             break
@@ -106,9 +110,10 @@ def run_existing_rvt(
             try:
                 normalized_name = _normalized_rvt_name(tif_path=tif_path, target_rvt=target_rvt)
                 dest = tif_out_dir / normalized_name
-                if dest.name != tif_path.name:
-                    log(f"RVT: renommage (coords) {tif_path.name} -> {dest.name}")
-                shutil.copy2(str(tif_path), str(dest))
+                if not dest.exists():
+                    if dest.name != tif_path.name:
+                        log(f"RVT: renommage (coords) {tif_path.name} -> {dest.name}")
+                    shutil.copy2(str(tif_path), str(dest))
                 effective_tif_path = dest
                 kept_tif_names.add(dest.name)
             except Exception:
@@ -124,6 +129,9 @@ def run_existing_rvt(
         pixel_width, pixel_height, x_origin, y_origin = extract_tif_transform_data(effective_tif_path)
         if all(v is not None for v in (pixel_width, pixel_height, x_origin, y_origin)):
             tif_transform_data[jpg_path.stem] = (float(pixel_width), float(pixel_height), float(x_origin), float(y_origin))
+
+        if total_tif > 100 and (idx + 1) % 500 == 0:
+            log(f"  … {idx + 1}/{total_tif} TIF traités")
 
     # Nettoyage des fichiers orphelins (vides ou numériques) non produits par cette exécution
     _cleanup_orphans(tif_out_dir, "*.tif", kept_tif_names)
@@ -145,6 +153,7 @@ def run_existing_rvt(
             rvt_base_dir=rvt_output_dir,
             tif_transform_data=tif_transform_data,
             run_shapefile_dedup=True,
+            global_color_map=global_color_map,
             log=log,
             cancel_check=cancel_check,
         )

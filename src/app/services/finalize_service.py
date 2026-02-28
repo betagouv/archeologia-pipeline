@@ -20,21 +20,35 @@ def _collect_vrt_paths_and_build(results_dir: Path, log: LogFn) -> List[str]:
 
     # VRT pour chaque dossier de produit TIF
     for tif_dir in results_dir.rglob("tif"):
-        if tif_dir.is_dir() and list(tif_dir.glob("*.tif")):
+        if not tif_dir.is_dir():
+            continue
+        vrt_path = tif_dir / "index.vrt"
+        if vrt_path.exists():
+            log(f"VRT déjà existant, ignoré: {vrt_path.name}")
+            vrt_paths.append(str(vrt_path))
+            continue
+        if list(tif_dir.glob("*.tif")):
             build_vrt_index(tif_dir, pattern="*.tif", output_name="index.vrt", log=log)
-            vrt_path = tif_dir / "index.vrt"
             if vrt_path.exists():
                 vrt_paths.append(str(vrt_path))
 
     # VRT pour chaque dossier JPG (images géoréférencées)
     for jpg_dir in results_dir.rglob("jpg"):
-        if jpg_dir.is_dir() and list(jpg_dir.glob("*.jpg")):
+        if not jpg_dir.is_dir():
+            continue
+        vrt_path = jpg_dir / "index.vrt"
+        if vrt_path.exists():
+            log(f"VRT déjà existant, ignoré: {vrt_path.name}")
+            continue
+        if list(jpg_dir.glob("*.jpg")):
             build_vrt_index(jpg_dir, pattern="*.jpg", output_name="index.vrt", log=log)
 
     # VRT pour annotated_images si présent
     annotated_dir = results_dir / "annotated_images"
-    if annotated_dir.exists() and list(annotated_dir.glob("*.jpg")):
-        build_vrt_index(annotated_dir, pattern="*.jpg", output_name="index.vrt", log=log)
+    if annotated_dir.exists():
+        vrt_path = annotated_dir / "index.vrt"
+        if not vrt_path.exists() and list(annotated_dir.glob("*.jpg")):
+            build_vrt_index(annotated_dir, pattern="*.jpg", output_name="index.vrt", log=log)
 
     return vrt_paths
 

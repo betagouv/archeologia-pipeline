@@ -46,22 +46,34 @@ def _prepare_model_workdir(
     model_jpg_dir = model_rvt_base / "jpg"
     model_jpg_dir.mkdir(parents=True, exist_ok=True)
 
-    # Créer des liens (ou copies) vers les JPG originaux
-    for jpg in sorted(jpg_dir.glob("*.jpg")):
-        dest = model_jpg_dir / jpg.name
-        if dest.exists():
-            continue
-        try:
-            # Tenter un lien symbolique (rapide, pas de copie)
-            dest.symlink_to(jpg)
-        except (OSError, NotImplementedError):
-            # Fallback: lien dur
+    # Créer des liens (ou copies) vers les JPG et world files originaux
+    src_files = sorted(jpg_dir.glob("*.jpg"))
+    total = len(src_files)
+    if total > 0:
+        log(f"Préparation dossier modèle [{model_slug}]: {total} images à lier…")
+
+    linked = 0
+    for idx, jpg in enumerate(src_files):
+        # Lier le JPG et son éventuel world file (.jgw)
+        for src in [jpg] + list(jpg.parent.glob(f"{jpg.stem}.jgw")):
+            dest = model_jpg_dir / src.name
+            if dest.exists():
+                continue
             try:
-                os.link(str(jpg), str(dest))
+                os.link(str(src), str(dest))
             except OSError:
-                # Dernier recours: copie
-                import shutil
-                shutil.copy2(str(jpg), str(dest))
+                try:
+                    dest.symlink_to(src)
+                except (OSError, NotImplementedError):
+                    import shutil
+                    shutil.copy2(str(src), str(dest))
+            linked += 1
+
+        if total > 100 and (idx + 1) % 500 == 0:
+            log(f"  … {idx + 1}/{total} images liées")
+
+    if linked > 0:
+        log(f"Préparation dossier modèle [{model_slug}]: {linked} fichiers liés/copiés")
 
     return model_jpg_dir, model_rvt_base
 
@@ -75,6 +87,7 @@ def run_cv_on_folder(
     tif_transform_data: Optional[Dict[str, Tuple[float, float, float, float]]] = None,
     single_jpg: Optional[Path] = None,
     run_shapefile_dedup: bool = True,
+    global_color_map: Optional[Dict[str, int]] = None,
     log: LogFn = lambda _: None,
     cancel_check: Optional[CancelCheckFn] = None,
 ) -> None:
@@ -123,6 +136,7 @@ def run_cv_on_folder(
                 single_jpg=single_jpg,
                 run_shapefile_dedup=run_shapefile_dedup,
                 tif_transform_data=tif_transform_data,
+                global_color_map=global_color_map,
                 log=log,
                 cancel_check=cancel_check,
             )
@@ -149,6 +163,7 @@ def run_cv_on_folder(
         tif_transform_data=tif_transform_data,
         single_jpg=single_jpg,
         run_shapefile_dedup=run_shapefile_dedup,
+        global_color_map=global_color_map,
         log=log,
     )
 
@@ -166,6 +181,7 @@ def _run_fallback_inference(
     tif_transform_data: Optional[Dict[str, Tuple[float, float, float, float]]] = None,
     single_jpg: Optional[Path] = None,
     run_shapefile_dedup: bool = True,
+    global_color_map: Optional[Dict[str, int]] = None,
     log: LogFn = lambda _: None,
 ) -> None:
     """Inférence ONNX image par image via computer_vision_onnx (fallback Python)."""
@@ -302,6 +318,7 @@ def _run_fallback_inference(
             cv_config=cv_config,
             tif_transform_data=tif_transform_data,
             crs="EPSG:2154",
+            global_color_map=global_color_map,
             log=log,
         )
 
@@ -317,6 +334,7 @@ def deduplicate_cv_shapefiles_final(
     target_rvt: str,
     cv_config: Optional[Dict[str, Any]] = None,
     tif_transform_data: Optional[Dict[str, Tuple[float, float, float, float]]] = None,
+    global_color_map: Optional[Dict[str, int]] = None,
     temp_dir: Optional[Path] = None,
     crs: str = "EPSG:2154",
     log: LogFn = lambda _: None,
@@ -340,7 +358,8 @@ def deduplicate_cv_shapefiles_final(
 
     # Générer les shapefiles par classe
     out_shp = shp_dir / f"detections_{target_rvt}.shp"
-    selected_classes = (cv_config or {}).get("selected_classes") or None
+    _raw_classes = (cv_config or {}).get("selected_classes")
+    selected_classes = _raw_classes if isinstance(_raw_classes, list) else None
     try:
         create_shapefile_from_detections(
             labels_dir=str(labels_dir),
@@ -351,6 +370,7 @@ def deduplicate_cv_shapefiles_final(
             class_names=class_names,
             selected_classes=selected_classes,
             class_colors=class_colors,
+            global_color_map=global_color_map if global_color_map else None,
         )
         qgs_root = shp_dir.parent if shp_dir.name.lower() in {"shapefiles", "shp"} else shp_dir
         qgs_path = qgs_root / "detections_validation.qgs"
@@ -359,21 +379,20 @@ def deduplicate_cv_shapefiles_final(
     except Exception as e:
         log(f"Computer Vision: génération shapefile/projet QGIS ignorée (erreur): {e}")
 
-    # Déduplication par IoU
+    # Déduplication par IoU + filtrage par aire minimale
     shapefile_paths = [str(p) for p in shp_dir.glob("*.shp")]
     if shapefile_paths:
         try:
-            size_filter_cfg = (cv_config or {}).get("size_filter", {}) if isinstance((cv_config or {}).get("size_filter"), dict) else {}
-            size_filter_enabled = bool(size_filter_cfg.get("enabled", False))
-            size_filter_max_meters = float(size_filter_cfg.get("max_meters", 50.0))
+            min_area_m2 = float((cv_config or {}).get("min_area_m2", 0.0))
+            area_filter_enabled = min_area_m2 > 0
 
             deduplicate_shapefiles_final(
                 labels_dir=str(labels_dir),
                 shapefile_paths=shapefile_paths,
                 iou_threshold=0.1,
                 crs=str(crs),
-                size_filter_enabled=size_filter_enabled,
-                size_filter_max_meters=size_filter_max_meters,
+                area_filter_enabled=area_filter_enabled,
+                area_filter_min_m2=min_area_m2,
             )
         except Exception as e:
             log(f"Computer Vision: déduplication shapefiles ignorée (erreur): {e}")

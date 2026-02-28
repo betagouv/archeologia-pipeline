@@ -44,10 +44,21 @@ class ExistingRvtRunner:
 
         # Collecter tous les RVT cibles uniques depuis les runs
         from ...pipeline.cv.class_utils import resolve_cv_runs
+        from ...app.services.finalize_service import _build_global_class_color_map
         cv_runs = resolve_cv_runs(cv_config)
         active_rvts = list(dict.fromkeys(
             r.get("target_rvt", target_rvt) for r in cv_runs
         )) or [target_rvt]
+
+        # Construire le mapping global couleurs AVANT les runs pour que chaque
+        # modèle écrive les bonnes couleurs dans les shapefiles dès la génération
+        global_color_map: dict = {}
+        if cv_runs:
+            try:
+                global_color_map = _build_global_class_color_map(cv_runs)
+                reporter.info(f"Computer Vision: mapping couleurs global = {global_color_map}")
+            except Exception as _e:
+                reporter.info(f"Computer Vision: impossible de construire le mapping couleurs: {_e}")
 
         # Section: Traitement RVT existants
         log_section("TRAITEMENT RVT EXISTANTS", "cv", slog=slog, reporter=reporter)
@@ -72,6 +83,7 @@ class ExistingRvtRunner:
                 log=lambda m: reporter.info(m),
                 cancel_check=cancel.is_cancelled,
                 rvt_params=ctx.rvt_params or {},
+                global_color_map=global_color_map,
             )
             total_images = max(total_images, res.total_images)
 

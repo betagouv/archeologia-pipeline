@@ -290,6 +290,261 @@ def _postprocess_rfdetr(
     return detections
 
 
+def _postprocess_rfdetr_seg(
+    outputs: List[np.ndarray],
+    img_width: int,
+    img_height: int,
+    model_width: int,
+    model_height: int,
+    confidence_threshold: float,
+    class_offset: int = 1,
+) -> List[Dict]:
+    """
+    Post-traite les sorties RF-DETR Seg ONNX (instance segmentation).
+
+    RF-DETR Seg outputs:
+      - outputs[0]: pred_boxes  [1, N, 4]  cxcywh normalisé
+      - outputs[1]: pred_logits [1, N, num_classes]
+      - outputs[2]: pred_masks  [1, N, Mh, Mw]  masques d'instances (logits)
+    """
+    try:
+        import cv2
+    except ImportError:
+        logger.warning("OpenCV non disponible, segmentation impossible — fallback bbox")
+        return _postprocess_rfdetr(outputs[:2], img_width, img_height, model_width, model_height, confidence_threshold, class_offset)
+
+    detections = []
+
+    if len(outputs) < 3:
+        return _postprocess_rfdetr(outputs, img_width, img_height, model_width, model_height, confidence_threshold, class_offset)
+
+    boxes_out  = outputs[0][0]   # [N, 4]
+    logits_out = outputs[1][0]   # [N, num_classes]
+    masks_out  = outputs[2][0]   # [N, Mh, Mw]
+
+    logger.info(f"RF-DETR Seg: boxes={boxes_out.shape}, logits={logits_out.shape}, masks={masks_out.shape}")
+
+    scores = 1.0 / (1.0 + np.exp(-logits_out))  # sigmoid
+    max_scores = scores.max(axis=1)
+    class_ids  = scores.argmax(axis=1)
+
+    scale_x = img_width  / model_width
+    scale_y = img_height / model_height
+
+    for i in range(len(max_scores)):
+        confidence = float(max_scores[i])
+        if confidence < confidence_threshold:
+            continue
+
+        class_id = int(class_ids[i]) - class_offset
+        if class_id < 0:
+            continue
+
+        # ----- Masque d'instance → polygone -----
+        mask_logit = masks_out[i]                       # [Mh, Mw]
+        mask_prob  = 1.0 / (1.0 + np.exp(-mask_logit)) # sigmoid
+
+        # Upscale les probabilités (float) directement vers la taille image finale
+        # INTER_LINEAR sur les probas avant seuillage → contours lisses (évite la pixelisation)
+        mask_prob_full = cv2.resize(mask_prob.astype(np.float32), (img_width, img_height), interpolation=cv2.INTER_LINEAR)
+        binary_full = (mask_prob_full >= 0.5).astype(np.uint8)
+
+        contours, _ = cv2.findContours(binary_full, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        if not contours:
+            # Fallback bbox si pas de contour
+            cx, cy, w, h = boxes_out[i]
+            if boxes_out.max() <= 1.0:
+                cx, cy, w, h = cx * model_width, cy * model_height, w * model_width, h * model_height
+            x1 = max(0.0, (cx - w / 2) * scale_x)
+            y1 = max(0.0, (cy - h / 2) * scale_y)
+            x2 = min(img_width,  (cx + w / 2) * scale_x)
+            y2 = min(img_height, (cy + h / 2) * scale_y)
+            detections.append({"bbox": [x1, y1, x2, y2], "class_id": class_id, "confidence": confidence})
+            continue
+
+        # Garder le plus grand contour par instance
+        contour = max(contours, key=cv2.contourArea)
+        area = cv2.contourArea(contour)
+        if area < 10 or len(contour) < 3:
+            continue
+
+        polygon = []
+        for pt in contour:
+            polygon.extend([float(pt[0][0]) / img_width, float(pt[0][1]) / img_height])
+
+        x_b, y_b, w_b, h_b = cv2.boundingRect(contour)
+        detections.append({
+            "class_id":  class_id,
+            "confidence": confidence,
+            "polygon":   polygon,
+            "bbox":      [float(x_b), float(y_b), float(x_b + w_b), float(y_b + h_b)],
+            "area":      float(area),
+        })
+
+    logger.info(f"RF-DETR Seg: {len(detections)} instances extraites")
+    return detections
+
+
+def _run_rfdetr_seg_with_sahi(
+    pil_image,
+    session,
+    input_name: str,
+    model_width: int,
+    model_height: int,
+    slice_width: int,
+    slice_height: int,
+    overlap_ratio: float,
+    confidence_threshold: float,
+    class_offset: int = 1,
+) -> List[Dict]:
+    """
+    Exécute RF-DETR Seg avec SAHI slicing en accumulant les masques de probabilité
+    par classe dans l'espace image global, puis extrait les polygones une seule fois.
+
+    Inspiré de _run_segformer_with_sahi : évite les doublons et gère correctement
+    les formes linéaires qui débordent sur plusieurs slices.
+
+    Pour chaque classe, on accumule max(prob) dans le masque global — une zone couverte
+    par plusieurs slices conserve la proba la plus haute observée, ce qui est correct
+    pour l'instance segmentation (évite la moyenne qui diluerait les détections).
+    """
+    try:
+        import cv2
+    except ImportError:
+        logger.warning("OpenCV non disponible, _run_rfdetr_seg_with_sahi impossible")
+        return []
+
+    from PIL import Image as _PILImage
+
+    img_width, img_height = pil_image.size
+    img_array = np.array(pil_image)
+
+    sliced_images, orig_height, orig_width = sahi_lite_slice_image(
+        image=img_array,
+        slice_height=slice_height,
+        slice_width=slice_width,
+        overlap_height_ratio=overlap_ratio,
+        overlap_width_ratio=overlap_ratio,
+    )
+    logger.info(f"RF-DETR Seg SAHI: {len(sliced_images)} tuiles")
+
+    # global_class_probs[c] = masque de probabilité max pour la classe c, espace image global
+    global_class_probs = None  # [num_classes, H, W], initialisé à la 1ère tuile
+    num_classes = None
+    # Conserver la confiance de détection pour chaque classe (max sur les instances détectées)
+    global_class_conf = None   # [num_classes, H, W]
+
+    for idx, sliced_img in enumerate(sliced_images):
+        slice_pil = _PILImage.fromarray(sliced_img.image)
+        slice_w, slice_h = slice_pil.size
+        start_x, start_y = sliced_img.starting_pixel
+
+        input_tensor = _preprocess_image(slice_pil, (model_width, model_height), "rfdetr")
+        outputs = session.run(None, {input_name: input_tensor})
+
+        if len(outputs) < 3:
+            continue
+
+        boxes_out  = outputs[0][0]   # [N, 4]
+        logits_out = outputs[1][0]   # [N, num_classes]
+        masks_out  = outputs[2][0]   # [N, Mh, Mw]
+
+        scores    = 1.0 / (1.0 + np.exp(-logits_out))  # sigmoid [N, C]
+        max_scores = scores.max(axis=1)                  # [N]
+        class_ids  = scores.argmax(axis=1)               # [N]
+
+        n_cls = logits_out.shape[1]
+        # Nombre de classes réelles (sans background offsetté)
+        n_real = max(1, n_cls - class_offset)
+
+        if global_class_probs is None:
+            num_classes = n_real
+            global_class_probs = np.zeros((n_real, orig_height, orig_width), dtype=np.float32)
+            global_class_conf  = np.zeros((n_real, orig_height, orig_width), dtype=np.float32)
+
+        end_x = min(start_x + slice_w, orig_width)
+        end_y = min(start_y + slice_h, orig_height)
+        actual_w = end_x - start_x
+        actual_h = end_y - start_y
+
+        for i in range(len(max_scores)):
+            confidence = float(max_scores[i])
+            if confidence < confidence_threshold:
+                continue
+
+            class_id = int(class_ids[i]) - class_offset
+            if class_id < 0 or class_id >= n_real:
+                continue
+
+            mask_logit = masks_out[i]                        # [Mh, Mw]
+            mask_prob  = 1.0 / (1.0 + np.exp(-mask_logit))  # sigmoid, float [Mh, Mw]
+
+            # Upscale vers la taille de la slice (float → lisse)
+            mask_prob_slice = cv2.resize(
+                mask_prob.astype(np.float32),
+                (slice_w, slice_h),
+                interpolation=cv2.INTER_LINEAR,
+            )
+
+            # Accumulation par max dans l'espace global
+            existing = global_class_probs[class_id, start_y:end_y, start_x:end_x]
+            new_vals  = mask_prob_slice[:actual_h, :actual_w]
+            global_class_probs[class_id, start_y:end_y, start_x:end_x] = np.maximum(existing, new_vals)
+
+            # Confiance associée : propagée uniquement où le masque est actif
+            conf_slice = np.where(new_vals >= 0.5, confidence, 0.0).astype(np.float32)
+            existing_conf = global_class_conf[class_id, start_y:end_y, start_x:end_x]
+            global_class_conf[class_id, start_y:end_y, start_x:end_x] = np.maximum(existing_conf, conf_slice)
+
+        if (idx + 1) % 10 == 0:
+            logger.info(f"RF-DETR Seg SAHI: {idx + 1}/{len(sliced_images)} tuiles traitées")
+
+    if global_class_probs is None:
+        return []
+
+    # Extraire les polygones depuis les masques globaux fusionnés
+    detections = []
+    for class_id in range(num_classes):
+        prob_map = global_class_probs[class_id]   # [H, W]
+        binary   = (prob_map >= 0.5).astype(np.uint8)
+
+        if not binary.any():
+            continue
+
+        contours, _ = cv2.findContours(binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        for contour in contours:
+            area = cv2.contourArea(contour)
+            if area < 10 or len(contour) < 3:
+                continue
+
+            polygon = []
+            for pt in contour:
+                polygon.extend([float(pt[0][0]) / orig_width, float(pt[0][1]) / orig_height])
+
+            x_b, y_b, w_b, h_b = cv2.boundingRect(contour)
+
+            # Confiance = max de la confiance observée dans la zone du contour
+            mask_contour = np.zeros((orig_height, orig_width), dtype=np.uint8)
+            cv2.drawContours(mask_contour, [contour], -1, 1, -1)
+            conf_vals = global_class_conf[class_id][mask_contour == 1]
+            if len(conf_vals) > 0 and conf_vals.max() > 0:
+                confidence = float(conf_vals.max())
+            else:
+                prob_vals = prob_map[mask_contour == 1]
+                confidence = float(prob_vals.max()) if len(prob_vals) > 0 else confidence_threshold
+
+            detections.append({
+                "class_id":   class_id,
+                "confidence": confidence,
+                "polygon":    polygon,
+                "bbox":       [float(x_b), float(y_b), float(x_b + w_b), float(y_b + h_b)],
+                "area":       float(area),
+            })
+
+    logger.info(f"RF-DETR Seg SAHI: {len(detections)} polygones extraits (masques globaux fusionnés)")
+    return detections
+
+
 def _postprocess_segformer(
     outputs: List[np.ndarray],
     img_width: int,
@@ -1009,6 +1264,52 @@ def run_onnx_inference(
             
             return (True, num_detections) if return_count else True
         
+        # =====================================================================
+        # Mode INSTANCE SEGMENTATION (RF-DETR Seg)
+        # =====================================================================
+        if model_type == "rfdetr" and task == "instance_segmentation":
+            logger.info("ONNX: mode instance segmentation RF-DETR Seg")
+            class_offset = model_meta.get("class_offset", 1)
+
+            # Accumulation des masques de probabilité par classe dans l'espace global
+            # → polygones extraits une seule fois, pas de doublons ni d'offsets
+            all_detections = _run_rfdetr_seg_with_sahi(
+                pil_image=pil_image,
+                session=session,
+                input_name=input_name,
+                model_width=model_width,
+                model_height=model_height,
+                slice_width=slice_width,
+                slice_height=slice_height,
+                overlap_ratio=overlap_ratio,
+                confidence_threshold=confidence_threshold,
+                class_offset=class_offset,
+            )
+            orig_width, orig_height = pil_image.size
+            logger.info(f"RF-DETR Seg: {len(all_detections)} instances après fusion globale")
+
+            if not all_detections:
+                save_empty_outputs(image_path=image_path, output_path=output_path, jpg_folder_path=jpg_folder_path)
+                return (False, 0) if return_count else False
+
+            num_detections = len(all_detections)
+            save_detections_to_files(
+                image_path=image_path,
+                output_path=output_path,
+                detections=all_detections,
+                img_width=orig_width,
+                img_height=orig_height,
+                jpg_folder_path=jpg_folder_path,
+                task="segment",
+                model_type=model_type,
+            )
+            logger.info(f"RF-DETR Seg: {num_detections} instances sauvegardées pour {Path(image_path).name}")
+
+            if generate_annotated_images and all_detections:
+                save_annotated_image(pil_image, all_detections, output_path, class_names=class_names, class_colors=class_colors)
+
+            return (True, num_detections) if return_count else True
+
         # =====================================================================
         # Mode DÉTECTION (YOLO, RF-DETR)
         # =====================================================================

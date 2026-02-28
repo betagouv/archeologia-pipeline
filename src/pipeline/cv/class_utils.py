@@ -52,9 +52,11 @@ def resolve_cv_runs(cv_config: Dict) -> List[Dict]:
         rvt = str(run.get("target_rvt") or "LD").strip()
         # Construire un cv_config complet pour ce run
         run_cfg = dict(cv_config, selected_model=model, target_rvt=rvt)
-        # Propager les champs spécifiques au run (ex: selected_classes)
+        # Propager les champs spécifiques au run
         if "selected_classes" in run:
             run_cfg["selected_classes"] = run["selected_classes"]
+        if "min_area_m2" in run:
+            run_cfg["min_area_m2"] = float(run["min_area_m2"])
         # Charger la config SAHI depuis le dossier du modèle
         model_path = _resolve_model_path_for_sahi(model, cv_config)
         if model_path:

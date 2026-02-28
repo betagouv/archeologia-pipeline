@@ -8,9 +8,9 @@ fileignoreconfig:
 - filename: old_src/conversion_shp.py
   checksum: 3a4e979bcc8691785c1b636fb2eabfc2060640a72b0013e3e97c2327d4aa2fe0
 - filename: src/pipeline/cv/conversion_shp.py
-  checksum: 7e9ec36bb4104fa0a32789c449718513c59d5c62ddf6c9d2b4f1ca27ba1b9ce5
+  checksum: 02a8f0b5aff6fc439de76466207e7fd34e29bee62f74bcb02619cb6f0599a7d2
 - filename: src/ui/main_dialog.py
-  checksum: 7400025f033a1b9e1f2c692c7ebd5449861551851b14bc40cacb763701f9ac16
+  checksum: 69fafd805e895449c3907dcd70325d99a262c5a0fc692ec181689709acd403ef
 - filename: old_src/pipeline_lidar.py
   checksum: 32886bc946b5454875a787ee56a0174d2a4e1fad5a7a2209df6639d52a2c4dd2
 - filename: tests/TESTS_MANUELS_QGIS.txt
@@ -24,31 +24,17 @@ fileignoreconfig:
 - filename: src/pipeline/cv/computer_vision_rfdetr.py
   checksum: 3c3de1d9bab52f155e9cc9f5f54a60f43c2ea784d485f8959603bbdc5e07d768
 - filename: src/pipeline/cv/computer_vision_onnx.py
-  checksum: ccc39a5b59dbdb3c2475dff3e1a90f4c742d7d8abda11cde77cacb22da6862e9
+  checksum: 9642c4b81e25a248f4687fc156f98e1431c5e3bc259f05352468df3e1c3d7c7d
 - filename: src/pipeline/cv/class_utils.py
-  checksum: c2216fd4175b7c56db37afeb2f5d879aefba74eff96b89b8178846c9bd8c93a0
-- filename: runner_onnx/export_to_onnx.py
-  checksum: 401c937d414a10c8020d64a9b09d664818b9e84766eafe7352711235d383e852
-- filename: dev/image_test/LHD_FXX_0943_6761_LD_A_LAMB93.jpg
-  checksum: f3900025a7768c4b8d8178c4680d3a5ae14273c1f8b9ed61d7c82d5b287e39d5
-- filename: dev/image_test/LHD_FXX_0615_6837_LD_A_LAMB93.jpg
-  checksum: ad8556bd93c69301a248ed9a2895553481c9c867637e6d5fc52f610a24393642
-- filename: dev/image_test/LHD_FXX_0615_6835_LD_A_LAMB93 - Copie.jpg
-  checksum: ddbc0cd40112be680cee8df8bfdda8d6eba35c9c9e1878e2c47ee2332006ec08
+  checksum: 835ef0b9f8345fed0c27d8abb0ab86042bbd1564d7b62d3a7a9e942bd4c4d7d6
+- filename: dev/runner_onnx/export_to_onnx.py
+  checksum: 342341d44a702f7ead332150b3e74e594cb3ed612e8929a374c1d484915c376c
+- filename: src/pipeline/preflight.py
+  checksum: 1d37d268d303b1f0d6bda4e4d09f74ad84c532f3ffc5a5087da84692b3714dd9
+- filename: src/pipeline/ign/products/indices.py
+  checksum: 1b1e907afbb6f35d90f9d0b56504ed9deefcbe6cc49b88d089be94fbe06e6d3a
 - filename: tests/unit/test_preflight.py
   checksum: d2fce1b59ade7ad77e109b43bcb3d4e772c9b73ac117124f66f190655f75b42a
 - filename: src/app/services/finalize_service.py
-  checksum: a19eb93ee8d30f0aca64be8ef60700b082e590c241b3c85374ee3f2d45ae7d9b
-- filename: src/pipeline/ign/products/indices.py
-  checksum: 1b1e907afbb6f35d90f9d0b56504ed9deefcbe6cc49b88d089be94fbe06e6d3a
-- filename: src/pipeline/preflight.py
-  checksum: 1d37d268d303b1f0d6bda4e4d09f74ad84c532f3ffc5a5087da84692b3714dd9
-- filename: dev/runner_onnx/export_to_onnx.py
-  checksum: 8ea1b12409f0df4ae4177e9f4467374fdb18c5e919a9d79e66cdbeff249387a4
-- filename: dev/image_test/LHD_FXX_0615_6836_LD_A_LAMB93.jpg
-  checksum: edd9d12e571e3538e6286abc3321356188830236bc5356d1fa0a3f6268df8731
-- filename: dev/image_test/LHD_FXX_0943_6761_LD_A_LAMB93 - Copie.jpg
-  checksum: d999649572b0dd5db3fbdf926f2fe5923f1e4e80c219866c653cd3fd10baae7d
-- filename: dev/image_test/LHD_FXX_0615_6837_LD_A_LAMB93 - Copie.jpg
-  checksum: 730d3a47d72d3295392bc9c82f6290fdc035943531186829285f03532b6d2825
+  checksum: 2ac3bab30ff5c8fb58897a0d4719beef73147245513bce51b5dd90e03f669acd
 version: "1.0"

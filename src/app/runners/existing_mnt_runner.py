@@ -81,11 +81,19 @@ class ExistingMntRunner:
             try:
                 from ...pipeline.modes.existing_rvt import run_existing_rvt
                 from ...pipeline.cv.class_utils import resolve_cv_runs
+                from ...app.services.finalize_service import _build_global_class_color_map
 
                 cv_runs = resolve_cv_runs(cv_config)
                 if not cv_runs:
                     reporter.info("Computer Vision: aucun modèle configuré dans les runs")
                 else:
+                    global_color_map: dict = {}
+                    try:
+                        global_color_map = _build_global_class_color_map(cv_runs)
+                        reporter.info(f"Computer Vision: mapping couleurs global = {global_color_map}")
+                    except Exception as _e:
+                        reporter.info(f"Computer Vision: impossible de construire le mapping couleurs: {_e}")
+
                     log_section("COMPUTER VISION", "cv", slog=slog, reporter=reporter)
                     reporter.stage("Computer Vision")
                     reporter.progress(80)
@@ -112,6 +120,7 @@ class ExistingMntRunner:
                             log=lambda m: reporter.info(m),
                             cancel_check=cancel.is_cancelled,
                             rvt_params=rvt_params,
+                            global_color_map=global_color_map,
                         )
             except Exception as e:
                 reporter.error(f"Erreur Computer Vision: {e}")

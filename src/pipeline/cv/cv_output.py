@@ -225,28 +225,45 @@ def save_annotated_image(
         
         logger.debug(f"save_annotated_image: class_colors={class_colors}, class_names={class_names}, detections={len(detections)}")
         
+        img_w, img_h = img_copy.size
+
         for det in detections:
-            if "bbox" in det:
-                x1, y1, x2, y2 = det["bbox"]
-            elif "bbox_absolute" in det:
-                bbox = det["bbox_absolute"]
-                x1, y1, x2, y2 = bbox["minx"], bbox["miny"], bbox["maxx"], bbox["maxy"]
-            else:
-                continue
-            
             class_id = det.get("class_id", 0)
             confidence = det.get("confidence", 0)
-            
+
             # Couleur selon la classe (avec support des couleurs personnalisées)
             color = get_class_color(class_id, class_colors)
             logger.debug(f"Detection class_id={class_id}, color_index={class_colors[class_id] if class_colors and class_id < len(class_colors) else class_id}, color={color}")
-            
-            # Dessiner le rectangle
-            draw.rectangle([x1, y1, x2, y2], outline=color, width=width)
-            
+
+            # --- Dessiner polygone (segmentation) ou bbox (détection) ---
+            polygon_drawn = False
+            if "polygon" in det:
+                poly = det["polygon"]
+                if len(poly) >= 6:
+                    # Coordonnées normalisées [x1,y1,x2,y2,...] → pixels
+                    pts = []
+                    for pi in range(0, len(poly) - 1, 2):
+                        pts.append((poly[pi] * img_w, poly[pi + 1] * img_h))
+                    if len(pts) >= 3:
+                        draw.polygon(pts, outline=color)
+                        polygon_drawn = True
+                        # bbox pour le label : coin haut-gauche du polygon
+                        x1 = min(p[0] for p in pts)
+                        y1 = min(p[1] for p in pts)
+
+            if not polygon_drawn:
+                if "bbox" in det:
+                    x1, y1, x2, y2 = det["bbox"]
+                elif "bbox_absolute" in det:
+                    bbox = det["bbox_absolute"]
+                    x1, y1, x2, y2 = bbox["minx"], bbox["miny"], bbox["maxx"], bbox["maxy"]
+                else:
+                    continue
+                draw.rectangle([x1, y1, x2, y2], outline=color, width=width)
+
             # Label compact: juste le % de confiance
             label = f"{int(confidence * 100)}%"
-            
+
             # Calculer la taille du texte
             try:
                 bbox_text = draw.textbbox((0, 0), label, font=font)
@@ -254,18 +271,18 @@ def save_annotated_image(
                 text_height = bbox_text[3] - bbox_text[1]
             except Exception:
                 text_width, text_height = len(label) * 6, 10
-            
-            # Position du label: coin supérieur gauche INTÉRIEUR de la bbox
+
+            # Position du label: coin supérieur gauche INTÉRIEUR de la forme
             padding = 1
             label_x = x1 + padding
             label_y = y1 + padding
-            
+
             # Petit fond coloré pour le label
             draw.rectangle(
                 [label_x, label_y, label_x + text_width + padding * 2, label_y + text_height + padding],
                 fill=color
             )
-            
+
             # Texte blanc
             draw.text((label_x + padding, label_y), label, fill=(255, 255, 255), font=font)
         

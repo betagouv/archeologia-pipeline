@@ -624,7 +624,7 @@ def export_yolo_to_onnx(
         return False
 
 
-def _load_rfdetr_model(checkpoint_path: str):
+def _load_rfdetr_model(checkpoint_path: str, patch_size_override: int = None, positional_encoding_size_override: int = None):
     """
     Charge un modèle RF-DETR depuis un checkpoint.
     Basé sur https://github.com/PierreMarieCurie/rf-detr-onnx
@@ -634,26 +634,15 @@ def _load_rfdetr_model(checkpoint_path: str):
     
     # Importer les variantes disponibles
     model_classes = {'RFDETRBase': RFDETRBase}
-    try:
-        from rfdetr.detr import RFDETRMedium
-        model_classes['RFDETRMedium'] = RFDETRMedium
-    except ImportError:
-        pass
-    try:
-        from rfdetr.detr import RFDETRSmall
-        model_classes['RFDETRSmall'] = RFDETRSmall
-    except ImportError:
-        pass
-    try:
-        from rfdetr.detr import RFDETRNano
-        model_classes['RFDETRNano'] = RFDETRNano
-    except ImportError:
-        pass
-    try:
-        from rfdetr.detr import RFDETRLarge
-        model_classes['RFDETRLarge'] = RFDETRLarge
-    except ImportError:
-        pass
+    for _cls_name in ['RFDETRMedium', 'RFDETRSmall', 'RFDETRNano', 'RFDETRLarge',
+                      'RFDETRSegNano', 'RFDETRSegSmall', 'RFDETRSegMedium',
+                      'RFDETRSegLarge', 'RFDETRSegXLarge', 'RFDETRSeg2XLarge']:
+        try:
+            import importlib
+            _mod = importlib.import_module('rfdetr.detr')
+            model_classes[_cls_name] = getattr(_mod, _cls_name)
+        except (ImportError, AttributeError):
+            pass
     
     print(f"[INFO] Chargement du checkpoint: {checkpoint_path}...")
     obj = torch.load(checkpoint_path, weights_only=False, map_location=torch.device('cpu'))
@@ -663,17 +652,21 @@ def _load_rfdetr_model(checkpoint_path: str):
     resolution = None
     hidden_dim = 256
     patch_size = 14  # défaut DINOv2
+    positional_encoding_size = None
+    is_segmentation = False
     
     if args is not None:
         if hasattr(args, "resolution"):
             resolution = args.resolution
             hidden_dim = getattr(args, "hidden_dim", 256)
             patch_size = getattr(args, "patch_size", 14)
+            is_segmentation = bool(getattr(args, "segmentation_head", False))
         elif isinstance(args, dict):
             resolution = args.get("resolution")
             hidden_dim = args.get("hidden_dim", 256)
             patch_size = args.get("patch_size", 14)
-    
+            is_segmentation = bool(args.get("segmentation_head", False))
+    print(f"[INFO] Segmentation head: {is_segmentation}")
     # Détecter patch_size et hidden_dim depuis les poids du modèle
     model_state = obj.get("model", obj)
     if isinstance(model_state, dict):
@@ -701,8 +694,17 @@ def _load_rfdetr_model(checkpoint_path: str):
                     print(f"[INFO] Résolution détectée depuis les poids: {resolution}")
                     break
     
-    # Calculer positional_encoding_size = resolution / patch_size
-    positional_encoding_size = resolution // patch_size if resolution and patch_size else None
+    # Overrides explicites (ligne de commande) — appliqués après toute auto-détection
+    if patch_size_override is not None:
+        patch_size = patch_size_override
+        print(f"[INFO] patch_size forcé: {patch_size}")
+    if positional_encoding_size_override is not None:
+        positional_encoding_size = positional_encoding_size_override
+        print(f"[INFO] positional_encoding_size forcé: {positional_encoding_size}")
+
+    # Calculer positional_encoding_size = resolution / patch_size (sauf si déjà forcé)
+    if positional_encoding_size is None:
+        positional_encoding_size = resolution // patch_size if resolution and patch_size else None
     print(f"[INFO] Résolution: {resolution}, hidden_dim: {hidden_dim}, patch_size: {patch_size}, positional_encoding_size: {positional_encoding_size}")
     
     if resolution == 384 and 'RFDETRNano' in model_classes:
@@ -724,7 +726,15 @@ def _load_rfdetr_model(checkpoint_path: str):
     
     # Fallback intelligent basé sur la résolution détectée
     if resolution is not None and positional_encoding_size is not None:
-        # Trouver le modèle le plus proche en termes de hidden_dim
+        # Choisir la variante Seg si segmentation_head détecté
+        if is_segmentation:
+            if hidden_dim == 384 and 'RFDETRSegLarge' in model_classes:
+                print(f"[INFO] Fallback: utilisation de RFDETRSegLarge avec resolution={resolution}, patch_size={patch_size}, positional_encoding_size={positional_encoding_size}")
+                return model_classes['RFDETRSegLarge'](pretrain_weights=checkpoint_path, resolution=resolution, patch_size=patch_size, positional_encoding_size=positional_encoding_size)
+            elif hidden_dim == 256 and 'RFDETRSegBase' in model_classes:
+                print(f"[INFO] Fallback: utilisation de RFDETRSegBase avec resolution={resolution}, patch_size={patch_size}, positional_encoding_size={positional_encoding_size}")
+                return model_classes['RFDETRSegBase'](pretrain_weights=checkpoint_path, resolution=resolution, patch_size=patch_size, positional_encoding_size=positional_encoding_size)
+        # Variantes standard
         if hidden_dim == 384 and 'RFDETRLarge' in model_classes:
             print(f"[INFO] Fallback: utilisation de RFDETRLarge avec resolution={resolution}, patch_size={patch_size}, positional_encoding_size={positional_encoding_size}")
             return model_classes['RFDETRLarge'](pretrain_weights=checkpoint_path, resolution=resolution, patch_size=patch_size, positional_encoding_size=positional_encoding_size)
@@ -755,6 +765,8 @@ def export_rfdetr_to_onnx(
     imgsz: int = 640,
     opset: int = 17,
     simplify: bool = True,
+    patch_size: int = None,
+    positional_encoding_size: int = None,
 ) -> bool:
     """
     Exporte un modèle RF-DETR vers ONNX.
@@ -773,7 +785,7 @@ def export_rfdetr_to_onnx(
     
     try:
         # Charger le modèle RF-DETR
-        rfdetr_model = _load_rfdetr_model(str(model_path))
+        rfdetr_model = _load_rfdetr_model(str(model_path), patch_size_override=patch_size, positional_encoding_size_override=positional_encoding_size)
         
         # Accéder au modèle PyTorch interne
         model = rfdetr_model.model.model
@@ -808,16 +820,20 @@ def export_rfdetr_to_onnx(
         output_path.parent.mkdir(parents=True, exist_ok=True)
         print(f"[INFO] Export ONNX vers: {output_path}")
         
-        torch.onnx.export(
-            model,
-            dummy_input,
-            str(output_path),
-            export_params=True,
-            opset_version=opset,
-            do_constant_folding=True,
-            input_names=["images"],
-            output_names=output_names,
-        )
+        # Utiliser l'ancien backend TorchScript (dynamo=False) — obligatoire pour RF-DETR
+        # car gen_encoder_output_proposals n'est pas compatible avec torch.export
+        with torch.no_grad():
+            torch.onnx.export(
+                model,
+                (dummy_input,),
+                str(output_path),
+                export_params=True,
+                opset_version=opset,
+                do_constant_folding=True,
+                input_names=["images"],
+                output_names=output_names,
+                dynamo=False,
+            )
         
         # Simplifier le modèle ONNX
         if simplify:
@@ -1055,9 +1071,21 @@ def _validate_single_image(
             model.export()
             with torch.no_grad():
                 pt_out = model(input_torch)
-            pt_raw = [pt_out[k][0].detach().numpy() for k in pt_out]
-            pt_logits = pt_out[list(pt_out.keys())[1]][0].detach().numpy()
-            pt_boxes = pt_out[list(pt_out.keys())[0]][0].detach().numpy()
+            # pt_out peut être un dict ou une liste/tuple selon la variante
+            if isinstance(pt_out, dict):
+                keys = list(pt_out.keys())
+                pt_raw = [pt_out[k][0].detach().numpy() for k in keys]
+                # Chercher pred_logits et pred_boxes par nom ou par index
+                logits_key = next((k for k in keys if 'logit' in str(k).lower()), keys[1] if len(keys) > 1 else keys[0])
+                boxes_key = next((k for k in keys if 'box' in str(k).lower()), keys[0])
+                pt_logits = pt_out[logits_key][0].detach().numpy()
+                pt_boxes = pt_out[boxes_key][0].detach().numpy()
+            else:
+                # liste ou tuple: [boxes, logits, ...] ou [logits, boxes, ...]
+                items = list(pt_out)
+                pt_raw = [t[0].detach().numpy() if t.dim() > 1 else t.detach().numpy() for t in items]
+                pt_boxes = items[0][0].detach().numpy()
+                pt_logits = items[1][0].detach().numpy() if len(items) > 1 else items[0][0].detach().numpy()
             pt_scores = 1 / (1 + np.exp(-pt_logits))
             pt_max_per_det = pt_scores.max(axis=1)
             pt_classes = pt_scores.argmax(axis=1)
@@ -1308,6 +1336,11 @@ Exemples:
                         help="Nombre de classes (SMP) — auto-détecté si omis")
     parser.add_argument("--class-names", default=None,
                         help="Noms des classes séparés par des virgules (ex: 'background,chemin creux,parcellaire')")
+    # Options RF-DETR
+    parser.add_argument("--patch-size", type=int, default=None,
+                        help="Taille des patches RF-DETR (ex: 12, 14, 16) — auto-détecté si omis")
+    parser.add_argument("--positional-encoding-size", type=int, default=None,
+                        help="Taille de l'encodage positionnel RF-DETR (ex: 42) — calculé depuis resolution/patch_size si omis")
     
     args = parser.parse_args()
     
@@ -1361,6 +1394,8 @@ Exemples:
             imgsz=args.imgsz,
             simplify=args.simplify,
             opset=args.opset,
+            patch_size=getattr(args, 'patch_size', None),
+            positional_encoding_size=getattr(args, 'positional_encoding_size', None),
         )
     else:
         success = export_yolo_to_onnx(

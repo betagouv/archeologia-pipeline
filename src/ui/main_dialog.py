@@ -401,15 +401,18 @@ class MainDialog(QDialog):
         runs_vlayout = QVBoxLayout(runs_group)
         runs_vlayout.setContentsMargins(4, 4, 4, 4)
 
-        self.cv_runs_table = QTableWidget(0, 3)
-        self.cv_runs_table.setHorizontalHeaderLabels(["Modèle", "RVT cible", ""])
+        self.cv_runs_table = QTableWidget(0, 4)
+        self.cv_runs_table.setHorizontalHeaderLabels(["Modèle", "RVT cible", "Aire min (m²)", ""])
         self.cv_runs_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
         self.cv_runs_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeToContents)
-        self.cv_runs_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.Fixed)
-        self.cv_runs_table.setColumnWidth(2, 60)
+        self.cv_runs_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeToContents)
+        self.cv_runs_table.horizontalHeader().setSectionResizeMode(3, QHeaderView.Fixed)
+        self.cv_runs_table.setColumnWidth(3, 60)
         self.cv_runs_table.setSelectionBehavior(QTableWidget.SelectRows)
-        self.cv_runs_table.setMaximumHeight(140)
+        self.cv_runs_table.setMaximumHeight(300)
+        self.cv_runs_table.setMinimumHeight(120)
         self.cv_runs_table.verticalHeader().setVisible(False)
+        self.cv_runs_table.verticalHeader().setDefaultSectionSize(36)
         runs_vlayout.addWidget(self.cv_runs_table)
 
         runs_btn_row = QWidget()
@@ -471,38 +474,12 @@ class MainDialog(QDialog):
 
         output_group = QGroupBox("Options de sortie")
         output_layout = QVBoxLayout(output_group)
-        self.cv_generate_annotated_cb = QCheckBox("Générer des images avec bounding boxes")
+        self.cv_generate_annotated_cb = QCheckBox("Générer des images avec bounding boxes/polygones")
         self.cv_generate_shp_cb = QCheckBox("Générer des shapefiles")
         output_layout.addWidget(self.cv_generate_annotated_cb)
         output_layout.addWidget(self.cv_generate_shp_cb)
         cv_layout.addWidget(output_group)
 
-        size_filter_group = QGroupBox("Filtrage par taille des détections")
-        size_filter_layout = QVBoxLayout(size_filter_group)
-        size_filter_desc = QLabel(
-            "Supprime du shapefile final les détections dont la plus grande dimension "
-            "(largeur ou hauteur de la bounding box) dépasse le seuil défini. "
-            "Utile pour éliminer les faux positifs de grande taille (ex: routes, parcelles)."
-        )
-        size_filter_desc.setWordWrap(True)
-        size_filter_desc.setStyleSheet("color: #666; font-size: 11px; margin-bottom: 5px;")
-        size_filter_layout.addWidget(size_filter_desc)
-        self.cv_size_filter_enabled_cb = QCheckBox("Activer le filtrage par taille")
-        size_filter_layout.addWidget(self.cv_size_filter_enabled_cb)
-        size_filter_row = QWidget()
-        size_filter_row_layout = QHBoxLayout(size_filter_row)
-        size_filter_row_layout.setContentsMargins(0, 0, 0, 0)
-        size_filter_row_layout.addWidget(QLabel("Taille max (plus grande dimension):"))
-        self.cv_size_filter_max_spin = NoWheelDoubleSpinBox()
-        self.cv_size_filter_max_spin.setDecimals(1)
-        self.cv_size_filter_max_spin.setRange(1.0, 1000.0)
-        self.cv_size_filter_max_spin.setSingleStep(5.0)
-        self.cv_size_filter_max_spin.setValue(50.0)
-        size_filter_row_layout.addWidget(self.cv_size_filter_max_spin)
-        size_filter_row_layout.addWidget(QLabel("mètres"))
-        size_filter_row_layout.addStretch(1)
-        size_filter_layout.addWidget(size_filter_row)
-        cv_layout.addWidget(size_filter_group)
 
         self.reset_cv_btn = QPushButton("Remettre par défaut")
         self.reset_cv_btn.clicked.connect(self._reset_cv_config)
@@ -873,8 +850,6 @@ class MainDialog(QDialog):
         self.cv_iou_spin.valueChanged.connect(self._on_any_changed)
         self.cv_generate_annotated_cb.toggled.connect(self._on_any_changed)
         self.cv_generate_shp_cb.toggled.connect(self._on_any_changed)
-        self.cv_size_filter_enabled_cb.toggled.connect(self._on_size_filter_toggled)
-        self.cv_size_filter_max_spin.valueChanged.connect(self._on_any_changed)
 
         for key, _label, _default, is_rvt in PRODUCTS:
             if is_rvt:
@@ -898,13 +873,6 @@ class MainDialog(QDialog):
         self._update_available_rvt_targets()
         self._save_from_widgets()
 
-    def _on_size_filter_toggled(self) -> None:
-        if self._loading:
-            return
-        cv_on = self.cv_enabled_cb.isChecked()
-        self.cv_size_filter_max_spin.setEnabled(cv_on and self.cv_size_filter_enabled_cb.isChecked())
-        self._save_from_widgets()
-
     def _on_cv_enabled_changed(self) -> None:
         if self._loading:
             return
@@ -923,8 +891,6 @@ class MainDialog(QDialog):
         self.cv_classes_list.setEnabled(enabled)
         self.cv_classes_select_all_btn.setEnabled(enabled)
         self.cv_classes_deselect_all_btn.setEnabled(enabled)
-        self.cv_size_filter_enabled_cb.setEnabled(enabled)
-        self.cv_size_filter_max_spin.setEnabled(enabled and self.cv_size_filter_enabled_cb.isChecked())
         self.reset_cv_btn.setEnabled(enabled)
 
     def _get_available_models(self) -> list:
@@ -962,8 +928,8 @@ class MainDialog(QDialog):
         # Fallback: tous les RVT (mode existing_rvt par ex.)
         return [(key, label) for key, label, _d, is_rvt in PRODUCTS if is_rvt]
 
-    def _add_cv_run_row(self, model_name: str = "", target_rvt: str = "LD") -> None:
-        """Ajoute une ligne au tableau des runs CV avec des combos modèle et RVT."""
+    def _add_cv_run_row(self, model_name: str = "", target_rvt: str = "LD", min_area_m2: float = 0.0) -> None:
+        """Ajoute une ligne au tableau des runs CV avec des combos modèle, RVT et filtre aire."""
         self._loading = True
         try:
             row = self.cv_runs_table.rowCount()
@@ -999,6 +965,18 @@ class MainDialog(QDialog):
             rvt_combo.currentIndexChanged.connect(self._on_any_changed)
             self.cv_runs_table.setCellWidget(row, 1, rvt_combo)
 
+            # Spinbox aire min (m²) — 0 = pas de filtrage
+            area_spin = QDoubleSpinBox()
+            area_spin.setDecimals(0)
+            area_spin.setRange(0.0, 100000.0)
+            area_spin.setSingleStep(50.0)
+            area_spin.setValue(min_area_m2)
+            area_spin.setSuffix(" m²")
+            area_spin.setToolTip("Aire minimale en m² (0 = pas de filtrage). Les détections plus petites seront supprimées.")
+            area_spin.setMinimumWidth(90)
+            area_spin.valueChanged.connect(self._on_any_changed)
+            self.cv_runs_table.setCellWidget(row, 2, area_spin)
+
             # Boutons actions (ℹ info + × supprimer)
             actions_widget = QWidget()
             actions_layout = QHBoxLayout(actions_widget)
@@ -1017,7 +995,7 @@ class MainDialog(QDialog):
 
             actions_layout.addWidget(info_btn)
             actions_layout.addWidget(del_btn)
-            self.cv_runs_table.setCellWidget(row, 2, actions_widget)
+            self.cv_runs_table.setCellWidget(row, 3, actions_widget)
         finally:
             self._loading = False
 
@@ -1026,10 +1004,10 @@ class MainDialog(QDialog):
         btn = self.sender()
         if btn is None:
             return -1
-        # Le bouton est dans un QWidget (actions_widget) qui est le cellWidget de la colonne 2
+        # Le bouton est dans un QWidget (actions_widget) qui est le cellWidget de la colonne 3
         parent = btn.parentWidget()
         for row in range(self.cv_runs_table.rowCount()):
-            if self.cv_runs_table.cellWidget(row, 2) is parent:
+            if self.cv_runs_table.cellWidget(row, 3) is parent:
                 return row
         return -1
 
@@ -1582,18 +1560,15 @@ class MainDialog(QDialog):
                     if isinstance(run, dict):
                         model = str(run.get("model") or "")
                         rvt = str(run.get("target_rvt") or "LD")
+                        min_area = float(run.get("min_area_m2", 0.0))
                         if model:
-                            self._add_cv_run_row(model_name=model, target_rvt=rvt)
+                            self._add_cv_run_row(model_name=model, target_rvt=rvt, min_area_m2=min_area)
             # Compat: ancien format mono-modèle (si runs est vide)
             if self.cv_runs_table.rowCount() == 0:
                 old_model = str(cv.get("selected_model") or "")
                 old_rvt = str(cv.get("target_rvt") or "LD")
                 if old_model:
                     self._add_cv_run_row(model_name=old_model, target_rvt=old_rvt)
-
-            size_filter = cv.get("size_filter") or {}
-            self.cv_size_filter_enabled_cb.setChecked(bool(size_filter.get("enabled", False)))
-            self.cv_size_filter_max_spin.setValue(float(size_filter.get("max_meters", 50.0)))
 
             processing = self._config.get("processing") or {}
             self.mnt_resolution_spin.setValue(float(processing.get("mnt_resolution", 0.5)))
@@ -1681,10 +1656,12 @@ class MainDialog(QDialog):
         for row in range(self.cv_runs_table.rowCount()):
             model_combo = self.cv_runs_table.cellWidget(row, 0)
             rvt_combo = self.cv_runs_table.cellWidget(row, 1)
+            area_spin = self.cv_runs_table.cellWidget(row, 2)
             model_val = str(model_combo.currentData() or model_combo.currentText() or "") if isinstance(model_combo, QComboBox) else ""
             rvt_val = str(rvt_combo.currentData() or "LD") if isinstance(rvt_combo, QComboBox) else "LD"
+            area_val = float(area_spin.value()) if isinstance(area_spin, QDoubleSpinBox) else 0.0
             if model_val:
-                runs.append({"model": model_val, "target_rvt": rvt_val})
+                runs.append({"model": model_val, "target_rvt": rvt_val, "min_area_m2": area_val})
         cv["runs"] = runs
 
         # Compat: garder selected_model/target_rvt du premier run
@@ -1700,9 +1677,8 @@ class MainDialog(QDialog):
         cv["generate_shapefiles"] = self.cv_generate_shp_cb.isChecked()
         cv["models_dir"] = str(self._plugin_root / "models")
 
-        size_filter = cv.setdefault("size_filter", {})
-        size_filter["enabled"] = self.cv_size_filter_enabled_cb.isChecked()
-        size_filter["max_meters"] = float(self.cv_size_filter_max_spin.value())
+        # Nettoyage ancien format global
+        cv.pop("size_filter", None)
 
         processing = self._config.setdefault("processing", {})
         processing["mnt_resolution"] = float(self.mnt_resolution_spin.value())
@@ -1915,11 +1891,18 @@ class MainDialog(QDialog):
         cv_cfg = self._config.setdefault("computer_vision", {})
         if cv_cfg.get("enabled", False):
             classes_by_model = self._get_selected_classes()  # {model_label: [classes]}
+            # Construire un mapping model_path -> model_label depuis le tableau
+            path_to_label: dict = {}
+            for row in range(self.cv_runs_table.rowCount()):
+                combo = self.cv_runs_table.cellWidget(row, 0)
+                if isinstance(combo, QComboBox):
+                    path_to_label[str(combo.currentData() or "")] = combo.currentText() or ""
             # Injecter selected_classes dans chaque run
             runs = cv_cfg.get("runs") or []
             for run in runs:
-                model_name = str(run.get("model") or "")
-                run["selected_classes"] = classes_by_model.get(model_name, [])
+                model_path = str(run.get("model") or "")
+                model_label = path_to_label.get(model_path, model_path)
+                run["selected_classes"] = classes_by_model.get(model_label, [])
             # Compat: liste plate globale
             selected_classes = self._get_selected_classes_flat()
             cv_cfg["selected_classes"] = selected_classes

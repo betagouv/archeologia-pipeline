@@ -537,6 +537,9 @@ def deduplicate_shapefiles_final(
     shapefile_paths: List[str],
     iou_threshold: float = 0.1,
     crs: str = "EPSG:2154",
+    area_filter_enabled: bool = False,
+    area_filter_min_m2: float = 0.0,
+    # Compat anciens appels
     size_filter_enabled: bool = False,
     size_filter_max_meters: float = 50.0,
 ) -> None:
@@ -546,106 +549,92 @@ def deduplicate_shapefiles_final(
         iou_threshold=iou_threshold,
         crs=crs,
     )
-    
-    if size_filter_enabled:
-        _filter_shapefiles_by_size(
+
+    if area_filter_enabled and area_filter_min_m2 > 0:
+        _filter_shapefiles_by_min_area(
             shapefile_paths=shapefile_paths,
-            max_size_meters=size_filter_max_meters,
+            min_area_m2=area_filter_min_m2,
             crs=crs,
         )
 
 
-def _filter_shapefiles_by_size(
+def _filter_shapefiles_by_min_area(
     shapefile_paths: List[str],
-    max_size_meters: float = 50.0,
+    min_area_m2: float = 50.0,
     crs: str = "EPSG:2154",
 ) -> None:
     """
-    Filtre les détections trop grandes (faux positifs) en fonction de leur taille en mètres.
-    Les géométries dont la plus grande dimension (largeur ou hauteur de la bbox) dépasse max_size_meters
-    sont déplacées dans un shapefile séparé suffixé "_filtered_oversized" pour visualisation.
-    
+    Filtre les détections trop petites en fonction de leur aire en m².
+    Les géométries dont l'aire est inférieure à min_area_m2 sont déplacées
+    dans un shapefile séparé suffixé "_filtered_too_small" pour visualisation.
+
     Args:
         shapefile_paths: Liste des chemins vers les shapefiles à filtrer
-        max_size_meters: Taille maximale autorisée en mètres (dimension max de la bbox)
+        min_area_m2: Aire minimale requise en m²
         crs: Système de coordonnées
     """
     logger = logging.getLogger(__name__)
-    logger.info(f"Filtrage par taille: déplacement des détections > {max_size_meters} m vers shapefiles séparés")
-    
+    logger.info(f"Filtrage par aire: suppression des détections < {min_area_m2} m²")
+
     total_removed = 0
-    all_oversized = []
-    
+    all_too_small = []
+
     for shp in shapefile_paths:
         shp_path = Path(shp)
         if not shp_path.exists():
             continue
-        
+
         try:
             gdf = _safe_read_file(str(shp_path))
             if len(gdf) == 0:
                 continue
-            
-            initial_count = len(gdf)
-            
-            def get_max_dimension(geom):
-                """Retourne la plus grande dimension (largeur ou hauteur) de la bbox en mètres."""
-                if geom is None or not hasattr(geom, 'bounds'):
-                    return 0.0
-                try:
-                    minx, miny, maxx, maxy = geom.bounds
-                    width = abs(maxx - minx)
-                    height = abs(maxy - miny)
-                    return max(width, height)
-                except Exception:
-                    return 0.0
-            
-            gdf['__max_dim'] = gdf.geometry.apply(get_max_dimension)
-            gdf_filtered = gdf[gdf['__max_dim'] <= max_size_meters].copy()
-            gdf_oversized = gdf[gdf['__max_dim'] > max_size_meters].copy()
-            
-            gdf_filtered = gdf_filtered.drop(columns=['__max_dim'], errors='ignore')
-            gdf_oversized = gdf_oversized.drop(columns=['__max_dim'], errors='ignore')
-            
-            removed_count = len(gdf_oversized)
+
+            gdf['__area'] = gdf.geometry.area
+            gdf_kept = gdf[gdf['__area'] >= min_area_m2].copy()
+            gdf_removed = gdf[gdf['__area'] < min_area_m2].copy()
+
+            gdf_kept = gdf_kept.drop(columns=['__area'], errors='ignore')
+            gdf_removed = gdf_removed.drop(columns=['__area'], errors='ignore')
+
+            removed_count = len(gdf_removed)
             total_removed += removed_count
-            
+
             if removed_count > 0:
-                logger.info(f"Filtrage taille: {removed_count} détection(s) déplacée(s) depuis {shp_path.name} (>{max_size_meters}m)")
-                
-                gdf_oversized['__src_class'] = shp_path.stem
-                all_oversized.append(gdf_oversized)
-                
+                logger.info(f"Filtrage aire: {removed_count} détection(s) supprimée(s) depuis {shp_path.name} (<{min_area_m2} m²)")
+
+                gdf_removed['__src_class'] = shp_path.stem
+                all_too_small.append(gdf_removed)
+
                 _remove_shapefile_set(shp_path)
-                if gdf_filtered.crs is None:
+                if gdf_kept.crs is None:
                     try:
-                        gdf_filtered = gdf_filtered.set_crs(crs, allow_override=True)
+                        gdf_kept = gdf_kept.set_crs(crs, allow_override=True)
                     except Exception:
                         pass
-                _safe_to_file(gdf_filtered, str(shp_path))
-            
+                _safe_to_file(gdf_kept, str(shp_path))
+
         except Exception as e:
-            logger.warning(f"Échec filtrage par taille pour {shp_path}: {e}")
-    
-    if total_removed > 0 and all_oversized:
+            logger.warning(f"Échec filtrage par aire pour {shp_path}: {e}")
+
+    if total_removed > 0 and all_too_small:
         try:
-            combined_oversized = gpd.GeoDataFrame(pd.concat(all_oversized, ignore_index=True), geometry="geometry")
-            if combined_oversized.crs is None:
+            combined = gpd.GeoDataFrame(pd.concat(all_too_small, ignore_index=True), geometry="geometry")
+            if combined.crs is None:
                 try:
-                    combined_oversized = combined_oversized.set_crs(crs, allow_override=True)
+                    combined = combined.set_crs(crs, allow_override=True)
                 except Exception:
                     pass
-            
+
             first_shp = Path(shapefile_paths[0])
-            oversized_path = first_shp.parent / "detections_filtered_oversized.shp"
-            _remove_shapefile_set(oversized_path)
-            _safe_to_file(combined_oversized, str(oversized_path))
-            
-            logger.info(f"Filtrage par taille terminé: {total_removed} détection(s) déplacée(s) vers {oversized_path.name}")
+            filtered_path = first_shp.parent / "detections_filtered_too_small.shp"
+            _remove_shapefile_set(filtered_path)
+            _safe_to_file(combined, str(filtered_path))
+
+            logger.info(f"Filtrage par aire terminé: {total_removed} détection(s) déplacée(s) vers {filtered_path.name}")
         except Exception as e:
             logger.warning(f"Échec création du shapefile des détections filtrées: {e}")
     else:
-        logger.info("Filtrage par taille: aucune détection filtrée")
+        logger.info("Filtrage par aire: aucune détection filtrée")
 
 
 def _normalize_class_label(label: str) -> str:
@@ -665,6 +654,7 @@ def create_shapefile_from_detections(
     class_names: dict = None,
     selected_classes: list = None,
     class_colors: list = None,
+    global_color_map: dict = None,
 ) -> bool:
     """
     Crée des shapefiles géoréférencés à partir des fichiers de détection YOLO
@@ -1081,7 +1071,10 @@ def create_shapefile_from_detections(
                         if confidence is not None:
                             detection_attrs["confidence"] = confidence
                         # Déterminer l'index de couleur pour cette classe
-                        if class_colors and 0 <= class_id_int < len(class_colors):
+                        # Priorité: global_color_map (multi-modèles) > class_colors (local) > class_id
+                        if global_color_map and class_name in global_color_map:
+                            color_idx = global_color_map[class_name]
+                        elif class_colors and 0 <= class_id_int < len(class_colors):
                             color_idx = class_colors[class_id_int]
                         else:
                             color_idx = class_id_int

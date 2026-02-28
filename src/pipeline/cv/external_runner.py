@@ -32,6 +32,7 @@ class RunnerPayload(TypedDict, total=False):
     single_jpg: Optional[str]
     run_shapefile_dedup: bool
     tif_transform_data: Dict[str, Tuple[float, float, float, float]]
+    global_color_map: Dict[str, int]
 
 
 def find_external_cv_runner(log: Optional[LogFn] = None) -> Optional[Path]:
@@ -130,6 +131,7 @@ def run_external_cv_runner(
     single_jpg: Optional[Path],
     run_shapefile_dedup: bool,
     tif_transform_data: Optional[Dict[str, Tuple[float, float, float, float]]],
+    global_color_map: Optional[Dict[str, int]] = None,
     log: LogFn = lambda _: None,
     cancel_check: Optional[CancelCheckFn] = None,
 ) -> None:
@@ -147,6 +149,7 @@ def run_external_cv_runner(
         "single_jpg": str(single_jpg) if single_jpg else None,
         "run_shapefile_dedup": bool(run_shapefile_dedup),
         "tif_transform_data": tif_transform_data or {},
+        "global_color_map": global_color_map or {},
     }
 
     if bool((cv_config or {}).get("export_runner_config", False)):

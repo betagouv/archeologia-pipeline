@@ -160,6 +160,7 @@ def main() -> int:
     cv_config: Dict[str, Any] = payload.get("cv_config") or {}
     tif_transform_data: Dict[str, Any] = payload.get("tif_transform_data") or {}
     run_shapefile_dedup = bool(payload.get("run_shapefile_dedup", True))
+    global_color_map: Dict[str, Any] = payload.get("global_color_map") or {}
 
     single_jpg_raw = payload.get("single_jpg")
     single_jpg = Path(single_jpg_raw).resolve() if single_jpg_raw else None
@@ -260,7 +261,7 @@ def main() -> int:
         except Exception:
             pass
 
-    is_segmentation = model_meta.get("model_type") in ("segformer", "smp") or model_meta.get("task") == "semantic_segmentation"
+    is_segmentation = model_meta.get("model_type") in ("segformer", "smp") or model_meta.get("task") in ("semantic_segmentation", "instance_segmentation")
     use_sahi_meta = model_meta.get("use_sahi", True)
 
     if is_segmentation:
@@ -357,6 +358,8 @@ def main() -> int:
         create_fn = getattr(shp_mod, "create_shapefile_from_detections", None)
         if callable(create_fn):
             try:
+                _raw_classes = cv_config.get("selected_classes")
+                _selected_classes = _raw_classes if isinstance(_raw_classes, list) else None
                 create_fn(
                     labels_dir=str(jpg_dir),
                     output_shapefile=str(out_shp),
@@ -364,7 +367,9 @@ def main() -> int:
                     crs="EPSG:2154",
                     temp_dir=None,
                     class_names=class_names,
+                    selected_classes=_selected_classes,
                     class_colors=class_colors,
+                    global_color_map=global_color_map if global_color_map else None,
                 )
             except Exception as e:
                 _print(f"WARN: shapefile creation failed: {e}")
@@ -374,11 +379,14 @@ def main() -> int:
             shp_paths = [str(p) for p in shapefile_output_dir.glob("*.shp")]
             if shp_paths:
                 try:
+                    min_area_m2 = float(cv_config.get("min_area_m2", 0.0))
                     dedup_fn(
                         labels_dir=str(jpg_dir),
                         shapefile_paths=shp_paths,
                         iou_threshold=0.1,
                         crs="EPSG:2154",
+                        area_filter_enabled=min_area_m2 > 0,
+                        area_filter_min_m2=min_area_m2,
                     )
                 except Exception as e:
                     _print(f"WARN: shapefile dedup failed: {e}")

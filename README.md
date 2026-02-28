@@ -1,8 +1,8 @@
 # Archeolog'IA pipeline (Plugin QGIS)
 
-Plugin QGIS pour exécuter un pipeline de traitement LiDAR et produire des rasters de type MNT / densité / indices RVT, avec une étape optionnelle de détection par *computer vision*.
+Plugin QGIS pour exécuter un pipeline de traitement LiDAR et produire des rasters de type MNT / densité / indices RVT, avec une étape optionnelle de détection / segmentation par *computer vision*.
 
-- Nom du plugin : **Archeolog'IA pipeline**
+- Nom du plugin : **ArchéologIA**
 - Version : **0.1.0**
 - QGIS minimum : **3.0**
 
@@ -13,7 +13,10 @@ Plugin QGIS pour exécuter un pipeline de traitement LiDAR et produire des raste
   - **Densité**
   - Indices **RVT** (via *Processing*) : **M-HS**, **SVF**, **SLO**, **LD**, **VAT**
 - Export optionnel en **JPG + world file (JGW)** pour certains produits.
-- (Optionnel) Détection par computer vision à partir des JPG produits (via runner externe ou dépendances Python).
+- (Optionnel) Détection / segmentation d'instances par computer vision à partir des JPG produits (via runner externe ou dépendances Python) :
+  - **Multi-modèles** : plusieurs modèles peuvent être configurés en parallèle, chacun ciblant un RVT différent.
+  - **Sélection de classes** par modèle : cocher/décocher les classes à détecter.
+  - **Filtrage par aire minimale** (`min_area_m2`) par modèle : les détections trop petites sont écartées dans un shapefile séparé (`detections_filtered_too_small.shp`).
 - Option (configurable) : génération de **pyramides / overviews** GDAL pour les GeoTIFF de sortie.
 
 ## Modes de données supportés
@@ -102,7 +105,15 @@ Certaines étapes reposent sur des exécutables dans le `PATH` :
 
 La computer vision est optionnelle. Quand elle est activée, le pipeline peut lancer une étape de détection à partir des images (JPG) exportées.
 
-Le plugin utilise un **runner ONNX unifié** qui supporte les modèles YOLO et RF-DETR exportés au format ONNX.
+Le plugin utilise un **runner ONNX unifié** qui supporte les types de modèles suivants :
+
+| Type | Tâche | Format fichier |
+|---|---|---|
+| **YOLO** | Détection d'objets | `.onnx` |
+| **RF-DETR** | Détection d'objets | `.onnx` |
+| **RF-DETR Seg** | Segmentation d'instances | `.onnx` |
+| **SegFormer** | Segmentation sémantique | `.onnx` |
+| **SMP** (DeepLabV3+, Unet…) | Segmentation sémantique | `.onnx` |
 
 ### Export des modèles vers ONNX
 
@@ -149,25 +160,33 @@ pip install ultralytics rfdetr segmentation-models-pytorch torch onnx onnxsim py
 # Exporter un modèle YOLO
 python dev\runner_onnx\export_to_onnx.py --model models\mon_modele\weights\best.pt --output models\mon_modele\weights\best.onnx
 
-# Exporter un modèle RF-DETR
-python dev\runner_onnx\export_to_onnx.py --model models\mon_modele_rfdetr\weights\best.pt --output models\mon_modele_rfdetr\weights\best.onnx
+# Exporter un modèle RF-DETR (détection)
+python dev\runner_onnx\export_to_onnx.py --model models\mon_modele_rfdetr\weights\best.pth --output models\mon_modele_rfdetr\weights\best.onnx --type rfdetr --imgsz 560
 
-# Exporter un modèle SMP (DeepLabV3Plus) — exemple concret
+# Exporter un modèle RF-DETR Seg (segmentation d'instances)
+# Les paramètres patch_size et positional_encoding_size sont lus automatiquement depuis le checkpoint ;
+# les spécifier explicitement si la détection automatique échoue.
 python dev\runner_onnx\export_to_onnx.py \
-  --model models\formes_lineaires_ld_a15_rmin10_rm_512_1\weights\best_model.pth \
-  --output models\formes_lineaires_ld_a15_rmin10_rm_512_1\weights\best.onnx \
+  --model models\mon_modele_rfdetr_seg\weights\best.pth \
+  --output models\mon_modele_rfdetr_seg\weights\best.onnx \
+  --type rfdetr \
+  --imgsz 1032 \
+  --patch-size 12 \
+  --positional-encoding-size 42
+
+# Exporter un modèle SMP (DeepLabV3Plus)
+python dev\runner_onnx\export_to_onnx.py \
+  --model models\mon_modele_smp\weights\best.pth \
+  --output models\mon_modele_smp\weights\best.onnx \
   --type smp \
   --arch DeepLabV3Plus \
   --encoder resnet101 \
   --num-classes 3 \
   --class-names "background,parcellaire,talus-fosse_fossebutte" \
   --imgsz 512
-
-# Options supplémentaires
-python dev\runner_onnx\export_to_onnx.py --model best.pt --output model.onnx --imgsz 640 --simplify
 ```
 
-Le script détecte automatiquement le type de modèle (YOLO, RF-DETR ou SMP).
+Le script détecte automatiquement le type de modèle (YOLO, RF-DETR, RF-DETR Seg, SegFormer ou SMP).
 
 ### Création du runner ONNX (Windows)
 
@@ -200,7 +219,7 @@ Le script :
 3. Compile le runner avec PyInstaller
 4. Copie le binaire vers `third_party/cv_runner_onnx/windows/`
 
-**Taille du binaire** : ~1 GB (inclut les dépendances SAHI et ONNX Runtime)
+**Taille du binaire** : ~100-150 MB (inclut les dépendances SAHI et ONNX Runtime)
 
 #### Compilation manuelle (alternative)
 
@@ -220,20 +239,36 @@ Structure attendue (1 modèle = 1 dossier) :
 ```text
 models/
   <nom_du_modele>/
-    args.yaml
-    classes.txt
+    args.yaml              # Paramètres du modèle (imgsz, task, sahi config…)
+    classes.txt            # Un nom de classe par ligne (sans background)
+    config.json            # Métadonnées entraînement (architecture, classes, hyperparamètres)
     weights/
-      best.pt      # Modèle PyTorch original
-      best.onnx    # Modèle exporté (requis pour le runner)
+      best.pt / best.pth   # Modèle PyTorch original
+      best.onnx            # Modèle exporté (requis pour le runner)
+      best.json            # Métadonnées ONNX (type, tâche, résolution, classes)
 ```
 
-Le fichier `classes.txt` doit contenir **un nom de classe par ligne** :
+Le fichier `classes.txt` doit contenir **un nom de classe par ligne** (sans classe background) :
 
 ```text
 nomclasse1
 nomclasse2
 ...
 ```
+
+Le fichier `args.yaml` décrit les paramètres d'inférence. Exemple pour un modèle RF-DETR Seg :
+
+```yaml
+imgsz: 1032
+model: RF-DETR-Seg-Large
+task: instance_segmentation
+sahi:
+  overlap_ratio: 0.2
+  slice_height: 1032
+  slice_width: 1032
+```
+
+Valeurs possibles pour `task` : `detect`, `instance_segmentation`, `semantic_segmentation`.
 
 ### Configuration
 
@@ -261,14 +296,22 @@ Ou vers le dossier du modèle (le runner cherchera automatiquement `best.onnx`) 
 
 ## Utilisation
 
-1. Ouvrir le plugin : menu **Archeolog'IA pipeline**.
+1. Ouvrir le plugin : menu **ArchéologIA**.
 2. Choisir le **mode** de données (IGN / local / MNT existant / RVT existant).
 3. Configurer :
    - le répertoire de sortie
    - les paramètres de résolution
    - les produits à générer
    - (optionnel) la génération de pyramides
-4. Lancer le pipeline.
+4. (Optionnel) Activer la **Computer Vision** :
+   - Cocher *Activer la computer vision*.
+   - Dans la table des modèles, ajouter un ou plusieurs modèles via le bouton **+** :
+     - Sélectionner le modèle (dossier `models/<nom>/`).
+     - Choisir le **RVT cible** (LD, M-HS, SVF…) que ce modèle doit analyser.
+     - Définir l'**aire minimale** (`min_area_m2`) pour filtrer les petites détections.
+     - Cliquer sur **Classes…** pour sélectionner les classes à détecter.
+   - Activer *Générer les shapefiles* pour produire des fichiers vectoriels géoréférencés.
+5. Lancer le pipeline.
 
 ## Configuration (`config.json`)
 
@@ -347,7 +390,12 @@ Ensuite, un `git push` déclenchera automatiquement Talisman et pourra bloquer l
 - **RVT indisponible** : vérifier que les algorithmes RVT sont disponibles via QGIS Processing.
 - **Computer vision** :
   - soit fournir le runner externe dans `third_party/cv_runner_onnx/...`
-  - soit installer les dépendances Python (`onnxruntime`, `sahi`) dans l’environnement QGIS
+  - soit installer les dépendances Python (`onnxruntime`, `pillow`) dans l'environnement QGIS
+  - les modèles doivent être exportés en ONNX **avant** utilisation (voir section dédiée)
+  - pour les modèles RF-DETR Seg, `opencv-python` est requis dans le runner (inclus dans le binaire compilé)
+- **Détections bbox au lieu de polygones** : vérifier que le fichier `weights/best.json` du modèle contient bien `"task": "instance_segmentation"` pour les modèles RF-DETR Seg
+- **Pipeline bloqué au démarrage** : si beaucoup de fichiers TIF/JPG (>1000), la première exécution peut prendre plusieurs minutes pour créer les liens/copies vers les dossiers modèles — c'est normal
+- **Classes non filtrées** : vider les fichiers `.txt`/`.json` existants dans le dossier `jpg/` du modèle si les anciens résultats ont été générés sans filtrage de classes
 
 ## Architecture
 
@@ -407,7 +455,7 @@ flowchart TD
         R11 --> R14["Dalle suivante"]
         R14 -->|"Reste des dalles"| R5
         R14 -->|"Fin boucle"| R17{"CV activée ?"}
-        R17 -->|"Oui"| R18["_run_post_cv() → run_existing_rvt() sur dossier RVT généré"]
+        R17 -->|"Oui"| R18["_run_post_cv() → _build_global_class_color_map() + run_existing_rvt() sur dossier RVT généré"]
         R17 -->|"Non"| FIN1["finalize_pipeline()"]
         R18 --> FIN1
     end
@@ -419,7 +467,7 @@ flowchart TD
         P1b --> P1c["crop_final_products()"]
         P1c --> P1d["copy_final_products_to_results() (+ pyramides)"]
         P1d --> P2{"CV activée ?"}
-        P2 -->|"Oui"| P3["run_existing_rvt() sur dossier RVT généré"]
+        P2 -->|"Oui"| P3["_build_global_class_color_map() + run_existing_rvt() sur dossier RVT généré"]
         P2 -->|"Non"| FIN2["finalize_pipeline()"]
         P3 --> FIN2
     end
@@ -440,29 +488,30 @@ flowchart TD
     end
 
     subgraph Finalize["finalize_pipeline() — service commun (finalize_service.py)"]
-        FIN1 --> F1["build_vrt_index() (tif/ jpg/ annotated_images/)"]
+        FIN1 --> F1["build_vrt_index() (tif/ jpg/ annotated_images/ — skip si VRT existant)"]
         FIN2 --> F1
         FIN3 --> F1
-        F1 --> F2["Collecte shapefiles CV"]
-        F2 --> F3["resolve_model_weights_path() → load_class_colors_from_model()"]
-        F3 --> F4["Logs de fin de pipeline"]
-        F4 --> F5["load_layers(VRT + shapefiles) → QGIS"]
+        F1 --> F2["Collecte shapefiles CV (tous les runs)"]
+        F2 --> F3["_build_global_class_color_map() — mapping unique classe→couleur"]
+        F3 --> F3b["_generate_consolidated_qgs_project() → projet QGIS multi-modèles"]
+        F3b --> F4["Logs de fin de pipeline"]
+        F4 --> F5["load_layers(VRT + shapefiles, global_color_map) → QGIS"]
     end
 
     subgraph CV["Computer Vision (transversal — ONNX uniquement)"]
-        CV1["run_cv_on_folder() — runner.py (orchestration)"]
+        CV1["run_cv_on_folder(global_color_map) — runner.py (orchestration)"]
         CV1 --> CV1a["resolve_model_weights_path() + classes.txt"]
         CV1a --> CV2{"find_external_cv_runner() ?"}
-        CV2 -->|"Trouvé"| CV3["run_external_cv_runner() (external_runner.py)"]
-        CV3 --> CV3a["subprocess Popen + parsing stdout temps réel"]
+        CV2 -->|"Trouvé"| CV3["run_external_cv_runner(global_color_map) (external_runner.py)"]
+        CV3 --> CV3a["subprocess Popen — payload JSON avec global_color_map"]
         CV3a --> CV3b["World files pour images annotées (geo_utils)"]
-        CV2 -->|"Absent / échec"| CV4["_run_fallback_inference() (runner.py)"]
+        CV2 -->|"Absent / échec"| CV4["_run_fallback_inference(global_color_map) (runner.py)"]
         CV4 --> CV5["computer_vision_onnx.py — ONNX image par image"]
         CV3b --> CV6["Labels YOLO (.txt/.json) + images annotées (cv_output.py)"]
         CV5 --> CV6
         CV6 --> CV7["deduplicate_cv_shapefiles_final()"]
-        CV7 --> CV7a["conversion_shp.py → shapefiles géoréférencés"]
-        CV7a --> CV7b["qgs_project.py → projet QGIS (.qgs)"]
+        CV7 --> CV7a["conversion_shp.py → shapefiles (conf_color basé sur global_color_map)"]
+        CV7a --> CV7b["qgs_project.py → projet QGIS par modèle (.qgs)"]
     end
 
     subgraph Shared["Modules utilitaires partagés"]
@@ -470,7 +519,7 @@ flowchart TD
         S2["subprocess_utils.py — subprocess_kwargs_no_window()"]
         S3["geo_utils.py — extract_tif_geotransform(), write_world_file(), create_world_file_from_tif()"]
         S4["coords.py — extract_xy_from_filename(), extract_xy_from_tile_name(), infer_xy_from_file()"]
-        S5["class_utils.py — resolve_model_weights_path(), _resolve_model_dir(), load_class_names/colors"]
+        S5["class_utils.py — resolve_model_weights_path(), load_class_names/colors, BASE_COLOR_PALETTE"]
         S6["runners/helpers.py — log_section(), safe_float(), resolve_rvt_tif_dir()"]
     end
 ```
@@ -530,7 +579,6 @@ src/
 │   │   ├── existing_mnt_runner.py  # existing_mnt
 │   │   └── existing_rvt_runner.py  # existing_rvt (fonctionne avec ou sans CV)
 │   └── services/
-│       ├── cv_service.py           # DEPRECATED — voir cv/runner.py
 │       └── finalize_service.py     # finalize_pipeline() — VRT, shapefiles, load_layers
 │
 ├── config/
@@ -544,13 +592,12 @@ src/
 │   ├── preflight.py                # Vérification dépendances et chemins
 │   ├── cv/                         # Computer vision
 │   │   ├── class_utils.py          # Palette couleurs, résolution modèle, utilitaires classes
-│   │   ├── computer_vision.py      # DEPRECATED — voir computer_vision_onnx.py
-│   │   ├── computer_vision_onnx.py # Inférence ONNX (YOLO / RF-DETR / SegFormer) — seul backend CV
-│   │   ├── conversion_shp.py       # Conversion labels → shapefiles géoréférencés
+│   │   ├── computer_vision_onnx.py # Inférence ONNX (YOLO / RF-DETR / RF-DETR Seg / SegFormer / SMP)
+│   │   ├── conversion_shp.py       # Conversion labels → shapefiles géoréférencés (bbox + polygones)
 │   │   ├── cv_output.py            # Gestion sorties CV (labels, annotations, légende)
 │   │   ├── external_runner.py      # Subprocess runner ONNX externe + RunnerPayload
 │   │   ├── qgs_project.py          # Génération projet QGIS (.qgs) pour validation
-│   │   ├── runner.py               # run_cv_on_folder, _run_fallback_inference, deduplicate
+│   │   ├── runner.py               # run_cv_on_folder, _prepare_model_workdir, deduplicate
 │   │   └── sahi_lite.py            # Slicing SAHI léger (numpy-only)
 │   ├── ign/                        # Téléchargement + prétraitement
 │   │   ├── coords_fallback.py      # Fallback extraction coordonnées
@@ -648,10 +695,16 @@ Options :
 
 | Flag | Description | Défaut |
 |---|---|---|
-| `--type` | `yolo`, `rfdetr`, `segformer` ou `auto` | `auto` |
+| `--type` | `yolo`, `rfdetr`, `segformer`, `smp` ou `auto` | `auto` |
 | `--imgsz` | Taille d'image pour l'export | `640` |
 | `--simplify` | Simplifier le graphe ONNX | activé |
-| `--opset` | Version opset ONNX | `12` |
+| `--opset` | Version opset ONNX | `17` |
+| `--patch-size` | (RF-DETR) Taille des patches — auto-détecté si omis | — |
+| `--positional-encoding-size` | (RF-DETR) Taille encodage positionnel — auto-détecté si omis | — |
+| `--arch` | (SMP) Architecture (DeepLabV3Plus, Unet, FPN…) | auto |
+| `--encoder` | (SMP) Encoder (resnet101, resnet50…) | auto |
+| `--num-classes` | (SMP) Nombre de classes | auto |
+| `--class-names` | Noms de classes séparés par virgules | — |
 
 Le script détecte automatiquement le type de modèle, exporte le `.onnx`, crée un fichier de métadonnées `.json` et copie `classes.txt` / `args.yaml` si présents.
 

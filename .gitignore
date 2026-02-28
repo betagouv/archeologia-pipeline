@@ -28,6 +28,7 @@ temp/
 results/
 output/
 output_test/
+dev/image_test/
 
 # OS files
 Thumbs.db

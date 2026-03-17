@@ -17,6 +17,9 @@ Plugin QGIS pour exécuter un pipeline de traitement LiDAR et produire des raste
   - **Multi-modèles** : plusieurs modèles peuvent être configurés en parallèle, chacun ciblant un RVT différent.
   - **Sélection de classes** par modèle : cocher/décocher les classes à détecter.
   - **Filtrage par aire minimale** (`min_area_m2`) par modèle : les détections trop petites sont écartées dans un shapefile séparé (`detections_filtered_too_small.shp`).
+  - **Post-processing global** (appliqué après toutes les inférences, avant génération des shapefiles) :
+    - Fusion des polygones de même classe qui se touchent ou sont séparés par ≤ 0.5 m (y compris **inter-dalles**), avec confiance = moyenne pondérée par l'aire des polygones sources.
+    - Suppression des superpositions inter-classes (le polygone le plus confiant conserve sa géométrie, les autres sont découpés).
 - Option (configurable) : génération de **pyramides / overviews** GDAL pour les GeoTIFF de sortie.
 
 ## Modes de données supportés
@@ -48,12 +51,18 @@ Le plugin s’exécute dans QGIS et s’appuie sur des outils externes. Un contr
 
 ### Computer vision (optionnel)
 
-Deux options :
+Deux options pour l'**inférence** :
 
 - **Runner ONNX externe** (recommandé) : `third_party/cv_runner_onnx/windows/cv_runner_onnx.exe` (Windows) / `third_party/cv_runner_onnx/linux/cv_runner_onnx` (Linux)
+  - Le runner externe ne fait **que l'inférence** (JSON/TXT + images annotées). La génération des shapefiles et le post-processing global sont toujours réalisés côté plugin Python.
 - Ou dépendances Python dans l'environnement de QGIS (si pas de runner externe) :
   - `onnxruntime`, `sahi`, `PIL` (Pillow)
-  - `geopandas` (optionnel)
+
+Pour la **génération de shapefiles et le post-processing global** (fusion polygones, suppression superpositions), le plugin Python requiert :
+- `shapely` (opérations géométriques : union, buffer, difference)
+- `geopandas` + `fiona` (écriture shapefiles)
+
+Ces dépendances sont disponibles dans l'environnement QGIS standard.
 
 **Note** : Les modèles doivent être exportés au format ONNX avant utilisation (voir section dédiée).
 
@@ -227,10 +236,12 @@ Le script :
 cd runner_onnx
 python -m venv .venv_onnx
 .venv_onnx\Scripts\activate
-pip install pyinstaller onnxruntime sahi pillow numpy pyyaml shapely geopandas fiona
+pip install pyinstaller onnxruntime sahi pillow numpy pyyaml
 python -m PyInstaller --clean cv_runner_onnx.spec
 copy dist\cv_runner_onnx.exe ..\third_party\cv_runner_onnx\windows\
 ```
+
+> **Note** : `shapely`, `geopandas` et `fiona` ne sont **pas** nécessaires dans le runner. La génération de shapefiles et le post-processing sont réalisés côté plugin Python (QGIS).
 
 ### Modèles (dossier `models/`)
 
@@ -393,6 +404,8 @@ Ensuite, un `git push` déclenchera automatiquement Talisman et pourra bloquer l
   - soit installer les dépendances Python (`onnxruntime`, `pillow`) dans l'environnement QGIS
   - les modèles doivent être exportés en ONNX **avant** utilisation (voir section dédiée)
   - pour les modèles RF-DETR Seg, `opencv-python` est requis dans le runner (inclus dans le binaire compilé)
+- **Post-processing non appliqué** : vérifier que `shapely` et `geopandas` sont disponibles dans l'environnement Python de QGIS. Le runner externe ne fait que l'inférence ; la fusion de polygones et la génération de shapefiles sont réalisées côté plugin Python.
+- **Polygones non fusionnés entre dalles** : le post-processing global fusionne les polygones de même classe séparés par ≤ 0.5 m. Si les polygones ne sont pas fusionnés, vérifier que les fichiers de détection (`.txt`/`.json`) de toutes les dalles sont présents dans le même dossier `jpg/`.
 - **Détections bbox au lieu de polygones** : vérifier que le fichier `weights/best.json` du modèle contient bien `"task": "instance_segmentation"` pour les modèles RF-DETR Seg
 - **Pipeline bloqué au démarrage** : si beaucoup de fichiers TIF/JPG (>1000), la première exécution peut prendre plusieurs minutes pour créer les liens/copies vers les dossiers modèles — c'est normal
 - **Classes non filtrées** : vider les fichiers `.txt`/`.json` existants dans le dossier `jpg/` du modèle si les anciens résultats ont été générés sans filtrage de classes
@@ -502,16 +515,21 @@ flowchart TD
         CV1["run_cv_on_folder(global_color_map) — runner.py (orchestration)"]
         CV1 --> CV1a["resolve_model_weights_path() + classes.txt"]
         CV1a --> CV2{"find_external_cv_runner() ?"}
-        CV2 -->|"Trouvé"| CV3["run_external_cv_runner(global_color_map) (external_runner.py)"]
-        CV3 --> CV3a["subprocess Popen — payload JSON avec global_color_map"]
+        CV2 -->|"Trouvé"| CV3["run_external_cv_runner(run_shapefile_dedup=False)"]
+        CV3 --> CV3a["subprocess Popen — inférence seule (JSON/TXT + images annotées)"]
         CV3a --> CV3b["World files pour images annotées (geo_utils)"]
         CV2 -->|"Absent / échec"| CV4["_run_fallback_inference(global_color_map) (runner.py)"]
         CV4 --> CV5["computer_vision_onnx.py — ONNX image par image"]
-        CV3b --> CV6["Labels YOLO (.txt/.json) + images annotées (cv_output.py)"]
+        CV3b --> CV6["Labels bruts (.txt/.json) + images annotées (cv_output.py)"]
         CV5 --> CV6
-        CV6 --> CV7["deduplicate_cv_shapefiles_final()"]
-        CV7 --> CV7a["conversion_shp.py → shapefiles (conf_color basé sur global_color_map)"]
-        CV7a --> CV7b["qgs_project.py → projet QGIS par modèle (.qgs)"]
+        CV6 --> CV7["deduplicate_cv_shapefiles_final() — côté plugin Python"]
+        CV7 --> CV7a["conversion_shp.py → charge toutes les détections"]
+        CV7a --> CV7pp["postprocessing.py → postprocess_geo_detections()"]
+        CV7pp --> CV7pp1["1. Validation géométries (shapely make_valid)"]
+        CV7pp1 --> CV7pp2["2. Fusion intra-classe (buffer 0.5m → unary_union → débuffer)"]
+        CV7pp2 --> CV7pp3["3. Suppression superpositions inter-classes (par confiance)"]
+        CV7pp3 --> CV7c["Écriture shapefiles par classe (geopandas)"]
+        CV7c --> CV7b["qgs_project.py → projet QGIS par modèle (.qgs)"]
     end
 
     subgraph Shared["Modules utilitaires partagés"]
@@ -593,11 +611,12 @@ src/
 │   ├── cv/                         # Computer vision
 │   │   ├── class_utils.py          # Palette couleurs, résolution modèle, utilitaires classes
 │   │   ├── computer_vision_onnx.py # Inférence ONNX (YOLO / RF-DETR / RF-DETR Seg / SegFormer / SMP)
-│   │   ├── conversion_shp.py       # Conversion labels → shapefiles géoréférencés (bbox + polygones)
+│   │   ├── conversion_shp.py       # Conversion labels → shapefiles géoréférencés (+ appel post-processing global)
 │   │   ├── cv_output.py            # Gestion sorties CV (labels, annotations, légende)
-│   │   ├── external_runner.py      # Subprocess runner ONNX externe + RunnerPayload
+│   │   ├── external_runner.py      # Subprocess runner ONNX externe (inférence seule) + RunnerPayload
+│   │   ├── postprocessing.py       # Post-processing : validation, fusion intra-classe (buffer/union), suppression superpositions
 │   │   ├── qgs_project.py          # Génération projet QGIS (.qgs) pour validation
-│   │   ├── runner.py               # run_cv_on_folder, _prepare_model_workdir, deduplicate
+│   │   ├── runner.py               # run_cv_on_folder, _prepare_model_workdir, deduplicate_cv_shapefiles_final
 │   │   └── sahi_lite.py            # Slicing SAHI léger (numpy-only)
 │   ├── ign/                        # Téléchargement + prétraitement
 │   │   ├── coords_fallback.py      # Fallback extraction coordonnées

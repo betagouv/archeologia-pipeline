@@ -119,6 +119,9 @@ def _parse_runner_stdout(
             log(f"[cv_runner] {line}")
     elif line.startswith("legend_created="):
         log(f"Computer Vision: Légende créée")
+    else:
+        # Relayer les lignes non reconnues (logs internes, debug, etc.)
+        log(f"[cv_runner] {line}")
 
 
 def run_external_cv_runner(

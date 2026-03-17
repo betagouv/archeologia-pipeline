@@ -8,7 +8,7 @@ fileignoreconfig:
 - filename: old_src/conversion_shp.py
   checksum: 3a4e979bcc8691785c1b636fb2eabfc2060640a72b0013e3e97c2327d4aa2fe0
 - filename: src/pipeline/cv/conversion_shp.py
-  checksum: 02a8f0b5aff6fc439de76466207e7fd34e29bee62f74bcb02619cb6f0599a7d2
+  checksum: 653edbafc35a77dae764f8697993ab58c472299fa48eae8b036960c8ca2d2710
 - filename: src/ui/main_dialog.py
   checksum: 69fafd805e895449c3907dcd70325d99a262c5a0fc692ec181689709acd403ef
 - filename: old_src/pipeline_lidar.py
@@ -24,9 +24,9 @@ fileignoreconfig:
 - filename: src/pipeline/cv/computer_vision_rfdetr.py
   checksum: 3c3de1d9bab52f155e9cc9f5f54a60f43c2ea784d485f8959603bbdc5e07d768
 - filename: src/pipeline/cv/computer_vision_onnx.py
-  checksum: 9642c4b81e25a248f4687fc156f98e1431c5e3bc259f05352468df3e1c3d7c7d
+  checksum: 4ee49720b0dbc56b8c54610b32c1adc8a94de6f58acea2a28ae765e93f4236d9
 - filename: src/pipeline/cv/class_utils.py
-  checksum: 835ef0b9f8345fed0c27d8abb0ab86042bbd1564d7b62d3a7a9e942bd4c4d7d6
+  checksum: 5ed82e9bbd25003a0cd6bfd91d88c4b063fc805455d214e09272e077f93e88ae
 - filename: dev/runner_onnx/export_to_onnx.py
   checksum: 342341d44a702f7ead332150b3e74e594cb3ed612e8929a374c1d484915c376c
 - filename: src/pipeline/preflight.py
@@ -37,4 +37,6 @@ fileignoreconfig:
   checksum: d2fce1b59ade7ad77e109b43bcb3d4e772c9b73ac117124f66f190655f75b42a
 - filename: src/app/services/finalize_service.py
   checksum: 2ac3bab30ff5c8fb58897a0d4719beef73147245513bce51b5dd90e03f669acd
+- filename: src/pipeline/cv/postprocessing.py
+  checksum: 9ce8eb6e0420309f2753435c49dcb7f0718d740ba9a13406b8416cfa2571f286
 version: "1.0"

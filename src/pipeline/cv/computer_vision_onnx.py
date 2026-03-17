@@ -190,17 +190,16 @@ def _postprocess_rfdetr(
     """
     detections = []
     
-    # Debug: afficher les shapes des outputs
-    logger.info(f"RF-DETR outputs: {len(outputs)} tenseurs")
+    logger.debug(f"RF-DETR outputs: {len(outputs)} tenseurs")
     for i, out in enumerate(outputs):
-        logger.info(f"  Output {i}: shape={out.shape}, dtype={out.dtype}, min={out.min():.4f}, max={out.max():.4f}")
+        logger.debug(f"  Output {i}: shape={out.shape}, dtype={out.dtype}, min={out.min():.4f}, max={out.max():.4f}")
     
     if len(outputs) == 2:
         # Format standard RF-DETR: [boxes, logits]
         boxes = outputs[0][0]   # [N, 4] - format cxcywh normalisé
         logits = outputs[1][0]  # [N, num_classes] - logits bruts
         
-        logger.info(f"RF-DETR: boxes shape={boxes.shape}, logits shape={logits.shape}")
+        logger.debug(f"RF-DETR: boxes shape={boxes.shape}, logits shape={logits.shape}")
         
         # Appliquer sigmoid pour convertir logits en probabilités
         scores = 1 / (1 + np.exp(-logits))  # sigmoid
@@ -209,9 +208,8 @@ def _postprocess_rfdetr(
         max_scores = scores.max(axis=1)
         class_ids = scores.argmax(axis=1)
         
-        # Debug: afficher les stats des scores
-        logger.info(f"RF-DETR: max_scores min={max_scores.min():.4f}, max={max_scores.max():.4f}, mean={max_scores.mean():.4f}")
-        logger.info(f"RF-DETR: {(max_scores >= confidence_threshold).sum()} détections au-dessus du seuil {confidence_threshold}")
+        logger.debug(f"RF-DETR: max_scores min={max_scores.min():.4f}, max={max_scores.max():.4f}, mean={max_scores.mean():.4f}")
+        logger.debug(f"RF-DETR: {(max_scores >= confidence_threshold).sum()} détections au-dessus du seuil {confidence_threshold}")
         
     elif len(outputs) >= 3:
         boxes = outputs[0][0]   # [N, 4]
@@ -290,101 +288,6 @@ def _postprocess_rfdetr(
     return detections
 
 
-def _postprocess_rfdetr_seg(
-    outputs: List[np.ndarray],
-    img_width: int,
-    img_height: int,
-    model_width: int,
-    model_height: int,
-    confidence_threshold: float,
-    class_offset: int = 1,
-) -> List[Dict]:
-    """
-    Post-traite les sorties RF-DETR Seg ONNX (instance segmentation).
-
-    RF-DETR Seg outputs:
-      - outputs[0]: pred_boxes  [1, N, 4]  cxcywh normalisé
-      - outputs[1]: pred_logits [1, N, num_classes]
-      - outputs[2]: pred_masks  [1, N, Mh, Mw]  masques d'instances (logits)
-    """
-    try:
-        import cv2
-    except ImportError:
-        logger.warning("OpenCV non disponible, segmentation impossible — fallback bbox")
-        return _postprocess_rfdetr(outputs[:2], img_width, img_height, model_width, model_height, confidence_threshold, class_offset)
-
-    detections = []
-
-    if len(outputs) < 3:
-        return _postprocess_rfdetr(outputs, img_width, img_height, model_width, model_height, confidence_threshold, class_offset)
-
-    boxes_out  = outputs[0][0]   # [N, 4]
-    logits_out = outputs[1][0]   # [N, num_classes]
-    masks_out  = outputs[2][0]   # [N, Mh, Mw]
-
-    logger.info(f"RF-DETR Seg: boxes={boxes_out.shape}, logits={logits_out.shape}, masks={masks_out.shape}")
-
-    scores = 1.0 / (1.0 + np.exp(-logits_out))  # sigmoid
-    max_scores = scores.max(axis=1)
-    class_ids  = scores.argmax(axis=1)
-
-    scale_x = img_width  / model_width
-    scale_y = img_height / model_height
-
-    for i in range(len(max_scores)):
-        confidence = float(max_scores[i])
-        if confidence < confidence_threshold:
-            continue
-
-        class_id = int(class_ids[i]) - class_offset
-        if class_id < 0:
-            continue
-
-        # ----- Masque d'instance → polygone -----
-        mask_logit = masks_out[i]                       # [Mh, Mw]
-        mask_prob  = 1.0 / (1.0 + np.exp(-mask_logit)) # sigmoid
-
-        # Upscale les probabilités (float) directement vers la taille image finale
-        # INTER_LINEAR sur les probas avant seuillage → contours lisses (évite la pixelisation)
-        mask_prob_full = cv2.resize(mask_prob.astype(np.float32), (img_width, img_height), interpolation=cv2.INTER_LINEAR)
-        binary_full = (mask_prob_full >= 0.5).astype(np.uint8)
-
-        contours, _ = cv2.findContours(binary_full, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        if not contours:
-            # Fallback bbox si pas de contour
-            cx, cy, w, h = boxes_out[i]
-            if boxes_out.max() <= 1.0:
-                cx, cy, w, h = cx * model_width, cy * model_height, w * model_width, h * model_height
-            x1 = max(0.0, (cx - w / 2) * scale_x)
-            y1 = max(0.0, (cy - h / 2) * scale_y)
-            x2 = min(img_width,  (cx + w / 2) * scale_x)
-            y2 = min(img_height, (cy + h / 2) * scale_y)
-            detections.append({"bbox": [x1, y1, x2, y2], "class_id": class_id, "confidence": confidence})
-            continue
-
-        # Garder le plus grand contour par instance
-        contour = max(contours, key=cv2.contourArea)
-        area = cv2.contourArea(contour)
-        if area < 10 or len(contour) < 3:
-            continue
-
-        polygon = []
-        for pt in contour:
-            polygon.extend([float(pt[0][0]) / img_width, float(pt[0][1]) / img_height])
-
-        x_b, y_b, w_b, h_b = cv2.boundingRect(contour)
-        detections.append({
-            "class_id":  class_id,
-            "confidence": confidence,
-            "polygon":   polygon,
-            "bbox":      [float(x_b), float(y_b), float(x_b + w_b), float(y_b + h_b)],
-            "area":      float(area),
-        })
-
-    logger.info(f"RF-DETR Seg: {len(detections)} instances extraites")
-    return detections
-
-
 def _run_rfdetr_seg_with_sahi(
     pil_image,
     session,
@@ -399,14 +302,15 @@ def _run_rfdetr_seg_with_sahi(
 ) -> List[Dict]:
     """
     Exécute RF-DETR Seg avec SAHI slicing en accumulant les masques de probabilité
-    par classe dans l'espace image global, puis extrait les polygones une seule fois.
+    par instance dans l'espace image global, puis extrait les polygones par instance.
 
-    Inspiré de _run_segformer_with_sahi : évite les doublons et gère correctement
-    les formes linéaires qui débordent sur plusieurs slices.
+    Accumulation par instance (pas par classe) : chaque détection individuelle conserve
+    son propre masque global. Cela évite le remplissage de la zone centrale quand
+    plusieurs instances (ex: 4 chemins) forment une forme fermée — le creux est préservé.
 
-    Pour chaque classe, on accumule max(prob) dans le masque global — une zone couverte
-    par plusieurs slices conserve la proba la plus haute observée, ce qui est correct
-    pour l'instance segmentation (évite la moyenne qui diluerait les détections).
+    Les doublons (même instance détectée dans plusieurs tuiles avec chevauchement)
+    sont fusionnés par max(prob) sur le même masque instance, identifiés par un hash
+    de position de boîte englobante.
     """
     try:
         import cv2
@@ -428,13 +332,57 @@ def _run_rfdetr_seg_with_sahi(
     )
     logger.info(f"RF-DETR Seg SAHI: {len(sliced_images)} tuiles")
 
-    # global_class_probs[c] = masque de probabilité max pour la classe c, espace image global
-    global_class_probs = None  # [num_classes, H, W], initialisé à la 1ère tuile
-    num_classes = None
-    # Conserver la confiance de détection pour chaque classe (max sur les instances détectées)
-    global_class_conf = None   # [num_classes, H, W]
+    # Accumulation par instance dans l'espace global avec prob_maps locales (bbox-sized).
+    # Clé: (class_id, gcx, gcy, gw, gh) en pixels globaux (centre+taille, discrétisés)
+    # Valeur: {"prob": np.ndarray [bbox_h, bbox_w], "bbox": [min_y, min_x, max_y, max_x],
+    #          "conf": float, "class_id": int}
+    instance_maps: Dict[tuple, dict] = {}
+    n_real = None
 
-    for idx, sliced_img in enumerate(sliced_images):
+    SNAP = 16  # tolérance de snap pour identifier la même instance entre tuiles
+    MASK_IOU_MERGE_THRESHOLD = 0.15  # IoU masque minimum pour autoriser la fusion
+
+    def _inst_iou(inst: dict, sy: int, sx: int, ey: int, ex: int, new_vals: np.ndarray) -> float:
+        """Calcule l'IoU entre un prob_map local et new_vals dans la zone [sy:ey, sx:ex]."""
+        bb = inst["bbox"]  # [min_y, min_x, max_y, max_x]
+        # Intersection de la zone de la slice avec le bbox de l'instance
+        iy0 = max(sy, bb[0]); ix0 = max(sx, bb[1])
+        iy1 = min(ey, bb[2]); ix1 = min(ex, bb[3])
+        if iy0 >= iy1 or ix0 >= ix1:
+            return 0.0
+        # Extraire les sous-régions
+        existing_patch = inst["prob"][iy0 - bb[0]:iy1 - bb[0], ix0 - bb[1]:ix1 - bb[1]]
+        new_patch = new_vals[iy0 - sy:iy1 - sy, ix0 - sx:ix1 - sx]
+        e_bin = existing_patch >= 0.5
+        n_bin = new_patch >= 0.5
+        inter = np.count_nonzero(e_bin & n_bin)
+        union = np.count_nonzero(e_bin | n_bin)
+        return inter / max(union, 1)
+
+    def _inst_merge(inst: dict, sy: int, sx: int, ey: int, ex: int, new_vals: np.ndarray, conf: float) -> None:
+        """Fusionne new_vals dans le prob_map local, en agrandissant le bbox si nécessaire."""
+        bb = inst["bbox"]  # [min_y, min_x, max_y, max_x]
+        new_min_y, new_min_x = min(bb[0], sy), min(bb[1], sx)
+        new_max_y, new_max_x = max(bb[2], ey), max(bb[3], ex)
+        if new_min_y < bb[0] or new_min_x < bb[1] or new_max_y > bb[2] or new_max_x > bb[3]:
+            # Agrandir le prob_map
+            new_h, new_w = new_max_y - new_min_y, new_max_x - new_min_x
+            new_prob = np.zeros((new_h, new_w), dtype=np.float32)
+            # Copier l'ancien contenu
+            off_y, off_x = bb[0] - new_min_y, bb[1] - new_min_x
+            old_h, old_w = bb[2] - bb[0], bb[3] - bb[1]
+            new_prob[off_y:off_y + old_h, off_x:off_x + old_w] = inst["prob"]
+            inst["prob"] = new_prob
+            inst["bbox"] = [new_min_y, new_min_x, new_max_y, new_max_x]
+            bb = inst["bbox"]
+        # Fusionner par max
+        ry, rx = sy - bb[0], sx - bb[1]
+        rh, rw = ey - sy, ex - sx
+        existing = inst["prob"][ry:ry + rh, rx:rx + rw]
+        inst["prob"][ry:ry + rh, rx:rx + rw] = np.maximum(existing, new_vals)
+        inst["conf"] = max(inst["conf"], conf)
+
+    for slice_idx, sliced_img in enumerate(sliced_images):
         slice_pil = _PILImage.fromarray(sliced_img.image)
         slice_w, slice_h = slice_pil.size
         start_x, start_y = sliced_img.starting_pixel
@@ -445,27 +393,26 @@ def _run_rfdetr_seg_with_sahi(
         if len(outputs) < 3:
             continue
 
-        boxes_out  = outputs[0][0]   # [N, 4]
+        boxes_out  = outputs[0][0]   # [N, 4] cxcywh normalisé (espace modèle)
         logits_out = outputs[1][0]   # [N, num_classes]
         masks_out  = outputs[2][0]   # [N, Mh, Mw]
 
-        scores    = 1.0 / (1.0 + np.exp(-logits_out))  # sigmoid [N, C]
-        max_scores = scores.max(axis=1)                  # [N]
-        class_ids  = scores.argmax(axis=1)               # [N]
+        scores     = 1.0 / (1.0 + np.exp(-logits_out))  # sigmoid [N, C]
+        max_scores = scores.max(axis=1)                   # [N]
+        class_ids  = scores.argmax(axis=1)                # [N]
 
         n_cls = logits_out.shape[1]
-        # Nombre de classes réelles (sans background offsetté)
-        n_real = max(1, n_cls - class_offset)
-
-        if global_class_probs is None:
-            num_classes = n_real
-            global_class_probs = np.zeros((n_real, orig_height, orig_width), dtype=np.float32)
-            global_class_conf  = np.zeros((n_real, orig_height, orig_width), dtype=np.float32)
+        if n_real is None:
+            n_real = max(1, n_cls - class_offset)
 
         end_x = min(start_x + slice_w, orig_width)
         end_y = min(start_y + slice_h, orig_height)
         actual_w = end_x - start_x
         actual_h = end_y - start_y
+
+        scale_x = slice_w / model_width
+        scale_y = slice_h / model_height
+        boxes_normalized = boxes_out.max() <= 1.0
 
         for i in range(len(max_scores)):
             confidence = float(max_scores[i])
@@ -475,6 +422,25 @@ def _run_rfdetr_seg_with_sahi(
             class_id = int(class_ids[i]) - class_offset
             if class_id < 0 or class_id >= n_real:
                 continue
+
+            # Coordonnées de la boîte en espace global (centre + taille)
+            cx, cy, w, h = boxes_out[i]
+            if boxes_normalized:
+                cx = cx * model_width
+                cy = cy * model_height
+                w  = w  * model_width
+                h  = h  * model_height
+            gcx = int(start_x + cx * scale_x)
+            gcy = int(start_y + cy * scale_y)
+            gw  = int(w * scale_x)
+            gh  = int(h * scale_y)
+
+            # Clé discrétisée par centre+taille (plus stable que par coins)
+            base_key = (class_id,
+                        round(gcx / SNAP) * SNAP,
+                        round(gcy / SNAP) * SNAP,
+                        round(gw / SNAP) * SNAP,
+                        round(gh / SNAP) * SNAP)
 
             mask_logit = masks_out[i]                        # [Mh, Mw]
             mask_prob  = 1.0 / (1.0 + np.exp(-mask_logit))  # sigmoid, float [Mh, Mw]
@@ -486,62 +452,126 @@ def _run_rfdetr_seg_with_sahi(
                 interpolation=cv2.INTER_LINEAR,
             )
 
-            # Accumulation par max dans l'espace global
-            existing = global_class_probs[class_id, start_y:end_y, start_x:end_x]
-            new_vals  = mask_prob_slice[:actual_h, :actual_w]
-            global_class_probs[class_id, start_y:end_y, start_x:end_x] = np.maximum(existing, new_vals)
+            new_vals = mask_prob_slice[:actual_h, :actual_w]
 
-            # Confiance associée : propagée uniquement où le masque est actif
-            conf_slice = np.where(new_vals >= 0.5, confidence, 0.0).astype(np.float32)
-            existing_conf = global_class_conf[class_id, start_y:end_y, start_x:end_x]
-            global_class_conf[class_id, start_y:end_y, start_x:end_x] = np.maximum(existing_conf, conf_slice)
+            # Chercher la bonne clé : base_key ou un suffixe existant
+            # Vérifier l'IoU masque pour éviter de fusionner des instances distinctes
+            matched_key = None
+            if base_key in instance_maps:
+                iou = _inst_iou(instance_maps[base_key], start_y, start_x, end_y, end_x, new_vals)
+                if iou >= MASK_IOU_MERGE_THRESHOLD:
+                    matched_key = base_key
+                else:
+                    new_bin = new_vals >= 0.5
+                    # Chercher parmi les suffixes existants
+                    for suffix in range(1, 100):
+                        candidate = base_key + (suffix,)
+                        if candidate not in instance_maps:
+                            break
+                        iou = _inst_iou(instance_maps[candidate], start_y, start_x, end_y, end_x, new_vals)
+                        if iou >= MASK_IOU_MERGE_THRESHOLD:
+                            matched_key = candidate
+                            break
+                    if matched_key is None:
+                        # Aucun match IoU → créer comme nouvelle instance avec suffixe
+                        for suffix in range(1, 100):
+                            candidate = base_key + (suffix,)
+                            if candidate not in instance_maps:
+                                matched_key = candidate
+                                break
+            else:
+                # Chercher aussi les suffixes (cas rare de clé décalée entre tuiles)
+                for suffix in range(1, 100):
+                    candidate = base_key + (suffix,)
+                    if candidate not in instance_maps:
+                        break
+                    iou = _inst_iou(instance_maps[candidate], start_y, start_x, end_y, end_x, new_vals)
+                    if iou >= MASK_IOU_MERGE_THRESHOLD:
+                        matched_key = candidate
+                        break
 
-        if (idx + 1) % 10 == 0:
-            logger.info(f"RF-DETR Seg SAHI: {idx + 1}/{len(sliced_images)} tuiles traitées")
+            if matched_key is None:
+                matched_key = base_key
 
-    if global_class_probs is None:
+            if matched_key not in instance_maps:
+                instance_maps[matched_key] = {
+                    "prob":     new_vals.copy(),
+                    "bbox":     [start_y, start_x, end_y, end_x],
+                    "conf":     confidence,
+                    "class_id": class_id,
+                }
+            else:
+                _inst_merge(instance_maps[matched_key], start_y, start_x, end_y, end_x, new_vals, confidence)
+
+        if (slice_idx + 1) % 10 == 0:
+            logger.info(f"RF-DETR Seg SAHI: {slice_idx + 1}/{len(sliced_images)} tuiles traitées")
+
+    if not instance_maps:
         return []
 
-    # Extraire les polygones depuis les masques globaux fusionnés
-    detections = []
-    for class_id in range(num_classes):
-        prob_map = global_class_probs[class_id]   # [H, W]
-        binary   = (prob_map >= 0.5).astype(np.uint8)
+    logger.info(f"RF-DETR Seg SAHI: {len(instance_maps)} instances candidates après accumulation")
 
+    # Extraire les polygones depuis chaque masque d'instance
+    # RETR_CCOMP : récupère contours extérieurs + trous directs (formes en anneau)
+    detections = []
+    for key, inst in instance_maps.items():
+        class_id   = inst["class_id"]
+        prob_map   = inst["prob"]
+        confidence = inst["conf"]
+        bb         = inst["bbox"]  # [min_y, min_x, max_y, max_x]
+        off_y, off_x = bb[0], bb[1]
+
+        binary = (prob_map >= 0.5).astype(np.uint8)
         if not binary.any():
             continue
 
-        contours, _ = cv2.findContours(binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        for contour in contours:
+        contours, hierarchy = cv2.findContours(binary, cv2.RETR_CCOMP, cv2.CHAIN_APPROX_SIMPLE)
+        if not contours or hierarchy is None:
+            continue
+
+        hierarchy = hierarchy[0]  # [N, 4] : next, prev, first_child, parent
+
+        for cidx, contour in enumerate(contours):
+            # Ne traiter que les contours externes (parent == -1)
+            if hierarchy[cidx][3] != -1:
+                continue
+
             area = cv2.contourArea(contour)
             if area < 10 or len(contour) < 3:
                 continue
 
+            # Les coordonnées des contours sont relatives au prob_map local → ajouter l'offset bbox
             polygon = []
             for pt in contour:
-                polygon.extend([float(pt[0][0]) / orig_width, float(pt[0][1]) / orig_height])
+                polygon.extend([float(pt[0][0] + off_x) / orig_width, float(pt[0][1] + off_y) / orig_height])
+
+            # Collecter les trous directs (first_child et ses frères)
+            holes = []
+            child_idx = hierarchy[cidx][2]  # premier enfant
+            while child_idx != -1:
+                hole_contour = contours[child_idx]
+                if cv2.contourArea(hole_contour) >= 10 and len(hole_contour) >= 3:
+                    hole = []
+                    for pt in hole_contour:
+                        hole.extend([float(pt[0][0] + off_x) / orig_width, float(pt[0][1] + off_y) / orig_height])
+                    holes.append(hole)
+                child_idx = hierarchy[child_idx][0]  # frère suivant
 
             x_b, y_b, w_b, h_b = cv2.boundingRect(contour)
 
-            # Confiance = max de la confiance observée dans la zone du contour
-            mask_contour = np.zeros((orig_height, orig_width), dtype=np.uint8)
-            cv2.drawContours(mask_contour, [contour], -1, 1, -1)
-            conf_vals = global_class_conf[class_id][mask_contour == 1]
-            if len(conf_vals) > 0 and conf_vals.max() > 0:
-                confidence = float(conf_vals.max())
-            else:
-                prob_vals = prob_map[mask_contour == 1]
-                confidence = float(prob_vals.max()) if len(prob_vals) > 0 else confidence_threshold
-
-            detections.append({
+            det = {
                 "class_id":   class_id,
                 "confidence": confidence,
                 "polygon":    polygon,
-                "bbox":       [float(x_b), float(y_b), float(x_b + w_b), float(y_b + h_b)],
+                "bbox":       [float(x_b + off_x), float(y_b + off_y), float(x_b + off_x + w_b), float(y_b + off_y + h_b)],
                 "area":       float(area),
-            })
+            }
+            if holes:
+                det["polygon_holes"] = holes
+                logger.debug(f"RF-DETR Seg: instance classe {class_id} avec {len(holes)} trou(s)")
+            detections.append(det)
 
-    logger.info(f"RF-DETR Seg SAHI: {len(detections)} polygones extraits (masques globaux fusionnés)")
+    logger.info(f"RF-DETR Seg SAHI: {len(detections)} polygones extraits (accumulation par instance)")
     return detections
 
 
@@ -720,27 +750,22 @@ def _save_segmentation_annotated_image(
         img_copy = pil_image.copy().convert("RGBA")
         img_width, img_height = img_copy.size
         
-        # Créer un overlay pour le masque de segmentation
-        overlay = Image.new("RGBA", (img_width, img_height), (0, 0, 0, 0))
-        overlay_pixels = overlay.load()
+        # Créer un overlay RGBA via numpy (vectorisé, beaucoup plus rapide que pixel par pixel)
+        overlay_array = np.zeros((img_height, img_width, 4), dtype=np.uint8)
         
-        # Colorier chaque pixel selon sa classe
         unique_classes = np.unique(segmentation_mask)
         for class_id in unique_classes:
             if class_id == 0:  # Ignorer le background
                 continue
             
-            # Obtenir la couleur pour cette classe (0-indexed dans class_colors)
             color = get_class_color(int(class_id) - 1, class_colors)
-            rgba_color = (*color, int(255 * alpha))
-            
-            # Appliquer la couleur aux pixels de cette classe
-            mask_indices = np.where(segmentation_mask == class_id)
-            for y, x in zip(mask_indices[0], mask_indices[1]):
-                if 0 <= x < img_width and 0 <= y < img_height:
-                    overlay_pixels[x, y] = rgba_color
+            mask = segmentation_mask == class_id
+            overlay_array[mask, 0] = color[0]
+            overlay_array[mask, 1] = color[1]
+            overlay_array[mask, 2] = color[2]
+            overlay_array[mask, 3] = int(255 * alpha)
         
-        # Fusionner l'overlay avec l'image
+        overlay = Image.fromarray(overlay_array, "RGBA")
         img_with_mask = Image.alpha_composite(img_copy, overlay)
         
         # Dessiner les contours des polygones
@@ -795,6 +820,7 @@ def _run_segformer_with_sahi(
     merge_polygons: bool = True,
     model_type: str = "smp",
     bg_bias: float = 0.0,
+    buffer_distance: float = 0.001,
 ) -> Tuple[np.ndarray, List[Dict]]:
     """
     Exécute SegFormer avec SAHI slicing et fusionne les masques.
@@ -904,7 +930,7 @@ def _run_segformer_with_sahi(
     
     # Fusionner les polygones adjacents si demandé (pour les formes linéaires)
     if merge_polygons and detections:
-        detections = _merge_adjacent_polygons(detections, img_width, img_height)
+        detections = _merge_adjacent_polygons(detections, img_width, img_height, buffer_distance=buffer_distance)
     
     return final_mask, detections
 
@@ -1017,6 +1043,12 @@ def _merge_adjacent_polygons(
             avg_confidence = sum(confidences) / len(confidences) if confidences else 0.5
             
             for poly in polys:
+                if not poly.is_valid:
+                    poly = make_valid(poly)
+                    if poly.geom_type != 'Polygon':
+                        # make_valid peut retourner MultiPolygon — garder le plus grand
+                        candidates = [g for g in getattr(poly, 'geoms', []) if g.geom_type == 'Polygon']
+                        poly = max(candidates, key=lambda g: g.area) if candidates else poly
                 if poly.is_empty or poly.area < min_area:
                     continue
                 
@@ -1134,6 +1166,7 @@ def run_onnx_inference(
     return_count: bool = False,
     class_names: List[str] = None,
     class_colors: List[int] = None,
+    onnx_session=None,
 ):
     """
     Exécute l'inférence avec un modèle ONNX en utilisant SAHI pour le slicing.
@@ -1152,6 +1185,8 @@ def run_onnx_inference(
         jpg_folder_path: Dossier pour les fichiers .txt/.json
         max_det: Nombre maximum de détections
         return_count: Si True, retourne (bool, int) avec le nombre de détections
+        onnx_session: Tuple (session, input_name, input_shape, model_meta) pré-chargé
+                      pour éviter de recharger le modèle à chaque image.
     
     Returns:
         Si return_count=False: True si des détections ont été trouvées
@@ -1165,8 +1200,11 @@ def run_onnx_inference(
             img_width, img_height = img.size
             pil_image = img.convert("RGB")
         
-        # Charger le modèle ONNX
-        session, input_name, input_shape, model_meta = _load_onnx_model(model_path)
+        # Charger le modèle ONNX (ou réutiliser la session fournie)
+        if onnx_session is not None:
+            session, input_name, input_shape, model_meta = onnx_session
+        else:
+            session, input_name, input_shape, model_meta = _load_onnx_model(model_path)
         
         # Déterminer la taille du modèle
         if len(input_shape) >= 4:
@@ -1190,12 +1228,13 @@ def run_onnx_inference(
             use_sahi = model_meta.get("use_sahi", True)
             merge_polygons = model_meta.get("merge_polygons", True)
             bg_bias = float(model_meta.get("bg_bias", 0.0))
+            buffer_distance = float(model_meta.get("buffer_distance", 0.001))
             
             # Override per-model du confidence_threshold
             model_confidence = model_meta.get("confidence_threshold")
             if model_confidence is not None:
                 confidence_threshold = float(model_confidence)
-            logger.info(f"Segmentation: confidence_threshold={confidence_threshold}, bg_bias={bg_bias}")
+            logger.info(f"Segmentation: confidence_threshold={confidence_threshold}, bg_bias={bg_bias}, buffer_distance={buffer_distance}")
             
             if use_sahi and (img_width > model_width * 1.5 or img_height > model_height * 1.5):
                 # =========================================================
@@ -1216,6 +1255,7 @@ def run_onnx_inference(
                     merge_polygons=merge_polygons,
                     model_type=model_type,
                     bg_bias=bg_bias,
+                    buffer_distance=buffer_distance,
                 )
             else:
                 # =========================================================
@@ -1230,6 +1270,8 @@ def run_onnx_inference(
                     outputs, img_width, img_height, model_width, model_height, confidence_threshold,
                     bg_bias=bg_bias,
                 )
+                if merge_polygons and all_detections:
+                    all_detections = _merge_adjacent_polygons(all_detections, img_width, img_height, buffer_distance=buffer_distance)
             
             logger.info(f"SegFormer: {len(all_detections)} polygones détectés")
             

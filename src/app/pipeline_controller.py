@@ -17,6 +17,11 @@ def file_logging(output_dir: Optional[Path], reporter: ProgressReporter) -> Iter
     file_handler = None
     root_logger = None
     root_prev_level = None
+    # Le logger "archeologia_pipeline" a propagate=False (pour éviter les
+    # doublons dans la console QGIS).  On doit lui attacher le FileHandler
+    # directement, sinon tous les messages émis via reporter.info() / slog
+    # sont perdus dans le fichier de log.
+    app_logger = logging.getLogger("archeologia_pipeline")
 
     try:
         if output_dir is not None:
@@ -31,11 +36,13 @@ def file_logging(output_dir: Optional[Path], reporter: ProgressReporter) -> Iter
             if root_prev_level > logging.INFO:
                 root_logger.setLevel(logging.INFO)
             root_logger.addHandler(file_handler)
+            app_logger.addHandler(file_handler)
             reporter.info(f"Logs écrits dans: {log_path}")
         yield
     finally:
         try:
             if file_handler is not None:
+                app_logger.removeHandler(file_handler)
                 if root_logger is not None:
                     root_logger.removeHandler(file_handler)
                 file_handler.close()

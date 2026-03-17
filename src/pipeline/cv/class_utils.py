@@ -4,7 +4,11 @@ Utilitaires centralisés pour la gestion des classes de détection CV.
 Ce module fournit une source unique de vérité pour:
 - Chargement des noms de classes depuis le modèle
 - Normalisation des class IDs (gestion 0-indexé vs 1-indexé)
-- Mapping class_id <-> class_name
+- Palette de couleurs et mapping class_id <-> couleur
+
+La résolution des chemins et configuration des modèles (SAHI, runs, etc.)
+est dans model_config.py.  Les symboles sont réexportés ici pour
+rétrocompatibilité.
 """
 from __future__ import annotations
 
@@ -13,195 +17,17 @@ import logging
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Union
 
+# Réexportation depuis model_config (rétrocompatibilité : tous les imports
+# existants ``from .class_utils import resolve_cv_runs`` continuent de fonctionner).
+from .model_config import (  # noqa: F401
+    resolve_cv_runs,
+    resolve_model_weights_path,
+    load_sahi_config_from_model,
+    is_rfdetr_model,
+    _resolve_model_dir,
+)
+
 logger = logging.getLogger(__name__)
-
-
-def resolve_cv_runs(cv_config: Dict) -> List[Dict]:
-    """
-    Résout la liste des runs CV depuis la configuration.
-    
-    Chaque run est un dict cv_config complet avec son propre
-    ``selected_model`` et ``target_rvt``.
-    
-    Rétrocompatible : si ``runs`` est absent ou vide, utilise
-    ``selected_model`` + ``target_rvt`` comme unique run.
-    """
-    if not isinstance(cv_config, dict):
-        return []
-
-    runs_raw = cv_config.get("runs")
-    if not isinstance(runs_raw, list) or not runs_raw:
-        # Ancien format mono-modèle
-        model = str(cv_config.get("selected_model") or "").strip()
-        rvt = str(cv_config.get("target_rvt") or "LD").strip()
-        if not model:
-            return []
-        run_cfg = dict(cv_config, selected_model=model, target_rvt=rvt)
-        model_path = _resolve_model_path_for_sahi(model, cv_config)
-        if model_path:
-            run_cfg["sahi"] = load_sahi_config_from_model(model_path)
-        return [run_cfg]
-
-    result = []
-    for run in runs_raw:
-        if not isinstance(run, dict):
-            continue
-        model = str(run.get("model") or "").strip()
-        if not model:
-            continue
-        rvt = str(run.get("target_rvt") or "LD").strip()
-        # Construire un cv_config complet pour ce run
-        run_cfg = dict(cv_config, selected_model=model, target_rvt=rvt)
-        # Propager les champs spécifiques au run
-        if "selected_classes" in run:
-            run_cfg["selected_classes"] = run["selected_classes"]
-        if "min_area_m2" in run:
-            run_cfg["min_area_m2"] = float(run["min_area_m2"])
-        # Charger la config SAHI depuis le dossier du modèle
-        model_path = _resolve_model_path_for_sahi(model, cv_config)
-        if model_path:
-            run_cfg["sahi"] = load_sahi_config_from_model(model_path)
-        result.append(run_cfg)
-    return result
-
-
-def _resolve_model_path_for_sahi(model: str, cv_config: Dict) -> Optional[Path]:
-    """
-    Résout le chemin du modèle pour charger sa config SAHI.
-    Utilise la même logique que resolve_model_weights_path.
-    """
-    model_p = Path(model)
-    if model_p.exists():
-        return model_p
-    models_dir = Path((cv_config or {}).get("models_dir", "models"))
-    candidate = models_dir / model
-    if candidate.exists():
-        return candidate
-    # Essayer avec weights/best.onnx
-    for ext in ("best.onnx", "best.pt"):
-        w = models_dir / model / "weights" / ext
-        if w.exists():
-            return w
-    return None
-
-
-def _resolve_model_dir(model_path: Union[str, Path]) -> Path:
-    """
-    Résout le dossier racine du modèle à partir d'un chemin de fichier weights
-    ou d'un dossier modèle.
-    
-    Structure typique : model_name/weights/best.pt → model_name/
-    """
-    model_path = Path(model_path)
-    if model_path.is_file():
-        if model_path.parent.name == "weights":
-            return model_path.parent.parent
-        return model_path.parent
-    return model_path
-
-
-def resolve_model_weights_path(cv_config: Dict) -> Optional[Path]:
-    """
-    Résout le chemin complet vers le fichier weights du modèle CV
-    à partir de la configuration.
-    
-    Cherche dans l'ordre :
-    1. Chemin direct si le fichier existe
-    2. models_dir / selected_model / weights / best.onnx
-    3. models_dir / selected_model / weights / best.pt
-    
-    Returns:
-        Path vers le fichier weights ou None si non trouvé
-    """
-    selected_model = str((cv_config or {}).get("selected_model", "")).strip()
-    if not selected_model:
-        return None
-    
-    model_path = Path(selected_model)
-    if model_path.exists() and model_path.is_file():
-        return model_path
-    
-    models_dir = Path((cv_config or {}).get("models_dir", "models"))
-    
-    # Chercher best.onnx en priorité, puis best.pt
-    for ext in ("best.onnx", "best.pt"):
-        candidate = models_dir / selected_model / "weights" / ext
-        if candidate.exists():
-            return candidate
-    
-    # Fallback : chemin par défaut (même s'il n'existe pas encore)
-    return models_dir / selected_model / "weights" / "best.pt"
-
-
-def load_sahi_config_from_model(model_path: Union[str, Path]) -> Dict:
-    """
-    Charge la configuration SAHI depuis le args.yaml du modèle.
-    
-    Args:
-        model_path: Chemin vers le fichier weights ou le dossier du modèle
-        
-    Returns:
-        Dict avec slice_height, slice_width, overlap_ratio.
-        Valeurs par défaut (640, 640, 0.2) si non trouvé.
-    """
-    defaults = {"slice_height": 640, "slice_width": 640, "overlap_ratio": 0.2}
-    model_dir = _resolve_model_dir(model_path)
-    args_file = model_dir / "args.yaml"
-    if not args_file.exists():
-        logger.debug(f"Pas de args.yaml dans {model_dir}, SAHI par défaut")
-        return defaults
-    try:
-        import yaml
-        with open(args_file, 'r', encoding='utf-8') as f:
-            args = yaml.safe_load(f)
-        if isinstance(args, dict):
-            sahi = args.get("sahi")
-            if isinstance(sahi, dict):
-                result = {
-                    "slice_height": int(sahi.get("slice_height", defaults["slice_height"])),
-                    "slice_width": int(sahi.get("slice_width", defaults["slice_width"])),
-                    "overlap_ratio": float(sahi.get("overlap_ratio", defaults["overlap_ratio"])),
-                }
-                logger.info(f"SAHI config chargée depuis {args_file.name}: {result}")
-                return result
-    except Exception as e:
-        logger.warning(f"Erreur lecture SAHI depuis args.yaml: {e}")
-    return defaults
-
-
-def is_rfdetr_model(model_path: Union[str, Path]) -> bool:
-    """
-    Détecte si le modèle est un modèle RF-DETR en lisant args.yaml.
-    
-    RF-DETR utilise des class IDs 1-indexés, contrairement à YOLO (0-indexé).
-    
-    Args:
-        model_path: Chemin vers le fichier weights ou le dossier du modèle
-        
-    Returns:
-        True si RF-DETR, False sinon (YOLO par défaut)
-    """
-    model_dir = _resolve_model_dir(model_path)
-    
-    # Chercher args.yaml
-    args_file = model_dir / "args.yaml"
-    if not args_file.exists():
-        return False
-    
-    try:
-        import yaml
-        with open(args_file, 'r', encoding='utf-8') as f:
-            args = yaml.safe_load(f)
-        
-        if isinstance(args, dict):
-            model_type = str(args.get("model", "")).lower().strip()
-            if "rf-detr" in model_type or "rfdetr" in model_type:
-                logger.info(f"Modèle RF-DETR détecté via args.yaml: {model_type}")
-                return True
-    except Exception as e:
-        logger.warning(f"Erreur lecture args.yaml: {e}")
-    
-    return False
 
 
 def load_class_names_from_model(model_path: Union[str, Path]) -> Optional[List[str]]:
@@ -265,69 +91,6 @@ def load_class_names_from_model(model_path: Union[str, Path]) -> Optional[List[s
     return None
 
 
-def get_num_classes_from_model(model_path: Union[str, Path]) -> Optional[int]:
-    """
-    Retourne le nombre de classes du modèle.
-    
-    Args:
-        model_path: Chemin vers le modèle
-        
-    Returns:
-        Nombre de classes ou None si non déterminable
-    """
-    class_names = load_class_names_from_model(model_path)
-    if class_names:
-        return len(class_names)
-    
-    # Fallback: essayer de lire depuis le modèle YOLO directement
-    try:
-        from ultralytics import YOLO
-        model = YOLO(str(model_path))
-        if hasattr(model, 'names') and model.names:
-            return len(model.names)
-    except Exception:
-        pass
-    
-    return None
-
-
-def normalize_class_id(
-    class_id: int,
-    num_classes: int,
-    *,
-    detected_min_id: Optional[int] = None,
-    detected_max_id: Optional[int] = None,
-) -> int:
-    """
-    Normalise un class_id pour garantir qu'il est 0-indexé.
-    
-    Détecte automatiquement si les IDs sont 1-indexés et les corrige.
-    
-    Args:
-        class_id: L'ID de classe brut depuis YOLO
-        num_classes: Nombre total de classes dans le modèle
-        detected_min_id: ID minimum détecté dans le batch (pour détection 1-indexé)
-        detected_max_id: ID maximum détecté dans le batch (pour détection 1-indexé)
-        
-    Returns:
-        class_id normalisé (0-indexé, borné à [0, num_classes-1])
-    """
-    # Détection des IDs 1-indexés:
-    # Si min >= 1, pas de 0, et max >= num_classes → probablement 1-indexé
-    if detected_min_id is not None and detected_max_id is not None:
-        if detected_min_id >= 1 and detected_max_id >= num_classes:
-            # Décaler de -1
-            class_id = class_id - 1
-    
-    # Borner à [0, num_classes - 1]
-    if class_id < 0:
-        class_id = 0
-    elif class_id >= num_classes:
-        class_id = num_classes - 1
-    
-    return class_id
-
-
 def detect_indexing_offset(class_ids: List[int], num_classes: int) -> int:
     """
     Détecte si les class_ids sont 1-indexés et retourne l'offset à appliquer.
@@ -355,46 +118,6 @@ def detect_indexing_offset(class_ids: List[int], num_classes: int) -> int:
         return -1
     
     return 0
-
-
-def class_id_to_name(
-    class_id: int,
-    class_names: Optional[List[str]],
-    *,
-    offset: int = 0,
-) -> str:
-    """
-    Convertit un class_id en nom de classe.
-    
-    Args:
-        class_id: ID de classe (après normalisation si nécessaire)
-        class_names: Liste des noms de classes (0-indexée)
-        offset: Offset à appliquer (ex: -1 si 1-indexé)
-        
-    Returns:
-        Nom de la classe ou fallback "classe_N"
-    """
-    adjusted_id = class_id + offset
-    
-    if class_names and 0 <= adjusted_id < len(class_names):
-        return class_names[adjusted_id].strip()
-    
-    return f"classe_{class_id + 1}"
-
-
-def create_class_mapping(class_names: List[str]) -> Tuple[Dict[int, str], Dict[str, int]]:
-    """
-    Crée des mappings bidirectionnels class_id <-> class_name.
-    
-    Args:
-        class_names: Liste des noms de classes (0-indexée)
-        
-    Returns:
-        Tuple (id_to_name, name_to_id)
-    """
-    id_to_name = {i: name.strip() for i, name in enumerate(class_names)}
-    name_to_id = {name.strip(): i for i, name in enumerate(class_names)}
-    return id_to_name, name_to_id
 
 
 # Palette de couleurs de base (12 couleurs numérotées 0-11)

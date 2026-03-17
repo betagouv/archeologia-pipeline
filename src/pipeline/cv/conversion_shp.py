@@ -869,9 +869,10 @@ def create_shapefile_from_detections(
                 y_origin = y_anchor + 1000.0
                 transform_source = "filename_fallback"
             
-            # Chercher d'abord le fichier JSON correspondant pour les données de confiance
+            # Chercher d'abord le fichier JSON correspondant pour les données de confiance et les trous
             json_file = label_file.with_suffix('.json')
             confidence_data = {}
+            holes_data = {}  # {detection_idx: [[x,y,...], ...]} coordonnées normalisées des trous
             
             if json_file.exists():
                 try:
@@ -881,9 +882,13 @@ def create_shapefile_from_detections(
                         detections_list = json_data.get('detections', [])
                         for idx, detection in enumerate(detections_list):
                             confidence_data[idx] = detection.get('confidence')
+                            if 'polygon_holes' in detection:
+                                holes_data[idx] = detection['polygon_holes']
                     logger.info(
                         f"Données de confiance chargées depuis {json_file.name}: {len(confidence_data)} détections avec confiance"
                     )
+                    if holes_data:
+                        logger.info(f"Trous détectés dans {json_file.name}: {len(holes_data)} polygone(s) avec trou(s)")
                     logger.debug(f"Données de confiance: {confidence_data}")
                 except Exception as e:
                     logger.warning(f"Erreur lors de la lecture du fichier JSON {json_file}: {e}")
@@ -902,6 +907,7 @@ def create_shapefile_from_detections(
                         # Format YOLO-seg: class_id x1 y1 x2 y2 ... xn yn
                         is_segmentation = False
                         seg_points_rel = None
+                        seg_holes_rel = None
                         confidence = None
 
                         if len(parts) == 5:
@@ -923,6 +929,7 @@ def create_shapefile_from_detections(
                             is_segmentation = True
                             detection_idx = line_num - 1  # Index 0-based
                             confidence = confidence_data.get(detection_idx)
+                            seg_holes_rel = holes_data.get(detection_idx)  # trous normalisés depuis JSON
                         else:
                             continue
 
@@ -992,7 +999,24 @@ def create_shapefile_from_detections(
                             if poly_coords_geo[0] != poly_coords_geo[-1]:
                                 poly_coords_geo.append(poly_coords_geo[0])
 
-                            bbox_polygon = Polygon(poly_coords_geo)
+                            # Convertir les trous (si présents) en coordonnées géo
+                            geo_holes = []
+                            if seg_holes_rel:
+                                for hole_norm in seg_holes_rel:
+                                    hole_coords_geo = []
+                                    it = iter(hole_norm)
+                                    for x_rel, y_rel in zip(it, it):
+                                        x_px = x_rel * img_width
+                                        y_px = y_rel * img_height
+                                        x_geo = x_origin + (x_px * pixel_width)
+                                        y_geo = y_origin + (y_px * pixel_height)
+                                        hole_coords_geo.append((x_geo, y_geo))
+                                    if len(hole_coords_geo) >= 3:
+                                        if hole_coords_geo[0] != hole_coords_geo[-1]:
+                                            hole_coords_geo.append(hole_coords_geo[0])
+                                        geo_holes.append(hole_coords_geo)
+
+                            bbox_polygon = Polygon(poly_coords_geo, geo_holes)
                         else:
                             # Coordonnées relatives → pixels (centre de la bbox)
                             x_px = x_center_rel * img_width
@@ -1063,9 +1087,6 @@ def create_shapefile_from_detections(
                             "model_pred": class_name,
                             "model_name": model_name,
                             "geometry": bbox_polygon,
-                            # Métadonnées pour synchronisation avec fichiers .txt
-                            "__src_txt": str(label_file),
-                            "__src_line": line_num - 1,  # Index 0-based
                         }
 
                         if confidence is not None:
@@ -1081,6 +1102,7 @@ def create_shapefile_from_detections(
                         conf_bin, conf_color = _confidence_bucket(confidence, color_idx)
                         detection_attrs["conf_bin"] = conf_bin
                         detection_attrs["conf_color"] = conf_color
+                        detection_attrs["__color_idx"] = color_idx
 
                         data_by_class_and_tile[class_id_int][tile_key].append(detection_attrs)
                         
@@ -1156,6 +1178,29 @@ def create_shapefile_from_detections(
             data_by_class_name[class_name].extend(detections)
         
         logger.info(f"Classes regroupées par nom: {list(data_by_class_name.keys())}")
+        
+        # ── Post-traitement global : fusion intra-classe + suppression superpositions ──
+        try:
+            from .postprocessing import postprocess_geo_detections
+            total_raw = sum(len(v) for v in data_by_class_name.values())
+            logger.info(f"Post-traitement géo: {total_raw} détections brutes sur {processed_files} dalles")
+            data_by_class_name = postprocess_geo_detections(data_by_class_name, merge_buffer_m=0.5)
+            total_pp = sum(len(v) for v in data_by_class_name.values())
+            logger.info(f"Post-traitement géo terminé: {total_raw} -> {total_pp} détections")
+        except Exception as e:
+            logger.warning(f"Post-traitement géo ignoré (erreur): {e}")
+        
+        # Recalculer conf_bin/conf_color après post-processing (la confiance a pu changer par fusion)
+        for class_name, detections in data_by_class_name.items():
+            for det in detections:
+                conf = det.get("confidence")
+                if conf is None:
+                    continue
+                if global_color_map and class_name in global_color_map:
+                    cidx = global_color_map[class_name]
+                else:
+                    cidx = det.get("__color_idx", 0)
+                det["conf_bin"], det["conf_color"] = _confidence_bucket(conf, cidx)
         
         for class_name, detections in data_by_class_name.items():
             # Filtrer par classes sélectionnées si spécifié
@@ -1235,8 +1280,10 @@ def create_shapefile_from_detections(
                     except Exception:
                         gdf["confidence"] = gdf["confidence"].astype(str)
 
-                # Note: Les colonnes __src_txt et __src_line sont conservées pour la déduplication
-                # Elles seront supprimées après la déduplication finale
+                # Supprimer les colonnes internes (ne doivent pas apparaître dans le shapefile)
+                internal_cols = [c for c in gdf.columns if c.startswith("__")]
+                if internal_cols:
+                    gdf = gdf.drop(columns=internal_cols, errors="ignore")
 
                 if len(gdf) == 0:
                     logger.warning(

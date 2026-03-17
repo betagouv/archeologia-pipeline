@@ -128,11 +128,14 @@ def save_detections_to_files(
                     y_rel = polygon[i + 1]
                     coords.extend([x_rel, y_rel])
                 f.write(f"{class_id} " + " ".join(f"{v:.6f}" for v in coords) + "\n")
-                detections_data.append({
+                det_entry = {
                     "class_id": class_id,
                     "confidence": confidence,
                     "polygon": polygon,
-                })
+                }
+                if "polygon_holes" in det:
+                    det_entry["polygon_holes"] = det["polygon_holes"]
+                detections_data.append(det_entry)
             elif "bbox" in det:
                 # Format détection: class_id x_center y_center width height
                 x1, y1, x2, y2 = det["bbox"]

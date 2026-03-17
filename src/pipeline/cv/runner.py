@@ -14,6 +14,7 @@ from .external_runner import find_external_cv_runner, run_external_cv_runner
 _find_external_cv_runner = find_external_cv_runner
 
 
+
 def _get_model_slug(cv_config: Dict[str, Any]) -> str:
     """Retourne un slug court et sûr pour le nom du modèle (pour nommer les sous-dossiers)."""
     selected = cv_config.get("selected_model", "")
@@ -127,6 +128,9 @@ def run_cv_on_folder(
     if ext is not None:
         log(f"Computer Vision: utilisation runner externe -> {ext}")
         try:
+            # Le runner externe ne gère que l'inférence (pas les shapefiles).
+            # La génération shapefile + post-processing global est faite côté
+            # plugin Python (shapely disponible) après le retour du runner.
             run_external_cv_runner(
                 ext=ext,
                 jpg_dir=effective_jpg_dir,
@@ -134,12 +138,25 @@ def run_cv_on_folder(
                 rvt_base_dir=effective_rvt_base,
                 cv_config=cv_config,
                 single_jpg=single_jpg,
-                run_shapefile_dedup=run_shapefile_dedup,
+                run_shapefile_dedup=False,
                 tif_transform_data=tif_transform_data,
                 global_color_map=global_color_map,
                 log=log,
                 cancel_check=cancel_check,
             )
+            # Générer les shapefiles côté plugin (avec shapely + post-processing)
+            if run_shapefile_dedup:
+                shapefile_output_dir = effective_rvt_base / "shapefiles" if effective_rvt_base else effective_jpg_dir.parent / "shapefiles"
+                deduplicate_cv_shapefiles_final(
+                    labels_dir=effective_jpg_dir,
+                    shp_dir=shapefile_output_dir,
+                    target_rvt=target_rvt,
+                    cv_config=cv_config,
+                    tif_transform_data=tif_transform_data,
+                    crs="EPSG:2154",
+                    global_color_map=global_color_map,
+                    log=log,
+                )
             return
         except Exception as e:
             log(f"Computer Vision: échec runner externe, fallback Python ONNX: {e}")
@@ -216,6 +233,10 @@ def _run_fallback_inference(
     log(f"Computer Vision: {len(class_names or [])} classes, couleurs={'oui' if class_colors else 'non'}")
     log(f"SAHI: slice={slice_height}×{slice_width}, overlap={overlap_ratio}")
 
+    # Charger la session ONNX une seule fois pour toutes les images
+    onnx_session = cv_mod._load_onnx_model(str(weights_path))
+    log(f"Computer Vision: session ONNX chargée -> {weights_path.name}")
+
     # Charger les métadonnées du modèle pour afficher les paramètres de segmentation
     _model_meta = {}
     _meta_path = weights_path.with_suffix('.json')
@@ -224,7 +245,7 @@ def _run_fallback_inference(
             _model_meta = json.loads(_meta_path.read_text(encoding="utf-8"))
         except Exception:
             pass
-    _is_segmentation = _model_meta.get("model_type") in ("segformer", "smp") or _model_meta.get("task") == "semantic_segmentation"
+    _is_segmentation = _model_meta.get("model_type") in ("segformer", "smp") or _model_meta.get("task") in ("semantic_segmentation", "instance_segmentation")
     _use_sahi_meta = _model_meta.get("use_sahi", True)
     if _is_segmentation:
         _bg_bias = float(_model_meta.get("bg_bias", 0.0))
@@ -258,6 +279,7 @@ def _run_fallback_inference(
     if not jpg_files:
         return
 
+    force_reprocess = bool(cv_config.get("force_reprocess", False))
     success_count = 0
     skipped_already_processed = 0
 
@@ -273,7 +295,7 @@ def _run_fallback_inference(
         )
         annotated_img = Path(detection_output_path)
 
-        if annotated_img.exists() or labels_txt.exists() or labels_json.exists():
+        if not force_reprocess and (annotated_img.exists() or labels_txt.exists() or labels_json.exists()):
             skipped_already_processed += 1
             continue
 
@@ -293,6 +315,7 @@ def _run_fallback_inference(
             jpg_folder_path=str(jpg_dir),
             class_names=class_names,
             class_colors=class_colors,
+            onnx_session=onnx_session,
         )
         if ok:
             success_count += 1
@@ -339,7 +362,7 @@ def deduplicate_cv_shapefiles_final(
     crs: str = "EPSG:2154",
     log: LogFn = lambda _: None,
 ) -> None:
-    from .conversion_shp import create_shapefile_from_detections, deduplicate_shapefiles_final
+    from .conversion_shp import create_shapefile_from_detections, _filter_shapefiles_by_min_area
     log("Computer Vision: conversion shapefile -> src.pipeline.cv.conversion_shp")
 
     class_names = None
@@ -356,7 +379,9 @@ def deduplicate_cv_shapefiles_final(
 
     shp_dir.mkdir(parents=True, exist_ok=True)
 
-    # Générer les shapefiles par classe
+    # Générer les shapefiles par classe (le post-processing global
+    # — fusion des polygones adjacents + suppression des superpositions —
+    # est intégré directement dans create_shapefile_from_detections)
     out_shp = shp_dir / f"detections_{target_rvt}.shp"
     _raw_classes = (cv_config or {}).get("selected_classes")
     selected_classes = _raw_classes if isinstance(_raw_classes, list) else None
@@ -379,20 +404,16 @@ def deduplicate_cv_shapefiles_final(
     except Exception as e:
         log(f"Computer Vision: génération shapefile/projet QGIS ignorée (erreur): {e}")
 
-    # Déduplication par IoU + filtrage par aire minimale
-    shapefile_paths = [str(p) for p in shp_dir.glob("*.shp")]
-    if shapefile_paths:
-        try:
-            min_area_m2 = float((cv_config or {}).get("min_area_m2", 0.0))
-            area_filter_enabled = min_area_m2 > 0
-
-            deduplicate_shapefiles_final(
-                labels_dir=str(labels_dir),
-                shapefile_paths=shapefile_paths,
-                iou_threshold=0.1,
-                crs=str(crs),
-                area_filter_enabled=area_filter_enabled,
-                area_filter_min_m2=min_area_m2,
-            )
-        except Exception as e:
-            log(f"Computer Vision: déduplication shapefiles ignorée (erreur): {e}")
+    # Filtrage par aire minimale (optionnel)
+    min_area_m2 = float((cv_config or {}).get("min_area_m2", 0.0))
+    if min_area_m2 > 0:
+        shapefile_paths = [str(p) for p in shp_dir.glob("*.shp")]
+        if shapefile_paths:
+            try:
+                _filter_shapefiles_by_min_area(
+                    shapefile_paths=shapefile_paths,
+                    min_area_m2=min_area_m2,
+                    crs=str(crs),
+                )
+            except Exception as e:
+                log(f"Computer Vision: filtrage par aire ignoré (erreur): {e}")

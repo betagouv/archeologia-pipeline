@@ -655,6 +655,7 @@ def create_shapefile_from_detections(
     selected_classes: list = None,
     class_colors: list = None,
     global_color_map: dict = None,
+    model_task: str = None,
 ) -> bool:
     """
     Crée des shapefiles géoréférencés à partir des fichiers de détection YOLO
@@ -1180,15 +1181,25 @@ def create_shapefile_from_detections(
         logger.info(f"Classes regroupées par nom: {list(data_by_class_name.keys())}")
         
         # ── Post-traitement global : fusion intra-classe + suppression superpositions ──
-        try:
-            from .postprocessing import postprocess_geo_detections
-            total_raw = sum(len(v) for v in data_by_class_name.values())
-            logger.info(f"Post-traitement géo: {total_raw} détections brutes sur {processed_files} dalles")
-            data_by_class_name = postprocess_geo_detections(data_by_class_name, merge_buffer_m=0.5)
-            total_pp = sum(len(v) for v in data_by_class_name.values())
-            logger.info(f"Post-traitement géo terminé: {total_raw} -> {total_pp} détections")
-        except Exception as e:
-            logger.warning(f"Post-traitement géo ignoré (erreur): {e}")
+        # La fusion des polygones adjacents (merge) ne s'applique qu'aux modèles
+        # de segmentation (instance_segmentation, semantic_segmentation) qui
+        # produisent des polygones linéaires pouvant se toucher entre dalles.
+        # Les modèles de détection (object_detection) produisent des bounding
+        # boxes indépendantes qui ne doivent pas être fusionnées.
+        _segmentation_tasks = {"instance_segmentation", "semantic_segmentation", "segment"}
+        _do_postprocess = model_task in _segmentation_tasks if model_task else True
+        total_raw = sum(len(v) for v in data_by_class_name.values())
+        if _do_postprocess:
+            try:
+                from .postprocessing import postprocess_geo_detections
+                logger.info(f"Post-traitement géo: {total_raw} détections brutes sur {processed_files} dalles (task={model_task})")
+                data_by_class_name = postprocess_geo_detections(data_by_class_name, merge_buffer_m=0.5)
+                total_pp = sum(len(v) for v in data_by_class_name.values())
+                logger.info(f"Post-traitement géo terminé: {total_raw} -> {total_pp} détections")
+            except Exception as e:
+                logger.warning(f"Post-traitement géo ignoré (erreur): {e}")
+        else:
+            logger.info(f"Post-traitement géo désactivé pour modèle de détection bbox (task={model_task}), {total_raw} détections conservées intactes")
         
         # Recalculer conf_bin/conf_color après post-processing (la confiance a pu changer par fusion)
         for class_name, detections in data_by_class_name.items():

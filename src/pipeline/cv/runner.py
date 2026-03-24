@@ -159,6 +159,9 @@ def run_cv_on_folder(
                 )
             return
         except Exception as e:
+            # Si l'utilisateur a annulé, propager l'erreur sans fallback
+            if "annul" in str(e).lower() or "cancel" in str(e).lower():
+                raise
             log(f"Computer Vision: échec runner externe, fallback Python ONNX: {e}")
 
     # 2) Fallback : inférence ONNX en Python (onnxruntime)
@@ -182,6 +185,7 @@ def run_cv_on_folder(
         run_shapefile_dedup=run_shapefile_dedup,
         global_color_map=global_color_map,
         log=log,
+        cancel_check=cancel_check,
     )
 
 
@@ -200,6 +204,7 @@ def _run_fallback_inference(
     run_shapefile_dedup: bool = True,
     global_color_map: Optional[Dict[str, int]] = None,
     log: LogFn = lambda _: None,
+    cancel_check: Optional[CancelCheckFn] = None,
 ) -> None:
     """Inférence ONNX image par image via computer_vision_onnx (fallback Python)."""
     from . import computer_vision_onnx as cv_mod
@@ -284,6 +289,9 @@ def _run_fallback_inference(
     skipped_already_processed = 0
 
     for jpg_file in jpg_files:
+        if cancel_check and cancel_check():
+            log("Computer Vision: Annulation demandée, arrêt de l'inférence...")
+            raise RuntimeError("Computer Vision: Annulé par l'utilisateur")
         image_name = jpg_file.stem
         labels_txt = jpg_dir / f"{image_name}.txt"
         labels_json = jpg_dir / f"{image_name}.json"
@@ -367,6 +375,7 @@ def deduplicate_cv_shapefiles_final(
 
     class_names = None
     class_colors = None
+    model_task = None
     try:
         from .class_utils import resolve_model_weights_path, load_class_names_from_model, load_class_colors_from_model
         if isinstance(cv_config, dict):
@@ -374,6 +383,16 @@ def deduplicate_cv_shapefiles_final(
             if weights_path and weights_path.exists():
                 class_names = load_class_names_from_model(weights_path)
                 class_colors = load_class_colors_from_model(weights_path)
+                # Lire le type de tâche depuis les métadonnées du modèle
+                meta_path = weights_path.with_suffix('.json')
+                if meta_path.exists():
+                    try:
+                        import json as _json
+                        _meta = _json.loads(meta_path.read_text(encoding='utf-8'))
+                        model_task = _meta.get('task')
+                        log(f"Computer Vision: tâche du modèle = {model_task}")
+                    except Exception:
+                        pass
     except Exception as e:
         log(f"Computer Vision: impossible de récupérer les noms de classes depuis le modèle: {e}")
 
@@ -396,6 +415,7 @@ def deduplicate_cv_shapefiles_final(
             selected_classes=selected_classes,
             class_colors=class_colors,
             global_color_map=global_color_map if global_color_map else None,
+            model_task=model_task,
         )
         qgs_root = shp_dir.parent if shp_dir.name.lower() in {"shapefiles", "shp"} else shp_dir
         qgs_path = qgs_root / "detections_validation.qgs"

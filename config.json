@@ -1,12 +1,12 @@
 {
   "app": {
     "files": {
-      "output_dir": "D:/pipeline_results/output_57_Fenetrange_TA_LHD",
+      "output_dir": "D:/pipeline_results/output_78_foret_domaine_regional",
       "data_mode": "existing_rvt",
-      "input_file": "D:/pipeline_results/data/TestIALidarHautesChaumesForez/TestIALidarHautesChaumesForez.txt",
+      "input_file": "D:/pipeline_results/data/data_carrieres/dalles_carriere.txt",
       "local_laz_dir": "D:/pipeline_results/output_TA_LHD/dalles",
       "existing_mnt_dir": "D:/Rambouillet_Archeo/output_dalles/results/MNT/tif",
-      "existing_rvt_dir": "D:/pipeline_results/output_57_Fenetrange_TA_LHD/results/RVT/LD_A15_Rmin10_Rmax20_H1p7_V1/tif"
+      "existing_rvt_dir": "D:/pipeline_results/output_78_foret_domaine_regional/results/RVT/LD_A15_Rmin10_Rmax20_H1p7_V1/tif"
     }
   },
   "processing": {
@@ -29,7 +29,7 @@
       "MNT": true,
       "DENSITE": false,
       "M_HS": false,
-      "SVF": false,
+      "SVF": true,
       "SLO": false,
       "LD": true,
       "SLRM": false,
@@ -50,17 +50,17 @@
     "enabled": true,
     "runs": [
       {
-        "model": "C:\\Users\\valen\\AppData\\Roaming\\QGIS\\QGIS3\\profiles\\default\\python\\plugins\\archeologia-pipeline\\models\\formes_lineaires_ld_a15_rmin10_rm_rfdetr_seg_1\\weights\\best.onnx",
-        "target_rvt": "LD",
-        "min_area_m2": 100.0
-      },
-      {
         "model": "C:\\Users\\valen\\AppData\\Roaming\\QGIS\\QGIS3\\profiles\\default\\python\\plugins\\archeologia-pipeline\\models\\run_rf_detr_1\\weights\\best.onnx",
         "target_rvt": "LD",
         "min_area_m2": 0.0
+      },
+      {
+        "model": "C:\\Users\\valen\\AppData\\Roaming\\QGIS\\QGIS3\\profiles\\default\\python\\plugins\\archeologia-pipeline\\models\\formes_lineaires_ld_a15_rmin10_rm_rfdetr_seg_1\\weights\\best.onnx",
+        "target_rvt": "LD",
+        "min_area_m2": 100.0
       }
     ],
-    "selected_model": "C:\\Users\\valen\\AppData\\Roaming\\QGIS\\QGIS3\\profiles\\default\\python\\plugins\\archeologia-pipeline\\models\\formes_lineaires_ld_a15_rmin10_rm_rfdetr_seg_1\\weights\\best.onnx",
+    "selected_model": "C:\\Users\\valen\\AppData\\Roaming\\QGIS\\QGIS3\\profiles\\default\\python\\plugins\\archeologia-pipeline\\models\\run_rf_detr_1\\weights\\best.onnx",
     "target_rvt": "LD",
     "confidence_threshold": 0.2,
     "iou_threshold": 0.5,
@@ -74,12 +74,12 @@
     },
     "export_runner_config": true,
     "selected_classes": [
-      "chemin_creux",
-      "parcellaire",
-      "talus-fosse_fossebutte",
       "charbonnière",
       "circular_depression",
-      "four"
+      "four",
+      "chemin_creux",
+      "parcellaire",
+      "talus-fosse_fossebutte"
     ],
     "model_classes_config": {
       "tranchee-instance-segmentation-train-v0-added-epochs": [

@@ -707,8 +707,13 @@ class MainDialog(QDialog):
 
                 layer = QgsVectorLayer(shp_path_str, layer_name, "ogr")
                 if layer.isValid():
-                    # Appliquer le style avec la couleur correspondant à la classe (depuis BASE_COLOR_PALETTE)
-                    self._apply_confidence_style_unified(layer, color_idx, get_color_for_confidence)
+                    # Détecter si c'est une couche cluster (présence du champ nb_detect)
+                    _is_cluster = layer.fields().indexFromName("nb_detect") >= 0
+                    if _is_cluster:
+                        self._apply_cluster_style(layer)
+                    else:
+                        # Appliquer le style avec la couleur correspondant à la classe (depuis BASE_COLOR_PALETTE)
+                        self._apply_confidence_style_unified(layer, color_idx, get_color_for_confidence)
                     
                     project.addMapLayer(layer)
                     loaded_layers.append(layer)
@@ -741,6 +746,49 @@ class MainDialog(QDialog):
 
         except Exception as e:
             self._logger.error(f"Erreur lors du chargement des couches: {e}")
+
+    def _apply_cluster_style(self, layer) -> None:
+        """Applique un style quadrillage noir (cross hatch) pour les couches de cluster."""
+        try:
+            from qgis.core import (
+                QgsFillSymbol,
+                QgsSingleSymbolRenderer,
+                QgsLinePatternFillSymbolLayer,
+                QgsSimpleLineSymbolLayer,
+            )
+            from qgis.PyQt.QtGui import QColor
+
+            symbol = QgsFillSymbol()
+            symbol.deleteSymbolLayer(0)
+
+            # Première direction de hachures (45°)
+            hatch1 = QgsLinePatternFillSymbolLayer()
+            hatch1.setLineAngle(45)
+            hatch1.setDistance(3.0)
+            hatch1.setLineWidth(0.4)
+            hatch1.setColor(QColor(0, 0, 0))
+            symbol.appendSymbolLayer(hatch1)
+
+            # Deuxième direction (135°) pour le quadrillage
+            hatch2 = QgsLinePatternFillSymbolLayer()
+            hatch2.setLineAngle(135)
+            hatch2.setDistance(3.0)
+            hatch2.setLineWidth(0.4)
+            hatch2.setColor(QColor(0, 0, 0))
+            symbol.appendSymbolLayer(hatch2)
+
+            # Contour noir
+            outline = QgsSimpleLineSymbolLayer()
+            outline.setColor(QColor(0, 0, 0))
+            outline.setWidth(0.6)
+            symbol.appendSymbolLayer(outline)
+
+            renderer = QgsSingleSymbolRenderer(symbol)
+            layer.setRenderer(renderer)
+            layer.triggerRepaint()
+            self._logger.info(f"Style cluster (quadrillage noir) appliqué à {layer.name()}")
+        except Exception as e:
+            self._logger.warning(f"Impossible d'appliquer le style cluster: {e}")
 
     def _apply_confidence_style_unified(self, layer, color_idx: int, get_color_for_confidence_fn) -> None:
         """Applique un style catégorisé par confiance avec BASE_COLOR_PALETTE.

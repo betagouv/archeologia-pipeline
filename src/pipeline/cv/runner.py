@@ -376,8 +376,10 @@ def deduplicate_cv_shapefiles_final(
     class_names = None
     class_colors = None
     model_task = None
+    clustering_configs = None
     try:
         from .class_utils import resolve_model_weights_path, load_class_names_from_model, load_class_colors_from_model
+        from .model_config import load_clustering_config_from_model
         if isinstance(cv_config, dict):
             weights_path = resolve_model_weights_path(cv_config)
             if weights_path and weights_path.exists():
@@ -393,6 +395,10 @@ def deduplicate_cv_shapefiles_final(
                         log(f"Computer Vision: tâche du modèle = {model_task}")
                     except Exception:
                         pass
+                # Charger la configuration de clustering
+                clustering_configs = load_clustering_config_from_model(weights_path)
+                if clustering_configs:
+                    log(f"Computer Vision: {len(clustering_configs)} config(s) de clustering chargée(s)")
     except Exception as e:
         log(f"Computer Vision: impossible de récupérer les noms de classes depuis le modèle: {e}")
 
@@ -416,6 +422,7 @@ def deduplicate_cv_shapefiles_final(
             class_colors=class_colors,
             global_color_map=global_color_map if global_color_map else None,
             model_task=model_task,
+            clustering_configs=clustering_configs,
         )
         qgs_root = shp_dir.parent if shp_dir.name.lower() in {"shapefiles", "shp"} else shp_dir
         qgs_path = qgs_root / "detections_validation.qgs"

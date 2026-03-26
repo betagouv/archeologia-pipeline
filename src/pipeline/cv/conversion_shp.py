@@ -656,6 +656,7 @@ def create_shapefile_from_detections(
     class_colors: list = None,
     global_color_map: dict = None,
     model_task: str = None,
+    clustering_configs: list = None,
 ) -> bool:
     """
     Crée des shapefiles géoréférencés à partir des fichiers de détection YOLO
@@ -1213,10 +1214,30 @@ def create_shapefile_from_detections(
                     cidx = det.get("__color_idx", 0)
                 det["conf_bin"], det["conf_color"] = _confidence_bucket(conf, cidx)
         
+        # ── Clustering spatial (optionnel) ──
+        _cluster_class_names = set()
+        if clustering_configs:
+            try:
+                from .clustering import run_clustering
+                logger.info(f"Clustering: {len(clustering_configs)} config(s) à traiter")
+                cluster_dets_by_class, data_by_class_name = run_clustering(
+                    data_by_class_name, clustering_configs
+                )
+                # Ajouter les clusters comme nouvelles classes
+                for cluster_class, cluster_dets in cluster_dets_by_class.items():
+                    data_by_class_name[cluster_class] = cluster_dets
+                    _cluster_class_names.add(cluster_class)
+                    logger.info(f"Clustering: {len(cluster_dets)} polygone(s) ajouté(s) pour '{cluster_class}'")
+            except ImportError as e:
+                logger.warning(f"Clustering ignoré (dépendance manquante): {e}")
+            except Exception as e:
+                logger.warning(f"Clustering ignoré (erreur): {e}")
+        
         for class_name, detections in data_by_class_name.items():
             # Filtrer par classes sélectionnées si spécifié
+            # Les classes de clustering passent toujours (elles n'existent pas dans selected_classes)
             if selected_classes is not None and len(selected_classes) > 0:
-                if class_name not in selected_classes:
+                if class_name not in selected_classes and class_name not in _cluster_class_names:
                     logger.info(f"Classe '{class_name}' ignorée (non sélectionnée)")
                     continue
             
@@ -1279,7 +1300,7 @@ def create_shapefile_from_detections(
                     pass
 
                 # 4) Normalisation des colonnes attributaires (évite types mixtes)
-                text_cols = ["validation", "corr_pred", "model_pred", "model_name", "conf_bin", "conf_color"]
+                text_cols = ["validation", "corr_pred", "model_pred", "model_name", "conf_bin", "conf_color", "cluster_id"]
                 for col in text_cols:
                     if col in gdf.columns:
                         gdf[col] = gdf[col].fillna("").astype(str)
@@ -1290,6 +1311,15 @@ def create_shapefile_from_detections(
                         gdf["confidence"] = gdf["confidence"].astype(float)
                     except Exception:
                         gdf["confidence"] = gdf["confidence"].astype(str)
+
+                # Colonnes numériques de clustering
+                for ncol in ("nb_detect", "area_m2", "density"):
+                    if ncol in gdf.columns:
+                        gdf[ncol] = gdf[ncol].fillna(0)
+                        try:
+                            gdf[ncol] = gdf[ncol].astype(float)
+                        except Exception:
+                            pass
 
                 # Supprimer les colonnes internes (ne doivent pas apparaître dans le shapefile)
                 internal_cols = [c for c in gdf.columns if c.startswith("__")]
@@ -1444,6 +1474,7 @@ def create_shapefile_from_detections(
             all_classes=all_classes,
             crs=crs,
             class_colors=class_colors,
+            cluster_class_names=_cluster_class_names if _cluster_class_names else None,
         )
 
         return True

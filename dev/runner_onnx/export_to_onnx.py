@@ -858,6 +858,7 @@ def export_rfdetr_to_onnx(
         class_names = None
         
         # Essayer de charger depuis args.yaml
+        task = None
         args_file = model_dir / "args.yaml"
         if args_file.exists():
             try:
@@ -866,8 +867,24 @@ def export_rfdetr_to_onnx(
                     args = yaml.safe_load(f)
                 if isinstance(args, dict):
                     num_classes = args.get("nc") or args.get("num_classes")
+                    task = args.get("task")
             except Exception:
                 pass
+        
+        # Essayer de charger depuis config.json si task pas encore trouvé
+        if not task:
+            config_file = model_dir / "config.json"
+            if config_file.exists():
+                try:
+                    config = json.loads(config_file.read_text(encoding='utf-8'))
+                    task = config.get("task")
+                except Exception:
+                    pass
+        
+        # Fallback: object_detection par défaut
+        if not task:
+            task = "object_detection"
+        print(f"[INFO] Tâche détectée: {task}")
         
         # Essayer de charger depuis classes.txt
         classes_file = model_dir / "classes.txt"
@@ -883,7 +900,7 @@ def export_rfdetr_to_onnx(
         meta_path = output_path.with_suffix('.json')
         meta = {
             "model_type": "rfdetr",
-            "task": "object_detection",
+            "task": task,
             "resolution": resolution,
             "class_offset": 1,  # RF-DETR utilise des class IDs 1-indexés
             "source": str(model_path),

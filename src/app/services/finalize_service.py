@@ -188,6 +188,7 @@ def _generate_consolidated_qgs_project(
     results_dir: Path,
     log: LogFn,
     global_color_map: Optional[Dict[str, int]] = None,
+    cluster_class_names: Optional[set] = None,
 ) -> None:
     """Génère un projet QGIS consolidé avec les shapefiles de tous les runs."""
     if not shapefile_paths:
@@ -204,6 +205,7 @@ def _generate_consolidated_qgs_project(
             crs="EPSG:2154",
             class_colors=class_colors,
             global_color_map=global_color_map,
+            cluster_class_names=cluster_class_names,
         )
         if qgs_path:
             log(f"Projet QGIS consolidé (multi-modèles) généré: {qgs_path}")
@@ -265,7 +267,22 @@ def finalize_pipeline(
         # Fallback mono-modèle
         class_colors = _load_class_colors(cv_cfg or {})
 
-    # 3b. Projet QGIS consolidé (multi-modèles)
+    # 3b. Collecter les noms de classes cluster depuis les configs des modèles
+    cluster_class_names: set = set()
+    try:
+        from ...pipeline.cv.model_config import load_clustering_config_from_model
+        from ...pipeline.cv.class_utils import resolve_model_weights_path
+        for run_cfg in cv_runs:
+            wp = resolve_model_weights_path(run_cfg)
+            if wp and wp.exists():
+                cc = load_clustering_config_from_model(wp)
+                if cc:
+                    for c in cc:
+                        cluster_class_names.add(c.get("output_class_name", ""))
+    except Exception:
+        pass
+
+    # 3c. Projet QGIS consolidé (multi-modèles)
     if shapefile_paths and cv_runs:
         _generate_consolidated_qgs_project(
             shapefile_paths=shapefile_paths,
@@ -274,6 +291,7 @@ def finalize_pipeline(
             results_dir=results_dir,
             log=log,
             global_color_map=global_color_map,
+            cluster_class_names=cluster_class_names if cluster_class_names else None,
         )
 
     # 4. Logs de fin de pipeline

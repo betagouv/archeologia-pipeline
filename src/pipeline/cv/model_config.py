@@ -119,6 +119,80 @@ def load_sahi_config_from_model(model_path: Union[str, Path]) -> Dict:
     return defaults
 
 
+def load_clustering_config_from_model(model_path: Union[str, Path]) -> Optional[List[Dict]]:
+    """
+    Charge la configuration de clustering depuis le args.yaml du modèle.
+    
+    Format attendu dans args.yaml:
+        clustering:
+          - target_classes: ["cratere_obus"]
+            min_confidence: 0.5
+            min_cluster_size: 10
+            min_samples: 5
+            eps_m: 30
+            output_class_name: "zone_crateres"
+            output_geometry: "convex_hull"
+            buffer_m: 10
+            min_area_m2: 500
+    
+    Args:
+        model_path: Chemin vers le fichier weights ou le dossier du modèle
+        
+    Returns:
+        Liste de configs clustering, ou None si non défini / désactivé
+    """
+    model_dir = _resolve_model_dir(model_path)
+    args_file = model_dir / "args.yaml"
+    if not args_file.exists():
+        return None
+    try:
+        import yaml
+        with open(args_file, 'r', encoding='utf-8') as f:
+            args = yaml.safe_load(f)
+        if not isinstance(args, dict):
+            return None
+        clustering_raw = args.get("clustering")
+        if not clustering_raw:
+            return None
+        # Accepter un dict unique ou une liste
+        if isinstance(clustering_raw, dict):
+            clustering_raw = [clustering_raw]
+        if not isinstance(clustering_raw, list):
+            return None
+        configs = []
+        for cfg in clustering_raw:
+            if not isinstance(cfg, dict):
+                continue
+            # Accepter target_classes (liste) ou target_class (str)
+            target = cfg.get("target_classes", cfg.get("target_class"))
+            if isinstance(target, str):
+                target = [target]
+            if not isinstance(target, list) or not target:
+                logger.warning("Clustering config ignorée: target_classes manquant ou invalide")
+                continue
+            parsed = {
+                "target_classes": target,
+                "min_confidence": float(cfg.get("min_confidence", 0.0)),
+                "min_cluster_size": int(cfg.get("min_cluster_size", 5)),
+                "min_samples": int(cfg.get("min_samples", 3)),
+                "eps_m": float(cfg.get("eps_m", 30.0)),
+                "output_class_name": str(cfg.get("output_class_name", "")),
+                "output_geometry": str(cfg.get("output_geometry", "convex_hull")),
+                "buffer_m": float(cfg.get("buffer_m", 10.0)),
+                "min_area_m2": float(cfg.get("min_area_m2", 0.0)),
+            }
+            # Nom par défaut basé sur les classes cibles
+            if not parsed["output_class_name"]:
+                parsed["output_class_name"] = f"cluster_{'_'.join(target)}"
+            configs.append(parsed)
+        if configs:
+            logger.info(f"Clustering config chargée depuis {args_file.name}: {len(configs)} config(s)")
+            return configs
+    except Exception as e:
+        logger.warning(f"Erreur lecture clustering depuis args.yaml: {e}")
+    return None
+
+
 def is_rfdetr_model(model_path: Union[str, Path]) -> bool:
     """
     Détecte si le modèle est un modèle RF-DETR en lisant args.yaml.

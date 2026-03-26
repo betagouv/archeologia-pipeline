@@ -81,6 +81,86 @@ def _load_qml_style(style_path: Path):
     return None, None, None
 
 
+def _apply_cluster_symbology(maplayer_el: Element) -> None:
+    """Applique un style quadrillage noir (cross hatch) pour les couches de cluster."""
+    try:
+        renderer = SubElement(
+            maplayer_el,
+            'renderer-v2',
+            attrib={
+                'type': 'singleSymbol',
+                'forceraster': '0',
+                'symbollevels': '0',
+                'enableorderby': '0',
+            },
+        )
+        symbols = SubElement(renderer, 'symbols')
+        sym = SubElement(symbols, 'symbol', attrib={
+            'type': 'fill', 'name': '0', 'alpha': '1',
+            'clip_to_extent': '1', 'force_rhr': '0',
+        })
+        # Quadrillage noir (LinePatternFill)
+        fill_layer = SubElement(sym, 'layer', attrib={
+            'class': 'LinePatternFill', 'enabled': '1', 'locked': '0', 'pass': '0',
+        })
+        opt = SubElement(fill_layer, 'Option', attrib={'type': 'Map'})
+        SubElement(opt, 'Option', attrib={'name': 'angle', 'value': '45', 'type': 'QString'})
+        SubElement(opt, 'Option', attrib={'name': 'color', 'value': '0,0,0,255', 'type': 'QString'})
+        SubElement(opt, 'Option', attrib={'name': 'distance', 'value': '3', 'type': 'QString'})
+        SubElement(opt, 'Option', attrib={'name': 'distance_unit', 'value': 'MM', 'type': 'QString'})
+        SubElement(opt, 'Option', attrib={'name': 'line_width', 'value': '0.4', 'type': 'QString'})
+        SubElement(opt, 'Option', attrib={'name': 'line_width_unit', 'value': 'MM', 'type': 'QString'})
+        SubElement(opt, 'Option', attrib={'name': 'offset', 'value': '0', 'type': 'QString'})
+        # Sous-symbole ligne noire
+        sub_sym = SubElement(fill_layer, 'symbol', attrib={
+            'type': 'line', 'name': '@0@0', 'alpha': '1',
+            'clip_to_extent': '1', 'force_rhr': '0',
+        })
+        sub_layer = SubElement(sub_sym, 'layer', attrib={
+            'class': 'SimpleLine', 'enabled': '1', 'locked': '0', 'pass': '0',
+        })
+        sub_opt = SubElement(sub_layer, 'Option', attrib={'type': 'Map'})
+        SubElement(sub_opt, 'Option', attrib={'name': 'line_color', 'value': '0,0,0,255', 'type': 'QString'})
+        SubElement(sub_opt, 'Option', attrib={'name': 'line_style', 'value': 'solid', 'type': 'QString'})
+        SubElement(sub_opt, 'Option', attrib={'name': 'line_width', 'value': '0.4', 'type': 'QString'})
+        SubElement(sub_opt, 'Option', attrib={'name': 'line_width_unit', 'value': 'MM', 'type': 'QString'})
+        # Deuxième direction du quadrillage (perpendiculaire)
+        fill_layer2 = SubElement(sym, 'layer', attrib={
+            'class': 'LinePatternFill', 'enabled': '1', 'locked': '0', 'pass': '0',
+        })
+        opt2 = SubElement(fill_layer2, 'Option', attrib={'type': 'Map'})
+        SubElement(opt2, 'Option', attrib={'name': 'angle', 'value': '135', 'type': 'QString'})
+        SubElement(opt2, 'Option', attrib={'name': 'color', 'value': '0,0,0,255', 'type': 'QString'})
+        SubElement(opt2, 'Option', attrib={'name': 'distance', 'value': '3', 'type': 'QString'})
+        SubElement(opt2, 'Option', attrib={'name': 'distance_unit', 'value': 'MM', 'type': 'QString'})
+        SubElement(opt2, 'Option', attrib={'name': 'line_width', 'value': '0.4', 'type': 'QString'})
+        SubElement(opt2, 'Option', attrib={'name': 'line_width_unit', 'value': 'MM', 'type': 'QString'})
+        SubElement(opt2, 'Option', attrib={'name': 'offset', 'value': '0', 'type': 'QString'})
+        sub_sym2 = SubElement(fill_layer2, 'symbol', attrib={
+            'type': 'line', 'name': '@0@1', 'alpha': '1',
+            'clip_to_extent': '1', 'force_rhr': '0',
+        })
+        sub_layer2 = SubElement(sub_sym2, 'layer', attrib={
+            'class': 'SimpleLine', 'enabled': '1', 'locked': '0', 'pass': '0',
+        })
+        sub_opt2 = SubElement(sub_layer2, 'Option', attrib={'type': 'Map'})
+        SubElement(sub_opt2, 'Option', attrib={'name': 'line_color', 'value': '0,0,0,255', 'type': 'QString'})
+        SubElement(sub_opt2, 'Option', attrib={'name': 'line_style', 'value': 'solid', 'type': 'QString'})
+        SubElement(sub_opt2, 'Option', attrib={'name': 'line_width', 'value': '0.4', 'type': 'QString'})
+        SubElement(sub_opt2, 'Option', attrib={'name': 'line_width_unit', 'value': 'MM', 'type': 'QString'})
+        # Contour noir
+        outline_layer = SubElement(sym, 'layer', attrib={
+            'class': 'SimpleLine', 'enabled': '1', 'locked': '0', 'pass': '0',
+        })
+        outline_opt = SubElement(outline_layer, 'Option', attrib={'type': 'Map'})
+        SubElement(outline_opt, 'Option', attrib={'name': 'line_color', 'value': '0,0,0,255', 'type': 'QString'})
+        SubElement(outline_opt, 'Option', attrib={'name': 'line_style', 'value': 'solid', 'type': 'QString'})
+        SubElement(outline_opt, 'Option', attrib={'name': 'line_width', 'value': '0.6', 'type': 'QString'})
+        SubElement(outline_opt, 'Option', attrib={'name': 'line_width_unit', 'value': 'MM', 'type': 'QString'})
+    except Exception as e:
+        logger.warning(f"Impossible d'appliquer la symbologie cluster: {e}")
+
+
 def _apply_confidence_symbology(maplayer_el: Element, color_index: int = 0) -> None:
     """Applique un renderer catégorisé QGIS sur le champ conf_bin."""
     try:
@@ -134,6 +214,7 @@ def _add_vector_layer(
     style_selection: Optional[Element],
     style_customprops: Optional[Element],
     global_color_map: Optional[Dict[str, int]] = None,
+    cluster_class_names: Optional[set] = None,
 ) -> None:
     """Configure un maplayer vecteur (shapefile de détections) dans le projet QGIS."""
     ml.set('dataSourcePaletteIndex', str(shp_idx % 6))
@@ -239,7 +320,18 @@ def _add_vector_layer(
                 else:
                     shp_color_index = cls_idx
                 break
-    _apply_confidence_symbology(ml, shp_color_index)
+    # Détecter si c'est une couche cluster
+    _is_cluster = False
+    if cluster_class_names:
+        for cname in cluster_class_names:
+            if cname.lower() in layer_id.lower():
+                _is_cluster = True
+                break
+
+    if _is_cluster:
+        _apply_cluster_symbology(ml)
+    else:
+        _apply_confidence_symbology(ml, shp_color_index)
 
     if style_selection is not None:
         ml.append(copy.deepcopy(style_selection))
@@ -404,6 +496,7 @@ def generate_qgs_project(
     crs: str = "EPSG:2154",
     class_colors: Optional[Any] = None,
     global_color_map: Optional[Dict[str, int]] = None,
+    cluster_class_names: Optional[set] = None,
 ) -> Optional[Path]:
     """
     Génère un projet QGIS ``detections_validation.qgs`` contenant les shapefiles
@@ -489,6 +582,7 @@ def generate_qgs_project(
                 style_selection=style_selection,
                 style_customprops=style_customprops,
                 global_color_map=global_color_map,
+                cluster_class_names=cluster_class_names,
             )
 
         # 2) Rasters (VRT ou TIF individuels) — pour chaque dossier tif/ trouvé

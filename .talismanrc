@@ -7,40 +7,42 @@ fileignoreconfig:
   checksum: 3f8b391fa2640a739f68645b46acb945ab30501788e11646141dcdc9697d5786
 - filename: old_src/conversion_shp.py
   checksum: 3a4e979bcc8691785c1b636fb2eabfc2060640a72b0013e3e97c2327d4aa2fe0
-- filename: src/pipeline/cv/conversion_shp.py
-  checksum: 8c00f1ae93f42bbf4c0f4d82b4d9d220ffdfe8fc9a6057e108160d3bd2072cbd
-- filename: src/ui/main_dialog.py
-  checksum: 73601b6d844d28f09a3df566c96c367255720974412d504546113eb79e0329ff
 - filename: old_src/pipeline_lidar.py
   checksum: 32886bc946b5454875a787ee56a0174d2a4e1fad5a7a2209df6639d52a2c4dd2
-- filename: tests/TESTS_MANUELS_QGIS.txt
-  checksum: 1442712c380217c0b579abd4945c778c7a17003cb6abdcd8f04462bb1f0e75de
 - filename: src/pipeline/ign/pdal_validation.py
   checksum: 016f309259bdd1196c6634132d518795b5bcc959895db7638d3488246dfe8ccd
-- filename: src/pipeline/ign/preprocess.py
-  checksum: dc1b7b3f479818c338d39512d4f58d7daa21e2e72011c3b4702440c869e198e4
-- filename: src/pipeline/ign/downloader.py
-  checksum: 24b1eefe12a51157317099603418c1e4e3e6f2f320b58295ae092fb0eb81b1d9
 - filename: src/pipeline/cv/computer_vision_rfdetr.py
   checksum: 3c3de1d9bab52f155e9cc9f5f54a60f43c2ea784d485f8959603bbdc5e07d768
-- filename: src/pipeline/cv/computer_vision_onnx.py
-  checksum: c95807912e9d633b0c7343fff8b2d6f27155b04ccef1ddaca7aea2e7640d0432
-- filename: src/pipeline/cv/class_utils.py
-  checksum: 867b743e8df533c78498106fcd355eeaa70b320e6e65e0d5b970a2d7d0e9b5b8
 - filename: dev/runner_onnx/export_to_onnx.py
   checksum: 9afee785dc5e1998a15c6d4602bac58c29ab5dcc406432f8b410b2928391364c
-- filename: src/pipeline/preflight.py
-  checksum: 7ce58a16f27e8ecf5cc2745501863b2583c2f6c8c736972a7d6d19c9b665ab01
 - filename: src/pipeline/ign/products/indices.py
   checksum: 1b1e907afbb6f35d90f9d0b56504ed9deefcbe6cc49b88d089be94fbe06e6d3a
 - filename: tests/unit/test_preflight.py
   checksum: d2fce1b59ade7ad77e109b43bcb3d4e772c9b73ac117124f66f190655f75b42a
-- filename: src/app/services/finalize_service.py
-  checksum: d4c5a04180cbd22a27e0572483f3b556e539fc1edfd2c93b3c947815e246d7ba
-- filename: src/pipeline/cv/postprocessing.py
-  checksum: 770c5e673de99aab15d05f6d84e40f1fcad3aada9a52c358351326bff1dd20e1
 - filename: src/config/config_manager.py
-  checksum: 199abe516a93c7f8d4b6f7520a6e467cf4adcd6acd805e93e1966c8260f68bfd
+  checksum: 5b8420e9a0101decf896b57643d55107c11a68f4cf3dacd1cc347811ad03a6c8
+- filename: src/app/services/finalize_service.py
+  checksum: 8352186940b24d5f3ac24f75fc3fea409b934c90ab3c6dcde26ee791de01c2fe
+- filename: src/pipeline/cv/class_utils.py
+  checksum: d3d9302c47f24d6d147460a21620debe9e2cbf60e405a88dadd9eca8674e1b0e
+- filename: src/pipeline/preflight.py
+  checksum: f6fc65ee8b5ac3ee06d9d83b271a1e0e8c8b2a66bf6241433898afface0c853d
 - filename: tests/unit/test_config_manager.py
-  checksum: a8c46c4e16b25e95d2aa5ac1ff062129ab169b2a4f343aad9b81c0f8808a01d1
+  checksum: ec1f8f540412d2fb12f016d340b77a648c0622801d2c32e5bfef632836851081
+- filename: tests/TESTS_MANUELS_QGIS.txt
+  checksum: 8fcdee57e87292094fa47f1e5935b3d341c79edb35ef340e8cf6230a550c85e8
+- filename: src/pipeline/ign/downloader.py
+  checksum: 637514744bbf5b7648b2ae6553b93d4d3ec534a1db6b753f778ff5fa6b9c1e82
+- filename: src/pipeline/ign/preprocess.py
+  checksum: c78ee9d4adc068233341af34bb3db1836768e84254f7e789a6722049fe588961
+- filename: src/pipeline/cv/computer_vision_onnx.py
+  checksum: 4e4c6ab3746bbbd1432c88e5efb2e60ee5217cd9c387217761548051f949c93b
+- filename: src/pipeline/cv/postprocessing.py
+  checksum: 24a1aff0b1eb42d51a88c20da8754eec39ffe79d30cc86748e0c9da17f72ef2f
+- filename: src/pipeline/cv/conversion_shp.py
+  checksum: 7bd9347c3e00e335ac72f32c50f87af70046b263e0d2b1251ad1bc1d82df732d
+- filename: src/ui/main_dialog.py
+  checksum: 8edb207c0460b72e73eaa8c0cd091952c0044d6fc340e24d2842b0bc1e8a8217
+- filename: dev/docs/documentation_utilisateur_v1.docx
+  checksum: 9984314b88553c8aa0de31f28403d664eba5a2426681c22a6b1c29e5c787cc5e
 version: "1.0"

@@ -15,7 +15,7 @@ import xml.dom.minidom as minidom
 
 import geopandas as gpd
 
-from .class_utils import get_color_for_confidence
+from .class_utils import compute_confidence_bins, get_color_for_confidence
 
 logger = logging.getLogger(__name__)
 
@@ -46,12 +46,24 @@ def _find_tif_dir(index_root: Path) -> Path:
     return tif_dir  # fallback
 
 
+def _parse_layer_ref(ref: str):
+    """Parse une référence couche au format 'chemin.gpkg|layername=nom' ou chemin simple.
+    Retourne (path_str, layer_name_or_None).
+    """
+    if '|layername=' in ref:
+        parts = ref.split('|layername=', 1)
+        return parts[0], parts[1]
+    return ref, None
+
+
 def _compute_combined_extent(shapefile_paths: List[str]) -> Optional[List[float]]:
-    """Calcule l'étendue combinée [minx, miny, maxx, maxy] de tous les shapefiles."""
+    """Calcule l'étendue combinée [minx, miny, maxx, maxy] de tous les shapefiles/couches GPKG."""
     combined: Optional[List[float]] = None
-    for shp in shapefile_paths:
+    for ref in shapefile_paths:
+        path_str, layer_name = _parse_layer_ref(ref)
         try:
-            gdf = gpd.read_file(shp)
+            read_kwargs = {'layer': layer_name} if layer_name else {}
+            gdf = gpd.read_file(path_str, **read_kwargs)
             if not gdf.empty:
                 bounds = gdf.total_bounds
                 if combined is None:
@@ -161,14 +173,22 @@ def _apply_cluster_symbology(maplayer_el: Element) -> None:
         logger.warning(f"Impossible d'appliquer la symbologie cluster: {e}")
 
 
-def _apply_confidence_symbology(maplayer_el: Element, color_index: int = 0) -> None:
-    """Applique un renderer catégorisé QGIS sur le champ conf_bin."""
+def _apply_confidence_symbology(
+    maplayer_el: Element,
+    color_index: int = 0,
+    min_confidence: float = 0.0,
+) -> None:
+    """Applique un renderer catégorisé QGIS sur le champ conf_bin.
+
+    Les tranches affichées sont calculées via :func:`compute_confidence_bins`.
+    Si ``min_confidence`` > 0, la première tranche est tronquée (ex. ``[0.3:0.4[``)
+    et les tranches entièrement sous le seuil sont omises — aucune catégorie
+    vide dans la légende.
+    """
     try:
-        confidence_levels = [0.1, 0.3, 0.5, 0.7, 0.9]
-        palette_rgb = []
-        for conf in confidence_levels:
-            r, g, b = get_color_for_confidence(color_index, conf)
-            palette_rgb.append(f"{r},{g},{b}")
+        bins = compute_confidence_bins(min_confidence)
+        if not bins:
+            return
 
         renderer = SubElement(
             maplayer_el,
@@ -184,12 +204,17 @@ def _apply_confidence_symbology(maplayer_el: Element, color_index: int = 0) -> N
         )
 
         categories = SubElement(renderer, 'categories')
-        bins = ['[0:0.2[', '[0.2:0.4[', '[0.4:0.6[', '[0.6:0.8[', '[0.8:1]']
         for i, b in enumerate(bins):
-            SubElement(categories, 'category', attrib={'value': b, 'label': b, 'symbol': str(i), 'render': 'true'})
+            SubElement(
+                categories,
+                'category',
+                attrib={'value': b['label'], 'label': b['label'], 'symbol': str(i), 'render': 'true'},
+            )
 
         symbols = SubElement(renderer, 'symbols')
-        for i, rgb in enumerate(palette_rgb):
+        for i, b in enumerate(bins):
+            r, g, bl = get_color_for_confidence(color_index, b['repr'])
+            rgb = f"{r},{g},{bl}"
             sym = SubElement(symbols, 'symbol', attrib={'type': 'fill', 'name': str(i), 'alpha': '1', 'clip_to_extent': '1', 'force_rhr': '0'})
             layer = SubElement(sym, 'layer', attrib={'class': 'SimpleLine', 'enabled': '1', 'locked': '0', 'pass': '0'})
             opt = SubElement(layer, 'Option', attrib={'type': 'Map'})
@@ -215,12 +240,13 @@ def _add_vector_layer(
     style_customprops: Optional[Element],
     global_color_map: Optional[Dict[str, int]] = None,
     cluster_class_names: Optional[set] = None,
+    min_confidence: float = 0.0,
 ) -> None:
     """Configure un maplayer vecteur (shapefile de détections) dans le projet QGIS."""
     ml.set('dataSourcePaletteIndex', str(shp_idx % 6))
     SubElement(ml, 'id').text = layer_id
     SubElement(ml, 'layername').text = layer_id
-    SubElement(ml, 'datasource').text = shp_ds
+    SubElement(ml, 'datasource').text = shp_ds  # format: path.gpkg|layername=class_name
     SubElement(ml, 'provider').text = 'ogr'
     try:
         srs = SubElement(ml, 'srs')
@@ -301,24 +327,26 @@ def _add_vector_layer(
 
     # Symbologie par confiance
     shp_color_index = shp_idx
-    # Extraire le nom de classe depuis le layer_id (format: detections_{RVT}_{class_name})
-    _lid_parts = layer_id.split("_")
-    _class_from_lid = "_".join(_lid_parts[2:]) if len(_lid_parts) >= 3 and _lid_parts[0] == "detections" else ""
-    if global_color_map and _class_from_lid and _class_from_lid in global_color_map:
-        shp_color_index = global_color_map[_class_from_lid]
-    elif global_color_map:
-        # Fallback: chercher par correspondance partielle
-        for cls_name, cidx in global_color_map.items():
-            if cls_name.lower() in layer_id.lower():
-                shp_color_index = cidx
-                break
+    if global_color_map:
+        # Avec GPKG, layer_id EST directement le nom de classe
+        if layer_id in global_color_map:
+            shp_color_index = global_color_map[layer_id]
+        else:
+            # Ancien format shapefile: detections_{RVT}_{class_name}
+            _lid_parts = layer_id.split("_")
+            _class_from_lid = "_".join(_lid_parts[2:]) if len(_lid_parts) >= 3 and _lid_parts[0] == "detections" else ""
+            if _class_from_lid and _class_from_lid in global_color_map:
+                shp_color_index = global_color_map[_class_from_lid]
+            else:
+                # Correspondance partielle en dernier recours
+                for cls_name, cidx in global_color_map.items():
+                    if cls_name.lower() in layer_id.lower():
+                        shp_color_index = cidx
+                        break
     elif class_colors:
         for cls_idx, cls_name in enumerate(all_classes):
             if cls_name.lower() in layer_id.lower():
-                if cls_idx < len(class_colors):
-                    shp_color_index = class_colors[cls_idx]
-                else:
-                    shp_color_index = cls_idx
+                shp_color_index = class_colors[cls_idx] if cls_idx < len(class_colors) else cls_idx
                 break
     # Détecter si c'est une couche cluster
     _is_cluster = False
@@ -331,7 +359,7 @@ def _add_vector_layer(
     if _is_cluster:
         _apply_cluster_symbology(ml)
     else:
-        _apply_confidence_symbology(ml, shp_color_index)
+        _apply_confidence_symbology(ml, shp_color_index, min_confidence)
 
     if style_selection is not None:
         ml.append(copy.deepcopy(style_selection))
@@ -346,15 +374,18 @@ def _add_raster_vrt_layer(
     vrt_path: Path,
     index_root: Path,
     crs: str,
+    use_absolute: bool = False,
 ) -> None:
     """Ajoute le VRT comme couche raster unique dans le projet."""
-    try:
-        vrt_ds_rel = os.path.relpath(str(vrt_path.resolve()), start=str(index_root.resolve()))
-        vrt_ds_rel = vrt_ds_rel.replace('\\', '/')
-    except Exception:
-        vrt_ds_rel = str(vrt_path.resolve()).replace('\\', '/')
-
-    vrt_ds = "./" + vrt_ds_rel if not vrt_ds_rel.startswith('.') else vrt_ds_rel
+    if use_absolute:
+        vrt_ds = str(vrt_path.resolve()).replace('\\', '/')
+    else:
+        try:
+            vrt_ds_rel = os.path.relpath(str(vrt_path.resolve()), start=str(index_root.resolve()))
+            vrt_ds_rel = vrt_ds_rel.replace('\\', '/')
+            vrt_ds = "./" + vrt_ds_rel if not vrt_ds_rel.startswith('.') else vrt_ds_rel
+        except Exception:
+            vrt_ds = str(vrt_path.resolve()).replace('\\', '/')
     # ID et nom uniques basés sur le dossier parent du tif/ (ex: LD, SVF, etc.)
     rvt_type = vrt_path.parent.parent.name if vrt_path.parent.name == "tif" else vrt_path.parent.name
     raster_id = f"index_rvt_{rvt_type}"
@@ -497,6 +528,8 @@ def generate_qgs_project(
     class_colors: Optional[Any] = None,
     global_color_map: Optional[Dict[str, int]] = None,
     cluster_class_names: Optional[set] = None,
+    output_dir: Optional[Path] = None,
+    min_confidence: float = 0.0,
 ) -> Optional[Path]:
     """
     Génère un projet QGIS ``detections_validation.qgs`` contenant les shapefiles
@@ -517,23 +550,33 @@ def generate_qgs_project(
         if not index_roots:
             index_roots = [Path(output_shapefile).parent]
 
-        # Racine commune pour le projet (ancêtre commun de tous les index_roots)
-        if len(index_roots) == 1:
+        # Racine commune pour le projet
+        if output_dir is not None:
+            project_root = output_dir / "detections"
+            project_root.mkdir(parents=True, exist_ok=True)
+        elif len(index_roots) == 1:
             project_root = index_roots[0]
         else:
-            # Trouver l'ancêtre commun (ex: results/RVT/)
             try:
                 common = Path(os.path.commonpath([str(r.resolve()) for r in index_roots]))
                 project_root = common
             except Exception:
                 project_root = index_roots[0]
 
-        # Collecter tous les dossiers tif/ depuis chaque index_root
+        # Collecter tous les dossiers tif/ — depuis indices/<PRODUCT>/tif/ si output_dir fourni
         all_tif_dirs: List[Path] = []
-        for root in index_roots:
-            tif_dir = _find_tif_dir(root)
-            if tif_dir.exists() and tif_dir.is_dir() and tif_dir not in all_tif_dirs:
-                all_tif_dirs.append(tif_dir)
+        if output_dir is not None:
+            indices_root = output_dir / "indices"
+            if indices_root.exists():
+                for product_dir in sorted(indices_root.iterdir()):
+                    tif_dir = product_dir / "tif"
+                    if tif_dir.exists() and tif_dir.is_dir():
+                        all_tif_dirs.append(tif_dir)
+        if not all_tif_dirs:
+            for root in index_roots:
+                tif_dir = _find_tif_dir(root)
+                if tif_dir.exists() and tif_dir.is_dir() and tif_dir not in all_tif_dirs:
+                    all_tif_dirs.append(tif_dir)
 
         project = Element('qgis', attrib={'version': '3.34.0', 'projectname': 'detections_validation'})
 
@@ -542,7 +585,7 @@ def generate_qgs_project(
         try:
             props = SubElement(project, 'properties')
             paths = SubElement(props, 'Paths')
-            SubElement(paths, 'Absolute').text = '0'
+            SubElement(paths, 'Absolute').text = '1' if output_dir is not None else '0'
         except Exception:
             pass
 
@@ -559,15 +602,24 @@ def generate_qgs_project(
         style_path = Path(__file__).parents[2] / 'resources' / 'styles' / 'style_detections.qml'
         _, style_selection, style_customprops = _load_qml_style(style_path)
 
-        # 1) Shapefiles de détection (au-dessus des rasters)
-        for shp_idx, shp in enumerate(created_shapefiles):
-            shp_path = Path(shp)
+        # 1) Couches de détection (GPKG ou shapefile, au-dessus des rasters)
+        for shp_idx, ref in enumerate(created_shapefiles):
+            path_str, layer_name = _parse_layer_ref(ref)
+            shp_path = Path(path_str)
+            # Identifiant et nom affiché = nom de la couche (classe)
+            layer_id = layer_name if layer_name else shp_path.stem
             try:
-                shp_ds = os.path.relpath(str(shp_path.resolve()), start=str(project_root.resolve()))
-                shp_ds = shp_ds.replace('\\', '/')
+                rel_path = os.path.relpath(str(shp_path.resolve()), start=str(project_root.resolve()))
+                rel_path = rel_path.replace('\\', '/')
+                if layer_name:
+                    shp_ds = f"{rel_path}|layername={layer_name}"
+                else:
+                    shp_ds = rel_path
             except Exception:
-                shp_ds = str(shp_path.resolve())
-            layer_id = shp_path.stem
+                if layer_name:
+                    shp_ds = f"{str(shp_path.resolve()).replace(chr(92), '/')}|layername={layer_name}"
+                else:
+                    shp_ds = str(shp_path.resolve()).replace('\\', '/')
             SubElement(layer_tree, 'layer-tree-layer', attrib={'id': layer_id, 'name': layer_id})
 
             ml = SubElement(maplayers, 'maplayer', attrib={'type': 'vector'})
@@ -583,6 +635,7 @@ def generate_qgs_project(
                 style_customprops=style_customprops,
                 global_color_map=global_color_map,
                 cluster_class_names=cluster_class_names,
+                min_confidence=min_confidence,
             )
 
         # 2) Rasters (VRT ou TIF individuels) — pour chaque dossier tif/ trouvé
@@ -598,6 +651,7 @@ def generate_qgs_project(
                     vrt_path=vrt_path,
                     index_root=project_root,
                     crs=crs,
+                    use_absolute=output_dir is not None,
                 )
             elif tif_files:
                 _add_raster_tif_layers(

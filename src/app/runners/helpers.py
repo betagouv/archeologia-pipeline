@@ -62,12 +62,7 @@ def resolve_rvt_tif_dir(
     output_structure: Dict[str, Any],
     rvt_params: Dict[str, Any],
 ) -> Path:
-    """Construit ``results/RVT/<type>[<suffix>]/tif`` à partir de la config."""
-    from ...pipeline.ign.products.rvt_naming import get_rvt_param_suffix
+    """Construit ``indices/<PRODUCT>/tif`` à partir de la config."""
+    from ...pipeline.output_paths import resolve_rvt_tif_dir as _resolve
 
-    rvt_cfg = output_structure.get("RVT", {}) if isinstance(output_structure, dict) else {}
-    base_dir_name = str(rvt_cfg.get("base_dir", "RVT"))
-    type_dir_base = str(rvt_cfg.get(target_rvt, target_rvt))
-    param_suffix = get_rvt_param_suffix(target_rvt, rvt_params)
-    type_dir_name = f"{type_dir_base}{param_suffix}" if param_suffix else type_dir_base
-    return (output_dir / "results") / base_dir_name / type_dir_name / "tif"
+    return _resolve(output_dir, target_rvt, output_structure, rvt_params)

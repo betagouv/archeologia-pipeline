@@ -32,7 +32,6 @@ class IgnOrLocalRunner:
         output_structure: Dict[str, Any],
         output_formats: Dict[str, Any],
         rvt_params: Dict[str, Any],
-        pyramids_config: Dict[str, Any],
         reporter: ProgressReporter,
         cancel: CancelToken,
         feedback: Any,
@@ -47,8 +46,10 @@ class IgnOrLocalRunner:
         from ...pipeline.ign.products.mnt import create_terrain_model
         from ...pipeline.ign.products.results import copy_final_products_to_results
 
+        from ...pipeline.output_paths import intermediaires_dir
+
         tile_name = merged_path.name.replace(".copc.laz", "").replace(".laz", "")
-        temp_dir = output_dir / "temp"
+        temp_dir = intermediaires_dir(output_dir)
 
         reporter.stage(f"Traitement dalle {tile_index}/{total_tiles}")
         if slog:
@@ -112,7 +113,6 @@ class IgnOrLocalRunner:
                 output_structure=output_structure,
                 output_formats=output_formats,
                 rvt_params=rvt_params,
-                pyramids_config=pyramids_config,
                 log=lambda m: reporter.info(m),
             )
 
@@ -216,12 +216,34 @@ class IgnOrLocalRunner:
 
             input_file = str((ctx.files_cfg.get("input_file") or "")).strip()
             if not input_file:
-                reporter.error("Mode IGN sélectionné mais aucun fichier de liste d'URLs n'est configuré")
+                reporter.error("Mode IGN sélectionné mais aucun fichier de zone/liste n'est configuré")
                 return
             input_path = Path(input_file)
             if not input_path.exists():
-                reporter.error(f"Fichier dalles IGN introuvable: {input_path}")
+                reporter.error(f"Fichier IGN introuvable: {input_path}")
                 return
+
+            # Détection du type d'entrée : shapefile/geojson → résolution des dalles
+            is_vector = input_path.suffix.lower() in (".shp", ".geojson", ".json", ".gpkg")
+            if is_vector:
+                from ...pipeline.ign.tile_resolver import resolve_tiles_from_polygon
+
+                log_section("RÉSOLUTION DES DALLES IGN", "download", slog=slog, reporter=reporter)
+                reporter.stage("Identification des dalles à télécharger")
+                reporter.progress(download_range[0])
+
+                urls_file = ctx.output_dir / "dalles_urls.txt"
+                n_tiles = resolve_tiles_from_polygon(
+                    polygon_path=input_path,
+                    output_file=urls_file,
+                    log=lambda m: reporter.info(m),
+                    cancel=lambda: cancel.is_cancelled(),
+                )
+                if n_tiles == 0:
+                    reporter.error("Aucune dalle IGN trouvée pour la zone sélectionnée")
+                    return
+                input_path = urls_file
+
             log_section("TÉLÉCHARGEMENT DES DALLES IGN", "download", slog=slog, reporter=reporter)
             reporter.stage("Téléchargement des dalles")
             max_workers = safe_float(processing.get("max_workers", 4), 4)
@@ -327,7 +349,6 @@ class IgnOrLocalRunner:
                     output_structure=output_structure,
                     output_formats=output_formats,
                     rvt_params=rvt_params,
-                    pyramids_config=(processing.get("pyramids") or {}),
                     reporter=reporter,
                     cancel=cancel,
                     feedback=feedback,
@@ -371,4 +392,5 @@ class IgnOrLocalRunner:
             tiles_processed=len(merged_result.merged_files) if merged_result else 0,
             active_products=active_products,
             extra_label="Dalles traitées",
+            ui_config=ctx.ui_config or {},
         )

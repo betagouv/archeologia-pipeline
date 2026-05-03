@@ -459,7 +459,8 @@ def prepare_merged_tiles(
     max_workers: Optional[int] = None,
     stage: StageFn = _default_stage,
 ) -> IgnPreprocessResult:
-    temp_dir = output_dir / "temp"
+    from ..output_paths import intermediaires_dir
+    temp_dir = intermediaires_dir(output_dir)
     temp_dir.mkdir(parents=True, exist_ok=True)
     merged_dir = temp_dir
 

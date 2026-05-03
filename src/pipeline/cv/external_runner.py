@@ -48,9 +48,9 @@ def find_external_cv_runner(log: Optional[LogFn] = None) -> Optional[Path]:
     plugin_root = Path(__file__).resolve().parents[3]
 
     if os.name == "nt":
-        candidate = plugin_root / "third_party" / "cv_runner_onnx" / "windows" / "cv_runner_onnx.exe"
+        candidate = plugin_root / "data" / "third_party" / "cv_runner_onnx" / "windows" / "cv_runner_onnx.exe"
     else:
-        candidate = plugin_root / "third_party" / "cv_runner_onnx" / "linux" / "cv_runner_onnx"
+        candidate = plugin_root / "data" / "third_party" / "cv_runner_onnx" / "linux" / "cv_runner_onnx"
 
     try:
         if candidate.exists() and candidate.is_file():
@@ -130,6 +130,8 @@ def run_external_cv_runner(
     jpg_dir: Path,
     target_rvt: str,
     rvt_base_dir: Optional[Path],
+    detection_dir: Optional[Path] = None,
+    raw_dir: Optional[Path] = None,
     cv_config: Dict[str, Any],
     single_jpg: Optional[Path],
     run_shapefile_dedup: bool,
@@ -148,6 +150,8 @@ def run_external_cv_runner(
         "jpg_dir": str(jpg_dir),
         "target_rvt": target_rvt,
         "rvt_base_dir": str(rvt_base_dir) if rvt_base_dir else None,
+        "detection_dir": str(detection_dir) if detection_dir else None,
+        "raw_dir": str(raw_dir) if raw_dir else None,
         "cv_config": cv_config,
         "single_jpg": str(single_jpg) if single_jpg else None,
         "run_shapefile_dedup": bool(run_shapefile_dedup),
@@ -215,13 +219,27 @@ def run_external_cv_runner(
         if process.returncode != 0:
             raise RuntimeError(f"cv_runner failed (code={process.returncode})")
 
+        # Déplacer les JSON/TXT du dossier source (jpg_dir) vers raw_dir
+        # (fallback pour anciens binaires compilés qui ne connaissent pas raw_dir)
+        if raw_dir is not None and raw_dir != jpg_dir:
+            import shutil
+            raw_dir.mkdir(parents=True, exist_ok=True)
+            for label_file in list(jpg_dir.glob("*.txt")) + list(jpg_dir.glob("*.json")):
+                dest = raw_dir / label_file.name
+                if dest.exists():
+                    continue  # Le nouveau runner a déjà écrit directement ici
+                try:
+                    shutil.move(str(label_file), str(dest))
+                except Exception as e:
+                    log(f"Computer Vision: impossible de déplacer {label_file.name} vers raw_detections: {e}")
+
         # Créer les fichiers world pour les images annotées générées par le cv_runner
         generate_annotated = bool((cv_config or {}).get("generate_annotated_images", False))
         if generate_annotated and tif_transform_data:
-            base = rvt_base_dir or jpg_dir.parent
+            base = detection_dir or rvt_base_dir or jpg_dir.parent
             annotated_dir = Path(base) / "annotated_images"
             if annotated_dir.exists():
-                for annotated_img in annotated_dir.glob("*.jpg"):
+                for annotated_img in annotated_dir.glob("*.png"):
                     stem = annotated_img.stem
                     if stem.endswith("_detections"):
                         original_stem = stem[:-11]

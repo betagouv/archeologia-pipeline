@@ -61,7 +61,6 @@ class ExistingMntRunner:
             products=products,
             output_structure=output_structure,
             output_formats=output_formats,
-            pyramids_config=(processing_cfg.get("pyramids") or {}),
             rvt_params=rvt_params,
             log=lambda m: reporter.info(m),
             cancel_check=cancel.is_cancelled,
@@ -136,4 +135,5 @@ class ExistingMntRunner:
             tiles_processed=res.total,
             active_products=active_products,
             extra_label="MNT traités",
+            ui_config=ctx.ui_config or {},
         )

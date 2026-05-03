@@ -424,33 +424,265 @@ def _regenerate_annotated_image(
 #  Post-processing global en coordonnées géographiques                 #
 # ------------------------------------------------------------------ #
 
+def _validate_class_dets(detections, make_valid_fn, min_area_m2: float) -> list:
+    """
+    Filtre + répare les géométries d'une classe avant fusion.
+
+    Returns:
+        Liste des détections valides (Polygon, non vides, aire ≥ ``min_area_m2``).
+    """
+    valid = []
+    for det in detections:
+        geom = det.get("geometry")
+        if geom is None or geom.is_empty:
+            continue
+        if not geom.is_valid:
+            try:
+                geom = make_valid_fn(geom)
+                det = dict(det, geometry=geom)
+            except Exception:
+                continue
+        if geom.geom_type != "Polygon":
+            candidates = [g for g in getattr(geom, "geoms", [])
+                          if g.geom_type == "Polygon" and not g.is_empty]
+            if not candidates:
+                continue
+            geom = max(candidates, key=lambda g: g.area)
+            det = dict(det, geometry=geom)
+        if min_area_m2 > 0 and geom.area < min_area_m2:
+            continue
+        valid.append(det)
+    return valid
+
+
+def _connected_components_via_strtree(
+    polys: list,
+    merge_buffer_m: float,
+    STRtree,
+) -> list:
+    """
+    Identifie les composantes connexes de polygones qui se touchent (avec buffer).
+
+    Utilise STRtree + union-find pour grouper en O(N log N) au lieu de
+    ``unary_union`` global O(N²) en pratique. Pour les modèles à détections
+    majoritairement disjointes (ex. cratères), la plupart des composantes sont
+    de taille 1 → traitement quasi-gratuit.
+
+    Args:
+        polys: Liste de Polygon shapely.
+        merge_buffer_m: Distance max pour considérer deux polygones connectés.
+        STRtree: Classe ``shapely.STRtree`` (passée en argument pour éviter
+            l'import si shapely<2.0).
+
+    Returns:
+        Liste de listes d'indices ``[[i1, i2, ...], [j1, ...], ...]``.
+        Chaque sous-liste est une composante connexe.
+    """
+    n = len(polys)
+    if n == 0:
+        return []
+    if n == 1:
+        return [[0]]
+
+    # Bufferiser une seule fois — ces buffers servent à la fois à la requête
+    # spatiale (pour identifier les voisins) et à l'union par composante.
+    buffered = [p.buffer(merge_buffer_m, join_style=2) for p in polys]
+
+    tree = STRtree(buffered)
+
+    # Requête bulk : pour chaque polygone bufferisé, trouver les indices
+    # d'autres polygones bufferisés qui l'intersectent réellement.
+    # ``shapely.STRtree.query`` accepte une liste de géométries en entrée et
+    # renvoie deux arrays d'indices (input_idx, tree_idx).
+    try:
+        input_idx, tree_idx = tree.query(buffered, predicate="intersects")
+    except TypeError:
+        # API plus ancienne (shapely 2.0.0) : query() ne prend qu'une seule géom
+        input_idx_list, tree_idx_list = [], []
+        for i, b in enumerate(buffered):
+            for j in tree.query(b, predicate="intersects"):
+                input_idx_list.append(i)
+                tree_idx_list.append(int(j))
+        import numpy as _np
+        input_idx = _np.array(input_idx_list)
+        tree_idx = _np.array(tree_idx_list)
+
+    # Union-find avec compression de chemin
+    parent = list(range(n))
+
+    def find(x: int) -> int:
+        while parent[x] != x:
+            parent[x] = parent[parent[x]]
+            x = parent[x]
+        return x
+
+    def union(x: int, y: int) -> None:
+        rx, ry = find(x), find(y)
+        if rx != ry:
+            parent[rx] = ry
+
+    # Unir les paires (i, j) avec j > i pour éviter les doublons et auto-paires
+    for i, j in zip(input_idx, tree_idx):
+        if int(j) > int(i):
+            union(int(i), int(j))
+
+    # Regrouper par racine
+    components: dict = {}
+    for i in range(n):
+        components.setdefault(find(i), []).append(i)
+    return list(components.values())
+
+
+def _merge_intra_class_components(
+    valid_dets: list,
+    merge_buffer_m: float,
+    unary_union_fn,
+    make_valid_fn,
+    STRtree,
+    min_area_m2: float,
+) -> list:
+    """
+    Fusion intra-classe par composantes connexes (Proposition #2 + #3).
+
+    - Les polygones isolés (composantes de taille 1) sont conservés tels
+      quels, sans buffer/union/debuffer (Proposition #3 : skip pur).
+    - Les polygones d'une même composante sont fusionnés via
+      ``unary_union`` mais uniquement sur leur sous-ensemble local
+      (Proposition #2 : pas d'union globale).
+
+    Pour 311k cratères majoritairement isolés, on passe de ~76 minutes
+    (``unary_union`` global) à environ 30 secondes (STRtree + union-find).
+    """
+    import time as _time
+    n = len(valid_dets)
+    if n == 0:
+        return []
+    if n == 1:
+        return list(valid_dets)
+
+    polys = [d["geometry"] for d in valid_dets]
+
+    t0 = _time.perf_counter()
+    components = _connected_components_via_strtree(polys, merge_buffer_m, STRtree)
+    t1 = _time.perf_counter()
+
+    n_isolated = sum(1 for c in components if len(c) == 1)
+    n_groups = len(components) - n_isolated
+    largest_group = max((len(c) for c in components), default=0)
+    logger.info(
+        f"  Composantes connexes: {len(components)} total — {n_isolated} isolées, "
+        f"{n_groups} groupes (max {largest_group} polygones), {t1 - t0:.1f}s"
+    )
+
+    result = []
+    for comp_indices in components:
+        if len(comp_indices) == 1:
+            # Fast-path : polygone isolé, aucune fusion à faire
+            result.append(valid_dets[comp_indices[0]])
+            continue
+
+        # Fusion locale par composante
+        comp_polys = [polys[i] for i in comp_indices]
+        try:
+            buffered = [p.buffer(merge_buffer_m, join_style=2) for p in comp_polys]
+            merged = unary_union_fn(buffered).buffer(-merge_buffer_m, join_style=2)
+        except Exception as e:
+            logger.debug(f"  Fusion composante {comp_indices}: erreur union: {e}")
+            result.extend(valid_dets[i] for i in comp_indices)
+            continue
+
+        if merged.is_empty:
+            result.extend(valid_dets[i] for i in comp_indices)
+            continue
+
+        # Extraire les Polygons résultants
+        if merged.geom_type == "Polygon":
+            result_polys = [merged]
+        elif merged.geom_type == "MultiPolygon":
+            result_polys = list(merged.geoms)
+        elif merged.geom_type == "GeometryCollection":
+            result_polys = [g for g in merged.geoms if g.geom_type == "Polygon"]
+        else:
+            result.extend(valid_dets[i] for i in comp_indices)
+            continue
+
+        # Pour chaque polygone fusionné, attribuer une confiance pondérée
+        # par l'aire des sources de la composante qui le constituent
+        for mp in result_polys:
+            if not mp.is_valid:
+                mp = make_valid_fn(mp)
+                if mp.geom_type != "Polygon":
+                    candidates = [g for g in getattr(mp, "geoms", [])
+                                  if g.geom_type == "Polygon"]
+                    if not candidates:
+                        continue
+                    mp = max(candidates, key=lambda g: g.area)
+            if mp.is_empty:
+                continue
+            if min_area_m2 > 0 and mp.area < min_area_m2:
+                continue
+
+            total_w = 0.0
+            weighted_conf = 0.0
+            template_det = None
+            for src_idx in comp_indices:
+                src_geom = polys[src_idx]
+                try:
+                    if mp.intersects(src_geom):
+                        det = valid_dets[src_idx]
+                        w = src_geom.area
+                        total_w += w
+                        weighted_conf += det.get("confidence", 0.5) * w
+                        if (template_det is None
+                                or det.get("confidence", 0) > template_det.get("confidence", 0)):
+                            template_det = det
+                except Exception:
+                    pass
+
+            conf = weighted_conf / total_w if total_w > 0 else 0.5
+            if template_det is None:
+                template_det = valid_dets[comp_indices[0]]
+            result.append(dict(template_det, geometry=mp, confidence=conf))
+
+    return result
+
+
 def postprocess_geo_detections(
     data_by_class_name: Dict[str, List[Dict]],
     merge_buffer_m: float = 0.5,
     min_area_m2: float = 0.0,
+    do_merge: bool = True,
+    do_remove_overlaps: bool = True,
 ) -> Dict[str, List[Dict]]:
     """
     Post-traitement global des détections en coordonnées géographiques,
     opérant sur l'ensemble des dalles à la fois.
 
-    Étapes :
-      1. Validation et réparation des géométries invalides
-      2. Fusion des polygones de même classe qui se touchent ou sont
-         séparés par un gap ≤ *merge_buffer_m* (en mètres, adapté au CRS)
-      3. Suppression des superpositions inter-classes (le polygone le
-         plus confiant conserve sa géométrie, les autres sont découpés)
+    Étapes (toutes optionnelles via flags) :
+      1. Validation et réparation des géométries invalides — toujours faite
+      2. **Fusion intra-classe** des polygones qui se touchent ou sont séparés
+         par un gap ≤ ``merge_buffer_m`` — activée par ``do_merge=True``.
+         Implémentée via STRtree + union-find + composantes connexes :
+         O(N log N) au lieu de l'ancien ``unary_union`` global.
+         Les polygones isolés (sans voisin) sont passés directement sans
+         buffer/union/debuffer (gros gain sur les modèles type cratère).
+      3. **Suppression des superpositions inter-classes** par ordre de
+         confiance — activée par ``do_remove_overlaps=True``.
 
     Args:
-        data_by_class_name: ``{class_name: [det_dict, ...]}``
-            Chaque ``det_dict`` **doit** contenir une clé ``"geometry"``
-            (``shapely.geometry.Polygon``) et ``"confidence"`` (float).
-        merge_buffer_m: Distance max (mètres) pour fusionner deux
-            polygones de même classe. 0.5 m par défaut (~1 pixel à 0.5 m/px).
-        min_area_m2: Aire minimale en m² pour conserver un polygone
-            après fusion. 0 = pas de filtre.
+        data_by_class_name: ``{class_name: [det_dict, ...]}``. Chaque
+            ``det_dict`` doit contenir ``"geometry"`` (Polygon shapely) et
+            ``"confidence"`` (float).
+        merge_buffer_m: Distance max (mètres) pour fusionner deux polygones de
+            même classe. 0.5 m par défaut (~1 pixel à 0.5 m/px).
+        min_area_m2: Aire minimale en m² pour conserver un polygone après
+            fusion. 0 = pas de filtre.
+        do_merge: Si ``True`` (défaut), exécute l'étape 2.
+        do_remove_overlaps: Si ``True`` (défaut), exécute l'étape 3.
 
     Returns:
-        Nouveau ``{class_name: [det_dict, ...]}`` post-traité.
+        Nouveau ``{class_name: [det_dict, ...]}`` post-traité. Si les deux
+        flags sont à ``False``, seule la validation des géométries est faite.
     """
     import time as _time
 
@@ -464,146 +696,65 @@ def postprocess_geo_detections(
             from shapely.geometry import Polygon as ShapelyPolygon, MultiPolygon
             from shapely.ops import unary_union
             from shapely.validation import make_valid
-            STRtree = None
+            STRtree = None  # type: ignore[assignment]
         except ImportError:
             logger.warning("shapely non disponible, post-traitement géo ignoré")
             return data_by_class_name
 
     t_start = _time.perf_counter()
-
-    # ── Étape 1+2 : validation + fusion intra-classe ────────────────
-    merged_by_class: Dict[str, List[Dict]] = {}
     total_before = sum(len(v) for v in data_by_class_name.values())
 
-    t1 = _time.perf_counter()
-
+    # ── Étape 1 : validation des géométries (toujours) ───────────────
+    validated_by_class: Dict[str, List[Dict]] = {}
     for class_name, detections in data_by_class_name.items():
-        # Valider les géométries
-        valid_dets = []
-        for det in detections:
-            geom = det.get("geometry")
-            if geom is None or geom.is_empty:
+        valid_dets = _validate_class_dets(detections, make_valid, min_area_m2)
+        if valid_dets:
+            validated_by_class[class_name] = valid_dets
+
+    # ── Étape 2 : fusion intra-classe ────────────────────────────────
+    if do_merge and STRtree is not None:
+        merged_by_class: Dict[str, List[Dict]] = {}
+        t1 = _time.perf_counter()
+        for class_name, valid_dets in validated_by_class.items():
+            if len(valid_dets) < 2:
+                merged_by_class[class_name] = valid_dets
                 continue
-            if not geom.is_valid:
-                try:
-                    geom = make_valid(geom)
-                    det = dict(det, geometry=geom)
-                except Exception:
-                    continue
-            if geom.geom_type != "Polygon":
-                # Extraire le plus grand Polygon d'un MultiPolygon/GeometryCollection
-                candidates = [g for g in getattr(geom, "geoms", [])
-                              if g.geom_type == "Polygon" and not g.is_empty]
-                if not candidates:
-                    continue
-                geom = max(candidates, key=lambda g: g.area)
-                det = dict(det, geometry=geom)
-            if min_area_m2 > 0 and geom.area < min_area_m2:
-                continue
-            valid_dets.append(det)
-
-        if not valid_dets:
-            continue
-
-        if len(valid_dets) < 2:
-            merged_by_class[class_name] = valid_dets
-            continue
-
-        # Fusion des polygones qui se touchent (buffer → union → débuffer)
-        polys = [d["geometry"] for d in valid_dets]
-
-        try:
-            buffered = [p.buffer(merge_buffer_m, join_style=2) for p in polys]
-            merged = unary_union(buffered).buffer(-merge_buffer_m, join_style=2)
-        except Exception as e:
-            logger.debug(f"Post-traitement géo: erreur union classe '{class_name}': {e}")
-            merged_by_class[class_name] = valid_dets
-            continue
-
-        if merged.is_empty:
-            merged_by_class[class_name] = valid_dets
-            continue
-
-        # Extraire les Polygons résultants
-        if merged.geom_type == "Polygon":
-            result_polys = [merged]
-        elif merged.geom_type == "MultiPolygon":
-            result_polys = list(merged.geoms)
-        elif merged.geom_type == "GeometryCollection":
-            result_polys = [g for g in merged.geoms if g.geom_type == "Polygon"]
-        else:
-            merged_by_class[class_name] = valid_dets
-            continue
-
-        # Reconstruire les détections fusionnées
-        # Utiliser un STRtree sur les sources bufferisées pour trouver rapidement
-        # quels polygones sources contribuent à chaque polygone fusionné.
-        src_buffered = [d["geometry"].buffer(merge_buffer_m) for d in valid_dets]
-        if STRtree is not None:
-            tree = STRtree(src_buffered)
-        else:
-            tree = None
-
-        class_result = []
-        for mp in result_polys:
-            if not mp.is_valid:
-                mp = make_valid(mp)
-                if mp.geom_type != "Polygon":
-                    candidates = [g for g in getattr(mp, "geoms", [])
-                                  if g.geom_type == "Polygon"]
-                    if not candidates:
-                        continue
-                    mp = max(candidates, key=lambda g: g.area)
-            if mp.is_empty:
-                continue
-            if min_area_m2 > 0 and mp.area < min_area_m2:
-                continue
-
-            # Confiance = moyenne pondérée par l'aire des sources contribuantes
-            total_w = 0.0
-            weighted_conf = 0.0
-            template_det = None
-
-            if tree is not None:
-                # Requête spatiale rapide : indices des sources dont le buffer intersecte mp
-                candidate_idxs = tree.query(mp, predicate="intersects")
-                for idx in candidate_idxs:
-                    det = valid_dets[idx]
-                    w = det["geometry"].area
-                    total_w += w
-                    weighted_conf += det.get("confidence", 0.5) * w
-                    if template_det is None or det.get("confidence", 0) > template_det.get("confidence", 0):
-                        template_det = det
-            else:
-                # Fallback sans STRtree (shapely < 2.0)
-                for det in valid_dets:
-                    src_geom = det["geometry"]
-                    try:
-                        if mp.intersects(src_geom.buffer(merge_buffer_m)):
-                            w = src_geom.area
-                            total_w += w
-                            weighted_conf += det.get("confidence", 0.5) * w
-                            if template_det is None or det.get("confidence", 0) > template_det.get("confidence", 0):
-                                template_det = det
-                    except Exception:
-                        pass
-
-            conf = weighted_conf / total_w if total_w > 0 else 0.5
-            if template_det is None:
-                template_det = valid_dets[0]
-
-            new_det = dict(template_det, geometry=mp, confidence=conf)
-            class_result.append(new_det)
-
-        merged_by_class[class_name] = class_result if class_result else valid_dets
-
-    total_after_merge = sum(len(v) for v in merged_by_class.values())
-    t2 = _time.perf_counter()
-    logger.info(
-        f"Post-traitement géo: fusion intra-classe {total_before} -> {total_after_merge} polygones ({t2 - t1:.1f}s)"
-    )
+            logger.info(
+                f"Fusion intra-classe '{class_name}': {len(valid_dets)} polygones"
+            )
+            merged_by_class[class_name] = _merge_intra_class_components(
+                valid_dets,
+                merge_buffer_m=merge_buffer_m,
+                unary_union_fn=unary_union,
+                make_valid_fn=make_valid,
+                STRtree=STRtree,
+                min_area_m2=min_area_m2,
+            )
+        total_after_merge = sum(len(v) for v in merged_by_class.values())
+        t2 = _time.perf_counter()
+        logger.info(
+            f"Post-traitement géo: fusion intra-classe {total_before} -> "
+            f"{total_after_merge} polygones ({t2 - t1:.1f}s)"
+        )
+    else:
+        if do_merge and STRtree is None:
+            logger.warning(
+                "Fusion intra-classe demandée mais shapely.STRtree indisponible "
+                "(shapely<2.0), étape ignorée"
+            )
+        merged_by_class = validated_by_class
+        total_after_merge = sum(len(v) for v in merged_by_class.values())
 
     # ── Étape 3 : suppression des superpositions inter-classes ──────
+    if not do_remove_overlaps:
+        t_end = _time.perf_counter()
+        logger.info(
+            f"Suppression superpositions désactivée (do_remove_overlaps=False), "
+            f"{total_after_merge} polygones conservés"
+        )
+        logger.info(f"Post-traitement géo terminé en {t_end - t_start:.1f}s")
+        return merged_by_class
+
     # Collecter toutes les détections, trier par confiance décroissante
     all_dets = []
     for class_name, dets in merged_by_class.items():
@@ -629,6 +780,7 @@ def postprocess_geo_detections(
     _occ_tree = None
     _tree_built_at = 0  # nombre d'accepted_geoms lors du dernier build
 
+    t2 = _time.perf_counter()
     for i, (class_name, det) in enumerate(all_dets):
         geom = det["geometry"]
 

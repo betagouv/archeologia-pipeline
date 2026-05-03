@@ -130,12 +130,12 @@ def _resolve_model_path(cv_config: Dict[str, Any]) -> Path:
     )
 
 
-def _iter_jpgs(jpg_dir: Path, single_jpg: Optional[Path], scan_all: bool) -> list[Path]:
+def _iter_images(jpg_dir: Path, single_jpg: Optional[Path], scan_all: bool) -> list[Path]:
     if single_jpg is not None:
         return [single_jpg]
     if scan_all:
-        return sorted(jpg_dir.glob("*.jpg"))
-    return sorted(jpg_dir.glob("*.jpg"))[:1]
+        return sorted(jpg_dir.glob("*.png"))
+    return sorted(jpg_dir.glob("*.png"))[:1]
 
 
 def main() -> int:
@@ -156,6 +156,10 @@ def main() -> int:
     target_rvt = str(payload.get("target_rvt", "LD"))
     rvt_base_dir_raw = payload.get("rvt_base_dir")
     rvt_base_dir = Path(rvt_base_dir_raw).resolve() if rvt_base_dir_raw else jpg_dir.parent
+    detection_dir_raw = payload.get("detection_dir")
+    detection_dir = Path(detection_dir_raw).resolve() if detection_dir_raw else rvt_base_dir
+    raw_dir_raw = payload.get("raw_dir")
+    raw_dir = Path(raw_dir_raw).resolve() if raw_dir_raw else jpg_dir
 
     cv_config: Dict[str, Any] = payload.get("cv_config") or {}
     tif_transform_data: Dict[str, Any] = payload.get("tif_transform_data") or {}
@@ -192,8 +196,8 @@ def main() -> int:
         _print(f"ERROR: numpy missing ({e})")
         return 2
 
-    annotated_output_dir = rvt_base_dir / "annotated_images"
-    shapefile_output_dir = rvt_base_dir / "shapefiles"
+    annotated_output_dir = detection_dir / "annotated_images"
+    shapefile_output_dir = detection_dir / "shapefiles"
 
     if generate_annotated_images:
         annotated_output_dir.mkdir(parents=True, exist_ok=True)
@@ -271,7 +275,7 @@ def main() -> int:
         _print(f"seg_params=confidence_threshold={effective_conf} bg_bias={bg_bias} use_sahi={use_sahi_meta}")
 
     scan_all = bool(cv_config.get("scan_all", False))
-    jpg_files = _iter_jpgs(jpg_dir=jpg_dir, single_jpg=single_jpg, scan_all=scan_all)
+    jpg_files = _iter_images(jpg_dir=jpg_dir, single_jpg=single_jpg, scan_all=scan_all)
     jpg_files = [p for p in jpg_files if p.exists()]
 
     _print(f"jpg_dir={jpg_dir}")
@@ -288,8 +292,8 @@ def main() -> int:
 
     for idx, jpg_file in enumerate(jpg_files, 1):
         image_name = jpg_file.stem
-        labels_txt = jpg_dir / f"{image_name}.txt"
-        labels_json = jpg_dir / f"{image_name}.json"
+        labels_txt = raw_dir / f"{image_name}.txt"
+        labels_json = raw_dir / f"{image_name}.json"
 
         detection_output_path = get_detection_output_path(
             str(jpg_file),
@@ -318,7 +322,7 @@ def main() -> int:
                 overlap_ratio=overlap_ratio,
                 generate_annotated_images=generate_annotated_images,
                 annotated_output_dir=str(annotated_output_dir) if generate_annotated_images else None,
-                jpg_folder_path=str(jpg_dir),
+                jpg_folder_path=str(raw_dir),
                 return_count=True,
                 class_names=class_names,
                 class_colors=class_colors,

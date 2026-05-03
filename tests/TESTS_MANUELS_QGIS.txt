@@ -1,5 +1,5 @@
 ================================================================================
-                    TESTS MANUELS - PLUGIN ARCHEOLOG'IA PIPELINE
+                    TESTS MANUELS - PLUGIN ARCHÉOLOG'IA PIPELINE
 ================================================================================
 
 Ces tests doivent être exécutés dans QGIS avec le plugin chargé.
@@ -11,7 +11,7 @@ Pré-requis :
 - Plugin activé dans QGIS
 - PDAL, GDAL (gdalwarp, gdal_translate, gdaladdo) dans le PATH
 - Runner ONNX compilé dans third_party/cv_runner_onnx/<os>/
-- Au moins un modèle ONNX dans models/
+- Au moins un modèle ONNX dans models/ avec classes.txt
 
 ================================================================================
 1. CHARGEMENT DU PLUGIN
@@ -24,154 +24,323 @@ Pré-requis :
 
 [ ] 1.2 Ouverture du plugin
     - Cliquer sur le menu/icône du plugin
-    - Vérifier que MainDialog s'ouvre sans erreur
-    - Vérifier que tous les onglets sont visibles
+    - Vérifier que NewMainDialog s'ouvre sans erreur
+    - Vérifier le titre "Archéolog'IA"
+    - Vérifier la présence : combo Mode (Simple/Expert), sections config,
+      zone de logs, boutons Lancer/Annuler/Nettoyer logs
+    - Vérifier le message "Pipeline prêt à être utilisé" dans les logs
 
 [ ] 1.3 Fermeture et réouverture
     - Fermer puis rouvrir le plugin
-    - Vérifier que la configuration précédente est conservée
+    - Vérifier que la configuration précédente est conservée (config.json)
 
 ================================================================================
-2. INTERFACE UTILISATEUR
+2. MODE SIMPLE / EXPERT
 ================================================================================
 
-[ ] 2.1 Changement de mode
-    - Sélectionner chaque mode (ign_laz, local_laz, existing_mnt, existing_rvt)
-    - Vérifier que les champs spécifiques au mode s'affichent
-    - Vérifier que le label du champ source change selon le mode
+[ ] 2.1 Mode Simple (par défaut)
+    - Vérifier que les sections suivantes sont MASQUÉES :
+      Paramètres MNT, Paramètres RVT détaillés, Performance
+    - Vérifier que les colonnes "Indice cible" et "Aire min" sont masquées
+      dans le tableau de détection
+    - Vérifier que la section Seuils de détection (expert) est masquée
 
-[ ] 2.2 Sélection du dossier de sortie
+[ ] 2.2 Basculer en mode Expert
+    - Sélectionner "Expert" dans le combo Mode
+    - Vérifier que les sections MNT, RVT, Performance deviennent visibles
+    - Vérifier que les colonnes "Indice cible" et "Aire min" sont visibles
+    - Vérifier que les seuils détection expert sont visibles (si détection activée)
+
+[ ] 2.3 Basculer Expert → Simple → Expert
+    - Modifier des paramètres expert (ex: résolution MNT = 1.0)
+    - Passer en Simple puis revenir en Expert
+    - Vérifier que les valeurs modifiées sont conservées
+
+================================================================================
+3. SOURCES DE DONNÉES
+================================================================================
+
+[ ] 3.1 Changement de mode de données
+    - Sélectionner chaque mode (Téléchargement IGN, Nuages locaux,
+      MNT déjà calculés, Indices existants)
+    - Vérifier que le label de l'étape 2 change selon le mode
+    - Vérifier que la description (texte italic) change
+    - Vérifier que le placeholder du champ source change
+
+[ ] 3.2 Restauration de la source par mode
+    - En mode "Téléchargement IGN", renseigner un chemin .shp
+    - Basculer en "Nuages locaux", renseigner un dossier
+    - Revenir en "Téléchargement IGN"
+    - Vérifier que le chemin .shp est restauré automatiquement
+
+[ ] 3.3 Sélection du dossier de sortie
+    - Cliquer sur "Parcourir" à côté du dossier de sortie
     - Sélectionner un dossier valide → le chemin s'affiche
 
-[ ] 2.3 Configuration des produits
-    - Cocher/décocher chaque produit (MNT, DENSITE, M_HS, SVF, SLO, LD, VAT)
+[ ] 3.4 Validation visuelle des chemins
+    - Renseigner un chemin invalide → fond rose sur le champ
+    - Renseigner un chemin valide → fond normal
+    - Laisser un champ obligatoire vide → bouton Lancer désactivé
+      avec tooltip expliquant ce qui manque
 
-[ ] 2.4 Configuration des paramètres RVT
-    - Modifier les paramètres de chaque onglet RVT (MDH, SVF, Slope, LDO, VAT)
-
-[ ] 2.5 Configuration Computer Vision
-    - Activer/désactiver la CV
-    - Sélectionner un modèle ONNX dans models/
-    - Modifier les seuils (confidence, IOU)
-
-================================================================================
-3. SAUVEGARDE / CHARGEMENT CONFIG
-================================================================================
-
-[ ] 3.1 Sauvegarde manuelle → fermer/rouvrir → paramètres conservés
-[ ] 3.2 Reset config générale → valeurs par défaut restaurées
-[ ] 3.3 Reset config RVT → valeurs RVT par défaut restaurées
-[ ] 3.4 Pas de sauvegarde auto sur Run → modifier, Run, Cancel, rouvrir → non sauvé
+[ ] 3.5 Visibilité des produits selon le mode
+    - En mode "Indices existants" : la section Produits est masquée
+    - En mode "MNT déjà calculés" : MNT et DENSITÉ sont masqués
+    - En mode "Téléchargement IGN" : tous les produits sont visibles
 
 ================================================================================
-4. PREFLIGHT (run_preflight)
+4. PRODUITS DE VISUALISATION
 ================================================================================
 
-[ ] 4.1 Dépendances OK → preflight passe sans erreur
-[ ] 4.2 PDAL manquant → erreur affichée dans les logs (mode ign_laz)
-[ ] 4.3 Chemin d'entrée invalide → erreur "introuvable" dans les logs
+[ ] 4.1 Cocher/décocher chaque produit
+    - MNT, DENSITÉ, M-HS, SVF, SLO, LD, SLRM, VAT
+    - Vérifier que le bouton Lancer est désactivé si aucun produit coché
+      (hors mode "Indices existants")
 
 ================================================================================
-5. MODE IGN_LAZ
+5. DÉTECTION PAR IA (multi-modèles)
 ================================================================================
 
-Pré-requis : Fichier de liste de dalles IGN valide
+[ ] 5.1 Activer/désactiver la détection
+    - Cocher "Activer la détection par intelligence artificielle"
+    - Vérifier que le contenu détection apparaît (table, classes)
+    - Vérifier le hint "La détection ne sera pas exécutée" quand désactivé
+    - En mode Expert : vérifier que la section seuils apparaît aussi
 
-[ ] 5.1 Lancement avec fichier valide + MNT + LD
+[ ] 5.2 Ajouter un modèle
+    - Cliquer "+ Ajouter un modèle"
+    - Vérifier qu'une ligne apparaît avec le combo des modèles disponibles
+    - Vérifier la présence des boutons ℹ et × sur chaque ligne
+
+[ ] 5.3 Multi-modèles
+    - Ajouter 2 modèles différents
+    - Vérifier que les classes sont affichées groupées par modèle
+      (en-tête en gras "── modèle_name ──")
+    - Sélectionner/désélectionner des classes individuelles
+    - Vérifier "Tout sélectionner" / "Tout désélectionner"
+
+[ ] 5.4 Actualiser les modèles
+    - Cliquer "Actualiser"
+    - Vérifier que les combos modèle sont mis à jour
+
+[ ] 5.5 Supprimer un modèle
+    - Cliquer × sur une ligne → la ligne disparaît
+    - Vérifier que les classes sont mises à jour
+
+[ ] 5.6 Info modèle (bouton ℹ)
+    - Cliquer ℹ sur un modèle
+    - Vérifier la boîte de dialogue avec les paramètres d'entraînement
+    - Vérifier le bouton "Ouvrir le dossier"
+
+[ ] 5.7 Colonnes expert (mode Expert uniquement)
+    - Vérifier la colonne "Indice cible" (combo RVT)
+    - Vérifier la colonne "Aire min (m²)" (spinbox)
+    - Modifier les valeurs et vérifier la sauvegarde
+
+[ ] 5.8 Seuils expert (mode Expert uniquement)
+    - Modifier le seuil de confiance
+    - Vérifier le label dynamique ("Très permissif" → "Très strict")
+      avec la couleur correspondante
+    - Modifier le seuil IoU
+
+================================================================================
+6. SAUVEGARDE / CHARGEMENT CONFIG
+================================================================================
+
+[ ] 6.1 Autosave automatique
+    - Modifier n'importe quel paramètre (ex: cocher un produit)
+    - Fermer puis rouvrir le plugin
+    - Vérifier que le changement est conservé (config.json mis à jour)
+
+[ ] 6.2 Exporter configuration (Sauvegarder config)
+    - Cliquer "Sauvegarder config"
+    - Choisir un emplacement et nom de fichier .json
+    - Vérifier que le fichier est créé et contient les paramètres
+
+[ ] 6.3 Importer configuration (Charger config)
+    - Modifier les paramètres
+    - Cliquer "Charger config" et sélectionner le fichier exporté
+    - Vérifier que les paramètres sont restaurés
+
+[ ] 6.4 Reset Paramètres MNT (mode Expert)
+    - Modifier les résolutions et l'expression de filtrage
+    - Cliquer "Remettre par défaut" dans la section MNT
+    - Vérifier : résolution MNT = 0.5, densité = 1.0, filtre par défaut
+
+[ ] 6.5 Reset Paramètres RVT (mode Expert)
+    - Modifier des paramètres RVT
+    - Cliquer "Remettre par défaut" dans la section RVT
+    - Vérifier les valeurs par défaut (MDH: 16 directions, 35° élévation, etc.)
+
+[ ] 6.6 Reset Performance (mode Expert)
+    - Modifier max workers
+    - Cliquer "Remettre par défaut" dans la section Performance
+    - Vérifier : max workers = 4
+
+================================================================================
+7. PREFLIGHT (run_preflight)
+================================================================================
+
+[ ] 7.1 Dépendances OK → preflight passe sans erreur
+[ ] 7.2 PDAL manquant → erreur affichée dans les logs (mode ign_laz)
+[ ] 7.3 Chemin d'entrée invalide → erreur "introuvable" dans les logs
+
+================================================================================
+8. MODE IGN_LAZ
+================================================================================
+
+Pré-requis : Fichier polygone (shapefile) délimitant la zone d'étude
+
+[ ] 8.1 Lancement avec fichier valide + MNT + LD
+    - Vérifier la boîte de confirmation (récapitulatif)
     - Vérifier la progression (StructuredLogger : bandeaux de section)
-    - Vérifier les fichiers générés dans results/
-[ ] 5.2 Annulation en cours → arrêt propre (CancelToken)
-[ ] 5.3 Tous les produits activés → tous générés
+    - Vérifier les fichiers générés dans le dossier de sortie
+[ ] 8.2 Annulation en cours → arrêt propre (CancelToken)
+[ ] 8.3 Tous les produits activés (y compris SLRM) → tous générés
 
 ================================================================================
-6. MODE LOCAL_LAZ
+9. MODE LOCAL_LAZ
 ================================================================================
 
 Pré-requis : Dossier contenant des fichiers LAZ/LAS
 
-[ ] 6.1 Dossier valide + MNT + LD → fichiers générés
-[ ] 6.2 Dossier vide ou inexistant → erreur preflight
+[ ] 9.1 Dossier valide + MNT + LD → fichiers générés
+[ ] 9.2 Dossier vide ou inexistant → erreur preflight
 
 ================================================================================
-7. MODE EXISTING_MNT
+10. MODE EXISTING_MNT
 ================================================================================
 
 Pré-requis : Dossier contenant des MNT (GeoTIFF)
 
-[ ] 7.1 MNT valide + LD + SVF → produits RVT générés
-[ ] 7.2 Avec CV activée → run_existing_rvt() appelé après les produits
+[ ] 10.1 MNT valide + LD + SVF → produits RVT générés
+[ ] 10.2 Avec détection activée → inférence après les produits
 
 ================================================================================
-8. MODE EXISTING_RVT
+11. MODE EXISTING_RVT
 ================================================================================
 
 Pré-requis : Dossier contenant des RVT (GeoTIFF)
 
-[ ] 8.1 RVT valide → copie TIF, conversion JPG+JGW, nettoyage orphelins
-[ ] 8.2 Avec CV activée → inférence ONNX sur les JPG, shapefiles générés
+[ ] 11.1 RVT valide → copie TIF, conversion JPG+JGW, nettoyage orphelins
+[ ] 11.2 Avec détection activée → inférence ONNX sur les JPG, shapefiles
 
 ================================================================================
-9. COMPUTER VISION (ONNX uniquement)
+12. DÉTECTION IA — EXÉCUTION
 ================================================================================
 
 Pré-requis :
 - Runner ONNX : third_party/cv_runner_onnx/<os>/cv_runner_onnx[.exe]
 - Modèle ONNX dans models/ avec classes.txt
 
-[ ] 9.1 Runner externe trouvé
+[ ] 12.1 Runner externe trouvé
     - Vérifier dans les logs : "Runner externe trouvé"
-    - Vérifier les labels YOLO (.txt) dans results/
-    - Vérifier les images annotées dans results/
+    - Vérifier les labels (.txt) dans le dossier de sortie
+    - Vérifier les images annotées (si option activée)
 
-[ ] 9.2 Runner externe absent → fallback Python ONNX
+[ ] 12.2 Runner externe absent → fallback Python ONNX
     - Renommer temporairement le binaire
     - Vérifier dans les logs : "fallback interne ONNX"
     - Vérifier que l'inférence fonctionne quand même
 
-[ ] 9.3 Génération shapefiles
-    - Activer generate_shapefiles
-    - Vérifier les .shp dans results/RVT/<type>/shapefiles/
-    - Vérifier le projet QGIS (.qgs) généré par qgs_project.py
+[ ] 12.3 Génération shapefiles
+    - Activer "Générer des shapefiles" (mode Expert)
+    - Vérifier les .shp dans le dossier de sortie
+    - Vérifier le chargement automatique dans le projet QGIS
 
-[ ] 9.4 CV désactivée → aucune détection effectuée
+[ ] 12.4 Filtrage de classes
+    - Désélectionner certaines classes dans la liste
+    - Lancer le pipeline
+    - Vérifier que seules les classes cochées sont détectées
 
-================================================================================
-10. FINALIZE_PIPELINE
-================================================================================
+[ ] 12.5 Détection désactivée → aucune détection effectuée
 
-[ ] 10.1 VRT générés pour tif/, jpg/, annotated_images/
-[ ] 10.2 Shapefiles collectés et chargés dans QGIS
-[ ] 10.3 Logs de fin de pipeline (StructuredLogger.end_pipeline)
-
-================================================================================
-11. PYRAMIDES
-================================================================================
-
-[ ] 11.1 Pyramides activées → GeoTIFF contiennent des overviews (gdalinfo)
-[ ] 11.2 Pyramides désactivées → pas d'overviews
+[ ] 12.6 Détection activée sans classes → avertissement
+    - Activer la détection, désélectionner toutes les classes
+    - Cliquer Lancer → message d'avertissement
 
 ================================================================================
-12. ROBUSTESSE
+13. CLUSTERING (si modèle configuré avec clustering dans args.yaml)
 ================================================================================
 
-[ ] 12.1 Dossier de sortie en lecture seule → erreur appropriée
-[ ] 12.2 Fichier LAZ/MNT corrompu → erreur gérée proprement
-[ ] 12.3 Annulation pendant le téléchargement IGN → arrêt propre
+[ ] 13.1 Zones cluster générées
+    - Vérifier les shapefiles cluster (attribut nb_detect)
+    - Vérifier que les zones cluster sont chargées dans QGIS
+    - Vérifier le style hachures croisées sur les couches cluster
 
 ================================================================================
-13. LOGS
+14. FINALISATION
 ================================================================================
 
-[ ] 13.1 Logs dans l'interface (zone de texte)
-[ ] 13.2 Fichier pipeline.log créé dans le dossier de sortie
+[ ] 14.1 VRT générés pour tif/, jpg/, annotated_images/
+[ ] 14.2 Shapefiles collectés et chargés dans QGIS
+    - Vérifier le style par confiance (couleurs par bin)
+[ ] 14.3 Zoom automatique sur l'étendue des résultats
+[ ] 14.4 Logs de fin de pipeline (StructuredLogger.end_pipeline)
+
+================================================================================
+15. INTERFACE — LOGS ET BOUTONS
+================================================================================
+
+[ ] 15.1 Zone de logs
+    - Vérifier le splitter redimensionnable (config en haut, logs en bas)
+    - Vérifier le scroll automatique vers le bas
+    - Vérifier le bouton "Nettoyer logs"
+
+[ ] 15.2 Barre de progression
+    - Vérifier que la barre progresse pendant l'exécution
+    - Vérifier le label d'étape à côté de la barre
+
+[ ] 15.3 Bouton Lancer (vert stylisé)
+    - Grisé si config incomplète, vert si config valide
+    - Tooltip explicatif quand désactivé
+    - Boîte de confirmation avant lancement
+
+[ ] 15.4 Bouton Annuler
+    - Désactivé quand le pipeline ne tourne pas
+    - Activé pendant l'exécution → annulation propre
+
+[ ] 15.5 Désactivation pendant l'exécution
+    - Vérifier que toute la zone config est grisée pendant le run
+    - Vérifier que les boutons Charger/Sauvegarder sont désactivés
+
+================================================================================
+16. LABELS DYNAMIQUES (mode Expert)
+================================================================================
+
+[ ] 16.1 Label confiance
+    - 0.1 → "Très permissif" (rouge)
+    - 0.3 → "Détection large" (orange)
+    - 0.5 → "Équilibré" (vert)
+    - 0.7 → "Sélectif" (bleu)
+    - 0.9 → "Très strict" (violet)
+
+[ ] 16.2 Hint RAM workers
+    - 2 workers → "≈ 4 Go RAM disponible nécessaire"
+    - 4 workers → "≈ 8 Go RAM disponible nécessaire"
+
+================================================================================
+17. ROBUSTESSE
+================================================================================
+
+[ ] 17.1 Dossier de sortie en lecture seule → erreur appropriée
+[ ] 17.2 Fichier LAZ/MNT corrompu → erreur gérée proprement
+[ ] 17.3 Annulation pendant le téléchargement IGN → arrêt propre
+
+================================================================================
+18. LOGS FICHIER
+================================================================================
+
+[ ] 18.1 Fichier pipeline_log_*.txt créé dans le dossier de sortie
+[ ] 18.2 Contenu du fichier cohérent avec les logs affichés dans l'UI
 
 ================================================================================
 RÉSUMÉ
 ================================================================================
 
-Total tests : 30
-Tests passés : [ ] / 30
-Tests échoués : [ ] / 30
+Total tests : 55
+Tests passés : [ ] / 55
+Tests échoués : [ ] / 55
 
 Date : ____________________
 Testeur : ____________________

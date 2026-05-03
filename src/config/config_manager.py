@@ -7,6 +7,7 @@ class ConfigManager:
     def __init__(self, plugin_root: Path, filename: str = "config.json"):
         self.plugin_root = plugin_root
         self.path = plugin_root / filename
+        self.last_ui_path = plugin_root / "last_ui_config.json"
 
     def default_config(self) -> Dict[str, Any]:
         return {
@@ -25,10 +26,7 @@ class ConfigManager:
                 "density_resolution": 1.0,
                 "tile_overlap": 20,
                 "filter_expression": "Classification = 2 OR Classification = 6 OR Classification = 66 OR Classification = 67 OR Classification = 9",
-                "pyramids": {
-                    "enabled": True,
-                    "levels": [2, 4, 8, 16, 32, 64],
-                },
+                "max_workers": 4,
                 "products": {
                     "MNT": True,
                     "DENSITE": False,
@@ -38,6 +36,15 @@ class ConfigManager:
                     "LD": False,
                     "SLRM": False,
                     "VAT": False,
+                },
+                "output_formats": {
+                    "jpg": {
+                        "M_HS": False,
+                        "SVF": False,
+                        "SLO": False,
+                        "LD": False,
+                        "VAT": False,
+                    }
                 },
             },
             "computer_vision": {
@@ -49,12 +56,9 @@ class ConfigManager:
                 "iou_threshold": 0.5,
                 "generate_annotated_images": False,
                 "generate_shapefiles": False,
-                "models_dir": "models",
-                "sahi": {
-                    "slice_height": 640,
-                    "slice_width": 640,
-                    "overlap_ratio": 0.2,
-                },
+                "models_dir": "data/models",
+                "export_runner_config": False,
+                "scan_all": True,
             },
             "rvt_params": {
                 "mdh": {
@@ -96,6 +100,7 @@ class ConfigManager:
         }
 
     def load(self) -> Dict[str, Any]:
+        """Charge la config par défaut (config.json) fusionnée avec le fichier sur disque."""
         if not self.path.exists():
             cfg = self.default_config()
             self.save(cfg)
@@ -113,8 +118,35 @@ class ConfigManager:
         return cfg
 
     def save(self, config: Dict[str, Any]) -> None:
+        """Sauvegarde config.json (valeurs par défaut)."""
         self.path.parent.mkdir(parents=True, exist_ok=True)
         with self.path.open("w", encoding="utf-8") as f:
+            json.dump(config, f, indent=2, ensure_ascii=False)
+
+    def load_last_ui_config(self) -> Dict[str, Any]:
+        """Charge la dernière config UI (last_ui_config.json).
+
+        Retourne les défauts si le fichier n'existe pas.
+        """
+        if not self.last_ui_path.exists():
+            return self.default_config()
+
+        try:
+            with self.last_ui_path.open("r", encoding="utf-8") as f:
+                data = json.load(f)
+        except Exception:
+            return self.default_config()
+
+        cfg = self.default_config()
+        self._deep_update(cfg, data)
+        self._migrate_cv_runs(cfg)
+        return cfg
+
+    def save_last_ui_config(self, config: Dict[str, Any]) -> None:
+        """Sauvegarde la dernière config UI (last_ui_config.json)."""
+        self._strip_deprecated_keys(config)
+        self.last_ui_path.parent.mkdir(parents=True, exist_ok=True)
+        with self.last_ui_path.open("w", encoding="utf-8") as f:
             json.dump(config, f, indent=2, ensure_ascii=False)
 
     @staticmethod
@@ -133,6 +165,22 @@ class ConfigManager:
             cv["runs"] = [{"model": model, "target_rvt": rvt}]
         else:
             cv["runs"] = []
+
+    @staticmethod
+    def _strip_deprecated_keys(cfg: Dict[str, Any]) -> None:
+        """Supprime les clés dépréciées / legacy de la configuration."""
+        _legacy_root = {
+            "mode", "data_mode", "source_path", "output_dir", "products",
+            "detection_enabled", "mnt_resolution", "density_resolution",
+            "tile_overlap", "max_workers", "filter_expression",
+            "det_confidence", "det_iou", "det_generate_annotated", "det_generate_shp",
+        }
+        for k in _legacy_root:
+            cfg.pop(k, None)
+        cv = cfg.get("computer_vision")
+        if isinstance(cv, dict):
+            cv.pop("sahi", None)
+            cv.pop("selected_classes", None)
 
     def _deep_update(self, base: Dict[str, Any], other: Dict[str, Any]) -> Dict[str, Any]:
         for k, v in other.items():

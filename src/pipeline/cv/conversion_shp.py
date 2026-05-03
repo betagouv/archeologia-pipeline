@@ -21,53 +21,104 @@ import geopandas as gpd
 
 
 def _safe_to_file(gdf: gpd.GeoDataFrame, path: str, **kwargs) -> None:
-    """Écrit un GeoDataFrame en shapefile en préférant pyogrio (compatible PyInstaller)."""
+    """Écrit un GeoDataFrame en fichier vecteur en préférant pyogrio (compatible PyInstaller)."""
     try:
         gdf.to_file(path, engine="pyogrio", **kwargs)
     except Exception:
         gdf.to_file(path, engine="fiona", **kwargs)
 
 
+def _safe_to_gpkg(gdf: gpd.GeoDataFrame, gpkg_path: str, layer: str) -> None:
+    """Écrit une couche GeoDataFrame dans un GeoPackage (append si déjà existant)."""
+    try:
+        gdf.to_file(gpkg_path, layer=layer, driver="GPKG", engine="pyogrio")
+    except Exception:
+        gdf.to_file(gpkg_path, layer=layer, driver="GPKG", engine="fiona")
+
+
 def _safe_read_file(path: str, **kwargs) -> gpd.GeoDataFrame:
-    """Lit un shapefile en préférant pyogrio (compatible PyInstaller)."""
+    """Lit un fichier vecteur en préférant pyogrio (compatible PyInstaller)."""
     try:
         return gpd.read_file(path, engine="pyogrio", **kwargs)
     except Exception:
         return gpd.read_file(path, engine="fiona", **kwargs)
 
 
-def _confidence_bucket(confidence_value: Optional[float], color_index: int = 0) -> Tuple[Optional[str], Optional[str]]:
+def _list_gpkg_layers(path: str) -> List[str]:
+    """Liste les couches d'un GeoPackage sans dépendre de fiona.
+
+    Essaie successivement :
+
+    1. ``pyogrio.list_layers`` (déjà installé avec geopandas moderne et
+       utilisé partout dans ce module pour la lecture/écriture).
+    2. ``geopandas.list_layers`` (disponible depuis geopandas 1.0).
+    3. ``osgeo.ogr`` via l'environnement QGIS/OSGeo4W de l'utilisateur.
+
+    Retourne ``[]`` si toutes les tentatives échouent — le code appelant
+    doit alors sauter silencieusement le GPKG plutôt que crasher.
     """
-    Retourne l'intervalle de confiance et le nom de couleur pour les shapefiles.
-    
+    # 1) pyogrio
+    try:
+        import pyogrio  # type: ignore
+
+        layers = pyogrio.list_layers(path)
+        # pyogrio retourne un ndarray [[name, geom_type], ...] (>=0.7)
+        # ou une liste de tuples selon la version.
+        names: List[str] = []
+        for row in layers:
+            try:
+                names.append(str(row[0]))
+            except Exception:
+                names.append(str(row))
+        return names
+    except Exception:
+        pass
+    # 2) geopandas (>=1.0)
+    try:
+        df = gpd.list_layers(path)  # type: ignore[attr-defined]
+        if hasattr(df, "name"):
+            return [str(n) for n in df["name"].tolist()]
+    except Exception:
+        pass
+    # 3) OGR (OSGeo4W / QGIS)
+    try:
+        from osgeo import ogr  # type: ignore
+
+        ds = ogr.Open(path)
+        if ds is None:
+            return []
+        try:
+            return [ds.GetLayer(i).GetName() for i in range(ds.GetLayerCount())]
+        finally:
+            ds = None  # type: ignore[assignment]
+    except Exception:
+        return []
+
+
+def _confidence_bucket(
+    confidence_value: Optional[float],
+    color_index: int = 0,
+    min_confidence: float = 0.0,
+) -> Tuple[Optional[str], Optional[str]]:
+    """Retourne l'intervalle de confiance et le nom de couleur pour les shapefiles.
+
+    Délègue à :func:`class_utils.assign_confidence_bin` pour centraliser la
+    logique (partagée avec la symbologie QGIS). Un seuil ``min_confidence`` > 0
+    tronque la première tranche (ex. ``[0.3:0.4[`` au lieu de ``[0.2:0.4[``
+    quand l'utilisateur filtre à 0.3 dans les paramètres avancés).
+
     Args:
         confidence_value: Valeur de confiance (0.0-1.0)
         color_index: Index de la couleur de base pour cette classe (0-11)
-        
+        min_confidence: Seuil de confiance minimal (identique à celui utilisé
+            par la symbologie QGIS). Par défaut 0.0 → comportement historique.
+
     Returns:
-        Tuple (intervalle, nom_couleur) ex: ("[0.8:1]", "color0_high")
+        Tuple (intervalle, nom_couleur) ex: ``("[0.8:1]", "color0_high")``
+        ou ``(None, None)`` si la valeur est absente / invalide / sous le seuil.
     """
-    if confidence_value is None:
-        return None, None
-    try:
-        c = float(confidence_value)
-    except Exception:
-        return None, None
-
-    # Normaliser si la confiance semble être sur [0,10]
-    if c > 1.0 and c <= 10.0:
-        c = c / 10.0
-
-    # Intervalles de 0.2 avec nom de couleur basé sur l'index de classe
-    if c < 0.2:
-        return "[0:0.2[", f"color{color_index}_low"
-    if c < 0.4:
-        return "[0.2:0.4[", f"color{color_index}_medium_low"
-    if c < 0.6:
-        return "[0.4:0.6[", f"color{color_index}_medium"
-    if c < 0.8:
-        return "[0.6:0.8[", f"color{color_index}_medium_high"
-    return "[0.8:1]", f"color{color_index}_high"
+    from .class_utils import assign_confidence_bin
+    return assign_confidence_bin(confidence_value, color_index, min_confidence)
 
 
 def read_world_file(world_file_path: str) -> Tuple[Optional[float], Optional[float], Optional[float], Optional[float]]:
@@ -292,7 +343,7 @@ def _deduplicate_shapefiles_by_tile_extents(
             if base_name in seen:
                 continue
             seen.add(base_name)
-            jpg_name = base_name.replace("_detections", "") + ".jpg"
+            jpg_name = base_name.replace("_detections", "") + ".png"
             jpg_path = (jpg_dir / jpg_name) if jpg_dir.exists() else (labels_path / jpg_name)
             poly = _tile_extent_polygon_from_jpg(jpg_path)
             if poly is not None:
@@ -637,6 +688,52 @@ def _filter_shapefiles_by_min_area(
         logger.info("Filtrage par aire: aucune détection filtrée")
 
 
+def _filter_gpkg_by_min_area(
+    gpkg_paths: List[str],
+    min_area_m2: float = 50.0,
+    crs: str = "EPSG:2154",
+) -> None:
+    """
+    Filtre les détections trop petites dans un ou plusieurs GeoPackages.
+    Les géométries dont l'aire est inférieure à min_area_m2 sont supprimées de chaque couche.
+
+    Args:
+        gpkg_paths: Liste des chemins vers les GeoPackages à filtrer
+        min_area_m2: Aire minimale requise en m²
+        crs: Système de coordonnées
+    """
+    logger.info(f"Filtrage GPKG par aire: suppression des détections < {min_area_m2} m²")
+
+    for gpkg_path in gpkg_paths:
+        p = Path(gpkg_path)
+        if not p.exists():
+            continue
+        layers = _list_gpkg_layers(str(p))
+        if not layers:
+            logger.warning(f"Impossible de lister les couches de {p.name} (pyogrio/geopandas/ogr indisponibles ou GPKG vide)")
+            continue
+
+        for layer in layers:
+            try:
+                gdf = _safe_read_file(str(p), layer=layer)
+                if gdf.empty:
+                    continue
+                if gdf.crs is None:
+                    try:
+                        gdf = gdf.set_crs(crs, allow_override=True)
+                    except Exception:
+                        pass
+                gdf['__area'] = gdf.geometry.area
+                n_before = len(gdf)
+                gdf = gdf[gdf['__area'] >= min_area_m2].drop(columns=['__area'], errors='ignore')
+                n_removed = n_before - len(gdf)
+                if n_removed > 0:
+                    logger.info(f"Filtrage GPKG: {n_removed} détection(s) supprimée(s) dans '{layer}' (<{min_area_m2} m²)")
+                _safe_to_gpkg(gdf, str(p), layer=layer)
+            except Exception as e:
+                logger.warning(f"Filtrage GPKG couche '{layer}' ignorée: {e}")
+
+
 def _normalize_class_label(label: str) -> str:
     try:
         s = str(label)
@@ -648,6 +745,7 @@ def _normalize_class_label(label: str) -> str:
 def create_shapefile_from_detections(
     labels_dir: str,
     output_shapefile: str,
+    png_dir: str = None,
     tif_transform_data: dict = None,
     crs: str = "EPSG:2154",
     temp_dir: str = None,
@@ -657,6 +755,8 @@ def create_shapefile_from_detections(
     global_color_map: dict = None,
     model_task: str = None,
     clustering_configs: list = None,
+    postprocess_config: dict = None,
+    min_confidence: float = 0.0,
 ) -> bool:
     """
     Crée des shapefiles géoréférencés à partir des fichiers de détection YOLO
@@ -716,6 +816,7 @@ def create_shapefile_from_detections(
             # Récupérer les données de transformation du TIF correspondant
             pixel_width = pixel_height = x_origin = y_origin = None
             transform_source = "unknown"
+            tif_file = None  # Référence au TIF source (si trouvé dans Temp)
 
             # Essayer d'abord d'utiliser tif_transform_data (référentiel exact du JPG utilisé pour YOLO)
             tif_key = None
@@ -855,21 +956,11 @@ def create_shapefile_from_detections(
             
             # Vérifier si on a trouvé des données de géoréférencement
             if not all(v is not None for v in [pixel_width, pixel_height, x_origin, y_origin]):
-                # Méthode de dernier recours : extraction approximative depuis le nom de fichier
-                logger.warning(
-                    f"Données de géoréférencement non disponibles pour {base_name}, fallback approximatif basé sur le nom"
+                logger.error(
+                    f"Données de géoréférencement indisponibles pour {base_name}. "
+                    f"Tuile ignorée. Vérifiez que le TIF source est correctement géoréférencé."
                 )
-                x_anchor, y_anchor = extract_coordinates_from_filename(base_name)
-                if x_anchor is None or y_anchor is None:
-                    logger.warning(f"Coordonnées non extraites pour: {base_name}")
-                    continue
-                # Hypothèses par défaut si rien d'autre n'est disponible
-                # On considère une dalle de 1000 m (2000 px à 0.5 m/px)
-                pixel_width = 0.5
-                pixel_height = -0.5  # Négatif car l'axe Y est inversé
-                x_origin = x_anchor
-                y_origin = y_anchor + 1000.0
-                transform_source = "filename_fallback"
+                continue
             
             # Chercher d'abord le fichier JSON correspondant pour les données de confiance et les trous
             json_file = label_file.with_suffix('.json')
@@ -935,18 +1026,31 @@ def create_shapefile_from_detections(
                         else:
                             continue
 
-                        # Récupérer les vraies dimensions de l'image JPG correspondante
-                        jpg_name = base_name.replace("_detections", "") + ".jpg"
+                        # Récupérer les vraies dimensions de l'image PNG correspondante
+                        jpg_name = base_name.replace("_detections", "") + ".png"
                         jpg_path = None
-                        if labels_dir:
-                            parent_dir = Path(labels_dir).parent
-                            jpg_dir = parent_dir / "jpg"
-                            if jpg_dir.exists():
-                                jpg_path = jpg_dir / jpg_name
+                        # 1) Chercher dans png_dir (dossier source des PNG d'inférence)
+                        if png_dir:
+                            candidate = Path(png_dir) / jpg_name
+                            if candidate.exists():
+                                jpg_path = candidate
+                        # 2) Chercher dans labels_dir lui-même (fallback rétrocompat)
                         if jpg_path is None or not jpg_path.exists():
+                            candidate = label_file.parent / jpg_name
+                            if candidate.exists():
+                                jpg_path = candidate
+                        # 3) Ancien chemin ../jpg/ (rétrocompat)
+                        if jpg_path is None or not jpg_path.exists():
+                            if labels_dir:
+                                old_jpg_dir = Path(labels_dir).parent / "jpg"
+                                if old_jpg_dir.exists():
+                                    candidate = old_jpg_dir / jpg_name
+                                    if candidate.exists():
+                                        jpg_path = candidate
+                        if jpg_path is None:
                             jpg_path = label_file.parent / jpg_name
 
-                        img_width = img_height = 2000
+                        img_width = img_height = None
                         if jpg_path.exists():
                             try:
                                 from PIL import Image
@@ -955,13 +1059,23 @@ def create_shapefile_from_detections(
                                     logger.debug(f"Dimensions réelles de {jpg_name}: {img_width}x{img_height}")
                             except Exception as e:
                                 logger.warning(f"Impossible de lire les dimensions de {jpg_name}: {e}")
-                        else:
-                            logger.warning(
-                                f"Image JPG non trouvée: {jpg_path}, utilisation des dimensions par défaut"
+
+                        # Fallback : lire les dimensions depuis le TIF source
+                        if (img_width is None or img_height is None) and tif_file and Path(tif_file).exists():
+                            try:
+                                import rasterio
+                                with rasterio.open(str(tif_file)) as src:
+                                    img_width, img_height = src.width, src.height
+                                    logger.debug(f"Dimensions lues depuis TIF {Path(tif_file).name}: {img_width}x{img_height}")
+                            except Exception:
+                                pass
+
+                        if img_width is None or img_height is None:
+                            logger.error(
+                                f"Impossible de déterminer les dimensions de l'image pour {base_name}, "
+                                f"JPG non trouvé ({jpg_path}) et pas de TIF source. Détection ignorée."
                             )
-                            logger.debug(
-                                f"Recherche JPG - base_name: {base_name}, jpg_name: {jpg_name}, jpg_path: {jpg_path}"
-                            )
+                            continue
 
                         # IMPORTANT: Utiliser en priorité le fichier world (.jgw) du JPG
                         # Cela garantit que python run_pipeline et l'exécutable utilisent
@@ -1101,7 +1215,7 @@ def create_shapefile_from_detections(
                             color_idx = class_colors[class_id_int]
                         else:
                             color_idx = class_id_int
-                        conf_bin, conf_color = _confidence_bucket(confidence, color_idx)
+                        conf_bin, conf_color = _confidence_bucket(confidence, color_idx, min_confidence)
                         detection_attrs["conf_bin"] = conf_bin
                         detection_attrs["conf_color"] = conf_color
                         detection_attrs["__color_idx"] = color_idx
@@ -1115,7 +1229,7 @@ def create_shapefile_from_detections(
             processed_files += 1
         
         if not data_by_class_and_tile:
-            logger.warning("Aucune détection trouvée pour créer les shapefiles")
+            logger.warning("Aucune détection trouvée pour créer le GeoPackage")
             return False
         
         # Créer le répertoire de sortie si nécessaire
@@ -1123,7 +1237,7 @@ def create_shapefile_from_detections(
         output_dir = output_path.parent
         output_dir.mkdir(parents=True, exist_ok=True)
         
-        # Créer un shapefile pour chaque classe
+        # Créer une couche par classe dans un GeoPackage unique
         total_detections = 0
         created_shapefiles = []
         
@@ -1182,25 +1296,56 @@ def create_shapefile_from_detections(
         logger.info(f"Classes regroupées par nom: {list(data_by_class_name.keys())}")
         
         # ── Post-traitement global : fusion intra-classe + suppression superpositions ──
-        # La fusion des polygones adjacents (merge) ne s'applique qu'aux modèles
-        # de segmentation (instance_segmentation, semantic_segmentation) qui
-        # produisent des polygones linéaires pouvant se toucher entre dalles.
-        # Les modèles de détection (object_detection) produisent des bounding
-        # boxes indépendantes qui ne doivent pas être fusionnées.
+        # Deux étapes pilotées par ``postprocess_config`` (chargé depuis
+        # ``args.yaml`` du modèle, voir :func:`load_postprocess_config_from_model`) :
+        #
+        # 1. ``merge_adjacent`` : fusion des polygones de même classe qui se
+        #    touchent entre dalles. Utile pour les modèles de segmentation
+        #    produisant des polygones linéaires (chemins, parcellaire) ; à
+        #    désactiver pour des objets disjoints (cratères circulaires) où
+        #    cette étape coûte cher pour rien.
+        # 2. ``remove_overlaps`` : suppression des superpositions inter-classes
+        #    par ordre de confiance. Utile pour les modèles multi-classes ; à
+        #    désactiver pour les modèles mono-classe.
+        #
+        # Les modèles de détection bbox (``object_detection``) produisent par
+        # nature des boîtes indépendantes qui ne doivent jamais être fusionnées,
+        # donc on force les deux flags à False dans ce cas (sauf override
+        # explicite par l'utilisateur).
         _segmentation_tasks = {"instance_segmentation", "semantic_segmentation", "segment"}
-        _do_postprocess = model_task in _segmentation_tasks if model_task else True
+        _is_segmentation = model_task in _segmentation_tasks if model_task else True
+        if isinstance(postprocess_config, dict):
+            _do_merge = bool(postprocess_config.get("merge_adjacent", _is_segmentation))
+            _do_remove_overlaps = bool(postprocess_config.get("remove_overlaps", _is_segmentation))
+        else:
+            _do_merge = _is_segmentation
+            _do_remove_overlaps = _is_segmentation
+        # Override : un modèle bbox ne peut jamais merger (par nature)
+        if not _is_segmentation:
+            _do_merge = False
         total_raw = sum(len(v) for v in data_by_class_name.values())
-        if _do_postprocess:
+        if _do_merge or _do_remove_overlaps:
             try:
                 from .postprocessing import postprocess_geo_detections
-                logger.info(f"Post-traitement géo: {total_raw} détections brutes sur {processed_files} dalles (task={model_task})")
-                data_by_class_name = postprocess_geo_detections(data_by_class_name, merge_buffer_m=0.5)
+                logger.info(
+                    f"Post-traitement géo: {total_raw} détections brutes sur {processed_files} dalles "
+                    f"(task={model_task}, merge={_do_merge}, remove_overlaps={_do_remove_overlaps})"
+                )
+                data_by_class_name = postprocess_geo_detections(
+                    data_by_class_name,
+                    merge_buffer_m=0.5,
+                    do_merge=_do_merge,
+                    do_remove_overlaps=_do_remove_overlaps,
+                )
                 total_pp = sum(len(v) for v in data_by_class_name.values())
                 logger.info(f"Post-traitement géo terminé: {total_raw} -> {total_pp} détections")
             except Exception as e:
                 logger.warning(f"Post-traitement géo ignoré (erreur): {e}")
         else:
-            logger.info(f"Post-traitement géo désactivé pour modèle de détection bbox (task={model_task}), {total_raw} détections conservées intactes")
+            logger.info(
+                f"Post-traitement géo désactivé (task={model_task}, merge=False, remove_overlaps=False), "
+                f"{total_raw} détections conservées intactes"
+            )
         
         # Recalculer conf_bin/conf_color après post-processing (la confiance a pu changer par fusion)
         for class_name, detections in data_by_class_name.items():
@@ -1212,7 +1357,7 @@ def create_shapefile_from_detections(
                     cidx = global_color_map[class_name]
                 else:
                     cidx = det.get("__color_idx", 0)
-                det["conf_bin"], det["conf_color"] = _confidence_bucket(conf, cidx)
+                det["conf_bin"], det["conf_color"] = _confidence_bucket(conf, cidx, min_confidence)
         
         # ── Clustering spatial (optionnel) ──
         _cluster_class_names = set()
@@ -1233,16 +1378,19 @@ def create_shapefile_from_detections(
             except Exception as e:
                 logger.warning(f"Clustering ignoré (erreur): {e}")
         
+        # Chemin du GeoPackage unique (même répertoire, nom basé sur le stem du paramètre output_shapefile)
+        gpkg_path = output_dir / f"{output_path.stem}.gpkg"
+
         for class_name, detections in data_by_class_name.items():
             # Filtrer par classes sélectionnées si spécifié
-            # Les classes de clustering passent toujours (elles n'existent pas dans selected_classes)
-            if selected_classes is not None and len(selected_classes) > 0:
+            # None = toutes les classes ; [] = aucune classe (les classes cluster passent toujours)
+            if selected_classes is not None:
                 if class_name not in selected_classes and class_name not in _cluster_class_names:
                     logger.info(f"Classe '{class_name}' ignorée (non sélectionnée)")
                     continue
             
-            # Nom du shapefile pour cette classe
-            class_shapefile = output_dir / f"{output_path.stem}_{class_name}.shp"
+            # Identifiant de couche dans le GeoPackage
+            class_shapefile = gpkg_path  # référence pour compatibilité aval
             
             # Créer le GeoDataFrame pour cette classe
             gdf = gpd.GeoDataFrame(detections, geometry="geometry", crs=crs)
@@ -1334,148 +1482,70 @@ def create_shapefile_from_detections(
             except Exception as clean_e:
                 logger.warning(f"Nettoyage/normalisation shapefile ignoré (erreur): {clean_e}")
             
-            # Sauvegarder en shapefile avec diagnostic détaillé
+            # Sauvegarder comme couche dans le GeoPackage
             try:
-                # DIAGNOSTIC DÉTAILLÉ POUR PYINSTALLER - CONVERSION_SHP
-                logger.info(f"🔍 DIAGNOSTIC CONVERSION_SHP: Tentative de sauvegarde shapefile...")
-                logger.info(f"   Classe: {class_name}")
-                logger.info(f"   GeoDataFrame shape: {gdf.shape}")
-                logger.info(f"   Colonnes: {list(gdf.columns)}")
-                logger.info(f"   CRS: {gdf.crs}")
-                logger.info(f"   Chemin de sortie: {class_shapefile}")
-                
-                # Test des modules critiques avant sauvegarde
-                try:
-                    import pandas._libs.window.aggregations
-                    logger.info("   ✅ pandas._libs.window.aggregations disponible")
-                except Exception as mod_e:
-                    logger.error(f"   ❌ pandas._libs.window.aggregations: {mod_e}")
-                
-                # Test d'autres modules pandas critiques
-                critical_modules = [
-                    'pandas._libs.lib',
-                    'pandas._libs.algos',
-                    'pandas._libs.groupby',
-                    'pandas._libs.ops',
-                    'pandas.core.groupby.ops'
-                ]
-                
-                for mod in critical_modules:
-                    try:
-                        __import__(mod)
-                        logger.info(f"   ✅ {mod} disponible")
-                    except Exception as mod_e:
-                        logger.error(f"   ❌ {mod}: {mod_e}")
-                
-                _remove_shapefile_set(class_shapefile)
-                _safe_to_file(gdf, str(class_shapefile))
-                logger.info(f"✅ Shapefile créé avec succès: {class_shapefile}")
-                
+                logger.info(f"🔍 Sauvegarde GeoPackage couche '{class_name}': {gpkg_path}")
+                _safe_to_gpkg(gdf, str(gpkg_path), layer=class_name)
+                logger.info(f"✅ Couche '{class_name}' écrite dans le GeoPackage")
             except Exception as save_e:
-                logger.error(f"❌ ERREUR SAUVEGARDE SHAPEFILE CONVERSION_SHP: {save_e}")
-                logger.error(f"   Type d'erreur: {type(save_e).__name__}")
-                
-                # Traceback détaillé pour PyInstaller
+                logger.error(f"❌ ERREUR SAUVEGARDE GEOPACKAGE couche '{class_name}': {save_e}")
                 import traceback
-                tb_lines = traceback.format_exc().split('\n')
-                for i, line in enumerate(tb_lines):
+                for line in traceback.format_exc().splitlines():
                     if line.strip():
-                        logger.error(f"   TB[{i}]: {line}")
-                
-                # Essayer des alternatives de sauvegarde
+                        logger.error(f"   {line}")
+                # Fallback CLI: ogr2ogr GeoJSON → GPKG
                 try:
-                    logger.info("🔄 Tentative de sauvegarde alternative...")
-                    # Essayer sans CRS
-                    gdf_no_crs = gdf.copy()
-                    gdf_no_crs.crs = None
-                    _safe_to_file(gdf_no_crs, str(class_shapefile))
-                    logger.info("✅ Sauvegarde alternative réussie (sans CRS)")
-                except Exception as alt_e:
-                    logger.error(f"❌ Sauvegarde alternative échouée: {alt_e}")
-                    # Fallback final: écrire un GeoJSON simple et utiliser ogr2ogr (CLI) pour produire le shapefile
-                    try:
-                        logger.info("🛠️ Fallback CLI: export GeoJSON + ogr2ogr → Shapefile")
-                        # Construire un GeoJSON FeatureCollection à partir de 'detections'
-                        features = []
-                        for det in detections:
-                            geom = det.get("geometry")
-                            try:
-                                geom_mapping = geom.__geo_interface__
-                            except Exception:
-                                logger.warning("   Géométrie invalide, détection ignorée dans le GeoJSON")
-                                continue
-                            props = {k: v for k, v in det.items() if k != "geometry"}
-                            features.append({
-                                "type": "Feature",
-                                "geometry": geom_mapping,
-                                "properties": props,
-                            })
-                        fc = {"type": "FeatureCollection", "features": features}
-                        # Écrire dans un fichier temporaire
-                        with tempfile.NamedTemporaryFile(mode='w', suffix='.geojson', delete=False, encoding='utf-8') as tmp_geojson:
-                            json.dump(fc, tmp_geojson)
-                            tmp_geojson_path = tmp_geojson.name
-                        logger.info(f"   GeoJSON temporaire écrit: {tmp_geojson_path}")
-                        # Déterminer ogr2ogr
-                        osgeo4w_root = os.environ.get("OSGEO4W_ROOT", r"C:\\OSGeo4W")
-                        candidates = [
-                            os.path.join(osgeo4w_root, 'bin', 'ogr2ogr.exe'),
-                            r"C:\\OSGeo4W64\\bin\\ogr2ogr.exe",
-                        ]
-                        ogr2ogr = None
-                        for c in candidates:
-                            if os.path.exists(c):
-                                ogr2ogr = c
-                                break
-                        if not ogr2ogr:
-                            logger.error("ogr2ogr introuvable. Veuillez installer OSGeo4W et définir OSGEO4W_ROOT.")
-                            raise alt_e
-                        # Exécuter ogr2ogr pour créer le shapefile, forcer le CRS si disponible
-                        crs_arg = []
+                    logger.info("🛠️ Fallback CLI: export GeoJSON + ogr2ogr → GeoPackage")
+                    features = []
+                    for det in detections:
+                        geom = det.get("geometry")
                         try:
-                            crs_str = None
-                            if gdf.crs is not None:
-                                crs_str = getattr(gdf.crs, 'to_string', lambda: str(gdf.crs))()
-                            if not crs_str:
-                                crs_str = crs
-                            if crs_str:
-                                crs_arg = ["-a_srs", crs_str]
+                            geom_mapping = geom.__geo_interface__
                         except Exception:
-                            crs_arg = ["-a_srs", crs]
-                        cmd = [ogr2ogr, "-overwrite", *crs_arg, str(class_shapefile), tmp_geojson_path]
-                        logger.info("   Exécution: " + " ".join(cmd))
-                        res = subprocess.run(cmd, capture_output=True, text=True)
-                        if res.returncode != 0:
-                            logger.error(f"   ogr2ogr a échoué (code {res.returncode})")
-                            if res.stdout:
-                                logger.error(f"   STDOUT:\n{res.stdout}")
-                            if res.stderr:
-                                logger.error(f"   STDERR:\n{res.stderr}")
-                            raise alt_e
-                        logger.info("✅ Shapefile créé via ogr2ogr (CLI)")
-                    except Exception as cli_fallback_e:
-                        logger.error(f"❌ Fallback ogr2ogr échoué: {cli_fallback_e}")
+                            continue
+                        props = {k: v for k, v in det.items() if k != "geometry"}
+                        features.append({"type": "Feature", "geometry": geom_mapping, "properties": props})
+                    fc = {"type": "FeatureCollection", "features": features}
+                    with tempfile.NamedTemporaryFile(mode='w', suffix='.geojson', delete=False, encoding='utf-8') as tmp_f:
+                        json.dump(fc, tmp_f)
+                        tmp_geojson_path = tmp_f.name
+                    osgeo4w_root = os.environ.get("OSGEO4W_ROOT", r"C:\OSGeo4W")
+                    candidates = [
+                        os.path.join(osgeo4w_root, 'bin', 'ogr2ogr.exe'),
+                        r"C:\OSGeo4W64\bin\ogr2ogr.exe",
+                    ]
+                    ogr2ogr = next((c for c in candidates if os.path.exists(c)), None)
+                    if not ogr2ogr:
                         raise save_e
+                    crs_str = str(gdf.crs) if gdf.crs is not None else crs
+                    cmd = [
+                        ogr2ogr, "-update", "-append",
+                        "-f", "GPKG", "-a_srs", crs_str,
+                        "-nln", class_name,
+                        str(gpkg_path), tmp_geojson_path,
+                    ]
+                    res = subprocess.run(cmd, capture_output=True, text=True)
+                    if res.returncode != 0:
+                        logger.error(f"   ogr2ogr a échoué (code {res.returncode}): {res.stderr}")
+                        raise save_e
+                    logger.info("✅ Couche ajoutée au GeoPackage via ogr2ogr")
+                except Exception as cli_e:
+                    logger.error(f"❌ Fallback ogr2ogr échoué: {cli_e}")
+                    raise save_e
             
-            created_shapefiles.append(str(class_shapefile))
+            # Enregistrer la référence gpkg|layername=<class_name> pour aval
+            layer_ref = f"{gpkg_path}|layername={class_name}"
+            if layer_ref not in created_shapefiles:
+                created_shapefiles.append(layer_ref)
             total_detections += len(detections)
             
-            logger.info(f"✅ Shapefile créé pour la classe '{class_name}': {class_shapefile}")
             logger.info(f"📊 {len(detections)} détections de classe '{class_name}'")
         
-        logger.info(f"🎯 {len(created_shapefiles)} shapefiles créés au total")
+        logger.info(f"🎯 {len(created_shapefiles)} couche(s) GeoPackage créée(s) dans {gpkg_path.name}")
         logger.info(f"📊 {total_detections} détections dans {processed_files} fichiers")
 
-        # Générer un projet QGIS avec Value Map pour les champs (validation, model_pred, correction_prediction)
-        from .qgs_project import generate_qgs_project
-        generate_qgs_project(
-            created_shapefiles=created_shapefiles,
-            output_shapefile=output_shapefile,
-            all_classes=all_classes,
-            crs=crs,
-            class_colors=class_colors,
-            cluster_class_names=_cluster_class_names if _cluster_class_names else None,
-        )
+        # Le projet QGIS consolidé est généré par finalize_service à la racine de detections/
+        # created_shapefiles contient des entrées au format "chemin.gpkg|layername=<class>"
 
         return True
         

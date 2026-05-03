@@ -3,11 +3,18 @@ from __future__ import annotations
 import shutil
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Tuple
 
 from ..geo_utils import extract_tif_transform_data
-from ..coords import extract_xy_from_filename, infer_xy_from_file
+from ..coords import extract_xy_from_filename, get_raster_bounds, infer_xy_from_file
+from ..ign.products.tile_splitter import IGN_TILE_SIZE_M
+from ..output_paths import indice_base_dir, indice_tif_dir, indice_jpg_dir
 from ..types import LogFn, CancelCheckFn
+
+
+# Tolérance d'alignement sur la grille IGN 1 km (mètres). Même sémantique
+# que dans existing_mnt.py.
+_ALIGN_TOLERANCE_M = 50
 
 
 @dataclass(frozen=True)
@@ -15,16 +22,65 @@ class ExistingRvtResult:
     total_images: int
 
 
-def _convert_tif_to_jpg_with_world(input_tif: Path, output_jpg: Path) -> None:
-    from ..ign.products.convert_tif_to_jpg import convert_tif_to_jpg
+def _classify_rvt_layout(
+    bounds: Tuple[float, float, float, float],
+    *,
+    tile_size_m: int = IGN_TILE_SIZE_M,
+    tol_m: float = _ALIGN_TOLERANCE_M,
+) -> str:
+    """Classifie l'emprise d'un raster RVT pour choisir le flux de traitement.
 
-    output_jpg.parent.mkdir(parents=True, exist_ok=True)
-    ok = bool(convert_tif_to_jpg(str(input_tif), str(output_jpg), 95, create_world_file=True, reference_tif_path=str(input_tif)))
-    if not ok or not output_jpg.exists():
-        raise RuntimeError(f"Échec conversion TIF->JPG: {input_tif}")
+    Sémantique identique à :func:`_classify_mnt_layout` dans ``existing_mnt.py`` :
+
+    - ``"large"``  : largeur ou hauteur > 1 km + tolérance → on applique SAHI
+      directement sur le raster complet (slicing 640 × 640 en mémoire à
+      l'inférence). La limite PIL ``MAX_IMAGE_PIXELS`` est désactivée
+      globalement pour permettre la conversion TIF → PNG d'une grande image
+      (voir ``convert_tif_to_png.py`` et ``computer_vision_onnx.py``).
+    - ``"standard"`` : ≈ 1 km aligné sur la grille IGN → comportement d'origine.
+    - ``"small"``  : < 1 km ou non aligné → conservé tel quel (nom d'origine
+      préservé par ``_normalized_rvt_name``).
+    """
+    xmin, ymin, xmax, ymax = bounds
+    width = xmax - xmin
+    height = ymax - ymin
+
+    if width > tile_size_m + tol_m or height > tile_size_m + tol_m:
+        return "large"
+
+    dim_ok = abs(width - tile_size_m) <= tol_m and abs(height - tile_size_m) <= tol_m
+    align_ok = (
+        abs(xmin - round(xmin / tile_size_m) * tile_size_m) <= tol_m
+        and abs(ymax - round(ymax / tile_size_m) * tile_size_m) <= tol_m
+    )
+    if dim_ok and align_ok:
+        return "standard"
+
+    return "small"
+
+
+def _convert_tif_to_png_with_world(input_tif: Path, output_png: Path) -> None:
+    from ..ign.products.convert_tif_to_png import convert_tif_to_png
+
+    output_png.parent.mkdir(parents=True, exist_ok=True)
+    ok = bool(convert_tif_to_png(str(input_tif), str(output_png), create_world_file=True, reference_tif_path=str(input_tif)))
+    if not ok or not output_png.exists():
+        raise RuntimeError(f"Échec conversion TIF->PNG: {input_tif}")
 
 
 def _normalized_rvt_name(*, tif_path: Path, target_rvt: str) -> str:
+    # Vérifier l'emprise réelle de la tuile pour éviter les collisions
+    # de noms quand les tuiles font moins de ~1 km (ex: 350x350 à 0.5 m/px = 175 m)
+    bounds = get_raster_bounds(tif_path)
+    if bounds is not None:
+        xmin, ymin, xmax, ymax = bounds
+        width_m = xmax - xmin
+        height_m = ymax - ymin
+        if width_m < 900 or height_m < 900 or width_m > 1100 or height_m > 1100:
+            # Pas une dalle ~1 km standard → conserver le nom d'origine
+            # pour éviter que plusieurs tuiles soient renommées identiquement
+            return tif_path.name
+
     xy = infer_xy_from_file(tif_path)
     if xy is None:
         xy = extract_xy_from_filename(tif_path.name)
@@ -61,6 +117,7 @@ def run_existing_rvt(
     cancel_check: CancelCheckFn | None = None,
     rvt_params: Dict[str, Any] | None = None,
     global_color_map: Dict[str, Any] | None = None,
+    indices_folder_name: str | None = None,
 ) -> ExistingRvtResult:
     if not existing_rvt_dir.exists() or not existing_rvt_dir.is_dir():
         raise FileNotFoundError(f"Dossier RVT inexistant ou invalide: {existing_rvt_dir}")
@@ -71,24 +128,21 @@ def run_existing_rvt(
 
     cv_enabled = bool((cv_config or {}).get("enabled", False))
     target_rvt = str((cv_config or {}).get("target_rvt", "LD"))
+    # indices_folder_name permet de forcer le nom du dossier indices/<X>/
+    # (ex: "RVT" en mode existing_rvt UI où l'indice cible est inconnu)
+    folder_name = indices_folder_name if indices_folder_name is not None else target_rvt
 
     rvt_output_dir: Path | None = None
     try:
-        from ..ign.products.rvt_naming import get_rvt_param_suffix
-        rvt_cfg = output_structure.get("RVT", {}) if isinstance(output_structure, dict) else {}
-        base_dir_name = str(rvt_cfg.get("base_dir", "RVT"))
-        type_dir_base = str(rvt_cfg.get(target_rvt, target_rvt))
-        param_suffix = get_rvt_param_suffix(target_rvt, rvt_params or {}) if rvt_params else ""
-        type_dir_name = f"{type_dir_base}{param_suffix}" if param_suffix else type_dir_base
-        rvt_output_dir = (output_dir / "results") / base_dir_name / type_dir_name
+        rvt_output_dir = indice_base_dir(output_dir, folder_name)
         rvt_output_dir.mkdir(parents=True, exist_ok=True)
     except Exception:
         rvt_output_dir = None
 
-    jpg_output_dir = (rvt_output_dir / "jpg") if rvt_output_dir is not None else existing_rvt_dir
+    jpg_output_dir = indice_jpg_dir(output_dir, folder_name) if rvt_output_dir is not None else existing_rvt_dir
     jpg_output_dir.mkdir(parents=True, exist_ok=True)
 
-    tif_out_dir = (rvt_output_dir / "tif") if rvt_output_dir is not None else None
+    tif_out_dir = indice_tif_dir(output_dir, folder_name) if rvt_output_dir is not None else None
     if tif_out_dir is not None:
         tif_out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -96,6 +150,24 @@ def run_existing_rvt(
     tif_transform_data: Dict[str, Any] = {}
     kept_tif_names: set[str] = set()
     kept_jpg_names: set[str] = set()
+
+    # ── Inspection des rasters RVT (pas de pré-découpage pour les grands) ──
+    # Les rasters RVT larges (> 1 km) sont traités tels quels : on laisse
+    # SAHI faire son slicing 640×640 à l'inférence. Cela évite les sous-dalles
+    # NoData en bord de couverture et préserve la continuité des indices.
+    # La limite PIL ``MAX_IMAGE_PIXELS`` est désactivée dans
+    # ``convert_tif_to_png.py`` et ``computer_vision_onnx.py`` pour autoriser
+    # les grandes emprises.
+    for tif_path in tif_files:
+        bounds = get_raster_bounds(tif_path)
+        layout = _classify_rvt_layout(bounds) if bounds is not None else "standard"
+        if layout == "large" and bounds is not None:
+            width = bounds[2] - bounds[0]
+            height = bounds[3] - bounds[1]
+            log(
+                f"RVT {tif_path.name}: emprise ≈ {width:.0f} x {height:.0f} m → "
+                f"SAHI assure le slicing à l'inférence (pas de pré-découpage)"
+            )
 
     total_tif = len(tif_files)
     log(f"Traitement de {total_tif} fichiers TIF…")
@@ -106,7 +178,7 @@ def run_existing_rvt(
             break
 
         effective_tif_path = tif_path
-        if tif_out_dir is not None:
+        if tif_out_dir is not None and tif_out_dir.resolve() != existing_rvt_dir.resolve():
             try:
                 normalized_name = _normalized_rvt_name(tif_path=tif_path, target_rvt=target_rvt)
                 dest = tif_out_dir / normalized_name
@@ -118,11 +190,14 @@ def run_existing_rvt(
                 kept_tif_names.add(dest.name)
             except Exception:
                 effective_tif_path = tif_path
+        elif tif_out_dir is not None:
+            # existing_rvt_dir == tif_out_dir : les TIFs sont déjà au bon endroit
+            kept_tif_names.add(tif_path.name)
 
-        jpg_path = jpg_output_dir / (effective_tif_path.stem + ".jpg")
+        jpg_path = jpg_output_dir / (effective_tif_path.stem + ".png")
         if not jpg_path.exists():
-            log(f"Conversion TIF->JPG (existing_rvt): {effective_tif_path.name} -> {jpg_path.name}")
-            _convert_tif_to_jpg_with_world(effective_tif_path, jpg_path)
+            log(f"Conversion TIF->PNG (existing_rvt): {effective_tif_path.name} -> {jpg_path.name}")
+            _convert_tif_to_png_with_world(effective_tif_path, jpg_path)
         jpg_files.append(jpg_path)
         kept_jpg_names.add(jpg_path.name)
 
@@ -135,7 +210,7 @@ def run_existing_rvt(
 
     # Nettoyage des fichiers orphelins (vides ou numériques) non produits par cette exécution
     _cleanup_orphans(tif_out_dir, "*.tif", kept_tif_names)
-    _cleanup_orphans(jpg_output_dir, "*.jpg", kept_jpg_names)
+    _cleanup_orphans(jpg_output_dir, "*.png", kept_jpg_names)
 
     # Computer Vision (uniquement si activée)
     # La déduplication shapefile est gérée par run_cv_on_folder (run_shapefile_dedup=True).
@@ -151,6 +226,7 @@ def run_existing_rvt(
             cv_config=cv_config,
             target_rvt=target_rvt,
             rvt_base_dir=rvt_output_dir,
+            output_dir=output_dir,
             tif_transform_data=tif_transform_data,
             run_shapefile_dedup=True,
             global_color_map=global_color_map,

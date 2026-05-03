@@ -1,12 +1,12 @@
 {
   "app": {
     "files": {
-      "output_dir": "D:/pipeline_results/output_carrieres",
-      "data_mode": "existing_rvt",
-      "input_file": "D:/pipeline_results/data/data_carrieres/dalles_carriere.txt",
-      "local_laz_dir": "D:/pipeline_results/output_TA_LHD/dalles",
+      "output_dir": "D:/pipeline_results/output_test",
+      "data_mode": "ign_laz",
+      "input_file": "C:\\Users\\valen\\AppData\\Local\\Temp\\archeologia_zone_gwis809u\\carrieres.shp",
+      "local_laz_dir": "D:/pipeline_results/output_carrieres/dalles",
       "existing_mnt_dir": "D:/Rambouillet_Archeo/output_dalles/results/MNT/tif",
-      "existing_rvt_dir": "D:/pipeline_results/output_carrieres/results/RVT/SVF_R10_D16_V1_N0/tif"
+      "existing_rvt_dir": "D:/Verdun/output_450/train"
     }
   },
   "processing": {
@@ -14,24 +14,13 @@
     "density_resolution": 1.0,
     "tile_overlap": 20,
     "filter_expression": "Classification = 2 OR Classification = 6 OR Classification = 66 OR Classification = 67 OR Classification = 9",
-    "pyramids": {
-      "enabled": true,
-      "levels": [
-        2,
-        4,
-        8,
-        16,
-        32,
-        64
-      ]
-    },
     "products": {
-      "MNT": true,
+      "MNT": false,
       "DENSITE": false,
       "M_HS": false,
-      "SVF": true,
+      "SVF": false,
       "SLO": false,
-      "LD": true,
+      "LD": false,
       "SLRM": false,
       "VAT": false
     },
@@ -44,50 +33,30 @@
         "VAT": false
       }
     },
-    "max_workers": 3
+    "max_workers": 2
   },
   "computer_vision": {
     "enabled": true,
     "runs": [
       {
-        "model": "C:\\Users\\valen\\AppData\\Roaming\\QGIS\\QGIS3\\profiles\\default\\python\\plugins\\archeologia-pipeline\\models\\verdun_3_classes_1\\weights\\best.onnx",
-        "target_rvt": "SVF",
+        "model": "C:\\Users\\valen\\AppData\\Roaming\\QGIS\\QGIS3\\profiles\\default\\python\\plugins\\archeologia-pipeline\\data\\models\\run_rf_detr_1\\weights\\best.onnx",
+        "target_rvt": "LD",
+        "min_area_m2": 0.0
+      },
+      {
+        "model": "C:\\Users\\valen\\AppData\\Roaming\\QGIS\\QGIS3\\profiles\\default\\python\\plugins\\archeologia-pipeline\\data\\models\\formes_lineaires_ld_a15_rmin10_rm_rfdetr_seg_1\\weights\\best.onnx",
+        "target_rvt": "LD",
         "min_area_m2": 0.0
       }
     ],
-    "selected_model": "C:\\Users\\valen\\AppData\\Roaming\\QGIS\\QGIS3\\profiles\\default\\python\\plugins\\archeologia-pipeline\\models\\verdun_3_classes_1\\weights\\best.onnx",
-    "target_rvt": "SVF",
-    "confidence_threshold": 0.2,
+    "selected_model": "C:\\Users\\valen\\AppData\\Roaming\\QGIS\\QGIS3\\profiles\\default\\python\\plugins\\archeologia-pipeline\\data\\models\\run_rf_detr_1\\weights\\best.onnx",
+    "target_rvt": "LD",
+    "confidence_threshold": 0.3,
     "iou_threshold": 0.5,
-    "generate_annotated_images": true,
+    "generate_annotated_images": false,
     "generate_shapefiles": true,
-    "models_dir": "C:\\Users\\valen\\AppData\\Roaming\\QGIS\\QGIS3\\profiles\\default\\python\\plugins\\archeologia-pipeline\\models",
-    "sahi": {
-      "slice_height": 640,
-      "slice_width": 640,
-      "overlap_ratio": 0.2
-    },
+    "models_dir": "C:\\Users\\valen\\AppData\\Roaming\\QGIS\\QGIS3\\profiles\\default\\python\\plugins\\archeologia-pipeline\\data\\models",
     "export_runner_config": true,
-    "selected_classes": [
-      "abri",
-      "cratere_obus",
-      "tranchees_et_boyaux"
-    ],
-    "model_classes_config": {
-      "tranchee-instance-segmentation-train-v0-added-epochs": [
-        "tranchée"
-      ],
-      "help_to_label_70_Vosges_4_rf_detr": [
-        "charbonnière",
-        "charbonnière_Vosges",
-        "circular_depression",
-        "four"
-      ],
-      "run_18": [
-        "charbonnière",
-        "four"
-      ]
-    },
     "scan_all": true
   },
   "rvt_params": {

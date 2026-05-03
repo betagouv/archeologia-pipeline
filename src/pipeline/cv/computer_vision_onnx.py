@@ -11,6 +11,17 @@ from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 
+# Filet de sécurité : les modes ``existing_mnt`` / ``existing_rvt`` peuvent
+# appliquer le CV directement sur un grand raster (SAHI slicing en mémoire).
+# PIL plante à ~178 Mpx par défaut (DecompressionBomb), ce qui est bien en
+# deçà d'un RVT 5 km × 5 km à 0.5 m (100 Mpx) + marges. On désactive la
+# limite pour les inférences.
+try:  # pragma: no cover - dépend de l'installation PIL
+    from PIL import Image as _PIL_Image
+    _PIL_Image.MAX_IMAGE_PIXELS = None
+except Exception:
+    pass
+
 from .cv_output import (
     get_detection_output_path,
     save_empty_outputs,
@@ -789,15 +800,11 @@ def _save_segmentation_annotated_image(
                 # Dessiner le contour du polygone
                 draw.polygon(points, outline=color, width=2)
         
-        # Convertir en RGB pour sauvegarder en JPEG
-        img_final = img_with_mask.convert("RGB")
-        
         Path(output_path).parent.mkdir(parents=True, exist_ok=True)
         
-        if output_path.lower().endswith(('.jpg', '.jpeg')):
-            img_final.save(output_path, quality=jpeg_quality, optimize=True)
-        else:
-            img_final.save(output_path)
+        # Sauvegarder en PNG (sans perte)
+        img_final = img_with_mask.convert("RGBA") if img_with_mask.mode == "RGBA" else img_with_mask
+        img_final.save(output_path, "PNG", optimize=True)
         
         logger.info(f"Image segmentation annotée sauvegardée: {output_path}")
         

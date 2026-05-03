@@ -21,8 +21,10 @@
             "SVF": true,
             "SLO": true,
             "LD": true,
+            "SLRM": false,
             "VAT": false
         },
+        "max_workers": 4,
         "output_formats": {
             "jpg": {
                 "LD": true,
@@ -36,6 +38,7 @@
     },
     "computer_vision": {
         "enabled": false,
+        "runs": [],
         "selected_model": "",
         "target_rvt": "LD",
         "confidence_threshold": 0.3,

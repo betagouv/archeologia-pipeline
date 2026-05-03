@@ -84,6 +84,7 @@ class ExistingRvtRunner:
                 cancel_check=cancel.is_cancelled,
                 rvt_params=ctx.rvt_params or {},
                 global_color_map=global_color_map,
+                indices_folder_name="RVT",
             )
             total_images = max(total_images, res.total_images)
 
@@ -98,4 +99,5 @@ class ExistingRvtRunner:
             tiles_processed=total_images,
             active_products=active_rvts,
             extra_label="Images traitées",
+            ui_config=ctx.ui_config or {},
         )

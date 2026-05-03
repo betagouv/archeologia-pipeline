@@ -9,6 +9,7 @@ from typing import Any, Callable, Dict, List, Tuple
 
 from ...coords import extract_xy_from_tile_name as _extract_xy_from_tile_name
 from ...geo_utils import extract_tif_transform_data
+from ...output_paths import indices_dir, indice_tif_dir, indice_jpg_dir, indice_base_dir
 from ...subprocess_utils import subprocess_kwargs_no_window
 from .rvt_naming import get_rvt_temp_filename, get_rvt_param_suffix, get_rvt_source_and_dest_filenames
 from ...types import LogFn
@@ -103,40 +104,37 @@ def build_raster_pyramids(
         return False
 
 
-def _convert_tif_to_jpg(input_tif: Path, output_jpg: Path) -> bool:
+def _convert_tif_to_png(input_tif: Path, output_png: Path) -> bool:
     try:
-        from .convert_tif_to_jpg import convert_tif_to_jpg
+        from .convert_tif_to_png import convert_tif_to_png
 
-        output_jpg.parent.mkdir(parents=True, exist_ok=True)
+        output_png.parent.mkdir(parents=True, exist_ok=True)
         ok = bool(
-            convert_tif_to_jpg(
+            convert_tif_to_png(
                 str(input_tif),
-                str(output_jpg),
-                95,
+                str(output_png),
                 create_world_file=True,
                 reference_tif_path=str(input_tif),
             )
         )
-        return ok and output_jpg.exists()
+        return ok and output_png.exists()
     except Exception:
         try:
             gdal_translate = shutil.which("gdal_translate")
             if not gdal_translate:
                 return False
-            output_jpg.parent.mkdir(parents=True, exist_ok=True)
+            output_png.parent.mkdir(parents=True, exist_ok=True)
             cmd = [
                 str(gdal_translate),
                 "-of",
-                "JPEG",
-                "-co",
-                "QUALITY=95",
+                "PNG",
                 "-co",
                 "WORLDFILE=YES",
                 str(input_tif),
-                str(output_jpg),
+                str(output_png),
             ]
             subprocess.run(cmd, check=False, **subprocess_kwargs_no_window())
-            return output_jpg.exists()
+            return output_png.exists()
         except Exception:
             return False
 
@@ -150,19 +148,18 @@ def copy_mnt_to_results(
 ) -> Path:
     x, y = _extract_xy_from_tile_name(current_tile_name)
 
-    results_dir = output_dir / "results"
-    mnt_tif_dir = results_dir / "MNT" / "tif"
-    mnt_tif_dir.mkdir(parents=True, exist_ok=True)
+    mnt_tif = indice_tif_dir(output_dir, "MNT")
+    mnt_tif.mkdir(parents=True, exist_ok=True)
 
     output_name = f"LHD_FXX_{x}_{y}_MNT_A_0M50_LAMB93_IGN69.tif"
-    out_path = mnt_tif_dir / output_name
+    out_path = mnt_tif / output_name
 
     if not temp_mnt_path.exists():
         raise FileNotFoundError(f"MNT source introuvable: {temp_mnt_path}")
 
     if not out_path.exists():
         shutil.copy2(str(temp_mnt_path), str(out_path))
-        log(f"MNT copié: {out_path.relative_to(results_dir)}")
+        log(f"MNT copié: {out_path.relative_to(indices_dir(output_dir))}")
 
     return out_path
 
@@ -176,13 +173,12 @@ def copy_final_products_to_results(
     output_structure: Dict[str, Any],
     output_formats: Dict[str, Any],
     rvt_params: Dict[str, Any],
-    pyramids_config: Dict[str, Any] | None = None,
     log: LogFn = lambda _: None,
 ) -> Dict[str, Any]:
     x, y = _extract_xy_from_tile_name(current_tile_name)
 
-    results_dir = output_dir / "results"
-    results_dir.mkdir(parents=True, exist_ok=True)
+    idx_dir = indices_dir(output_dir)
+    idx_dir.mkdir(parents=True, exist_ok=True)
 
     # Générer les noms de fichiers avec paramètres pour invalider le cache
     all_products = ["MNT", "DENSITE", "M_HS", "SVF", "SLO", "LD", "SLRM", "VAT"]
@@ -196,25 +192,8 @@ def copy_final_products_to_results(
     out_formats_tif = bool(output_formats.get("tif", True))
     jpg_cfg = output_formats.get("jpg", {}) if isinstance(output_formats.get("jpg", {}), dict) else {}
 
-    pyramids_enabled = False
+    pyramids_enabled = True
     pyramids_levels: List[int] = [2, 4, 8, 16, 32, 64]
-    try:
-        cfg = pyramids_config or {}
-        pyramids_enabled = bool(cfg.get("enabled", False))
-        raw_levels = cfg.get("levels", None)
-        if isinstance(raw_levels, (list, tuple)):
-            parsed = []
-            for v in raw_levels:
-                try:
-                    iv = int(v)
-                except Exception:
-                    continue
-                if iv > 1:
-                    parsed.append(iv)
-            if parsed:
-                pyramids_levels = parsed
-    except Exception:
-        pyramids_enabled = False
 
     created_jpgs: List[Path] = []
     created_jpgs_by_product: Dict[str, List[Path]] = {}
@@ -229,17 +208,7 @@ def copy_final_products_to_results(
         input_path_cropped = temp_dir / cropped_name
         input_path_uncropped = temp_dir / uncropped_name
 
-        if product_name in ["MNT", "DENSITE"]:
-            base_dir_name = str(output_structure.get(product_name, product_name))
-            base_dir = results_dir / base_dir_name
-        else:
-            rvt_conf = output_structure.get("RVT", {}) if isinstance(output_structure.get("RVT", {}), dict) else {}
-            rvt_base = str(rvt_conf.get("base_dir", "RVT"))
-            rvt_subdir_base = str(rvt_conf.get(product_name, product_name))
-            # Ajouter les paramètres au nom du dossier pour différencier les configurations
-            param_suffix = get_rvt_param_suffix(product_name, rvt_params)
-            rvt_subdir = f"{rvt_subdir_base}{param_suffix}" if param_suffix else rvt_subdir_base
-            base_dir = results_dir / rvt_base / rvt_subdir
+        base_dir = indice_base_dir(output_dir, product_name)
 
         # Utiliser le nom du fichier croppé (sans extension) comme base
         output_base = cropped_name.replace(".tif", "")
@@ -250,27 +219,27 @@ def copy_final_products_to_results(
             tif_path = tif_dir / f"{output_base}.tif"
             if input_path_cropped.exists() and not tif_path.exists():
                 shutil.copy2(str(input_path_cropped), str(tif_path))
-                log(f"TIF rogné copié: {tif_path.relative_to(results_dir)}")
+                log(f"TIF rogné copié: {tif_path.relative_to(idx_dir)}")
                 if pyramids_enabled:
                     build_raster_pyramids(tif_path, levels=pyramids_levels, log=log)
 
         should_jpg = bool(jpg_cfg.get(product_name, False))
         if should_jpg:
-            jpg_dir = base_dir / "jpg"
+            jpg_dir = base_dir / "png"
             jpg_dir.mkdir(parents=True, exist_ok=True)
-            jpg_path = jpg_dir / f"{output_base}.jpg"
+            jpg_path = jpg_dir / f"{output_base}.png"
             if not input_path_uncropped.exists():
                 log(
-                    f"JPG demandé mais TIF source introuvable: {input_path_uncropped.relative_to(temp_dir)} (produit={product_name})"
+                    f"PNG demandé mais TIF source introuvable: {input_path_uncropped.relative_to(temp_dir)} (produit={product_name})"
                 )
             elif jpg_path.exists():
-                log(f"JPG déjà présent: {jpg_path.relative_to(results_dir)}")
+                log(f"PNG déjà présent: {jpg_path.relative_to(idx_dir)}")
                 created_jpgs.append(jpg_path)
                 created_jpgs_by_product.setdefault(product_name, []).append(jpg_path)
             else:
-                ok = _convert_tif_to_jpg(input_path_uncropped, jpg_path)
+                ok = _convert_tif_to_png(input_path_uncropped, jpg_path)
                 if ok:
-                    log(f"JPG créé: {jpg_path.relative_to(results_dir)}")
+                    log(f"PNG créé: {jpg_path.relative_to(idx_dir)}")
                     created_jpgs.append(jpg_path)
                     created_jpgs_by_product.setdefault(product_name, []).append(jpg_path)
                     pixel_width, pixel_height, x_origin, y_origin = extract_tif_transform_data(input_path_uncropped)
@@ -283,7 +252,7 @@ def copy_final_products_to_results(
                         )
                 else:
                     log(
-                        f"Échec conversion TIF->JPG: {input_path_uncropped.relative_to(temp_dir)} -> {jpg_path.relative_to(results_dir)}"
+                        f"Échec conversion TIF->PNG: {input_path_uncropped.relative_to(temp_dir)} -> {jpg_path.relative_to(idx_dir)}"
                     )
 
     return {

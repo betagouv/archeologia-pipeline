@@ -114,3 +114,53 @@ def crop_final_products(
             cropped[product_name] = dst_path
 
     return cropped
+
+
+def copy_products_without_crop(
+    *,
+    temp_dir: Path,
+    current_tile_name: str,
+    products: Dict[str, bool],
+    rvt_params: Dict[str, Any],
+    log: LogFn = lambda _: None,
+) -> Dict[str, Path]:
+    """Variante de ``crop_final_products`` qui préserve l'emprise native du MNT.
+
+    Utilisée quand le MNT fourni est plus petit qu'une dalle 1 km (ou non
+    aligné sur la grille IGN). Au lieu de découper à une cellule 1 km (ce qui
+    introduirait du NoData autour), on renomme simplement les produits RVT
+    source vers leur nom "cropped" attendu par ``copy_final_products_to_results``.
+
+    Le géoréférencement du TIF (et du fichier world .pgw/.jgw généré ensuite)
+    reste celui du MNT d'origine : la chaîne de conversion détections → shapefile
+    fonctionne indépendamment de la taille de l'image.
+    """
+    temp_dir.mkdir(parents=True, exist_ok=True)
+
+    x, y = _extract_xy_from_tile_name(current_tile_name)
+
+    copied: Dict[str, Path] = {}
+
+    for product_name in ["MNT", "DENSITE", "M_HS", "SVF", "SLO", "LD", "SLRM", "VAT"]:
+        if not products.get(product_name, False):
+            continue
+
+        src_name, dst_name = get_rvt_source_and_dest_filenames(
+            product_name, current_tile_name, x, y, rvt_params
+        )
+        src_path = temp_dir / src_name
+        dst_path = temp_dir / dst_name
+
+        if dst_path.exists():
+            copied[product_name] = dst_path
+            continue
+
+        if not src_path.exists() or src_path.stat().st_size == 0:
+            log(f"Fichier source introuvable/vide pour {product_name}: {src_path.name}")
+            continue
+
+        shutil.copy2(str(src_path), str(dst_path))
+        log(f"{product_name}: copie sans crop (emprise native MNT) -> {dst_path.name}")
+        copied[product_name] = dst_path
+
+    return copied

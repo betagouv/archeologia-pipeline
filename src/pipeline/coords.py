@@ -102,7 +102,7 @@ def infer_xy_from_pdal(path: Path, *, cancel: Optional[CancelFn] = None) -> Opti
     return _infer_xy_from_bounds(minx, maxy)
 
 
-def _get_raster_bounds(path: Path) -> Optional[Tuple[float, float, float, float]]:
+def get_raster_bounds(path: Path) -> Optional[Tuple[float, float, float, float]]:
     try:
         import rasterio  # type: ignore
 
@@ -179,7 +179,7 @@ def _get_raster_bounds(path: Path) -> Optional[Tuple[float, float, float, float]
 
 
 def infer_xy_from_raster(path: Path) -> Optional[CoordsResult]:
-    bounds = _get_raster_bounds(path)
+    bounds = get_raster_bounds(path)
     if not bounds:
         return None
     xmin, _ymin, _xmax, ymax = bounds
@@ -189,9 +189,12 @@ def infer_xy_from_raster(path: Path) -> Optional[CoordsResult]:
 def infer_xy_from_world_file(jpg_path: Path) -> Optional[CoordsResult]:
     try:
         ext = jpg_path.suffix.lower()
-        if ext not in {".jpg", ".jpeg"}:
+        if ext not in {".jpg", ".jpeg", ".png"}:
             return None
-        wld = jpg_path.with_suffix(".jgw")
+        if ext == ".png":
+            wld = jpg_path.with_suffix(".pgw")
+        else:
+            wld = jpg_path.with_suffix(".jgw")
         if not wld.exists():
             wld = jpg_path.with_suffix(".wld")
         if not wld.exists() or not wld.is_file():
@@ -219,7 +222,7 @@ def infer_xy_from_file(path: Path, *, cancel: Optional[CancelFn] = None) -> Opti
     if ext in {".tif", ".tiff", ".asc"}:
         return infer_xy_from_raster(path)
 
-    if ext in {".jpg", ".jpeg"}:
+    if ext in {".jpg", ".jpeg", ".png"}:
         return infer_xy_from_world_file(path)
 
     return None

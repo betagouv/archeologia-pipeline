@@ -40,8 +40,10 @@ def sample_config() -> dict:
                 "SVF": True,
                 "SLO": True,
                 "LD": True,
+                "SLRM": False,
                 "VAT": False,
             },
+            "max_workers": 4,
             "output_formats": {
                 "jpg": {"LD": True, "VAT": False}
             },
@@ -49,6 +51,7 @@ def sample_config() -> dict:
         },
         "computer_vision": {
             "enabled": True,
+            "runs": [{"model": "test_model", "target_rvt": "LD"}],
             "selected_model": "test_model",
             "target_rvt": "LD",
             "confidence_threshold": 0.3,

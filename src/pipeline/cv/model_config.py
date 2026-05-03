@@ -126,12 +126,18 @@ def load_clustering_config_from_model(model_path: Union[str, Path]) -> Optional[
     Format attendu dans args.yaml:
         clustering:
           - target_classes: ["cratere_obus"]
-            min_confidence: 0.5
+            min_confidence: 0.5            # seuil core : initie/étend un cluster
+            min_confidence_extend: 0.3     # (optionnel) seuil bas hystérésis :
+                                           # absorbé comme "border" mais ne crée
+                                           # pas de cluster. Défaut = min_confidence
+                                           # (DBSCAN classique).
             min_cluster_size: 10
             min_samples: 5
             eps_m: 30
             output_class_name: "zone_crateres"
-            output_geometry: "convex_hull"
+            output_geometry: "convex_hull"   # ou "concave_hull" / "bounding_box"
+            concave_ratio: 0.3               # (optionnel, si concave_hull)
+                                             # 0 = très concave, 1 = ~ convex_hull
             buffer_m: 10
             min_area_m2: 500
     
@@ -170,9 +176,17 @@ def load_clustering_config_from_model(model_path: Union[str, Path]) -> Optional[
             if not isinstance(target, list) or not target:
                 logger.warning("Clustering config ignorée: target_classes manquant ou invalide")
                 continue
+            min_confidence_val = float(cfg.get("min_confidence", 0.0))
+            # Hystérésis (Approche 1) : seuil bas pour absorber des détections
+            # faibles dans un cluster existant sans qu'elles puissent l'initier.
+            # Défaut = min_confidence → DBSCAN classique (rétro-compat).
+            min_confidence_extend_val = float(
+                cfg.get("min_confidence_extend", min_confidence_val)
+            )
             parsed = {
                 "target_classes": target,
-                "min_confidence": float(cfg.get("min_confidence", 0.0)),
+                "min_confidence": min_confidence_val,
+                "min_confidence_extend": min_confidence_extend_val,
                 "min_cluster_size": int(cfg.get("min_cluster_size", 5)),
                 "min_samples": int(cfg.get("min_samples", 3)),
                 "eps_m": float(cfg.get("eps_m", 30.0)),
@@ -180,6 +194,8 @@ def load_clustering_config_from_model(model_path: Union[str, Path]) -> Optional[
                 "output_geometry": str(cfg.get("output_geometry", "convex_hull")),
                 "buffer_m": float(cfg.get("buffer_m", 10.0)),
                 "min_area_m2": float(cfg.get("min_area_m2", 0.0)),
+                "concave_ratio": float(cfg.get("concave_ratio", 0.3)),
+                "confidence_weight": float(cfg.get("confidence_weight", 0.0)),
             }
             # Nom par défaut basé sur les classes cibles
             if not parsed["output_class_name"]:
@@ -191,6 +207,54 @@ def load_clustering_config_from_model(model_path: Union[str, Path]) -> Optional[
     except Exception as e:
         logger.warning(f"Erreur lecture clustering depuis args.yaml: {e}")
     return None
+
+
+def load_postprocess_config_from_model(model_path: Union[str, Path]) -> Dict[str, bool]:
+    """
+    Charge la configuration de post-traitement géométrique depuis ``args.yaml``.
+
+    Format attendu dans ``args.yaml`` :
+
+    .. code-block:: yaml
+
+        postprocess:
+          merge_adjacent: false   # cratères disjoints, skip fusion intra-classe
+          remove_overlaps: false  # skip suppression des superpositions inter-classes
+
+    Si la section ``postprocess`` est absente, retourne les valeurs par défaut
+    historiques (``merge_adjacent=True``, ``remove_overlaps=True``) pour ne pas
+    casser les modèles existants qui dépendent de ces étapes (formes linéaires
+    notamment, où la fusion entre dalles est essentielle).
+
+    Args:
+        model_path: Chemin vers le fichier weights ou le dossier du modèle.
+
+    Returns:
+        Dict ``{"merge_adjacent": bool, "remove_overlaps": bool}``.
+    """
+    defaults = {"merge_adjacent": True, "remove_overlaps": True}
+    model_dir = _resolve_model_dir(model_path)
+    args_file = model_dir / "args.yaml"
+    if not args_file.exists():
+        return defaults
+    try:
+        import yaml
+        with open(args_file, 'r', encoding='utf-8') as f:
+            args = yaml.safe_load(f)
+        if not isinstance(args, dict):
+            return defaults
+        pp = args.get("postprocess")
+        if not isinstance(pp, dict):
+            return defaults
+        result = {
+            "merge_adjacent": bool(pp.get("merge_adjacent", defaults["merge_adjacent"])),
+            "remove_overlaps": bool(pp.get("remove_overlaps", defaults["remove_overlaps"])),
+        }
+        logger.info(f"Postprocess config chargée depuis {args_file.name}: {result}")
+        return result
+    except Exception as e:
+        logger.warning(f"Erreur lecture postprocess depuis args.yaml: {e}")
+    return defaults
 
 
 def is_rfdetr_model(model_path: Union[str, Path]) -> bool:

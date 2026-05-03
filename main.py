@@ -12,7 +12,7 @@ class ArcheologiaPipelinePlugin:
         self.dialog = None
 
     def initGui(self):
-        icon_path = os.path.join(plugin_dir, 'icon.png')
+        icon_path = os.path.join(plugin_dir, 'data', 'icon.png')
         self.action = QAction(QIcon(icon_path), self.tr("Archeolog'IA pipeline"), self.iface.mainWindow())
         self.action.triggered.connect(self.run)
         self.iface.addPluginToMenu(self.tr("Archeolog'IA pipeline"), self.action)

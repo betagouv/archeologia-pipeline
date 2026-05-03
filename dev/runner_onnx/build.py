@@ -144,10 +144,10 @@ def build_onnx_runner(use_gpu: bool = False) -> bool:
     # Copier vers third_party
     if platform.system() == "Windows":
         binary = dist_dir / "cv_runner_onnx.exe"
-        dest_dir = PLUGIN_ROOT / "third_party" / "cv_runner_onnx" / "windows"
+        dest_dir = PLUGIN_ROOT / "data" / "third_party" / "cv_runner_onnx" / "windows"
     else:
         binary = dist_dir / "cv_runner_onnx"
-        dest_dir = PLUGIN_ROOT / "third_party" / "cv_runner_onnx" / "linux"
+        dest_dir = PLUGIN_ROOT / "data" / "third_party" / "cv_runner_onnx" / "linux"
     
     if not binary.exists():
         print(f"[ERROR] Binaire non trouvé: {binary}")
@@ -207,7 +207,7 @@ Exemples:
     print("\n" + "=" * 60)
     print("COMPILATION TERMINÉE")
     print("=" * 60)
-    print(f"\nRunner ONNX: {PLUGIN_ROOT / 'third_party' / 'cv_runner_onnx'}")
+    print(f"\nRunner ONNX: {PLUGIN_ROOT / 'data' / 'third_party' / 'cv_runner_onnx'}")
     
     return 0
 

@@ -170,7 +170,7 @@ def run_preflight(
             results.append(CheckResult(name="cv_runner_onnx (external)", ok=True, details=str(runner), critical=False))
         else:
             expected = (
-                "third_party/cv_runner_onnx/windows/cv_runner_onnx.exe" if os.name == "nt" else "third_party/cv_runner_onnx/linux/cv_runner_onnx"
+                "data/third_party/cv_runner_onnx/windows/cv_runner_onnx.exe" if os.name == "nt" else "data/third_party/cv_runner_onnx/linux/cv_runner_onnx"
             )
             results.append(CheckResult(name="cv_runner_onnx (external)", ok=False, details=f"not found (expected: {expected})", critical=False))
 
@@ -209,7 +209,12 @@ def run_preflight(
             results.append(CheckResult(name="Dossier de sortie", ok=True, details=f"{output_dir} (sera créé)", critical=True))
 
     if mode == "ign_laz":
-        _check_input_path(files_cfg, "input_file", "Fichier liste URLs IGN", expect_dir=False, results=results)
+        raw_input = str(files_cfg.get("input_file", "")).strip()
+        suffix = Path(raw_input).suffix.lower() if raw_input else ""
+        if suffix in (".shp", ".geojson", ".json", ".gpkg"):
+            _check_input_path(files_cfg, "input_file", "Zone d'étude (vecteur)", expect_dir=False, results=results)
+        else:
+            _check_input_path(files_cfg, "input_file", "Fichier liste URLs IGN", expect_dir=False, results=results)
     elif mode == "local_laz":
         _check_input_path(files_cfg, "local_laz_dir", "Dossier LAZ locaux", extensions=["laz", "las", "LAZ", "LAS"], results=results)
     elif mode == "existing_mnt":

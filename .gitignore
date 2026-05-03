@@ -19,6 +19,9 @@ ENV/
 .mypy_cache/
 .ruff_cache/
 
+# User config (last used session)
+last_ui_config.json
+
 # Logs
 *.log
 pipeline_log_*.txt
@@ -35,10 +38,16 @@ Thumbs.db
 Desktop.ini
 .DS_Store
 
-# Compiled CV runner binaries
-third_party/cv_runner_onnx/windows/*.exe
-third_party/cv_runner_onnx/linux/*
+# Data: exported temp zones (QGIS memory layers)
+data/temp_zones/
 
-# Models (large files, not versioned)
-models/**
-!models/.gitkeep
+# Data: compiled CV runner binaries
+data/third_party/cv_runner_onnx/windows/*.exe
+data/third_party/cv_runner_onnx/linux/*
+
+# Data: models (large files, not versioned)
+data/models/**
+!data/models/.gitkeep
+
+# Data: quadrillage France (large shapefile, not versioned)
+data/quadrillage_france/

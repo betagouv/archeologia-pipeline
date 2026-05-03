@@ -32,51 +32,50 @@ def _get_model_slug(cv_config: Dict[str, Any]) -> str:
 
 
 def _prepare_model_workdir(
-    jpg_dir: Path,
     rvt_base_dir: Optional[Path],
     model_slug: str,
     log: LogFn,
-) -> tuple:
-    """Crée un dossier de travail par modèle avec des liens/copies vers les JPG.
+) -> Path:
+    """Crée le dossier raw_detections/ pour stocker les JSON/TXT d'inférence.
 
-    Retourne (model_jpg_dir, model_rvt_base).
+    Les images PNG restent dans indices/<RVT>/png/ et ne sont pas copiées.
+    Retourne model_raw_dir.
     """
-    model_rvt_base = (rvt_base_dir or jpg_dir.parent) / model_slug
-    model_rvt_base.mkdir(parents=True, exist_ok=True)
+    model_raw_dir = (rvt_base_dir or Path(".")) / model_slug / "raw_detections"
+    model_raw_dir.mkdir(parents=True, exist_ok=True)
+    return model_raw_dir
 
-    model_jpg_dir = model_rvt_base / "jpg"
-    model_jpg_dir.mkdir(parents=True, exist_ok=True)
 
-    # Créer des liens (ou copies) vers les JPG et world files originaux
-    src_files = sorted(jpg_dir.glob("*.jpg"))
-    total = len(src_files)
-    if total > 0:
-        log(f"Préparation dossier modèle [{model_slug}]: {total} images à lier…")
+def _has_cached_detection(raw_dir: Path, png_stem: str) -> bool:
+    """Renvoie True si une détection (txt ou json) existe déjà pour ce PNG.
 
-    linked = 0
-    for idx, jpg in enumerate(src_files):
-        # Lier le JPG et son éventuel world file (.jgw)
-        for src in [jpg] + list(jpg.parent.glob(f"{jpg.stem}.jgw")):
-            dest = model_jpg_dir / src.name
-            if dest.exists():
-                continue
-            try:
-                os.link(str(src), str(dest))
-            except OSError:
-                try:
-                    dest.symlink_to(src)
-                except (OSError, NotImplementedError):
-                    import shutil
-                    shutil.copy2(str(src), str(dest))
-            linked += 1
+    Le runner ONNX externe comme le fallback Python écrivent
+    ``{stem}.txt`` (format YOLO) et ``{stem}.json`` (payload complet) dans
+    ``raw_detections/``. La présence de l'un des deux suffit à considérer
+    l'image traitée — un run précédent peut n'avoir écrit que le .json si
+    aucune détection n'a passé le seuil de confiance (fichier .txt vide
+    possible). On considère aussi les fichiers vides (0 détection) comme
+    un résultat légitime.
+    """
+    return (raw_dir / f"{png_stem}.txt").exists() or (raw_dir / f"{png_stem}.json").exists()
 
-        if total > 100 and (idx + 1) % 500 == 0:
-            log(f"  … {idx + 1}/{total} images liées")
 
-    if linked > 0:
-        log(f"Préparation dossier modèle [{model_slug}]: {linked} fichiers liés/copiés")
+def _list_candidate_pngs(
+    *,
+    jpg_dir: Path,
+    cv_config: Dict[str, Any],
+    single_jpg: Optional[Path],
+) -> list:
+    """Liste les PNG que le runner va traiter, en respectant single_jpg/scan_all.
 
-    return model_jpg_dir, model_rvt_base
+    Réplique le choix fait par :func:`_run_fallback_inference` pour que le
+    short-circuit amont voit exactement le même périmètre que l'inférence.
+    """
+    if single_jpg is not None:
+        return [single_jpg] if Path(single_jpg).exists() else []
+    all_pngs = sorted(jpg_dir.glob("*.png"))
+    scan_all = bool(cv_config.get("scan_all", False))
+    return all_pngs if scan_all else all_pngs[:1]
 
 
 def run_cv_on_folder(
@@ -85,6 +84,7 @@ def run_cv_on_folder(
     cv_config: Dict[str, Any],
     target_rvt: str,
     rvt_base_dir: Optional[Path] = None,
+    output_dir: Optional[Path] = None,
     tif_transform_data: Optional[Dict[str, Tuple[float, float, float, float]]] = None,
     single_jpg: Optional[Path] = None,
     run_shapefile_dedup: bool = True,
@@ -92,23 +92,39 @@ def run_cv_on_folder(
     log: LogFn = lambda _: None,
     cancel_check: Optional[CancelCheckFn] = None,
 ) -> None:
+    # ── Court-circuit si aucune classe sélectionnée ───────────────────
+    _sel = (cv_config or {}).get("selected_classes")
+    if isinstance(_sel, list) and len(_sel) == 0:
+        log(f"Computer Vision: aucune classe sélectionnée pour ce run — inférence ignorée")
+        return
+
     # ── Isolation par modèle ──────────────────────────────────────────
     # Chaque modèle écrit ses labels (.txt/.json), images annotées et
     # shapefiles dans un sous-dossier dédié pour éviter les collisions
     # quand plusieurs modèles ciblent le même RVT.
     model_slug = _get_model_slug(cv_config)
-    effective_jpg_dir, effective_rvt_base = _prepare_model_workdir(
-        jpg_dir, rvt_base_dir, model_slug, log,
-    )
 
-    # Générer le fichier classes.txt dans le dossier JPG du modèle
+    # Déterminer le dossier de détections (nouvelle structure)
+    if output_dir is not None:
+        from ..output_paths import detection_model_dir
+        effective_detection_dir = detection_model_dir(output_dir, model_slug)
+        effective_detection_dir.mkdir(parents=True, exist_ok=True)
+    else:
+        effective_detection_dir = (rvt_base_dir or jpg_dir.parent) / model_slug
+        effective_detection_dir.mkdir(parents=True, exist_ok=True)
+
+    # Dossier raw_detections : stocke les JSON/TXT, les PNG restent dans jpg_dir (indices/)
+    effective_rvt_base = effective_detection_dir.parent if output_dir is not None else (rvt_base_dir or jpg_dir.parent)
+    effective_raw_dir = _prepare_model_workdir(effective_rvt_base, model_slug, log)
+
+    # Générer le fichier classes.txt dans le dossier raw_detections du modèle
     try:
         from .class_utils import load_class_names_from_model, resolve_model_weights_path
         weights_path = resolve_model_weights_path(cv_config)
         if weights_path and weights_path.exists():
             class_names = load_class_names_from_model(weights_path)
             if class_names:
-                classes_file = effective_jpg_dir / "classes.txt"
+                classes_file = effective_raw_dir / "classes.txt"
                 if not classes_file.exists():
                     if isinstance(class_names, dict):
                         sorted_names = [class_names[k] for k in sorted(class_names.keys())]
@@ -119,9 +135,50 @@ def run_cv_on_folder(
     except Exception as e:
         log(f"Avertissement: impossible de créer classes.txt: {e}")
 
-    # Log SAHI config pour ce modèle
+    # Log SAHI config (injectée depuis args.yaml du modèle par resolve_cv_runs)
     sahi_cfg = cv_config.get("sahi", {}) if isinstance(cv_config.get("sahi", {}), dict) else {}
-    log(f"Computer Vision [{model_slug}]: SAHI slice={sahi_cfg.get('slice_height', 640)}×{sahi_cfg.get('slice_width', 640)}, overlap={sahi_cfg.get('overlap_ratio', 0.2)}")
+    log(f"Computer Vision [{model_slug}]: SAHI slice={sahi_cfg.get('slice_height', 640)}×{sahi_cfg.get('slice_width', 640)}, overlap={sahi_cfg.get('overlap_ratio', 0.2)} (depuis args.yaml modèle)")
+
+    # ── Short-circuit : détections déjà présentes dans raw_detections/ ───────
+    # Si toutes les PNG ciblées ont déjà un .txt ou .json dans
+    # ``effective_raw_dir`` et que l'utilisateur ne force pas le re-traitement,
+    # on saute complètement l'inférence (externe + fallback) et on enchaîne
+    # sur la génération des shapefiles. Cela évite de relancer le binaire
+    # ONNX pour rien (qui ne sait pas toujours skipper lui-même) et permet
+    # d'itérer rapidement sur les paramètres aval (confidence, clustering,
+    # aire minimale, symbologie) sans refaire l'inférence.
+    force_reprocess = bool(cv_config.get("force_reprocess", False))
+    candidate_pngs = _list_candidate_pngs(
+        jpg_dir=jpg_dir, cv_config=cv_config, single_jpg=single_jpg,
+    )
+    if not force_reprocess and candidate_pngs:
+        missing = [p for p in candidate_pngs if not _has_cached_detection(effective_raw_dir, p.stem)]
+        if not missing:
+            log(
+                f"Computer Vision [{model_slug}]: {len(candidate_pngs)} image(s) "
+                f"déjà traitée(s) dans {effective_raw_dir.name}/ — inférence sautée"
+            )
+            if run_shapefile_dedup:
+                shapefile_output_dir = effective_detection_dir / "shapefiles"
+                deduplicate_cv_shapefiles_final(
+                    labels_dir=effective_raw_dir,
+                    png_dir=jpg_dir,
+                    shp_dir=shapefile_output_dir,
+                    target_rvt=target_rvt,
+                    cv_config=cv_config,
+                    tif_transform_data=tif_transform_data,
+                    crs="EPSG:2154",
+                    global_color_map=global_color_map,
+                    log=log,
+                )
+            return
+        else:
+            already = len(candidate_pngs) - len(missing)
+            if already > 0:
+                log(
+                    f"Computer Vision [{model_slug}]: {already}/{len(candidate_pngs)} "
+                    f"image(s) déjà traitée(s), inférence uniquement sur {len(missing)} restante(s)"
+                )
 
     # 1) Essayer le runner ONNX externe (compilé)
     ext = find_external_cv_runner(log=log)
@@ -133,9 +190,11 @@ def run_cv_on_folder(
             # plugin Python (shapely disponible) après le retour du runner.
             run_external_cv_runner(
                 ext=ext,
-                jpg_dir=effective_jpg_dir,
+                jpg_dir=jpg_dir,
                 target_rvt=target_rvt,
                 rvt_base_dir=effective_rvt_base,
+                detection_dir=effective_detection_dir,
+                raw_dir=effective_raw_dir,
                 cv_config=cv_config,
                 single_jpg=single_jpg,
                 run_shapefile_dedup=False,
@@ -146,9 +205,10 @@ def run_cv_on_folder(
             )
             # Générer les shapefiles côté plugin (avec shapely + post-processing)
             if run_shapefile_dedup:
-                shapefile_output_dir = effective_rvt_base / "shapefiles" if effective_rvt_base else effective_jpg_dir.parent / "shapefiles"
+                shapefile_output_dir = effective_detection_dir / "shapefiles"
                 deduplicate_cv_shapefiles_final(
-                    labels_dir=effective_jpg_dir,
+                    labels_dir=effective_raw_dir,
+                    png_dir=jpg_dir,
                     shp_dir=shapefile_output_dir,
                     target_rvt=target_rvt,
                     cv_config=cv_config,
@@ -166,7 +226,7 @@ def run_cv_on_folder(
 
     # 2) Fallback : inférence ONNX en Python (onnxruntime)
     expected = (
-        "third_party/cv_runner_onnx/windows/cv_runner_onnx.exe" if os.name == "nt" else "third_party/cv_runner_onnx/linux/cv_runner_onnx"
+        "data/third_party/cv_runner_onnx/windows/cv_runner_onnx.exe" if os.name == "nt" else "data/third_party/cv_runner_onnx/linux/cv_runner_onnx"
     )
     log(f"Computer Vision: runner externe absent (attendu: {expected})")
     log("Computer Vision: fallback interne ONNX -> src.pipeline.cv.computer_vision_onnx")
@@ -176,10 +236,12 @@ def run_cv_on_folder(
         return
 
     _run_fallback_inference(
-        jpg_dir=effective_jpg_dir,
+        jpg_dir=jpg_dir,
+        raw_dir=effective_raw_dir,
         cv_config=cv_config,
         target_rvt=target_rvt,
         rvt_base_dir=effective_rvt_base,
+        effective_detection_dir=effective_detection_dir,
         tif_transform_data=tif_transform_data,
         single_jpg=single_jpg,
         run_shapefile_dedup=run_shapefile_dedup,
@@ -196,9 +258,11 @@ def run_cv_on_folder(
 def _run_fallback_inference(
     *,
     jpg_dir: Path,
+    raw_dir: Optional[Path] = None,
     cv_config: Dict[str, Any],
     target_rvt: str,
     rvt_base_dir: Optional[Path] = None,
+    effective_detection_dir: Optional[Path] = None,
     tif_transform_data: Optional[Dict[str, Tuple[float, float, float, float]]] = None,
     single_jpg: Optional[Path] = None,
     run_shapefile_dedup: bool = True,
@@ -206,7 +270,14 @@ def _run_fallback_inference(
     log: LogFn = lambda _: None,
     cancel_check: Optional[CancelCheckFn] = None,
 ) -> None:
-    """Inférence ONNX image par image via computer_vision_onnx (fallback Python)."""
+    """Inférence ONNX image par image via computer_vision_onnx (fallback Python).
+
+    jpg_dir  : dossier source contenant les PNG d'entrée (indices/<RVT>/png/)
+    raw_dir  : dossier de sortie pour les JSON/TXT (detections/<model>/raw_detections/)
+               Si None, utilise jpg_dir (comportement rétrocompat).
+    """
+    # raw_dir = dossier de sortie JSON/TXT ; par défaut = jpg_dir (rétrocompat)
+    _raw_dir = raw_dir if raw_dir is not None else jpg_dir
     from . import computer_vision_onnx as cv_mod
     from .class_utils import (
         resolve_model_weights_path,
@@ -259,15 +330,16 @@ def _run_fallback_inference(
         log(f"Computer Vision: Paramètres segmentation -> confidence_threshold={_eff_conf} bg_bias={_bg_bias} use_sahi={_use_sahi_meta}")
 
     rvt_base = rvt_base_dir or jpg_dir.parent
+    det_base = effective_detection_dir if effective_detection_dir is not None else rvt_base
     annotated_output_dir: Optional[Path] = None
     shapefile_output_dir: Optional[Path] = None
 
     if generate_annotated_images:
-        annotated_output_dir = rvt_base / "annotated_images"
+        annotated_output_dir = det_base / "annotated_images"
         annotated_output_dir.mkdir(parents=True, exist_ok=True)
 
     if generate_shapefiles:
-        shapefile_output_dir = rvt_base / "shapefiles"
+        shapefile_output_dir = det_base / "shapefiles"
         shapefile_output_dir.mkdir(parents=True, exist_ok=True)
 
     if single_jpg is not None:
@@ -276,9 +348,9 @@ def _run_fallback_inference(
     else:
         scan_all = bool(cv_config.get("scan_all", False))
         if scan_all:
-            jpg_files = sorted(jpg_dir.glob("*.jpg"))
+            jpg_files = sorted(jpg_dir.glob("*.png"))
         else:
-            jpg_files = sorted(jpg_dir.glob("*.jpg"))[:1]
+            jpg_files = sorted(jpg_dir.glob("*.png"))[:1]
 
     jpg_files = [p for p in jpg_files if p and Path(p).exists()]
     if not jpg_files:
@@ -293,8 +365,8 @@ def _run_fallback_inference(
             log("Computer Vision: Annulation demandée, arrêt de l'inférence...")
             raise RuntimeError("Computer Vision: Annulé par l'utilisateur")
         image_name = jpg_file.stem
-        labels_txt = jpg_dir / f"{image_name}.txt"
-        labels_json = jpg_dir / f"{image_name}.json"
+        labels_txt = _raw_dir / f"{image_name}.txt"
+        labels_json = _raw_dir / f"{image_name}.json"
 
         detection_output_path = get_detection_output_path(
             str(jpg_file),
@@ -320,7 +392,7 @@ def _run_fallback_inference(
             generate_annotated_images=generate_annotated_images,
             annotated_output_dir=str(annotated_output_dir) if annotated_output_dir else None,
             iou_threshold=iou_threshold,
-            jpg_folder_path=str(jpg_dir),
+            jpg_folder_path=str(_raw_dir),
             class_names=class_names,
             class_colors=class_colors,
             onnx_session=onnx_session,
@@ -343,7 +415,8 @@ def _run_fallback_inference(
 
     if run_shapefile_dedup and generate_shapefiles and shapefile_output_dir is not None:
         deduplicate_cv_shapefiles_final(
-            labels_dir=jpg_dir,
+            labels_dir=_raw_dir,
+            png_dir=jpg_dir,
             shp_dir=shapefile_output_dir,
             target_rvt=target_rvt,
             cv_config=cv_config,
@@ -361,6 +434,7 @@ def _run_fallback_inference(
 def deduplicate_cv_shapefiles_final(
     *,
     labels_dir: Path,
+    png_dir: Optional[Path] = None,
     shp_dir: Path,
     target_rvt: str,
     cv_config: Optional[Dict[str, Any]] = None,
@@ -370,16 +444,17 @@ def deduplicate_cv_shapefiles_final(
     crs: str = "EPSG:2154",
     log: LogFn = lambda _: None,
 ) -> None:
-    from .conversion_shp import create_shapefile_from_detections, _filter_shapefiles_by_min_area
-    log("Computer Vision: conversion shapefile -> src.pipeline.cv.conversion_shp")
+    from .conversion_shp import create_shapefile_from_detections, _filter_gpkg_by_min_area
+    log("Computer Vision: conversion GeoPackage -> src.pipeline.cv.conversion_shp")
 
     class_names = None
     class_colors = None
     model_task = None
     clustering_configs = None
+    postprocess_config = None
     try:
         from .class_utils import resolve_model_weights_path, load_class_names_from_model, load_class_colors_from_model
-        from .model_config import load_clustering_config_from_model
+        from .model_config import load_clustering_config_from_model, load_postprocess_config_from_model
         if isinstance(cv_config, dict):
             weights_path = resolve_model_weights_path(cv_config)
             if weights_path and weights_path.exists():
@@ -399,20 +474,35 @@ def deduplicate_cv_shapefiles_final(
                 clustering_configs = load_clustering_config_from_model(weights_path)
                 if clustering_configs:
                     log(f"Computer Vision: {len(clustering_configs)} config(s) de clustering chargée(s)")
+                # Charger la configuration de post-traitement géométrique (merge/overlap)
+                postprocess_config = load_postprocess_config_from_model(weights_path)
     except Exception as e:
         log(f"Computer Vision: impossible de récupérer les noms de classes depuis le modèle: {e}")
+
+    # Filtrer les configs de clustering selon selected_classes :
+    # une config n'est activée que si son output_class_name est sélectionné
+    _raw_classes = (cv_config or {}).get("selected_classes")
+    selected_classes = _raw_classes if isinstance(_raw_classes, list) else None
+    if clustering_configs and selected_classes is not None:
+        clustering_configs = [
+            cc for cc in clustering_configs
+            if str(cc.get("output_class_name") or "").strip() in selected_classes
+        ]
+        if not clustering_configs:
+            log("Computer Vision: clustering désactivé (output_class_name non sélectionné)")
+        else:
+            log(f"Computer Vision: {len(clustering_configs)} config(s) de clustering actives après filtrage")
 
     shp_dir.mkdir(parents=True, exist_ok=True)
 
     # Générer les shapefiles par classe (le post-processing global
     # — fusion des polygones adjacents + suppression des superpositions —
     # est intégré directement dans create_shapefile_from_detections)
-    out_shp = shp_dir / f"detections_{target_rvt}.shp"
-    _raw_classes = (cv_config or {}).get("selected_classes")
-    selected_classes = _raw_classes if isinstance(_raw_classes, list) else None
+    out_shp = shp_dir / f"detections_{target_rvt}.gpkg"
     try:
         create_shapefile_from_detections(
             labels_dir=str(labels_dir),
+            png_dir=str(png_dir) if png_dir is not None else None,
             output_shapefile=str(out_shp),
             tif_transform_data=tif_transform_data,
             crs=str(crs),
@@ -423,6 +513,8 @@ def deduplicate_cv_shapefiles_final(
             global_color_map=global_color_map if global_color_map else None,
             model_task=model_task,
             clustering_configs=clustering_configs,
+            postprocess_config=postprocess_config,
+            min_confidence=float((cv_config or {}).get("confidence_threshold", 0.0) or 0.0),
         )
         qgs_root = shp_dir.parent if shp_dir.name.lower() in {"shapefiles", "shp"} else shp_dir
         qgs_path = qgs_root / "detections_validation.qgs"
@@ -434,11 +526,11 @@ def deduplicate_cv_shapefiles_final(
     # Filtrage par aire minimale (optionnel)
     min_area_m2 = float((cv_config or {}).get("min_area_m2", 0.0))
     if min_area_m2 > 0:
-        shapefile_paths = [str(p) for p in shp_dir.glob("*.shp")]
-        if shapefile_paths:
+        gpkg_paths = [str(p) for p in shp_dir.glob("*.gpkg")]
+        if gpkg_paths:
             try:
-                _filter_shapefiles_by_min_area(
-                    shapefile_paths=shapefile_paths,
+                _filter_gpkg_by_min_area(
+                    gpkg_paths=gpkg_paths,
                     min_area_m2=min_area_m2,
                     crs=str(crs),
                 )

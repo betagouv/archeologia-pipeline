@@ -14,66 +14,117 @@ import time
 from typing import Dict, List, Optional, Tuple
 
 import numpy as np
+import shapely
 from shapely.geometry import MultiPoint, Polygon, box
 from shapely.ops import unary_union
 
 logger = logging.getLogger(__name__)
+
+# concave_hull n'existe qu'à partir de Shapely 2.0
+_CONCAVE_HULL_AVAILABLE = hasattr(shapely, "concave_hull")
+_CONCAVE_HULL_WARNED = False
 
 
 # ------------------------------------------------------------------ #
 #  DBSCAN via scipy.spatial.cKDTree (pas de dépendance sklearn)       #
 # ------------------------------------------------------------------ #
 
-def _dbscan_scipy(points: np.ndarray, eps: float, min_samples: int) -> np.ndarray:
+def _dbscan_scipy(
+    points: np.ndarray,
+    eps: float,
+    min_samples: int,
+    is_core_eligible: Optional[np.ndarray] = None,
+) -> np.ndarray:
     """
     DBSCAN implémenté avec scipy.spatial.cKDTree.
-    
+
+    Optimisations :
+    - Voisinages calculés à la demande (lazy) au lieu de pré-calculer
+      tous les voisinages d'un coup, ce qui économise mémoire et CPU
+      pour les points qui ne sont jamais visités par expansion.
+    - Seed set sans doublons grâce à un set de suivi, évitant la
+      croissance quadratique de la liste dans les zones denses.
+
+    Mode hystérésis (paramètre `is_core_eligible`) :
+    - Si fourni, seuls les points marqués True peuvent devenir des "core
+      points" (initier ou étendre un cluster). Les autres points peuvent
+      uniquement être absorbés comme points "border" s'ils tombent dans
+      le voisinage `eps` d'un core point. Ils ne propagent jamais le
+      cluster. Inspiré du seuillage à hystérésis (Canny).
+    - Si None, comportement DBSCAN classique (tous les points sont
+      éligibles).
+
     Args:
         points: Array (N, 2) de coordonnées
         eps: Distance maximale entre deux points pour être voisins
         min_samples: Nombre minimum de points pour former un cluster
-        
+        is_core_eligible: Array booléen (N,) optionnel. True = peut être
+            core. Si None, tous éligibles.
+
     Returns:
         Array (N,) d'étiquettes de cluster (-1 = bruit)
     """
+    from collections import deque
     from scipy.spatial import cKDTree
 
     n = len(points)
     labels = np.full(n, -1, dtype=int)
+    if n == 0:
+        return labels
     tree = cKDTree(points)
-    
-    # Pré-calculer tous les voisinages
-    neighborhoods = tree.query_ball_tree(tree, r=eps)
-    
+
+    if is_core_eligible is None:
+        is_core_eligible = np.ones(n, dtype=bool)
+    elif len(is_core_eligible) != n:
+        raise ValueError(
+            f"is_core_eligible doit avoir la même taille que points "
+            f"(got {len(is_core_eligible)} vs {n})"
+        )
+
     cluster_id = 0
     visited = np.zeros(n, dtype=bool)
-    
+
     for i in range(n):
         if visited[i]:
             continue
         visited[i] = True
-        
-        neighbors = neighborhoods[i]
+
+        # Un point non-core-éligible ne peut pas initier un cluster.
+        # On le laisse à -1 ; il pourra être assigné plus tard via
+        # expansion s'il tombe dans le voisinage d'un core.
+        if not is_core_eligible[i]:
+            continue
+
+        neighbors = tree.query_ball_point(points[i], r=eps)
         if len(neighbors) < min_samples:
             continue
-        
+
         # Nouveau cluster
         labels[i] = cluster_id
-        seed_set = list(neighbors)
-        j = 0
-        while j < len(seed_set):
-            q = seed_set[j]
+        queue = deque()
+        in_queue = set()
+        for nb in neighbors:
+            if nb != i:
+                queue.append(nb)
+                in_queue.add(nb)
+
+        while queue:
+            q = queue.popleft()
             if not visited[q]:
                 visited[q] = True
-                q_neighbors = neighborhoods[q]
-                if len(q_neighbors) >= min_samples:
-                    seed_set.extend(q_neighbors)
+                # Seuls les points core-éligibles peuvent étendre le cluster.
+                if is_core_eligible[q]:
+                    q_neighbors = tree.query_ball_point(points[q], r=eps)
+                    if len(q_neighbors) >= min_samples:
+                        for nb in q_neighbors:
+                            if nb not in in_queue and not visited[nb]:
+                                queue.append(nb)
+                                in_queue.add(nb)
             if labels[q] == -1:
                 labels[q] = cluster_id
-            j += 1
-        
+
         cluster_id += 1
-    
+
     return labels
 
 
@@ -86,19 +137,27 @@ def _build_cluster_geometry(
     geometries: List[Polygon],
     output_geometry: str,
     buffer_m: float,
+    concave_ratio: float = 0.3,
 ) -> Optional[Polygon]:
     """
     Construit la géométrie d'un cluster à partir de ses points/polygones membres.
-    
+
     Args:
         points: Centroïdes des détections du cluster (N, 2)
         geometries: Polygones des détections du cluster
-        output_geometry: "convex_hull" ou "bounding_box"
+        output_geometry: "convex_hull", "concave_hull" ou "bounding_box"
         buffer_m: Marge en mètres autour de la géométrie
-        
+        concave_ratio: Paramètre du concave hull (Shapely 2.0+).
+            Plage [0, 1]. 0 = très concave (dense, beaucoup de sommets,
+            colle aux points), 1 = équivalent au convex hull.
+            Valeurs typiques 0.2-0.5 pour des zones archéologiques.
+            Ignoré si output_geometry != "concave_hull".
+
     Returns:
         Polygone du cluster ou None si impossible
     """
+    global _CONCAVE_HULL_WARNED
+
     if len(points) < 3:
         # Moins de 3 points → on utilise l'union des géométries + buffer
         merged = unary_union(geometries)
@@ -106,20 +165,53 @@ def _build_cluster_geometry(
             return None
         cluster_geom = merged.convex_hull
     else:
+        mp = MultiPoint(points.tolist())
         if output_geometry == "bounding_box":
-            mp = MultiPoint(points.tolist())
             cluster_geom = mp.minimum_rotated_rectangle
+        elif output_geometry == "concave_hull":
+            if _CONCAVE_HULL_AVAILABLE:
+                try:
+                    cluster_geom = shapely.concave_hull(
+                        mp,
+                        ratio=concave_ratio,
+                        allow_holes=False,
+                    )
+                    # concave_hull peut retourner LineString/Point sur points
+                    # quasi-colinéaires : fallback sur convex_hull dans ce cas.
+                    if (
+                        cluster_geom is None
+                        or cluster_geom.is_empty
+                        or cluster_geom.geom_type != "Polygon"
+                    ):
+                        logger.debug(
+                            "concave_hull a retourné une géométrie non polygonale "
+                            f"({getattr(cluster_geom, 'geom_type', None)}), "
+                            "fallback convex_hull"
+                        )
+                        cluster_geom = mp.convex_hull
+                except Exception as e:
+                    logger.warning(
+                        f"Erreur shapely.concave_hull ({e}), fallback convex_hull"
+                    )
+                    cluster_geom = mp.convex_hull
+            else:
+                if not _CONCAVE_HULL_WARNED:
+                    logger.warning(
+                        "shapely.concave_hull indisponible (Shapely < 2.0), "
+                        "fallback sur convex_hull"
+                    )
+                    _CONCAVE_HULL_WARNED = True
+                cluster_geom = mp.convex_hull
         else:
             # convex_hull par défaut
-            mp = MultiPoint(points.tolist())
             cluster_geom = mp.convex_hull
-    
+
     if buffer_m > 0:
         cluster_geom = cluster_geom.buffer(buffer_m, join_style=2)
-    
+
     if cluster_geom.is_empty or not cluster_geom.is_valid:
         return None
-    
+
     return cluster_geom
 
 
@@ -159,6 +251,18 @@ def run_clustering(
     for cfg_idx, cfg in enumerate(clustering_configs):
         target_classes = cfg["target_classes"]
         min_confidence = cfg["min_confidence"]
+        # Seuil d'extension (hystérésis) : détections entre min_confidence_extend
+        # et min_confidence sont absorbables comme points "border" dans un cluster
+        # existant mais ne peuvent ni initier ni étendre un cluster.
+        # Défaut = min_confidence → comportement DBSCAN classique (rétro-compatible).
+        min_confidence_extend = cfg.get("min_confidence_extend", min_confidence)
+        if min_confidence_extend > min_confidence:
+            logger.warning(
+                f"Clustering: min_confidence_extend ({min_confidence_extend}) > "
+                f"min_confidence ({min_confidence}) — incohérent. "
+                f"Utilisation de min_confidence_extend = min_confidence."
+            )
+            min_confidence_extend = min_confidence
         min_cluster_size = cfg["min_cluster_size"]
         min_samples = cfg["min_samples"]
         eps_m = cfg["eps_m"]
@@ -166,12 +270,14 @@ def run_clustering(
         output_geometry = cfg["output_geometry"]
         buffer_m = cfg["buffer_m"]
         min_area_m2 = cfg["min_area_m2"]
-        
+        concave_ratio = cfg.get("concave_ratio", 0.3)
+        hysteresis_active = min_confidence_extend < min_confidence
         logger.info(
             f"Clustering [{cfg_idx+1}/{len(clustering_configs)}]: "
             f"classes={target_classes}, eps={eps_m}m, "
             f"min_cluster_size={min_cluster_size}, min_samples={min_samples}, "
             f"min_confidence={min_confidence}"
+            + (f", min_confidence_extend={min_confidence_extend} (hystérésis)" if hysteresis_active else "")
         )
         
         # Collecter les détections cibles
@@ -185,7 +291,10 @@ def run_clustering(
                 if geom is None or geom.is_empty:
                     continue
                 conf = det.get("confidence", 0.0)
-                if conf is not None and conf < min_confidence:
+                conf_value = conf if conf is not None else 0.0
+                # Filtre dur sur le seuil bas (extension). Les détections sous
+                # min_confidence_extend sont totalement écartées.
+                if conf_value < min_confidence_extend:
                     continue
                 centroid = geom.centroid
                 candidates.append((class_name, det_idx, np.array([centroid.x, centroid.y]), geom, conf))
@@ -199,10 +308,33 @@ def run_clustering(
         
         # Extraire les centroïdes en array numpy
         centroids = np.array([c[2] for c in candidates])
-        
-        # Exécuter DBSCAN
+
+        # Mask de core-éligibilité : seules les détections avec
+        # conf >= min_confidence peuvent initier/étendre un cluster.
+        is_core_eligible = np.array(
+            [
+                ((c[4] if c[4] is not None else 0.0) >= min_confidence)
+                for c in candidates
+            ],
+            dtype=bool,
+        )
+        n_core = int(is_core_eligible.sum())
+        n_extend = int((~is_core_eligible).sum())
+        if hysteresis_active:
+            logger.info(
+                f"Clustering: {n_core} détection(s) core-éligibles "
+                f"(conf>={min_confidence}), {n_extend} détection(s) extension "
+                f"(conf in [{min_confidence_extend}, {min_confidence}[)"
+            )
+
+        # Exécuter DBSCAN avec hystérésis
         try:
-            labels = _dbscan_scipy(centroids, eps=eps_m, min_samples=min_samples)
+            labels = _dbscan_scipy(
+                centroids,
+                eps=eps_m,
+                min_samples=min_samples,
+                is_core_eligible=is_core_eligible,
+            )
         except Exception as e:
             logger.error(f"Clustering DBSCAN échoué: {e}")
             continue
@@ -235,7 +367,11 @@ def run_clustering(
                 continue
             
             cluster_geom = _build_cluster_geometry(
-                cluster_points, cluster_geoms, output_geometry, buffer_m
+                cluster_points,
+                cluster_geoms,
+                output_geometry,
+                buffer_m,
+                concave_ratio=concave_ratio,
             )
             if cluster_geom is None:
                 continue

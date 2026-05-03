@@ -10,74 +10,94 @@ if TYPE_CHECKING:
 LogFn = Callable[[str], None]
 
 
-def _collect_vrt_paths_and_build(results_dir: Path, log: LogFn) -> List[str]:
-    """Parcourt results/ pour créer les index.vrt (tif/, jpg/, annotated_images/) et retourne les chemins VRT."""
+def _collect_vrt_paths_and_build(idx_dir: Path, det_dir: Path, log: LogFn) -> List[str]:
+    """Parcourt indices/ et detections/ pour créer les index.vrt et retourne les chemins VRT."""
     from ...pipeline.ign.products.results import build_vrt_index
 
     vrt_paths: List[str] = []
-    if not results_dir.exists():
-        return vrt_paths
 
-    # VRT pour chaque dossier de produit TIF
-    for tif_dir in results_dir.rglob("tif"):
-        if not tif_dir.is_dir():
-            continue
-        vrt_path = tif_dir / "index.vrt"
-        if vrt_path.exists():
-            log(f"VRT déjà existant, ignoré: {vrt_path.name}")
-            vrt_paths.append(str(vrt_path))
-            continue
-        if list(tif_dir.glob("*.tif")):
-            build_vrt_index(tif_dir, pattern="*.tif", output_name="index.vrt", log=log)
+    # VRT pour chaque dossier de produit TIF dans indices/
+    if idx_dir.exists():
+        for tif_dir in idx_dir.rglob("tif"):
+            if not tif_dir.is_dir():
+                continue
+            vrt_path = tif_dir / "index.vrt"
             if vrt_path.exists():
+                log(f"VRT déjà existant, ignoré: {vrt_path.name}")
                 vrt_paths.append(str(vrt_path))
+                continue
+            if list(tif_dir.glob("*.tif")):
+                build_vrt_index(tif_dir, pattern="*.tif", output_name="index.vrt", log=log)
+                if vrt_path.exists():
+                    vrt_paths.append(str(vrt_path))
 
-    # VRT pour chaque dossier JPG (images géoréférencées)
-    for jpg_dir in results_dir.rglob("jpg"):
-        if not jpg_dir.is_dir():
-            continue
-        vrt_path = jpg_dir / "index.vrt"
-        if vrt_path.exists():
-            log(f"VRT déjà existant, ignoré: {vrt_path.name}")
-            continue
-        if list(jpg_dir.glob("*.jpg")):
-            build_vrt_index(jpg_dir, pattern="*.jpg", output_name="index.vrt", log=log)
+        # VRT pour chaque dossier PNG (images géoréférencées) dans indices/
+        for png_dir in idx_dir.rglob("png"):
+            if not png_dir.is_dir():
+                continue
+            vrt_path = png_dir / "index.vrt"
+            if vrt_path.exists():
+                log(f"VRT déjà existant, ignoré: {vrt_path.name}")
+                continue
+            if list(png_dir.glob("*.png")):
+                build_vrt_index(png_dir, pattern="*.png", output_name="index.vrt", log=log)
 
-    # VRT pour annotated_images si présent
-    annotated_dir = results_dir / "annotated_images"
-    if annotated_dir.exists():
-        vrt_path = annotated_dir / "index.vrt"
-        if not vrt_path.exists() and list(annotated_dir.glob("*.jpg")):
-            build_vrt_index(annotated_dir, pattern="*.jpg", output_name="index.vrt", log=log)
+    # VRT pour annotated_images dans detections/
+    if det_dir.exists():
+        for annotated_dir in det_dir.rglob("annotated_images"):
+            if not annotated_dir.is_dir():
+                continue
+            vrt_path = annotated_dir / "index.vrt"
+            if not vrt_path.exists() and list(annotated_dir.glob("*.png")):
+                build_vrt_index(annotated_dir, pattern="*.png", output_name="index.vrt", log=log)
 
     return vrt_paths
 
 
-def _collect_shapefiles(results_dir: Path, target_rvt: str, rvt_params: Dict[str, Any]) -> List[str]:
-    """Collecte les shapefiles de détection CV depuis results/RVT/<target_rvt>/**/shapefiles/."""
+def _list_gpkg_layers(gpkg_path: Path) -> List[str]:
+    """Liste les couches d'un GeoPackage avec plusieurs méthodes de fallback."""
+    # Méthode 1 : fiona
+    try:
+        import fiona
+        return list(fiona.listlayers(str(gpkg_path)))
+    except Exception:
+        pass
+    # Méthode 2 : osgeo.ogr (toujours disponible dans OSGeo4W)
+    try:
+        from osgeo import ogr
+        ds = ogr.Open(str(gpkg_path))
+        if ds is not None:
+            layers = [ds.GetLayerByIndex(i).GetName() for i in range(ds.GetLayerCount())]
+            ds = None
+            return layers
+    except Exception:
+        pass
+    # Méthode 3 : geopandas (lecture du fichier)
+    try:
+        import geopandas as gpd
+        return gpd.list_layers(str(gpkg_path))["name"].tolist()
+    except Exception:
+        pass
+    return []
+
+
+def _collect_shapefiles(det_dir: Path) -> List[str]:
+    """Collecte les couches GeoPackage de détection CV depuis detections/**/shapefiles/."""
     shapefile_paths: List[str] = []
-    if not results_dir.exists():
+    if not det_dir.exists():
         return shapefile_paths
 
-    try:
-        from ...pipeline.ign.products.rvt_naming import get_rvt_param_suffix
-        param_suffix = get_rvt_param_suffix(target_rvt, rvt_params)
-        target_rvt_dir = f"{target_rvt}{param_suffix}" if param_suffix else target_rvt
-        rvt_root = results_dir / "RVT" / target_rvt_dir
-        if rvt_root.exists():
-            # Chercher dans tous les sous-dossiers shapefiles/ (y compris per-model)
-            for shp_dir in rvt_root.rglob("shapefiles"):
-                if shp_dir.is_dir():
-                    for shp_file in shp_dir.glob("*.shp"):
-                        shapefile_paths.append(str(shp_file))
-    except Exception:
-        # Fallback: chercher dans tous les sous-dossiers correspondant au target_rvt
-        for rvt_subdir in results_dir.glob("RVT/*"):
-            if rvt_subdir.is_dir() and rvt_subdir.name.startswith(target_rvt):
-                for shp_dir in rvt_subdir.rglob("shapefiles"):
-                    if shp_dir.is_dir():
-                        for shp_file in shp_dir.glob("*.shp"):
-                            shapefile_paths.append(str(shp_file))
+    for shp_dir in det_dir.rglob("shapefiles"):
+        if not shp_dir.is_dir():
+            continue
+        for gpkg_file in shp_dir.glob("*.gpkg"):
+            layers = _list_gpkg_layers(gpkg_file)
+            if layers:
+                for layer in layers:
+                    shapefile_paths.append(f"{gpkg_file}|layername={layer}")
+            else:
+                # Dernier recours : on inscrit le GPKG seul (nom de couche inconnu)
+                shapefile_paths.append(str(gpkg_file))
 
     return shapefile_paths
 
@@ -94,6 +114,40 @@ def _load_class_colors(cv_cfg: Dict[str, Any]) -> Optional[list]:
     return None
 
 
+def _resolve_model_dir_from_run(run_cfg: Dict[str, Any]) -> Optional[Path]:
+    """Résout le dossier racine du modèle depuis un run_cfg.
+
+    Supporte les deux formats :
+    - runs bruts (clé 'model') : chemin absolu vers le fichier weights
+    - runs résolus par resolve_cv_runs (clé 'selected_model') : même chose
+    Le fichier weights peut ne pas exister (gitignored) ; on remonte quand même.
+    """
+    cfg = run_cfg or {}
+    # Priorité : 'model' (runs bruts), puis 'selected_model' (runs résolus)
+    model_val = str(cfg.get("model") or cfg.get("selected_model") or "").strip()
+    if not model_val:
+        return None
+    p = Path(model_val)
+    # Fichier weights existant
+    if p.is_file():
+        return p.parent.parent if p.parent.name == "weights" else p.parent
+    # Déjà un dossier
+    if p.is_dir():
+        return p
+    # Le fichier n'existe pas (gitignored) — remonter quand même
+    parent = p.parent
+    if parent.name == "weights":
+        return parent.parent
+    # Si c'est juste un nom de modèle sans chemin complet, chercher dans models_dir
+    if not p.is_absolute():
+        models_dir_val = str(cfg.get("models_dir") or "").strip()
+        if models_dir_val:
+            candidate = Path(models_dir_val) / model_val
+            if candidate.is_dir():
+                return candidate
+    return parent if parent != p else None
+
+
 def _build_global_class_color_map(cv_runs: List[Dict[str, Any]]) -> Dict[str, int]:
     """Construit un mapping global {class_name: palette_index} unique pour toutes les classes de tous les modèles.
 
@@ -101,7 +155,6 @@ def _build_global_class_color_map(cv_runs: List[Dict[str, Any]]) -> Dict[str, in
     les couleurs définies dans args.yaml quand elles existent (sans collision).
     """
     from ...pipeline.cv.class_utils import (
-        resolve_model_weights_path,
         load_class_names_from_model,
         load_class_colors_from_model,
         BASE_COLOR_PALETTE,
@@ -111,14 +164,21 @@ def _build_global_class_color_map(cv_runs: List[Dict[str, Any]]) -> Dict[str, in
     class_color_map: Dict[str, int] = {}
     used_indices: set = set()
 
+    def _get_model_dir(run_cfg):
+        """Retourne le dossier modèle même si les weights sont absents (gitignored)."""
+        model_dir = _resolve_model_dir_from_run(run_cfg)
+        if model_dir and model_dir.is_dir():
+            return model_dir
+        return None
+
     # Premier passage: respecter les couleurs explicites de args.yaml
     for run_cfg in cv_runs:
         try:
-            weights = resolve_model_weights_path(run_cfg)
-            if not weights or not weights.exists():
+            model_dir = _get_model_dir(run_cfg)
+            if not model_dir:
                 continue
-            names = load_class_names_from_model(weights)
-            colors = load_class_colors_from_model(weights)
+            names = load_class_names_from_model(model_dir)
+            colors = load_class_colors_from_model(model_dir)
             if not names:
                 continue
             if isinstance(names, dict):
@@ -138,10 +198,10 @@ def _build_global_class_color_map(cv_runs: List[Dict[str, Any]]) -> Dict[str, in
     next_free = 0
     for run_cfg in cv_runs:
         try:
-            weights = resolve_model_weights_path(run_cfg)
-            if not weights or not weights.exists():
+            model_dir = _get_model_dir(run_cfg)
+            if not model_dir:
                 continue
-            names = load_class_names_from_model(weights)
+            names = load_class_names_from_model(model_dir)
             if not names:
                 continue
             if isinstance(names, dict):
@@ -149,7 +209,6 @@ def _build_global_class_color_map(cv_runs: List[Dict[str, Any]]) -> Dict[str, in
             for name in names:
                 if name in class_color_map:
                     continue
-                # Trouver le prochain index libre
                 while next_free in used_indices:
                     next_free += 1
                 class_color_map[name] = next_free % palette_size
@@ -185,10 +244,11 @@ def _generate_consolidated_qgs_project(
     shapefile_paths: List[str],
     cv_runs: List[Dict[str, Any]],
     class_colors: Optional[list],
-    results_dir: Path,
     log: LogFn,
     global_color_map: Optional[Dict[str, int]] = None,
     cluster_class_names: Optional[set] = None,
+    output_dir: Optional[Path] = None,
+    min_confidence: float = 0.0,
 ) -> None:
     """Génère un projet QGIS consolidé avec les shapefiles de tous les runs."""
     if not shapefile_paths:
@@ -206,6 +266,8 @@ def _generate_consolidated_qgs_project(
             class_colors=class_colors,
             global_color_map=global_color_map,
             cluster_class_names=cluster_class_names,
+            output_dir=output_dir,
+            min_confidence=min_confidence,
         )
         if qgs_path:
             log(f"Projet QGIS consolidé (multi-modèles) généré: {qgs_path}")
@@ -224,6 +286,7 @@ def finalize_pipeline(
     tiles_processed: int = 0,
     active_products: Optional[List[str]] = None,
     extra_label: str = "",
+    ui_config: Optional[Dict[str, Any]] = None,
 ) -> None:
     """
     Finalisation commune à tous les runners :
@@ -235,28 +298,21 @@ def finalize_pipeline(
     """
     import time
 
-    results_dir = output_dir / "results"
+    from ...pipeline.output_paths import indices_dir, detections_dir
+
+    idx_dir = indices_dir(output_dir)
+    det_dir = detections_dir(output_dir)
     log: LogFn = lambda m: reporter.info(m)
 
     # 1. Création des index VRT
     reporter.stage("Création des index VRT")
-    reporter.info("Création des fichiers VRT d'indexation...")
-    vrt_paths = _collect_vrt_paths_and_build(results_dir, log)
+    reporter.info("Création des fichiers VRT d’indexation...")
+    vrt_paths = _collect_vrt_paths_and_build(idx_dir, det_dir, log)
 
     # 2. Collecte des shapefiles CV (tous les runs)
     from ...pipeline.cv.class_utils import resolve_cv_runs
     cv_runs = resolve_cv_runs(cv_cfg or {})
-    shapefile_paths: List[str] = []
-    seen_rvts: set = set()
-    for run_cfg in cv_runs:
-        run_rvt = str(run_cfg.get("target_rvt", "LD"))
-        if run_rvt not in seen_rvts:
-            seen_rvts.add(run_rvt)
-            shapefile_paths.extend(_collect_shapefiles(results_dir, run_rvt, rvt_params or {}))
-    # Fallback: ancien format mono-modèle
-    if not shapefile_paths and not cv_runs:
-        target_rvt = str((cv_cfg or {}).get("target_rvt", "LD"))
-        shapefile_paths = _collect_shapefiles(results_dir, target_rvt, rvt_params or {})
+    shapefile_paths: List[str] = _collect_shapefiles(det_dir)
 
     # 3. Construire un mapping global classe -> couleur unique
     global_color_map: Dict[str, int] = {}
@@ -284,17 +340,49 @@ def finalize_pipeline(
 
     # 3c. Projet QGIS consolidé (multi-modèles)
     if shapefile_paths and cv_runs:
+        _min_conf_sym = float((cv_cfg or {}).get("confidence_threshold", 0.0) or 0.0)
         _generate_consolidated_qgs_project(
             shapefile_paths=shapefile_paths,
             cv_runs=cv_runs,
             class_colors=class_colors,
-            results_dir=results_dir,
             log=log,
             global_color_map=global_color_map,
             cluster_class_names=cluster_class_names if cluster_class_names else None,
+            output_dir=output_dir,
+            min_confidence=_min_conf_sym,
         )
 
-    # 4. Logs de fin de pipeline
+    # 4. Génération du fichier metadata.json
+    try:
+        import json as _json
+        import datetime as _dt
+
+        meta = {
+            "pipeline_version": "2.0",
+            "date": _dt.datetime.now().isoformat(timespec="seconds"),
+            "tiles_processed": tiles_processed,
+            "active_products": active_products or [],
+            "rvt_params": rvt_params or {},
+            "cv_runs": [
+                {
+                    "model": r.get("selected_model", ""),
+                    "target_rvt": r.get("target_rvt", ""),
+                }
+                for r in cv_runs
+            ],
+            "structure": {
+                "indices": str(idx_dir),
+                "detections": str(det_dir),
+            },
+            "ui_config": ui_config or {},
+        }
+        meta_path = output_dir / "metadata.json"
+        meta_path.write_text(_json.dumps(meta, indent=2, ensure_ascii=False), encoding="utf-8")
+        reporter.info(f"Métadonnées enregistrées: {meta_path.name}")
+    except Exception as _meta_e:
+        reporter.info(f"Note: métadonnées non écrites ({_meta_e})")
+
+    # 5. Logs de fin de pipeline
     elapsed = time.time() - start_time
     products_list = active_products or []
 

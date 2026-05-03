@@ -441,7 +441,8 @@ def download_ign_dalles(
     if not output_dir.exists():
         output_dir.mkdir(parents=True, exist_ok=True)
 
-    dalles_dir = output_dir / "dalles"
+    from ..output_paths import dalles_dir as _dalles_dir
+    dalles_dir = _dalles_dir(output_dir)
     sorted_list = output_dir / "fichier_tri.txt"
 
     stage("Tri des fichiers")

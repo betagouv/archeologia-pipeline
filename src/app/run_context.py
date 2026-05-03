@@ -14,6 +14,7 @@ class RunContext:
     products_cfg: Dict[str, Any]
     rvt_params: Dict[str, Any]
     cv_cfg: Dict[str, Any]
+    ui_config: Dict[str, Any]
 
 
 def build_run_context(config: Dict[str, Any]) -> RunContext:
@@ -48,4 +49,5 @@ def build_run_context(config: Dict[str, Any]) -> RunContext:
         products_cfg=products_cfg,
         rvt_params=rvt_params,
         cv_cfg=cv_cfg,
+        ui_config=config if isinstance(config, dict) else {},
     )

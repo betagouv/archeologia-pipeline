@@ -205,6 +205,137 @@ def get_color_for_confidence(base_color_index: int, confidence: float) -> Tuple[
         return _lighten_color(base_color, 0.65)
 
 
+# --- Tranches de confiance (conf_bin) ------------------------------------
+# Bornes supérieures standard de la grille 0.2 utilisées pour les tranches
+# (cohérentes avec `get_color_for_confidence`).
+_CONFIDENCE_UPPER_BOUNDS: Tuple[float, ...] = (0.2, 0.4, 0.6, 0.8, 1.0)
+
+# Suffixes textuels utilisés dans le champ `conf_color` (ex. "color0_medium").
+_CONFIDENCE_SUFFIXES: Tuple[str, ...] = (
+    "low", "medium_low", "medium", "medium_high", "high",
+)
+
+
+def _format_conf_bound(x: float) -> str:
+    """Formate une borne de confiance à la manière Python ``f"{x:g}"``.
+
+    Exemples : 0.0→"0", 0.2→"0.2", 0.35→"0.35", 1.0→"1".
+    """
+    # clamp
+    x = max(0.0, min(1.0, float(x)))
+    return f"{x:g}"
+
+
+def _suffix_for_confidence(value: float) -> str:
+    """Retourne le suffixe textuel (low / medium_low / medium / medium_high / high)
+    utilisé dans `conf_color`, basé sur la même grille 0.2 que
+    :func:`get_color_for_confidence`.
+    """
+    v = max(0.0, min(1.0, float(value)))
+    if v >= 0.8:
+        return "high"
+    if v >= 0.6:
+        return "medium_high"
+    if v >= 0.4:
+        return "medium"
+    if v >= 0.2:
+        return "medium_low"
+    return "low"
+
+
+def compute_confidence_bins(min_confidence: float = 0.0) -> List[Dict[str, float]]:
+    """Calcule les tranches de confiance utilisées pour le champ ``conf_bin``
+    et la symbologie QGIS catégorisée.
+
+    Les tranches suivent la grille standard 0.2 ``{0.0, 0.2, 0.4, 0.6, 0.8, 1.0}``,
+    sauf la première qui est **tronquée à ``min_confidence``** si celui-ci est
+    strictement supérieur à 0 et ne tombe pas sur une borne. Ceci évite
+    d'afficher une catégorie vide (ex. ``[0:0.2[``) quand l'utilisateur a
+    positionné un seuil de confiance ≥ 0.2 dans les paramètres avancés :
+    toutes les détections inférieures à ce seuil sont filtrées en amont.
+
+    Exemples :
+
+    - ``min_confidence=0``    → ``[0:0.2[, [0.2:0.4[, [0.4:0.6[, [0.6:0.8[, [0.8:1]``
+    - ``min_confidence=0.3``  → ``[0.3:0.4[, [0.4:0.6[, [0.6:0.8[, [0.8:1]``
+    - ``min_confidence=0.5``  → ``[0.5:0.6[, [0.6:0.8[, [0.8:1]``
+    - ``min_confidence=0.9``  → ``[0.9:1]``
+
+    Chaque tranche est retournée sous la forme d'un dict::
+
+        {"label": str, "lower": float, "upper": float, "repr": float, "suffix": str}
+
+    où ``repr`` est le point médian de la tranche (utilisé pour calculer la
+    couleur via :func:`get_color_for_confidence`) et ``suffix`` est le libellé
+    descriptif (low/medium_low/medium/medium_high/high).
+    """
+    m = max(0.0, min(1.0, float(min_confidence)))
+    bins: List[Dict[str, float]] = []
+    lower = m
+    EPS = 1e-9
+    uppers = list(_CONFIDENCE_UPPER_BOUNDS)
+    for i, upper in enumerate(uppers):
+        if upper <= lower + EPS:
+            continue  # tranche vide si seuil aligné sur cette borne
+        is_last = (i == len(uppers) - 1)
+        closing = "]" if is_last else "["
+        label = f"[{_format_conf_bound(lower)}:{_format_conf_bound(upper)}{closing}"
+        mid = (lower + upper) / 2.0
+        bins.append({
+            "label": label,
+            "lower": float(lower),
+            "upper": float(upper),
+            "repr": float(mid),
+            "suffix": _suffix_for_confidence(mid),
+        })
+        lower = upper
+    return bins
+
+
+def assign_confidence_bin(
+    confidence_value: Optional[float],
+    color_index: int = 0,
+    min_confidence: float = 0.0,
+) -> Tuple[Optional[str], Optional[str]]:
+    """Assigne la tranche (``conf_bin``) et le nom de couleur (``conf_color``)
+    d'une détection, en tenant compte d'un seuil de confiance minimal.
+
+    Retourne ``(None, None)`` si ``confidence_value`` est absente ou invalide.
+    Retourne ``(None, None)`` si la valeur est strictement inférieure au seuil
+    (cas défensif : normalement filtré en amont).
+    """
+    if confidence_value is None:
+        return None, None
+    try:
+        c = float(confidence_value)
+    except Exception:
+        return None, None
+
+    # Normaliser si la confiance semble être sur [0,10]
+    if c > 1.0 and c <= 10.0:
+        c = c / 10.0
+    c = max(0.0, min(1.0, c))
+
+    bins = compute_confidence_bins(min_confidence)
+    if not bins:
+        return None, None
+
+    # Si la valeur est en dessous du premier bin (donc < seuil), pas de bin.
+    if c < bins[0]["lower"] - 1e-9:
+        return None, None
+
+    for i, b in enumerate(bins):
+        is_last = (i == len(bins) - 1)
+        if b["lower"] - 1e-9 <= c and (
+            c < b["upper"] - 1e-9 or (is_last and c <= b["upper"] + 1e-9)
+        ):
+            return b["label"], f"color{color_index}_{b['suffix']}"
+
+    # fallback : dernier bin
+    last = bins[-1]
+    return last["label"], f"color{color_index}_{last['suffix']}"
+
+
 def load_class_colors_from_model(model_path: Union[str, Path]) -> Optional[List[int]]:
     """
     Charge les indices de couleurs par classe depuis args.yaml du modèle.

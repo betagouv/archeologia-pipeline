@@ -24,7 +24,7 @@ def get_detection_output_path(jpg_path: str, target_rvt: str, annotated_output_d
         Chemin vers le fichier de détection de sortie dans annotated_images
     """
     jpg_file = Path(jpg_path)
-    detection_name = jpg_file.stem + "_detections.jpg"
+    detection_name = jpg_file.stem + "_detections.png"
 
     if annotated_output_dir:
         detection_path = Path(annotated_output_dir) / detection_name
@@ -291,11 +291,8 @@ def save_annotated_image(
         
         Path(output_path).parent.mkdir(parents=True, exist_ok=True)
         
-        # Sauvegarder avec haute qualité
-        if output_path.lower().endswith(('.jpg', '.jpeg')):
-            img_copy.save(output_path, quality=jpeg_quality, optimize=True)
-        else:
-            img_copy.save(output_path)
+        # Sauvegarder en PNG (sans perte)
+        img_copy.save(output_path, "PNG", optimize=True)
         logger.info(f"Image annotée sauvegardée: {output_path}")
     except Exception as e:
         logger.warning(f"Impossible de sauvegarder l'image annotée: {e}")

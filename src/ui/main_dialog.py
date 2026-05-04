@@ -40,6 +40,7 @@ from qgis.PyQt.QtWidgets import (
 
 from ..app.progress_reporter import USER_INFO
 from ..config.config_manager import ConfigManager
+from .config_widget_adapter import ConfigWidgetAdapter, WidgetBag
 
 
 class _QtLogEmitter(QObject):
@@ -229,6 +230,14 @@ class MainDialog(QDialog):
         # ── Titres de section en gras + bleu ──
         for group in self.findChildren(QGroupBox):
             self._make_bold_title(group)
+
+        # ── Adaptateur Config ↔ Widgets (V4.1) ──────────────────────
+        # Tous les widgets sont construits à ce stade ; on peut
+        # instancier le bag de refs et l'adaptateur qui s'occupera de
+        # la bijection config ↔ widgets pour les champs simples
+        # (le runs_table et les classes par modèle restent gérés
+        # directement par le dialog).
+        self._config_adapter = ConfigWidgetAdapter(self._build_widget_bag())
 
         # ── Charger la configuration dans les widgets ──
         self._load_into_widgets()
@@ -1090,36 +1099,74 @@ class MainDialog(QDialog):
     # Persistance ConfigManager (last_ui_config.json — dernière config utilisée)
     # ═════════════════════════════════════════════
 
+    def _build_widget_bag(self) -> WidgetBag:
+        """Construit le bag de refs widgets pour :class:`ConfigWidgetAdapter`.
+
+        Appelé une seule fois après la construction de tous les widgets ;
+        l'adaptateur ne capture pas le dialog, juste les widgets dont il
+        a besoin.
+        """
+        return WidgetBag(
+            mode_combo=self.mode_combo,
+            output_dir_edit=self.output_dir_edit,
+            data_mode_combo=self.data_mode_combo,
+            specific_source_edit=self.specific_source_edit,
+            detection_enabled_cb=self.detection_enabled_cb,
+            det_confidence_spin=self.det_confidence_spin,
+            det_iou_spin=self.det_iou_spin,
+            det_generate_annotated_cb=self.det_generate_annotated_cb,
+            det_generate_shp_cb=self.det_generate_shp_cb,
+            mnt_resolution_spin=self.mnt_resolution_spin,
+            density_resolution_spin=self.density_resolution_spin,
+            tile_overlap_spin=self.tile_overlap_spin,
+            max_workers_spin=self.max_workers_spin,
+            filter_expression_edit=self.filter_expression_edit,
+            product_cbs=self._product_cbs,
+            mdh_num_directions_spin=self.mdh_num_directions_spin,
+            mdh_sun_elevation_spin=self.mdh_sun_elevation_spin,
+            mdh_ve_factor_spin=self.mdh_ve_factor_spin,
+            mdh_save_8bit_cb=self.mdh_save_8bit_cb,
+            svf_noise_remove_spin=self.svf_noise_remove_spin,
+            svf_num_directions_spin=self.svf_num_directions_spin,
+            svf_radius_spin=self.svf_radius_spin,
+            svf_ve_factor_spin=self.svf_ve_factor_spin,
+            svf_save_8bit_cb=self.svf_save_8bit_cb,
+            slope_unit_combo=self.slope_unit_combo,
+            slope_ve_factor_spin=self.slope_ve_factor_spin,
+            slope_save_8bit_cb=self.slope_save_8bit_cb,
+            ldo_angular_res_spin=self.ldo_angular_res_spin,
+            ldo_min_radius_spin=self.ldo_min_radius_spin,
+            ldo_max_radius_spin=self.ldo_max_radius_spin,
+            ldo_observer_h_spin=self.ldo_observer_h_spin,
+            ldo_ve_factor_spin=self.ldo_ve_factor_spin,
+            ldo_save_8bit_cb=self.ldo_save_8bit_cb,
+            slrm_radius_spin=self.slrm_radius_spin,
+            slrm_ve_factor_spin=self.slrm_ve_factor_spin,
+            slrm_save_8bit_cb=self.slrm_save_8bit_cb,
+            vat_terrain_type_combo=self.vat_terrain_type_combo,
+            vat_save_8bit_cb=self.vat_save_8bit_cb,
+        )
+
     def _load_into_widgets(self) -> None:
         self._loading = True
         # Bloquer en bulk les signaux Qt de tous les widgets connectés à
         # l'autosave : sans ce verrou Qt, certains `setX` propagent des
         # effets de bord (ex. `_update_available_rvt_targets` clear/repopule
-        # des combos) qui écrasent l'état des widgets pas encore restaurés
-        # par la séquence de cette méthode. La liste vit dans
-        # `_wire_autosave`.
+        # des combos) qui écrasent l'état des widgets pas encore restaurés.
         blocked = getattr(self, "_autosave_widgets", None) or []
         for w in blocked:
             w.blockSignals(True)
         try:
-            # Mode UI Simple/Expert
-            ui_cfg = self._config.get("ui") or {}
-            display_mode = str(ui_cfg.get("display_mode") or "simple")
-            idx_display = self.mode_combo.findData(display_mode)
-            self.mode_combo.setCurrentIndex(idx_display if idx_display >= 0 else 0)
+            # Champs simples (output_dir, CV simples, processing, products,
+            # rvt_params) : tous gérés par l'adaptateur. Le dialog ne
+            # touche plus qu'aux éléments à callbacks (runs table, classes
+            # sélectionnées) et au data_mode (chargé en dernier ci-dessous).
+            self._config_adapter.apply_to_widgets(self._config)
 
-            files = (self._config.get("app") or {}).get("files") or {}
-
-            self.output_dir_edit.setText(files.get("output_dir") or "")
-
+            # Runs CV : reconstruction du tableau via _add_det_run_row qui
+            # branche les signaux Qt — pas extractible sans casser cette
+            # chaîne.
             cv = self._config.get("computer_vision") or {}
-            self.detection_enabled_cb.setChecked(bool(cv.get("enabled", False)))
-            self.det_confidence_spin.setValue(float(cv.get("confidence_threshold", 0.3)))
-            self.det_iou_spin.setValue(float(cv.get("iou_threshold", 0.5)))
-            self.det_generate_annotated_cb.setChecked(bool(cv.get("generate_annotated_images", False)))
-            self.det_generate_shp_cb.setChecked(bool(cv.get("generate_shapefiles", False)))
-
-            # Charger les runs CV dans le tableau
             self.det_runs_table.setRowCount(0)
             runs = cv.get("runs") or []
             if isinstance(runs, list):
@@ -1137,93 +1184,34 @@ class MainDialog(QDialog):
                 if old_model:
                     self._add_det_run_row(model_name=old_model, target_rvt=old_rvt)
 
-            processing = self._config.get("processing") or {}
-            self.mnt_resolution_spin.setValue(float(processing.get("mnt_resolution", 0.5)))
-            self.density_resolution_spin.setValue(float(processing.get("density_resolution", 1.0)))
-            self.tile_overlap_spin.setValue(int(processing.get("tile_overlap", 20)))
-            self.max_workers_spin.setValue(int(processing.get("max_workers", 4)))
-            self.filter_expression_edit.setText(processing.get("filter_expression") or "")
-
-            products = processing.get("products") or {}
-            for pkey, _label, default, _is_rvt in PRODUCTS:
-                self._product_cbs[pkey].setChecked(bool(products.get(pkey, default)))
-
-            rvt = self._config.get("rvt_params") or {}
-            mdh = rvt.get("mdh") or {}
-            self.mdh_num_directions_spin.setValue(int(mdh.get("num_directions", 16)))
-            self.mdh_sun_elevation_spin.setValue(int(mdh.get("sun_elevation", 35)))
-            self.mdh_ve_factor_spin.setValue(int(mdh.get("ve_factor", 1)))
-            self.mdh_save_8bit_cb.setChecked(bool(mdh.get("save_as_8bit", True)))
-
-            svf = rvt.get("svf") or {}
-            self.svf_noise_remove_spin.setValue(int(svf.get("noise_remove", 0)))
-            self.svf_num_directions_spin.setValue(int(svf.get("num_directions", 16)))
-            self.svf_radius_spin.setValue(int(svf.get("radius", 10)))
-            self.svf_ve_factor_spin.setValue(int(svf.get("ve_factor", 1)))
-            self.svf_save_8bit_cb.setChecked(bool(svf.get("save_as_8bit", True)))
-
-            slope = rvt.get("slope") or {}
-            unit = int(slope.get("unit", 0))
-            idx_unit = self.slope_unit_combo.findData(unit)
-            self.slope_unit_combo.setCurrentIndex(idx_unit if idx_unit >= 0 else 0)
-            self.slope_ve_factor_spin.setValue(int(slope.get("ve_factor", 1)))
-            self.slope_save_8bit_cb.setChecked(bool(slope.get("save_as_8bit", True)))
-
-            ldo = rvt.get("ldo") or {}
-            self.ldo_angular_res_spin.setValue(int(ldo.get("angular_res", 15)))
-            self.ldo_min_radius_spin.setValue(int(ldo.get("min_radius", 10)))
-            self.ldo_max_radius_spin.setValue(int(ldo.get("max_radius", 20)))
-            self.ldo_observer_h_spin.setValue(float(ldo.get("observer_h", 1.7)))
-            self.ldo_ve_factor_spin.setValue(int(ldo.get("ve_factor", 1)))
-            self.ldo_save_8bit_cb.setChecked(bool(ldo.get("save_as_8bit", True)))
-
-            slrm = rvt.get("slrm") or {}
-            self.slrm_radius_spin.setValue(int(slrm.get("radius", 20)))
-            self.slrm_ve_factor_spin.setValue(int(slrm.get("ve_factor", 1)))
-            self.slrm_save_8bit_cb.setChecked(bool(slrm.get("save_as_8bit", True)))
-
-            vat = rvt.get("vat") or {}
-            terrain = int(vat.get("terrain_type", 0))
-            idx_terrain = self.vat_terrain_type_combo.findData(terrain)
-            self.vat_terrain_type_combo.setCurrentIndex(idx_terrain if idx_terrain >= 0 else 0)
-            self.vat_save_8bit_cb.setChecked(bool(vat.get("save_as_8bit", True)))
-
-            # data_mode chargé en dernier : son signal currentIndexChanged déclenche
-            # _on_data_mode_changed_internal → _save_from_widgets. En le plaçant après
-            # tous les autres widgets, on garantit que l'état est complet avant toute sauvegarde.
-            mode = files.get("data_mode") or "ign_laz"
-            idx_mode = self.data_mode_combo.findData(mode)
-            self.data_mode_combo.setCurrentIndex(idx_mode if idx_mode >= 0 else 0)
+            # data_mode chargé en dernier : son signal currentIndexChanged
+            # déclenche _on_data_mode_changed_internal → _save_from_widgets.
+            # En le plaçant après tous les autres widgets, on garantit que
+            # l'état est complet avant toute sauvegarde.
+            self._config_adapter.apply_data_mode(self._config)
         finally:
             for w in blocked:
                 w.blockSignals(False)
             self._loading = False
 
     def _collect_config_from_widgets(self) -> None:
-        """Synchronise self._config depuis l'état actuel des widgets."""
-        app = self._config.setdefault("app", {})
-        files = app.setdefault("files", {})
+        """Synchronise ``self._config`` depuis l'état actuel des widgets.
 
-        # Mode UI Simple/Expert (préférence d'affichage, persistée à part)
-        ui = self._config.setdefault("ui", {})
-        ui["display_mode"] = self.mode_combo.currentData() or "simple"
+        Délégation : l'adaptateur (V4.1) gère tous les champs simples
+        (output_dir, processing, products, rvt_params, CV simples). Le
+        dialog conserve uniquement la collecte des runs CV et des
+        classes par modèle, qui dépendent de widgets dynamiques (table,
+        list widgets) avec callbacks spécifiques.
+        """
+        # Champs simples : tout ce qui ne nécessite pas de callbacks
+        # dialog-specific.
+        self._config_adapter.collect_into(self._config)
 
-        files["output_dir"] = self.output_dir_edit.text().strip()
-        files["data_mode"] = self.data_mode_combo.currentData()
-
-        mode = self.data_mode_combo.currentData() or self._current_mode or "ign_laz"
-        key, _, _ = self._mode_mapping(str(mode))
-        files[key] = self.specific_source_edit.text().strip()
-
+        # Runs CV + classes par modèle (gardés en dialog : la table
+        # contient des cellWidget créés par _add_det_run_row, et
+        # _get_selected_classes traverse les list widgets dynamiques).
         cv = self._config.setdefault("computer_vision", {})
-        cv["enabled"] = self.detection_enabled_cb.isChecked()
-
-        # Récupérer les classes sélectionnées par modèle pour pouvoir les
-        # rattacher à chaque run (sinon elles sont perdues à chaque autosave
-        # et n'existent que temporairement après clic sur « Lancer »).
         classes_by_model = self._get_selected_classes()
-
-        # Collecter les runs depuis le tableau
         runs = []
         for row in range(self.det_runs_table.rowCount()):
             model_combo = self.det_runs_table.cellWidget(row, 0)
@@ -1240,65 +1228,15 @@ class MainDialog(QDialog):
                 runs.append(run)
         cv["runs"] = runs
 
-        # Compat: garder selected_model/target_rvt du premier run
+        # Compat: garder selected_model/target_rvt du premier run pour les
+        # consommateurs qui lisent encore l'ancien format (cf. CvConfig.raw).
         if runs:
             cv["selected_model"] = runs[0]["model"]
             cv["target_rvt"] = runs[0]["target_rvt"]
         else:
             cv["selected_model"] = ""
             cv["target_rvt"] = "LD"
-        cv["confidence_threshold"] = float(self.det_confidence_spin.value())
-        cv["iou_threshold"] = float(self.det_iou_spin.value())
-        cv["generate_annotated_images"] = self.det_generate_annotated_cb.isChecked()
-        cv["generate_shapefiles"] = self.det_generate_shp_cb.isChecked()
         cv["models_dir"] = str(self._plugin_root / "data" / "models")
-
-        processing = self._config.setdefault("processing", {})
-        processing["mnt_resolution"] = float(self.mnt_resolution_spin.value())
-        processing["density_resolution"] = float(self.density_resolution_spin.value())
-        processing["tile_overlap"] = int(self.tile_overlap_spin.value())
-        processing["max_workers"] = int(self.max_workers_spin.value())
-        processing["filter_expression"] = self.filter_expression_edit.text().strip()
-
-        products = processing.setdefault("products", {})
-        for pkey, _label, _default, _is_rvt in PRODUCTS:
-            products[pkey] = self._product_cbs[pkey].isChecked()
-
-        rvt = self._config.setdefault("rvt_params", {})
-        mdh = rvt.setdefault("mdh", {})
-        mdh["num_directions"] = int(self.mdh_num_directions_spin.value())
-        mdh["sun_elevation"] = int(self.mdh_sun_elevation_spin.value())
-        mdh["ve_factor"] = int(self.mdh_ve_factor_spin.value())
-        mdh["save_as_8bit"] = self.mdh_save_8bit_cb.isChecked()
-
-        svf = rvt.setdefault("svf", {})
-        svf["noise_remove"] = int(self.svf_noise_remove_spin.value())
-        svf["num_directions"] = int(self.svf_num_directions_spin.value())
-        svf["radius"] = int(self.svf_radius_spin.value())
-        svf["ve_factor"] = int(self.svf_ve_factor_spin.value())
-        svf["save_as_8bit"] = self.svf_save_8bit_cb.isChecked()
-
-        slope = rvt.setdefault("slope", {})
-        slope["unit"] = int(self.slope_unit_combo.currentData())
-        slope["ve_factor"] = int(self.slope_ve_factor_spin.value())
-        slope["save_as_8bit"] = self.slope_save_8bit_cb.isChecked()
-
-        ldo = rvt.setdefault("ldo", {})
-        ldo["angular_res"] = int(self.ldo_angular_res_spin.value())
-        ldo["min_radius"] = int(self.ldo_min_radius_spin.value())
-        ldo["max_radius"] = int(self.ldo_max_radius_spin.value())
-        ldo["observer_h"] = float(self.ldo_observer_h_spin.value())
-        ldo["ve_factor"] = int(self.ldo_ve_factor_spin.value())
-        ldo["save_as_8bit"] = self.ldo_save_8bit_cb.isChecked()
-
-        slrm = rvt.setdefault("slrm", {})
-        slrm["radius"] = int(self.slrm_radius_spin.value())
-        slrm["ve_factor"] = int(self.slrm_ve_factor_spin.value())
-        slrm["save_as_8bit"] = self.slrm_save_8bit_cb.isChecked()
-
-        vat = rvt.setdefault("vat", {})
-        vat["terrain_type"] = int(self.vat_terrain_type_combo.currentData())
-        vat["save_as_8bit"] = self.vat_save_8bit_cb.isChecked()
 
     def _save_from_widgets(self) -> None:
         self._collect_config_from_widgets()

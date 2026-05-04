@@ -1000,16 +1000,49 @@ class MainDialog(QDialog):
         return self._config
 
     def _apply_config(self, config: dict):
-        """Applique un dictionnaire de configuration à l'interface (pour import)."""
+        """Applique un dictionnaire de configuration à l'interface (pour import).
+
+        Encadre tout le flux par ``_loading=True`` pour neutraliser les
+        signaux ``toggled`` / ``valueChanged`` / ``currentIndexChanged``
+        qui se déclenchent en cascade quand ``_load_into_widgets`` met
+        à jour les widgets. Sans ce verrou global, certains signaux se
+        déclenchaient APRÈS la sortie du try/finally interne de
+        ``_load_into_widgets`` (où ``_loading`` revenait à False) et
+        appelaient ``_save_from_widgets`` → ``_collect_config_from_widgets``
+        → écrasement de ``self._config`` par un état partiel des widgets,
+        et au prochain ``_load_into_widgets`` les valeurs n'étaient plus
+        celles du fichier importé.
+
+        Les sous-appels (``_load_into_widgets``, ``_apply_data_mode_state``,
+        ``_update_available_rvt_targets``…) ont chacun leur propre
+        ``try/finally`` qui remet ``_loading`` à False — on force donc à
+        ``True`` à nouveau entre chaque sous-appel.
+        """
         defaults = self._config_manager.default_config()
         self._config_manager._deep_update(defaults, config)
         self._config = defaults
-        self._load_into_widgets()
-        self._apply_data_mode_state()
-        self._apply_detection_state()
-        self._apply_mode()
-        self._refresh_model_classes()
-        self._refresh_path_validations()
+
+        was_loading = self._loading
+        self._loading = True
+        try:
+            self._load_into_widgets()
+            self._loading = True
+            self._apply_data_mode_state()
+            self._loading = True
+            self._apply_detection_state()
+            self._loading = True
+            self._apply_mode()
+            self._loading = True
+            self._refresh_model_classes()
+            self._loading = True
+            self._refresh_path_validations()
+        finally:
+            self._loading = was_loading
+
+        # Persister immédiatement l'état importé dans last_ui_config.json
+        # pour qu'un éventuel changement de widget ultérieur ne reparte
+        # pas d'un état partiel.
+        self._save_from_widgets()
 
     def _save_config(self):
         """Sauvegarde la configuration actuelle dans un fichier JSON (export utilisateur)."""

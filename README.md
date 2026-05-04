@@ -3,7 +3,7 @@
 Plugin QGIS pour exécuter un pipeline de traitement LiDAR et produire des rasters de type MNT / densité / indices RVT, avec une étape optionnelle de détection / segmentation par *computer vision*.
 
 - Nom du plugin : **ArchéologIA**
-- Version : **0.2.0**
+- Version : **0.1.0**
 - QGIS minimum : **3.0**
 
 ## Fonctionnalités
@@ -11,16 +11,16 @@ Plugin QGIS pour exécuter un pipeline de traitement LiDAR et produire des raste
 - Génération de produits raster :
   - **MNT**
   - **Densité**
-  - Indices **RVT** (via *Processing*) : **M-HS**, **SVF**, **SLO**, **LD**, **VAT**
+  - Indices **RVT** (via *Processing*) : **M-HS**, **SVF**, **SLO**, **LD**, **SLRM**, **VAT**
 - Export optionnel en **JPG + world file (JGW)** pour certains produits.
 - (Optionnel) Détection / segmentation d'instances par computer vision à partir des JPG produits (via runner externe ou dépendances Python) :
   - **Multi-modèles** : plusieurs modèles peuvent être configurés en parallèle, chacun ciblant un RVT différent.
   - **Sélection de classes** par modèle : cocher/décocher les classes à détecter par modèle. Si toutes les classes d'un modèle sont décochées, l'inférence est ignorée pour ce modèle (court-circuit avant toute inférence).
   - **Filtrage par aire minimale** (`min_area_m2`) par modèle : les détections trop petites sont écartées dans un shapefile séparé (`detections_filtered_too_small.shp`).
   - **Post-processing global** (appliqué après toutes les inférences, avant génération des shapefiles) :
-    - Fusion des polygones de même classe qui se touchent ou sont séparés par ≤ 0.5 m (y compris **inter-dalles**), avec confiance = moyenne pondérée par l'aire des polygones sources.
-    - Suppression des superpositions inter-classes (le polygone le plus confiant conserve sa géométrie, les autres sont découpés).
-  - **Clustering spatial DBSCAN** (optionnel, par modèle) : regroupe les détections individuelles en zones (ex : `cratere_obus` → `zone_crateres`), configurable via `args.yaml` du modèle.
+    - Fusion des polygones de même classe qui se touchent ou sont séparés par ≤ 0.5 m (y compris **inter-dalles**), avec confiance = moyenne pondérée par l'aire des polygones sources. **Optionnel par modèle** via `postprocess.merge_adjacent` dans `args.yaml`.
+    - Suppression des superpositions inter-classes (le polygone le plus confiant conserve sa géométrie, les autres sont découpés). **Optionnel par modèle** via `postprocess.remove_overlaps`.
+  - **Clustering spatial DBSCAN** (optionnel, par modèle) : regroupe les détections individuelles en zones (ex : `cratere_obus` → `zone_crateres`), configurable via `args.yaml` du modèle. Supporte hystérésis (`min_confidence_extend`), pondération par confiance (`confidence_weight`) et plusieurs géométries de sortie (`convex_hull`, `concave_hull`, `bounding_box`).
   - **Nettoyage automatique** du workdir JPG (`detections/<modele>/jpg/`) si *Générer des images annotées* est désactivé.
 - **Projet QGIS consolidé** : un seul fichier `.qgs` multi-modèles est généré à la racine de `detections/` (`detections_validation.qgs`).
 - Option (configurable) : génération de **pyramides / overviews** GDAL pour les GeoTIFF de sortie.
@@ -78,12 +78,14 @@ Ces dépendances sont disponibles dans l'environnement QGIS standard.
    - `Profils utilisateurs` → `Ouvrir le dossier du profil actif`
 3. Ouvrir le dossier :
    - `python/plugins`
-4. Dézipper le plugin : on obtient le dossier :
-   - `archeologia-pipeline-lidar-processing`
-5. Copier le dossier `archeologia-pipeline-lidar-processing` dans `python/plugins`.
+4. Dézipper le ZIP `main.zip` : on obtient le dossier :
+   - `archeologia`
+5. Copier le dossier `archeologia` dans `python/plugins`.
 6. Fermer puis relancer QGIS.
 7. Activer le plugin :
    - `Extensions` → `Installer/Gérer les extensions…` → rechercher **Archeolog'IA pipeline** → activer.
+
+> Le nom du dossier généré (`archeologia`) est défini par la constante `PLUGIN_NAME` dans `dev/package_plugin.py`.
 
 ### Où se trouve le dossier des plugins
 
@@ -277,55 +279,91 @@ nomclasse2
 ...
 ```
 
-Le fichier `args.yaml` décrit les paramètres d'inférence. Exemple pour un modèle RF-DETR Seg avec clustering :
+Le fichier `args.yaml` décrit les paramètres d'inférence. Exemple pour un modèle RF-DETR Seg avec clustering et post-traitement personnalisé :
 
 ```yaml
 imgsz: 1032
 model: RF-DETR-Seg-Large
 task: instance_segmentation
+
 sahi:
   overlap_ratio: 0.2
   slice_height: 1032
   slice_width: 1032
+
+# (Optionnel) Désactiver certaines étapes de post-processing global.
+# Défauts : merge_adjacent=true, remove_overlaps=true.
+postprocess:
+  merge_adjacent: false   # ex. cratères disjoints → on ne fusionne pas
+  remove_overlaps: true
+
 clustering:
   - target_classes: ["cratere_obus"]
     eps_m: 25
     min_cluster_size: 3
     min_samples: 2
-    min_confidence: 0.1
+    min_confidence: 0.3              # seuil "core" (initie/étend un cluster)
+    min_confidence_extend: 0.1       # (optionnel) hystérésis : seuil bas pour
+                                     # absorber des détections "border" sans
+                                     # qu'elles puissent initier un cluster.
+                                     # Défaut = min_confidence (DBSCAN classique).
     output_class_name: "zone_crateres"
-    output_geometry: convex_hull
+    output_geometry: convex_hull     # convex_hull | concave_hull | bounding_box
+    concave_ratio: 0.3               # (optionnel, si concave_hull) 0=très concave, 1≈convex_hull
     buffer_m: 5
-    confidence_weight: 0.5   # 0.0 = DBSCAN classique
+    min_area_m2: 500                 # (optionnel) écarte les clusters trop petits
+    confidence_weight: 0.5           # 0.0 = DBSCAN classique
 ```
 
 Valeurs possibles pour `task` : `detect`, `instance_segmentation`, `semantic_segmentation`.
 
-Le clustering DBSCAN est optionnel. Si la section `clustering` est absente de `args.yaml`, il est désactivé. Les classes générées par clustering contournent le filtre `selected_classes` et sont toujours incluses dans les shapefiles.
+La section `postprocess` est optionnelle. Si elle est absente, les valeurs par défaut historiques s'appliquent (`merge_adjacent=true`, `remove_overlaps=true`). C'est utile pour des classes où la fusion intra-classe est indésirable (ex. détections ponctuelles disjointes telles que des cratères d'obus).
+
+Le clustering DBSCAN est optionnel. Si la section `clustering` est absente de `args.yaml`, il est désactivé. Les classes générées par clustering contournent le filtre `selected_classes` et sont toujours incluses dans les shapefiles. La logique se trouve dans `src/pipeline/cv/clustering.py` (DBSCAN avec hystérésis et pondération par confiance).
 
 ### Configuration
 
-Dans `config.json`, le modèle doit pointer vers le fichier `.onnx` :
+Dans `config.json`, la section computer vision est sous la clé `computer_vision`. Le format **multi-modèles** utilise un tableau `runs`, chaque entrée ciblant un RVT (`target_rvt`) avec son propre modèle :
 
 ```json
 {
-  "cv": {
+  "computer_vision": {
     "enabled": true,
-    "selected_model": "models/mon_modele/weights/best.onnx"
+    "runs": [
+      {
+        "model": "data/models/run_rfdetr_parcellaire/weights/best.onnx",
+        "target_rvt": "LD",
+        "min_area_m2": 0.0
+      },
+      {
+        "model": "data/models/formes_lineaires_rfdetr_seg/weights/best.onnx",
+        "target_rvt": "LD",
+        "selected_classes": ["parcellaire", "talus-fosse_fossebutte"],
+        "min_area_m2": 50.0
+      }
+    ],
+    "confidence_threshold": 0.3,
+    "iou_threshold": 0.5,
+    "generate_annotated_images": false,
+    "generate_shapefiles": true,
+    "models_dir": "data/models"
   }
 }
 ```
 
-Ou vers le dossier du modèle (le runner cherchera automatiquement `best.onnx`) :
+Le format historique mono-modèle est conservé pour rétrocompatibilité (sans `runs`) :
 
 ```json
 {
-  "cv": {
+  "computer_vision": {
     "enabled": true,
-    "selected_model": "mon_modele"
+    "selected_model": "data/models/mon_modele/weights/best.onnx",
+    "target_rvt": "LD"
   }
 }
 ```
+
+`selected_model` peut aussi être un nom de dossier modèle relatif à `models_dir` ; le runner cherchera alors automatiquement `weights/best.onnx`.
 
 ## MNT / RVT non-IGN : traitement des grandes emprises
 
@@ -346,7 +384,7 @@ Conséquences pratiques pour le régime **large** :
 - **Consommation RAM** : un PNG 20 000 × 20 000 RGB = 1,2 Go en numpy ; les slices SAHI ajoutent ~50-100 Mo selon l'overlap. Compter **~3 Go de pic** pour une scène 10 × 10 km à 0,5 m/px.
 - **Le nom de sortie reprend le stem du fichier source** : un MNT `mon_site.tif` produit `mon_site_LD.tif`, `mon_site_SVF.tif`, etc. (les caractères non alphanumériques sont convertis en `_` pour la compatibilité GDAL, et un éventuel suffixe `_MNT` est retiré pour éviter `*_MNT_MNT.tif`).
 
-> La logique se trouve dans `src/pipeline/modes/existing_mnt.py` (`_classify_mnt_layout`, `_large_tile_name_for`) et `src/pipeline/modes/existing_rvt.py` (`_classify_rvt_layout`). Le module `src/pipeline/ign/products/tile_splitter.py` reste disponible pour des cas explicites où un découpage en dalles IGN serait souhaité (il n'est plus déclenché automatiquement par le régime `large`).
+> La logique se trouve dans `src/pipeline/modes/existing_mnt.py` (`_classify_mnt_layout`, `_large_tile_name_for`) et `src/pipeline/modes/existing_rvt.py` (`_classify_rvt_layout`).
 
 ## Sorties
 
@@ -611,7 +649,10 @@ dev/                                # Outillage développeur (exclu du ZIP distr
 │   ├── test.txt                    #   pytest, ruff
 │   ├── export.txt                  #   ultralytics, torch, onnx (export modèles)
 │   └── build.txt                   #   pyinstaller, onnxruntime (compilation runner)
-├── package_plugin.py               #   Packaging plugin → ZIP
+├── package_plugin.py               #   Packaging plugin → ZIP (PLUGIN_NAME="archeologia")
+├── docs/
+│   ├── generate_doc.py             #   Générateur de la doc utilisateur (.docx)
+│   └── documentation_utilisateur_v1.docx
 └── runner_onnx/
     ├── build.py                    #   Compilation runner ONNX (PyInstaller)
     ├── export_to_onnx.py           #   Export modèles → ONNX
@@ -660,6 +701,7 @@ src/
 │
 ├── pipeline/                       # Logique métier
 │   ├── types.py                    # Type aliases partagés (LogFn, CancelFn, etc.)
+│   ├── constants.py                # Constantes partagées (IGN_TILE_SIZE_M…)
 │   ├── subprocess_utils.py         # subprocess_kwargs_no_window() partagé
 │   ├── geo_utils.py                # Extraction geotransform, world files
 │   ├── coords.py                   # Extraction coordonnées (filename + metadata + tile name)
@@ -672,8 +714,8 @@ src/
 │   │   ├── conversion_shp.py       # Labels → shapefiles géoréférencés + clustering + filtre selected_classes
 │   │   ├── cv_output.py            # Gestion sorties CV (labels, annotations, légende)
 │   │   ├── external_runner.py      # Subprocess runner ONNX externe (inférence seule) + RunnerPayload
-│   │   ├── model_config.py         # resolve_cv_runs() — injecte sahi/clustering depuis args.yaml
-│   │   ├── postprocessing.py       # Post-processing : validation, fusion intra-classe, suppression superpositions
+│   │   ├── model_config.py         # resolve_cv_runs(), load_sahi_config / load_clustering_config / load_postprocess_config depuis args.yaml
+│   │   ├── postprocessing.py       # Post-processing : validation, fusion intra-classe (optionnelle), suppression superpositions (optionnelle)
 │   │   ├── qgs_project.py          # Génération projet QGIS consolidé (.qgs)
 │   │   ├── runner.py               # run_cv_on_folder (court-circuit si selected_classes=[]), _cleanup_jpg_workdir
 │   │   └── sahi_lite.py            # Slicing SAHI léger (numpy-only)
@@ -691,8 +733,7 @@ src/
 │   │       ├── mnt.py              # MNT (PDAL + gdalwarp)
 │   │       ├── qgis_processing.py  # Wrapper QGIS Processing
 │   │       ├── results.py          # Copie résultats, VRT, pyramides
-│   │       ├── rvt_naming.py       # Nommage dossiers RVT avec paramètres
-│   │       └── tile_splitter.py    # Utilitaire découpage en sous-dalles 1 km IGN (désactivé par défaut, dispo pour besoins spécifiques)
+│   │       └── rvt_naming.py       # Nommage dossiers RVT avec paramètres
 │   └── modes/                      # Modes spécifiques
 │       ├── existing_mnt.py         # Traitement MNT existants
 │       ├── existing_rvt.py         # Traitement RVT existants (indices_folder_name param)

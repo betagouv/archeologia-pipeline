@@ -30,9 +30,10 @@ from .cv_output import (
 )
 from .sahi_lite import (
     slice_image as sahi_lite_slice_image,
-    Detection,
+    Detection as SahiDetection,
     merge_sliced_detections,
 )
+from .types import Detection
 
 logger = logging.getLogger(__name__)
 
@@ -1289,19 +1290,19 @@ def run_onnx_inference(
                 return (False, 0) if return_count else False
             
             num_detections = len(all_detections)
-            
+
             # Sauvegarder les fichiers (avec polygones)
             save_detections_to_files(
                 image_path=image_path,
                 output_path=output_path,
-                detections=all_detections,
+                detections=[Detection.from_internal_dict(d) for d in all_detections],
                 img_width=img_width,
                 img_height=img_height,
                 jpg_folder_path=jpg_folder_path,
                 task="segment",
                 model_type=model_type,
             )
-            
+
             logger.info(f"SegFormer: {num_detections} polygones sauvegardés pour {Path(image_path).name}")
             
             # Générer l'image annotée avec masque de segmentation
@@ -1342,10 +1343,11 @@ def run_onnx_inference(
                 return (False, 0) if return_count else False
 
             num_detections = len(all_detections)
+            typed_detections = [Detection.from_internal_dict(d) for d in all_detections]
             save_detections_to_files(
                 image_path=image_path,
                 output_path=output_path,
-                detections=all_detections,
+                detections=typed_detections,
                 img_width=orig_width,
                 img_height=orig_height,
                 jpg_folder_path=jpg_folder_path,
@@ -1355,7 +1357,7 @@ def run_onnx_inference(
             logger.info(f"RF-DETR Seg: {num_detections} instances sauvegardées pour {Path(image_path).name}")
 
             if generate_annotated_images and all_detections:
-                save_annotated_image(pil_image, all_detections, output_path, class_names=class_names, class_colors=class_colors)
+                save_annotated_image(pil_image, typed_detections, output_path, class_names=class_names, class_colors=class_colors)
 
             return (True, num_detections) if return_count else True
 
@@ -1399,9 +1401,9 @@ def run_onnx_inference(
             if len(dets) > 0:
                 logger.info(f"ONNX: slice {idx+1}/{len(sliced_images)} -> {len(dets)} détections")
             
-            # Convertir en objets Detection
+            # Convertir en objets sahi_lite.Detection (pour merge_sliced_detections)
             slice_detections = [
-                Detection(
+                SahiDetection(
                     bbox=d["bbox"],
                     score=d["confidence"],
                     class_id=d["class_id"],
@@ -1425,27 +1427,27 @@ def run_onnx_inference(
             class_agnostic=False,
         )
         
-        # Convertir en format dict
-        all_detections = [
-            {
-                "bbox": det.bbox,
-                "class_id": det.class_id,
-                "confidence": det.score,
-            }
+        # Convertir en Detection typée (mode bbox uniquement à ce stade)
+        all_detections: List[Detection] = [
+            Detection(
+                class_id=det.class_id,
+                confidence=det.score,
+                bbox=tuple(det.bbox),
+            )
             for det in merged_detections
         ]
-        
+
         logger.info(f"ONNX: {len(all_detections)} détections après fusion")
-        
+
         # Sauvegarder les résultats
         if not all_detections:
             logger.info(f"ONNX: aucune détection dans {Path(image_path).name}")
             save_empty_outputs(image_path=image_path, output_path=output_path, jpg_folder_path=jpg_folder_path)
             return (False, 0) if return_count else False
-        
+
         # Limiter au max_det
         if len(all_detections) > max_det:
-            all_detections = sorted(all_detections, key=lambda x: x["confidence"], reverse=True)[:max_det]
+            all_detections = sorted(all_detections, key=lambda d: d.confidence, reverse=True)[:max_det]
         
         num_detections = len(all_detections)
         

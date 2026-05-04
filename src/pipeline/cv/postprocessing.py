@@ -15,6 +15,8 @@ import logging
 from pathlib import Path
 from typing import Dict, List, Optional
 
+from .types import Detection
+
 logger = logging.getLogger(__name__)
 
 
@@ -410,9 +412,10 @@ def _regenerate_annotated_image(
         with Image.open(image_path) as img:
             pil_image = img.convert("RGB")
 
+        typed_detections = [Detection.from_disk_dict(d) for d in detections]
         for annotated_path in candidates:
             save_annotated_image(
-                pil_image, detections, str(annotated_path),
+                pil_image, typed_detections, str(annotated_path),
                 class_names=class_names, class_colors=class_colors,
             )
             log(f"Post-traitement: image annotée régénérée -> {annotated_path.name}")

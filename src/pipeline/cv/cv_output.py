@@ -6,7 +6,9 @@ Utilisé par les runners YOLO et RF-DETR pour éviter la duplication de code.
 import json
 import logging
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import List, Optional, Tuple
+
+from .types import Detection
 
 logger = logging.getLogger(__name__)
 
@@ -79,7 +81,7 @@ def save_detections_to_files(
     *,
     image_path: str,
     output_path: str,
-    detections: List[Dict],
+    detections: List[Detection],
     img_width: int,
     img_height: int,
     jpg_folder_path: Optional[str] = None,
@@ -88,19 +90,19 @@ def save_detections_to_files(
 ) -> Tuple[Path, Path]:
     """
     Sauvegarde les détections au format YOLO (.txt) et JSON.
-    
+
     Args:
         image_path: Chemin vers l'image source
         output_path: Chemin de sortie pour l'image annotée
-        detections: Liste des détections avec format:
-            - Pour bbox: {"class_id": int, "confidence": float, "bbox": [x1, y1, x2, y2]}
-            - Pour polygon: {"class_id": int, "confidence": float, "polygon": [...]}
+        detections: Liste de :class:`Detection`. Mode bbox = ``polygon`` est
+            ``None`` ; mode segmentation = ``polygon`` rempli (avec
+            éventuellement ``polygon_holes``).
         img_width: Largeur de l'image
         img_height: Hauteur de l'image
         jpg_folder_path: Chemin vers le dossier jpg pour sauvegarder les fichiers
         task: Type de tâche ("detect" ou "segment")
         model_type: Type de modèle ("yolo" ou "rfdetr")
-    
+
     Returns:
         Tuple (txt_path, json_path)
     """
@@ -109,63 +111,37 @@ def save_detections_to_files(
         txt_path = Path(jpg_folder_path) / f"{image_name}.txt"
     else:
         txt_path = Path(output_path).with_suffix('.txt')
-    
+
     txt_path.parent.mkdir(parents=True, exist_ok=True)
-    
+
     detections_data = []
-    
+
     with open(txt_path, "w") as f:
         for det in detections:
-            class_id = det.get("class_id", 0)
-            confidence = det.get("confidence")
-            
-            if "polygon" in det:
-                # Format segmentation: class_id x1 y1 x2 y2 ...
-                polygon = det["polygon"]
-                coords = []
-                for i in range(0, len(polygon), 2):
-                    x_rel = polygon[i]
-                    y_rel = polygon[i + 1]
-                    coords.extend([x_rel, y_rel])
+            class_id = det.class_id
+
+            if det.polygon is not None:
+                # Format segmentation: class_id x1 y1 x2 y2 ... (coords normalisées)
+                coords: List[float] = []
+                for x, y in det.polygon:
+                    coords.extend([x, y])
                 f.write(f"{class_id} " + " ".join(f"{v:.6f}" for v in coords) + "\n")
-                det_entry = {
-                    "class_id": class_id,
-                    "confidence": confidence,
-                    "polygon": polygon,
-                }
-                if "polygon_holes" in det:
-                    det_entry["polygon_holes"] = det["polygon_holes"]
-                detections_data.append(det_entry)
-            elif "bbox" in det:
+            else:
                 # Format détection: class_id x_center y_center width height
-                x1, y1, x2, y2 = det["bbox"]
+                x1, y1, x2, y2 = det.bbox
                 x_center_rel = ((x1 + x2) / 2.0) / float(img_width)
                 y_center_rel = ((y1 + y2) / 2.0) / float(img_height)
                 w_rel = (x2 - x1) / float(img_width)
                 h_rel = (y2 - y1) / float(img_height)
-                f.write(f"{class_id} {x_center_rel:.6f} {y_center_rel:.6f} {w_rel:.6f} {h_rel:.6f}\n")
-                detections_data.append({
-                    "class_id": class_id,
-                    "confidence": confidence,
-                    "bbox_absolute": {"minx": x1, "miny": y1, "maxx": x2, "maxy": y2},
-                })
-            elif "bbox_absolute" in det:
-                # Format déjà en bbox_absolute
-                bbox = det["bbox_absolute"]
-                x1, y1, x2, y2 = bbox["minx"], bbox["miny"], bbox["maxx"], bbox["maxy"]
-                x_center_rel = ((x1 + x2) / 2.0) / float(img_width)
-                y_center_rel = ((y1 + y2) / 2.0) / float(img_height)
-                w_rel = (x2 - x1) / float(img_width)
-                h_rel = (y2 - y1) / float(img_height)
-                f.write(f"{class_id} {x_center_rel:.6f} {y_center_rel:.6f} {w_rel:.6f} {h_rel:.6f}\n")
-                detections_data.append({
-                    "class_id": class_id,
-                    "confidence": confidence,
-                    "bbox_absolute": bbox,
-                })
-    
+                f.write(
+                    f"{class_id} {x_center_rel:.6f} {y_center_rel:.6f} "
+                    f"{w_rel:.6f} {h_rel:.6f}\n"
+                )
+
+            detections_data.append(det.to_disk_dict())
+
     logger.info(f"Détections sauvegardées au format YOLO: {txt_path}")
-    
+
     # Sauvegarder le JSON
     json_path = txt_path.with_suffix('.json')
     json_payload = {
@@ -176,10 +152,10 @@ def save_detections_to_files(
     }
     if model_type != "yolo":
         json_payload["model_type"] = model_type
-    
+
     json_path.write_text(json.dumps(json_payload, indent=2))
     logger.info(f"Données complètes sauvegardées en JSON: {json_path}")
-    
+
     return txt_path, json_path
 
 
@@ -192,7 +168,7 @@ CLASS_COLORS = BASE_COLOR_PALETTE
 
 def save_annotated_image(
     pil_image,
-    detections: List[Dict],
+    detections: List[Detection],
     output_path: str,
     class_names: List[str] = None,
     class_colors: List[int] = None,
@@ -201,10 +177,10 @@ def save_annotated_image(
 ) -> None:
     """
     Sauvegarde une image annotée avec les détections.
-    
+
     Args:
         pil_image: Image PIL source
-        detections: Liste des détections avec "bbox" [x1, y1, x2, y2]
+        detections: Liste de :class:`Detection`.
         output_path: Chemin de sortie
         class_names: Liste des noms de classes (optionnel)
         class_colors: Liste des indices de couleurs par classe (optionnel, depuis args.yaml)
@@ -213,10 +189,10 @@ def save_annotated_image(
     """
     try:
         from PIL import ImageDraw, ImageFont
-        
+
         img_copy = pil_image.copy()
         draw = ImageDraw.Draw(img_copy)
-        
+
         # Police compacte
         try:
             font = ImageFont.truetype("arial.ttf", 10)
@@ -225,14 +201,14 @@ def save_annotated_image(
                 font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 10)
             except Exception:
                 font = ImageFont.load_default()
-        
+
         logger.debug(f"save_annotated_image: class_colors={class_colors}, class_names={class_names}, detections={len(detections)}")
-        
+
         img_w, img_h = img_copy.size
 
         for det in detections:
-            class_id = det.get("class_id", 0)
-            confidence = det.get("confidence", 0)
+            class_id = det.class_id
+            confidence = det.confidence
 
             # Couleur selon la classe (avec support des couleurs personnalisées)
             color = get_class_color(class_id, class_colors)
@@ -240,28 +216,17 @@ def save_annotated_image(
 
             # --- Dessiner polygone (segmentation) ou bbox (détection) ---
             polygon_drawn = False
-            if "polygon" in det:
-                poly = det["polygon"]
-                if len(poly) >= 6:
-                    # Coordonnées normalisées [x1,y1,x2,y2,...] → pixels
-                    pts = []
-                    for pi in range(0, len(poly) - 1, 2):
-                        pts.append((poly[pi] * img_w, poly[pi + 1] * img_h))
-                    if len(pts) >= 3:
-                        draw.polygon(pts, outline=color)
-                        polygon_drawn = True
-                        # bbox pour le label : coin haut-gauche du polygon
-                        x1 = min(p[0] for p in pts)
-                        y1 = min(p[1] for p in pts)
+            if det.polygon is not None and len(det.polygon) >= 3:
+                # Coordonnées normalisées → pixels
+                pts = [(x * img_w, y * img_h) for x, y in det.polygon]
+                draw.polygon(pts, outline=color)
+                polygon_drawn = True
+                # bbox pour le label : coin haut-gauche du polygon
+                x1 = min(p[0] for p in pts)
+                y1 = min(p[1] for p in pts)
 
             if not polygon_drawn:
-                if "bbox" in det:
-                    x1, y1, x2, y2 = det["bbox"]
-                elif "bbox_absolute" in det:
-                    bbox = det["bbox_absolute"]
-                    x1, y1, x2, y2 = bbox["minx"], bbox["miny"], bbox["maxx"], bbox["maxy"]
-                else:
-                    continue
+                x1, y1, x2, y2 = det.bbox
                 draw.rectangle([x1, y1, x2, y2], outline=color, width=width)
 
             # Label compact: juste le % de confiance

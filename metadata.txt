@@ -5,7 +5,7 @@
 #
 
 [general]
-name=ArchéologIA
+name=Archéolog'IA
 qgisMinimumVersion=3.0
 description=Détection de sites archéologiques par réseaux de neurones
 version=0.1.0

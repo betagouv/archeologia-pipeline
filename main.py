@@ -13,15 +13,15 @@ class ArcheologiaPipelinePlugin:
 
     def initGui(self):
         icon_path = os.path.join(plugin_dir, 'data', 'icon.png')
-        self.action = QAction(QIcon(icon_path), self.tr("Archeolog'IA pipeline"), self.iface.mainWindow())
+        self.action = QAction(QIcon(icon_path), self.tr("Archéolog'IA"), self.iface.mainWindow())
         self.action.triggered.connect(self.run)
-        self.iface.addPluginToMenu(self.tr("Archeolog'IA pipeline"), self.action)
+        self.iface.addPluginToMenu(self.tr("Archéolog'IA"), self.action)
         self.iface.addToolBarIcon(self.action)
 
     def unload(self):
         if self.action is not None:
             self.iface.removeToolBarIcon(self.action)
-            self.iface.removePluginMenu(self.tr("Archeolog'IA pipeline"), self.action)
+            self.iface.removePluginMenu(self.tr("Archéolog'IA"), self.action)
             self.action = None
         self.dialog = None
 

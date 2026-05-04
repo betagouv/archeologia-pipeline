@@ -96,13 +96,11 @@ class IgnDownloadStrategy:
 
         narrator = create_user_narrator(reporter)
 
+        # Pré-conditions garanties par validate_run_context (V3.3) :
+        # input_file non-null, existant, et ctx.output_dir non-null.
         input_path = ctx.files.input_file
-        if input_path is None:
-            reporter.error("Mode IGN sélectionné mais aucun fichier de zone/liste n'est configuré")
-            return None
-        if not input_path.exists():
-            reporter.error(f"Fichier IGN introuvable: {input_path}")
-            return None
+        assert input_path is not None
+        assert ctx.output_dir is not None
 
         # Détection du type d'entrée : shapefile/geojson → résolution des dalles
         is_vector = input_path.suffix.lower() in (".shp", ".geojson", ".json", ".gpkg")
@@ -184,10 +182,10 @@ class LocalLazStrategy:
         from ...pipeline.modes.local_laz import run_local_laz
 
         narrator = create_user_narrator(reporter)
+        # Pré-conditions garanties par validate_run_context (V3.3).
         local_dir = ctx.files.local_laz_dir
-        if local_dir is None:
-            reporter.error("Mode local_laz sélectionné mais aucun dossier nuages locaux n'est configuré")
-            return None
+        assert local_dir is not None
+        assert ctx.output_dir is not None
 
         log_section("INDEXATION DES NUAGES LOCAUX", "download", slog=slog, reporter=reporter)
         reporter.stage("Indexation des nuages locaux")

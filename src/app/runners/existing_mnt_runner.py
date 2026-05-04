@@ -25,13 +25,10 @@ class ExistingMntRunner:
 
         start_time = time.time()
 
+        # Pré-conditions garanties par validate_run_context (V3.3).
         existing_mnt_dir = ctx.files.existing_mnt_dir
-        if existing_mnt_dir is None:
-            reporter.error("Mode existing_mnt sélectionné mais aucun dossier MNT n'est configuré")
-            return
-        if ctx.output_dir is None:
-            reporter.error("Aucun dossier de sortie n'est configuré")
-            return
+        assert existing_mnt_dir is not None
+        assert ctx.output_dir is not None
 
         processing = ctx.processing
         products = processing.products

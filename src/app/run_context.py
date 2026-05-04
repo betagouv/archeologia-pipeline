@@ -242,6 +242,56 @@ def _build_cv_config(cv_dict: Dict[str, Any]) -> CvConfig:
     )
 
 
+def validate_run_context(ctx: RunContext) -> List[str]:
+    """Vérifie que ``ctx`` est exécutable pour son ``mode``.
+
+    Retourne la liste **complète** des erreurs trouvées (pas de
+    short-circuit) : l'utilisateur voit d'un coup tout ce qu'il doit
+    corriger plutôt que de relancer après chaque correction.
+
+    Cette fonction concentre les vérifications qui étaient dupliquées
+    dans chaque runner (``if output_dir is None``, ``if existing_X_dir
+    is None``…). Les vérifications de dépendances système (CLI tools,
+    QGIS Processing) restent du ressort de :func:`pipeline.preflight`.
+    """
+    errors: List[str] = []
+
+    if not ctx.mode:
+        errors.append("Aucun mode d'acquisition (data_mode) configuré")
+
+    if ctx.output_dir is None:
+        errors.append("Aucun dossier de sortie n'est configuré")
+
+    if ctx.mode == "ign_laz":
+        if ctx.files.input_file is None:
+            errors.append("Mode IGN sélectionné mais aucun fichier de zone/liste n'est configuré")
+        elif not ctx.files.input_file.exists():
+            errors.append(f"Fichier IGN introuvable : {ctx.files.input_file}")
+
+    elif ctx.mode == "local_laz":
+        if ctx.files.local_laz_dir is None:
+            errors.append("Mode LAZ local sélectionné mais aucun dossier nuages locaux n'est configuré")
+        elif not ctx.files.local_laz_dir.exists():
+            errors.append(f"Dossier LAZ local introuvable : {ctx.files.local_laz_dir}")
+
+    elif ctx.mode == "existing_mnt":
+        if ctx.files.existing_mnt_dir is None:
+            errors.append("Mode MNT existant sélectionné mais aucun dossier MNT n'est configuré")
+        elif not ctx.files.existing_mnt_dir.exists():
+            errors.append(f"Dossier MNT introuvable : {ctx.files.existing_mnt_dir}")
+
+    elif ctx.mode == "existing_rvt":
+        if ctx.files.existing_rvt_dir is None:
+            errors.append("Mode RVT existant sélectionné mais aucun dossier RVT n'est configuré")
+        elif not ctx.files.existing_rvt_dir.exists():
+            errors.append(f"Dossier RVT introuvable : {ctx.files.existing_rvt_dir}")
+
+    elif ctx.mode:  # mode renseigné mais inconnu
+        errors.append(f"Mode d'acquisition inconnu : {ctx.mode!r}")
+
+    return errors
+
+
 def build_run_context(config: Dict[str, Any]) -> RunContext:
     """Construit un :class:`RunContext` typé à partir du ``config.json``.
 

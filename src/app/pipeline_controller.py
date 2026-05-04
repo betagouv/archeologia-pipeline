@@ -8,7 +8,7 @@ from typing import Iterator, Optional
 
 from .cancel_token import CancelToken
 from .progress_reporter import ProgressReporter
-from .run_context import RunContext
+from .run_context import RunContext, validate_run_context
 from .structured_logger import StructuredLogger, create_structured_logger
 from .user_narrator import create_user_narrator
 
@@ -99,6 +99,17 @@ class PipelineController:
         output_str = str(ctx.output_dir) if ctx.output_dir is not None else ""
         slog.start_pipeline(ctx.mode, output_str)
         narrator.pipeline_starting(MODE_LABELS.get(ctx.mode, ctx.mode))
+
+        # Validation métier centralisée (mode + chemins requis).
+        # Sépare les erreurs config-side ("dossier MNT non renseigné")
+        # des erreurs preflight ("pdal n'est pas installé").
+        ctx_errors = validate_run_context(ctx)
+        if ctx_errors:
+            for err in ctx_errors:
+                reporter.error(err)
+            slog.end_pipeline(success=False)
+            narrator.preflight_failed()
+            return
 
         slog.section("VÉRIFICATION DES DÉPENDANCES", "info")
 

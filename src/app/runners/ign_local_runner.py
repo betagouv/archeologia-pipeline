@@ -137,9 +137,11 @@ class IgnOrLocalRunner:
 
         start_time = time.time()
 
-        if ctx.output_dir is None:
-            reporter.error("Aucun dossier de sortie n'est configuré")
-            return
+        # Validation centralisée dans PipelineController.run() — ici on
+        # peut supposer que ctx.output_dir et les chemins requis pour
+        # le mode sont valides. L'assertion documente l'invariant et
+        # rassure le type-checker (output_dir typé Optional[Path]).
+        assert ctx.output_dir is not None
 
         processing = ctx.processing
         products = processing.products

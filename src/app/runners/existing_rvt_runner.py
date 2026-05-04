@@ -25,13 +25,10 @@ class ExistingRvtRunner:
 
         start_time = time.time()
 
+        # Pré-conditions garanties par validate_run_context (V3.3).
         existing_rvt_dir = ctx.files.existing_rvt_dir
-        if existing_rvt_dir is None:
-            reporter.error("Mode existing_rvt sélectionné mais aucun dossier RVT n'est configuré")
-            return
-        if ctx.output_dir is None:
-            reporter.error("Aucun dossier de sortie n'est configuré")
-            return
+        assert existing_rvt_dir is not None
+        assert ctx.output_dir is not None
 
         processing = ctx.processing
         cv_config = ctx.cv.raw

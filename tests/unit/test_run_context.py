@@ -11,6 +11,7 @@ from app.run_context import (
     ProductsConfig,
     RunContext,
     build_run_context,
+    validate_run_context,
 )
 
 
@@ -172,3 +173,100 @@ class TestRunContextDataclass:
         ctx = build_run_context(sample_config)
         for field in ("mode", "output_dir", "files", "processing", "cv", "rvt_params", "ui_config"):
             assert hasattr(ctx, field), f"missing field {field}"
+
+
+class TestValidateRunContext:
+    """Vérifications métier centralisées (V3.3)."""
+
+    def _ctx(self, **overrides) -> RunContext:
+        files = FilesConfig(**{
+            "data_mode": "ign_laz",
+            "output_dir": Path("/tmp/out"),
+            "input_file": None,
+            "local_laz_dir": None,
+            "existing_mnt_dir": None,
+            "existing_rvt_dir": None,
+            **overrides.pop("files", {}),
+        })
+        return RunContext(
+            mode=files.data_mode,
+            output_dir=files.output_dir,
+            files=files,
+            processing=ProcessingConfig(),
+            cv=CvConfig(),
+            rvt_params={},
+            ui_config={},
+        )
+
+    def test_no_mode_returns_error(self):
+        ctx = self._ctx(files={"data_mode": ""})
+        errors = validate_run_context(ctx)
+        assert any("mode" in e.lower() for e in errors)
+
+    def test_missing_output_dir(self):
+        ctx = self._ctx(files={"data_mode": "ign_laz", "output_dir": None})
+        errors = validate_run_context(ctx)
+        assert any("dossier de sortie" in e for e in errors)
+
+    def test_ign_laz_missing_input_file(self):
+        ctx = self._ctx(files={"data_mode": "ign_laz", "input_file": None})
+        errors = validate_run_context(ctx)
+        assert any("zone/liste" in e for e in errors)
+
+    def test_ign_laz_input_file_not_found(self, tmp_path: Path):
+        ghost = tmp_path / "doesnotexist.txt"
+        ctx = self._ctx(files={"data_mode": "ign_laz", "input_file": ghost})
+        errors = validate_run_context(ctx)
+        assert any("introuvable" in e for e in errors)
+
+    def test_ign_laz_input_file_ok(self, tmp_path: Path):
+        f = tmp_path / "ok.txt"
+        f.write_text("https://example.com/dalle.laz\n")
+        ctx = self._ctx(files={"data_mode": "ign_laz", "input_file": f})
+        errors = validate_run_context(ctx)
+        assert errors == []
+
+    def test_local_laz_missing_dir(self):
+        ctx = self._ctx(files={"data_mode": "local_laz", "local_laz_dir": None})
+        errors = validate_run_context(ctx)
+        assert any("local" in e.lower() for e in errors)
+
+    def test_local_laz_dir_not_found(self, tmp_path: Path):
+        ghost = tmp_path / "ghost"
+        ctx = self._ctx(files={"data_mode": "local_laz", "local_laz_dir": ghost})
+        errors = validate_run_context(ctx)
+        assert any("introuvable" in e for e in errors)
+
+    def test_local_laz_dir_ok(self, tmp_path: Path):
+        d = tmp_path / "laz"
+        d.mkdir()
+        ctx = self._ctx(files={"data_mode": "local_laz", "local_laz_dir": d})
+        errors = validate_run_context(ctx)
+        assert errors == []
+
+    def test_existing_mnt_missing_dir(self):
+        ctx = self._ctx(files={"data_mode": "existing_mnt", "existing_mnt_dir": None})
+        errors = validate_run_context(ctx)
+        assert any("MNT" in e for e in errors)
+
+    def test_existing_rvt_missing_dir(self):
+        ctx = self._ctx(files={"data_mode": "existing_rvt", "existing_rvt_dir": None})
+        errors = validate_run_context(ctx)
+        assert any("RVT" in e for e in errors)
+
+    def test_unknown_mode(self):
+        ctx = self._ctx(files={"data_mode": "drone_lidar"})
+        errors = validate_run_context(ctx)
+        assert any("inconnu" in e for e in errors)
+
+    def test_collects_multiple_errors(self):
+        """Pas de short-circuit : on rend toutes les erreurs d'un coup."""
+        ctx = self._ctx(files={"data_mode": "ign_laz", "output_dir": None, "input_file": None})
+        errors = validate_run_context(ctx)
+        assert len(errors) >= 2  # output + input_file
+
+    def test_valid_config_returns_empty(self, tmp_path: Path):
+        f = tmp_path / "dalles.txt"
+        f.write_text("\n")
+        ctx = self._ctx(files={"data_mode": "ign_laz", "input_file": f})
+        assert validate_run_context(ctx) == []

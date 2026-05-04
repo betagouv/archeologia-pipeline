@@ -1044,6 +1044,12 @@ class MainDialog(QDialog):
     def _load_into_widgets(self) -> None:
         self._loading = True
         try:
+            # Mode UI Simple/Expert
+            ui_cfg = self._config.get("ui") or {}
+            display_mode = str(ui_cfg.get("display_mode") or "simple")
+            idx_display = self.mode_combo.findData(display_mode)
+            self.mode_combo.setCurrentIndex(idx_display if idx_display >= 0 else 0)
+
             files = (self._config.get("app") or {}).get("files") or {}
 
             self.output_dir_edit.setText(files.get("output_dir") or "")
@@ -1138,6 +1144,10 @@ class MainDialog(QDialog):
         app = self._config.setdefault("app", {})
         files = app.setdefault("files", {})
 
+        # Mode UI Simple/Expert (préférence d'affichage, persistée à part)
+        ui = self._config.setdefault("ui", {})
+        ui["display_mode"] = self.mode_combo.currentData() or "simple"
+
         files["output_dir"] = self.output_dir_edit.text().strip()
         files["data_mode"] = self.data_mode_combo.currentData()
 
@@ -1148,6 +1158,11 @@ class MainDialog(QDialog):
         cv = self._config.setdefault("computer_vision", {})
         cv["enabled"] = self.detection_enabled_cb.isChecked()
 
+        # Récupérer les classes sélectionnées par modèle pour pouvoir les
+        # rattacher à chaque run (sinon elles sont perdues à chaque autosave
+        # et n'existent que temporairement après clic sur « Lancer »).
+        classes_by_model = self._get_selected_classes()
+
         # Collecter les runs depuis le tableau
         runs = []
         for row in range(self.det_runs_table.rowCount()):
@@ -1155,10 +1170,14 @@ class MainDialog(QDialog):
             rvt_combo = self.det_runs_table.cellWidget(row, 1)
             area_spin = self.det_runs_table.cellWidget(row, 2)
             model_val = str(model_combo.currentData() or model_combo.currentText() or "") if isinstance(model_combo, QComboBox) else ""
+            model_label = str(model_combo.currentText() or "") if isinstance(model_combo, QComboBox) else ""
             rvt_val = str(rvt_combo.currentData() or "LD") if isinstance(rvt_combo, QComboBox) else "LD"
             area_val = float(area_spin.value()) if isinstance(area_spin, QDoubleSpinBox) else 0.0
             if model_val:
-                runs.append({"model": model_val, "target_rvt": rvt_val, "min_area_m2": area_val})
+                run = {"model": model_val, "target_rvt": rvt_val, "min_area_m2": area_val}
+                if model_label in classes_by_model:
+                    run["selected_classes"] = list(classes_by_model[model_label])
+                runs.append(run)
         cv["runs"] = runs
 
         # Compat: garder selected_model/target_rvt du premier run
@@ -1241,6 +1260,12 @@ class MainDialog(QDialog):
     # ═════════════════════════════════════════════
 
     def _wire_autosave(self) -> None:
+        # Mode Simple/Expert : préférence d'affichage à persister (sinon on
+        # repart toujours en Simple au prochain démarrage et l'utilisateur
+        # croit avoir perdu ses paramètres MNT/RVT alors qu'ils sont
+        # juste masqués).
+        self.mode_combo.currentIndexChanged.connect(self._on_any_changed)
+
         self.output_dir_edit.textChanged.connect(self._on_any_changed)
         self.data_mode_combo.currentIndexChanged.connect(self._on_data_mode_changed_internal)
         self.specific_source_edit.textChanged.connect(self._on_specific_source_changed)
@@ -1290,6 +1315,9 @@ class MainDialog(QDialog):
         self.det_iou_spin.valueChanged.connect(self._on_any_changed)
         self.det_generate_annotated_cb.toggled.connect(self._on_any_changed)
         self.det_generate_shp_cb.toggled.connect(self._on_any_changed)
+        # Cocher/décocher une classe → autosave (pour persister selected_classes
+        # par run dans last_ui_config.json).
+        self.det_classes_list.itemChanged.connect(self._on_any_changed)
 
         for key, _label, _default, is_rvt in PRODUCTS:
             if is_rvt:
@@ -2106,6 +2134,32 @@ class MainDialog(QDialog):
             if "\t" in key:
                 previous_state[key] = item.checkState()
 
+        # Si aucun état précédent (premier appel après load_into_widgets), on
+        # peut récupérer la sélection persistée par run dans self._config.
+        # Cela évite que les cases reviennent toutes cochées par défaut au
+        # redémarrage, alors que l'utilisateur en avait décoché.
+        saved_selection_by_label: dict = {}
+        if not previous_state:
+            cv = self._config.get("computer_vision") or {}
+            runs = cv.get("runs") or []
+            if isinstance(runs, list):
+                path_to_selection: dict = {}
+                for run in runs:
+                    if not isinstance(run, dict):
+                        continue
+                    path = str(run.get("model") or "")
+                    sel = run.get("selected_classes")
+                    if path and isinstance(sel, list):
+                        path_to_selection[path] = set(str(c) for c in sel)
+                for row in range(self.det_runs_table.rowCount()):
+                    combo = self.det_runs_table.cellWidget(row, 0)
+                    if not isinstance(combo, QComboBox):
+                        continue
+                    model_path = str(combo.currentData() or "")
+                    model_label = combo.currentText() or "?"
+                    if model_path in path_to_selection:
+                        saved_selection_by_label[model_label] = path_to_selection[model_path]
+
         self.det_classes_list.clear()
         for row in range(self.det_runs_table.rowCount()):
             combo = self.det_runs_table.cellWidget(row, 0)
@@ -2134,8 +2188,17 @@ class MainDialog(QDialog):
                     item = QListWidgetItem(f"  {class_name}")
                     item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
                     key = f"{model_label}\t{class_name}"
-                    # Restaurer l'état précédent ; coché par défaut pour les nouvelles classes
-                    state = previous_state.get(key, Qt.CheckState.Checked)
+                    # Priorité : 1) état précédent (refresh courant) ;
+                    # 2) sélection persistée en config (premier refresh après load) ;
+                    # 3) coché par défaut (nouvelle classe).
+                    if key in previous_state:
+                        state = previous_state[key]
+                    elif model_label in saved_selection_by_label:
+                        state = (Qt.CheckState.Checked
+                                 if class_name in saved_selection_by_label[model_label]
+                                 else Qt.CheckState.Unchecked)
+                    else:
+                        state = Qt.CheckState.Checked
                     item.setCheckState(state)
                     item.setData(Qt.ItemDataRole.UserRole, key)
                     self.det_classes_list.addItem(item)
@@ -2187,7 +2250,7 @@ class MainDialog(QDialog):
     # ═════════════════════════════════════════════
 
     def _reset_mnt_config(self) -> None:
-        defaults = self._config_manager.load()
+        defaults = self._config_manager.default_config()
         processing = defaults.get("processing") or {}
         self._loading = True
         try:
@@ -2202,7 +2265,7 @@ class MainDialog(QDialog):
         self._logger.info("Paramètres MNT remis par défaut")
 
     def _reset_rvt_config(self) -> None:
-        defaults = self._config_manager.load()
+        defaults = self._config_manager.default_config()
         rvt = defaults.get("rvt_params") or {}
         self._loading = True
         try:
@@ -2248,7 +2311,7 @@ class MainDialog(QDialog):
         self._logger.info("Paramètres RVT remis par défaut")
 
     def _reset_perf_config(self) -> None:
-        defaults = self._config_manager.load()
+        defaults = self._config_manager.default_config()
         processing = defaults.get("processing") or {}
         self._loading = True
         try:
@@ -2259,7 +2322,7 @@ class MainDialog(QDialog):
         self._logger.info("Paramètres Performance remis par défaut")
 
     def _reset_det_config(self) -> None:
-        defaults = self._config_manager.load()
+        defaults = self._config_manager.default_config()
         cv = defaults.get("computer_vision") or {}
         self._loading = True
         try:

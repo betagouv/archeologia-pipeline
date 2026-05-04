@@ -996,6 +996,15 @@ class MainDialog(QDialog):
         :meth:`_refresh_path_validations` — c'est de la signalétique UI,
         pas de la validation métier.
         """
+        # Pré-condition : peut être appelé avant la construction de
+        # ``_config_adapter`` (signaux connectés dans ``_build_buttons_row``
+        # qui s'exécute avant la fin du __init__). Dans ce cas, on désactive
+        # le bouton et on sort silencieusement — un appel ultérieur, après
+        # création de l'adaptateur, fera la vraie validation.
+        if not hasattr(self, "_config_adapter"):
+            self.run_btn.setEnabled(False)
+            return
+
         # Synchronise self._config avec les widgets puis construit un
         # RunContext pour réutiliser exactement les mêmes règles que
         # PipelineController.run().

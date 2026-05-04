@@ -42,6 +42,14 @@ from ..app.progress_reporter import USER_INFO
 from ..app.run_context import build_run_context, validate_run_context
 from ..config.config_manager import ConfigManager
 from .config_widget_adapter import ConfigWidgetAdapter, WidgetBag
+from .cv_runs_table import (
+    RunRowCallbacks,
+    RunRowData,
+    build_actions_widget,
+    build_min_area_spin,
+    build_model_combo,
+    build_rvt_combo,
+)
 
 
 class _QtLogEmitter(QObject):
@@ -1695,79 +1703,38 @@ class MainDialog(QDialog):
     def _add_det_run_row(self, model_name: str = "", target_rvt: Optional[str] = None, min_area_m2: Optional[float] = None) -> None:
         """Ajoute une ligne au tableau des runs détection.
 
-        Si `target_rvt` vaut None, le RVT est déduit automatiquement depuis
-        `training_params.json` du modèle sélectionné (clé `rvt.type`).
-        Si `min_area_m2` vaut None, l'aire minimale est déduite automatiquement
-        depuis `training_params.json` (clé `detection.min_area_m2`).
+        Construction des cell-widgets déléguée à
+        :mod:`ui.cv_runs_table` (V4.3) — le dialog reste responsable de
+        l'orchestration (auto-resolution de target_rvt et min_area_m2,
+        refresh des classes après ajout).
         """
         auto_rvt = target_rvt is None
         auto_area = min_area_m2 is None
-        initial_area = float(min_area_m2) if min_area_m2 is not None else 0.0
+        data = RunRowData(
+            available_models=self._get_available_models(),
+            rvt_keys=self._get_available_rvt_keys(),
+            initial_model_name=model_name,
+            initial_target_rvt=target_rvt,
+            initial_min_area_m2=float(min_area_m2) if min_area_m2 is not None else 0.0,
+        )
+        callbacks = RunRowCallbacks(
+            on_any_changed=self._on_any_changed,
+            on_model_changed=self._on_det_run_model_changed,
+            on_refresh_classes=self._refresh_model_classes,
+            on_info_clicked=self._on_row_info_clicked,
+            on_delete_clicked=self._on_row_delete_clicked,
+        )
         self._loading = True
         try:
             row = self.det_runs_table.rowCount()
             self.det_runs_table.insertRow(row)
-
-            # Combo modèle
-            model_combo = NoWheelComboBox()
-            available_models = self._get_available_models()
-            for label, path in available_models:
-                model_combo.addItem(label, path)
-            if model_name:
-                for i in range(model_combo.count()):
-                    data = str(model_combo.itemData(i) or "")
-                    text = model_combo.itemText(i)
-                    if model_name in (data, text) or text == model_name:
-                        model_combo.setCurrentIndex(i)
-                        break
-            model_combo.currentIndexChanged.connect(self._on_any_changed)
-            model_combo.currentIndexChanged.connect(self._refresh_model_classes)
-            model_combo.currentIndexChanged.connect(self._on_det_run_model_changed)
-            self.det_runs_table.setCellWidget(row, 0, model_combo)
-
-            # Combo RVT
-            rvt_combo = NoWheelComboBox()
-            rvt_keys = self._get_available_rvt_keys()
-            for key, label in rvt_keys:
-                rvt_combo.addItem(label, key)
-            if target_rvt:
-                idx = rvt_combo.findData(target_rvt)
-                if idx >= 0:
-                    rvt_combo.setCurrentIndex(idx)
-            rvt_combo.currentIndexChanged.connect(self._on_any_changed)
-            self.det_runs_table.setCellWidget(row, 1, rvt_combo)
-
-            # Spinbox aire min (m²)
-            area_spin = NoWheelDoubleSpinBox()
-            area_spin.setDecimals(0)
-            area_spin.setRange(0.0, 100000.0)
-            area_spin.setSingleStep(50.0)
-            area_spin.setValue(initial_area)
-            area_spin.setSuffix(" m²")
-            area_spin.setToolTip("Aire minimale en m² (0 = pas de filtrage). Les détections plus petites seront supprimées.")
-            area_spin.setMinimumWidth(90)
-            area_spin.valueChanged.connect(self._on_any_changed)
-            self.det_runs_table.setCellWidget(row, 2, area_spin)
-
-            # Boutons actions (info + supprimer)
-            actions_widget = QWidget()
-            actions_layout = QHBoxLayout(actions_widget)
-            actions_layout.setContentsMargins(2, 0, 2, 0)
-            actions_layout.setSpacing(2)
-
-            info_btn = QPushButton("ℹ")
-            info_btn.setFixedSize(24, 24)
-            info_btn.setToolTip("Paramètres d'entraînement")
-            info_btn.clicked.connect(self._on_row_info_clicked)
-
-            del_btn = QPushButton("×")
-            del_btn.setFixedSize(24, 24)
-            del_btn.setToolTip("Supprimer ce modèle")
-            del_btn.clicked.connect(self._on_row_delete_clicked)
-
-            actions_layout.addWidget(info_btn)
-            actions_layout.addWidget(del_btn)
-            self.det_runs_table.setCellWidget(row, 3, actions_widget)
+            self.det_runs_table.setCellWidget(row, 0, build_model_combo(NoWheelComboBox, data, callbacks))
+            self.det_runs_table.setCellWidget(row, 1, build_rvt_combo(NoWheelComboBox, data, callbacks))
+            self.det_runs_table.setCellWidget(row, 2, build_min_area_spin(NoWheelDoubleSpinBox, data, callbacks))
+            self.det_runs_table.setCellWidget(
+                row, 3,
+                build_actions_widget(QWidget, QHBoxLayout, QPushButton, callbacks),
+            )
         finally:
             self._loading = False
         if auto_rvt:

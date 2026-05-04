@@ -1080,6 +1080,15 @@ class MainDialog(QDialog):
 
     def _load_into_widgets(self) -> None:
         self._loading = True
+        # Bloquer en bulk les signaux Qt de tous les widgets connectés à
+        # l'autosave : sans ce verrou Qt, certains `setX` propagent des
+        # effets de bord (ex. `_update_available_rvt_targets` clear/repopule
+        # des combos) qui écrasent l'état des widgets pas encore restaurés
+        # par la séquence de cette méthode. La liste vit dans
+        # `_wire_autosave`.
+        blocked = getattr(self, "_autosave_widgets", None) or []
+        for w in blocked:
+            w.blockSignals(True)
         try:
             # Mode UI Simple/Expert
             ui_cfg = self._config.get("ui") or {}
@@ -1124,19 +1133,8 @@ class MainDialog(QDialog):
             self.filter_expression_edit.setText(processing.get("filter_expression") or "")
 
             products = processing.get("products") or {}
-            # Bloquer les signaux Qt des checkboxes pendant le setChecked :
-            # sans ça, le `toggled` de chaque case déclenche `_on_any_changed`
-            # ou `_on_rvt_products_changed` qui, même si `_loading=True` les
-            # neutralise côté Python, peuvent émettre des effets de bord Qt
-            # (ex. _update_available_rvt_targets clear/repopule des combos)
-            # qui font perdre l'état des cases pas encore mises à jour.
             for pkey, _label, default, _is_rvt in PRODUCTS:
-                cb = self._product_cbs[pkey]
-                cb.blockSignals(True)
-                try:
-                    cb.setChecked(bool(products.get(pkey, default)))
-                finally:
-                    cb.blockSignals(False)
+                self._product_cbs[pkey].setChecked(bool(products.get(pkey, default)))
 
             rvt = self._config.get("rvt_params") or {}
             mdh = rvt.get("mdh") or {}
@@ -1185,6 +1183,8 @@ class MainDialog(QDialog):
             idx_mode = self.data_mode_combo.findData(mode)
             self.data_mode_combo.setCurrentIndex(idx_mode if idx_mode >= 0 else 0)
         finally:
+            for w in blocked:
+                w.blockSignals(False)
             self._loading = False
 
     def _collect_config_from_widgets(self) -> None:
@@ -1370,6 +1370,55 @@ class MainDialog(QDialog):
         for key, _label, _default, is_rvt in PRODUCTS:
             if is_rvt:
                 self._product_cbs[key].toggled.connect(self._on_rvt_products_changed)
+
+        # Liste des widgets sensibles à l'autosave : utilisée par
+        # `_load_into_widgets` pour bloquer tous leurs signaux pendant la
+        # restauration (sinon Qt peut, malgré `_loading=True`, propager des
+        # effets de bord qui font perdre l'état des widgets pas encore mis
+        # à jour dans la séquence). Maintenir cette liste à jour quand on
+        # ajoute un nouveau widget connecté ci-dessus.
+        self._autosave_widgets = [
+            self.mode_combo,
+            self.output_dir_edit,
+            self.data_mode_combo,
+            self.specific_source_edit,
+            self.mnt_resolution_spin,
+            self.density_resolution_spin,
+            self.tile_overlap_spin,
+            self.max_workers_spin,
+            self.filter_expression_edit,
+            *self._product_cbs.values(),
+            self.mdh_num_directions_spin,
+            self.mdh_sun_elevation_spin,
+            self.mdh_ve_factor_spin,
+            self.mdh_save_8bit_cb,
+            self.svf_noise_remove_spin,
+            self.svf_num_directions_spin,
+            self.svf_radius_spin,
+            self.svf_ve_factor_spin,
+            self.svf_save_8bit_cb,
+            self.slope_unit_combo,
+            self.slope_ve_factor_spin,
+            self.slope_save_8bit_cb,
+            self.ldo_angular_res_spin,
+            self.ldo_min_radius_spin,
+            self.ldo_max_radius_spin,
+            self.ldo_observer_h_spin,
+            self.ldo_ve_factor_spin,
+            self.ldo_save_8bit_cb,
+            self.slrm_radius_spin,
+            self.slrm_ve_factor_spin,
+            self.slrm_save_8bit_cb,
+            self.vat_terrain_type_combo,
+            self.vat_save_8bit_cb,
+            self.detection_enabled_cb,
+            self.det_runs_table,
+            self.det_confidence_spin,
+            self.det_iou_spin,
+            self.det_generate_annotated_cb,
+            self.det_generate_shp_cb,
+            self.det_classes_list,
+        ]
 
     def _on_any_changed(self) -> None:
         if self._loading:

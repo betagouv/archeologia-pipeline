@@ -14,7 +14,6 @@ pipeline, et a donc une logique différente.
 """
 from __future__ import annotations
 
-from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, Optional
 
 from pipeline.output_paths import resolve_rvt_tif_dir

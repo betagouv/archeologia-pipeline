@@ -52,7 +52,7 @@ def run_cv_on_folder(
     # ── Court-circuit si aucune classe sélectionnée ───────────────────
     _sel = (cv_config or {}).get("selected_classes")
     if isinstance(_sel, list) and len(_sel) == 0:
-        log(f"Computer Vision: aucune classe sélectionnée pour ce run — inférence ignorée")
+        log("Computer Vision: aucune classe sélectionnée pour ce run — inférence ignorée")
         return
 
     # ── Isolation par modèle ──────────────────────────────────────────

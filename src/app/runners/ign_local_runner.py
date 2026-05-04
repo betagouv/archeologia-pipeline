@@ -4,14 +4,13 @@ import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, Optional
 
-from pipeline.types import safe_float
-
 from ..cancel_token import CancelToken
 from ..cancellable_feedback import create_cancellable_feedback
 from ..progress_reporter import ProgressReporter
 from ..run_context import RunContext
 from ..services.finalize_service import finalize_pipeline
 from ..structured_logger import log_section
+from .helpers import safe_float
 from .input_strategy import select_input_strategy
 
 if TYPE_CHECKING:
@@ -163,7 +162,7 @@ class IgnOrLocalRunner:
         if result is None:
             return
 
-        from pipeline.ign.preprocess import prepare_merged_tiles
+        from ...pipeline.ign.preprocess import prepare_merged_tiles
 
         tile_overlap = safe_float(processing.get("tile_overlap", 5), 5.0)
 

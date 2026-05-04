@@ -19,9 +19,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, Optional, Protocol
 
-from pipeline.types import safe_float
-
 from ..structured_logger import log_section
+from .helpers import safe_float
 
 if TYPE_CHECKING:
     from ..cancel_token import CancelToken
@@ -93,7 +92,7 @@ class IgnDownloadStrategy:
         slog: Optional["StructuredLogger"],
         processing: Dict[str, Any],
     ) -> Optional[AcquireResult]:
-        from pipeline.ign.downloader import download_ign_dalles
+        from ...pipeline.ign.downloader import download_ign_dalles
 
         input_file = str((ctx.files_cfg.get("input_file") or "")).strip()
         if not input_file:
@@ -107,7 +106,7 @@ class IgnDownloadStrategy:
         # Détection du type d'entrée : shapefile/geojson → résolution des dalles
         is_vector = input_path.suffix.lower() in (".shp", ".geojson", ".json", ".gpkg")
         if is_vector:
-            from pipeline.ign.tile_resolver import resolve_tiles_from_polygon
+            from ...pipeline.ign.tile_resolver import resolve_tiles_from_polygon
 
             log_section("RÉSOLUTION DES DALLES IGN", "download", slog=slog, reporter=reporter)
             reporter.stage("Identification des dalles à télécharger")
@@ -170,7 +169,7 @@ class LocalLazStrategy:
         slog: Optional["StructuredLogger"],
         processing: Dict[str, Any],
     ) -> Optional[AcquireResult]:
-        from pipeline.modes.local_laz import run_local_laz
+        from ...pipeline.modes.local_laz import run_local_laz
 
         local_dir_str = str((ctx.files_cfg.get("local_laz_dir") or "")).strip()
         if not local_dir_str:

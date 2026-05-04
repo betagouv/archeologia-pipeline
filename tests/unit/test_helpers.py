@@ -5,8 +5,8 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from app.runners.helpers import safe_float
 from app.structured_logger import log_section
-from pipeline.types import safe_float
 
 
 class TestSafeFloat:

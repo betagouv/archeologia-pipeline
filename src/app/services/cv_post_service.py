@@ -16,8 +16,6 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, Dict, Optional
 
-from pipeline.output_paths import resolve_rvt_tif_dir
-
 from ..structured_logger import log_section
 
 if TYPE_CHECKING:
@@ -54,8 +52,9 @@ def run_cv_post_loop(
     sa politique (le pattern actuel est de logger via ``reporter.error``
     et de continuer vers la finalisation).
     """
-    from pipeline.cv.class_utils import resolve_cv_runs
-    from pipeline.modes.existing_rvt import run_existing_rvt
+    from ...pipeline.cv.class_utils import resolve_cv_runs
+    from ...pipeline.modes.existing_rvt import run_existing_rvt
+    from ...pipeline.output_paths import resolve_rvt_tif_dir
 
     from .finalize_service import _build_global_class_color_map
 

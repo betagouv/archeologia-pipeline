@@ -1043,6 +1043,10 @@ class MainDialog(QDialog):
         # pour qu'un éventuel changement de widget ultérieur ne reparte
         # pas d'un état partiel.
         self._save_from_widgets()
+        # Recalculer l'état du bouton Lancer (le signal `toggled` qui le
+        # déclenchait normalement a été bloqué par blockSignals dans
+        # _load_into_widgets pour éviter des effets de bord Qt).
+        self._validate_can_run()
 
     def _save_config(self):
         """Sauvegarde la configuration actuelle dans un fichier JSON (export utilisateur)."""
@@ -1120,8 +1124,19 @@ class MainDialog(QDialog):
             self.filter_expression_edit.setText(processing.get("filter_expression") or "")
 
             products = processing.get("products") or {}
+            # Bloquer les signaux Qt des checkboxes pendant le setChecked :
+            # sans ça, le `toggled` de chaque case déclenche `_on_any_changed`
+            # ou `_on_rvt_products_changed` qui, même si `_loading=True` les
+            # neutralise côté Python, peuvent émettre des effets de bord Qt
+            # (ex. _update_available_rvt_targets clear/repopule des combos)
+            # qui font perdre l'état des cases pas encore mises à jour.
             for pkey, _label, default, _is_rvt in PRODUCTS:
-                self._product_cbs[pkey].setChecked(bool(products.get(pkey, default)))
+                cb = self._product_cbs[pkey]
+                cb.blockSignals(True)
+                try:
+                    cb.setChecked(bool(products.get(pkey, default)))
+                finally:
+                    cb.blockSignals(False)
 
             rvt = self._config.get("rvt_params") or {}
             mdh = rvt.get("mdh") or {}

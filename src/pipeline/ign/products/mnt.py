@@ -91,6 +91,14 @@ def create_terrain_model(
     extended_ymax = base_ymax + margin_meters
 
     log(f"Création MNT avec marge {margin_percent * 100}% ({margin_meters}m)")
+    # Trace post-hoc des valeurs effectivement envoyées à PDAL.
+    from ...types import format_params_line
+    log(format_params_line("MNT", {
+        "tile": current_tile_name,
+        "resolution_m": mnt_resolution,
+        "tile_overlap_pct": tile_overlap_percent,
+        "filter": filter_expression,
+    }))
 
     parameters: Dict[str, Any] = {
         "INPUT": str(input_laz_path),

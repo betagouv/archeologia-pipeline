@@ -1007,10 +1007,11 @@ class MainDialog(QDialog):
 
         # Synchronise self._config avec les widgets puis construit un
         # RunContext pour réutiliser exactement les mêmes règles que
-        # PipelineController.run().
+        # PipelineController.run(). Les warnings ne bloquent pas le
+        # bouton — ils seront tracés dans le fichier de log au run.
         self._collect_config_from_widgets()
         ctx = build_run_context(self._config)
-        errors = validate_run_context(ctx)
+        errors, _warnings = validate_run_context(ctx)
 
         can_run = not errors
         self.run_btn.setEnabled(can_run)

@@ -96,6 +96,45 @@ def run_cv_on_folder(
     sahi_cfg = cv_config.get("sahi", {}) if isinstance(cv_config.get("sahi", {}), dict) else {}
     log(f"Computer Vision [{model_slug}]: SAHI slice={sahi_cfg.get('slice_height', 640)}×{sahi_cfg.get('slice_width', 640)}, overlap={sahi_cfg.get('overlap_ratio', 0.2)} (depuis args.yaml modèle)")
 
+    # Trace post-hoc des paramètres effectifs CV (resolution post
+    # ModelProfile pour confidence_threshold).
+    from ..types import format_params_line
+    _runtime_conf = float(cv_config.get("confidence_threshold", 0.3) or 0.3)
+    _effective_conf = _runtime_conf
+    _conf_source = "runtime"
+    try:
+        from .model_profile import ModelProfile
+        _wp = (cv_config.get("weights_path") or cv_config.get("selected_model") or "")
+        if _wp:
+            _profile = ModelProfile.load(Path(_wp).parent if Path(_wp).suffix else Path(_wp))
+            _effective_conf = _profile.effective_confidence_threshold(_runtime_conf)
+            if abs(_effective_conf - _runtime_conf) > 1e-9:
+                _conf_source = "metadata"
+    except Exception:
+        # ModelProfile.load peut échouer (fichiers manquants) — on
+        # garde la valeur runtime sans bloquer l'inférence.
+        pass
+
+    _selected_classes = cv_config.get("selected_classes")
+    if _selected_classes is None:
+        _classes_str = "all"
+    elif isinstance(_selected_classes, list):
+        _classes_str = ",".join(_selected_classes) if _selected_classes else "(empty)"
+    else:
+        _classes_str = str(_selected_classes)
+
+    log(format_params_line(f"CV/{model_slug}", {
+        "model": model_slug,
+        "target_rvt": target_rvt,
+        "confidence": _effective_conf,
+        "confidence_source": _conf_source,
+        "iou_threshold": float(cv_config.get("iou_threshold", 0.5) or 0.5),
+        "sahi_slice": f"{int(sahi_cfg.get('slice_height', 640))}x{int(sahi_cfg.get('slice_width', 640))}",
+        "sahi_overlap": float(sahi_cfg.get("overlap_ratio", 0.2) or 0.2),
+        "classes": _classes_str,
+        "min_area_m2": float(cv_config.get("min_area_m2", 0) or 0),
+    }))
+
     # ── Short-circuit : détections déjà présentes dans raw_detections/ ───────
     # Si toutes les PNG ciblées ont déjà un .txt ou .json dans
     # ``effective_raw_dir`` et que l'utilisateur ne force pas le re-traitement,

@@ -1,6 +1,7 @@
 import pytest
 
 from app.structured_logger import StructuredLogger, create_structured_logger
+from pipeline.types import format_params_line
 
 
 class TestStructuredLogger:
@@ -160,3 +161,67 @@ class TestStructuredLogger:
         slog = StructuredLogger(logs.append)
         result = slog._format_duration(None)
         assert result == "N/A"
+
+    def test_params_emits_compact_line(self):
+        logs = []
+        slog = StructuredLogger(logs.append)
+        slog.params("MNT", {"resolution_m": 0.5, "filter": "Class = 2"})
+        # Une seule ligne de log émise.
+        assert len(logs) == 1
+        assert logs[0].startswith("[PARAMS MNT] ")
+        assert "resolution_m=0.5" in logs[0]
+        assert 'filter="Class = 2"' in logs[0]
+
+    def test_params_handles_empty_dict(self):
+        logs = []
+        slog = StructuredLogger(logs.append)
+        slog.params("STEP", {})
+        assert logs[0] == "[PARAMS STEP] (aucun paramètre)"
+
+
+# ----------------------------------------------------------------------
+# format_params_line (helper utilisé par pipeline/ sans dépendance app)
+# ----------------------------------------------------------------------
+class TestFormatParamsLine:
+    def test_int_and_float_compact(self):
+        line = format_params_line("MNT", {"resolution_m": 0.5, "workers": 4})
+        assert "resolution_m=0.5" in line
+        assert "workers=4" in line
+
+    def test_string_no_space_unquoted(self):
+        line = format_params_line("STEP", {"name": "M_HS"})
+        assert "name=M_HS" in line
+
+    def test_string_with_space_quoted(self):
+        line = format_params_line("MNT", {"filter": "Class = 2 OR Class = 6"})
+        assert 'filter="Class = 2 OR Class = 6"' in line
+
+    def test_bool_formatted_as_python(self):
+        line = format_params_line("X", {"flag": True, "save": False})
+        assert "flag=True" in line
+        assert "save=False" in line
+
+    def test_none_shows_empty_marker(self):
+        line = format_params_line("X", {"opt": None})
+        assert "opt=∅" in line
+
+    def test_empty_string_shows_empty_marker(self):
+        line = format_params_line("X", {"name": ""})
+        assert "name=∅" in line
+
+    def test_separator_is_pipe(self):
+        line = format_params_line("X", {"a": 1, "b": 2})
+        assert "a=1 | b=2" in line
+
+    def test_step_name_in_brackets(self):
+        line = format_params_line("RVT/SVF", {})
+        assert line.startswith("[PARAMS RVT/SVF]")
+
+    def test_float_format_compact(self):
+        # %g évite "0.50000"
+        line = format_params_line("X", {"v": 0.500})
+        assert "v=0.5" in line
+
+    def test_preserves_insertion_order(self):
+        line = format_params_line("X", {"first": 1, "second": 2, "third": 3})
+        assert line.index("first") < line.index("second") < line.index("third")

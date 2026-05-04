@@ -31,7 +31,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 
 # ----------------------------------------------------------------------
@@ -178,6 +178,69 @@ def _safe_float(value: Any, default: float) -> float:
         return default
 
 
+# ----------------------------------------------------------------------
+# Helpers de coercition + clipping
+# ----------------------------------------------------------------------
+# Motivation : ``dict.get(key, default)`` ne renvoie le défaut QUE si la
+# clé est absente. Si elle existe avec valeur ``""``, ``0``, ``-1``, le
+# pipeline reçoit cette valeur dégénérée et :
+#
+# - PDAL avec ``RESOLUTION=0`` produit un raster invalide ;
+# - ``ThreadPoolExecutor(max_workers=0)`` lève ``ValueError`` ;
+# - ``confidence_threshold=-1`` accepte tout, génère des faux positifs ;
+# - ``tile_overlap=-5`` calcule des bounds spatiales inversées.
+#
+# Ces helpers garantissent que la valeur sortante est *saine* — saine
+# au sens "ne casse pas le pipeline en aval" — sans rien logger : un
+# défaut sain est silencieux et idempotent. Les valeurs vraiment hors
+# normes (mais non-cassantes) sont signalées séparément par
+# :func:`validate_run_context` en warnings.
+
+def _coerce_positive_float(value: Any, default: float, *, exclusive: bool = True) -> float:
+    """Force un float strictement positif (par défaut), sinon ``default``.
+
+    ``exclusive=True`` : la valeur doit être > 0. ``exclusive=False`` :
+    la valeur doit être >= 0. Adapté pour les résolutions PDAL qui
+    refusent une valeur nulle.
+    """
+    try:
+        v = float(value)
+    except (TypeError, ValueError):
+        return default
+    if exclusive:
+        return v if v > 0.0 else default
+    return v if v >= 0.0 else default
+
+
+def _coerce_unit_interval(value: Any, default: float) -> float:
+    """Force un float dans ``[0.0, 1.0]``, défaut sinon.
+
+    Adapté aux probabilités / seuils CV (``confidence_threshold``,
+    ``iou_threshold``).
+    """
+    try:
+        v = float(value)
+    except (TypeError, ValueError):
+        return default
+    if v < 0.0:
+        return 0.0
+    if v > 1.0:
+        return 1.0
+    return v
+
+
+def _coerce_int_min(value: Any, default: int, min_value: int) -> int:
+    """Force un int >= ``min_value``, défaut si cast échoue ou < min."""
+    try:
+        v = int(value)
+    except (TypeError, ValueError):
+        try:
+            v = int(float(value))
+        except (TypeError, ValueError):
+            return default
+    return v if v >= min_value else default
+
+
 def _build_files_config(files_dict: Dict[str, Any]) -> FilesConfig:
     return FilesConfig(
         data_mode=str(files_dict.get("data_mode") or "").strip(),
@@ -228,35 +291,88 @@ def _build_processing_config(processing_dict: Dict[str, Any]) -> ProcessingConfi
 
     return ProcessingConfig(
         products=_build_products_config(products_dict),
-        max_workers=_safe_int(processing_dict.get("max_workers", 4), 4),
-        tile_overlap=_safe_float(processing_dict.get("tile_overlap", 5), 5.0),
-        mnt_resolution=_safe_float(processing_dict.get("mnt_resolution", 0.5), 0.5),
-        density_resolution=_safe_float(processing_dict.get("density_resolution", 1.0), 1.0),
+        # max_workers >= 1 : 0 ferait planter ThreadPoolExecutor.
+        max_workers=_coerce_int_min(processing_dict.get("max_workers", 4), 4, min_value=1),
+        # tile_overlap >= 0 : négatif inverserait les bounds spatiales.
+        # On accepte 0 (warning émis par validate_run_context).
+        tile_overlap=_coerce_positive_float(
+            processing_dict.get("tile_overlap", 5), 5.0, exclusive=False
+        ),
+        # Résolutions PDAL : doivent être > 0 (pas de raster à RESOLUTION=0).
+        mnt_resolution=_coerce_positive_float(processing_dict.get("mnt_resolution", 0.5), 0.5),
+        density_resolution=_coerce_positive_float(processing_dict.get("density_resolution", 1.0), 1.0),
         filter_expression=filter_expr,
         output_structure=dict(processing_dict.get("output_structure") or {}),
         output_formats=dict(processing_dict.get("output_formats") or {}),
     )
 
 
+def _normalize_cv_run(run_dict: Dict[str, Any]) -> Dict[str, Any]:
+    """Coerce les paramètres numériques d'un run CV vers des plages saines.
+
+    Modifie une COPIE du dict — on garde l'original intact pour ne pas
+    perturber les call-sites qui consomment encore ``cv.raw["runs"]``.
+    Les autres clés (``model``, ``target_rvt``, ``selected_classes``…)
+    sont préservées tel quel.
+    """
+    out = dict(run_dict)
+    if "confidence_threshold" in out:
+        out["confidence_threshold"] = _coerce_unit_interval(out["confidence_threshold"], 0.3)
+    if "iou_threshold" in out:
+        out["iou_threshold"] = _coerce_unit_interval(out["iou_threshold"], 0.5)
+    if "min_area_m2" in out:
+        # min_area_m2 = 0 reste valide (= pas de filtre d'aire).
+        out["min_area_m2"] = _coerce_positive_float(out["min_area_m2"], 0.0, exclusive=False)
+    return out
+
+
 def _build_cv_config(cv_dict: Dict[str, Any]) -> CvConfig:
+    """Construit ``CvConfig`` à partir du dict ``computer_vision``.
+
+    Convention ``selected_classes`` (par run) :
+
+    - ``None`` ou clé absente : toutes les classes du modèle sont actives.
+    - ``[]`` (liste vide) : court-circuit explicite, le run est ignoré
+      (cf. :func:`pipeline.cv.runner.run_cv_on_folder`).
+    - ``["class_a", …]`` : filtre explicite sur les classes nommées.
+    """
     if not isinstance(cv_dict, dict):
         cv_dict = {}
     runs = cv_dict.get("runs")
     if not isinstance(runs, list):
         runs = []
+    typed_runs = [_normalize_cv_run(r) for r in runs if isinstance(r, dict)]
+
+    # Aussi normaliser les seuils globaux dans cv.raw, pour les
+    # consommateurs qui lisent encore le dict brut (ex. external_runner,
+    # conversion_shp).
+    raw = dict(cv_dict)
+    if "confidence_threshold" in raw:
+        raw["confidence_threshold"] = _coerce_unit_interval(raw["confidence_threshold"], 0.3)
+    if "iou_threshold" in raw:
+        raw["iou_threshold"] = _coerce_unit_interval(raw["iou_threshold"], 0.5)
+
     return CvConfig(
         enabled=bool(cv_dict.get("enabled", False)),
-        runs=[r for r in runs if isinstance(r, dict)],
-        raw=cv_dict,
+        runs=typed_runs,
+        raw=raw,
     )
 
 
-def validate_run_context(ctx: RunContext) -> List[str]:
+def validate_run_context(ctx: RunContext) -> Tuple[List[str], List[str]]:
     """Vérifie que ``ctx`` est exécutable pour son ``mode``.
 
-    Retourne la liste **complète** des erreurs trouvées (pas de
-    short-circuit) : l'utilisateur voit d'un coup tout ce qu'il doit
-    corriger plutôt que de relancer après chaque correction.
+    Retourne ``(errors, warnings)`` :
+
+    - **errors** (bloquantes) : configuration inexécutable. L'UI
+      grise le bouton « Lancer », ``PipelineController.run`` abort.
+      Liste **complète** sans short-circuit pour que l'utilisateur
+      corrige tout d'un coup.
+    - **warnings** (non bloquantes) : config exécutable mais avec
+      des choix qui peuvent surprendre — un seuil clustering qui
+      masque toutes les détections, un overlap à 0 qui peut créer
+      des artefacts en bordure, un run CV explicitement court-circuité…
+      Le pipeline continue mais le ``slog`` les trace.
 
     Cette fonction concentre les vérifications qui étaient dupliquées
     dans chaque runner (``if output_dir is None``, ``if existing_X_dir
@@ -264,6 +380,7 @@ def validate_run_context(ctx: RunContext) -> List[str]:
     QGIS Processing) restent du ressort de :func:`pipeline.preflight`.
     """
     errors: List[str] = []
+    warnings: List[str] = []
 
     if not ctx.mode:
         errors.append("Aucun mode d'acquisition (data_mode) configuré")
@@ -300,13 +417,9 @@ def validate_run_context(ctx: RunContext) -> List[str]:
 
     # Règle métier transverse : il faut au moins un produit actif, sauf
     # en mode existing_rvt qui ne calcule rien (lance juste la CV sur
-    # les RVT déjà fournis). En existing_mnt on ne peut pas demander
-    # DENSITE ni MNT (les LAZ ne sont pas là), mais au moins un index
-    # de visualisation doit être coché.
+    # les RVT déjà fournis).
     if ctx.mode in ("ign_laz", "local_laz", "existing_mnt"):
         if ctx.mode == "existing_mnt":
-            # MNT et DENSITE n'ont pas de sens (pas de LAZ) — on
-            # n'exige qu'un index de visualisation.
             visu_active = (
                 ctx.processing.products.M_HS
                 or ctx.processing.products.SVF
@@ -320,7 +433,78 @@ def validate_run_context(ctx: RunContext) -> List[str]:
         elif not ctx.processing.products.active():
             errors.append("Cochez au moins un produit à générer")
 
-    return errors
+    # ── Warnings (non bloquants) ─────────────────────────────────────
+    # tile_overlap=0 : pas de marge entre dalles. Calcul réussit mais
+    # les bords de chaque dalle peuvent montrer des artefacts (effets
+    # de bord PDAL/RVT sur les pixels en bordure).
+    if ctx.processing.tile_overlap == 0 and ctx.mode in ("ign_laz", "local_laz"):
+        warnings.append(
+            "Tile overlap à 0 : pas de marge entre dalles, possibles artefacts en bordure."
+        )
+
+    # CV runs : signaler ceux qui seront court-circuités (sélection
+    # explicite de zéro classe) — pratique pour ne pas se demander
+    # pourquoi rien n'est détecté.
+    for i, run in enumerate(ctx.cv.runs, start=1):
+        sel = run.get("selected_classes")
+        if isinstance(sel, list) and len(sel) == 0:
+            model_name = run.get("model") or f"run #{i}"
+            warnings.append(
+                f"Run CV « {model_name} » : aucune classe sélectionnée — sera court-circuité."
+            )
+
+    # Cohérence cross-config : si le seuil global de confiance est
+    # supérieur aux ``min_confidence`` configurés dans args.yaml du
+    # modèle (clustering), aucune détection n'atteindra le clustering.
+    # Détection best-effort — si on ne peut pas charger args.yaml, on
+    # ne lève pas l'alerte (silencieux).
+    if ctx.cv.enabled:
+        for i, run in enumerate(ctx.cv.runs, start=1):
+            runtime_conf = float(run.get("confidence_threshold", 0.3) or 0.3)
+            cluster_min = _peek_clustering_min_confidence(run)
+            if cluster_min is not None and runtime_conf > cluster_min:
+                model_name = run.get("model") or f"run #{i}"
+                warnings.append(
+                    f"Run CV « {model_name} » : seuil de confiance global "
+                    f"({runtime_conf:.2f}) > min_confidence clustering ({cluster_min:.2f}) — "
+                    "le clustering ne verra aucune détection."
+                )
+
+    return errors, warnings
+
+
+def _peek_clustering_min_confidence(run_dict: Dict[str, Any]) -> Optional[float]:
+    """Extrait le ``min_confidence`` clustering depuis le ``args.yaml``
+    du modèle, ou ``None`` si non chargeable.
+
+    Lookup best-effort pour la cohérence cross-config — on ne fait pas
+    planter ``validate_run_context`` si le modèle n'a pas d'args.yaml
+    (modèle externe, fichier manquant, etc.).
+    """
+    try:
+        from pathlib import Path as _Path
+        from ..pipeline.cv.model_config import load_clustering_config_from_model
+
+        weights = run_dict.get("weights_path") or run_dict.get("model")
+        if not weights:
+            return None
+        weights_path = _Path(weights)
+        if not weights_path.exists():
+            return None
+        configs = load_clustering_config_from_model(weights_path)
+        if not configs:
+            return None
+        # On retourne le SEUIL LE PLUS BAS configuré : si une seule
+        # règle clustering accepte des confidences faibles, le bug
+        # "rien n'arrive au clustering" ne s'applique pas.
+        mins = [
+            float(c.get("min_confidence"))
+            for c in configs
+            if isinstance(c, dict) and c.get("min_confidence") is not None
+        ]
+        return min(mins) if mins else None
+    except Exception:
+        return None
 
 
 def build_run_context(config: Dict[str, Any]) -> RunContext:

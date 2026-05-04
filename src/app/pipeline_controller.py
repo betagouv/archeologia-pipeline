@@ -103,7 +103,11 @@ class PipelineController:
         # Validation métier centralisée (mode + chemins requis).
         # Sépare les erreurs config-side ("dossier MNT non renseigné")
         # des erreurs preflight ("pdal n'est pas installé").
-        ctx_errors = validate_run_context(ctx)
+        # Les warnings sont tracés dans le fichier de log mais ne
+        # bloquent pas l'exécution.
+        ctx_errors, ctx_warnings = validate_run_context(ctx)
+        for warn in ctx_warnings:
+            slog.warning(warn)
         if ctx_errors:
             for err in ctx_errors:
                 reporter.error(err)

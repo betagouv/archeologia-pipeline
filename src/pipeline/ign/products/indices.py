@@ -7,7 +7,7 @@ from typing import Any, Callable, Dict, Optional
 
 from .qgis_processing import run_qgis_algorithm
 from .rvt_naming import get_rvt_temp_filename
-from ...types import LogFn
+from ...types import LogFn, format_params_line
 
 
 @dataclass(frozen=True)
@@ -73,13 +73,21 @@ def create_visualization_products(
             num_directions = 16
         sun_elevation = _as_int(mdh.get("sun_elevation", 35), 35)
         ve_factor = _as_int(mdh.get("ve_factor", 1), 1)
+        save_as_8bit = _as_bool(mdh.get("save_as_8bit", True), True)
         out = temp_dir / get_rvt_temp_filename("M_HS", current_tile_name, rvt_params)
         if not out.exists():
+            log(format_params_line("RVT/M_HS", {
+                "tile": current_tile_name,
+                "num_directions": num_directions,
+                "sun_elevation": sun_elevation,
+                "ve_factor": ve_factor,
+                "save_as_8bit": save_as_8bit,
+            }))
             params = {
                 "INPUT": str(input_path),
                 "OUTPUT": str(out),
                 "NUM_DIRECTIONS": num_directions,
-                "SAVE_AS_8BIT": _as_bool(mdh.get("save_as_8bit", True), True),
+                "SAVE_AS_8BIT": save_as_8bit,
                 "SUN_ELEVATION": sun_elevation,
                 "VE_FACTOR": ve_factor,
             }
@@ -98,15 +106,24 @@ def create_visualization_products(
         radius = _as_int(svf.get("radius", 10), 10)
         ve_factor = _as_int(svf.get("ve_factor", 1), 1)
         noise_remove = _as_int(svf.get("noise_remove", 0), 0)
+        save_as_8bit = _as_bool(svf.get("save_as_8bit", True), True)
         out = temp_dir / get_rvt_temp_filename("SVF", current_tile_name, rvt_params)
         if not out.exists():
+            log(format_params_line("RVT/SVF", {
+                "tile": current_tile_name,
+                "num_directions": num_directions,
+                "radius": radius,
+                "noise_remove": noise_remove,
+                "ve_factor": ve_factor,
+                "save_as_8bit": save_as_8bit,
+            }))
             params = {
                 "INPUT": str(input_path),
                 "OUTPUT": str(out),
                 "NOISE_REMOVE": noise_remove,
                 "NUM_DIRECTIONS": num_directions,
                 "RADIUS": radius,
-                "SAVE_AS_8BIT": _as_bool(svf.get("save_as_8bit", True), True),
+                "SAVE_AS_8BIT": save_as_8bit,
                 "VE_FACTOR": ve_factor,
             }
             run_qgis_algorithm("rvt:rvt_svf", params, feedback=feedback, context=context)
@@ -119,14 +136,21 @@ def create_visualization_products(
         slope = (rvt_params or {}).get("slope", {})
         unit = _as_int(slope.get("unit", 0), 0)
         ve_factor = _as_int(slope.get("ve_factor", 1), 1)
+        save_as_8bit = _as_bool(slope.get("save_as_8bit", True), True)
         out = temp_dir / get_rvt_temp_filename("SLO", current_tile_name, rvt_params)
         if not out.exists():
+            log(format_params_line("RVT/SLO", {
+                "tile": current_tile_name,
+                "unit": "degrees" if unit == 0 else "percent",
+                "ve_factor": ve_factor,
+                "save_as_8bit": save_as_8bit,
+            }))
             params = {
                 "INPUT": str(input_path),
                 "OUTPUT": str(out),
                 "UNIT": unit,
                 "VE_FACTOR": ve_factor,
-                "SAVE_AS_8BIT": _as_bool(slope.get("save_as_8bit", True), True),
+                "SAVE_AS_8BIT": save_as_8bit,
             }
             run_qgis_algorithm("rvt:rvt_slope", params, feedback=feedback, context=context)
         if out.exists():
@@ -146,10 +170,20 @@ def create_visualization_products(
             log(f"LD: OBSERVER_H={observer_h} invalide (RVT requiert > 0), utilisation de 1.7")
             observer_h = 1.7
         ve_factor = _as_int(ldo.get("ve_factor", 1), 1)
+        save_as_8bit = _as_bool(ldo.get("save_as_8bit", True), True)
         out = temp_dir / get_rvt_temp_filename("LD", current_tile_name, rvt_params)
         if not out.exists():
             # RVT QGIS: passer un entier si la valeur est entière, sinon float
             observer_h_param = int(observer_h) if observer_h == int(observer_h) else observer_h
+            log(format_params_line("RVT/LD", {
+                "tile": current_tile_name,
+                "angular_res": angular_res,
+                "min_radius": min_radius,
+                "max_radius": max_radius,
+                "observer_h_m": observer_h,
+                "ve_factor": ve_factor,
+                "save_as_8bit": save_as_8bit,
+            }))
             params = {
                 "INPUT": str(input_path),
                 "OUTPUT": str(out),
@@ -158,7 +192,7 @@ def create_visualization_products(
                 "MAX_RADIUS": max_radius,
                 "OBSERVER_H": observer_h_param,
                 "VE_FACTOR": ve_factor,
-                "SAVE_AS_8BIT": _as_bool(ldo.get("save_as_8bit", True), True),
+                "SAVE_AS_8BIT": save_as_8bit,
             }
             run_qgis_algorithm("rvt:rvt_ld", params, feedback=feedback, context=context)
         if out.exists():
@@ -170,14 +204,21 @@ def create_visualization_products(
         slrm = (rvt_params or {}).get("slrm", {})
         radius = _as_int(slrm.get("radius", 20), 20)
         ve_factor = _as_int(slrm.get("ve_factor", 1), 1)
+        save_as_8bit = _as_bool(slrm.get("save_as_8bit", True), True)
         out = temp_dir / get_rvt_temp_filename("SLRM", current_tile_name, rvt_params)
         if not out.exists():
+            log(format_params_line("RVT/SLRM", {
+                "tile": current_tile_name,
+                "radius": radius,
+                "ve_factor": ve_factor,
+                "save_as_8bit": save_as_8bit,
+            }))
             params = {
                 "INPUT": str(input_path),
                 "OUTPUT": str(out),
                 "RADIUS": radius,
                 "VE_FACTOR": ve_factor,
-                "SAVE_AS_8BIT": _as_bool(slrm.get("save_as_8bit", True), True),
+                "SAVE_AS_8BIT": save_as_8bit,
             }
             run_qgis_algorithm("rvt:rvt_slrm", params, feedback=feedback, context=context)
         if out.exists():
@@ -197,6 +238,12 @@ def create_visualization_products(
         vat_output_base = standard_vat_tif.with_suffix("").with_name(standard_vat_tif.stem + "_outputs")
 
         if not standard_vat_tif.exists():
+            log(format_params_line("RVT/VAT", {
+                "tile": current_tile_name,
+                "terrain_type": {0: "general", 1: "flat", 2: "steep"}.get(terrain_type, str(terrain_type)),
+                "blend_combination": blend_combination,
+                "save_as_8bit": save_as_8bit,
+            }))
             params = {
                 "INPUT": str(input_path),
                 "distance_units": "meters",

@@ -107,6 +107,29 @@ class StructuredLogger:
         prefix = "  " * indent
         self._log(f"{prefix}{message}")
 
+    def params(self, step_name: str, params: dict) -> None:
+        """Logge les paramètres effectifs d'une étape du pipeline.
+
+        Émis au niveau ``INFO`` standard — visible dans le fichier de
+        log mais filtré côté UI Qt (qui ne montre que ``USER_INFO+``).
+        Permet à l'utilisateur (ou au support) de retracer post-hoc
+        quelles valeurs ont été réellement appliquées à PDAL/RVT/CV
+        pour chaque dalle, sans surcharger la fenêtre QGIS.
+
+        Format délégué à :func:`pipeline.types.format_params_line` —
+        partagé avec les call-sites pipeline qui n'ont qu'un ``log``
+        callable et pas accès à cette instance.
+        """
+        # Dual-context : en QGIS le plugin est chargé comme package
+        # (``archeologia.src.app``) → import relatif. En dev (tests
+        # via conftest qui ajoute src/ au sys.path), ``app`` et
+        # ``pipeline`` sont top-level → import absolu.
+        try:
+            from ..pipeline.types import format_params_line
+        except ImportError:
+            from pipeline.types import format_params_line  # type: ignore[no-redef]
+        self._log(format_params_line(step_name, params))
+
     def progress(self, current: int, total: int, item_name: str = "") -> None:
         pct = (current / total * 100) if total > 0 else 0
         bar_len = 20

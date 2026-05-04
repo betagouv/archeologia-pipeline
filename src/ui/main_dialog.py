@@ -38,6 +38,7 @@ from qgis.PyQt.QtWidgets import (
     QSizePolicy,
 )
 
+from ..app.progress_reporter import USER_INFO
 from ..config.config_manager import ConfigManager
 
 
@@ -50,8 +51,19 @@ class _QtLogEmitter(QObject):
 
 
 class QtLogHandler(logging.Handler):
+    """Handler qui propage les logs à la fenêtre QGIS via un signal Qt.
+
+    Le pipeline émet beaucoup de logs techniques destinés au fichier de
+    log (commandes PDAL/GDAL, paramètres internes…). Pour ne montrer à
+    l'utilisateur final que les messages narratifs, ce handler filtre à
+    ``USER_INFO`` (=25) : tout ce qui est strictement < ``USER_INFO`` est
+    silencieusement ignoré côté UI mais reste dans le fichier de log
+    grâce au ``FileHandler`` non filtré attaché par
+    :func:`pipeline_controller.file_logging`.
+    """
+
     def __init__(self, emitter: _QtLogEmitter):
-        super().__init__()
+        super().__init__(level=USER_INFO)
         self._emitter = emitter
 
     def emit(self, record: logging.LogRecord) -> None:
@@ -236,7 +248,7 @@ class MainDialog(QDialog):
         # ── Validation initiale (après que tous les widgets soient visibles) ──
         self._validate_can_run()
 
-        self._logger.info("Pipeline prêt à être utilisé")
+        self._logger.log(USER_INFO, "Pipeline prêt à être utilisé")
 
     # ═════════════════════════════════════════════
     # SECTION : Sources de données
@@ -2359,7 +2371,7 @@ class MainDialog(QDialog):
         finally:
             self._loading = False
         self._save_from_widgets()
-        self._logger.info("Paramètres MNT remis par défaut")
+        self._logger.log(USER_INFO, "Paramètres MNT remis par défaut")
 
     def _reset_rvt_config(self) -> None:
         defaults = self._config_manager.default_config()
@@ -2405,7 +2417,7 @@ class MainDialog(QDialog):
         finally:
             self._loading = False
         self._save_from_widgets()
-        self._logger.info("Paramètres RVT remis par défaut")
+        self._logger.log(USER_INFO, "Paramètres RVT remis par défaut")
 
     def _reset_perf_config(self) -> None:
         defaults = self._config_manager.default_config()
@@ -2416,7 +2428,7 @@ class MainDialog(QDialog):
         finally:
             self._loading = False
         self._save_from_widgets()
-        self._logger.info("Paramètres Performance remis par défaut")
+        self._logger.log(USER_INFO, "Paramètres Performance remis par défaut")
 
     def _reset_det_config(self) -> None:
         defaults = self._config_manager.default_config()
@@ -2433,7 +2445,7 @@ class MainDialog(QDialog):
             self._loading = False
         self._apply_detection_state()
         self._save_from_widgets()
-        self._logger.info("Paramètres Détection remis par défaut")
+        self._logger.log(USER_INFO, "Paramètres Détection remis par défaut")
 
     # ═════════════════════════════════════════════
     # Logs
@@ -2526,7 +2538,7 @@ class MainDialog(QDialog):
         self._config_manager.save_last_ui_config(self._config)
         self._cancel_event.clear()
         self._set_run_enabled(False)
-        self._logger.info("Lancement du pipeline…")
+        self._logger.log(USER_INFO, "Lancement du pipeline…")
 
         def worker():
             try:
@@ -2549,7 +2561,7 @@ class MainDialog(QDialog):
     def _on_cancel_clicked(self) -> None:
         if self.cancel_btn.isEnabled():
             self._cancel_event.set()
-            self._logger.info("Annulation demandée...")
+            self._logger.log(USER_INFO, "Annulation demandée...")
 
     # ═════════════════════════════════════════════
     # Chargement des couches QGIS
@@ -2596,7 +2608,7 @@ class MainDialog(QDialog):
                             combined_extent.combineExtentWith(existing.extent())
                         break
                 if already_loaded:
-                    self._logger.info(f"Couche raster déjà présente: {layer_name}")
+                    self._logger.log(USER_INFO, f"Couche raster déjà présente: {layer_name}")
                     continue
 
                 layer = QgsRasterLayer(vrt_path_str, layer_name, "gdal")
@@ -2608,7 +2620,7 @@ class MainDialog(QDialog):
                     else:
                         combined_extent.combineExtentWith(layer.extent())
                     loaded_count += 1
-                    self._logger.info(f"Couche raster chargée: {layer_name}")
+                    self._logger.log(USER_INFO, f"Couche raster chargée: {layer_name}")
                 else:
                     self._logger.warning(f"Impossible de charger le VRT: {vrt_path_str}")
 
@@ -2663,7 +2675,7 @@ class MainDialog(QDialog):
                             combined_extent.combineExtentWith(existing.extent())
                         break
                 if already_loaded:
-                    self._logger.info(f"Couche vecteur déjà présente: {layer_name}")
+                    self._logger.log(USER_INFO, f"Couche vecteur déjà présente: {layer_name}")
                     continue
 
                 layer = QgsVectorLayer(ogr_source, layer_name, "ogr")
@@ -2681,12 +2693,12 @@ class MainDialog(QDialog):
                         combined_extent.combineExtentWith(layer.extent())
                     loaded_count += 1
                     base_color = BASE_COLOR_PALETTE[color_idx % len(BASE_COLOR_PALETTE)]
-                    self._logger.info(f"Couche vecteur chargée: {layer_name} (classe={class_name}, couleur={color_idx} RGB{base_color})")
+                    self._logger.log(USER_INFO, f"Couche vecteur chargée: {layer_name} (classe={class_name}, couleur={color_idx} RGB{base_color})")
                 else:
                     self._logger.warning(f"Impossible de charger la couche: {ogr_source}")
 
             if loaded_count > 0:
-                self._logger.info(f"{loaded_count} couche(s) ajoutée(s) au projet QGIS")
+                self._logger.log(USER_INFO, f"{loaded_count} couche(s) ajoutée(s) au projet QGIS")
                 if not combined_extent.isNull():
                     try:
                         from qgis.utils import iface
@@ -2694,7 +2706,7 @@ class MainDialog(QDialog):
                             combined_extent.scale(1.05)
                             iface.mapCanvas().setExtent(combined_extent)
                             iface.mapCanvas().refresh()
-                            self._logger.info("Zoom sur l'étendue des résultats")
+                            self._logger.log(USER_INFO, "Zoom sur l'étendue des résultats")
                     except Exception as zoom_err:
                         self._logger.warning(f"Impossible de zoomer: {zoom_err}")
 
@@ -2734,7 +2746,7 @@ class MainDialog(QDialog):
             renderer = QgsSingleSymbolRenderer(symbol)
             layer.setRenderer(renderer)
             layer.triggerRepaint()
-            self._logger.info(f"Style cluster appliqué à {layer.name()}")
+            self._logger.log(USER_INFO, f"Style cluster appliqué à {layer.name()}")
         except Exception as e:
             self._logger.warning(f"Impossible d'appliquer le style cluster: {e}")
 
@@ -2874,17 +2886,17 @@ class MainDialog(QDialog):
             ".shp", ".geojson", ".json", ".gpkg",
         ):
             self.specific_source_edit.setText(source_path)
-            self._logger.info(f"Couche QGIS sélectionnée : {layer.name()} → {source_path}")
+            self._logger.log(USER_INFO, f"Couche QGIS sélectionnée : {layer.name()} → {source_path}")
             return
 
-        self._logger.info(f"Source couche '{layer.name()}' non trouvée sur disque (source={layer.source()!r}), export nécessaire")
+        self._logger.log(USER_INFO, f"Source couche '{layer.name()}' non trouvée sur disque (source={layer.source()!r}), export nécessaire")
 
         # Couche mémoire / virtuelle → exporter en shapefile dans le dossier du plugin
         export_dir = self._plugin_root / "data" / "temp_zones"
         export_dir.mkdir(parents=True, exist_ok=True)
         tmp_shp = export_dir / f"{layer.name().replace(' ', '_')}.shp"
 
-        self._logger.info(f"Export de la couche mémoire '{layer.name()}' vers {tmp_shp}")
+        self._logger.log(USER_INFO, f"Export de la couche mémoire '{layer.name()}' vers {tmp_shp}")
         save_options = QgsVectorFileWriter.SaveVectorOptions()
         save_options.driverName = "ESRI Shapefile"
         error = QgsVectorFileWriter.writeAsVectorFormatV3(
@@ -2902,4 +2914,4 @@ class MainDialog(QDialog):
             return
 
         self.specific_source_edit.setText(str(tmp_shp))
-        self._logger.info(f"Couche QGIS exportée : {layer.name()} → {tmp_shp}")
+        self._logger.log(USER_INFO, f"Couche QGIS exportée : {layer.name()} → {tmp_shp}")

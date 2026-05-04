@@ -17,6 +17,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any, Dict, Optional
 
 from ..structured_logger import log_section
+from ..user_narrator import create_user_narrator
 
 if TYPE_CHECKING:
     from ..cancel_token import CancelToken
@@ -75,6 +76,9 @@ def run_cv_post_loop(
     reporter.stage("Computer Vision")
     reporter.progress(base_progress)
 
+    narrator = create_user_narrator(reporter)
+    narrator.cv_start(len(cv_runs))
+
     for run_idx, run_cfg in enumerate(cv_runs, start=1):
         if cancel.is_cancelled():
             break
@@ -85,6 +89,7 @@ def run_cv_post_loop(
             f"Computer Vision: run {run_idx}/{len(cv_runs)} — "
             f"modèle={run_model}, RVT={run_rvt}"
         )
+        narrator.cv_run_start(run_idx, len(cv_runs), run_model, run_rvt)
 
         generated_rvt_tif_dir = resolve_rvt_tif_dir(
             ctx.output_dir, run_rvt, output_structure, rvt_params

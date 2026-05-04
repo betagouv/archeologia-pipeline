@@ -10,6 +10,16 @@ from .cancel_token import CancelToken
 from .progress_reporter import ProgressReporter
 from .run_context import RunContext
 from .structured_logger import StructuredLogger, create_structured_logger
+from .user_narrator import create_user_narrator
+
+
+# Libellés FR des modes pour le narrateur (pas de jargon "ign_laz" en UI).
+MODE_LABELS = {
+    "ign_laz": "téléchargement IGN",
+    "local_laz": "nuages LAZ locaux",
+    "existing_mnt": "MNT existant",
+    "existing_rvt": "RVT existant",
+}
 
 
 @contextmanager
@@ -29,6 +39,9 @@ def file_logging(output_dir: Optional[Path], reporter: ProgressReporter) -> Iter
             ts = time.strftime("%Y%m%d_%H%M%S")
             log_path = output_dir / f"pipeline_log_{ts}.txt"
             file_handler = logging.FileHandler(str(log_path), encoding="utf-8")
+            # INFO pour avoir tous les logs techniques dans le fichier
+            # (alors que l'UI filtre à USER_INFO=25 et n'en voit que les
+            # narratifs).
             file_handler.setLevel(logging.INFO)
             file_handler.setFormatter(logging.Formatter("%(asctime)s - %(levelname)s - %(message)s"))
             root_logger = logging.getLogger()
@@ -57,13 +70,19 @@ def file_logging(output_dir: Optional[Path], reporter: ProgressReporter) -> Iter
 
 class PipelineController:
     def run(self, ctx: RunContext, reporter: ProgressReporter, cancel: CancelToken) -> None:
+        # slog → écrit via reporter.info (level INFO) : visible UNIQUEMENT
+        # dans le fichier de log (UI filtre à USER_INFO=25).
         slog = create_structured_logger(reporter.info)
-        
+        # narrator → écrit via reporter.user_info (level USER_INFO=25) :
+        # visible UI **et** fichier.
+        narrator = create_user_narrator(reporter)
+
         output_str = str(ctx.output_dir) if ctx.output_dir is not None else ""
         slog.start_pipeline(ctx.mode, output_str)
+        narrator.pipeline_starting(MODE_LABELS.get(ctx.mode, ctx.mode))
 
         slog.section("VÉRIFICATION DES DÉPENDANCES", "info")
-        
+
         from ..pipeline.preflight import run_preflight
 
         if not run_preflight(
@@ -75,11 +94,15 @@ class PipelineController:
             output_dir=ctx.output_dir,
         ):
             slog.end_pipeline(success=False)
+            narrator.preflight_failed()
             return
+
+        narrator.preflight_ok()
 
         if cancel.is_cancelled():
             reporter.info("Annulation demandée avant le lancement du pipeline.")
             slog.end_pipeline(success=False)
+            narrator.pipeline_cancelled()
             return
 
         from .runners.registry import get_runner

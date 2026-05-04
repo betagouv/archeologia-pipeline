@@ -10,6 +10,7 @@ from ..progress_reporter import ProgressReporter
 from ..run_context import RunContext
 from ..services.finalize_service import finalize_pipeline
 from ..structured_logger import log_section
+from ..user_narrator import create_user_narrator
 from .helpers import safe_float
 from .input_strategy import select_input_strategy
 
@@ -149,6 +150,7 @@ class IgnOrLocalRunner:
         need_mnt = bool(products.get("MNT", True)) or any(bool(products.get(k, False)) for k in ("M_HS", "SVF", "SLO", "LD", "VAT"))
         
         feedback = create_cancellable_feedback(cancel.is_cancelled)
+        narrator = create_user_narrator(reporter)
 
         strategy = select_input_strategy(ctx.mode)
 
@@ -169,6 +171,7 @@ class IgnOrLocalRunner:
         log_section("FUSION DES TUILES", "process", slog=slog, reporter=reporter)
         reporter.stage("Fusion (voisins + merge)")
         reporter.progress(strategy.merge_progress_start())
+        narrator.merging_start()
 
         max_workers = processing.get("max_workers", 4)
         merged_result = prepare_merged_tiles(
@@ -214,10 +217,14 @@ class IgnOrLocalRunner:
             reporter.progress(strategy.products_progress_start())
 
             total_mnt = len(merged_result.merged_files)
+            narrator.products_phase_start(total_mnt, active_products)
 
             for i, merged_path in enumerate(merged_result.merged_files, start=1):
                 if cancel.is_cancelled():
                     break
+
+                tile_label = merged_path.name.replace(".copc.laz", "").replace(".laz", "")
+                narrator.tile_progress(i, total_mnt, tile_label)
 
                 self._process_tile(
                     merged_path=merged_path,

@@ -299,6 +299,9 @@ def finalize_pipeline(
     import time
 
     from ...pipeline.output_paths import indices_dir, detections_dir
+    from ..user_narrator import create_user_narrator
+
+    narrator = create_user_narrator(reporter)
 
     idx_dir = indices_dir(output_dir)
     det_dir = detections_dir(output_dir)
@@ -307,6 +310,7 @@ def finalize_pipeline(
     # 1. Création des index VRT
     reporter.stage("Création des index VRT")
     reporter.info("Création des fichiers VRT d’indexation...")
+    narrator.finalize_start()
     vrt_paths = _collect_vrt_paths_and_build(idx_dir, det_dir, log)
 
     # 2. Collecte des shapefiles CV (tous les runs)
@@ -393,7 +397,13 @@ def finalize_pipeline(
             tiles_total=tiles_processed,
             products=products_list,
         )
-    else:
+    # Annonce narrative à l'utilisateur (visible dans la fenêtre QGIS).
+    narrator.pipeline_complete(
+        tiles_processed=tiles_processed,
+        products=products_list,
+        start_time=start_time,
+    )
+    if not slog:
         reporter.info("")
         reporter.info("════════════════════════════════════════════════════════════")
         reporter.info("✅ PIPELINE TERMINÉ AVEC SUCCÈS")

@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, Optional, Protocol
 
 from ..structured_logger import log_section
+from ..user_narrator import create_user_narrator
 from .helpers import safe_float
 
 if TYPE_CHECKING:
@@ -94,6 +95,8 @@ class IgnDownloadStrategy:
     ) -> Optional[AcquireResult]:
         from ...pipeline.ign.downloader import download_ign_dalles
 
+        narrator = create_user_narrator(reporter)
+
         input_file = str((ctx.files_cfg.get("input_file") or "")).strip()
         if not input_file:
             reporter.error("Mode IGN sélectionné mais aucun fichier de zone/liste n'est configuré")
@@ -111,6 +114,7 @@ class IgnDownloadStrategy:
             log_section("RÉSOLUTION DES DALLES IGN", "download", slog=slog, reporter=reporter)
             reporter.stage("Identification des dalles à télécharger")
             reporter.progress(self.DOWNLOAD_RANGE[0])
+            narrator.tiles_resolution_start()
 
             urls_file = ctx.output_dir / "dalles_urls.txt"
             n_tiles = resolve_tiles_from_polygon(
@@ -122,10 +126,21 @@ class IgnDownloadStrategy:
             if n_tiles == 0:
                 reporter.error("Aucune dalle IGN trouvée pour la zone sélectionnée")
                 return None
+            narrator.tiles_resolution_done(n_tiles)
             input_path = urls_file
 
         log_section("TÉLÉCHARGEMENT DES DALLES IGN", "download", slog=slog, reporter=reporter)
         reporter.stage("Téléchargement des dalles")
+        # Compte les URLs à télécharger pour informer l'utilisateur.
+        try:
+            n_to_download = sum(
+                1 for line in input_path.read_text(encoding="utf-8").splitlines()
+                if line.strip() and not line.strip().startswith("#")
+            )
+        except Exception:
+            n_to_download = 0
+        if n_to_download:
+            narrator.download_start(n_to_download)
         max_workers = safe_float(processing.get("max_workers", 4), 4)
         return download_ign_dalles(
             input_file=input_path,
@@ -171,6 +186,7 @@ class LocalLazStrategy:
     ) -> Optional[AcquireResult]:
         from ...pipeline.modes.local_laz import run_local_laz
 
+        narrator = create_user_narrator(reporter)
         local_dir_str = str((ctx.files_cfg.get("local_laz_dir") or "")).strip()
         if not local_dir_str:
             reporter.error("Mode local_laz sélectionné mais aucun dossier nuages locaux n'est configuré")
@@ -180,11 +196,20 @@ class LocalLazStrategy:
         log_section("INDEXATION DES NUAGES LOCAUX", "download", slog=slog, reporter=reporter)
         reporter.stage("Indexation des nuages locaux")
         reporter.progress(0)
-        return run_local_laz(
+        result = run_local_laz(
             local_laz_dir=local_dir,
             output_dir=ctx.output_dir,
             log=lambda m: reporter.info(m),
         )
+        if result is not None:
+            try:
+                with result.sorted_list_file.open("r", encoding="utf-8") as f:
+                    n_tiles = sum(1 for line in f if line.strip())
+            except Exception:
+                n_tiles = 0
+            if n_tiles:
+                narrator.local_laz_indexed(n_tiles)
+        return result
 
     def merge_progress_start(self) -> int:
         return 0

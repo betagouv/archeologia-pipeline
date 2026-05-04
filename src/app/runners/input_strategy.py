@@ -17,16 +17,15 @@ Le plan de progression est intentionnellement préservé bit-pour-bit :
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Dict, Optional, Protocol
+from typing import TYPE_CHECKING, Optional, Protocol
 
 from ..structured_logger import log_section
 from ..user_narrator import create_user_narrator
-from .helpers import safe_float
 
 if TYPE_CHECKING:
     from ..cancel_token import CancelToken
     from ..progress_reporter import ProgressReporter
-    from ..run_context import RunContext
+    from ..run_context import ProcessingConfig, RunContext
     from ..structured_logger import StructuredLogger
 
 
@@ -52,7 +51,7 @@ class InputStrategy(Protocol):
         reporter: "ProgressReporter",
         cancel: "CancelToken",
         slog: Optional["StructuredLogger"],
-        processing: Dict[str, Any],
+        processing: "ProcessingConfig",
     ) -> Optional[AcquireResult]:
         """Récupère les LAZ et retourne ``(sorted_list_file, dalles_dir)``.
 
@@ -91,17 +90,16 @@ class IgnDownloadStrategy:
         reporter: "ProgressReporter",
         cancel: "CancelToken",
         slog: Optional["StructuredLogger"],
-        processing: Dict[str, Any],
+        processing: "ProcessingConfig",
     ) -> Optional[AcquireResult]:
         from ...pipeline.ign.downloader import download_ign_dalles
 
         narrator = create_user_narrator(reporter)
 
-        input_file = str((ctx.files_cfg.get("input_file") or "")).strip()
-        if not input_file:
+        input_path = ctx.files.input_file
+        if input_path is None:
             reporter.error("Mode IGN sélectionné mais aucun fichier de zone/liste n'est configuré")
             return None
-        input_path = Path(input_file)
         if not input_path.exists():
             reporter.error(f"Fichier IGN introuvable: {input_path}")
             return None
@@ -141,7 +139,6 @@ class IgnDownloadStrategy:
             n_to_download = 0
         if n_to_download:
             narrator.download_start(n_to_download)
-        max_workers = safe_float(processing.get("max_workers", 4), 4)
         return download_ign_dalles(
             input_file=input_path,
             output_dir=ctx.output_dir,
@@ -151,7 +148,7 @@ class IgnDownloadStrategy:
             ),
             stage=lambda s: reporter.stage(str(s)),
             cancel=lambda: cancel.is_cancelled(),
-            max_workers=max_workers,
+            max_workers=processing.max_workers,
         )
 
     def merge_progress_start(self) -> int:
@@ -182,17 +179,16 @@ class LocalLazStrategy:
         reporter: "ProgressReporter",
         cancel: "CancelToken",
         slog: Optional["StructuredLogger"],
-        processing: Dict[str, Any],
+        processing: "ProcessingConfig",
     ) -> Optional[AcquireResult]:
         from ...pipeline.modes.local_laz import run_local_laz
 
         narrator = create_user_narrator(reporter)
-        local_dir_str = str((ctx.files_cfg.get("local_laz_dir") or "")).strip()
-        if not local_dir_str:
+        local_dir = ctx.files.local_laz_dir
+        if local_dir is None:
             reporter.error("Mode local_laz sélectionné mais aucun dossier nuages locaux n'est configuré")
             return None
 
-        local_dir = Path(local_dir_str)
         log_section("INDEXATION DES NUAGES LOCAUX", "download", slog=slog, reporter=reporter)
         reporter.stage("Indexation des nuages locaux")
         reporter.progress(0)

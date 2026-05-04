@@ -49,5 +49,5 @@ class TestRunnersIntegration:
     def test_run_context_extracts_files_config(self, config_with_output_dir: dict):
         config_with_output_dir["app"]["files"]["existing_mnt_dir"] = "/tmp/mnt"
         ctx = build_run_context(config_with_output_dir)
-        
-        assert ctx.files_cfg["existing_mnt_dir"] == "/tmp/mnt"
+
+        assert ctx.files.existing_mnt_dir == Path("/tmp/mnt")

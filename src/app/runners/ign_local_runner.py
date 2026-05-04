@@ -11,7 +11,6 @@ from ..run_context import RunContext
 from ..services.finalize_service import finalize_pipeline
 from ..structured_logger import log_section
 from ..user_narrator import create_user_narrator
-from .helpers import safe_float
 from .input_strategy import select_input_strategy
 
 if TYPE_CHECKING:
@@ -142,13 +141,9 @@ class IgnOrLocalRunner:
             reporter.error("Aucun dossier de sortie n'est configuré")
             return
 
-        processing = ctx.processing_cfg or {}
-        products = (processing.get("products") or {})
-        if not isinstance(products, dict):
-            products = {}
+        processing = ctx.processing
+        products = processing.products
 
-        need_mnt = bool(products.get("MNT", True)) or any(bool(products.get(k, False)) for k in ("M_HS", "SVF", "SLO", "LD", "VAT"))
-        
         feedback = create_cancellable_feedback(cancel.is_cancelled)
         narrator = create_user_narrator(reporter)
 
@@ -166,23 +161,20 @@ class IgnOrLocalRunner:
 
         from ...pipeline.ign.preprocess import prepare_merged_tiles
 
-        tile_overlap = safe_float(processing.get("tile_overlap", 5), 5.0)
-
         log_section("FUSION DES TUILES", "process", slog=slog, reporter=reporter)
         reporter.stage("Fusion (voisins + merge)")
         reporter.progress(strategy.merge_progress_start())
         narrator.merging_start()
 
-        max_workers = processing.get("max_workers", 4)
         merged_result = prepare_merged_tiles(
             sorted_list_file=result.sorted_list_file,
             dalles_dir=result.dalles_dir,
             output_dir=ctx.output_dir,
-            tile_overlap_percent=tile_overlap,
+            tile_overlap_percent=processing.tile_overlap,
             log=lambda m: reporter.info(m),
             cancel=lambda: cancel.is_cancelled(),
             stage=lambda s: reporter.stage(s),
-            max_workers=max_workers,
+            max_workers=processing.max_workers,
         )
 
         merge_end = strategy.merge_progress_end()
@@ -191,26 +183,9 @@ class IgnOrLocalRunner:
 
         active_products: list = []
 
-        if need_mnt and merged_result.merged_files:
-            mnt_resolution = safe_float(processing.get("mnt_resolution", 0.5), 0.5)
-
-            filter_expression = processing.get(
-                "filter_expression",
-                "Classification = 2 OR Classification = 6 OR Classification = 66 OR Classification = 67 OR Classification = 9",
-            )
-
-            density_resolution = safe_float(processing.get("density_resolution", 1.0), 1.0)
-
-            output_structure = processing.get("output_structure", {})
-            if not isinstance(output_structure, dict):
-                output_structure = {}
-            output_formats = processing.get("output_formats", {})
-            if not isinstance(output_formats, dict):
-                output_formats = {}
-
-            rvt_params = ctx.rvt_params or {}
-            products_cfg = products if isinstance(products, dict) else {}
-            active_products = [k for k, v in products_cfg.items() if v]
+        if products.needs_mnt() and merged_result.merged_files:
+            rvt_params = ctx.rvt_params
+            active_products = products.active()
 
             log_section("TRAITEMENT DES DALLES", "process", slog=slog, reporter=reporter)
             reporter.stage("Traitement des dalles")
@@ -229,13 +204,13 @@ class IgnOrLocalRunner:
                 self._process_tile(
                     merged_path=merged_path,
                     output_dir=ctx.output_dir,
-                    tile_overlap=tile_overlap,
-                    mnt_resolution=mnt_resolution,
-                    density_resolution=density_resolution,
-                    filter_expression=str(filter_expression),
-                    products_cfg=products_cfg,
-                    output_structure=output_structure,
-                    output_formats=output_formats,
+                    tile_overlap=processing.tile_overlap,
+                    mnt_resolution=processing.mnt_resolution,
+                    density_resolution=processing.density_resolution,
+                    filter_expression=processing.filter_expression,
+                    products_cfg=products.as_dict(),
+                    output_structure=processing.output_structure,
+                    output_formats=processing.output_formats,
                     rvt_params=rvt_params,
                     reporter=reporter,
                     cancel=cancel,
@@ -249,14 +224,12 @@ class IgnOrLocalRunner:
                 reporter.progress(strategy.products_progress_for_tile(i, total_mnt))
 
             # Computer Vision globale (post-boucle)
-            cv_cfg = ctx.cv_cfg or {}
-            cv_enabled = bool(cv_cfg.get("enabled", False))
-            if cv_enabled and not cancel.is_cancelled():
+            if ctx.cv.enabled and not cancel.is_cancelled():
                 from ..services.cv_post_service import run_cv_post_loop
                 try:
                     run_cv_post_loop(
                         ctx=ctx,
-                        output_structure=output_structure,
+                        output_structure=processing.output_structure,
                         rvt_params=rvt_params,
                         reporter=reporter,
                         cancel=cancel,
@@ -269,13 +242,13 @@ class IgnOrLocalRunner:
         # Finalisation commune (VRT + shapefiles + load_layers)
         finalize_pipeline(
             output_dir=ctx.output_dir,
-            cv_cfg=ctx.cv_cfg or {},
-            rvt_params=ctx.rvt_params or {},
+            cv_cfg=ctx.cv.raw,
+            rvt_params=ctx.rvt_params,
             reporter=reporter,
             slog=slog,
             start_time=start_time,
             tiles_processed=len(merged_result.merged_files) if merged_result else 0,
             active_products=active_products,
             extra_label="Dalles traitées",
-            ui_config=ctx.ui_config or {},
+            ui_config=ctx.ui_config,
         )

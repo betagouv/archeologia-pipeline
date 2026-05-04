@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import time
-from pathlib import Path
 from typing import TYPE_CHECKING, Optional
 
 from ..cancel_token import CancelToken
@@ -26,20 +25,16 @@ class ExistingRvtRunner:
 
         start_time = time.time()
 
-        existing_rvt_dir_str = str((ctx.files_cfg.get("existing_rvt_dir") or "")).strip()
-        if not existing_rvt_dir_str:
+        existing_rvt_dir = ctx.files.existing_rvt_dir
+        if existing_rvt_dir is None:
             reporter.error("Mode existing_rvt sélectionné mais aucun dossier RVT n'est configuré")
             return
         if ctx.output_dir is None:
             reporter.error("Aucun dossier de sortie n'est configuré")
             return
 
-        processing_cfg = ctx.processing_cfg or {}
-        output_structure = processing_cfg.get("output_structure", {})
-        if not isinstance(output_structure, dict):
-            output_structure = {}
-
-        cv_config = ctx.cv_cfg or {}
+        processing = ctx.processing
+        cv_config = ctx.cv.raw
         target_rvt = str(cv_config.get("target_rvt", "LD"))
 
         # Collecter tous les RVT cibles uniques depuis les runs
@@ -76,13 +71,13 @@ class ExistingRvtRunner:
             reporter.info(f"Computer Vision: run {run_idx}/{len(cv_runs)} — modèle={run_model}, RVT={run_rvt}")
 
             res = run_existing_rvt(
-                existing_rvt_dir=Path(existing_rvt_dir_str),
+                existing_rvt_dir=existing_rvt_dir,
                 output_dir=ctx.output_dir,
                 cv_config=run_cfg,
-                output_structure=output_structure,
+                output_structure=processing.output_structure,
                 log=lambda m: reporter.info(m),
                 cancel_check=cancel.is_cancelled,
-                rvt_params=ctx.rvt_params or {},
+                rvt_params=ctx.rvt_params,
                 global_color_map=global_color_map,
                 indices_folder_name="RVT",
             )
@@ -92,12 +87,12 @@ class ExistingRvtRunner:
         finalize_pipeline(
             output_dir=ctx.output_dir,
             cv_cfg=cv_config,
-            rvt_params=ctx.rvt_params or {},
+            rvt_params=ctx.rvt_params,
             reporter=reporter,
             slog=slog,
             start_time=start_time,
             tiles_processed=total_images,
             active_products=active_rvts,
             extra_label="Images traitées",
-            ui_config=ctx.ui_config or {},
+            ui_config=ctx.ui_config,
         )

@@ -13,6 +13,25 @@ from .structured_logger import StructuredLogger, create_structured_logger
 from .user_narrator import create_user_narrator
 
 
+def _files_as_dict(ctx: RunContext) -> dict:
+    """Adapte ``ctx.files`` au contrat dict-only de ``preflight``.
+
+    ``preflight`` est documenté comme ne dépendant que de la stdlib +
+    quelques utilitaires CLI ; on ne le typage pas dans ce refactor pour
+    éviter d'élargir le périmètre. À supprimer quand ``run_preflight``
+    consommera ``FilesConfig`` directement.
+    """
+    f = ctx.files
+    return {
+        "data_mode": f.data_mode,
+        "output_dir": str(f.output_dir) if f.output_dir else "",
+        "input_file": str(f.input_file) if f.input_file else "",
+        "local_laz_dir": str(f.local_laz_dir) if f.local_laz_dir else "",
+        "existing_mnt_dir": str(f.existing_mnt_dir) if f.existing_mnt_dir else "",
+        "existing_rvt_dir": str(f.existing_rvt_dir) if f.existing_rvt_dir else "",
+    }
+
+
 # Libellés FR des modes pour le narrateur (pas de jargon "ign_laz" en UI).
 MODE_LABELS = {
     "ign_laz": "téléchargement IGN",
@@ -87,10 +106,10 @@ class PipelineController:
 
         if not run_preflight(
             mode=str(ctx.mode),
-            cv_config=ctx.cv_cfg,
-            products=ctx.products_cfg,
+            cv_config=ctx.cv.raw,
+            products=ctx.processing.products.as_dict(),
             log=lambda m: reporter.info(m),
-            files_config=ctx.files_cfg,
+            files_config=_files_as_dict(ctx),
             output_dir=ctx.output_dir,
         ):
             slog.end_pipeline(success=False)

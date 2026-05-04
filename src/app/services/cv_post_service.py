@@ -38,7 +38,7 @@ def run_cv_post_loop(
 ) -> None:
     """Lance la Computer Vision sur les RVT générés par le pipeline.
 
-    Pour chaque ``cv_run`` configuré dans ``ctx.cv_cfg.runs`` :
+    Pour chaque ``cv_run`` configuré dans ``ctx.cv.runs`` :
 
     1. Résout ``indices/<RVT>/tif`` via :func:`resolve_rvt_tif_dir`.
     2. Construit (au premier run uniquement) le mapping global de
@@ -59,7 +59,7 @@ def run_cv_post_loop(
 
     from .finalize_service import _build_global_class_color_map
 
-    cv_cfg = ctx.cv_cfg or {}
+    cv_cfg = ctx.cv.raw
     cv_runs = resolve_cv_runs(cv_cfg)
     if not cv_runs:
         reporter.info("Computer Vision: aucun modèle configuré dans les runs")

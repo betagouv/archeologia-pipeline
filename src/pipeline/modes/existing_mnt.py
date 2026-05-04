@@ -12,7 +12,7 @@ from ..subprocess_utils import subprocess_kwargs_no_window
 from ..ign.products.crop import copy_products_without_crop, crop_final_products
 from ..ign.products.indices import create_visualization_products
 from ..ign.products.results import copy_final_products_to_results
-from ..ign.products.tile_splitter import IGN_TILE_SIZE_M
+from ..constants import IGN_TILE_SIZE_M
 from ..types import CancelCheckFn, LogFn
 
 

@@ -7,7 +7,7 @@ from typing import Any, Dict, List, Tuple
 
 from ..geo_utils import extract_tif_transform_data
 from ..coords import extract_xy_from_filename, get_raster_bounds, infer_xy_from_file
-from ..ign.products.tile_splitter import IGN_TILE_SIZE_M
+from ..constants import IGN_TILE_SIZE_M
 from ..output_paths import indice_base_dir, indice_tif_dir, indice_jpg_dir
 from ..types import LogFn, CancelCheckFn
 

@@ -39,6 +39,7 @@ from qgis.PyQt.QtWidgets import (
 )
 
 from ..app.progress_reporter import USER_INFO
+from ..app.run_context import build_run_context, validate_run_context
 from ..config.config_manager import ConfigManager
 from .config_widget_adapter import ConfigWidgetAdapter, WidgetBag
 
@@ -977,38 +978,32 @@ class MainDialog(QDialog):
     def _validate_can_run(self):
         """Active le bouton Lancer uniquement si la configuration est complète.
 
-        Vérifie : source, sortie, et au moins un indice coché.
-        Met à jour le tooltip du bouton. Le style visuel des champs est géré
-        par _refresh_path_validations.
+        V4.2 : délègue la validation métier à
+        :func:`app.run_context.validate_run_context` (la même fonction que
+        ``PipelineController.run()`` appelle juste avant de lancer). Évite
+        la duplication des règles "source renseignée + chemin existe +
+        au moins un produit".
+
+        Le style visuel rouge des QLineEdit reste géré par
+        :meth:`_refresh_path_validations` — c'est de la signalétique UI,
+        pas de la validation métier.
         """
-        has_source = bool(self.specific_source_edit.text().strip())
-        has_output = bool(self.output_dir_edit.text().strip())
+        # Synchronise self._config avec les widgets puis construit un
+        # RunContext pour réutiliser exactement les mêmes règles que
+        # PipelineController.run().
+        self._collect_config_from_widgets()
+        ctx = build_run_context(self._config)
+        errors = validate_run_context(ctx)
 
-        data_mode = self.data_mode_combo.currentData() or "ign_laz"
-        if data_mode == "existing_rvt":
-            has_product = True
-        else:
-            mnt_visible = data_mode not in ("existing_mnt", "existing_rvt")
-            has_product = any(
-                cb.isChecked()
-                for key, cb in self._product_cbs.items()
-                if key not in ("MNT", "DENSITE") or mnt_visible
-            )
-
-        can_run = has_source and has_output and has_product
+        can_run = not errors
         self.run_btn.setEnabled(can_run)
 
         if can_run:
             self.run_btn.setToolTip("Lancer le pipeline avec la configuration actuelle")
         else:
-            reasons = []
-            if not has_source:
-                reasons.append("• Renseignez la source de données (étape 2)")
-            if not has_output:
-                reasons.append("• Renseignez le dossier de sortie (étape 3)")
-            if not has_product:
-                reasons.append("• Cochez au moins un indice de visualisation")
-            self.run_btn.setToolTip("Configuration incomplète :\n" + "\n".join(reasons))
+            self.run_btn.setToolTip(
+                "Configuration incomplète :\n" + "\n".join(f"• {e}" for e in errors)
+            )
 
     # ═════════════════════════════════════════════
     # Sauvegarde / Chargement de configuration (export/import JSON utilisateur)

@@ -289,6 +289,28 @@ def validate_run_context(ctx: RunContext) -> List[str]:
     elif ctx.mode:  # mode renseigné mais inconnu
         errors.append(f"Mode d'acquisition inconnu : {ctx.mode!r}")
 
+    # Règle métier transverse : il faut au moins un produit actif, sauf
+    # en mode existing_rvt qui ne calcule rien (lance juste la CV sur
+    # les RVT déjà fournis). En existing_mnt on ne peut pas demander
+    # DENSITE ni MNT (les LAZ ne sont pas là), mais au moins un index
+    # de visualisation doit être coché.
+    if ctx.mode in ("ign_laz", "local_laz", "existing_mnt"):
+        if ctx.mode == "existing_mnt":
+            # MNT et DENSITE n'ont pas de sens (pas de LAZ) — on
+            # n'exige qu'un index de visualisation.
+            visu_active = (
+                ctx.processing.products.M_HS
+                or ctx.processing.products.SVF
+                or ctx.processing.products.SLO
+                or ctx.processing.products.LD
+                or ctx.processing.products.SLRM
+                or ctx.processing.products.VAT
+            )
+            if not visu_active:
+                errors.append("Cochez au moins un indice de visualisation")
+        elif not ctx.processing.products.active():
+            errors.append("Cochez au moins un produit à générer")
+
     return errors
 
 

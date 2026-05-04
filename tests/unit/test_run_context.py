@@ -270,3 +270,51 @@ class TestValidateRunContext:
         f.write_text("\n")
         ctx = self._ctx(files={"data_mode": "ign_laz", "input_file": f})
         assert validate_run_context(ctx) == []
+
+
+class TestValidateProductsRule:
+    """V4.2 : règle "au moins un produit actif" selon le mode."""
+
+    def _ctx(self, mode: str, products: ProductsConfig, tmp_path: Path) -> RunContext:
+        # Crée un input valide pour ne tester QUE la règle produits.
+        f = tmp_path / "x.txt"
+        f.write_text("\n")
+        d = tmp_path / "d"
+        d.mkdir(exist_ok=True)
+        files = FilesConfig(
+            data_mode=mode,
+            output_dir=tmp_path,
+            input_file=f if mode == "ign_laz" else None,
+            local_laz_dir=d if mode == "local_laz" else None,
+            existing_mnt_dir=d if mode == "existing_mnt" else None,
+            existing_rvt_dir=d if mode == "existing_rvt" else None,
+        )
+        return RunContext(
+            mode=mode, output_dir=tmp_path, files=files,
+            processing=ProcessingConfig(products=products),
+            cv=CvConfig(), rvt_params={}, ui_config={},
+        )
+
+    def test_ign_laz_no_product_active_errors(self, tmp_path: Path):
+        ctx = self._ctx("ign_laz", ProductsConfig(MNT=False), tmp_path)
+        errors = validate_run_context(ctx)
+        assert any("produit" in e.lower() for e in errors)
+
+    def test_ign_laz_mnt_only_ok(self, tmp_path: Path):
+        ctx = self._ctx("ign_laz", ProductsConfig(MNT=True), tmp_path)
+        assert validate_run_context(ctx) == []
+
+    def test_existing_mnt_only_visu_required(self, tmp_path: Path):
+        # En existing_mnt, MNT seul ne suffit pas (pas de calcul à faire)
+        ctx = self._ctx("existing_mnt", ProductsConfig(MNT=True), tmp_path)
+        errors = validate_run_context(ctx)
+        assert any("indice" in e.lower() for e in errors)
+
+    def test_existing_mnt_svf_ok(self, tmp_path: Path):
+        ctx = self._ctx("existing_mnt", ProductsConfig(SVF=True), tmp_path)
+        assert validate_run_context(ctx) == []
+
+    def test_existing_rvt_no_product_required(self, tmp_path: Path):
+        # existing_rvt ne calcule rien → pas de règle produit
+        ctx = self._ctx("existing_rvt", ProductsConfig(MNT=False), tmp_path)
+        assert validate_run_context(ctx) == []

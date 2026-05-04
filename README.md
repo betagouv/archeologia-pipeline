@@ -532,7 +532,7 @@ flowchart TD
         R11 --> R14["Dalle suivante"]
         R14 -->|"Reste des dalles"| R5
         R14 -->|"Fin boucle"| R17{"CV activée ?"}
-        R17 -->|"Oui"| R18["_run_post_cv() → _build_global_class_color_map()\nboucle cv_runs → run_existing_rvt() par run"]
+        R17 -->|"Oui"| R18["cv_post_service.run_cv_post_loop() → _build_global_class_color_map()\nboucle cv_runs → run_existing_rvt() par run"]
         R17 -->|"Non"| FIN1["finalize_pipeline()"]
         R18 --> FIN1
     end
@@ -584,39 +584,40 @@ flowchart TD
         F4 --> F5["load_layers(VRT + shapefiles, global_color_map) → QGIS"]
     end
 
-    subgraph CV["Computer Vision (transversal — runner.py)"]
+    subgraph CV["Computer Vision — runner.py (orchestration) + runner_cache / runner_inference / runner_shapefiles"]
         CV0{"selected_classes = [] ?"}
         CV0 -->|"Oui"| CVskip["return — inférence ignorée"]
-        CV0 -->|"Non"| CV1["_prepare_model_workdir() → detections/<model>/jpg/\n+ classes.txt"]
+        CV0 -->|"Non"| CV1["runner_cache.prepare_model_workdir() → detections/<model>/raw_detections/\n+ classes.txt"]
         CV1 --> CV2{"find_external_cv_runner() ?"}
         CV2 -->|"Trouvé"| CV3["run_external_cv_runner(run_shapefile_dedup=False)\nsubprocess Popen — inférence seule (JSON/TXT)"]
         CV3 --> CV3b["World files pour images annotées (geo_utils)"]
-        CV3b --> CV3c["deduplicate_cv_shapefiles_final()"]
-        CV3c --> CV3d["_cleanup_jpg_workdir (si generate_annotated_images=False)"]
-        CV2 -->|"Absent / échec"| CV4["_run_fallback_inference()"]
-        CV4 --> CV5["computer_vision_onnx.py — ONNX image par image (SAHI)"]
-        CV5 --> CV5b["deduplicate_cv_shapefiles_final() (si generate_shapefiles)"]
-        CV5b --> CV5c["_cleanup_jpg_workdir (si generate_annotated_images=False)"]
+        CV3b --> CV3c["runner_shapefiles.deduplicate_cv_shapefiles_final()"]
+        CV2 -->|"Absent / échec"| CV4["runner_inference.run_fallback_inference()"]
+        CV4 --> CV5["computer_vision_onnx.py — ONNX image par image (SAHI)\nProduit List[Detection] typé"]
+        CV5 --> CV5b["runner_shapefiles.deduplicate_cv_shapefiles_final() (si generate_shapefiles)"]
     end
 
-    subgraph Dedup["deduplicate_cv_shapefiles_final() — runner.py"]
-        D1["conversion_shp.create_shapefile_from_detections()"]
+    subgraph Dedup["runner_shapefiles.deduplicate_cv_shapefiles_final()"]
+        D0["ModelProfile.load(weights_path) — args.yaml + sidecar .json en une passe"]
+        D0 --> D1["conversion_shp.create_shapefile_from_detections()"]
         D1 --> D2["postprocessing.postprocess_geo_detections()"]
         D2 --> D2a["1. Validation géométries (shapely make_valid)"]
         D2a --> D2b["2. Fusion intra-classe (buffer 0.5m → unary_union → débuffer)"]
         D2b --> D2c["3. Suppression superpositions inter-classes (par confiance)"]
         D2c --> D3["clustering.py → DBSCAN confidence-weighted (si config args.yaml)"]
         D3 --> D4["Écriture shapefiles par classe (geopandas)\nFiltre selected_classes (None=tout, []=rien, [x,y]=filtre)"]
-        D4 --> D5["_filter_shapefiles_by_min_area() (si min_area_m2 > 0)"]
+        D4 --> D5["_filter_gpkg_by_min_area() (si min_area_m2 > 0)"]
     end
 
     subgraph Shared["Modules utilitaires partagés"]
-        S1["types.py — LogFn, CancelCheckFn, CancelFn, ProgressFn"]
-        S2["subprocess_utils.py — subprocess_kwargs_no_window()"]
-        S3["geo_utils.py — extract_tif_geotransform(), write_world_file(), create_world_file_from_tif()"]
-        S4["coords.py — extract_xy_from_filename(), extract_xy_from_tile_name(), infer_xy_from_file()"]
-        S5["class_utils.py — resolve_model_weights_path(), load_class_names/colors, BASE_COLOR_PALETTE"]
-        S6["runners/helpers.py — log_section(), safe_float(), resolve_rvt_tif_dir()"]
+        S1["pipeline.types — LogFn, CancelFn… + safe_float()"]
+        S2["pipeline.constants — IGN_TILE_SIZE_M"]
+        S3["pipeline.subprocess_utils — subprocess_kwargs_no_window()"]
+        S4["pipeline.geo_utils — extract_tif_geotransform(), write_world_file()"]
+        S5["pipeline.coords — extract_xy_from_filename(), infer_xy_from_file()"]
+        S6["pipeline.cv.types — Detection (frozen dataclass)"]
+        S7["pipeline.cv.model_profile — ModelProfile (source unique args.yaml + sidecar)"]
+        S8["app.structured_logger — log_section() + StructuredLogger"]
     end
 ```
 
@@ -660,12 +661,15 @@ dev/                                # Outillage développeur (exclu du ZIP distr
     └── cv_runner_onnx.spec         #   Spec PyInstaller
 
 tests/
-├── TESTS_MANUELS_QGIS.txt         # Checklist tests manuels dans QGIS
+├── TESTS_MANUELS_QGIS.md          # Checklist tests manuels dans QGIS (markdown)
+├── TESTS_MANUELS_QGIS.txt         # Version texte historique
 ├── unit/                           # Tests unitaires (sans dépendances externes)
 │   ├── test_cancel_token.py
+│   ├── test_detection.py           #   Detection (round-trip in-memory + disk)
 │   ├── test_existing_rvt.py        #   _cleanup_orphans
 │   ├── test_external_runner.py     #   RunnerPayload, find_external_cv_runner
-│   ├── test_helpers.py             #   safe_float, log_section
+│   ├── test_helpers.py             #   safe_float (pipeline.types), log_section (app.structured_logger)
+│   ├── test_model_profile.py       #   ModelProfile.load (args.yaml + sidecar + classes)
 │   ├── test_preflight.py           #   CheckResult, _check_input_path
 │   ├── test_progress_reporter.py
 │   ├── test_registry.py            #   get_runner (instanciation, modes)
@@ -688,12 +692,13 @@ src/
 │   ├── structured_logger.py        # Logs structurés avec sections visuelles
 │   ├── runners/
 │   │   ├── base.py                 # ModeRunner Protocol
-│   │   ├── helpers.py              # log_section(), safe_float(), resolve_rvt_tif_dir()
 │   │   ├── registry.py             # get_runner(mode)
-│   │   ├── ign_local_runner.py     # ign_laz + local_laz (_process_tile, _run_post_cv)
+│   │   ├── input_strategy.py       # IgnDownloadStrategy / LocalLazStrategy (acquisition LAZ + plan progression)
+│   │   ├── ign_local_runner.py     # ign_laz + local_laz (_process_tile + délégation à InputStrategy)
 │   │   ├── existing_mnt_runner.py  # existing_mnt
 │   │   └── existing_rvt_runner.py  # existing_rvt (indices_folder_name="RVT" forcé)
 │   └── services/
+│       ├── cv_post_service.py      # run_cv_post_loop() — boucle CV partagée entre runners
 │       └── finalize_service.py     # finalize_pipeline() — VRT, .qgs consolidé, load_layers
 │
 ├── config/
@@ -708,16 +713,21 @@ src/
 │   ├── output_paths.py             # Chemins de sortie normalisés (indice_base_dir, detection_model_dir…)
 │   ├── preflight.py                # Vérification dépendances et chemins
 │   ├── cv/                         # Computer vision
-│   │   ├── class_utils.py          # Palette couleurs, résolution modèle, utilitaires classes
+│   │   ├── types.py                # Detection (dataclass) + (dé)sérialisation in-memory / disk
+│   │   ├── model_profile.py        # ModelProfile.load() — source unique args.yaml + sidecar .json
+│   │   ├── class_utils.py          # Palette couleurs, utilitaires classes (façade vers model_profile)
 │   │   ├── clustering.py           # DBSCAN spatial (scipy, confidence-weighted)
 │   │   ├── computer_vision_onnx.py # Inférence ONNX (YOLO / RF-DETR / RF-DETR Seg / SegFormer / SMP)
 │   │   ├── conversion_shp.py       # Labels → shapefiles géoréférencés + clustering + filtre selected_classes
-│   │   ├── cv_output.py            # Gestion sorties CV (labels, annotations, légende)
+│   │   ├── cv_output.py            # Gestion sorties CV (labels, annotations, légende) — consomme List[Detection]
 │   │   ├── external_runner.py      # Subprocess runner ONNX externe (inférence seule) + RunnerPayload
-│   │   ├── model_config.py         # resolve_cv_runs(), load_sahi_config / load_clustering_config / load_postprocess_config depuis args.yaml
+│   │   ├── model_config.py         # resolve_cv_runs(), resolve_model_weights_path (façade legacy)
 │   │   ├── postprocessing.py       # Post-processing : validation, fusion intra-classe (optionnelle), suppression superpositions (optionnelle)
 │   │   ├── qgs_project.py          # Génération projet QGIS consolidé (.qgs)
-│   │   ├── runner.py               # run_cv_on_folder (court-circuit si selected_classes=[]), _cleanup_jpg_workdir
+│   │   ├── runner.py               # run_cv_on_folder — orchestration pure (court-circuit si selected_classes=[])
+│   │   ├── runner_cache.py         # get_model_slug, prepare_model_workdir, has_cached_detection, list_candidate_pngs
+│   │   ├── runner_inference.py     # run_fallback_inference (fallback Python ONNX si runner externe absent)
+│   │   ├── runner_shapefiles.py    # deduplicate_cv_shapefiles_final (production GeoPackage + métadonnées modèle)
 │   │   └── sahi_lite.py            # Slicing SAHI léger (numpy-only)
 │   ├── ign/                        # Téléchargement + prétraitement
 │   │   ├── coords_fallback.py      # Fallback extraction coordonnées
@@ -792,14 +802,15 @@ pip install -r dev/requirements/build.txt     # Compilation runner ONNX uniqueme
 ```bash
 pip install -r dev/requirements/test.txt
 
-python run_tests.py                       # Tous les tests (110 tests)
+python run_tests.py                       # Tous les tests (203 tests)
 python run_tests.py unit                  # Tests unitaires uniquement
 python run_tests.py integration           # Tests d'intégration uniquement
-python run_tests.py -k helpers            # Filtrer par nom
+python run_tests.py -k detection          # Filtrer par nom
 ruff check src/                           # Lint
 ```
 
-Les tests manuels dans QGIS sont documentés dans `tests/TESTS_MANUELS_QGIS.txt`.
+Les tests manuels dans QGIS sont documentés dans `tests/TESTS_MANUELS_QGIS.md`
+(une version `.txt` historique reste également disponible).
 
 ### Tâche 2 — Exporter un modèle vers ONNX
 

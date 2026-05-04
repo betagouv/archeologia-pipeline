@@ -44,7 +44,7 @@ class ExistingRvtRunner:
 
         # Collecter tous les RVT cibles uniques depuis les runs
         from ...pipeline.cv.class_utils import resolve_cv_runs
-        from ...app.services.finalize_service import _build_global_class_color_map
+        from ..services.finalize_service import _build_global_class_color_map
         cv_runs = resolve_cv_runs(cv_config)
         active_rvts = list(dict.fromkeys(
             r.get("target_rvt", target_rvt) for r in cv_runs

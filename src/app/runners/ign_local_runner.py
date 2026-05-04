@@ -13,6 +13,7 @@ from ..progress_reporter import ProgressReporter
 from ..run_context import RunContext
 from ..services.finalize_service import finalize_pipeline
 from ..structured_logger import log_section
+from .input_strategy import select_input_strategy
 
 if TYPE_CHECKING:
     from ..structured_logger import StructuredLogger
@@ -210,85 +211,25 @@ class IgnOrLocalRunner:
         
         feedback = create_cancellable_feedback(cancel.is_cancelled)
 
-        download_range = (0, 25)
-        merge_range = (25, 35)
-        products_range = (35, 95)
+        strategy = select_input_strategy(ctx.mode)
 
-        if ctx.mode == "ign_laz":
-            from ...pipeline.ign.downloader import download_ign_dalles
+        result = strategy.acquire(
+            ctx=ctx,
+            reporter=reporter,
+            cancel=cancel,
+            slog=slog,
+            processing=processing,
+        )
+        if result is None:
+            return
 
-            input_file = str((ctx.files_cfg.get("input_file") or "")).strip()
-            if not input_file:
-                reporter.error("Mode IGN sélectionné mais aucun fichier de zone/liste n'est configuré")
-                return
-            input_path = Path(input_file)
-            if not input_path.exists():
-                reporter.error(f"Fichier IGN introuvable: {input_path}")
-                return
-
-            # Détection du type d'entrée : shapefile/geojson → résolution des dalles
-            is_vector = input_path.suffix.lower() in (".shp", ".geojson", ".json", ".gpkg")
-            if is_vector:
-                from ...pipeline.ign.tile_resolver import resolve_tiles_from_polygon
-
-                log_section("RÉSOLUTION DES DALLES IGN", "download", slog=slog, reporter=reporter)
-                reporter.stage("Identification des dalles à télécharger")
-                reporter.progress(download_range[0])
-
-                urls_file = ctx.output_dir / "dalles_urls.txt"
-                n_tiles = resolve_tiles_from_polygon(
-                    polygon_path=input_path,
-                    output_file=urls_file,
-                    log=lambda m: reporter.info(m),
-                    cancel=lambda: cancel.is_cancelled(),
-                )
-                if n_tiles == 0:
-                    reporter.error("Aucune dalle IGN trouvée pour la zone sélectionnée")
-                    return
-                input_path = urls_file
-
-            log_section("TÉLÉCHARGEMENT DES DALLES IGN", "download", slog=slog, reporter=reporter)
-            reporter.stage("Téléchargement des dalles")
-            max_workers = safe_float(processing.get("max_workers", 4), 4)
-            result = download_ign_dalles(
-                input_file=input_path,
-                output_dir=ctx.output_dir,
-                log=lambda m: reporter.info(m),
-                progress=lambda p: reporter.progress(
-                    int(download_range[0] + (download_range[1] - download_range[0]) * (int(p) / 100.0))
-                ),
-                stage=lambda s: reporter.stage(str(s)),
-                cancel=lambda: cancel.is_cancelled(),
-                max_workers=max_workers,
-            )
-        else:
-            from ...pipeline.modes.local_laz import run_local_laz
-
-            local_dir_str = str((ctx.files_cfg.get("local_laz_dir") or "")).strip()
-            if not local_dir_str:
-                reporter.error("Mode local_laz sélectionné mais aucun dossier nuages locaux n'est configuré")
-                return
-
-            local_dir = Path(local_dir_str)
-            log_section("INDEXATION DES NUAGES LOCAUX", "download", slog=slog, reporter=reporter)
-            reporter.stage("Indexation des nuages locaux")
-            reporter.progress(0)
-            result = run_local_laz(
-                local_laz_dir=local_dir,
-                output_dir=ctx.output_dir,
-                log=lambda m: reporter.info(m),
-            )
-
-        from ...pipeline.ign.preprocess import prepare_merged_tiles
+        from pipeline.ign.preprocess import prepare_merged_tiles
 
         tile_overlap = safe_float(processing.get("tile_overlap", 5), 5.0)
 
         log_section("FUSION DES TUILES", "process", slog=slog, reporter=reporter)
         reporter.stage("Fusion (voisins + merge)")
-        if ctx.mode == "ign_laz":
-            reporter.progress(merge_range[0])
-        else:
-            reporter.progress(0)
+        reporter.progress(strategy.merge_progress_start())
 
         max_workers = processing.get("max_workers", 4)
         merged_result = prepare_merged_tiles(
@@ -302,8 +243,9 @@ class IgnOrLocalRunner:
             max_workers=max_workers,
         )
 
-        if ctx.mode == "ign_laz":
-            reporter.progress(merge_range[1])
+        merge_end = strategy.merge_progress_end()
+        if merge_end is not None:
+            reporter.progress(merge_end)
 
         active_products: list = []
 
@@ -330,10 +272,7 @@ class IgnOrLocalRunner:
 
             log_section("TRAITEMENT DES DALLES", "process", slog=slog, reporter=reporter)
             reporter.stage("Traitement des dalles")
-            if ctx.mode == "ign_laz":
-                reporter.progress(products_range[0])
-            else:
-                reporter.progress(0)
+            reporter.progress(strategy.products_progress_start())
 
             total_mnt = len(merged_result.merged_files)
 
@@ -361,12 +300,7 @@ class IgnOrLocalRunner:
                     active_products=active_products,
                 )
 
-                if ctx.mode == "ign_laz":
-                    frac = i / max(1, total_mnt)
-                    pct = int(round(products_range[0] + (products_range[1] - products_range[0]) * frac))
-                else:
-                    pct = int(round(100.0 * i / max(1, total_mnt)))
-                reporter.progress(pct)
+                reporter.progress(strategy.products_progress_for_tile(i, total_mnt))
 
             # Computer Vision globale (post-boucle)
             cv_cfg = ctx.cv_cfg or {}

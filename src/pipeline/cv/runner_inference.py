@@ -7,7 +7,6 @@ disponible, ce module exécute l'inférence directement via
 """
 from __future__ import annotations
 
-import json
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 
@@ -40,12 +39,9 @@ def run_fallback_inference(
     # raw_dir = dossier de sortie JSON/TXT ; par défaut = jpg_dir (rétrocompat)
     _raw_dir = raw_dir if raw_dir is not None else jpg_dir
     from . import computer_vision_onnx as cv_mod
-    from .class_utils import (
-        resolve_model_weights_path,
-        load_class_names_from_model,
-        load_class_colors_from_model,
-    )
     from .cv_output import get_detection_output_path
+    from .model_config import resolve_model_weights_path
+    from .model_profile import ModelProfile
 
     selected_model = cv_config.get("selected_model", "")
     if not selected_model:
@@ -56,17 +52,18 @@ def run_fallback_inference(
     generate_annotated_images = bool(cv_config.get("generate_annotated_images", False))
     generate_shapefiles = bool(cv_config.get("generate_shapefiles", False))
 
-    sahi_config = cv_config.get("sahi", {}) if isinstance(cv_config.get("sahi", {}), dict) else {}
-    slice_height = int(sahi_config.get("slice_height", 640))
-    slice_width = int(sahi_config.get("slice_width", 640))
-    overlap_ratio = float(sahi_config.get("overlap_ratio", 0.2))
-
     weights_path = resolve_model_weights_path(cv_config)
     if weights_path is None or not weights_path.exists():
         raise FileNotFoundError(f"Fichier de poids du modèle non trouvé: {weights_path}")
 
-    class_names = load_class_names_from_model(weights_path)
-    class_colors = load_class_colors_from_model(weights_path)
+    profile = ModelProfile.load(weights_path)
+
+    slice_height = profile.sahi.slice_height
+    slice_width = profile.sahi.slice_width
+    overlap_ratio = profile.sahi.overlap_ratio
+
+    class_names = list(profile.class_names) if profile.class_names else None
+    class_colors = list(profile.class_colors) if profile.class_colors else None
     log(f"Computer Vision: {len(class_names or [])} classes, couleurs={'oui' if class_colors else 'non'}")
     log(f"SAHI: slice={slice_height}×{slice_width}, overlap={overlap_ratio}")
 
@@ -74,20 +71,14 @@ def run_fallback_inference(
     onnx_session = cv_mod._load_onnx_model(str(weights_path))
     log(f"Computer Vision: session ONNX chargée -> {weights_path.name}")
 
-    # Charger les métadonnées du modèle pour afficher les paramètres de segmentation
-    _model_meta: Dict[str, Any] = {}
-    _meta_path = weights_path.with_suffix('.json')
-    if _meta_path.exists():
-        try:
-            _model_meta = json.loads(_meta_path.read_text(encoding="utf-8"))
-        except Exception:
-            pass
-    _is_segmentation = _model_meta.get("model_type") in ("segformer", "smp") or _model_meta.get("task") in ("semantic_segmentation", "instance_segmentation")
-    _use_sahi_meta = _model_meta.get("use_sahi", True)
+    _is_segmentation = profile.model_type in ("segformer", "smp") or profile.task in (
+        "semantic_segmentation",
+        "instance_segmentation",
+    )
+    _use_sahi_meta = profile.metadata.get("use_sahi", True)
     if _is_segmentation:
-        _bg_bias = float(_model_meta.get("bg_bias", 0.0))
-        _model_conf = _model_meta.get("confidence_threshold")
-        _eff_conf = float(_model_conf) if _model_conf is not None else confidence_threshold
+        _bg_bias = float(profile.metadata.get("bg_bias", 0.0))
+        _eff_conf = profile.effective_confidence_threshold(confidence_threshold)
         log(f"Computer Vision: Paramètres segmentation -> confidence_threshold={_eff_conf} bg_bias={_bg_bias} use_sahi={_use_sahi_meta}")
 
     rvt_base = rvt_base_dir or jpg_dir.parent

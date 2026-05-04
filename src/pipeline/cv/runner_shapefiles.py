@@ -36,29 +36,21 @@ def deduplicate_cv_shapefiles_final(
     clustering_configs = None
     postprocess_config = None
     try:
-        from .class_utils import resolve_model_weights_path, load_class_names_from_model, load_class_colors_from_model
-        from .model_config import load_clustering_config_from_model, load_postprocess_config_from_model
+        from .model_config import resolve_model_weights_path
+        from .model_profile import ModelProfile
         if isinstance(cv_config, dict):
             weights_path = resolve_model_weights_path(cv_config)
             if weights_path and weights_path.exists():
-                class_names = load_class_names_from_model(weights_path)
-                class_colors = load_class_colors_from_model(weights_path)
-                # Lire le type de tâche depuis les métadonnées du modèle
-                meta_path = weights_path.with_suffix('.json')
-                if meta_path.exists():
-                    try:
-                        import json as _json
-                        _meta = _json.loads(meta_path.read_text(encoding='utf-8'))
-                        model_task = _meta.get('task')
-                        log(f"Computer Vision: tâche du modèle = {model_task}")
-                    except Exception:
-                        pass
-                # Charger la configuration de clustering
-                clustering_configs = load_clustering_config_from_model(weights_path)
-                if clustering_configs:
+                profile = ModelProfile.load(weights_path)
+                class_names = list(profile.class_names) if profile.class_names else None
+                class_colors = list(profile.class_colors) if profile.class_colors else None
+                model_task = profile.task
+                if model_task is not None:
+                    log(f"Computer Vision: tâche du modèle = {model_task}")
+                if profile.clustering:
+                    clustering_configs = [rule.to_dict() for rule in profile.clustering]
                     log(f"Computer Vision: {len(clustering_configs)} config(s) de clustering chargée(s)")
-                # Charger la configuration de post-traitement géométrique (merge/overlap)
-                postprocess_config = load_postprocess_config_from_model(weights_path)
+                postprocess_config = profile.postprocess.to_dict()
     except Exception as e:
         log(f"Computer Vision: impossible de récupérer les noms de classes depuis le modèle: {e}")
 

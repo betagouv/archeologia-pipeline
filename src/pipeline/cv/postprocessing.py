@@ -13,11 +13,62 @@ from __future__ import annotations
 import json
 import logging
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 from .types import Detection
 
 logger = logging.getLogger(__name__)
+
+
+def buffer_union_debuffer(
+    polys: List[Any],
+    buffer_px: float,
+    join_style: int = 2,
+) -> Optional[List[Any]]:
+    """Pattern de fusion de polygones via buffer/union/debuffer.
+
+    Encapsule l'incantation Shapely partagée par tous les sites de
+    fusion intra-classe : on dilate chaque polygone d'un petit buffer,
+    on prend l'union (les polygones qui se touchaient ou se chevauchaient
+    forment une seule géométrie), on rétrécit du même buffer pour
+    récupérer la taille d'origine.
+
+    Cette fonction expose **uniquement** le noyau géométrique : les
+    politiques métier (filtrage par compactness, limite d'aire,
+    confiance pondérée…) restent dans les wrappers des appelants.
+
+    Args:
+        polys: liste de ``shapely.geometry.Polygon`` (déjà validés).
+        buffer_px: rayon du buffer en pixels (ou en unités du SCR si
+            on travaille en géo). ``join_style=2`` = mitre (défaut
+            historique des deux call-sites).
+
+    Returns:
+        Liste de Polygons résultant de l'union, ou ``None`` si
+        Shapely n'est pas disponible ou que l'union a échoué (les
+        appelants doivent fallback sur leurs polygones d'origine).
+    """
+    try:
+        from shapely.ops import unary_union
+    except ImportError:
+        return None
+    if not polys:
+        return []
+    try:
+        buffered = [p.buffer(buffer_px, join_style=join_style) for p in polys]
+        merged = unary_union(buffered).buffer(-buffer_px, join_style=join_style)
+    except Exception as e:
+        logger.debug(f"buffer_union_debuffer: erreur union: {e}")
+        return None
+    if merged.is_empty:
+        return []
+    if merged.geom_type == "Polygon":
+        return [merged]
+    if merged.geom_type == "MultiPolygon":
+        return list(merged.geoms)
+    if merged.geom_type == "GeometryCollection":
+        return [g for g in merged.geoms if g.geom_type == "Polygon"]
+    return None
 
 
 def _merge_touching_same_class(
@@ -39,7 +90,6 @@ def _merge_touching_same_class(
         Nouvelle liste de tuples (ShapelyPolygon, det_dict).
     """
     try:
-        from shapely.ops import unary_union
         from shapely.validation import make_valid
     except ImportError:
         return indexed
@@ -64,27 +114,12 @@ def _merge_touching_same_class(
         confs = [d.get("confidence", 0.5) for _, d in items]
         areas = [sp.area for sp in polys]
 
-        # Buffer → union → débuffer pour fusionner les polygones qui se touchent
-        try:
-            buffered = [p.buffer(TOUCH_BUFFER_PX, join_style=2) for p in polys]
-            merged = unary_union(buffered).buffer(-TOUCH_BUFFER_PX, join_style=2)
-        except Exception as e:
-            logger.debug(f"Merge touching: erreur union classe {class_id}: {e}")
+        # Noyau partagé : buffer → union → debuffer (V2.3).
+        merged_polys = buffer_union_debuffer(polys, TOUCH_BUFFER_PX)
+        if merged_polys is None:
             result.extend(items)
             continue
-
-        if merged.is_empty:
-            result.extend(items)
-            continue
-
-        # Extraire les polygones résultants
-        if merged.geom_type == "Polygon":
-            merged_polys = [merged]
-        elif merged.geom_type == "MultiPolygon":
-            merged_polys = list(merged.geoms)
-        elif merged.geom_type == "GeometryCollection":
-            merged_polys = [g for g in merged.geoms if g.geom_type == "Polygon"]
-        else:
+        if not merged_polys:
             result.extend(items)
             continue
 

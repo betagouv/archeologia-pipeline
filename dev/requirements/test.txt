@@ -7,3 +7,8 @@ ruff>=0.4
 # QGIS embarque PyYAML, mais les tests hors QGIS en ont aussi besoin pour
 # reproduire les chargements de configuration modèle.
 pyyaml>=6.0
+
+# Géométrie : nécessaire pour tester pipeline.cv.postprocessing.
+# QGIS l'embarque, mais les tests hors QGIS le requièrent. Optionnel
+# côté plugin (les fonctions concernées font import lazy dans except).
+shapely>=2.0

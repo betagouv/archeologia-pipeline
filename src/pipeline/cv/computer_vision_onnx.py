@@ -967,11 +967,15 @@ def _merge_adjacent_polygons(
     """
     try:
         from shapely.geometry import Polygon as ShapelyPolygon
-        from shapely.ops import unary_union
         from shapely.validation import make_valid
     except ImportError:
         logger.warning("shapely non disponible, fusion des polygones ignorée")
         return detections
+
+    # Noyau de fusion partagé (V2.3) — extrait dans postprocessing.py
+    # pour qu'un futur changement (buffer/join_style) profite aux deux
+    # call-sites sans risque de divergence silencieuse.
+    from .postprocessing import buffer_union_debuffer
     
     # Grouper les détections par classe
     by_class = {}
@@ -1021,32 +1025,18 @@ def _merge_adjacent_polygons(
         # Calculer l'aire totale originale pour validation
         total_original_area = sum(original_areas)
         
-        # Fusionner les polygones qui se touchent ou sont très proches
+        # Noyau partagé : buffer → union → debuffer (V2.3).
+        # Préserve la sémantique historique : join_style=2 (mitre),
+        # même rayon de buffer, même chaîne d'extraction des Polygons.
         try:
-            # Appliquer un petit buffer, fusionner, puis réduire
-            buffered_polys = [p.buffer(buffer_px, join_style=2) for p in shapely_polys]  # join_style=2 = mitre
-            merged = unary_union(buffered_polys)
-            
-            # Réduire le buffer pour revenir à la taille originale
-            merged = merged.buffer(-buffer_px, join_style=2)
-            
-            # Extraire les polygones résultants (pas de simplification)
-            if merged.is_empty:
-                # Fallback: garder les originaux
+            polys = buffer_union_debuffer(shapely_polys, buffer_px)
+            if polys is None:
                 merged_detections.extend(class_dets)
                 continue
-            
-            # Gérer MultiPolygon, Polygon, ou GeometryCollection
-            if merged.geom_type == 'MultiPolygon':
-                polys = list(merged.geoms)
-            elif merged.geom_type == 'Polygon':
-                polys = [merged]
-            elif merged.geom_type == 'GeometryCollection':
-                polys = [g for g in merged.geoms if g.geom_type == 'Polygon']
-            else:
+            if not polys:
                 merged_detections.extend(class_dets)
                 continue
-            
+
             # Confiance moyenne pour cette classe
             avg_confidence = sum(confidences) / len(confidences) if confidences else 0.5
             

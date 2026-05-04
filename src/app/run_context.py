@@ -211,19 +211,28 @@ def _build_products_config(products_dict: Dict[str, Any]) -> ProductsConfig:
 
 def _build_processing_config(processing_dict: Dict[str, Any]) -> ProcessingConfig:
     products_dict = processing_dict.get("products") or {}
+
+    # ``dict.get(key, default)`` ne renvoie le défaut QUE si la clé est
+    # absente, pas si elle vaut "". Or last_ui_config peut sérialiser un
+    # filter_expression vidé par l'utilisateur — auquel cas PDAL ne
+    # filtre RIEN et le MNT inclut toute la canopée végétale (DSM au
+    # lieu d'un DTM bare-earth). On applique donc explicitement le
+    # défaut quand la valeur est vide ou blanche.
+    DEFAULT_FILTER = (
+        "Classification = 2 OR Classification = 6 OR Classification = 66 "
+        "OR Classification = 67 OR Classification = 9"
+    )
+    filter_expr = str(processing_dict.get("filter_expression") or "").strip()
+    if not filter_expr:
+        filter_expr = DEFAULT_FILTER
+
     return ProcessingConfig(
         products=_build_products_config(products_dict),
         max_workers=_safe_int(processing_dict.get("max_workers", 4), 4),
         tile_overlap=_safe_float(processing_dict.get("tile_overlap", 5), 5.0),
         mnt_resolution=_safe_float(processing_dict.get("mnt_resolution", 0.5), 0.5),
         density_resolution=_safe_float(processing_dict.get("density_resolution", 1.0), 1.0),
-        filter_expression=str(
-            processing_dict.get(
-                "filter_expression",
-                "Classification = 2 OR Classification = 6 OR Classification = 66 "
-                "OR Classification = 67 OR Classification = 9",
-            )
-        ),
+        filter_expression=filter_expr,
         output_structure=dict(processing_dict.get("output_structure") or {}),
         output_formats=dict(processing_dict.get("output_formats") or {}),
     )

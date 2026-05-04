@@ -161,6 +161,14 @@ class TestApplyToWidgets:
         assert bag.max_workers_spin.value() == 8
         assert bag.filter_expression_edit.text() == "Classification = 2"
 
+    def test_empty_filter_expression_shows_default(self):
+        """Si la config a un filtre vide, l'UI doit afficher le défaut
+        PDAL au lieu de laisser le champ vide (sinon l'utilisateur
+        croit qu'aucun filtre n'est appliqué)."""
+        bag = _make_bag()
+        ConfigWidgetAdapter(bag).apply_to_widgets({"processing": {"filter_expression": ""}})
+        assert "Classification = 2" in bag.filter_expression_edit.text()
+
     def test_products_pushed(self):
         bag = _make_bag()
         ConfigWidgetAdapter(bag).apply_to_widgets({

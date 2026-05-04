@@ -140,6 +140,13 @@ _PRODUCT_DEFAULTS = {
     "VAT": False,
 }
 
+# Filtre PDAL par défaut. Synchronisé avec
+# :func:`app.run_context._build_processing_config`.
+_DEFAULT_FILTER_EXPRESSION = (
+    "Classification = 2 OR Classification = 6 OR Classification = 66 "
+    "OR Classification = 67 OR Classification = 9"
+)
+
 
 # ----------------------------------------------------------------------
 # Adaptateur
@@ -189,7 +196,11 @@ class ConfigWidgetAdapter:
         b.density_resolution_spin.setValue(float(processing.get("density_resolution", 1.0)))
         b.tile_overlap_spin.setValue(int(processing.get("tile_overlap", 20)))
         b.max_workers_spin.setValue(int(processing.get("max_workers", 4)))
-        b.filter_expression_edit.setText(processing.get("filter_expression") or "")
+        # Si le filtre est vide (config legacy ou utilisateur ayant vidé
+        # le champ), on affiche le défaut — sinon le pipeline filtrerait
+        # silencieusement avec ce défaut sans que l'utilisateur le voie.
+        filter_value = (processing.get("filter_expression") or "").strip()
+        b.filter_expression_edit.setText(filter_value or _DEFAULT_FILTER_EXPRESSION)
 
         # Products
         products = processing.get("products") or {}

@@ -94,6 +94,25 @@ class TestBuildRunContext:
         ctx = build_run_context(config)
         assert ctx.output_dir is None
 
+    def test_empty_filter_expression_falls_back_to_default(self):
+        """Une chaîne vide pour ``filter_expression`` doit faire utiliser
+        le défaut PDAL (sinon PDAL ne filtre rien et le MNT inclut la
+        canopée végétale, produisant un DSM au lieu d'un DTM)."""
+        config = {"processing": {"filter_expression": ""}}
+        ctx = build_run_context(config)
+        assert "Classification = 2" in ctx.processing.filter_expression
+
+    def test_whitespace_filter_expression_falls_back_to_default(self):
+        config = {"processing": {"filter_expression": "   "}}
+        ctx = build_run_context(config)
+        assert "Classification = 2" in ctx.processing.filter_expression
+
+    def test_user_filter_expression_is_preserved(self):
+        """Un filtre custom utilisateur ne doit PAS être écrasé."""
+        config = {"processing": {"filter_expression": "Classification = 2"}}
+        ctx = build_run_context(config)
+        assert ctx.processing.filter_expression == "Classification = 2"
+
 
 class TestProductsConfigBehavior:
     def test_active_returns_only_enabled(self):

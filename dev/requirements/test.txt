@@ -2,3 +2,8 @@
 pytest>=7.0
 pytest-cov>=4.0
 ruff>=0.4
+
+# Lecture des args.yaml de modèles CV (model_config.py, model_profile.py)
+# QGIS embarque PyYAML, mais les tests hors QGIS en ont aussi besoin pour
+# reproduire les chargements de configuration modèle.
+pyyaml>=6.0

@@ -4,12 +4,15 @@ import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, Optional
 
+from pipeline.output_paths import resolve_rvt_tif_dir
+from pipeline.types import safe_float
+
 from ..cancel_token import CancelToken
 from ..cancellable_feedback import create_cancellable_feedback
 from ..progress_reporter import ProgressReporter
 from ..run_context import RunContext
 from ..services.finalize_service import finalize_pipeline
-from .helpers import log_section, safe_float, resolve_rvt_tif_dir
+from ..structured_logger import log_section
 
 if TYPE_CHECKING:
     from ..structured_logger import StructuredLogger

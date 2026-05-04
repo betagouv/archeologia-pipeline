@@ -1,9 +1,21 @@
 from __future__ import annotations
 
 import time
-from typing import Callable, Optional
+from typing import TYPE_CHECKING, Callable, Optional
+
+if TYPE_CHECKING:
+    from .progress_reporter import ProgressReporter
 
 LogFunc = Callable[[str], None]
+
+
+_SECTION_ICONS_FALLBACK = {
+    "download": "📥",
+    "process": "🔧",
+    "mnt": "🔧",
+    "cv": "🤖",
+    "info": "ℹ️",
+}
 
 
 class StructuredLogger:
@@ -155,3 +167,27 @@ class StructuredLogger:
 
 def create_structured_logger(log_func: LogFunc) -> StructuredLogger:
     return StructuredLogger(log_func)
+
+
+def log_section(
+    title: str,
+    tag: str,
+    *,
+    slog: Optional[StructuredLogger],
+    reporter: "ProgressReporter",
+) -> None:
+    """Affiche un bandeau de section.
+
+    Si ``slog`` est fourni, délègue à :meth:`StructuredLogger.section` ;
+    sinon, retombe sur un affichage texte via ``reporter.info``. Garder
+    cette fonction *en dehors* de la classe permet de la consommer même
+    quand le contexte d'exécution n'a pas instancié de logger structuré.
+    """
+    if slog:
+        slog.section(title, tag)
+        return
+    icon = _SECTION_ICONS_FALLBACK.get(tag, "▶")
+    reporter.info("")
+    reporter.info("════════════════════════════════════════════════════════════")
+    reporter.info(f"{icon} {title}")
+    reporter.info("════════════════════════════════════════════════════════════")

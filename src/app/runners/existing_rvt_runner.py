@@ -8,7 +8,7 @@ from ..cancel_token import CancelToken
 from ..progress_reporter import ProgressReporter
 from ..run_context import RunContext
 from ..services.finalize_service import finalize_pipeline
-from .helpers import log_section
+from ..structured_logger import log_section
 
 if TYPE_CHECKING:
     from ..structured_logger import StructuredLogger

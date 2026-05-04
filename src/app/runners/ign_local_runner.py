@@ -4,7 +4,6 @@ import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, Optional
 
-from pipeline.output_paths import resolve_rvt_tif_dir
 from pipeline.types import safe_float
 
 from ..cancel_token import CancelToken
@@ -122,65 +121,6 @@ class IgnOrLocalRunner:
 
         if slog:
             slog.tile_end(tile_name, active_products)
-
-    # ------------------------------------------------------------------ #
-    #  Lancement de la Computer Vision globale (post-boucle)              #
-    # ------------------------------------------------------------------ #
-    @staticmethod
-    def _run_post_cv(
-        *,
-        ctx: RunContext,
-        output_structure: Dict[str, Any],
-        rvt_params: Dict[str, Any],
-        reporter: ProgressReporter,
-        cancel: CancelToken,
-        slog: Optional["StructuredLogger"],
-    ) -> None:
-        from ...pipeline.modes.existing_rvt import run_existing_rvt
-        from ...pipeline.cv.class_utils import resolve_cv_runs
-        from ...app.services.finalize_service import _build_global_class_color_map
-
-        cv_cfg = ctx.cv_cfg or {}
-        cv_runs = resolve_cv_runs(cv_cfg)
-        if not cv_runs:
-            reporter.info("Computer Vision: aucun modèle configuré dans les runs")
-            return
-
-        global_color_map: dict = {}
-        try:
-            global_color_map = _build_global_class_color_map(cv_runs)
-            reporter.info(f"Computer Vision: mapping couleurs global = {global_color_map}")
-        except Exception as _e:
-            reporter.info(f"Computer Vision: impossible de construire le mapping couleurs: {_e}")
-
-        log_section("COMPUTER VISION", "cv", slog=slog, reporter=reporter)
-        reporter.stage("Computer Vision")
-        reporter.progress(90)
-
-        for run_idx, run_cfg in enumerate(cv_runs, start=1):
-            if cancel.is_cancelled():
-                break
-
-            run_model = run_cfg.get("selected_model", "?")
-            run_rvt = run_cfg.get("target_rvt", "LD")
-            reporter.info(f"Computer Vision: run {run_idx}/{len(cv_runs)} — modèle={run_model}, RVT={run_rvt}")
-
-            generated_rvt_tif_dir = resolve_rvt_tif_dir(ctx.output_dir, run_rvt, output_structure, rvt_params)
-
-            if not generated_rvt_tif_dir.exists() or not generated_rvt_tif_dir.is_dir():
-                reporter.error(f"Computer Vision: dossier RVT/TIF non trouvé pour {run_rvt}: {generated_rvt_tif_dir}")
-                continue
-
-            run_existing_rvt(
-                existing_rvt_dir=generated_rvt_tif_dir,
-                output_dir=ctx.output_dir,
-                cv_config=run_cfg,
-                output_structure=output_structure,
-                log=lambda m: reporter.info(m),
-                cancel_check=cancel.is_cancelled,
-                rvt_params=rvt_params,
-                global_color_map=global_color_map,
-            )
 
     # ------------------------------------------------------------------ #
     #  Point d'entrée principal                                           #
@@ -306,14 +246,16 @@ class IgnOrLocalRunner:
             cv_cfg = ctx.cv_cfg or {}
             cv_enabled = bool(cv_cfg.get("enabled", False))
             if cv_enabled and not cancel.is_cancelled():
+                from ..services.cv_post_service import run_cv_post_loop
                 try:
-                    self._run_post_cv(
+                    run_cv_post_loop(
                         ctx=ctx,
                         output_structure=output_structure,
                         rvt_params=rvt_params,
                         reporter=reporter,
                         cancel=cancel,
                         slog=slog,
+                        base_progress=90,
                     )
                 except Exception as e:
                     reporter.error(f"Erreur Computer Vision: {e}")

@@ -1,5 +1,6 @@
 """MainDialog avec Mode Simple / Expert, connecté au pipeline."""
 
+import copy
 import json
 import logging
 import sys
@@ -8,7 +9,7 @@ from pathlib import Path
 from typing import Optional
 
 from qgis.PyQt.QtCore import Qt, QObject, pyqtSignal
-from qgis.PyQt.QtGui import QIcon
+from qgis.PyQt.QtGui import QIcon, QTextCursor
 from qgis.PyQt.QtWidgets import (
     QAbstractSpinBox,
     QCheckBox,
@@ -38,6 +39,7 @@ from qgis.PyQt.QtWidgets import (
     QSizePolicy,
 )
 
+from ..app.plugin_metadata import get_plugin_version
 from ..app.progress_reporter import USER_INFO
 from ..app.run_context import build_run_context, validate_run_context
 from ..config.config_manager import ConfigManager
@@ -54,6 +56,11 @@ from .cv_runs_table import (
 
 class _QtLogEmitter(QObject):
     message = pyqtSignal(str)
+    # Ligne "transiente" : (group, formatted_msg). La zone log réécrit la
+    # dernière ligne portant le même ``group`` au lieu d'en ajouter une
+    # nouvelle. Sert aux sous-progressions (``Dalle 1/N``, ``Image i/n``)
+    # qui sinon empilent N lignes alors qu'une seule "vivante" suffit.
+    message_transient = pyqtSignal(str, str)
     progress = pyqtSignal(int)
     stage = pyqtSignal(str)
     run_enabled = pyqtSignal(bool)
@@ -81,7 +88,15 @@ class QtLogHandler(logging.Handler):
             msg = self.format(record)
         except Exception:
             msg = record.getMessage()
-        self._emitter.message.emit(msg)
+        # Records émis via ``reporter.user_info_transient(msg, group)``
+        # portent l'attribut ``transient_group`` (cf. QtProgressReporter).
+        # On les route vers le signal dédié pour que la zone log Qt
+        # remplace la dernière ligne du même groupe au lieu d'empiler.
+        transient_group = getattr(record, "transient_group", None)
+        if transient_group:
+            self._emitter.message_transient.emit(str(transient_group), msg)
+        else:
+            self._emitter.message.emit(msg)
 
 
 # ──────────────────────────────────────────────
@@ -134,11 +149,17 @@ PRODUCTS = [
 class MainDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("Archéolog'IA")
+        self.setWindowTitle(f"Archéolog'IA — v{get_plugin_version()}")
         self.setWindowFlags(self.windowFlags() | Qt.WindowType.WindowMinimizeButtonHint)
 
         # ── Infrastructure ──
         self._loading = False
+        # Drapeau positionné pendant l'exécution du pipeline ; bloque
+        # l'autosave (cf. _on_any_changed et handlers _on_*) pour éviter
+        # qu'un signal Qt incident écrase last_ui_config.json avec un
+        # état transitoire pendant que le worker tourne dans un autre
+        # thread.
+        self._pipeline_running = False
         self._plugin_root = Path(__file__).resolve().parents[2]
         self._config_manager = ConfigManager(self._plugin_root)
         self._config = self._config_manager.load_last_ui_config()
@@ -159,10 +180,16 @@ class MainDialog(QDialog):
 
         self._log_emitter = _QtLogEmitter()
         self._log_emitter.message.connect(self._append_log)
+        self._log_emitter.message_transient.connect(self._update_transient_log)
         self._log_emitter.progress.connect(self._set_progress)
         self._log_emitter.stage.connect(self._set_stage)
         self._log_emitter.run_enabled.connect(self._set_run_enabled)
         self._log_emitter.load_layers.connect(self._load_layers_to_project)
+        # État de la "ligne transiente" courante : tant qu'une autre ligne
+        # narrative non-transiente n'a pas été insérée, les appels
+        # successifs au même ``group`` réécrivent la même ligne.
+        self._last_transient_group: Optional[str] = None
+        self._last_transient_block: Optional[int] = None
         self._qt_log_handler = QtLogHandler(self._log_emitter)
         self._qt_log_handler.setFormatter(logging.Formatter("%(asctime)s - %(levelname)s - %(message)s"))
         if not any(isinstance(h, QtLogHandler) for h in self._logger.handlers):
@@ -700,7 +727,7 @@ class MainDialog(QDialog):
         self.det_runs_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeToContents)
         self.det_runs_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeToContents)
         self.det_runs_table.horizontalHeader().setSectionResizeMode(3, QHeaderView.Fixed)
-        self.det_runs_table.setColumnWidth(3, 60)
+        self.det_runs_table.setColumnWidth(3, 68)
         self.det_runs_table.setMaximumHeight(180)
         self.det_runs_table.setMinimumHeight(80)
         self.det_runs_table.verticalHeader().setVisible(False)
@@ -864,7 +891,7 @@ class MainDialog(QDialog):
             }
             QPushButton:hover { background: #666; }
         """)
-        clear_btn.clicked.connect(lambda: self.logs_text.clear())
+        clear_btn.clicked.connect(self._clear_logs)
         header_layout.addWidget(clear_btn)
 
         logs_vlayout.addWidget(header)
@@ -891,7 +918,7 @@ class MainDialog(QDialog):
         logs_container.setMinimumHeight(80)
         self._splitter.setStretchFactor(0, 0)  # config : taille naturelle
         self._splitter.setStretchFactor(1, 1)  # logs : prend l'espace restant
-        self._splitter.setSizes([400, 200])     # taille initiale : config=600px, logs=200px
+        self._splitter.setSizes([400, 200])     # taille initiale : config=400px, logs=200px
 
     # ═════════════════════════════════════════════
     # Boutons d'action en bas
@@ -1003,6 +1030,18 @@ class MainDialog(QDialog):
         # création de l'adaptateur, fera la vraie validation.
         if not hasattr(self, "_config_adapter"):
             self.run_btn.setEnabled(False)
+            return
+
+        # Pendant la phase de chargement des widgets, ``apply_to_widgets``
+        # peuple les champs simples (output_dir, …) AVANT le tableau des
+        # runs CV. Les signaux ``textChanged`` / ``currentIndexChanged``
+        # qui déclenchent ``_validate_can_run`` se propagent donc à un
+        # moment où la table est encore vide mais où ``self._config``
+        # contient déjà les runs persistés — ce qui faisait crier le
+        # filet de sécurité de ``_collect_config_from_widgets``. La
+        # validation utile (fin de ``__init__``) est appelée à la main
+        # après ``_load_into_widgets``, avec ``_loading == False``.
+        if getattr(self, "_loading", False):
             return
 
         # Synchronise self._config avec les widgets puis construit un
@@ -1207,7 +1246,7 @@ class MainDialog(QDialog):
                 w.blockSignals(False)
             self._loading = False
 
-    def _collect_config_from_widgets(self) -> None:
+    def _collect_config_from_widgets(self, *, intentional_empty_runs: bool = False) -> None:
         """Synchronise ``self._config`` depuis l'état actuel des widgets.
 
         Délégation : l'adaptateur (V4.1) gère tous les champs simples
@@ -1215,6 +1254,13 @@ class MainDialog(QDialog):
         dialog conserve uniquement la collecte des runs CV et des
         classes par modèle, qui dépendent de widgets dynamiques (table,
         list widgets) avec callbacks spécifiques.
+
+        Args:
+            intentional_empty_runs: Si ``True``, ne pas émettre l'avertissement
+                "cv.runs vidé alors que la persistance contenait des run(s)"
+                — utilisé par les call sites qui viennent explicitement de
+                vider la table (ex. ``_on_row_delete_clicked`` quand la
+                dernière ligne est supprimée).
         """
         # Champs simples : tout ce qui ne nécessite pas de callbacks
         # dialog-specific.
@@ -1239,6 +1285,23 @@ class MainDialog(QDialog):
                 if model_label in classes_by_model:
                     run["selected_classes"] = list(classes_by_model[model_label])
                 runs.append(run)
+        # Filet de sécurité : si la table est vide alors que la persistance
+        # contenait des runs, c'est probablement un appel dans un état
+        # widget transitoire (refresh, race) — on log pour identifier le
+        # call site (la stack apparaît avec stack_info=True).
+        prev_runs = cv.get("runs") or []
+        if (
+            prev_runs
+            and not runs
+            and self.det_runs_table.rowCount() == 0
+            and not intentional_empty_runs
+        ):
+            self._logger.warning(
+                "_collect_config_from_widgets: cv.runs vidé (table à 0 lignes) "
+                "alors que la persistance contenait %d run(s). État transitoire ?",
+                len(prev_runs),
+                stack_info=True,
+            )
         cv["runs"] = runs
 
         # Compat: garder selected_model/target_rvt du premier run pour les
@@ -1251,20 +1314,12 @@ class MainDialog(QDialog):
             cv["target_rvt"] = "LD"
         cv["models_dir"] = str(self._plugin_root / "data" / "models")
 
-    def _save_from_widgets(self) -> None:
-        self._collect_config_from_widgets()
+    def _save_from_widgets(self, *, intentional_empty_runs: bool = False) -> None:
+        self._collect_config_from_widgets(intentional_empty_runs=intentional_empty_runs)
         self._config_manager.save_last_ui_config(self._config)
 
     def _sync_config_from_widgets(self) -> None:
         self._collect_config_from_widgets()
-
-    def _save_specific_source_only(self) -> None:
-        mode = self.data_mode_combo.currentData() or self._current_mode or "ign_laz"
-        key, _, _ = self._mode_mapping(mode)
-        app = self._config.setdefault("app", {})
-        files = app.setdefault("files", {})
-        files[key] = self.specific_source_edit.text().strip()
-        self._config_manager.save_last_ui_config(self._config)
 
     # ═════════════════════════════════════════════
     # Autosave (chaque changement widget → last_ui_config.json)
@@ -1384,25 +1439,25 @@ class MainDialog(QDialog):
         ]
 
     def _on_any_changed(self) -> None:
-        if self._loading:
+        if self._loading or self._pipeline_running:
             return
         self._refresh_path_validations()
         self._save_from_widgets()
 
     def _on_specific_source_changed(self) -> None:
-        if self._loading:
+        if self._loading or self._pipeline_running:
             return
-        self._save_specific_source_only()
         self._refresh_path_validations()
+        self._save_from_widgets()
 
     def _on_rvt_products_changed(self) -> None:
-        if self._loading:
+        if self._loading or self._pipeline_running:
             return
         self._update_available_rvt_targets()
         self._save_from_widgets()
 
     def _on_det_enabled_changed(self) -> None:
-        if self._loading:
+        if self._loading or self._pipeline_running:
             return
         self._apply_detection_state()
         self._save_from_widgets()
@@ -1413,7 +1468,6 @@ class MainDialog(QDialog):
         self._refresh_model_classes()
 
     def closeEvent(self, event):
-        self._save_specific_source_only()
         self._save_from_widgets()
         super().closeEvent(event)
 
@@ -1487,19 +1541,25 @@ class MainDialog(QDialog):
         return "input_file", "Fichier dalles IGN (liste URLs):", True
 
     def _on_data_mode_changed_internal(self) -> None:
-        if self._loading:
+        if self._loading or self._pipeline_running:
             return
 
-        # Sauvegarder la source du mode précédent
+        # Préserver la valeur saisie pour le mode PRÉCÉDENT avant que
+        # _apply_data_mode_state n'écrase le widget avec la valeur du
+        # nouveau mode. C'est la seule subtilité d'un changement de
+        # mode : l'adaptateur (via collect_into) ne connaît que le
+        # mode courant du combo, qui vient déjà de changer quand ce
+        # handler est appelé.
         prev_mode = self._current_mode or "ign_laz"
         prev_key, _, _ = self._mode_mapping(str(prev_mode))
-        app = self._config.setdefault("app", {})
-        files = app.setdefault("files", {})
+        files = self._config.setdefault("app", {}).setdefault("files", {})
         files[prev_key] = self.specific_source_edit.text().strip()
-        self._config_manager.save_last_ui_config(self._config)
 
         self._apply_data_mode_state()
         self._refresh_path_validations()
+        # _save_from_widgets collecte l'état complet (y compris la
+        # nouvelle valeur de specific_source_edit, désormais chargée
+        # par _apply_data_mode_state) et persiste en un seul appel.
         self._save_from_widgets()
 
     def _apply_data_mode_state(self) -> None:
@@ -1779,7 +1839,10 @@ class MainDialog(QDialog):
             self.det_runs_table.blockSignals(False)
         self._refresh_model_classes()
         if not self._loading:
-            self._save_from_widgets()
+            # new_count == 0 → l'utilisateur a supprimé la dernière ligne,
+            # l'état vide est intentionnel (ne pas warner sur le filet de
+            # sécurité dans _collect_config_from_widgets).
+            self._save_from_widgets(intentional_empty_runs=(new_count == 0))
 
     def _on_row_info_clicked(self) -> None:
         row = self._find_row_for_sender()
@@ -2362,7 +2425,57 @@ class MainDialog(QDialog):
     # ═════════════════════════════════════════════
 
     def _append_log(self, msg: str) -> None:
+        # Toute ligne non-transiente clôt le groupe transient en cours :
+        # le prochain appel ``_update_transient_log`` ouvrira une nouvelle
+        # ligne au lieu de réécrire celle qui est désormais "historique".
+        self._last_transient_group = None
+        self._last_transient_block = None
         self.logs_text.appendPlainText(msg)
+        sb = self.logs_text.verticalScrollBar()
+        sb.setValue(sb.maximum())
+
+    def _clear_logs(self) -> None:
+        self.logs_text.clear()
+        self._last_transient_group = None
+        self._last_transient_block = None
+
+    def _update_transient_log(self, group: str, msg: str) -> None:
+        """Réécrit la ligne courante du groupe ``group`` ou en ajoute une.
+
+        Tant que ``_append_log`` n'est pas appelé entre-temps, les appels
+        successifs au même ``group`` remplacent la même ligne dans le
+        ``QPlainTextEdit`` — ce qui transforme :
+
+            Dalle 1/2 : ...
+            Dalle 2/2 : ...
+
+        en une ligne unique qui change de compteur sous les yeux de
+        l'utilisateur. Le fichier ``.txt`` reçoit toutes les lignes
+        séparément (le filtre ne s'applique qu'à la zone Qt).
+        """
+        doc = self.logs_text.document()
+        same_group = (
+            self._last_transient_group == group
+            and self._last_transient_block is not None
+        )
+        if same_group:
+            block = doc.findBlockByNumber(self._last_transient_block)
+            if block.isValid():
+                cursor = QTextCursor(block)
+                cursor.movePosition(QTextCursor.MoveOperation.StartOfBlock)
+                cursor.movePosition(
+                    QTextCursor.MoveOperation.EndOfBlock,
+                    QTextCursor.MoveMode.KeepAnchor,
+                )
+                cursor.insertText(msg)
+                sb = self.logs_text.verticalScrollBar()
+                sb.setValue(sb.maximum())
+                return
+            # Bloc invalidé (ex. "Effacer" entre-temps) → on retombe sur
+            # l'append.
+        self.logs_text.appendPlainText(msg)
+        self._last_transient_group = group
+        self._last_transient_block = doc.blockCount() - 1
         sb = self.logs_text.verticalScrollBar()
         sb.setValue(sb.maximum())
 
@@ -2380,6 +2493,8 @@ class MainDialog(QDialog):
         self.load_config_btn.setEnabled(bool(enabled))
         self._config_scroll.widget().setEnabled(bool(enabled))
         if enabled:
+            # Run terminé : ré-autorise l'autosave (cf. _on_run_clicked).
+            self._pipeline_running = False
             self._cancel_event.clear()
             self.stage_label.setText("")
             self.progress_bar.setValue(0)
@@ -2394,10 +2509,16 @@ class MainDialog(QDialog):
 
         self._sync_config_from_widgets()
 
-        cv_cfg = self._config.setdefault("computer_vision", {})
+        # Travailler sur une copie locale : les enrichissements run-spécifiques
+        # (selected_classes injectés par modèle) ne doivent pas polluer
+        # self._config (qui doit refléter strictement l'état des widgets,
+        # tel que persisté dans last_ui_config.json).
+        run_config = copy.deepcopy(self._config)
+
+        cv_cfg = run_config.setdefault("computer_vision", {})
+        path_to_label: dict = {}
         if cv_cfg.get("enabled", False):
             classes_by_model = self._get_selected_classes()
-            path_to_label: dict = {}
             for row in range(self.det_runs_table.rowCount()):
                 combo = self.det_runs_table.cellWidget(row, 0)
                 if isinstance(combo, QComboBox):
@@ -2445,8 +2566,15 @@ class MainDialog(QDialog):
         if reply != QMessageBox.StandardButton.Yes:
             return
 
-        self._config_manager.save_last_ui_config(self._config)
+        # Persiste la config enrichie (avec selected_classes) — c'est elle
+        # qui restaurera les coches au prochain démarrage via _refresh_model_classes.
+        self._config_manager.save_last_ui_config(run_config)
         self._cancel_event.clear()
+        # Bloque l'autosave pendant l'exécution : le worker tourne dans un
+        # thread séparé du main Qt, qui peut continuer à recevoir des
+        # signaux. Sans ce flag, _save_from_widgets pourrait écraser
+        # last_ui_config.json avec un état transitoire pendant le run.
+        self._pipeline_running = True
         self._set_run_enabled(False)
         self._logger.log(USER_INFO, "Lancement du pipeline…")
 
@@ -2458,7 +2586,7 @@ class MainDialog(QDialog):
                 from ..app.run_context import build_run_context
 
                 reporter = QtProgressReporter(self._logger, self._log_emitter)
-                ctx = build_run_context(self._config)
+                ctx = build_run_context(run_config)
                 with file_logging(ctx.output_dir, reporter):
                     PipelineController().run(ctx=ctx, reporter=reporter, cancel=CancelToken(self._cancel_event))
             except Exception:
@@ -2479,7 +2607,7 @@ class MainDialog(QDialog):
 
     def _load_layers_to_project(self, vrt_paths: list, shapefile_paths: list, class_colors: list = None) -> None:
         try:
-            from qgis.core import QgsProject, QgsRasterLayer, QgsVectorLayer, QgsRectangle
+            from qgis.core import QgsProject, QgsRasterLayer, QgsVectorLayer, QgsRectangle, QgsCoordinateTransform
             from ..pipeline.cv.class_utils import BASE_COLOR_PALETTE, get_color_for_confidence
 
             project = QgsProject.instance()
@@ -2497,28 +2625,23 @@ class MainDialog(QDialog):
                 if not vrt_path:
                     continue
                 vrt_path_str = str(vrt_path)
-                parts = vrt_path_str.replace("\\", "/").split("/")
-                layer_name = "index"
-                for i, part in enumerate(parts):
-                    if part == "tif" and i > 0:
-                        layer_name = parts[i - 1]
-                        break
-                    elif part == "MNT":
-                        layer_name = "MNT"
-                        break
+                _vp = Path(vrt_path_str)
+                rvt_type = _vp.parent.parent.name if _vp.parent.name == "tif" else _vp.parent.name
+                layer_name = f"index_{rvt_type}" if rvt_type else "index"
 
                 existing_layers = project.mapLayersByName(layer_name)
                 already_loaded = False
                 for existing in existing_layers:
                     if existing.source() == vrt_path_str:
                         already_loaded = True
+                        loaded_layers.append(existing)
                         if combined_extent.isNull():
                             combined_extent = existing.extent()
                         else:
                             combined_extent.combineExtentWith(existing.extent())
                         break
                 if already_loaded:
-                    self._logger.log(USER_INFO, f"Couche raster déjà présente: {layer_name}")
+                    self._logger.info(f"Couche raster déjà présente: {layer_name}")
                     continue
 
                 layer = QgsRasterLayer(vrt_path_str, layer_name, "gdal")
@@ -2530,7 +2653,7 @@ class MainDialog(QDialog):
                     else:
                         combined_extent.combineExtentWith(layer.extent())
                     loaded_count += 1
-                    self._logger.log(USER_INFO, f"Couche raster chargée: {layer_name}")
+                    self._logger.info(f"Couche raster chargée: {layer_name}")
                 else:
                     self._logger.warning(f"Impossible de charger le VRT: {vrt_path_str}")
 
@@ -2579,13 +2702,14 @@ class MainDialog(QDialog):
                 for existing in existing_layers:
                     if existing.source() == ogr_source:
                         already_loaded = True
+                        loaded_layers.append(existing)
                         if combined_extent.isNull():
                             combined_extent = existing.extent()
                         else:
                             combined_extent.combineExtentWith(existing.extent())
                         break
                 if already_loaded:
-                    self._logger.log(USER_INFO, f"Couche vecteur déjà présente: {layer_name}")
+                    self._logger.info(f"Couche vecteur déjà présente: {layer_name}")
                     continue
 
                 layer = QgsVectorLayer(ogr_source, layer_name, "ogr")
@@ -2603,22 +2727,80 @@ class MainDialog(QDialog):
                         combined_extent.combineExtentWith(layer.extent())
                     loaded_count += 1
                     base_color = BASE_COLOR_PALETTE[color_idx % len(BASE_COLOR_PALETTE)]
-                    self._logger.log(USER_INFO, f"Couche vecteur chargée: {layer_name} (classe={class_name}, couleur={color_idx} RGB{base_color})")
+                    self._logger.info(f"Couche vecteur chargée: {layer_name} (classe={class_name}, couleur={color_idx} RGB{base_color})")
                 else:
                     self._logger.warning(f"Impossible de charger la couche: {ogr_source}")
 
             if loaded_count > 0:
-                self._logger.log(USER_INFO, f"{loaded_count} couche(s) ajoutée(s) au projet QGIS")
-                if not combined_extent.isNull():
-                    try:
-                        from qgis.utils import iface
-                        if iface and iface.mapCanvas():
-                            combined_extent.scale(1.05)
-                            iface.mapCanvas().setExtent(combined_extent)
-                            iface.mapCanvas().refresh()
-                            self._logger.log(USER_INFO, "Zoom sur l'étendue des résultats")
-                    except Exception as zoom_err:
-                        self._logger.warning(f"Impossible de zoomer: {zoom_err}")
+                # Compteur unique (remplace les N lignes "Couche … chargée"
+                # désormais émises en INFO et donc fichier-only).
+                from ..app.user_narrator import _human_count
+                self._logger.log(
+                    USER_INFO,
+                    f"📂 {_human_count(loaded_count, 'couche ajoutée', 'couches ajoutées')} au projet QGIS",
+                )
+
+            if loaded_layers:
+                try:
+                    from qgis.utils import iface
+                    from qgis.PyQt.QtCore import QTimer
+                    if iface and iface.mapCanvas():
+                        # Le zoom doit être déféré : appelé dans le même tour de
+                        # boucle Qt que addMapLayer, le canvas n'a pas encore
+                        # synchronisé son CRS de destination ni terminé son
+                        # bridge avec le layer tree, et setExtent reste sans
+                        # effet visible. Le clic droit "Zoomer sur la couche"
+                        # fonctionne manuellement parce qu'il survient bien
+                        # après. QTimer.singleShot(0) reporte au prochain tour
+                        # de boucle, ce qui suffit en pratique.
+                        layers_for_zoom = list(loaded_layers)
+
+                        def _do_zoom():
+                            try:
+                                canvas = iface.mapCanvas()
+                                canvas_crs = canvas.mapSettings().destinationCrs()
+                                combined = QgsRectangle()
+                                combined.setMinimal()
+                                # Transformation par-couche avant combinaison :
+                                # même algorithme que QgsLayerTreeViewDefault
+                                # Actions::zoomToLayers (le clic droit natif).
+                                for lay in layers_for_zoom:
+                                    ext = lay.extent()
+                                    if ext.isNull() or ext.isEmpty():
+                                        continue
+                                    l_crs = lay.crs()
+                                    if l_crs.isValid() and canvas_crs.isValid() and l_crs != canvas_crs:
+                                        try:
+                                            xf = QgsCoordinateTransform(l_crs, canvas_crs, project)
+                                            ext = xf.transformBoundingBox(ext)
+                                        except Exception:
+                                            continue
+                                    if not (ext.isNull() or ext.isEmpty()):
+                                        combined.combineExtentWith(ext)
+                                self._logger.info(
+                                    f"Zoom debug: canvas_crs={canvas_crs.authid()} "
+                                    f"combined={combined.toString(2)} layers={len(layers_for_zoom)}"
+                                )
+                                if not (combined.isNull() or combined.isEmpty()):
+                                    combined.scale(1.05)
+                                    canvas.setExtent(combined)
+                                    canvas.refresh()
+                                    self._logger.log(USER_INFO, "Zoom sur l'étendue des résultats")
+                                    return
+                                # Fallback : équivalent exact du clic droit
+                                # "Zoomer sur la couche" — chemin de code natif
+                                # QGIS, robuste aux états transitoires.
+                                iface.setActiveLayer(layers_for_zoom[0])
+                                iface.zoomToActiveLayer()
+                                self._logger.log(USER_INFO, "Zoom sur l'étendue des résultats")
+                            except Exception as ze:
+                                self._logger.warning(f"Impossible de zoomer: {ze}")
+
+                        QTimer.singleShot(0, _do_zoom)
+                    else:
+                        self._logger.info("iface indisponible — zoom non effectué")
+                except Exception as zoom_err:
+                    self._logger.warning(f"Impossible de programmer le zoom: {zoom_err}")
 
         except Exception as e:
             self._logger.error(f"Erreur lors du chargement des couches: {e}")

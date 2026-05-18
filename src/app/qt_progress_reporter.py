@@ -49,6 +49,18 @@ class QtProgressReporter:
         # mais avec un préfixe visuel pour différencier.
         self._logger.log(USER_INFO, msg)
 
+    def user_info_transient(self, msg: str, group: str) -> None:
+        """Émet à USER_INFO en marquant le record comme "transient".
+
+        L'attribut ``transient_group`` est lu par :class:`QtLogHandler`
+        qui le route vers un signal Qt distinct ; côté zone log Qt, la
+        ligne précédente du même ``group`` est remplacée plutôt que
+        d'ajouter une nouvelle ligne. Le ``FileHandler`` du pipeline
+        ignore cet attribut et écrit la ligne normalement dans le
+        ``.txt`` — toutes les sous-étapes restent tracées.
+        """
+        self._logger.log(USER_INFO, msg, extra={"transient_group": str(group)})
+
     # ------------------------------------------------------------------
     # Signaux UI directs (barre de progression, étape courante)
     # ------------------------------------------------------------------

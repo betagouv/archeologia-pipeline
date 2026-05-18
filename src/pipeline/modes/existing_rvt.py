@@ -3,11 +3,12 @@ from __future__ import annotations
 import shutil
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from ..geo_utils import extract_tif_transform_data
 from ..coords import extract_xy_from_filename, get_raster_bounds, infer_xy_from_file
 from ..constants import IGN_TILE_SIZE_M
+from ..cv.external_runner import ImageProgressFn
 from ..output_paths import indice_base_dir, indice_tif_dir, indice_jpg_dir
 from ..types import LogFn, CancelCheckFn
 
@@ -118,6 +119,7 @@ def run_existing_rvt(
     rvt_params: Dict[str, Any] | None = None,
     global_color_map: Dict[str, Any] | None = None,
     indices_folder_name: str | None = None,
+    image_progress: Optional[ImageProgressFn] = None,
 ) -> ExistingRvtResult:
     if not existing_rvt_dir.exists() or not existing_rvt_dir.is_dir():
         raise FileNotFoundError(f"Dossier RVT inexistant ou invalide: {existing_rvt_dir}")
@@ -232,6 +234,7 @@ def run_existing_rvt(
             global_color_map=global_color_map,
             log=log,
             cancel_check=cancel_check,
+            image_progress=image_progress,
         )
 
     return ExistingRvtResult(total_images=len(jpg_files))

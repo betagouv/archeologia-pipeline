@@ -14,10 +14,23 @@ pipeline, et a donc une logique différente.
 """
 from __future__ import annotations
 
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, Optional
 
 from ..structured_logger import log_section
 from ..user_narrator import create_user_narrator
+
+
+def _model_display_name(selected_model: str) -> str:
+    """Nom court d'un modèle à partir de la valeur ``selected_model``.
+
+    Accepte aussi bien un nom de dossier (``mon_modele``) qu'un chemin
+    complet vers ``best.onnx`` (``…/models/mon_modele/weights/best.onnx``).
+    """
+    p = Path(selected_model)
+    if p.suffix.lower() == ".onnx" and p.parent.name == "weights":
+        return p.parent.parent.name or selected_model
+    return selected_model
 
 if TYPE_CHECKING:
     from ..cancel_token import CancelToken
@@ -85,11 +98,12 @@ def run_cv_post_loop(
 
         run_model = run_cfg.get("selected_model", "?")
         run_rvt = run_cfg.get("target_rvt", "LD")
+        model_display = _model_display_name(run_model)
         reporter.info(
             f"Computer Vision: run {run_idx}/{len(cv_runs)} — "
             f"modèle={run_model}, RVT={run_rvt}"
         )
-        narrator.cv_run_start(run_idx, len(cv_runs), run_model, run_rvt)
+        narrator.cv_run_start(run_idx, len(cv_runs), model_display, run_rvt)
 
         generated_rvt_tif_dir = resolve_rvt_tif_dir(
             ctx.output_dir, run_rvt, output_structure, rvt_params
@@ -102,6 +116,14 @@ def run_cv_post_loop(
             )
             continue
 
+        # Callback bindé au modèle courant : remonte la sous-progression
+        # (index/total images traitées) au narrator → ligne USER_INFO
+        # discrète dans le journal. ``model_display`` est figé par
+        # défaut-d'argument pour éviter le late-binding classique en
+        # boucle Python.
+        def _on_image_progress(idx, total, image_name, _model=model_display):
+            narrator.cv_run_image_progress(_model, idx, total, image_name)
+
         run_existing_rvt(
             existing_rvt_dir=generated_rvt_tif_dir,
             output_dir=ctx.output_dir,
@@ -111,4 +133,5 @@ def run_cv_post_loop(
             cancel_check=cancel.is_cancelled,
             rvt_params=rvt_params,
             global_color_map=global_color_map,
+            image_progress=_on_image_progress,
         )

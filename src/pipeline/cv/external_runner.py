@@ -11,7 +11,7 @@ import subprocess
 import tempfile
 import time
 from pathlib import Path
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Callable, Dict, Optional, Tuple
 
 try:
     from typing import TypedDict
@@ -21,6 +21,14 @@ except ImportError:  # Python < 3.8
 from ..geo_utils import write_world_file
 from ..subprocess_utils import subprocess_kwargs_no_window
 from ..types import LogFn, CancelCheckFn
+
+
+ImageProgressFn = Callable[[int, int, str], None]
+"""Callback invoqué quand le runner termine le traitement d'une image.
+
+Signature : ``(index_1based, total, image_name)``. Sert au stepper UI
+à actualiser la sous-progression d'un run CV.
+"""
 
 
 class RunnerPayload(TypedDict, total=False):
@@ -67,8 +75,15 @@ def find_external_cv_runner(log: Optional[LogFn] = None) -> Optional[Path]:
 def _parse_runner_stdout(
     line: str,
     log: LogFn,
+    image_progress: Optional[ImageProgressFn] = None,
 ) -> None:
-    """Parse une ligne de stdout du runner externe et la log de façon lisible."""
+    """Parse une ligne de stdout du runner externe et la log de façon lisible.
+
+    ``image_progress``, si fourni, est invoqué pour chaque ligne
+    ``progress=N/TOTAL`` quel que soit le status (processing, done,
+    skipped). Permet au stepper UI de suivre la sous-progression sans
+    parser à nouveau les logs textuels.
+    """
     if line.startswith("progress="):
         try:
             parts = line.split()
@@ -76,6 +91,19 @@ def _parse_runner_stdout(
             current, total = progress_part.split("/")
             image_name = parts[1].split("=")[1] if len(parts) > 1 else ""
             status = parts[2].split("=")[1] if len(parts) > 2 else ""
+
+            # Le runner émet 2 lignes ``progress=`` par image
+            # (status=processing au début, status=done à la fin). On ne
+            # remonte qu'une seule fois la progression à l'UI — au début
+            # de l'image, pour que le compteur "Image i/N" apparaisse
+            # immédiatement. Les images déjà en cache sortent en
+            # status=skipped — on remonte aussi pour faire avancer le
+            # compteur.
+            if image_progress is not None and status in ("processing", "skipped"):
+                try:
+                    image_progress(int(current), int(total), image_name)
+                except Exception:
+                    pass
 
             if status == "processing":
                 log(f"Computer Vision: [{current}/{total}] Analyse de {image_name}...")
@@ -139,6 +167,7 @@ def run_external_cv_runner(
     global_color_map: Optional[Dict[str, int]] = None,
     log: LogFn = lambda _: None,
     cancel_check: Optional[CancelCheckFn] = None,
+    image_progress: Optional[ImageProgressFn] = None,
 ) -> None:
     """
     Exécute le runner ONNX externe via subprocess et parse sa sortie en temps réel.
@@ -205,7 +234,7 @@ def run_external_cv_runner(
                 line = line.rstrip()
                 if not line:
                     continue
-                _parse_runner_stdout(line, log)
+                _parse_runner_stdout(line, log, image_progress=image_progress)
 
         if cancelled:
             raise RuntimeError("Computer Vision: Annulé par l'utilisateur")

@@ -84,6 +84,31 @@ Don't reintroduce pre-tile-splitting for the large regime — it was removed del
 
 The `data/` directory is partially gitignored: `data/models/**`, `data/quadrillage_france/`, and the compiled CV runner binaries are NOT versioned (see `.gitignore`).
 
+## Versionnage
+
+Source de vérité : `metadata.txt` → `[general] version` (lu au runtime par `src/app/plugin_metadata.py`, affiché dans le titre du dialogue). Schéma : **SemVer**, mais on est en `0.x` → pas encore de stabilité publique garantie.
+
+**Règles de bump (à proposer à l'utilisateur, jamais à appliquer silencieusement) :**
+
+| Changement | Bump | Exemple |
+|---|---|---|
+| Correctif de bug, doc, lint, refactor interne sans impact utilisateur | **patch** `0.1.0 → 0.1.1` | `fix(ui): ...`, `fix(mnt): ...`, `chore: ...`, `docs: ...` |
+| Nouvelle fonctionnalité, nouveau widget UI, nouveau mode, refactor visible (renommage UI, restructuration majeure) — rétro-compatible | **minor** `0.1.0 → 0.2.0` | `feat: ...`, refonte UI, nouvelle option de config |
+| Breaking : format `config.json` incompatible, suppression d'un mode, API plugin cassée, ou premier release stable assumé | **major** `0.x.x → 1.0.0` | retrait de `existing_rvt`, changement de structure config |
+
+**Quand proposer un bump :**
+
+- À l'ouverture d'une PR vers `main`, ou quand l'utilisateur évoque « merge », « release », « publication », « PR », « tag », « livraison ».
+- Quand l'utilisateur demande explicitement (« faut-il bumper ? »).
+- **Ne jamais bumper sur un simple commit intra-branche** — la version marque une livraison utilisateur, pas un point dans l'historique git.
+
+**Comment proposer :**
+
+1. Lister les changements depuis la dernière version (`git log <last-tag>..HEAD --oneline` ou `git log main..HEAD --oneline` si pas de tag).
+2. Classer le changement le plus impactant selon le tableau ci-dessus → c'est lui qui fixe le bump.
+3. Proposer le nouveau numéro + une entrée `changelog=` à ajouter dans `metadata.txt` (champ actuellement commenté ligne 23).
+4. Si l'utilisateur valide : éditer `metadata.txt`, puis suggérer `git tag v<version>` au moment du merge.
+
 ## Git hooks (Talisman)
 
 A `pre-push` hook based on Talisman lives in `.githooks/` and must be enabled per-clone:

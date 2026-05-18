@@ -16,6 +16,23 @@ import sys
 from pathlib import Path
 
 
+def _relative_source(model_path: Path, output_path: Path) -> str:
+    """Retourne le chemin du checkpoint source en relatif vis-à-vis de la racine
+    du modèle de sortie (parent de ``weights/`` si applicable).
+
+    Évite d'écrire des chemins absolus locaux dans ``weights/best.json.source``,
+    qui sont vérifiés par ``scripts/validate_models_metadata.py``.
+    """
+    if output_path.parent.name == "weights":
+        model_root = output_path.parent.parent
+    else:
+        model_root = output_path.parent
+    try:
+        return str(model_path.relative_to(model_root)).replace("\\", "/")
+    except ValueError:
+        return model_path.name
+
+
 def detect_model_type(model_path: Path) -> str:
     """
     Détecte le type de modèle (yolo, rfdetr ou segformer) à partir du fichier.
@@ -205,7 +222,7 @@ def export_segformer_to_onnx(
             "class_names": class_names,
             "use_sahi": True,  # Activer le slicing SAHI pour les grandes images
             "merge_polygons": True,  # Fusionner les polygones adjacents (formes linéaires)
-            "source": str(model_path),
+            "source": _relative_source(model_path, output_path),
         }
         meta_path.write_text(json.dumps(meta, indent=2), encoding="utf-8")
         print(f"[INFO] Métadonnées sauvegardées: {meta_path}")
@@ -486,7 +503,7 @@ def export_smp_to_onnx(
             "smp_encoder": encoder_name,
             "bg_bias": 0.0,
             "confidence_threshold": 0.3,
-            "source": str(model_path),
+            "source": _relative_source(model_path, output_path),
         }
         meta_path.write_text(json.dumps(meta, indent=2), encoding="utf-8")
         print(f"[INFO] Métadonnées sauvegardées: {meta_path}")
@@ -602,7 +619,7 @@ def export_yolo_to_onnx(
             "model_type": "yolo",
             "task": task,
             "image_size": imgsz,
-            "source": str(model_path),
+            "source": _relative_source(model_path, output_path),
         }
         if num_classes:
             meta["num_classes"] = num_classes
@@ -903,7 +920,7 @@ def export_rfdetr_to_onnx(
             "task": task,
             "resolution": resolution,
             "class_offset": 1,  # RF-DETR utilise des class IDs 1-indexés
-            "source": str(model_path),
+            "source": _relative_source(model_path, output_path),
         }
         if num_classes:
             meta["num_classes"] = num_classes

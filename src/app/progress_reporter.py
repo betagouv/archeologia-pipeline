@@ -41,6 +41,17 @@ class ProgressReporter(Protocol):
 
     def user_success(self, msg: str) -> None: ...
 
+    # Variante "transiente" du canal narratif : même niveau ``USER_INFO``
+    # côté fichier (le ``.txt`` reçoit *toutes* les émissions pour la
+    # trace), mais côté zone log Qt la zone affiche **une seule ligne par
+    # groupe** qui est réécrite à chaque appel — pour montrer une
+    # sous-progression (``Dalle 1/2``, ``Image 3/8``) sans empiler N lignes.
+    # ``group`` est un identifiant stable (ex. ``"tile_progress"``,
+    # ``"cv_image_progress"``) : tant qu'aucune autre ligne narrative
+    # n'est intercalée, les appels successifs au même groupe réécrivent
+    # la même ligne UI.
+    def user_info_transient(self, msg: str, group: str) -> None: ...
+
     # Stage / progress / load_layers : pas de duplication, ils sont déjà
     # destinés à l'UI (barre de progression / label).
     def stage(self, msg: str) -> None: ...
@@ -64,6 +75,9 @@ class NullProgressReporter:
         return
 
     def user_success(self, msg: str) -> None:
+        return
+
+    def user_info_transient(self, msg: str, group: str) -> None:
         return
 
     def stage(self, msg: str) -> None:

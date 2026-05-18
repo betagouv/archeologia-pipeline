@@ -73,6 +73,27 @@ class UserNarrator:
         self._r = reporter
         self._pipeline_started_at: Optional[float] = None
 
+    def _user_info_transient(self, msg: str, group: str) -> None:
+        """Émet une sous-progression dans le canal transient si dispo.
+
+        Le canal "transient" (cf. :meth:`ProgressReporter.user_info_transient`)
+        permet à la zone log Qt de réécrire une seule ligne par ``group``
+        plutôt que d'ajouter une ligne par appel. Le fichier ``.txt``
+        reçoit toujours toutes les lignes (trace complète).
+
+        Si le reporter ne connaît pas le canal transient (test, mock,
+        implémentation legacy), on retombe sur ``user_info`` — la sortie
+        est alors empilée comme une ligne normale.
+        """
+        fn = getattr(self._r, "user_info_transient", None)
+        if fn is None:
+            self._r.user_info(msg)
+            return
+        try:
+            fn(msg, group)
+        except Exception:
+            self._r.user_info(msg)
+
     # ------------------------------------------------------------------
     # Cycle de vie global
     # ------------------------------------------------------------------
@@ -143,6 +164,18 @@ class UserNarrator:
             f"📥 Téléchargement de {_human_count(n_tiles, 'dalle', 'dalles')} IGN…"
         )
 
+    def download_tile_progress(self, index: int, total: int, tile_name: str) -> None:
+        """Sous-progression du téléchargement (1 dalle terminée).
+
+        Ligne unique réécrite à chaque appel dans la zone log Qt — voir
+        :meth:`_user_info_transient`.
+        """
+        short = tile_name if len(tile_name) <= 30 else tile_name[:27] + "…"
+        self._user_info_transient(
+            f"   • Dalle {index}/{total} téléchargée : {short}",
+            group="download_tile_progress",
+        )
+
     def download_done(self, n_downloaded: int) -> None:
         self._r.user_info(
             f"📥 {_human_count(n_downloaded, 'dalle téléchargée', 'dalles téléchargées')}"
@@ -159,10 +192,22 @@ class UserNarrator:
     def merging_start(self) -> None:
         self._r.user_info("🧩 Fusion des dalles avec leurs voisines…")
 
+    def merging_tile_progress(self, index: int, total: int, tile_name: str) -> None:
+        """Sous-progression de la fusion : 1 dalle fusionnée.
+
+        Ligne unique réécrite à chaque dalle (canal transient).
+        """
+        short = tile_name if len(tile_name) <= 30 else tile_name[:27] + "…"
+        suffix = f" : {short}" if short else ""
+        self._user_info_transient(
+            f"   • Dalle {index}/{total} fusionnée{suffix}",
+            group="merging_tile_progress",
+        )
+
     def products_phase_start(self, total_tiles: int, active_products: list) -> None:
-        labels = [PRODUCT_LABELS.get(p, p) for p in active_products if p != "MNT"]
-        if labels:
-            details = " (MNT + " + ", ".join(labels) + ")"
+        codes = [p for p in active_products if p != "MNT"]
+        if codes:
+            details = " (MNT + " + ", ".join(codes) + ")"
         else:
             details = " (MNT seul)"
         self._r.user_info(
@@ -172,8 +217,12 @@ class UserNarrator:
 
     def tile_progress(self, index: int, total: int, tile_name: str) -> None:
         # Tronqué pour rester lisible (les noms IGN sont longs).
+        # Ligne unique réécrite à chaque dalle (canal transient).
         short = tile_name if len(tile_name) <= 30 else tile_name[:27] + "…"
-        self._r.user_info(f"   • Dalle {index}/{total} : {short}")
+        self._user_info_transient(
+            f"   • Dalle {index}/{total} : {short}",
+            group="tile_progress",
+        )
 
     # ------------------------------------------------------------------
     # Computer Vision
@@ -187,9 +236,24 @@ class UserNarrator:
             )
 
     def cv_run_start(self, run_idx: int, total: int, model_name: str, target_rvt: str) -> None:
-        rvt_label = PRODUCT_LABELS.get(target_rvt, target_rvt)
         self._r.user_info(
-            f"   • Modèle {run_idx}/{total} : « {model_name} » sur {rvt_label}"
+            f"   • Modèle {run_idx}/{total} : « {model_name} » sur {target_rvt}"
+        )
+
+    def cv_run_image_progress(
+        self, model_name: str, index: int, total: int, image_name: str
+    ) -> None:
+        """Sous-progression au sein d'un run CV : ``index/total`` images traitées.
+
+        Ligne unique réécrite à chaque image (canal transient). Le
+        compteur seul change visuellement — comble le long silence entre
+        ``cv_run_start`` et ``cv_complete`` quand le binaire ONNX traite
+        plusieurs images d'affilée.
+        """
+        short = image_name if len(image_name) <= 30 else image_name[:27] + "…"
+        self._user_info_transient(
+            f"      ↳ Image {index}/{total} : {short}",
+            group="cv_image_progress",
         )
 
     def cv_complete(self, n_detections: int) -> None:
@@ -215,6 +279,18 @@ class UserNarrator:
             parts.append(_human_count(n_vectors, "couche vecteur", "couches vecteur"))
         if parts:
             self._r.user_info("🗺 " + " et ".join(parts) + " ajoutées au projet QGIS")
+
+    def finalize_layers_count(self, n_total: int) -> None:
+        """Annonce le total de couches ajoutées au projet QGIS.
+
+        Remplace le défilement des lignes ``"Couche raster chargée: X"``
+        par un compteur unique en fin de phase. Les détails par couche
+        (nom, classe, RGB) descendent au niveau ``INFO`` (fichier-only).
+        """
+        if n_total > 0:
+            self._r.user_info(
+                f"📂 {_human_count(n_total, 'couche ajoutée', 'couches ajoutées')} au projet QGIS"
+            )
 
     # ------------------------------------------------------------------
     # Helpers internes

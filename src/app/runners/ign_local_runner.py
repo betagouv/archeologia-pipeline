@@ -168,6 +168,9 @@ class IgnOrLocalRunner:
         reporter.progress(strategy.merge_progress_start())
         narrator.merging_start()
 
+        def _on_tile_merged(i: int, n: int, tile_name: str) -> None:
+            narrator.merging_tile_progress(i, n, tile_name)
+
         merged_result = prepare_merged_tiles(
             sorted_list_file=result.sorted_list_file,
             dalles_dir=result.dalles_dir,
@@ -177,6 +180,7 @@ class IgnOrLocalRunner:
             cancel=lambda: cancel.is_cancelled(),
             stage=lambda s: reporter.stage(s),
             max_workers=processing.max_workers,
+            on_tile_merged=_on_tile_merged,
         )
 
         merge_end = strategy.merge_progress_end()

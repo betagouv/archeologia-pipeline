@@ -139,6 +139,44 @@ class TestQtProgressReporterRouting:
         assert "phase X" not in captured
         emitter.stage.emit.assert_called_once_with("phase X")
 
+    def test_user_info_transient_attaches_group_to_record(self):
+        """``user_info_transient`` doit poser ``transient_group`` sur le
+        ``LogRecord`` pour que ``QtLogHandler`` puisse router la ligne
+        vers le signal de réécriture."""
+        logger, reporter, _ = self._setup()
+        captured = []
+
+        class _Capture(logging.Handler):
+            def emit(self, record):
+                captured.append(
+                    (record.levelno, record.getMessage(), getattr(record, "transient_group", None))
+                )
+
+        h = _Capture()
+        h.setLevel(USER_INFO)
+        logger.addHandler(h)
+
+        reporter.user_info_transient("Dalle 1/3", "tile_progress")
+        assert (USER_INFO, "Dalle 1/3", "tile_progress") in captured
+
+    def test_user_info_does_not_set_transient_group(self):
+        """Une ligne narrative normale ne doit pas porter
+        ``transient_group`` (sinon elle serait routée vers la
+        réécriture)."""
+        logger, reporter, _ = self._setup()
+        captured = []
+
+        class _Capture(logging.Handler):
+            def emit(self, record):
+                captured.append(getattr(record, "transient_group", None))
+
+        h = _Capture()
+        h.setLevel(USER_INFO)
+        logger.addHandler(h)
+
+        reporter.user_info("ligne normale")
+        assert captured == [None]
+
 
 # ----------------------------------------------------------------------
 # NullProgressReporter : tous les canaux sont silencieux
@@ -255,8 +293,7 @@ class TestUserNarratorEvents:
         narrator.products_phase_start(5, ["MNT", "SVF", "M_HS"])
         msg = reporter.user_info.call_args[0][0]
         assert "5 dalles" in msg
-        assert "facteur de vue du ciel" in msg
-        assert "ombrage multi-directionnel" in msg
+        assert "MNT + SVF, M_HS" in msg
 
     def test_products_phase_start_mnt_only(self):
         narrator, reporter = self._make()
@@ -267,9 +304,11 @@ class TestUserNarratorEvents:
     def test_tile_progress_truncates_long_names(self):
         narrator, reporter = self._make()
         narrator.tile_progress(1, 3, "LHD_FXX_0775_6300_PTS_C_LAMB93_IGN69_extra_long")
-        msg = reporter.user_info.call_args[0][0]
+        # Routé via le canal transient (zone log Qt = 1 ligne réécrite).
+        msg, group = reporter.user_info_transient.call_args[0]
         assert "1/3" in msg
         assert "…" in msg
+        assert group == "tile_progress"
 
     def test_cv_start_singular(self):
         narrator, reporter = self._make()
@@ -308,3 +347,117 @@ class TestUserNarratorFactory:
         # avoir un libellé humain.
         expected_codes = {"MNT", "DENSITE", "M_HS", "SVF", "SLO", "LD", "SLRM", "VAT"}
         assert expected_codes.issubset(set(PRODUCT_LABELS.keys()))
+
+
+# ----------------------------------------------------------------------
+# Nouveaux événements ajoutés en complément (sous-progression, compteur
+# unique couches). Pas d'affichage structuré : ces méthodes émettent du
+# texte ``user_info`` (ou ``info`` selon le cas) au même titre que les
+# autres événements narratifs.
+# ----------------------------------------------------------------------
+class TestNewNarratorEvents:
+    def _make(self):
+        reporter = MagicMock()
+        return UserNarrator(reporter), reporter
+
+    def test_download_tile_progress_routes_to_transient(self):
+        """Sous-progression du téléchargement : canal transient (ligne
+        réécrite côté UI) avec son group dédié."""
+        narrator, reporter = self._make()
+        narrator.download_tile_progress(1, 3, "T1")
+        msg, group = reporter.user_info_transient.call_args[0]
+        assert "1/3" in msg
+        assert "T1" in msg
+        assert group == "download_tile_progress"
+
+    def test_download_tile_progress_truncates_long_names(self):
+        narrator, reporter = self._make()
+        narrator.download_tile_progress(2, 5, "LHD_FXX_0775_6300_PTS_C_LAMB93_IGN69_extra_long")
+        msg, _group = reporter.user_info_transient.call_args[0]
+        assert "2/5" in msg
+        assert "…" in msg
+
+    def test_merging_tile_progress_routes_to_transient(self):
+        """Sous-progression de la fusion : canal transient avec son
+        group dédié."""
+        narrator, reporter = self._make()
+        narrator.merging_tile_progress(1, 2, "LHD_FXX_0822_6329")
+        msg, group = reporter.user_info_transient.call_args[0]
+        assert "1/2" in msg
+        assert "fusionnée" in msg
+        assert group == "merging_tile_progress"
+
+    def test_merging_tile_progress_truncates_long_names(self):
+        narrator, reporter = self._make()
+        narrator.merging_tile_progress(2, 3, "LHD_FXX_0822_6329_PTS_O_LAMB93_IGN69_long")
+        msg, _group = reporter.user_info_transient.call_args[0]
+        assert "2/3" in msg
+        assert "…" in msg
+
+    def test_merging_tile_progress_empty_name_no_colon(self):
+        """Si le nom de dalle est vide (call-site qui ne le connaît pas),
+        on n'affiche pas un ``:`` orphelin à la fin."""
+        narrator, reporter = self._make()
+        narrator.merging_tile_progress(1, 2, "")
+        msg, _group = reporter.user_info_transient.call_args[0]
+        assert msg.rstrip().endswith("fusionnée")
+
+    def test_cv_run_image_progress_routes_to_transient(self):
+        """Sous-progression CV : canal transient (réécriture in-place) —
+        c'est ce qui comble le long silence sans empiler N lignes
+        ``Image i/N``."""
+        narrator, reporter = self._make()
+        narrator.cv_run_image_progress("modelA", 3, 8, "img3.png")
+        msg, group = reporter.user_info_transient.call_args[0]
+        assert "3/8" in msg
+        assert "img3.png" in msg
+        assert group == "cv_image_progress"
+
+    def test_cv_run_image_progress_truncates_long_names(self):
+        narrator, reporter = self._make()
+        narrator.cv_run_image_progress("m", 1, 1, "a_very_very_very_long_image_name_here.png")
+        msg, _group = reporter.user_info_transient.call_args[0]
+        assert "…" in msg
+
+    def test_transient_fallback_when_reporter_has_no_transient_channel(self):
+        """Reporters legacy sans ``user_info_transient`` → fallback sur
+        ``user_info`` (la ligne s'empile au lieu d'être réécrite, mais
+        l'information n'est pas perdue)."""
+
+        class LegacyReporter:
+            def __init__(self):
+                self.last_info = None
+            def info(self, m): pass
+            def error(self, m): pass
+            def user_info(self, m): self.last_info = m
+            def user_warning(self, m): pass
+            def user_success(self, m): pass
+            def stage(self, m): pass
+            def progress(self, p): pass
+            def load_layers(self, *a, **kw): pass
+            # PAS de user_info_transient
+
+        r = LegacyReporter()
+        n = UserNarrator(r)
+        n.tile_progress(2, 5, "T")
+        assert r.last_info is not None
+        assert "2/5" in r.last_info
+
+    def test_finalize_layers_count_emits_user_info(self):
+        """Compteur unique qui remplace les N lignes "Couche … chargée"."""
+        narrator, reporter = self._make()
+        narrator.finalize_layers_count(7)
+        msg = reporter.user_info.call_args[0][0]
+        assert "7 couches ajoutées" in msg
+
+    def test_finalize_layers_count_singular(self):
+        narrator, reporter = self._make()
+        narrator.finalize_layers_count(1)
+        msg = reporter.user_info.call_args[0][0]
+        assert "1 couche ajoutée" in msg
+
+    def test_finalize_layers_count_zero_is_silent(self):
+        """Si aucune couche, pas de ligne "0 couches ajoutées"."""
+        narrator, reporter = self._make()
+        narrator.finalize_layers_count(0)
+        reporter.user_info.assert_not_called()

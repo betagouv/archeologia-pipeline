@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from pipeline.modes.existing_rvt import _cleanup_orphans
+from pipeline.modes.existing_rvt import _classify_rvt_layout, _cleanup_orphans
 
 
 class TestCleanupOrphans:
@@ -60,3 +60,14 @@ class TestCleanupOrphans:
         _cleanup_orphans(tmp_path, "*.tif", set())
 
         assert f.exists()
+
+
+class TestClassifyRvtLayout:
+    def test_standard_when_one_kilometer_and_aligned(self):
+        assert _classify_rvt_layout((700000, 6599000, 701000, 6600000)) == "standard"
+
+    def test_small_when_not_aligned_on_ign_grid(self):
+        assert _classify_rvt_layout((700120, 6599120, 701120, 6600120)) == "small"
+
+    def test_large_when_dimension_exceeds_tile_plus_tolerance(self):
+        assert _classify_rvt_layout((700000, 6598000, 702000, 6600000)) == "large"

@@ -11,8 +11,11 @@ LogFn = Callable[[str], None]
 
 
 def _collect_vrt_paths_and_build(idx_dir: Path, det_dir: Path, log: LogFn) -> List[str]:
-    """Parcourt indices/ et detections/ pour créer les index.vrt et retourne les chemins VRT."""
-    from ...pipeline.ign.products.results import build_vrt_index
+    """Parcourt indices/ pour créer les index.vrt et retourne les chemins VRT."""
+    try:
+        from ...pipeline.ign.products.results import build_vrt_index
+    except ImportError:
+        from pipeline.ign.products.results import build_vrt_index
 
     vrt_paths: List[str] = []
 
@@ -30,26 +33,6 @@ def _collect_vrt_paths_and_build(idx_dir: Path, det_dir: Path, log: LogFn) -> Li
                 build_vrt_index(tif_dir, pattern="*.tif", output_name="index.vrt", log=log)
                 if vrt_path.exists():
                     vrt_paths.append(str(vrt_path))
-
-        # VRT pour chaque dossier PNG (images géoréférencées) dans indices/
-        for png_dir in idx_dir.rglob("png"):
-            if not png_dir.is_dir():
-                continue
-            vrt_path = png_dir / "index.vrt"
-            if vrt_path.exists():
-                log(f"VRT déjà existant, ignoré: {vrt_path.name}")
-                continue
-            if list(png_dir.glob("*.png")):
-                build_vrt_index(png_dir, pattern="*.png", output_name="index.vrt", log=log)
-
-    # VRT pour annotated_images dans detections/
-    if det_dir.exists():
-        for annotated_dir in det_dir.rglob("annotated_images"):
-            if not annotated_dir.is_dir():
-                continue
-            vrt_path = annotated_dir / "index.vrt"
-            if not vrt_path.exists() and list(annotated_dir.glob("*.png")):
-                build_vrt_index(annotated_dir, pattern="*.png", output_name="index.vrt", log=log)
 
     return vrt_paths
 
@@ -290,7 +273,7 @@ def finalize_pipeline(
 ) -> None:
     """
     Finalisation commune à tous les runners :
-    1. Création des index VRT (tif/, jpg/, annotated_images/)
+    1. Création des index VRT (tif/)
     2. Collecte des shapefiles CV
     3. Chargement des couleurs de classes
     4. Logs de fin de pipeline

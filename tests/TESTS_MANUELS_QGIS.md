@@ -59,8 +59,6 @@ Cette grille indique, pour chaque vague livrée, **quelles sections de tests son
 
 - [ ] **2.1 Mode Simple (par défaut)**
   - Vérifier que les sections suivantes sont **masquées** : Paramètres MNT, Paramètres RVT détaillés, Performance
-  - Vérifier que les colonnes « Indice cible » et « Aire min » sont masquées dans le tableau de détection
-  - Vérifier que la section Seuils de détection (expert) est masquée
 - [ ] **2.2 Basculer en mode Expert**
   - Sélectionner « Expert » dans le combo Mode
   - Vérifier que les sections MNT, RVT, Performance deviennent visibles
@@ -286,7 +284,10 @@ Cette grille indique, pour chaque vague livrée, **quelles sections de tests son
 - [ ] **14.1** VRT générés pour `tif/`, `jpg/`, `annotated_images/`
 - [ ] **14.2 Shapefiles collectés et chargés dans QGIS**
   - Vérifier le style par confiance (couleurs par bin)
-- [ ] **14.3** Zoom automatique sur l'étendue des résultats
+- [ ] **14.3 Zoom automatique sur l'étendue des résultats**
+  - [ ] **14.3.a** Projet QGIS neuf, CRS par défaut (EPSG:4326) : à la fin du pipeline, le canvas doit se centrer sur les couches Lambert-93 chargées (transformation CRS appliquée). Log attendu : `Zoom sur l'étendue des résultats`.
+  - [ ] **14.3.b** Projet QGIS configuré en EPSG:2154 : zoom direct, sans transformation, doit se centrer correctement.
+  - [ ] **14.3.c** Re-run avec la **même** sortie (couches déjà présentes dans le projet) : les logs indiquent « Couche … déjà présente », et le zoom doit **quand même** se déclencher sur l'étendue cumulée.
 - [ ] **14.4** Logs de fin de pipeline (`StructuredLogger.end_pipeline`)
 
 ---

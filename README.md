@@ -129,6 +129,19 @@ Le plugin utilise un **runner ONNX unifié** qui supporte les types de modèles 
 | **SegFormer** | Segmentation sémantique | `.onnx` |
 | **SMP** (DeepLabV3+, Unet…) | Segmentation sémantique | `.onnx` |
 
+### Contrat des modèles
+
+Un dossier modèle dans `data/models/<nom>/` doit contenir **7 fichiers obligatoires** (`model_card.yaml`, `args.yaml`, `classes.txt`, `training_params.json`, `config.json`, `weights/best.onnx`, `weights/best.json`) + `evaluation_results.json` recommandé. Voir [`docs/model_contract.md`](docs/model_contract.md) pour les schémas détaillés et les règles de cohérence inter-fichiers (doublons de classes autorisés, divergences `imgsz`/SAHI documentées dans `model_card.inference_choices`).
+
+Pour valider un dossier modèle :
+
+```bash
+python scripts/validate_models_metadata.py                 # tous les modèles
+python scripts/validate_models_metadata.py data/models/X   # un seul modèle
+```
+
+Les tests pytest `tests/unit/test_models_metadata.py` et `tests/unit/test_models_connectivity.py` lancent automatiquement la même validation sur chaque modèle versionné et vérifient que les readers du pipeline (`ModelProfile.load`, `load_sahi_config_from_model`, …) restent compatibles.
+
 ### Export des modèles vers ONNX
 
 Avant d'utiliser le runner, vous devez exporter vos modèles PyTorch (.pt/.pth) vers le format ONNX.
@@ -494,7 +507,8 @@ flowchart TD
         H --> H1["_sync_config_from_widgets()"]
         H1 --> H2{"CV activée ?"}
         H2 -->|"Oui, classes OK"| H3["Thread worker (daemon)"]
-        H2 -->|"Oui, 0 classes"| H2b["Avertissement → stop"]
+        H2 -->|"Oui, 0 classe"| H2b["Avertissement dans confirmation\n(run concerné court-circuité plus tard)"]
+        H2b --> H3
         H2 -->|"Non"| H3
     end
 
@@ -502,8 +516,11 @@ flowchart TD
         H3 --> W1["build_run_context(config)"]
         W1 --> W2["file_logging(output_dir)"]
         W2 --> W3["PipelineController.run()"]
-        W3 --> W4["StructuredLogger + run_preflight()"]
-        W4 --> W5{"Preflight OK ?"}
+        W3 --> W4["StructuredLogger + validate_run_context()"]
+        W4 --> W4b{"Config métier OK ?"}
+        W4b -->|"Non"| W6["end_pipeline(success=False)"]
+        W4b -->|"Oui"| W4c["run_preflight()"]
+        W4c --> W5{"Preflight OK ?"}
         W5 -->|"Non"| W6["end_pipeline(success=False)"]
         W5 -->|"Oui"| W7["get_runner(mode)"]
         W7 --> N{"Mode ?"}
@@ -558,7 +575,7 @@ flowchart TD
 
     subgraph ExistingRvt["Mode existing_rvt (ExistingRvtRunner)"]
         Q --> Q0["_build_global_class_color_map()"]
-        Q0 --> Q1["Boucle cv_runs → run_existing_rvt() par run\n(indices_folder_name='RVT' forcé)"]
+        Q0 --> Q1["Boucle cv_runs → run_existing_rvt() par run\nou 1 passe sans inférence si aucun modèle\n(indices_folder_name='RVT' forcé)"]
         Q1 --> QPRE["Pour chaque TIF : get_raster_bounds() + _classify_rvt_layout()\n(log seulement si layout=='large')"]
         QPRE --> Q1a["Copie TIF → indices/RVT/tif/ (renommage normalisé via coords.py)"]
         Q1a --> Q1b["Conversion TIF→PNG + world file (PIL, limite désactivée)"]
@@ -571,10 +588,10 @@ flowchart TD
     end
 
     subgraph Finalize["finalize_pipeline() — service commun (finalize_service.py)"]
-        FIN1 --> F1["_collect_vrt_paths_and_build()\nVRT tif/ jpg/ annotated_images/ — skip si VRT existant"]
+        FIN1 --> F1["_collect_vrt_paths_and_build()\nVRT tif/ png/ annotated_images/ — skip si VRT existant"]
         FIN2 --> F1
         FIN3 --> F1
-        F1 --> F2["_collect_shapefiles() — detections/**/shapefiles/*.shp"]
+        F1 --> F2["_collect_shapefiles() — couches GeoPackage\n detections/**/shapefiles/*.gpkg"]
         F2 --> F3["_build_global_class_color_map() — mapping unique classe→couleur"]
         F3 --> F3b{"shapefiles présents ?"}
         F3b -->|"Oui"| F3c["_generate_consolidated_qgs_project() → detections_validation.qgs"]
@@ -606,7 +623,7 @@ flowchart TD
         D2b --> D2c["3. Suppression superpositions inter-classes (par confiance)"]
         D2c --> D3["clustering.py → DBSCAN confidence-weighted (si config args.yaml)"]
         D3 --> D4["Écriture shapefiles par classe (geopandas)\nFiltre selected_classes (None=tout, []=rien, [x,y]=filtre)"]
-        D4 --> D5["_filter_gpkg_by_min_area() (si min_area_m2 > 0)"]
+        D4 --> D5["Écriture GeoPackage + _filter_gpkg_by_min_area() (si min_area_m2 > 0)"]
     end
 
     subgraph Shared["Modules utilitaires partagés"]

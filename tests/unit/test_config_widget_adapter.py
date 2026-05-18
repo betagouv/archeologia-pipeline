@@ -210,6 +210,45 @@ class TestApplyToWidgets:
         adapter.apply_data_mode({"app": {"files": {"data_mode": "local_laz"}}})
         assert bag.data_mode_combo.currentData() == "local_laz"
 
+    def test_apply_to_widgets_does_not_touch_specific_source(self):
+        """``apply_to_widgets`` ne lit pas ``specific_source_edit`` :
+        cette responsabilité revient à :meth:`apply_data_mode` (la clé
+        JSON source dépend du mode)."""
+        bag = _make_bag()
+        bag.specific_source_edit.setText("preexisting")
+        ConfigWidgetAdapter(bag).apply_to_widgets({
+            "app": {"files": {"data_mode": "ign_laz", "input_file": "/should/not/load"}}
+        })
+        assert bag.specific_source_edit.text() == "preexisting"
+
+    @pytest.mark.parametrize("mode,key,path", [
+        ("ign_laz", "input_file", "/path/zone.shp"),
+        ("local_laz", "local_laz_dir", "/path/laz"),
+        ("existing_mnt", "existing_mnt_dir", "/path/mnt"),
+        ("existing_rvt", "existing_rvt_dir", "/path/rvt"),
+    ])
+    def test_apply_data_mode_loads_specific_source(self, mode, key, path):
+        """``apply_data_mode`` doit charger ``specific_source_edit``
+        depuis la clé mode-dépendante (symétrie avec ``collect_into``).
+        Régression : sans ce chargement, le champ "Zone d'étude"
+        revenait toujours vide après close/réouverture du plugin."""
+        bag = _make_bag()
+        ConfigWidgetAdapter(bag).apply_data_mode({
+            "app": {"files": {"data_mode": mode, key: path}}
+        })
+        assert bag.data_mode_combo.currentData() == mode
+        assert bag.specific_source_edit.text() == path
+
+    def test_apply_data_mode_clears_specific_source_when_missing(self):
+        """Si la clé du mode est absente, le widget est vidé (pas
+        d'héritage d'une saisie antérieure d'un autre mode)."""
+        bag = _make_bag()
+        bag.specific_source_edit.setText("stale")
+        ConfigWidgetAdapter(bag).apply_data_mode({
+            "app": {"files": {"data_mode": "ign_laz"}}
+        })
+        assert bag.specific_source_edit.text() == ""
+
 
 # ----------------------------------------------------------------------
 # collect_into : bonnes valeurs récupérées
@@ -314,3 +353,26 @@ class TestRoundtrip:
         assert recollected["rvt_params"]["svf"]["radius"] == 25
         assert recollected["rvt_params"]["slope"]["unit"] == 1
         assert recollected["rvt_params"]["vat"]["terrain_type"] == 1
+
+    @pytest.mark.parametrize("mode,key,path", [
+        ("ign_laz", "input_file", "/path/zone.shp"),
+        ("local_laz", "local_laz_dir", "/path/laz"),
+        ("existing_mnt", "existing_mnt_dir", "/path/mnt"),
+        ("existing_rvt", "existing_rvt_dir", "/path/rvt"),
+    ])
+    def test_specific_source_roundtrip_per_mode(self, mode, key, path):
+        """Round-trip : la valeur de ``specific_source_edit`` doit
+        survivre à un cycle apply → collect pour chaque mode.
+        Régression : avant la symétrisation de l'adaptateur, le champ
+        n'était pas restauré et un autosave consécutif écrasait la
+        valeur stockée par une chaîne vide."""
+        original = {"app": {"files": {"data_mode": mode, key: path}}}
+        bag = _make_bag()
+        adapter = ConfigWidgetAdapter(bag)
+        adapter.apply_to_widgets(original)
+        adapter.apply_data_mode(original)
+
+        recollected: dict = {}
+        adapter.collect_into(recollected)
+        assert recollected["app"]["files"]["data_mode"] == mode
+        assert recollected["app"]["files"][key] == path

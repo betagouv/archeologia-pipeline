@@ -175,10 +175,11 @@ class ConfigWidgetAdapter:
         b.mode_combo.setCurrentIndex(idx_display if idx_display >= 0 else 0)
 
         # Files / data_mode + specific_source : data_mode chargé EN DERNIER
-        # (son signal currentIndexChanged déclenche _on_data_mode_changed
-        # côté dialog → _save_from_widgets ; on veut que tout l'état soit
-        # restauré avant ce déclenchement). Le dialog se charge de
-        # l'ordonnancement final ; ici on n'écrit pas le data_mode.
+        # par :meth:`apply_data_mode` (son signal currentIndexChanged
+        # déclenche _on_data_mode_changed côté dialog → _save_from_widgets ;
+        # on veut que tout l'état soit restauré avant ce déclenchement). Le
+        # dialog se charge de l'ordonnancement final ; ici on n'écrit ni le
+        # data_mode ni la specific_source (cette dernière dépend du mode).
         files = (config.get("app") or {}).get("files") or {}
         b.output_dir_edit.setText(files.get("output_dir") or "")
 
@@ -219,15 +220,22 @@ class ConfigWidgetAdapter:
         self._apply_vat(rvt.get("vat") or {})
 
     def apply_data_mode(self, config: Mapping[str, Any]) -> None:
-        """Restaure ``data_mode`` séparément.
+        """Restaure ``data_mode`` + ``specific_source`` séparément.
 
         Voir docstring de :meth:`apply_to_widgets` : le dialog veut le
         déclencher en dernier pour orchestrer son flux d'événements.
+
+        ``specific_source_edit`` est chargé ici (et pas dans
+        :meth:`apply_to_widgets`) parce que la clé JSON dont sa valeur
+        provient dépend du ``data_mode`` (``input_file`` / ``local_laz_dir``
+        / ``existing_mnt_dir`` / ``existing_rvt_dir``). Symétrise
+        :meth:`collect_into` qui écrit dans cette même clé mode-dépendante.
         """
         files = (config.get("app") or {}).get("files") or {}
         mode = files.get("data_mode") or "ign_laz"
         idx_mode = self._b.data_mode_combo.findData(mode)
         self._b.data_mode_combo.setCurrentIndex(idx_mode if idx_mode >= 0 else 0)
+        self._b.specific_source_edit.setText(files.get(_mode_specific_key(mode)) or "")
 
     # ------------------------------------------------------------------
     # widgets → config

@@ -140,7 +140,7 @@ def build_actions_widget(
     """
     actions_widget = container_factory()
     layout = layout_factory(actions_widget)
-    layout.setContentsMargins(2, 0, 2, 0)
+    layout.setContentsMargins(8, 0, 2, 0)
     layout.setSpacing(2)
 
     info_btn = button_factory("ℹ")

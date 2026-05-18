@@ -21,7 +21,7 @@ from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 
 from ..types import LogFn, CancelCheckFn
-from .external_runner import find_external_cv_runner, run_external_cv_runner
+from .external_runner import ImageProgressFn, find_external_cv_runner, run_external_cv_runner
 from .runner_cache import (
     get_model_slug,
     has_cached_detection,
@@ -48,6 +48,7 @@ def run_cv_on_folder(
     global_color_map: Optional[Dict[str, int]] = None,
     log: LogFn = lambda _: None,
     cancel_check: Optional[CancelCheckFn] = None,
+    image_progress: Optional[ImageProgressFn] = None,
 ) -> None:
     # ── Court-circuit si aucune classe sélectionnée ───────────────────
     _sel = (cv_config or {}).get("selected_classes")
@@ -198,6 +199,7 @@ def run_cv_on_folder(
                 global_color_map=global_color_map,
                 log=log,
                 cancel_check=cancel_check,
+                image_progress=image_progress,
             )
             # Générer les shapefiles côté plugin (avec shapely + post-processing)
             if run_shapefile_dedup:
@@ -244,4 +246,5 @@ def run_cv_on_folder(
         global_color_map=global_color_map,
         log=log,
         cancel_check=cancel_check,
+        image_progress=image_progress,
     )

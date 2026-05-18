@@ -12,6 +12,7 @@ from typing import Any, Dict, Optional, Tuple
 
 from ..geo_utils import write_world_file as write_world_file_from_transform
 from ..types import LogFn, CancelCheckFn
+from .external_runner import ImageProgressFn
 from .runner_shapefiles import deduplicate_cv_shapefiles_final
 
 
@@ -29,6 +30,7 @@ def run_fallback_inference(
     global_color_map: Optional[Dict[str, int]] = None,
     log: LogFn = lambda _: None,
     cancel_check: Optional[CancelCheckFn] = None,
+    image_progress: Optional[ImageProgressFn] = None,
 ) -> None:
     """Inférence ONNX image par image via computer_vision_onnx (fallback Python).
 
@@ -112,13 +114,20 @@ def run_fallback_inference(
     success_count = 0
     skipped_already_processed = 0
 
-    for jpg_file in jpg_files:
+    total_images = len(jpg_files)
+    for image_index, jpg_file in enumerate(jpg_files, start=1):
         if cancel_check and cancel_check():
             log("Computer Vision: Annulation demandée, arrêt de l'inférence...")
             raise RuntimeError("Computer Vision: Annulé par l'utilisateur")
         image_name = jpg_file.stem
         labels_txt = _raw_dir / f"{image_name}.txt"
         labels_json = _raw_dir / f"{image_name}.json"
+
+        if image_progress is not None:
+            try:
+                image_progress(image_index, total_images, jpg_file.name)
+            except Exception:
+                pass
 
         detection_output_path = get_detection_output_path(
             str(jpg_file),

@@ -437,7 +437,17 @@ def download_ign_dalles(
     stage: StageFn = _default_stage,
     cancel: CancelFn = _default_cancel,
     max_workers: Optional[int] = None,
+    on_tile_done: Optional[Callable[[int, int, str], None]] = None,
 ) -> IgnDownloadResult:
+    """Télécharge les dalles IGN listées dans ``input_file``.
+
+    ``on_tile_done`` (optionnel) est invoqué après chaque dalle traitée
+    avec ``(completed_index_1based, total, filename)`` — le caller s'en
+    sert pour remonter une sous-progression à l'utilisateur (ligne
+    réécrite dans le journal). Les téléchargements parallèles ne
+    garantissent pas l'ordre des appels (``completed_index`` reflète
+    l'ordre d'arrivée, pas l'ordre des tâches).
+    """
     if not output_dir.exists():
         output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -487,6 +497,12 @@ def download_ign_dalles(
                 failed[0] += 1
             pct = int(round(100.0 * completed_count[0] / max(1, total)))
             progress(pct)
+            current = completed_count[0]
+        if on_tile_done is not None:
+            try:
+                on_tile_done(current, total, result.filename)
+            except Exception:
+                pass
 
     # Préparer les tâches
     tasks = [
@@ -524,6 +540,12 @@ def download_ign_dalles(
                     completed_count[0] += 1
                     pct = int(round(100.0 * completed_count[0] / max(1, total)))
                     progress(pct)
+                    current = completed_count[0]
+                if on_tile_done is not None:
+                    try:
+                        on_tile_done(current, total, task.filename)
+                    except Exception:
+                        pass
 
     # Log des fichiers échoués (mais on continue)
     if failed[0] > 0:

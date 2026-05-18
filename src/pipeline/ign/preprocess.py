@@ -458,7 +458,17 @@ def prepare_merged_tiles(
     cancel: CancelFn = _default_cancel,
     max_workers: Optional[int] = None,
     stage: StageFn = _default_stage,
+    on_tile_merged: Optional[Callable[[int, int, str], None]] = None,
 ) -> IgnPreprocessResult:
+    """Fusionne chaque dalle avec ses voisines (préfixage des bords).
+
+    ``on_tile_merged`` (optionnel) est invoqué après chaque dalle
+    finalisée avec ``(completed_index_1based, total, tile_name)``. Le
+    caller (runner) s'en sert pour remonter la sous-progression à
+    l'utilisateur (ligne réécrite dans le journal). L'exécution étant
+    parallèle, ``completed_index`` reflète l'ordre d'arrivée, pas
+    l'ordre original des dalles.
+    """
     from ..output_paths import intermediaires_dir
     temp_dir = intermediaires_dir(output_dir)
     temp_dir.mkdir(parents=True, exist_ok=True)
@@ -523,10 +533,16 @@ def prepare_merged_tiles(
         with log_lock:
             log(msg)
 
-    def update_stage_count() -> None:
+    def update_stage_count(tile_name: str = "") -> None:
         with log_lock:
             completed_count[0] += 1
-            stage(f"Fusion dalle {completed_count[0]}/{total}")
+            current = completed_count[0]
+            stage(f"Fusion dalle {current}/{total}")
+        if on_tile_merged is not None:
+            try:
+                on_tile_merged(current, total, tile_name)
+            except Exception:
+                pass
 
     # Exécution parallèle
     merged_files: List[Path] = []
@@ -553,8 +569,8 @@ def prepare_merged_tiles(
             try:
                 result = future.result()
                 results_by_index[result.index] = result
-                update_stage_count()
-                
+                update_stage_count(result.tile_name)
+
                 if not result.success:
                     thread_safe_log(f"Échec prétraitement dalle {result.tile_name}: {result.error}")
             except Exception as e:

@@ -29,6 +29,7 @@ progressivement.
 """
 from __future__ import annotations
 
+import copy
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -541,5 +542,9 @@ def build_run_context(config: Dict[str, Any]) -> RunContext:
         processing=processing,
         cv=cv,
         rvt_params=rvt_params,
-        ui_config=cfg,
+        # Snapshot indépendant : le worker pipeline tourne dans un thread
+        # séparé du main Qt qui peut continuer à muter le `_config` du
+        # dialog (autosave, signaux). Sans cette deepcopy, ctx.ui_config
+        # observe ces mutations en cours de run.
+        ui_config=copy.deepcopy(cfg),
     )

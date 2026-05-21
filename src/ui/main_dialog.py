@@ -957,6 +957,18 @@ class MainDialog(QDialog):
         self.progress_bar = QProgressBar()
         self.progress_bar.setRange(0, 100)
         self.progress_bar.setValue(0)
+        self.progress_bar.setMinimumHeight(24)          # plus épaisse → plus lisible
+        self.progress_bar.setTextVisible(True)          # affiche « 62% » centré
+        self.progress_bar.setStyleSheet(
+            "QProgressBar {"
+            "  border: 1px solid #888; border-radius: 4px;"
+            "  background-color: #e6e6e6; text-align: center;"
+            "  color: #2b2b2b; font-weight: bold;"
+            "}"
+            "QProgressBar::chunk {"
+            "  background-color: #27ae60; border-radius: 3px;"
+            "}"
+        )
         buttons_layout.addWidget(self.progress_bar, 1)
 
         parent_layout.addWidget(buttons_row, 0)

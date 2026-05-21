@@ -158,12 +158,14 @@ class IndicesPage(QWidget):
         chips.addWidget(self._dens_chip)
         chips.addStretch(1)
         bv.addLayout(chips)
-        self._mnt_hint = QLabel(
-            "MNT requis tant qu'un indice RVT est coché — décochez les indices d'abord."
-        )
+        self._mnt_hint = QLabel("MNT requis tant qu'un indice RVT est coché.")
         self._mnt_hint.setObjectName("MntHint")
-        self._mnt_hint.setWordWrap(True)
         self._mnt_hint.setVisible(False)
+        # Réserver la place du hint : le cocher d'un indice (qui force MNT et
+        # affiche ce hint) ne doit pas faire grandir la carte « Modèle de base ».
+        _hint_policy = self._mnt_hint.sizePolicy()
+        _hint_policy.setRetainSizeWhenHidden(True)
+        self._mnt_hint.setSizePolicy(_hint_policy)
         bv.addWidget(self._mnt_hint)
         res_row = QHBoxLayout()
         res_row.setSpacing(8)
@@ -278,6 +280,21 @@ class IndicesPage(QWidget):
     # ------------------------------------------------------------------
     # Persistance
     # ------------------------------------------------------------------
+    def active_rvt_keys(self) -> set:
+        """Indices RVT actuellement cochés (pour l'étape 3)."""
+        return {k for k in rvt_keys() if self._products.get(k)}
+
+    def activate_product(self, key: str) -> None:
+        """Active un produit (utilisé par « + Activer » de l'étape 3)."""
+        if self._products.get(key):
+            return
+        self._products[key] = True
+        if key in rvt_keys():
+            self._products["MNT"] = True
+        self._refresh()
+        if not self._loading:
+            self.changed.emit()
+
     def summary(self) -> str:
         n_rvt = sum(1 for k in rvt_keys() if self._products.get(k))
         base = "MNT" if self._products.get("MNT") else "—"

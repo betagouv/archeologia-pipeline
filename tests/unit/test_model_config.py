@@ -142,6 +142,20 @@ class TestResolveCvRuns:
         runs = resolve_cv_runs(cfg)
         assert runs[0]["min_area_m2"] == 50.0
 
+    def test_propagates_per_run_confidence_and_iou(self):
+        # Seuils par modèle (V2) : doivent écraser les valeurs globales.
+        cfg = {
+            "confidence_threshold": 0.3,
+            "iou_threshold": 0.5,
+            "runs": [
+                {"model": "m1", "target_rvt": "LD", "confidence_threshold": 0.45, "iou_threshold": 0.6},
+            ],
+            "models_dir": "models",
+        }
+        runs = resolve_cv_runs(cfg)
+        assert runs[0]["confidence_threshold"] == 0.45
+        assert runs[0]["iou_threshold"] == 0.6
+
     def test_skips_runs_without_model(self):
         cfg = {
             "runs": [{"model": "", "target_rvt": "LD"}, {"model": "m1", "target_rvt": "SVF"}],

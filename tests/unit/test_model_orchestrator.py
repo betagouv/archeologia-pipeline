@@ -108,6 +108,25 @@ classes:
   - {name: cratere_circulaire, entity: cratere_obus}
 """
 
+THRESH = """
+display_name: "Modèle à seuils"
+status: production
+preferred_rvt:
+  type: LD
+classes:
+  - {name: parcellaire}
+thresholds:
+  confidence_default: 0.45
+  min_area_m2: 200
+  iou: 0.6
+"""
+
+
+def _summ(runs):
+    """Réduit les runs à (model, target_rvt, selected_classes) — compare la
+    structure sans dépendre des seuils injectés (testés à part)."""
+    return [(r["model"], r["target_rvt"], r["selected_classes"]) for r in runs]
+
 
 def _catalog() -> list:
     return [
@@ -264,28 +283,19 @@ class TestResolveRuns:
         _write_model(tmp_path, "cratere_circulaire_2", CRATERE)
         installed = discover_installed_models(tmp_path)
         runs = resolve_runs_from_entities(["cratere_obus"], {}, installed, _catalog())
-        # selected_classes est toujours explicite (cluster désactivé par défaut)
-        assert runs == [
-            {"model": "cratere_circulaire_2", "target_rvt": "LD", "selected_classes": ["cratere_obus"]}
-        ]
+        assert _summ(runs) == [("cratere_circulaire_2", "LD", ["cratere_obus"])]
 
     def test_subset_selection_yields_explicit_classes(self, tmp_path):
         _write_model(tmp_path, "verdun_3_classes_1", VERDUN)
         installed = discover_installed_models(tmp_path)
         runs = resolve_runs_from_entities(["cratere_obus"], {}, installed, _catalog())
-        # verdun a 3 classes : sélection partielle -> liste explicite
-        assert runs == [
-            {"model": "verdun_3_classes_1", "target_rvt": "SVF", "selected_classes": ["cratere_obus"]}
-        ]
+        assert _summ(runs) == [("verdun_3_classes_1", "SVF", ["cratere_obus"])]
 
     def test_two_entities_same_model_grouped_into_one_run(self, tmp_path):
         _write_model(tmp_path, "formes", FORMES)
         installed = discover_installed_models(tmp_path)
         runs = resolve_runs_from_entities(["parcellaire", "talus_fosse"], {}, installed, _catalog())
-        assert runs == [
-            {"model": "formes", "target_rvt": "LD",
-             "selected_classes": ["parcellaire", "talus_fosse"]}
-        ]
+        assert _summ(runs) == [("formes", "LD", ["parcellaire", "talus_fosse"])]
 
     def test_all_classes_of_multiclass_model_explicit(self, tmp_path):
         _write_model(tmp_path, "formes", FORMES)
@@ -293,19 +303,16 @@ class TestResolveRuns:
         runs = resolve_runs_from_entities(
             ["chemin_creux", "parcellaire", "talus_fosse"], {}, installed, _catalog()
         )
-        assert runs == [{
-            "model": "formes", "target_rvt": "LD",
-            "selected_classes": ["chemin_creux", "parcellaire", "talus_fosse"],
-        }]
+        assert _summ(runs) == [("formes", "LD", ["chemin_creux", "parcellaire", "talus_fosse"])]
 
     def test_different_models_yield_separate_sorted_runs(self, tmp_path):
         _write_model(tmp_path, "cratere_circulaire_2", CRATERE)  # LD
         _write_model(tmp_path, "formes", FORMES)                 # LD
         installed = discover_installed_models(tmp_path)
         runs = resolve_runs_from_entities(["parcellaire", "cratere_obus"], {}, installed, _catalog())
-        assert runs == [
-            {"model": "cratere_circulaire_2", "target_rvt": "LD", "selected_classes": ["cratere_obus"]},
-            {"model": "formes", "target_rvt": "LD", "selected_classes": ["parcellaire"]},
+        assert _summ(runs) == [
+            ("cratere_circulaire_2", "LD", ["cratere_obus"]),
+            ("formes", "LD", ["parcellaire"]),
         ]
 
     def test_override_redirects_to_other_model(self, tmp_path):
@@ -315,18 +322,14 @@ class TestResolveRuns:
         runs = resolve_runs_from_entities(
             ["cratere_obus"], {"cratere_obus": "verdun_3_classes_1"}, installed, _catalog()
         )
-        assert runs == [
-            {"model": "verdun_3_classes_1", "target_rvt": "SVF", "selected_classes": ["cratere_obus"]}
-        ]
+        assert _summ(runs) == [("verdun_3_classes_1", "SVF", ["cratere_obus"])]
 
     def test_entity_without_model_skipped(self, tmp_path):
         _write_model(tmp_path, "formes", FORMES)
         installed = discover_installed_models(tmp_path)
         # 'charbonniere' non couverte -> ignorée, 'parcellaire' produit un run
         runs = resolve_runs_from_entities(["charbonniere", "parcellaire"], {}, installed, _catalog())
-        assert runs == [
-            {"model": "formes", "target_rvt": "LD", "selected_classes": ["parcellaire"]}
-        ]
+        assert _summ(runs) == [("formes", "LD", ["parcellaire"])]
 
     def test_no_selection_yields_no_runs(self, tmp_path):
         _write_model(tmp_path, "formes", FORMES)
@@ -339,19 +342,48 @@ class TestResolveRuns:
         runs = resolve_runs_from_entities(
             ["cratere_obus"], {}, installed, _catalog(), cluster_enabled={"cratere_obus"}
         )
-        assert runs == [{
-            "model": "cratere_circulaire_2", "target_rvt": "LD",
-            "selected_classes": ["cratere_obus", "zone_crateres"],
-        }]
+        assert _summ(runs) == [("cratere_circulaire_2", "LD", ["cratere_obus", "zone_crateres"])]
 
     def test_cluster_disabled_excludes_cluster_output(self, tmp_path):
         _write_model(tmp_path, "cratere_circulaire_2", CRATERE, args_yaml=CRATERE_ARGS)
         installed = discover_installed_models(tmp_path)
         runs = resolve_runs_from_entities(["cratere_obus"], {}, installed, _catalog())
-        assert runs == [{
-            "model": "cratere_circulaire_2", "target_rvt": "LD",
-            "selected_classes": ["cratere_obus"],
-        }]
+        assert _summ(runs) == [("cratere_circulaire_2", "LD", ["cratere_obus"])]
+
+
+class TestThresholds:
+    def test_discover_reads_default_thresholds(self, tmp_path):
+        _write_model(tmp_path, "m", THRESH)
+        m = discover_installed_models(tmp_path)[0]
+        assert m.default_confidence == 0.45
+        assert m.default_min_area == 200.0
+        assert m.default_iou == 0.6
+
+    def test_discover_threshold_defaults_when_absent(self, tmp_path):
+        _write_model(tmp_path, "formes", FORMES)
+        m = discover_installed_models(tmp_path)[0]
+        assert m.default_confidence == 0.3
+        assert m.default_min_area == 0.0
+        assert m.default_iou == 0.5
+
+    def test_run_carries_model_default_thresholds(self, tmp_path):
+        _write_model(tmp_path, "m", THRESH)
+        installed = discover_installed_models(tmp_path)
+        run = resolve_runs_from_entities(["parcellaire"], {}, installed, _catalog())[0]
+        assert run["confidence_threshold"] == 0.45
+        assert run["iou_threshold"] == 0.6
+        assert run["min_area_m2"] == 200.0
+
+    def test_entity_override_takes_precedence_except_iou(self, tmp_path):
+        _write_model(tmp_path, "m", THRESH)
+        installed = discover_installed_models(tmp_path)
+        run = resolve_runs_from_entities(
+            ["parcellaire"], {}, installed, _catalog(),
+            entity_thresholds={"parcellaire": {"confidence_threshold": 0.7, "min_area_m2": 50}},
+        )[0]
+        assert run["confidence_threshold"] == 0.7
+        assert run["min_area_m2"] == 50.0
+        assert run["iou_threshold"] == 0.6  # IoU jamais surchargé par l'UI
 
 
 # ----------------------------------------------------------------------

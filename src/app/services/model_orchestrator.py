@@ -69,6 +69,11 @@ class InstalledModel:
     # entity_id -> sorties de clustering disponibles (args.yaml:clustering),
     # proposées comme option « regrouper en zones » sur la carte d'entité.
     cluster_options: Dict[str, Tuple[str, ...]] = field(default_factory=dict)
+    # Seuils par défaut (model_card:thresholds) — injectés par run, surchargeables
+    # par entité côté UI (confiance + aire min). IoU jamais exposé dans l'UI.
+    default_confidence: float = 0.3
+    default_min_area: float = 0.0
+    default_iou: float = 0.5
 
 
 @dataclass(frozen=True)
@@ -152,6 +157,7 @@ def discover_installed_models(models_dir: Any) -> List[InstalledModel]:
         if not class_names:
             logger.warning("Modèle '%s' sans classe exploitable, ignoré", sub.name)
             continue
+        conf, area, iou = _extract_thresholds(card)
         models.append(
             InstalledModel(
                 name=sub.name,
@@ -162,6 +168,9 @@ def discover_installed_models(models_dir: Any) -> List[InstalledModel]:
                 coverage=coverage,
                 class_names=class_names,
                 cluster_options=_build_cluster_options(coverage, _load_args_clustering(sub)),
+                default_confidence=conf,
+                default_min_area=area,
+                default_iou=iou,
             )
         )
     return models
@@ -199,6 +208,33 @@ def _extract_target_rvt(card: Dict[str, Any]) -> str:
         if rvt:
             return rvt
     return "LD"
+
+
+def _extract_thresholds(card: Dict[str, Any]) -> Tuple[float, float, float]:
+    """``(confidence_default, min_area_m2, iou)`` depuis ``model_card:thresholds``.
+
+    Défauts : confiance 0.3, aire min 0, IoU 0.5. L'IoU peut être déclaré sous
+    ``iou`` ou ``iou_threshold`` (jamais exposé dans l'UI, seulement le pipeline).
+    """
+    conf, area, iou = 0.3, 0.0, 0.5
+    th = card.get("thresholds")
+    if isinstance(th, dict):
+        try:
+            conf = float(th.get("confidence_default", conf))
+        except (TypeError, ValueError):
+            pass
+        try:
+            area = float(th.get("min_area_m2", area))
+        except (TypeError, ValueError):
+            pass
+        for key in ("iou", "iou_threshold"):
+            if key in th:
+                try:
+                    iou = float(th[key])
+                    break
+                except (TypeError, ValueError):
+                    pass
+    return conf, area, iou
 
 
 def _extract_coverage(
@@ -334,6 +370,7 @@ def resolve_runs_from_entities(
     installed_models: Sequence[InstalledModel],
     catalog: Sequence[EntityDef],
     cluster_enabled: Optional[Set[str]] = None,
+    entity_thresholds: Optional[Dict[str, Dict[str, float]]] = None,
 ) -> List[Dict[str, Any]]:
     """Résout les entités sélectionnées en liste de ``runs`` (schéma pipeline).
 
@@ -347,10 +384,13 @@ def resolve_runs_from_entities(
     """
     overrides = overrides or {}
     cluster_enabled = cluster_enabled or set()
+    entity_thresholds = entity_thresholds or {}
     coverage_by_id = {ec.entity.id: ec for ec in build_entity_coverage(catalog, installed_models)}
     models_by_name = {m.name: m for m in installed_models}
 
-    groups: Dict[Tuple[str, str], set] = {}
+    # (modèle, rvt) -> {classes: set, entities: [ids]} pour pouvoir agréger les
+    # seuils surchargés par entité au niveau du run.
+    groups: Dict[Tuple[str, str], Dict[str, Any]] = {}
     for eid in selected_entity_ids:
         ec = coverage_by_id.get(eid)
         if ec is None:
@@ -368,15 +408,37 @@ def resolve_runs_from_entities(
         if not classes:
             logger.warning("Modèle '%s' ne couvre pas l'entité '%s', ignoré", model_name, eid)
             continue
-        group = groups.setdefault((model.name, model.target_rvt), set())
-        group.update(classes)
+        group = groups.setdefault((model.name, model.target_rvt), {"classes": set(), "entities": []})
+        group["classes"].update(classes)
+        group["entities"].append(eid)
         if eid in cluster_enabled:
-            group.update(model.cluster_options.get(eid, ()))
+            group["classes"].update(model.cluster_options.get(eid, ()))
 
     runs: List[Dict[str, Any]] = []
     for key in sorted(groups):
         model_name, rvt = key
+        model = models_by_name[model_name]
+        group = groups[key]
+        # Seuils : surcharge par entité si fournie (min = plus permissif si
+        # plusieurs entités d'un même run divergent), sinon défaut du modèle.
+        conf_over = [
+            entity_thresholds[e]["confidence_threshold"]
+            for e in group["entities"]
+            if e in entity_thresholds and "confidence_threshold" in entity_thresholds[e]
+        ]
+        area_over = [
+            entity_thresholds[e]["min_area_m2"]
+            for e in group["entities"]
+            if e in entity_thresholds and "min_area_m2" in entity_thresholds[e]
+        ]
         runs.append(
-            {"model": model_name, "target_rvt": rvt, "selected_classes": sorted(groups[key])}
+            {
+                "model": model_name,
+                "target_rvt": rvt,
+                "selected_classes": sorted(group["classes"]),
+                "confidence_threshold": float(min(conf_over) if conf_over else model.default_confidence),
+                "iou_threshold": float(model.default_iou),
+                "min_area_m2": float(min(area_over) if area_over else model.default_min_area),
+            }
         )
     return runs

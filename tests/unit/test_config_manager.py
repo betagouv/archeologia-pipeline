@@ -58,6 +58,7 @@ class TestDefaultConfig:
         assert cv["selected_entities"] == []
         assert cv["entity_model_overrides"] == {}
         assert cv["entity_cluster_enabled"] == []
+        assert cv["entity_thresholds"] == {}
 
     def test_default_has_no_ui_block(self, cm: ConfigManager):
         # Le toggle Simple/Expert (ui.display_mode) est supprimé en V2.

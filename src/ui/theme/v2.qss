@@ -68,13 +68,15 @@ QPushButton:disabled { color: #909090; border-color: #b0b0b0; }
 #WizardPageSub { color: #5a5a5a; font-size: 11px; }
 #WizardPagePlaceholder { color: #807d72; font-style: italic; }
 
-/* ---- Cartes (.gb) ---- */
-#Card { background: #ffffff; border: 1px solid #999999; border-radius: 6px; }
+/* ---- Cartes (#Card) — bordure « fieldset » peinte par _CardFrame ---- */
+#Card { background: transparent; border: none; }
+#CardHeader { background: transparent; }
 #CardNum {
     background: #2b79c2; color: #ffffff;
     border-radius: 9px; font-size: 10px; font-weight: bold;
 }
-#CardTitle { color: #1d5a96; font-weight: bold; font-size: 11px; }
+#CardTitle { color: #1d5a96; font-weight: bold; font-size: 12px; }
+#CardCounter { color: #5a5a5a; font-size: 11px; }
 #FieldLabel { color: #000000; font-size: 11px; }
 
 /* ---- Frise (StageButton) + connecteurs ▶ ---- */
@@ -141,6 +143,57 @@ QPushButton:disabled { color: #909090; border-color: #b0b0b0; }
 #Toast {
     background: #1c1b18; color: #f6f4ef;
     border-radius: 6px; padding: 8px 14px; font-size: 11px;
+}
+
+/* ---- Étape 3 : toggle + empty state ---- */
+#DetectionToggle { background: #d6e6f4; border: 1px solid #2b79c2; border-radius: 6px; }
+#DetectionSwitch { font-weight: bold; color: #1d5a96; font-size: 12px; }
+#FacultatifTag {
+    background: #d0d0d0; color: #5a5a5a;
+    font-size: 9px; font-weight: bold; letter-spacing: 1px;
+    padding: 3px 10px; border-radius: 3px;
+}
+#EmptyState { background: #f0f0f0; border: 1px dashed #a0a0a0; border-radius: 8px; }
+#EmptyStateTitle { font-weight: bold; color: #2c2c2c; font-size: 13px; }
+
+/* ---- Étape 3 : cartes d'entités ---- */
+#EntityScroll { background: transparent; }
+#EntityRow { background: transparent; border: none; }
+#EntityCard { background: #ffffff; border: 1px solid #c4c4c4; border-radius: 7px; }
+#EntityCard[state="on"] { background: #d6e6f4; border: 1px solid #2b79c2; }
+#EntityCard[state="warn"] { background: #f6efdc; border: 1px solid #b07a20; }
+#EntityCard[state="nomodel"] { background: #f0f0f0; border: 1px solid #c4c4c4; }
+#EntityCheck {
+    border: 1px solid #707070; border-radius: 2px;
+    background: #ffffff; color: #ffffff; font-size: 10px; font-weight: bold;
+}
+#EntityCard[state="on"] #EntityCheck { background: #2b79c2; border-color: #1d5a96; }
+#EntityLabel { font-weight: bold; color: #000000; }
+#EntityCard[state="on"] #EntityLabel { color: #1d5a96; }
+#EntityDesc { color: #5a5a5a; font-size: 10px; }
+#EntityRvtTag {
+    background: #d6e6f4; color: #1d5a96; font-size: 9px; font-weight: bold;
+    padding: 1px 6px; border-radius: 2px;
+}
+#EntityRvtTag[missing="true"] { background: #b07a20; color: #ffffff; }
+#EntityNoModel { color: #b07a20; font-size: 10px; font-style: italic; }
+#EntityRvtWarn { color: #b07a20; font-size: 10px; }
+#EntityActivateBtn { padding: 1px 8px; min-height: 16px; font-size: 10px; }
+#EntityModelLabel { color: #5a5a5a; font-size: 10px; }
+#EntityModelName { color: #2c2c2c; font-size: 10px; }
+#EntityModelSingle { color: #909090; font-size: 9px; font-style: italic; }
+#EntityChangeBtn {
+    background: transparent; border: none; color: #2b79c2;
+    font-size: 10px; padding: 0 2px; min-height: 0;
+}
+#EntityChangeBtn:hover { color: #1d5a96; text-decoration: underline; }
+
+/* ---- Étape 3 : runs IA programmés ---- */
+#RunRow { background: #f0f0f0; border: 1px solid #c4c4c4; border-radius: 5px; }
+#RunName { font-weight: bold; color: #000000; }
+#RunRvtTag {
+    background: #d6e6f4; color: #1d5a96; font-size: 10px; font-weight: bold;
+    padding: 1px 6px; border-radius: 2px;
 }
 
 /* ---- Barre d'actions ---- */

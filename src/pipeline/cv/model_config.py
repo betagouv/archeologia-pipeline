@@ -7,7 +7,6 @@ Extrait de class_utils.py pour séparer les responsabilités :
 """
 from __future__ import annotations
 
-import json
 import logging
 from pathlib import Path
 from typing import Dict, List, Optional, Union
@@ -328,11 +327,16 @@ def resolve_cv_runs(cv_config: Dict) -> List[Dict]:
         rvt = str(run.get("target_rvt") or "LD").strip()
         # Construire un cv_config complet pour ce run
         run_cfg = dict(cv_config, selected_model=model, target_rvt=rvt)
-        # Propager les champs spécifiques au run
+        # Propager les champs spécifiques au run (sinon écrasés par le global)
         if "selected_classes" in run:
             run_cfg["selected_classes"] = run["selected_classes"]
         if "min_area_m2" in run:
             run_cfg["min_area_m2"] = float(run["min_area_m2"])
+        # Seuils par modèle (orchestrateur V2) : confiance + IoU propres au run.
+        if "confidence_threshold" in run:
+            run_cfg["confidence_threshold"] = float(run["confidence_threshold"])
+        if "iou_threshold" in run:
+            run_cfg["iou_threshold"] = float(run["iou_threshold"])
         # Charger la config SAHI depuis le dossier du modèle
         model_path = _resolve_model_path_for_sahi(model, cv_config)
         if model_path:

@@ -53,6 +53,7 @@ class ConfigManager:
                 "selected_entities": [],
                 "entity_model_overrides": {},
                 "entity_cluster_enabled": [],
+                "entity_thresholds": {},
                 "selected_model": "",
                 "target_rvt": "LD",
                 "confidence_threshold": 0.3,

@@ -26,6 +26,7 @@ from qgis.PyQt.QtWidgets import (
 from ..config.config_manager import ConfigManager
 from .steps.step_1_source import SourcePage
 from .steps.step_2_indices import IndicesPage
+from .steps.step_3_detection import DetectionPage
 from .widgets.stepper_rail import StepperRail
 
 try:
@@ -81,10 +82,11 @@ class WizardDialog(QDialog):
         self._stack = QStackedWidget()
         self._source_page = SourcePage()
         self._indices_page = IndicesPage()
+        self._detection_page = DetectionPage(self._plugin_root)
         self._stack.addWidget(self._source_page)               # étape 1
         self._stack.addWidget(self._indices_page)              # étape 2
-        for n in (3, 4):                                       # étapes 3-4 (placeholders)
-            self._stack.addWidget(self._placeholder_page(n))
+        self._stack.addWidget(self._detection_page)            # étape 3
+        self._stack.addWidget(self._placeholder_page(4))       # étape 4
         body.addWidget(self._rail)
         body.addWidget(self._stack, 1)
         root.addLayout(body, 1)
@@ -95,9 +97,15 @@ class WizardDialog(QDialog):
         self._source_page.load_from(self._config)
         self._indices_page.load_from(self._config)
         self._indices_page.set_mode(self._source_page.current_mode())
+        self._detection_page.load_from(self._config)
+        self._detection_page.set_active_rvts(self._indices_page.active_rvt_keys())
         self._source_page.changed.connect(self._autosave)
         self._indices_page.changed.connect(self._autosave)
         self._indices_page.changed.connect(self._refresh_rail_subs)
+        self._indices_page.changed.connect(self._sync_detection_rvts)
+        self._detection_page.changed.connect(self._autosave)
+        self._detection_page.changed.connect(self._refresh_rail_subs)
+        self._detection_page.activate_rvt.connect(self._indices_page.activate_product)
         self._source_page.mode_changed.connect(self._on_mode_changed)
         self._refresh_rail_subs()
 
@@ -107,6 +115,10 @@ class WizardDialog(QDialog):
         """Le mode (étape 1) pilote la neutralisation des sections de l'étape 2."""
         self._indices_page.set_mode(mode)
         self._refresh_rail_subs()
+
+    def _sync_detection_rvts(self) -> None:
+        """Propage les indices RVT actifs (étape 2) à l'étape 3 (alertes RVT)."""
+        self._detection_page.set_active_rvts(self._indices_page.active_rvt_keys())
 
     # ------------------------------------------------------------------
     # Construction
@@ -214,6 +226,7 @@ class WizardDialog(QDialog):
     def _refresh_rail_subs(self) -> None:
         self._rail.set_sub(1, self._source_page.summary())
         self._rail.set_sub(2, self._indices_page.summary())
+        self._rail.set_sub(3, self._detection_page.summary())
 
     # ------------------------------------------------------------------
     # Persistance (autosave de last_ui_config.json)
@@ -221,6 +234,7 @@ class WizardDialog(QDialog):
     def _collect_config(self) -> None:
         self._source_page.collect_into(self._config)
         self._indices_page.collect_into(self._config)
+        self._detection_page.collect_into(self._config)
 
     def _autosave(self) -> None:
         if self._loading:
@@ -280,6 +294,8 @@ class WizardDialog(QDialog):
             self._source_page.load_from(self._config)
             self._indices_page.load_from(self._config)
             self._indices_page.set_mode(self._source_page.current_mode())
+            self._detection_page.load_from(self._config)
+            self._detection_page.set_active_rvts(self._indices_page.active_rvt_keys())
         finally:
             self._loading = False
         self._refresh_rail_subs()

@@ -1,0 +1,72 @@
+/* Thème V2 — wizard. Palette QGIS native (Qt Fusion). Chargé une fois au
+   démarrage du dialogue. Pas de variables (QSS n'en a pas) → couleurs en dur. */
+
+#WizardTitleBar {
+    background: #ffffff;
+    border-bottom: 1px solid #c4c4c4;
+}
+#WizardTitle {
+    font-size: 14px;
+    font-weight: bold;
+    color: #000000;
+}
+#WizardStepLabel {
+    color: #5a5a5a;
+}
+
+/* ---- Rail (stepper) ---- */
+#StepperRail {
+    background: #f0f0f0;
+    border-right: 1px solid #c4c4c4;
+}
+#RailItem {
+    border: 1px solid transparent;
+    border-radius: 4px;
+}
+#RailItem[state="active"] {
+    background: #ffffff;
+    border: 1px solid #c4c4c4;
+    border-left: 3px solid #2b79c2;
+}
+#RailItem[state="error"] {
+    border-left: 3px solid #b07a20;
+}
+#RailBadge {
+    background: #c4c4c4;
+    color: #ffffff;
+    border-radius: 13px;
+    font-weight: bold;
+}
+#RailItem[state="active"] #RailBadge { background: #2b79c2; }
+#RailItem[state="done"]   #RailBadge { background: #418141; }
+#RailItem[state="error"]  #RailBadge { background: #b07a20; }
+#RailLabel { font-weight: bold; color: #2c2c2c; }
+#RailSub   { color: #5a5a5a; font-size: 11px; }
+
+/* ---- Pages ---- */
+#WizardPageHeading {
+    font-size: 16px;
+    font-weight: bold;
+    color: #000000;
+}
+#WizardPageSub { color: #5a5a5a; }
+#WizardPagePlaceholder {
+    color: #807d72;
+    font-style: italic;
+}
+
+/* ---- Barre d'actions ---- */
+#WizardActionBar {
+    background: #f0f0f0;
+    border-top: 1px solid #c4c4c4;
+}
+#WizardPrimaryButton {
+    background: #2b79c2;
+    color: #ffffff;
+    border: 1px solid #1d5a96;
+    border-radius: 3px;
+    padding: 5px 16px;
+    font-weight: bold;
+}
+#WizardPrimaryButton:hover { background: #1d5a96; }
+#WizardPrimaryButton:disabled { background: #a0a0a0; border-color: #a0a0a0; }

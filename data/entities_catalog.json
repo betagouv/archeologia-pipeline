@@ -1,0 +1,59 @@
+{
+  "schema_version": 1,
+  "entities": [
+    {
+      "id": "cratere_obus",
+      "label": "Trous d'obus",
+      "description": "Cratères d'explosion d'obus (zones de combat, WWI).",
+      "display_order": 10
+    },
+    {
+      "id": "tranchees_et_boyaux",
+      "label": "Tranchées et boyaux",
+      "description": "Réseaux de tranchées et boyaux de communication.",
+      "display_order": 20
+    },
+    {
+      "id": "abri",
+      "label": "Abris",
+      "description": "Abris et sapes militaires.",
+      "display_order": 30
+    },
+    {
+      "id": "chemin_creux",
+      "label": "Chemins creux",
+      "description": "Voies en creux / chemins anciens encaissés.",
+      "display_order": 40
+    },
+    {
+      "id": "parcellaire",
+      "label": "Parcellaire",
+      "description": "Limites de parcelles agricoles fossiles.",
+      "display_order": 50
+    },
+    {
+      "id": "talus_fosse",
+      "label": "Talus et fossés",
+      "description": "Talus et fossés linéaires.",
+      "display_order": 60
+    },
+    {
+      "id": "charbonniere",
+      "label": "Charbonnières",
+      "description": "Plateformes de charbonnage (production de charbon de bois).",
+      "display_order": 70
+    },
+    {
+      "id": "four",
+      "label": "Fours",
+      "description": "Structures de combustion (fours à chaux, etc.).",
+      "display_order": 80
+    },
+    {
+      "id": "circular_depression",
+      "label": "Dépressions circulaires",
+      "description": "Dépressions circulaires d'origine indéterminée.",
+      "display_order": 90
+    }
+  ]
+}

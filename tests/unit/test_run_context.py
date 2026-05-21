@@ -63,6 +63,39 @@ class TestBuildRunContext:
         assert ctx.rvt_params["mdh"]["num_directions"] == 16
         assert ctx.rvt_params["svf"]["radius"] == 10
 
+    def test_entity_keys_do_not_affect_runs(self):
+        """V2 : selected_entities/overrides/cluster sont persistés (raw) mais
+        build_run_context ne consomme QUE 'runs' (résolus en amont par
+        l'orchestrateur). Contrat protégé : l'aval reste inchangé."""
+        config = {
+            "app": {"files": {"data_mode": "existing_rvt", "output_dir": "/tmp/out"}},
+            "computer_vision": {
+                "enabled": True,
+                "selected_entities": ["cratere_obus", "parcellaire"],
+                "entity_model_overrides": {"cratere_obus": "verdun_3_classes_1"},
+                "entity_cluster_enabled": ["cratere_obus"],
+                "runs": [
+                    {"model": "cratere_circulaire_2", "target_rvt": "LD",
+                     "selected_classes": ["cratere_obus"]},
+                ],
+            },
+        }
+        ctx = build_run_context(config)
+        assert ctx.cv.runs == [
+            {"model": "cratere_circulaire_2", "target_rvt": "LD",
+             "selected_classes": ["cratere_obus"]},
+        ]
+        assert ctx.cv.raw["selected_entities"] == ["cratere_obus", "parcellaire"]
+
+    def test_backcompat_legacy_runs_without_entity_keys(self):
+        """Un ancien config.json (runs explicites, sans clés entités) fonctionne."""
+        config = {
+            "app": {"files": {"data_mode": "existing_rvt", "output_dir": "/tmp/out"}},
+            "computer_vision": {"enabled": True, "runs": [{"model": "m", "target_rvt": "SVF"}]},
+        }
+        ctx = build_run_context(config)
+        assert ctx.cv.runs == [{"model": "m", "target_rvt": "SVF"}]
+
     def test_handles_empty_config(self, minimal_config: dict):
         ctx = build_run_context(minimal_config)
         assert ctx.mode == ""

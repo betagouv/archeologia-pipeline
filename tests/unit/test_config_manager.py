@@ -53,6 +53,16 @@ class TestDefaultConfig:
         cfg = cm.default_config()
         assert cfg["computer_vision"]["runs"] == []
 
+    def test_default_has_entity_selection_keys(self, cm: ConfigManager):
+        cv = cm.default_config()["computer_vision"]
+        assert cv["selected_entities"] == []
+        assert cv["entity_model_overrides"] == {}
+        assert cv["entity_cluster_enabled"] == []
+
+    def test_default_has_no_ui_block(self, cm: ConfigManager):
+        # Le toggle Simple/Expert (ui.display_mode) est supprimé en V2.
+        assert "ui" not in cm.default_config()
+
     def test_default_rvt_params_has_all_sections(self, cm: ConfigManager):
         cfg = cm.default_config()
         expected = {"mdh", "svf", "slope", "ldo", "slrm", "vat"}
@@ -96,6 +106,16 @@ class TestSaveLoad:
         cfg = cm.load()
         # Should fallback to defaults
         assert cfg["app"]["files"]["data_mode"] == "ign_laz"
+
+    def test_load_tolerates_legacy_display_mode(self, tmp_path: Path):
+        legacy = {
+            "ui": {"display_mode": "expert"},
+            "computer_vision": {"runs": [{"model": "m", "target_rvt": "LD"}]},
+        }
+        (tmp_path / "config.json").write_text(json.dumps(legacy), encoding="utf-8")
+        cfg = ConfigManager(tmp_path).load()
+        # Ne crashe pas et préserve les runs legacy.
+        assert cfg["computer_vision"]["runs"] == [{"model": "m", "target_rvt": "LD"}]
 
     def test_save_creates_parent_dirs(self, tmp_path: Path):
         nested = tmp_path / "sub" / "dir"
@@ -218,3 +238,29 @@ class TestMigrateCvRuns:
         assert cfg["computer_vision"]["runs"] == [
             {"model": "model_y", "target_rvt": "M_HS"}
         ]
+
+
+# ── _strip_deprecated_keys (V2 : retrait du toggle Simple/Expert) ─
+
+class TestStripDeprecatedKeys:
+    def test_strips_display_mode(self):
+        cfg = {"ui": {"display_mode": "expert"}, "computer_vision": {}}
+        ConfigManager._strip_deprecated_keys(cfg)
+        assert "display_mode" not in cfg.get("ui", {})
+
+    def test_keeps_other_ui_keys(self):
+        cfg = {"ui": {"display_mode": "expert", "window_pos": [10, 20]}}
+        ConfigManager._strip_deprecated_keys(cfg)
+        assert cfg["ui"] == {"window_pos": [10, 20]}
+
+    def test_no_ui_section_does_not_raise(self):
+        cfg = {"computer_vision": {}}
+        ConfigManager._strip_deprecated_keys(cfg)  # ne doit pas lever
+
+    def test_save_last_ui_strips_display_mode(self, tmp_path: Path):
+        cm = ConfigManager(tmp_path)
+        cfg = cm.default_config()
+        cfg["ui"] = {"display_mode": "expert"}
+        cm.save_last_ui_config(cfg)
+        reloaded = json.loads((tmp_path / "last_ui_config.json").read_text(encoding="utf-8"))
+        assert "display_mode" not in reloaded.get("ui", {})

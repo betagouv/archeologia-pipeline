@@ -50,6 +50,9 @@ class ConfigManager:
             "computer_vision": {
                 "enabled": False,
                 "runs": [],
+                "selected_entities": [],
+                "entity_model_overrides": {},
+                "entity_cluster_enabled": [],
                 "selected_model": "",
                 "target_rvt": "LD",
                 "confidence_threshold": 0.3,
@@ -181,6 +184,10 @@ class ConfigManager:
         if isinstance(cv, dict):
             cv.pop("sahi", None)
             cv.pop("selected_classes", None)
+        # V2 : le toggle Simple/Expert est supprimé.
+        ui = cfg.get("ui")
+        if isinstance(ui, dict):
+            ui.pop("display_mode", None)
 
     def _deep_update(self, base: Dict[str, Any], other: Dict[str, Any]) -> Dict[str, Any]:
         for k, v in other.items():

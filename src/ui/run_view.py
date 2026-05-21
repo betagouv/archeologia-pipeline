@@ -15,6 +15,8 @@ from typing import List, Optional
 from qgis.PyQt.QtCore import Qt, pyqtSignal
 from qgis.PyQt.QtGui import QTextCursor
 from qgis.PyQt.QtWidgets import (
+    QApplication,
+    QCheckBox,
     QFrame,
     QHBoxLayout,
     QLabel,
@@ -195,6 +197,25 @@ class RunView(QWidget):
         bar_row.addWidget(self._progress, 1)
         root.addLayout(bar_row)
 
+        jhead = QHBoxLayout()
+        jhead.setSpacing(8)
+        jtitle = QLabel("Journal d'exécution")
+        jtitle.setObjectName("RunJournalTitle")
+        self._autoscroll_check = QCheckBox("Auto-défilement")
+        self._autoscroll_check.setChecked(True)
+        copy_btn = QPushButton("Copier")
+        copy_btn.setObjectName("GhostButton")
+        copy_btn.clicked.connect(self._copy_journal)
+        clear_btn = QPushButton("Effacer")
+        clear_btn.setObjectName("GhostButton")
+        clear_btn.clicked.connect(self._clear_journal)
+        jhead.addWidget(jtitle)
+        jhead.addStretch(1)
+        jhead.addWidget(self._autoscroll_check)
+        jhead.addWidget(copy_btn)
+        jhead.addWidget(clear_btn)
+        root.addLayout(jhead)
+
         self._journal = QPlainTextEdit()
         self._journal.setObjectName("RunJournal")
         self._journal.setReadOnly(True)
@@ -284,12 +305,24 @@ class RunView(QWidget):
         self._last_transient_group = None
         self._last_transient_block = None
 
+    def _maybe_scroll(self) -> None:
+        if self._autoscroll_check.isChecked():
+            sb = self._journal.verticalScrollBar()
+            sb.setValue(sb.maximum())
+
+    def _copy_journal(self) -> None:
+        QApplication.clipboard().setText(self._journal.toPlainText())
+
+    def _clear_journal(self) -> None:
+        self._journal.clear()
+        self._last_transient_group = None
+        self._last_transient_block = None
+
     def _append_log(self, msg: str) -> None:
         self._last_transient_group = None
         self._last_transient_block = None
         self._journal.appendPlainText(msg)
-        sb = self._journal.verticalScrollBar()
-        sb.setValue(sb.maximum())
+        self._maybe_scroll()
 
     def _update_transient_log(self, group: str, msg: str) -> None:
         doc = self._journal.document()
@@ -300,14 +333,12 @@ class RunView(QWidget):
                 cursor.movePosition(QTextCursor.StartOfBlock)
                 cursor.movePosition(QTextCursor.EndOfBlock, QTextCursor.KeepAnchor)
                 cursor.insertText(msg)
-                sb = self._journal.verticalScrollBar()
-                sb.setValue(sb.maximum())
+                self._maybe_scroll()
                 return
         self._journal.appendPlainText(msg)
         self._last_transient_group = group
         self._last_transient_block = doc.blockCount() - 1
-        sb = self._journal.verticalScrollBar()
-        sb.setValue(sb.maximum())
+        self._maybe_scroll()
 
     def _set_progress(self, value: int) -> None:
         self._progress.setValue(int(value))

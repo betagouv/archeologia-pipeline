@@ -224,6 +224,7 @@ QPushButton:disabled { color: #909090; border-color: #b0b0b0; }
 
 /* ---- Run view : progression + journal ---- */
 #RunStageLabel { color: #1d5a96; font-weight: bold; font-size: 11px; }
+#RunJournalTitle { color: #2c2c2c; font-weight: bold; font-size: 11px; }
 #RunProgress {
     border: 1px solid #b0b0b0; border-radius: 3px;
     background: #e3e3e3; text-align: center; min-height: 18px; color: #000000;

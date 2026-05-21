@@ -1,72 +1,123 @@
-/* Thème V2 — wizard. Palette QGIS native (Qt Fusion). Chargé une fois au
-   démarrage du dialogue. Pas de variables (QSS n'en a pas) → couleurs en dur. */
+/* Thème V2 — wizard. Palette QGIS native (Qt Fusion), d'après v2_handoff/tokens.css.
+   Chargé une fois au démarrage. Pas de variables QSS → couleurs en dur. */
 
-#WizardTitleBar {
+QDialog { background: #f0f0f0; }
+QLabel { color: #2c2c2c; }
+
+/* ---- Champs ---- */
+QLineEdit {
     background: #ffffff;
-    border-bottom: 1px solid #c4c4c4;
-}
-#WizardTitle {
-    font-size: 14px;
-    font-weight: bold;
+    border: 1px solid #888888;
+    border-radius: 2px;
+    padding: 2px 8px;
+    min-height: 20px;
     color: #000000;
 }
-#WizardStepLabel {
-    color: #5a5a5a;
+QLineEdit:focus { border: 1px solid #2b79c2; }
+QLineEdit[state="warn"]  { border: 1px solid #b07a20; background: #fbf3e0; }
+QLineEdit[state="error"] { border: 1px solid #a83838; background: #fbe7e7; }
+
+/* ---- Boutons (Qt Fusion gradient gris) ---- */
+QPushButton {
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #fefefe, stop:1 #d8d8d8);
+    border: 1px solid #888888;
+    border-radius: 2px;
+    padding: 3px 12px;
+    min-height: 22px;
+    color: #000000;
 }
+QPushButton:hover {
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #fdfdfd, stop:1 #c9dcef);
+    border-color: #2b79c2;
+}
+QPushButton:disabled { color: #909090; border-color: #b0b0b0; }
+#GhostButton { background: transparent; border: 1px solid transparent; color: #2c2c2c; }
+#GhostButton:hover { background: #e3e3e3; border: 1px solid #a0a0a0; }
+
+/* ---- En-tête ---- */
+#WizardTitleBar { background: #ffffff; border-bottom: 1px solid #c4c4c4; }
+#WizardTitle { font-size: 14px; font-weight: bold; color: #000000; }
+#WizardSubtitle { font-size: 11px; color: #5a5a5a; }
+
+/* ---- Liseré de progression (étape n/4) ---- */
+#WizardProgress { border: none; background: #e3e3e3; }
+#WizardProgress::chunk { background: #2b79c2; }
 
 /* ---- Rail (stepper) ---- */
-#StepperRail {
-    background: #f0f0f0;
-    border-right: 1px solid #c4c4c4;
+#StepperRail { background: #f0f0f0; border-right: 1px solid #c4c4c4; }
+#RailItem { border-left: 3px solid transparent; background: transparent; }
+#RailItem:hover { background: #e8e8e8; }
+#RailItem[state="active"] { background: #d6e6f4; border-left: 3px solid #2b79c2; }
+#RailIdx {
+    background: #e3e3e3; color: #5a5a5a;
+    border: 1px solid #a0a0a0; border-radius: 11px;
+    font-size: 11px; font-weight: bold;
 }
-#RailItem {
-    border: 1px solid transparent;
-    border-radius: 4px;
+#RailItem[state="active"] #RailIdx { background: #2b79c2; border-color: #1d5a96; color: #ffffff; }
+#RailItem[state="done"]   #RailIdx { background: #418141; border-color: #2d6a2d; color: #ffffff; }
+#RailLabel { font-weight: 600; color: #000000; }
+#RailSub { font-size: 10px; color: #5a5a5a; }
+#RailOpt {
+    background: #d0d0d0; color: #5a5a5a;
+    font-size: 8px; font-weight: bold;
+    padding: 1px 4px; border-radius: 2px;
 }
-#RailItem[state="active"] {
-    background: #ffffff;
-    border: 1px solid #c4c4c4;
-    border-left: 3px solid #2b79c2;
-}
-#RailItem[state="error"] {
-    border-left: 3px solid #b07a20;
-}
-#RailBadge {
-    background: #c4c4c4;
-    color: #ffffff;
-    border-radius: 13px;
-    font-weight: bold;
-}
-#RailItem[state="active"] #RailBadge { background: #2b79c2; }
-#RailItem[state="done"]   #RailBadge { background: #418141; }
-#RailItem[state="error"]  #RailBadge { background: #b07a20; }
-#RailLabel { font-weight: bold; color: #2c2c2c; }
-#RailSub   { color: #5a5a5a; font-size: 11px; }
 
 /* ---- Pages ---- */
-#WizardPageHeading {
-    font-size: 16px;
+#WizardPageHeading { font-size: 13px; font-weight: bold; color: #000000; }
+#WizardPageSub { color: #5a5a5a; font-size: 11px; }
+#WizardPagePlaceholder { color: #807d72; font-style: italic; }
+
+/* ---- Cartes (.gb) ---- */
+#Card { background: #ffffff; border: 1px solid #999999; border-radius: 6px; }
+#CardNum {
+    background: #2b79c2; color: #ffffff;
+    border-radius: 9px; font-size: 10px; font-weight: bold;
+}
+#CardTitle { color: #1d5a96; font-weight: bold; font-size: 11px; }
+#FieldLabel { color: #000000; font-size: 11px; }
+
+/* ---- Frise (StageButton) + connecteurs ▶ ---- */
+#StageButton { background: #ffffff; border: 1px solid #a0a0a0; border-radius: 9px; }
+#StageButton[role="entry"] { background: #d6e6f4; border: 1px solid #2b79c2; }
+#StageButton[role="skipped"] { background: #e3e3e3; border: 1px solid #c4c4c4; }
+#StageButton[optional="true"] { border: 1px dashed #a0a0a0; }
+#StageButton[optional="true"][role="entry"] { border: 1px dashed #2b79c2; }
+#StageGlyph { font-size: 17px; color: #000000; }
+#StageButton[role="entry"] #StageGlyph { color: #1d5a96; }
+#StageButton[role="skipped"] #StageGlyph { color: #5a5a5a; }
+#StageName { font-weight: bold; font-size: 11px; color: #000000; }
+#StageButton[role="entry"] #StageName { color: #1d5a96; }
+#StageButton[role="skipped"] #StageName { color: #5a5a5a; }
+#StageSub { font-size: 9px; color: #5a5a5a; }
+#StageBadge {
+    background: #2b79c2; color: #ffffff;
+    font-size: 9px; font-weight: bold; letter-spacing: 1px;
+    padding: 2px 9px; border-radius: 3px;
+}
+#StageConnector { color: #a0a0a0; font-size: 16px; font-weight: bold; }
+#StageConnector[active="true"] { color: #2b79c2; }
+
+/* ---- Bandeau de mode ---- */
+#ModeBanner { background: #d6e6f4; border: 1px solid #2b79c2; border-radius: 7px; }
+#ModeBannerIcon {
+    background: #2b79c2; color: #ffffff;
+    border-radius: 3px; font-size: 13px; font-weight: bold;
+}
+#ModeBannerTitle { color: #1d5a96; font-weight: bold; font-size: 12px; }
+#ModeBannerText { color: #2c2c2c; font-size: 11px; }
+
+/* ---- Barre d'actions ---- */
+#WizardActionBar { background: #f0f0f0; border-top: 1px solid #c4c4c4; }
+#WizardPrimaryButton {
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #d8eafc, stop:1 #a8c8ec);
+    border: 1px solid #2b79c2;
+    border-radius: 2px;
+    padding: 5px 18px;
     font-weight: bold;
     color: #000000;
 }
-#WizardPageSub { color: #5a5a5a; }
-#WizardPagePlaceholder {
-    color: #807d72;
-    font-style: italic;
+#WizardPrimaryButton:hover {
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #cee2fa, stop:1 #94bce4);
 }
-
-/* ---- Barre d'actions ---- */
-#WizardActionBar {
-    background: #f0f0f0;
-    border-top: 1px solid #c4c4c4;
-}
-#WizardPrimaryButton {
-    background: #2b79c2;
-    color: #ffffff;
-    border: 1px solid #1d5a96;
-    border-radius: 3px;
-    padding: 5px 16px;
-    font-weight: bold;
-}
-#WizardPrimaryButton:hover { background: #1d5a96; }
-#WizardPrimaryButton:disabled { background: #a0a0a0; border-color: #a0a0a0; }
+#WizardPrimaryButton:disabled { background: #d0d0d0; border-color: #a0a0a0; color: #909090; }

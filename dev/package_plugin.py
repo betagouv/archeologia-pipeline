@@ -7,7 +7,6 @@ Exclut tous les fichiers de développement (venv, pycache, git, tests, etc.)
 import os
 import zipfile
 from pathlib import Path
-from datetime import datetime
 
 # Dossier racine du plugin (ce script est dans dev/)
 PLUGIN_ROOT = Path(__file__).resolve().parent.parent
@@ -24,10 +23,12 @@ EXCLUDE_DIRS = {
     ".githooks",
     ".pytest_cache",
     "__pycache__",
+    ".claude",   # mémoire / plans de l'assistant (jamais distribués)
     "dev",       # Tout l'outillage développeur (requirements, runner_onnx, package_plugin)
     "tests",
     ".venv",
     "node_modules",
+    "nouvelle_UI_a_supprimer_plus_tard",  # maquette de design (refonte V2)
 }
 
 EXCLUDE_FILES = {
@@ -36,6 +37,7 @@ EXCLUDE_FILES = {
     ".talismanrc",
     "conftest.py",
     "config.json",
+    "last_ui_config.json",  # état de session UI (jamais distribué)
     "pytest.ini",
     "run_tests.py",
     ".DS_Store",

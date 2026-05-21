@@ -8,7 +8,7 @@ QGIS plugin (Python) that runs a LiDAR processing pipeline → DTM / density / R
 
 Code in this repo runs in **one of two contexts**, and most surprises come from confusing them:
 
-1. **Inside QGIS** (production): `__init__.py` → `main.py:ArcheologiaPipelinePlugin` is loaded by QGIS. `qgis.core`, `qgis.processing`, and `osgeo` are available. UI lives in `src/ui/main_dialog.py`. Pipeline modules under `src/pipeline/` import QGIS at module load time.
+1. **Inside QGIS** (production): `__init__.py` → `main.py:ArcheologiaPipelinePlugin` is loaded by QGIS. `qgis.core`, `qgis.processing`, and `osgeo` are available. UI is the 4-step wizard `src/ui/wizard_dialog.py` (pages in `src/ui/steps/`, run view in `src/ui/run_view.py`). Pipeline modules under `src/pipeline/` import QGIS at module load time.
 2. **Standalone** (tests / dev tooling): no QGIS available. `conftest.py` and `pytest.ini` deliberately exclude `src/ui/` and `src/pipeline/` from pytest collection (`norecursedirs`, `collect_ignore_glob`) because they would fail to import. Only modules under `src/app/` and pure helpers can be unit-tested directly. Don't add `from qgis.*` imports at module top level in code that needs to be testable — defer them inside functions, as `main.py:run()` already does.
 
 ## Common commands
@@ -38,7 +38,7 @@ QGIS-side manual test checklist: `tests/TESTS_MANUELS_QGIS.txt`.
 
 ## Pipeline architecture (the parts that span multiple files)
 
-Entry: `main.py` → `MainDialog` → worker thread → `PipelineController.run(ctx, reporter, cancel)` (`src/app/pipeline_controller.py`).
+Entry: `main.py` → `WizardDialog` (étape 4 → `LaunchPage`/`RunView`) → worker thread → `PipelineController.run(ctx, reporter, cancel)` (`src/app/pipeline_controller.py`).
 
 `PipelineController` does **three things only**:
 1. `run_preflight(...)` — `src/pipeline/preflight.py` checks CLI tools (`pdal`, `gdalwarp`, `gdal_translate`, optional `gdaladdo`), QGIS Processing availability, RVT algos, and input paths. Returns False → pipeline aborts.

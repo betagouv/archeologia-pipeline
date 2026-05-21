@@ -1,8 +1,8 @@
 """WizardDialog — UI V2 (wizard 4 étapes).
 
 QDialog + en-tête (titre dynamique par étape) + liseré de progression + rail
-latéral (stepper) + QStackedWidget des 4 pages + barre d'actions. Isolé de
-l'ancien ``MainDialog`` pour cohabiter pendant la migration.
+latéral (stepper) + QStackedWidget des 4 pages + barre d'actions. Point d'entrée
+unique de l'UI (lancé par ``main.py``).
 """
 from __future__ import annotations
 

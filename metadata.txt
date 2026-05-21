@@ -8,7 +8,7 @@
 name=Archéolog'IA
 qgisMinimumVersion=3.0
 description=Détection de sites archéologiques par réseaux de neurones
-version=0.2.0
+version=0.3.0
 author=Valentin VIEUX
 email=valentin.vieux.pro@outlook.com
 about=Plugin pour automatiser la production d'indices de visualisation (à l'aide du plugin Relief Visualization Toolbox) à partir de données LiDAR ou de MNT et pour détecter des sites archéologiques à l'aide de réseaux de neurones (YOLO détection ou segmentation)
@@ -20,7 +20,14 @@ repository=https://github.com/betagouv/archeologia-pipeline
 #
 
 hasProcessingProvider=no
-changelog=0.2.0 (2026-05-18)
+changelog=0.3.0 (2026-05-21)
+    * Nouvelle interface en assistant (wizard) 4 étapes : Source → Indices → Détection → Lancer
+    * Détection par entités archéologiques : on coche les entités, les modèles sont choisis automatiquement (orchestrateur + catalogue d'entités)
+    * Seuils confiance / aire min réglables par entité ; IoU géré par modèle, appliqué à tous les runs
+    * Vue d'exécution : timeline 5 étapes, barre de progression, journal (auto-défilement / copier / effacer)
+    * Validation bloquante : pastilles d'erreur sur le rail, bandeau récap, bouton Lancer désactivé
+    * Suppression du basculement Simple/Expert ; rétro-compatibilité des anciennes configurations
+ 0.2.0 (2026-05-18)
     * Refonte architecturale (UI V4, runners V3, pipeline CV V2) — base plus stable et testable
     * Affichage de la version du plugin dans le titre de la fenêtre
     * Audit des paramètres au démarrage (coercition + warnings non bloquants)

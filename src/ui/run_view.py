@@ -10,9 +10,10 @@ from __future__ import annotations
 
 import logging
 import threading
-from typing import List, Optional
+import time
+from typing import Dict, List, Optional
 
-from qgis.PyQt.QtCore import Qt, pyqtSignal
+from qgis.PyQt.QtCore import Qt, QTimer, pyqtSignal
 from qgis.PyQt.QtGui import QTextCursor
 from qgis.PyQt.QtWidgets import (
     QApplication,
@@ -71,6 +72,12 @@ def _stage_bucket(msg: str) -> Optional[int]:
     return None
 
 
+def _fmt_mmss(seconds: float) -> str:
+    """Durée en m:ss (ex. 134 → « 2:14 », 722 → « 12:02 », 0 → « 0:00 »)."""
+    m, s = divmod(int(max(0.0, seconds)), 60)
+    return f"{m}:{s:02d}"
+
+
 class _TimelineStep(QFrame):
     """Pastille numérotée + libellé, état pending / active / done."""
 
@@ -78,8 +85,10 @@ class _TimelineStep(QFrame):
         super().__init__(parent)
         self.setObjectName("RunStep")
         self._index = index
+        # Marges uniformes (tous états) → l'encadré de l'étape active n'introduit
+        # aucun décalage relatif entre étapes.
         lay = QVBoxLayout(self)
-        lay.setContentsMargins(4, 0, 4, 0)
+        lay.setContentsMargins(6, 4, 6, 4)
         lay.setSpacing(3)
         lay.setAlignment(Qt.AlignHCenter)
         self._circle = QLabel(str(index + 1))
@@ -89,16 +98,33 @@ class _TimelineStep(QFrame):
         self._caption = QLabel(label)
         self._caption.setObjectName("RunStepCaption")
         self._caption.setAlignment(Qt.AlignCenter)
+        # Sous-libellé + chrono TOUJOURS présents (même vides) → hauteur stable
+        # quel que soit l'état (pas de reflow quand le texte apparaît/change).
+        self._subtitle = QLabel("")
+        self._subtitle.setObjectName("RunStepSubtitle")
+        self._subtitle.setAlignment(Qt.AlignCenter)
+        self._timing = QLabel("")
+        self._timing.setObjectName("RunStepTiming")
+        self._timing.setAlignment(Qt.AlignCenter)
+        self._timing.setFixedWidth(46)  # largeur fixe ~"59:59" → pas de reflow
         lay.addWidget(self._circle, 0, Qt.AlignHCenter)
         lay.addWidget(self._caption, 0, Qt.AlignHCenter)
+        lay.addWidget(self._subtitle, 0, Qt.AlignHCenter)
+        lay.addWidget(self._timing, 0, Qt.AlignHCenter)
         self.set_state("pending")
 
     def set_state(self, state: str) -> None:
         self._circle.setText("✓" if state == "done" else str(self._index + 1))
-        for w in (self, self._circle, self._caption):
+        for w in (self, self._circle, self._caption, self._subtitle, self._timing):
             w.setProperty("state", state)
             w.style().unpolish(w)
             w.style().polish(w)
+
+    def set_subtitle(self, text: str) -> None:
+        self._subtitle.setText(text or "")
+
+    def set_timing(self, text: str) -> None:
+        self._timing.setText(text or "")
 
 
 class _Timeline(QWidget):
@@ -127,6 +153,14 @@ class _Timeline(QWidget):
             else:
                 step.set_state("pending")
 
+    def set_timing(self, i: int, text: str) -> None:
+        if 0 <= i < len(self._steps):
+            self._steps[i].set_timing(text)
+
+    def set_step_subtitles(self, subs: Dict[int, str]) -> None:
+        for i, step in enumerate(self._steps):
+            step.set_subtitle(subs.get(i, ""))
+
     def mark_all_done(self) -> None:
         for step in self._steps:
             step.set_state("done")
@@ -134,6 +168,7 @@ class _Timeline(QWidget):
     def reset(self) -> None:
         for step in self._steps:
             step.set_state("pending")
+            step.set_timing("")
 
 
 class RunView(QWidget):
@@ -150,6 +185,11 @@ class RunView(QWidget):
         self._running = False
         self._last_transient_group: Optional[str] = None
         self._last_transient_block: Optional[int] = None
+        # Chronométrage par étape (purement UI, via time.monotonic aux transitions).
+        self._step_started: List[Optional[float]] = [None] * len(_STAGES)
+        self._step_elapsed: List[Optional[float]] = [None] * len(_STAGES)
+        self._active_started: Optional[float] = None
+        self._ui_timer: Optional[QTimer] = None
 
         # ── Logger + pont Qt ──
         self._logger = logging.getLogger("archeologia_pipeline")
@@ -237,6 +277,10 @@ class RunView(QWidget):
     def is_running(self) -> bool:
         return self._running
 
+    def set_step_subtitles(self, subs: Dict[int, str]) -> None:
+        """Sous-libellés statiques de la timeline (calculés au lancement)."""
+        self._timeline.set_step_subtitles(subs or {})
+
     def start_run(self, config: dict) -> None:
         """Valide la config puis lance le pipeline dans un thread worker."""
         if self._running:
@@ -298,12 +342,17 @@ class RunView(QWidget):
     # ------------------------------------------------------------------
     def _reset_view(self) -> None:
         self._bucket = -1
-        self._timeline.reset()
+        self._timeline.reset()  # remet les états + vide les chronos (garde les sous-libellés)
         self._progress.setValue(0)
         self._stage_label.setText("Préparation…")
         self._journal.clear()
         self._last_transient_group = None
         self._last_transient_block = None
+        self._step_started = [None] * len(_STAGES)
+        self._step_elapsed = [None] * len(_STAGES)
+        self._active_started = None
+        if self._ui_timer is not None:
+            self._ui_timer.stop()
 
     def _maybe_scroll(self) -> None:
         if self._autoscroll_check.isChecked():
@@ -347,8 +396,37 @@ class RunView(QWidget):
         self._stage_label.setText(text or "")
         bucket = _stage_bucket(text)
         if bucket is not None and bucket > self._bucket:
-            self._bucket = bucket
-            self._timeline.set_active(bucket)
+            self._enter_bucket(bucket)
+
+    def _enter_bucket(self, bucket: int) -> None:
+        """Transition vers une étape : fige le chrono de la précédente, démarre
+        celui de la nouvelle, lance le rafraîchissement live."""
+        now = time.monotonic()
+        if 0 <= self._bucket < len(_STAGES) and self._active_started is not None:
+            self._step_elapsed[self._bucket] = now - self._active_started
+            self._timeline.set_timing(self._bucket, _fmt_mmss(self._step_elapsed[self._bucket]))
+        self._bucket = bucket
+        self._step_started[bucket] = now
+        self._active_started = now
+        self._timeline.set_active(bucket)
+        self._timeline.set_timing(bucket, "0:00")
+        self._ensure_timer()
+
+    def _ensure_timer(self) -> None:
+        if self._ui_timer is None:
+            self._ui_timer = QTimer(self)
+            self._ui_timer.setInterval(500)
+            self._ui_timer.timeout.connect(self._tick_active)
+        if not self._ui_timer.isActive():
+            self._ui_timer.start()
+
+    def _tick_active(self) -> None:
+        if not self._running or self._active_started is None:
+            return
+        if 0 <= self._bucket < len(_STAGES):
+            self._timeline.set_timing(
+                self._bucket, _fmt_mmss(time.monotonic() - self._active_started)
+            )
 
     def _on_run_enabled(self, enabled: bool) -> None:
         if not enabled:
@@ -356,6 +434,13 @@ class RunView(QWidget):
         self._running = False
         self._cancel_btn.setEnabled(False)
         self._cancel_event.clear()
+        # Fige le chrono de l'étape active courante puis arrête le rafraîchissement.
+        if 0 <= self._bucket < len(_STAGES) and self._active_started is not None:
+            self._step_elapsed[self._bucket] = time.monotonic() - self._active_started
+            self._timeline.set_timing(self._bucket, _fmt_mmss(self._step_elapsed[self._bucket]))
+        self._active_started = None
+        if self._ui_timer is not None:
+            self._ui_timer.stop()
         # Pipeline arrivé au bout sans annulation → timeline complète.
         if self._bucket >= len(_STAGES) - 1:
             self._timeline.mark_all_done()

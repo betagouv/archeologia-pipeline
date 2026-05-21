@@ -370,6 +370,45 @@ class DetectionPage(QWidget):
         n_mod = len({r["model"] for r in runs})
         return f"{n_ent} entité{'s' if n_ent > 1 else ''} · {n_mod} modèle{'s' if n_mod > 1 else ''}"
 
+    def recap_entities(self) -> list:
+        """Libellés des entités cochées, dans l'ordre du catalogue (récap étape 4)."""
+        if not self._enabled:
+            return []
+        return [e.label for e in self._catalog if self._selected.get(e.id)]
+
+    def recap_runs(self) -> list:
+        """Une chaîne par run résolu : « <modèle> sur <RVT> » (récap étape 4).
+
+        Couvre aussi le cas legacy (runs préservés sans entité sélectionnée).
+        """
+        if not self._enabled:
+            return []
+        selected_ids = [e for e, on in self._selected.items() if on]
+        if selected_ids:
+            runs = resolve_runs_from_entities(
+                selected_ids, self._overrides, self._installed, self._catalog,
+                self._cluster, entity_thresholds=self._entity_thresholds,
+            )
+        else:
+            runs = self._legacy_runs or []
+        out = []
+        for run in runs:
+            model = self._models.get(run.get("model"))
+            disp = model.display_name if model else (run.get("model") or "?")
+            out.append(f"{disp} sur {run.get('target_rvt', 'LD')}")
+        return out
+
+    def model_count(self) -> int:
+        """Nombre de modèles distincts impliqués (sous-libellé timeline)."""
+        selected_ids = [e for e, on in self._selected.items() if on]
+        if selected_ids:
+            runs = resolve_runs_from_entities(
+                selected_ids, self._overrides, self._installed, self._catalog, self._cluster
+            )
+        else:
+            runs = self._legacy_runs or []
+        return len({r.get("model") for r in runs if r.get("model")})
+
     def load_from(self, config: dict) -> None:
         cv = config.get("computer_vision") or {}
         prev = self._loading

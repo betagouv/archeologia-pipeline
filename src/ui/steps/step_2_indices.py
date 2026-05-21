@@ -284,6 +284,14 @@ class IndicesPage(QWidget):
         """Indices RVT actuellement cochés (pour l'étape 3)."""
         return {k for k in rvt_keys() if self._products.get(k)}
 
+    def recap_products(self) -> list:
+        """Tags des produits actifs, dans l'ordre du catalogue (récap étape 4)."""
+        return [p.tag for p in all_products() if self._products.get(p.key)]
+
+    def resolution(self) -> float:
+        """Résolution MNT (m/pixel), pour le récap de l'étape 4."""
+        return float(self._res_spin.value())
+
     def activate_product(self, key: str) -> None:
         """Active un produit (utilisé par « + Activer » de l'étape 3)."""
         if self._products.get(key):

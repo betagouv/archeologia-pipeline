@@ -24,11 +24,13 @@ from qgis.PyQt.QtWidgets import (
     QWidget,
 )
 
+from ..app.services.indices_model import product, rvt_keys
+from ..app.services.source_modes import mode_info
 from ..config.config_manager import ConfigManager
 from .steps.step_1_source import SourcePage
 from .steps.step_2_indices import IndicesPage
 from .steps.step_3_detection import DetectionPage
-from .steps.step_4_launch import LaunchPage
+from .steps.step_4_launch import LaunchPage, RecapSection
 from .widgets.stepper_rail import StepperRail
 
 try:
@@ -237,13 +239,63 @@ class WizardDialog(QDialog):
     def _update_launch_recap(self) -> None:
         self._collect_config()
         files = (self._config.get("app") or {}).get("files") or {}
-        rows = [
-            ("Source", self._source_page.summary()),
-            ("Dossier de sortie", files.get("output_dir") or "—"),
-            ("Indices", self._indices_page.summary()),
-            ("Détection IA", self._detection_page.summary()),
-        ]
-        self._launch_page.update_recap(rows)
+        proc = self._config.get("processing") or {}
+        cv = self._config.get("computer_vision") or {}
+        mode = files.get("data_mode") or "ign_laz"
+
+        sections = [RecapSection("Mode", badges=[mode_info(mode).banner_label])]
+
+        prods = self._indices_page.recap_products()
+        res = self._indices_page.resolution()
+        sections.append(RecapSection("Produits raster", badges=prods, value=f"{res:g} m/pixel"))
+
+        if not cv.get("enabled"):
+            sections.append(RecapSection("Détection IA", value="désactivée"))
+        else:
+            ents = self._detection_page.recap_entities()
+            runs = self._detection_page.recap_runs()
+            detail = (
+                f"→ {len(runs)} run{'s' if len(runs) > 1 else ''} · " + " · ".join(runs)
+                if runs else ""
+            )
+            val = "" if (ents or runs) else "aucune entité"
+            sections.append(RecapSection("Détection IA", badges=ents, value=val, detail=detail))
+
+        sections.append(RecapSection("Sortie", value=files.get("output_dir") or "—"))
+
+        try:
+            workers = int(proc.get("max_workers", 4) or 4)
+        except (TypeError, ValueError):
+            workers = 4
+        sections.append(
+            RecapSection("Performance", value=f"{workers} worker{'s' if workers > 1 else ''}")
+        )
+
+        self._launch_page.update_recap(sections)
+        self._launch_page.set_step_subtitles(self._step_subtitles())
+
+    def _step_subtitles(self) -> dict:
+        """Sous-libellés statiques de la timeline (depuis la config courante)."""
+        proc = self._config.get("processing") or {}
+        cv = self._config.get("computer_vision") or {}
+        try:
+            res = float(proc.get("mnt_resolution", 0.5) or 0.5)
+        except (TypeError, ValueError):
+            res = 0.5
+        active = self._indices_page.active_rvt_keys()
+        rvt_tags = [product(k).tag for k in rvt_keys() if k in active]
+        subs = {
+            0: "",  # téléchargement : comptage de dalles différé (préflight)
+            1: f"{res:g} m/pixel",
+            2: " · ".join(rvt_tags),
+            4: "VRT · projet QGIS",
+        }
+        if cv.get("enabled"):
+            n = self._detection_page.model_count()
+            subs[3] = f"{n} modèle{'s' if n > 1 else ''}" if n else "—"
+        else:
+            subs[3] = "désactivée"
+        return subs
 
     def _on_run_started(self) -> None:
         self._set_nav_enabled(False)

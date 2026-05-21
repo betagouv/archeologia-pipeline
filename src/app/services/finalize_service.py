@@ -25,10 +25,6 @@ def _collect_vrt_paths_and_build(idx_dir: Path, det_dir: Path, log: LogFn) -> Li
             if not tif_dir.is_dir():
                 continue
             vrt_path = tif_dir / "index.vrt"
-            if vrt_path.exists():
-                log(f"VRT déjà existant, ignoré: {vrt_path.name}")
-                vrt_paths.append(str(vrt_path))
-                continue
             if list(tif_dir.glob("*.tif")):
                 build_vrt_index(tif_dir, pattern="*.tif", output_name="index.vrt", log=log)
                 if vrt_path.exists():

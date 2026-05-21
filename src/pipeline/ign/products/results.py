@@ -41,10 +41,8 @@ def build_vrt_index(
             return False
 
         vrt_path = folder / output_name
-        if vrt_path.exists():
-            log(f"VRT déjà existant, ignoré: {vrt_path.relative_to(folder.parent)}")
-            return True
-        
+        # gdalbuildvrt écrase toujours le VRT de sortie : on régénère systématiquement
+
         # Use -input_file_list to avoid Windows command line length limit (WinError 206)
         with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False, encoding='utf-8') as f:
             for file in files:

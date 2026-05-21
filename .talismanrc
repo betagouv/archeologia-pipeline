@@ -10,7 +10,7 @@ fileignoreconfig:
 - filename: src/app/run_context.py
   checksum: 98f9cded0be079e37bd246c73cf42790e92e73dbf5171d7293e9de3f43f1090e
 - filename: src/app/services/finalize_service.py
-  checksum: 569c04ef73174bfe4223dd2277f61dab9890377675458096146ba1561abb749b
+  checksum: bf42590449a976dc72b8c37dec5e17bdb2cbe38524fab54b4c1f63603cd2ea14
 - filename: src/config/config_manager.py
   checksum: 5b8420e9a0101decf896b57643d55107c11a68f4cf3dacd1cc347811ad03a6c8
 - filename: src/pipeline/cv/class_utils.py
@@ -46,7 +46,7 @@ fileignoreconfig:
 - filename: src/ui/cv_runs_table.py
   checksum: 4558aa1b573ce329d094d3ba5a46630b51896ace486e681c4b91b2783092b7b7
 - filename: src/ui/main_dialog.py
-  checksum: c1f604cddeacd24bbb04b0c908ad9e4cc03b2142f01e01db22afaad6dac27ab3
+  checksum: 5fc616f4d9ffeaf2f20f2bf49db9628363f89bfee53fde8b73f5c5feeb8079a9
 - filename: tests/unit/test_config_manager.py
   checksum: ec1f8f540412d2fb12f016d340b77a648c0622801d2c32e5bfef632836851081
 - filename: tests/unit/test_config_widget_adapter.py
@@ -56,7 +56,7 @@ fileignoreconfig:
 - filename: tests/unit/test_existing_rvt_runner.py
   checksum: bfe6deba5864be0989e79bb10e4e51e40561b50bab1c4f1897c0476465ae9430
 - filename: tests/unit/test_finalize_service.py
-  checksum: 0ac401cac9d6f77e8b29f14f89a78e062e35241bd5ae5879d33eb42b57a519f6
+  checksum: b655b0e30de9531c7147fe14079f1b7d2e7881ce9736d3468816fd51431dcc32
 - filename: tests/unit/test_models_connectivity.py
   checksum: 4ebf3d20042f2e7b59807db8122be4badd2a31f452dea0022dd7d41313df4779
 - filename: tests/unit/test_preflight.py

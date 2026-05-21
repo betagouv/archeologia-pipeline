@@ -29,6 +29,14 @@ class LaunchPage(QWidget):
         root.setContentsMargins(16, 16, 16, 16)
         root.setSpacing(12)
 
+        # Bandeau de validation : rouge si la config est inexécutable, vert sinon.
+        self._banner = QLabel("")
+        self._banner.setObjectName("ValidationBanner")
+        self._banner.setProperty("state", "ok")
+        self._banner.setWordWrap(True)
+        self._banner.setVisible(False)
+        root.addWidget(self._banner)
+
         recap_card, rv = build_card("Récapitulatif", "1")
         self._recap_host = QWidget()
         self._recap_layout = QVBoxLayout(self._recap_host)
@@ -65,6 +73,19 @@ class LaunchPage(QWidget):
             h.addWidget(val, 1)
             self._recap_layout.addWidget(row)
             self._recap_rows.append(row)
+
+    def set_validation(self, errors: list) -> None:
+        """Affiche le bandeau : erreurs bloquantes (rouge) ou « prêt » (vert)."""
+        if errors:
+            lines = "<br>".join(f"• {e}" for e in errors)
+            self._banner.setText(f"<b>⚠ Impossible de lancer — corrigez :</b><br>{lines}")
+            self._banner.setProperty("state", "error")
+        else:
+            self._banner.setText("✓ Configuration valide — prêt à lancer.")
+            self._banner.setProperty("state", "ok")
+        self._banner.setVisible(True)
+        self._banner.style().unpolish(self._banner)
+        self._banner.style().polish(self._banner)
 
     def start_run(self, config: dict) -> None:
         self._run_view.start_run(config)

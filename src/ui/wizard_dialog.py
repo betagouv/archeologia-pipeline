@@ -38,6 +38,19 @@ except Exception:  # pragma: no cover - défensif (hors QGIS)
         return ""
 
 
+def _classify_error_step(err: str) -> int:
+    """Range une erreur de validation sur l'étape qui la corrige (pastille rail).
+
+    Indices/produits → étape 2 ; tout le reste (mode, dossier de sortie, chemins
+    d'entrée) → étape 1. La détection (étape 3) est facultative : aucune erreur
+    bloquante n'en provient.
+    """
+    low = err.lower()
+    if "indice" in low or "produit" in low:
+        return 2
+    return 1
+
+
 class WizardDialog(QDialog):
     """Dialogue principal V2 en wizard 4 étapes."""
 
@@ -62,6 +75,7 @@ class WizardDialog(QDialog):
         self._cm = ConfigManager(self._plugin_root)
         self._config = self._cm.load_last_ui_config()
         self._loading = False
+        self._validation_errors: list = []
 
         version = get_plugin_version() or ""
         suffix = f" — v{version}" if version else ""
@@ -115,6 +129,7 @@ class WizardDialog(QDialog):
         self._refresh_rail_subs()
 
         self._goto_step(1)
+        self._refresh_validation()
 
     def _on_mode_changed(self, mode: str) -> None:
         """Le mode (étape 1) pilote la neutralisation des sections de l'étape 2."""
@@ -200,6 +215,9 @@ class WizardDialog(QDialog):
         self._next_btn.setText("▶  Lancer le pipeline" if is_last else "Suivant  →")
         if is_last:
             self._update_launch_recap()
+            self._apply_validation()
+        else:
+            self._update_launch_button()
 
     def _on_prev(self) -> None:
         self._goto_step(self._current_step - 1)
@@ -237,8 +255,54 @@ class WizardDialog(QDialog):
         """Verrouille la navigation pendant un run (l'annulation reste possible
         via le bouton dédié du RunView)."""
         self._prev_btn.setEnabled(on and self._current_step > 1)
-        self._next_btn.setEnabled(on)
         self._rail.setEnabled(on)
+        if on:
+            self._update_launch_button()  # respecte la validation en étape 4
+        else:
+            self._next_btn.setEnabled(False)
+
+    # ------------------------------------------------------------------
+    # Validation bloquante (rail + bandeau étape 4 + bouton Lancer)
+    # ------------------------------------------------------------------
+    def _refresh_validation(self) -> None:
+        self._collect_config()
+        self._apply_validation()
+
+    def _compute_errors(self) -> list:
+        try:
+            from ..app.run_context import build_run_context, validate_run_context
+            ctx = build_run_context(self._config)
+            errors, _warnings = validate_run_context(ctx)
+            return list(errors)
+        except Exception as e:  # noqa: BLE001
+            return [f"Configuration illisible : {e}"]
+
+    def _apply_validation(self) -> None:
+        """Met à jour rail + bandeau + bouton à partir de ``self._config`` (déjà
+        collecté). Les erreurs sont réparties par étape pour les pastilles."""
+        errors = self._compute_errors()
+        self._validation_errors = errors
+        by_step: dict = {}
+        for err in errors:
+            by_step.setdefault(_classify_error_step(err), []).append(err)
+        self._rail.set_errors(by_step)
+        self._launch_page.set_validation(errors)
+        self._update_launch_button()
+
+    def _update_launch_button(self) -> None:
+        if self._launch_page.is_running():
+            self._next_btn.setEnabled(False)
+            return
+        if self._current_step == self._n_steps:
+            ok = not self._validation_errors
+            self._next_btn.setEnabled(ok)
+            self._next_btn.setToolTip(
+                "" if ok
+                else "Corrigez avant de lancer :\n• " + "\n• ".join(self._validation_errors)
+            )
+        else:
+            self._next_btn.setEnabled(True)
+            self._next_btn.setToolTip("")
 
     def _refresh_rail_subs(self) -> None:
         self._rail.set_sub(1, self._source_page.summary())
@@ -261,6 +325,7 @@ class WizardDialog(QDialog):
             self._cm.save_last_ui_config(self._config)
         except Exception:
             pass  # la persistance ne doit jamais bloquer l'UI
+        self._apply_validation()  # config déjà collectée
 
     def closeEvent(self, event):  # noqa: N802 (signature Qt)
         try:

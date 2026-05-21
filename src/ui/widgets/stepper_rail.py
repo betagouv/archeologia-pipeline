@@ -24,6 +24,7 @@ class _RailItem(QFrame):
         self._is_last = False
         self.setObjectName("RailItem")
         self.setProperty("state", "todo")
+        self.setProperty("error", "false")
         self.setCursor(Qt.PointingHandCursor)
 
         layout = QHBoxLayout(self)
@@ -70,6 +71,21 @@ class _RailItem(QFrame):
 
     def set_sub(self, text: str) -> None:
         self._sub.setText(text)
+
+    def set_error(self, on: bool, tooltip: str = "") -> None:
+        """Marqueur d'erreur indépendant de l'état (active/done/todo) : pastille
+        rouge + infobulle listant les problèmes bloquants de cette étape."""
+        flag = "true" if on else "false"
+        self.setProperty("error", flag)
+        self._idx.setProperty("error", flag)
+        self._label.setProperty("error", flag)
+        self.setToolTip(tooltip if on else "")
+        for w in (self, self._idx, self._label):
+            try:
+                w.style().unpolish(w)
+                w.style().polish(w)
+            except Exception:
+                pass
 
     def paintEvent(self, event):  # noqa: N802 (signature Qt)
         super().paintEvent(event)
@@ -127,3 +143,9 @@ class StepperRail(QFrame):
     def set_sub(self, step: int, text: str) -> None:
         if 1 <= step <= len(self._items):
             self._items[step - 1].set_sub(text)
+
+    def set_errors(self, errors_by_step: dict) -> None:
+        """``errors_by_step`` = {n: [messages…]} ; marque les étapes fautives."""
+        for idx, item in enumerate(self._items, start=1):
+            msgs = errors_by_step.get(idx)
+            item.set_error(bool(msgs), "\n".join(msgs) if msgs else "")

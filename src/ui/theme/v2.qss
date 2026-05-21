@@ -62,6 +62,10 @@ QPushButton:disabled { color: #909090; border-color: #b0b0b0; }
     font-size: 8px; font-weight: bold;
     padding: 1px 4px; border-radius: 2px;
 }
+/* Marqueur d'erreur (indépendant de l'état) — placé après les règles d'état
+   pour gagner en priorité quand error="true". */
+#RailItem[error="true"] #RailIdx { background: #a83838; border-color: #7a2727; color: #ffffff; }
+#RailItem[error="true"] #RailLabel { color: #a83838; }
 
 /* ---- Pages ---- */
 #WizardPageHeading { font-size: 13px; font-weight: bold; color: #000000; }
@@ -195,6 +199,11 @@ QPushButton:disabled { color: #909090; border-color: #b0b0b0; }
     background: #d6e6f4; color: #1d5a96; font-size: 10px; font-weight: bold;
     padding: 1px 6px; border-radius: 2px;
 }
+
+/* ---- Étape 4 : bandeau de validation ---- */
+#ValidationBanner { border-radius: 6px; padding: 8px 12px; font-size: 11px; }
+#ValidationBanner[state="error"] { background: #fbe7e7; border: 1px solid #a83838; color: #7a2727; }
+#ValidationBanner[state="ok"]    { background: #e6f2e6; border: 1px solid #418141; color: #2d6a2d; }
 
 /* ---- Étape 4 : récapitulatif ---- */
 #RecapKey { color: #5a5a5a; font-size: 11px; }

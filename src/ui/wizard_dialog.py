@@ -25,6 +25,7 @@ from qgis.PyQt.QtWidgets import (
 
 from ..config.config_manager import ConfigManager
 from .steps.step_1_source import SourcePage
+from .steps.step_2_indices import IndicesPage
 from .widgets.stepper_rail import StepperRail
 
 try:
@@ -79,8 +80,10 @@ class WizardDialog(QDialog):
         self._rail.step_clicked.connect(self._goto_step)
         self._stack = QStackedWidget()
         self._source_page = SourcePage()
+        self._indices_page = IndicesPage()
         self._stack.addWidget(self._source_page)               # étape 1
-        for n in (2, 3, 4):                                    # étapes 2-4 (placeholders)
+        self._stack.addWidget(self._indices_page)              # étape 2
+        for n in (3, 4):                                       # étapes 3-4 (placeholders)
             self._stack.addWidget(self._placeholder_page(n))
         body.addWidget(self._rail)
         body.addWidget(self._stack, 1)
@@ -90,11 +93,20 @@ class WizardDialog(QDialog):
 
         # Restaurer la config, brancher l'autosave + le sous-libellé du rail.
         self._source_page.load_from(self._config)
+        self._indices_page.load_from(self._config)
+        self._indices_page.set_mode(self._source_page.current_mode())
         self._source_page.changed.connect(self._autosave)
-        self._source_page.mode_changed.connect(lambda _m: self._refresh_rail_subs())
+        self._indices_page.changed.connect(self._autosave)
+        self._indices_page.changed.connect(self._refresh_rail_subs)
+        self._source_page.mode_changed.connect(self._on_mode_changed)
         self._refresh_rail_subs()
 
         self._goto_step(1)
+
+    def _on_mode_changed(self, mode: str) -> None:
+        """Le mode (étape 1) pilote la neutralisation des sections de l'étape 2."""
+        self._indices_page.set_mode(mode)
+        self._refresh_rail_subs()
 
     # ------------------------------------------------------------------
     # Construction
@@ -201,12 +213,14 @@ class WizardDialog(QDialog):
 
     def _refresh_rail_subs(self) -> None:
         self._rail.set_sub(1, self._source_page.summary())
+        self._rail.set_sub(2, self._indices_page.summary())
 
     # ------------------------------------------------------------------
     # Persistance (autosave de last_ui_config.json)
     # ------------------------------------------------------------------
     def _collect_config(self) -> None:
         self._source_page.collect_into(self._config)
+        self._indices_page.collect_into(self._config)
 
     def _autosave(self) -> None:
         if self._loading:
@@ -264,6 +278,8 @@ class WizardDialog(QDialog):
         self._loading = True
         try:
             self._source_page.load_from(self._config)
+            self._indices_page.load_from(self._config)
+            self._indices_page.set_mode(self._source_page.current_mode())
         finally:
             self._loading = False
         self._refresh_rail_subs()

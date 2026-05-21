@@ -29,6 +29,7 @@ from ...app.services.source_modes import (
     pipeline_stages,
 )
 from ..icons import colored_pixmap
+from ..widgets.card import build_card
 from ..widgets.stage_button import StageButton
 
 
@@ -64,7 +65,7 @@ class SourcePage(QWidget):
         root.addWidget(sub)
 
         # ── Carte frise + bandeau ──
-        self._frise_card, fv = self._card()
+        self._frise_card, fv = build_card()
         frise_row = QHBoxLayout()
         frise_row.setContentsMargins(0, 12, 0, 0)  # place en haut pour le badge ENTRÉE
         frise_row.setSpacing(0)
@@ -96,7 +97,7 @@ class SourcePage(QWidget):
         self._entry_badge.hide()
 
         # ── Carte entrée & sortie ──
-        io_card, iv = self._card("Entrée & sortie", "2")
+        io_card, iv = build_card("Entrée & sortie", "2")
         self._source_label = QLabel("")
         self._source_label.setObjectName("FieldLabel")
         row1 = QHBoxLayout()
@@ -131,30 +132,6 @@ class SourcePage(QWidget):
 
         root.addWidget(io_card)
         root.addStretch(1)
-
-    def _card(self, title: str = "", num: str = ""):
-        """Crée une carte (#Card) avec en-tête optionnel (badge num + titre).
-        Retourne (frame, layout_contenu)."""
-        card = QFrame()
-        card.setObjectName("Card")
-        outer = QVBoxLayout(card)
-        outer.setContentsMargins(12, 10, 12, 12)
-        outer.setSpacing(10)
-        if title:
-            header = QHBoxLayout()
-            header.setSpacing(8)
-            if num:
-                badge = QLabel(num)
-                badge.setObjectName("CardNum")
-                badge.setFixedSize(18, 18)
-                badge.setAlignment(Qt.AlignCenter)
-                header.addWidget(badge)
-            tlabel = QLabel(title)
-            tlabel.setObjectName("CardTitle")
-            header.addWidget(tlabel)
-            header.addStretch(1)
-            outer.addLayout(header)
-        return card, outer
 
     def _build_banner(self) -> QWidget:
         self._banner = QFrame()

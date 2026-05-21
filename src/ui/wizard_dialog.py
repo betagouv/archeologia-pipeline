@@ -6,6 +6,7 @@ l'ancien ``MainDialog`` pour cohabiter pendant la migration.
 """
 from __future__ import annotations
 
+import copy
 import json
 from pathlib import Path
 
@@ -27,6 +28,7 @@ from ..config.config_manager import ConfigManager
 from .steps.step_1_source import SourcePage
 from .steps.step_2_indices import IndicesPage
 from .steps.step_3_detection import DetectionPage
+from .steps.step_4_launch import LaunchPage
 from .widgets.stepper_rail import StepperRail
 
 try:
@@ -83,10 +85,11 @@ class WizardDialog(QDialog):
         self._source_page = SourcePage()
         self._indices_page = IndicesPage()
         self._detection_page = DetectionPage(self._plugin_root)
+        self._launch_page = LaunchPage(self._plugin_root, self._config)
         self._stack.addWidget(self._source_page)               # étape 1
         self._stack.addWidget(self._indices_page)              # étape 2
         self._stack.addWidget(self._detection_page)            # étape 3
-        self._stack.addWidget(self._placeholder_page(4))       # étape 4
+        self._stack.addWidget(self._launch_page)               # étape 4
         body.addWidget(self._rail)
         body.addWidget(self._stack, 1)
         root.addLayout(body, 1)
@@ -107,6 +110,8 @@ class WizardDialog(QDialog):
         self._detection_page.changed.connect(self._refresh_rail_subs)
         self._detection_page.activate_rvt.connect(self._indices_page.activate_product)
         self._source_page.mode_changed.connect(self._on_mode_changed)
+        self._launch_page.run_started.connect(self._on_run_started)
+        self._launch_page.run_finished.connect(self._on_run_finished)
         self._refresh_rail_subs()
 
         self._goto_step(1)
@@ -170,21 +175,6 @@ class WizardDialog(QDialog):
         layout.addWidget(self._next_btn)
         return bar
 
-    def _placeholder_page(self, n: int) -> QWidget:
-        page = QWidget()
-        layout = QVBoxLayout(page)
-        layout.setContentsMargins(24, 24, 24, 24)
-        layout.setSpacing(6)
-        heading = QLabel(self.TITLES[n][0])
-        heading.setObjectName("WizardPageHeading")
-        placeholder = QLabel("(contenu à venir)")
-        placeholder.setObjectName("WizardPagePlaceholder")
-        layout.addWidget(heading)
-        layout.addSpacing(8)
-        layout.addWidget(placeholder)
-        layout.addStretch(1)
-        return page
-
     def _apply_theme(self) -> None:
         qss_path = Path(__file__).parent / "theme" / "v2.qss"
         try:
@@ -208,6 +198,8 @@ class WizardDialog(QDialog):
         self._prev_btn.setEnabled(step > 1)
         is_last = step == self._n_steps
         self._next_btn.setText("▶  Lancer le pipeline" if is_last else "Suivant  →")
+        if is_last:
+            self._update_launch_recap()
 
     def _on_prev(self) -> None:
         self._goto_step(self._current_step - 1)
@@ -219,9 +211,34 @@ class WizardDialog(QDialog):
             self._on_launch()
 
     def _on_launch(self) -> None:
-        QMessageBox.information(
-            self, "À venir", "Le lancement du pipeline sera câblé au Jalon 6."
-        )
+        if self._launch_page.is_running():
+            return
+        self._update_launch_recap()  # collecte la config + remplit le récap
+        self._launch_page.start_run(copy.deepcopy(self._config))
+
+    def _update_launch_recap(self) -> None:
+        self._collect_config()
+        files = (self._config.get("app") or {}).get("files") or {}
+        rows = [
+            ("Source", self._source_page.summary()),
+            ("Dossier de sortie", files.get("output_dir") or "—"),
+            ("Indices", self._indices_page.summary()),
+            ("Détection IA", self._detection_page.summary()),
+        ]
+        self._launch_page.update_recap(rows)
+
+    def _on_run_started(self) -> None:
+        self._set_nav_enabled(False)
+
+    def _on_run_finished(self) -> None:
+        self._set_nav_enabled(True)
+
+    def _set_nav_enabled(self, on: bool) -> None:
+        """Verrouille la navigation pendant un run (l'annulation reste possible
+        via le bouton dédié du RunView)."""
+        self._prev_btn.setEnabled(on and self._current_step > 1)
+        self._next_btn.setEnabled(on)
+        self._rail.setEnabled(on)
 
     def _refresh_rail_subs(self) -> None:
         self._rail.set_sub(1, self._source_page.summary())

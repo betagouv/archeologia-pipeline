@@ -196,6 +196,37 @@ QPushButton:disabled { color: #909090; border-color: #b0b0b0; }
     padding: 1px 6px; border-radius: 2px;
 }
 
+/* ---- Étape 4 : récapitulatif ---- */
+#RecapKey { color: #5a5a5a; font-size: 11px; }
+#RecapVal { color: #000000; font-size: 11px; font-weight: 600; }
+
+/* ---- Run view : timeline (5 étapes) ---- */
+#RunStepCircle {
+    background: #e3e3e3; color: #5a5a5a;
+    border: 1px solid #a0a0a0; border-radius: 12px;
+    font-size: 11px; font-weight: bold;
+}
+#RunStep[state="active"] #RunStepCircle { background: #2b79c2; border-color: #1d5a96; color: #ffffff; }
+#RunStep[state="done"]   #RunStepCircle { background: #418141; border-color: #2d6a2d; color: #ffffff; }
+#RunStepCaption { font-size: 10px; color: #5a5a5a; }
+#RunStep[state="active"] #RunStepCaption { color: #1d5a96; font-weight: bold; }
+#RunStep[state="done"]   #RunStepCaption { color: #2d6a2d; }
+#RunStepLine { background: #c4c4c4; border: none; }
+
+/* ---- Run view : progression + journal ---- */
+#RunStageLabel { color: #1d5a96; font-weight: bold; font-size: 11px; }
+#RunProgress {
+    border: 1px solid #b0b0b0; border-radius: 3px;
+    background: #e3e3e3; text-align: center; min-height: 18px; color: #000000;
+}
+#RunProgress::chunk { background: #2b79c2; border-radius: 2px; }
+#RunJournal {
+    background: #1c1b18; color: #d8d4cc;
+    border: 1px solid #999999; border-radius: 4px;
+    font-family: "Consolas", "Courier New", monospace; font-size: 10px;
+}
+#RunCancelBtn { padding: 4px 16px; }
+
 /* ---- Barre d'actions ---- */
 #WizardActionBar { background: #f0f0f0; border-top: 1px solid #c4c4c4; }
 #WizardPrimaryButton {

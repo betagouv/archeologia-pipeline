@@ -64,6 +64,9 @@ class DetectionPage(QWidget):
         self._run_rows: list = []
         self._content_scroll = None
         self._sel_count = None
+        # Runs d'une config legacy (sans entités) à préserver tant que
+        # l'utilisateur ne reprend pas la main par les entités. Cf. load_from.
+        self._legacy_runs = None
 
         self._build()
         self._refresh()
@@ -355,13 +358,16 @@ class DetectionPage(QWidget):
         if not self._enabled:
             return "désactivée"
         selected_ids = [e for e, on in self._selected.items() if on]
+        if not selected_ids:
+            if self._legacy_runs:
+                n = len(self._legacy_runs)
+                return f"{n} run{'s' if n > 1 else ''} (config importée)"
+            return "aucune entité"
         runs = resolve_runs_from_entities(
             selected_ids, self._overrides, self._installed, self._catalog, self._cluster
         )
         n_ent = len(selected_ids)
         n_mod = len({r["model"] for r in runs})
-        if not n_ent:
-            return "aucune entité"
         return f"{n_ent} entité{'s' if n_ent > 1 else ''} · {n_mod} modèle{'s' if n_mod > 1 else ''}"
 
     def load_from(self, config: dict) -> None:
@@ -375,6 +381,11 @@ class DetectionPage(QWidget):
             self._cluster = set(cv.get("entity_cluster_enabled") or [])
             self._entity_thresholds = dict(cv.get("entity_thresholds") or {})
             self._annot_check.setChecked(bool(cv.get("generate_annotated_images", False)))
+            # Rétrocompat : config legacy avec des « runs » explicites mais aucune
+            # entité → on préserve ces runs (jamais d'écrasement silencieux) tant
+            # que l'utilisateur ne sélectionne pas d'entité (cf. collect_into).
+            legacy = cv.get("runs") or []
+            self._legacy_runs = list(legacy) if (legacy and not self._selected) else None
             self._refresh()
         finally:
             self._loading = prev
@@ -383,6 +394,8 @@ class DetectionPage(QWidget):
         cv = config.setdefault("computer_vision", {})
         cv["enabled"] = self._enabled
         selected_ids = [e for e, on in self._selected.items() if on]
+        if selected_ids:
+            self._legacy_runs = None  # l'utilisateur pilote par entités désormais
         cv["selected_entities"] = selected_ids
         cv["entity_model_overrides"] = {
             e: m for e, m in self._overrides.items() if self._selected.get(e)
@@ -393,12 +406,16 @@ class DetectionPage(QWidget):
         }
         cv["generate_annotated_images"] = self._annot_check.isChecked()
         cv["generate_shapefiles"] = True  # toujours : le GeoPackage des détections est produit
-        # Runs résolus pour le pipeline (l'aval ne consomme que 'runs').
-        cv["runs"] = (
-            resolve_runs_from_entities(
+        # Runs pour le pipeline (l'aval ne consomme que 'runs') : résolus depuis
+        # les entités, ou — config legacy sans entités — les runs préservés tels quels.
+        if not self._enabled:
+            cv["runs"] = []
+        elif selected_ids:
+            cv["runs"] = resolve_runs_from_entities(
                 selected_ids, self._overrides, self._installed, self._catalog, self._cluster,
                 entity_thresholds=self._entity_thresholds,
             )
-            if self._enabled
-            else []
-        )
+        elif self._legacy_runs is not None:
+            cv["runs"] = self._legacy_runs
+        else:
+            cv["runs"] = []

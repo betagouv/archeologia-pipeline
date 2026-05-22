@@ -146,6 +146,22 @@ class TestCollectPreflightResults:
         )
         assert any(r.critical and not r.ok for r in results)
 
+    def test_existing_mnt_accepts_asc_only_dir(self):
+        """Un dossier MNT ne contenant que des .asc doit passer le preflight
+        (le runtime existing_mnt convertit les .asc en TIF via gdal_translate)."""
+        with tempfile.TemporaryDirectory() as td:
+            (Path(td) / "mnt.asc").write_bytes(b"x")
+            results = collect_preflight_results(
+                mode="existing_mnt",
+                cv_config={"enabled": False},
+                products={},
+                files_config={"existing_mnt_dir": td},
+                output_dir=Path(td),
+            )
+        mnt = [r for r in results if r.name == "Dossier MNT existants"]
+        assert len(mnt) == 1
+        assert mnt[0].ok is True
+
     def test_output_dir_reports_free_space(self):
         with tempfile.TemporaryDirectory() as td:
             results = collect_preflight_results(

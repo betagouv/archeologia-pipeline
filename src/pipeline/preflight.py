@@ -233,9 +233,9 @@ def collect_preflight_results(
     elif mode == "local_laz":
         _check_input_path(files_cfg, "local_laz_dir", "Dossier LAZ locaux", extensions=["laz", "las", "LAZ", "LAS"], results=results)
     elif mode == "existing_mnt":
-        _check_input_path(files_cfg, "existing_mnt_dir", "Dossier MNT existants", extensions=["tif", "TIF", "tiff"], results=results)
+        _check_input_path(files_cfg, "existing_mnt_dir", "Dossier MNT existants", extensions=["tif", "tiff", "asc"], results=results)
     elif mode == "existing_rvt":
-        _check_input_path(files_cfg, "existing_rvt_dir", "Dossier RVT existants", extensions=["tif", "TIF", "tiff"], results=results)
+        _check_input_path(files_cfg, "existing_rvt_dir", "Dossier RVT existants", extensions=["tif", "tiff"], results=results)
 
     return results
 

@@ -1,6 +1,6 @@
 fileignoreconfig:
 - filename: README.md
-  checksum: 66dfd55ee8e6c4492c32080ee587cdbc4b9d74ecaceab42642c4837fa74c1219
+  checksum: 73cbcc4ce6325b16dcd6681135cb35a51941d6a93348530eeeb75ff64227ca40
 - filename: dev/docs/documentation_utilisateur_v1.docx
   checksum: 9984314b88553c8aa0de31f28403d664eba5a2426681c22a6b1c29e5c787cc5e
 - filename: dev/runner_onnx/export_to_onnx.py

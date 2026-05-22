@@ -1,14 +1,12 @@
 from __future__ import annotations
 
-import os
-import subprocess
 import shutil
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple
 
 from ..coords import extract_xy_from_filename, get_raster_bounds, infer_xy_from_file
-from ..subprocess_utils import subprocess_kwargs_no_window
+from ..subprocess_utils import run_subprocess_cancellable
 from ..ign.products.crop import copy_products_without_crop, crop_final_products
 from ..ign.products.indices import create_visualization_products
 from ..ign.products.results import copy_final_products_to_results
@@ -25,9 +23,6 @@ _ALIGN_TOLERANCE_M = 50
 @dataclass(frozen=True)
 class ExistingMntResult:
     total: int
-
-
-# _subprocess_kwargs_no_window importé depuis subprocess_utils
 
 
 def _infer_tile_coords_from_mnt(mnt_path: Path, log: LogFn) -> Tuple[Optional[str], Optional[str], Optional[str]]:
@@ -139,22 +134,35 @@ def _copy_source_mnt_to_temp(
     source_path: Path,
     temp_mnt_path: Path,
     gdal_translate: Optional[str],
-) -> None:
-    """Matérialise le MNT source dans temp_dir sous le nom attendu par RVT."""
+    log: LogFn = lambda _: None,
+    cancel_check: CancelCheckFn | None = None,
+) -> bool:
+    """Matérialise le MNT source dans temp_dir sous le nom attendu par RVT.
+
+    Retourne True si le TIF temporaire est prêt, False si l'annulation a été
+    demandée pendant la conversion .asc (process interrompu, rien matérialisé).
+    """
     if temp_mnt_path.exists():
-        return
+        return True
     suffix = source_path.suffix.lower()
     if suffix in (".tif", ".tiff"):
         shutil.copy2(str(source_path), str(temp_mnt_path))
+        return True
     elif suffix == ".asc":
         if not gdal_translate:
             raise FileNotFoundError("gdal_translate executable not found in PATH")
-        cmd = [gdal_translate, str(source_path), str(temp_mnt_path)]
-        r = subprocess.run(
-            cmd, capture_output=True, text=True, **subprocess_kwargs_no_window()
+        log(
+            f"Conversion ASC→TIF : {source_path.name} "
+            f"(peut être long sur une grande emprise)…"
         )
+        cmd = [gdal_translate, str(source_path), str(temp_mnt_path)]
+        r = run_subprocess_cancellable(cmd, cancel=cancel_check)
+        if r is None:
+            return False  # annulation demandée pendant la conversion
         if r.returncode != 0:
             raise RuntimeError(r.stderr or r.stdout)
+        log(f"Conversion ASC→TIF terminée : {temp_mnt_path.name}")
+        return True
     else:
         raise ValueError(f"Format MNT non supporté: {source_path.suffix}")
 
@@ -248,10 +256,13 @@ def run_existing_mnt(
     gdal_translate = shutil.which("gdal_translate")
 
     processed = 0
-    for mnt_path in mnt_files:
+    total = len(mnt_files)
+    for idx, mnt_path in enumerate(mnt_files, 1):
         if cancel_check is not None and cancel_check():
             log("Annulation demandée, arrêt du traitement MNT.")
             break
+
+        log(f"── MNT {idx}/{total} : {mnt_path.name}")
 
         # 1) Inspecter l'emprise du MNT pour choisir le flux adapté
         bounds = get_raster_bounds(mnt_path)
@@ -273,11 +284,15 @@ def run_existing_mnt(
         if layout == "large" and bounds is not None:
             current_tile_name = _large_tile_name_for(mnt_path, bounds)
             temp_mnt_path = temp_dir / f"{current_tile_name}_MNT.tif"
-            _copy_source_mnt_to_temp(
+            if not _copy_source_mnt_to_temp(
                 source_path=mnt_path,
                 temp_mnt_path=temp_mnt_path,
                 gdal_translate=gdal_translate,
-            )
+                log=log,
+                cancel_check=cancel_check,
+            ):
+                log("Annulation demandée pendant la conversion ASC→TIF.")
+                break
             log(
                 f"MNT {mnt_path.name}: emprise > 1 km → RVT et CV sur le "
                 f"raster complet (pas de pré-découpage, SAHI assure le slicing)"
@@ -306,11 +321,15 @@ def run_existing_mnt(
 
         current_tile_name = tile_name
         temp_mnt_path = temp_dir / f"{current_tile_name}_MNT.tif"
-        _copy_source_mnt_to_temp(
+        if not _copy_source_mnt_to_temp(
             source_path=mnt_path,
             temp_mnt_path=temp_mnt_path,
             gdal_translate=gdal_translate,
-        )
+            log=log,
+            cancel_check=cancel_check,
+        ):
+            log("Annulation demandée pendant la conversion ASC→TIF.")
+            break
 
         skip_crop = (layout == "small")
         if skip_crop:

@@ -20,6 +20,7 @@ import os
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 
+from ..cancellation import PipelineCancelled
 from ..types import LogFn, CancelCheckFn
 from .external_runner import ImageProgressFn, find_external_cv_runner, run_external_cv_runner
 from .runner_cache import (
@@ -167,6 +168,7 @@ def run_cv_on_folder(
                     crs="EPSG:2154",
                     global_color_map=global_color_map,
                     log=log,
+                    cancel_check=cancel_check,
                 )
             return
         else:
@@ -214,12 +216,13 @@ def run_cv_on_folder(
                     crs="EPSG:2154",
                     global_color_map=global_color_map,
                     log=log,
+                    cancel_check=cancel_check,
                 )
             return
+        except PipelineCancelled:
+            # Annulation utilisateur : propager sans tenter le fallback.
+            raise
         except Exception as e:
-            # Si l'utilisateur a annulé, propager l'erreur sans fallback
-            if "annul" in str(e).lower() or "cancel" in str(e).lower():
-                raise
             log(f"Computer Vision: échec runner externe, fallback Python ONNX: {e}")
 
     # 2) Fallback : inférence ONNX en Python (onnxruntime)

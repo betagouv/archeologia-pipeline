@@ -15,8 +15,11 @@ from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 import shapely
-from shapely.geometry import MultiPoint, Polygon, box
+from shapely.geometry import MultiPoint, Polygon
 from shapely.ops import unary_union
+
+from ..cancellation import check_cancelled
+from ..types import CancelCheckFn
 
 logger = logging.getLogger(__name__)
 
@@ -222,6 +225,8 @@ def _build_cluster_geometry(
 def run_clustering(
     data_by_class_name: Dict[str, List[Dict]],
     clustering_configs: List[Dict],
+    *,
+    cancel_check: Optional[CancelCheckFn] = None,
 ) -> Tuple[Dict[str, List[Dict]], Dict[str, List[Dict]]]:
     """
     Exécute le clustering spatial sur les détections post-processées.
@@ -249,6 +254,7 @@ def run_clustering(
     updated_data = {k: list(v) for k, v in data_by_class_name.items()}
     
     for cfg_idx, cfg in enumerate(clustering_configs):
+        check_cancelled(cancel_check)
         target_classes = cfg["target_classes"]
         min_confidence = cfg["min_confidence"]
         # Seuil d'extension (hystérésis) : détections entre min_confidence_extend

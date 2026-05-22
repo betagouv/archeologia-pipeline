@@ -11,7 +11,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 
-from ..types import LogFn
+from ..cancellation import PipelineCancelled, check_cancelled
+from ..types import CancelCheckFn, LogFn
 
 
 def deduplicate_cv_shapefiles_final(
@@ -26,8 +27,10 @@ def deduplicate_cv_shapefiles_final(
     temp_dir: Optional[Path] = None,
     crs: str = "EPSG:2154",
     log: LogFn = lambda _: None,
+    cancel_check: Optional[CancelCheckFn] = None,
 ) -> None:
     from .conversion_shp import create_shapefile_from_detections, _filter_gpkg_by_min_area
+    check_cancelled(cancel_check)
     log("Computer Vision: conversion GeoPackage -> src.pipeline.cv.conversion_shp")
 
     class_names = None
@@ -90,11 +93,14 @@ def deduplicate_cv_shapefiles_final(
             clustering_configs=clustering_configs,
             postprocess_config=postprocess_config,
             min_confidence=float((cv_config or {}).get("confidence_threshold", 0.0) or 0.0),
+            cancel_check=cancel_check,
         )
         qgs_root = shp_dir.parent if shp_dir.name.lower() in {"shapefiles", "shp"} else shp_dir
         qgs_path = qgs_root / "detections_validation.qgs"
         if qgs_path.exists():
             log(f"Computer Vision: projet QGIS généré -> {qgs_path}")
+    except PipelineCancelled:
+        raise
     except Exception as e:
         log(f"Computer Vision: génération shapefile/projet QGIS ignorée (erreur): {e}")
 

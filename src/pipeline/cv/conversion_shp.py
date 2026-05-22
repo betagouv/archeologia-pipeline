@@ -11,6 +11,8 @@ import subprocess
 os.environ.setdefault("GDAL_FILENAME_IS_UTF8", "YES")
 os.environ.setdefault("SHAPE_ENCODING", "UTF-8")
 
+from ..cancellation import PipelineCancelled, check_cancelled
+from ..types import CancelCheckFn
 from .class_utils import load_class_names_from_model, detect_indexing_offset
 
 logger = logging.getLogger(__name__)
@@ -757,6 +759,7 @@ def create_shapefile_from_detections(
     clustering_configs: list = None,
     postprocess_config: dict = None,
     min_confidence: float = 0.0,
+    cancel_check: Optional[CancelCheckFn] = None,
 ) -> bool:
     """
     Crée des shapefiles géoréférencés à partir des fichiers de détection YOLO
@@ -1366,13 +1369,15 @@ def create_shapefile_from_detections(
                 from .clustering import run_clustering
                 logger.info(f"Clustering: {len(clustering_configs)} config(s) à traiter")
                 cluster_dets_by_class, data_by_class_name = run_clustering(
-                    data_by_class_name, clustering_configs
+                    data_by_class_name, clustering_configs, cancel_check=cancel_check
                 )
                 # Ajouter les clusters comme nouvelles classes
                 for cluster_class, cluster_dets in cluster_dets_by_class.items():
                     data_by_class_name[cluster_class] = cluster_dets
                     _cluster_class_names.add(cluster_class)
                     logger.info(f"Clustering: {len(cluster_dets)} polygone(s) ajouté(s) pour '{cluster_class}'")
+            except PipelineCancelled:
+                raise
             except ImportError as e:
                 logger.warning(f"Clustering ignoré (dépendance manquante): {e}")
             except Exception as e:
@@ -1382,6 +1387,7 @@ def create_shapefile_from_detections(
         gpkg_path = output_dir / f"{output_path.stem}.gpkg"
 
         for class_name, detections in data_by_class_name.items():
+            check_cancelled(cancel_check)
             # Filtrer par classes sélectionnées si spécifié
             # None = toutes les classes ; [] = aucune classe (les classes cluster passent toujours)
             if selected_classes is not None:
@@ -1548,7 +1554,9 @@ def create_shapefile_from_detections(
         # created_shapefiles contient des entrées au format "chemin.gpkg|layername=<class>"
 
         return True
-        
+
+    except PipelineCancelled:
+        raise
     except Exception as e:
         logger.error(f"Erreur lors de la création du shapefile: {e}")
         return False

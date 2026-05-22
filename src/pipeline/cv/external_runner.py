@@ -18,6 +18,7 @@ try:
 except ImportError:  # Python < 3.8
     from typing_extensions import TypedDict
 
+from ..cancellation import PipelineCancelled
 from ..geo_utils import write_world_file
 from ..subprocess_utils import subprocess_kwargs_no_window
 from ..types import LogFn, CancelCheckFn
@@ -237,7 +238,7 @@ def run_external_cv_runner(
                 _parse_runner_stdout(line, log, image_progress=image_progress)
 
         if cancelled:
-            raise RuntimeError("Computer Vision: Annulé par l'utilisateur")
+            raise PipelineCancelled()
 
         _, stderr = process.communicate()
         if stderr:

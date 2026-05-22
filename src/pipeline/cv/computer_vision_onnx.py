@@ -22,6 +22,8 @@ try:  # pragma: no cover - dépend de l'installation PIL
 except Exception:
     pass
 
+from ..cancellation import check_cancelled
+from ..types import CancelCheckFn
 from .cv_output import (
     get_detection_output_path,
     save_empty_outputs,
@@ -311,6 +313,7 @@ def _run_rfdetr_seg_with_sahi(
     overlap_ratio: float,
     confidence_threshold: float,
     class_offset: int = 1,
+    cancel_check: Optional[CancelCheckFn] = None,
 ) -> List[Dict]:
     """
     Exécute RF-DETR Seg avec SAHI slicing en accumulant les masques de probabilité
@@ -395,6 +398,7 @@ def _run_rfdetr_seg_with_sahi(
         inst["conf"] = max(inst["conf"], conf)
 
     for slice_idx, sliced_img in enumerate(sliced_images):
+        check_cancelled(cancel_check)
         slice_pil = _PILImage.fromarray(sliced_img.image)
         slice_w, slice_h = slice_pil.size
         start_x, start_y = sliced_img.starting_pixel
@@ -829,6 +833,7 @@ def _run_segformer_with_sahi(
     model_type: str = "smp",
     bg_bias: float = 0.0,
     buffer_distance: float = 0.001,
+    cancel_check: Optional[CancelCheckFn] = None,
 ) -> Tuple[np.ndarray, List[Dict]]:
     """
     Exécute SegFormer avec SAHI slicing et fusionne les masques.
@@ -870,6 +875,7 @@ def _run_segformer_with_sahi(
     num_classes = None
     
     for idx, sliced_img in enumerate(sliced_images):
+        check_cancelled(cancel_check)
         slice_pil = Image.fromarray(sliced_img.image)
         slice_w, slice_h = slice_pil.size
         start_x, start_y = sliced_img.starting_pixel
@@ -1165,6 +1171,7 @@ def run_onnx_inference(
     class_names: List[str] = None,
     class_colors: List[int] = None,
     onnx_session=None,
+    cancel_check: Optional[CancelCheckFn] = None,
 ):
     """
     Exécute l'inférence avec un modèle ONNX en utilisant SAHI pour le slicing.
@@ -1254,6 +1261,7 @@ def run_onnx_inference(
                     model_type=model_type,
                     bg_bias=bg_bias,
                     buffer_distance=buffer_distance,
+                    cancel_check=cancel_check,
                 )
             else:
                 # =========================================================
@@ -1324,6 +1332,7 @@ def run_onnx_inference(
                 overlap_ratio=overlap_ratio,
                 confidence_threshold=confidence_threshold,
                 class_offset=class_offset,
+                cancel_check=cancel_check,
             )
             orig_width, orig_height = pil_image.size
             logger.info(f"RF-DETR Seg: {len(all_detections)} instances après fusion globale")
@@ -1371,9 +1380,10 @@ def run_onnx_inference(
         
         total_raw_detections = 0
         for idx, sliced_img in enumerate(sliced_images):
+            check_cancelled(cancel_check)
             slice_pil = Image.fromarray(sliced_img.image)
             slice_w, slice_h = slice_pil.size
-            
+
             # Prétraiter (avec normalisation ImageNet pour RF-DETR)
             input_tensor = _preprocess_image(slice_pil, (model_width, model_height), model_type)
             

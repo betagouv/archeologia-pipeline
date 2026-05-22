@@ -10,6 +10,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 
+from ..cancellation import PipelineCancelled
 from ..geo_utils import write_world_file as write_world_file_from_transform
 from ..types import LogFn, CancelCheckFn
 from .external_runner import ImageProgressFn
@@ -118,7 +119,7 @@ def run_fallback_inference(
     for image_index, jpg_file in enumerate(jpg_files, start=1):
         if cancel_check and cancel_check():
             log("Computer Vision: Annulation demandée, arrêt de l'inférence...")
-            raise RuntimeError("Computer Vision: Annulé par l'utilisateur")
+            raise PipelineCancelled()
         image_name = jpg_file.stem
         labels_txt = _raw_dir / f"{image_name}.txt"
         labels_json = _raw_dir / f"{image_name}.json"
@@ -157,6 +158,7 @@ def run_fallback_inference(
             class_names=class_names,
             class_colors=class_colors,
             onnx_session=onnx_session,
+            cancel_check=cancel_check,
         )
         if ok:
             success_count += 1
@@ -185,4 +187,5 @@ def run_fallback_inference(
             crs="EPSG:2154",
             global_color_map=global_color_map,
             log=log,
+            cancel_check=cancel_check,
         )

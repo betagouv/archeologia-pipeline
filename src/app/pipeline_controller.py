@@ -9,7 +9,7 @@ from typing import Iterator, Optional
 from .cancel_token import CancelToken
 from .progress_reporter import ProgressReporter
 from .run_context import RunContext, validate_run_context
-from .structured_logger import StructuredLogger, create_structured_logger
+from .structured_logger import create_structured_logger
 from .user_narrator import create_user_narrator
 
 
@@ -139,7 +139,17 @@ class PipelineController:
             narrator.pipeline_cancelled()
             return
 
+        from ..pipeline.cancellation import PipelineCancelled
         from .runners.registry import get_runner
 
         runner = get_runner(ctx.mode)
-        runner.run(ctx=ctx, reporter=reporter, cancel=cancel, slog=slog)
+        try:
+            runner.run(ctx=ctx, reporter=reporter, cancel=cancel, slog=slog)
+        except PipelineCancelled:
+            # Filet de sécurité : une annulation a remonté hors de la zone gérée
+            # par le runner (ex. pendant téléchargement/fusion, avant qu'il y ait
+            # des résultats partiels à finaliser). Arrêt propre, pas d'erreur.
+            reporter.info("Pipeline annulé par l'utilisateur.")
+            slog.end_pipeline(success=False)
+            narrator.pipeline_cancelled()
+            return

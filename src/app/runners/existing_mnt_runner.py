@@ -5,10 +5,18 @@ from typing import TYPE_CHECKING, Optional
 
 from ..cancel_token import CancelToken
 from ..cancellable_feedback import create_cancellable_feedback
-from ..progress_reporter import ProgressReporter
+from ..progress_reporter import ProgressReporter, report_stage_id
+from ..progress_stages import Stage
 from ..run_context import RunContext
 from ..services.finalize_service import finalize_pipeline
 from ..structured_logger import log_section
+from ..user_narrator import create_user_narrator
+from .progress_plan import build_progress_plan
+
+try:  # cross-package import : OK en QGIS, fallback en tests standalone (src/ sur le path)
+    from ...pipeline.cancellation import PipelineCancelled
+except ImportError:  # pragma: no cover
+    from pipeline.cancellation import PipelineCancelled
 
 if TYPE_CHECKING:
     from ..structured_logger import StructuredLogger
@@ -36,49 +44,66 @@ class ExistingMntRunner:
         rvt_params = ctx.rvt_params
         active_products = products.active()
 
+        plan = build_progress_plan(ctx.mode, ctx.cv.enabled)
+        narrator = create_user_narrator(reporter)
+
         # Section: Traitement MNT
         log_section("TRAITEMENT DES MNT EXISTANTS", "mnt", slog=slog, reporter=reporter)
 
+        # Le calcul MNT→indices RVT est la phase dominante : on l'affiche sous
+        # la pastille « Produits » et on fait avancer la barre par MNT traité.
+        report_stage_id(reporter, Stage.PRODUCTS)
         reporter.stage("Traitement MNT existants")
-        reporter.progress(0)
+        reporter.progress(plan.products[0])
 
         feedback = create_cancellable_feedback(cancel.is_cancelled)
 
-        res = run_existing_mnt(
-            existing_mnt_dir=existing_mnt_dir,
-            output_dir=ctx.output_dir,
-            products=products.as_dict(),
-            output_structure=processing.output_structure,
-            output_formats=processing.output_formats,
-            rvt_params=rvt_params,
-            log=lambda m: reporter.info(m),
-            cancel_check=cancel.is_cancelled,
-            feedback=feedback,
-        )
+        def _on_mnt_progress(idx: int, total: int, name: str) -> None:
+            reporter.progress(plan.at(plan.products, idx / max(1, total)))
+            narrator.mnt_progress(idx, total, name)
 
-        reporter.info(f"✅ {res.total} MNT traités")
+        # Annulation = arrêt rapide du travail lourd, puis finalisation légère
+        # (VRT + projet QGIS + chargement des couches déjà produites).
+        cancelled = False
+        tiles_processed = 0
+        try:
+            res = run_existing_mnt(
+                existing_mnt_dir=existing_mnt_dir,
+                output_dir=ctx.output_dir,
+                products=products.as_dict(),
+                output_structure=processing.output_structure,
+                output_formats=processing.output_formats,
+                rvt_params=rvt_params,
+                log=lambda m: reporter.info(m),
+                cancel_check=cancel.is_cancelled,
+                feedback=feedback,
+                mnt_progress=_on_mnt_progress,
+            )
+            tiles_processed = res.total
+            reporter.info(f"✅ {res.total} MNT traités")
 
-        if cancel.is_cancelled():
-            reporter.info("Pipeline annulé après traitement MNT.")
-            return
+            # Lancer la CV si activée
+            if ctx.cv.enabled and not cancel.is_cancelled():
+                from ..services.cv_post_service import run_cv_post_loop
+                try:
+                    run_cv_post_loop(
+                        ctx=ctx,
+                        output_structure=processing.output_structure,
+                        rvt_params=rvt_params,
+                        reporter=reporter,
+                        cancel=cancel,
+                        slog=slog,
+                        cv_band=plan.cv,
+                    )
+                except PipelineCancelled:
+                    raise
+                except Exception as e:
+                    reporter.error(f"Erreur Computer Vision: {e}")
+        except PipelineCancelled:
+            cancelled = True
+            reporter.info("Annulation demandée — finalisation des résultats partiels…")
 
-        # Lancer la CV si activée
-        if ctx.cv.enabled:
-            from ..services.cv_post_service import run_cv_post_loop
-            try:
-                run_cv_post_loop(
-                    ctx=ctx,
-                    output_structure=processing.output_structure,
-                    rvt_params=rvt_params,
-                    reporter=reporter,
-                    cancel=cancel,
-                    slog=slog,
-                    base_progress=80,
-                )
-            except Exception as e:
-                reporter.error(f"Erreur Computer Vision: {e}")
-
-        # Finalisation commune (VRT + shapefiles + load_layers)
+        # Finalisation commune LÉGÈRE — toujours exécutée (bornée → va au bout)
         finalize_pipeline(
             output_dir=ctx.output_dir,
             cv_cfg=ctx.cv.raw,
@@ -86,8 +111,11 @@ class ExistingMntRunner:
             reporter=reporter,
             slog=slog,
             start_time=start_time,
-            tiles_processed=res.total,
+            tiles_processed=tiles_processed,
             active_products=active_products,
             extra_label="MNT traités",
             ui_config=ctx.ui_config,
         )
+
+        if cancelled or cancel.is_cancelled():
+            narrator.pipeline_cancelled()

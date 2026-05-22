@@ -389,12 +389,16 @@ class RunView(QWidget):
             from ..app.cancel_token import CancelToken
             from ..app.pipeline_controller import PipelineController, file_logging
             from ..app.qt_progress_reporter import QtProgressReporter
+            from ..pipeline.cancellation import PipelineCancelled
 
             reporter = QtProgressReporter(self._logger, self._emitter)
             with file_logging(ctx.output_dir, reporter):
                 PipelineController().run(
                     ctx=ctx, reporter=reporter, cancel=CancelToken(self._cancel_event)
                 )
+        except PipelineCancelled:
+            # Annulation propre (filet de sécurité) : jamais journalisée comme erreur.
+            self._logger.log(USER_INFO, "Pipeline annulé.")
         except Exception:
             self._logger.exception("Erreur pendant l'exécution du pipeline")
         finally:

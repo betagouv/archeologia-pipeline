@@ -6,12 +6,19 @@ from typing import TYPE_CHECKING, Any, Dict, Optional
 
 from ..cancel_token import CancelToken
 from ..cancellable_feedback import create_cancellable_feedback
-from ..progress_reporter import ProgressReporter
+from ..progress_reporter import ProgressReporter, report_stage_id
+from ..progress_stages import Stage
 from ..run_context import RunContext
 from ..services.finalize_service import finalize_pipeline
 from ..structured_logger import log_section
 from ..user_narrator import create_user_narrator
 from .input_strategy import select_input_strategy
+from .progress_plan import build_progress_plan
+
+try:  # cross-package import : OK en QGIS, fallback en tests standalone (src/ sur le path)
+    from ...pipeline.cancellation import PipelineCancelled
+except ImportError:  # pragma: no cover
+    from pipeline.cancellation import PipelineCancelled
 
 if TYPE_CHECKING:
     from ..structured_logger import StructuredLogger
@@ -151,7 +158,8 @@ class IgnOrLocalRunner:
         feedback = create_cancellable_feedback(cancel.is_cancelled)
         narrator = create_user_narrator(reporter)
 
-        strategy = select_input_strategy(ctx.mode)
+        plan = build_progress_plan(ctx.mode, ctx.cv.enabled)
+        strategy = select_input_strategy(ctx.mode, plan)
 
         result = strategy.acquire(
             ctx=ctx,
@@ -166,6 +174,9 @@ class IgnOrLocalRunner:
         from ...pipeline.ign.preprocess import prepare_merged_tiles
 
         log_section("FUSION DES TUILES", "process", slog=slog, reporter=reporter)
+        # Fusion + produits partagent la pastille « Produits » de la timeline
+        # (le calcul MNT+RVT est entrelacé dalle par dalle, sans frontière).
+        report_stage_id(reporter, Stage.PRODUCTS)
         reporter.stage("Fusion (voisins + merge)")
         reporter.progress(strategy.merge_progress_start())
         narrator.merging_start()
@@ -191,63 +202,72 @@ class IgnOrLocalRunner:
 
         active_products: list = []
 
-        if products.needs_mnt() and merged_result.merged_files:
-            rvt_params = ctx.rvt_params
-            active_products = products.active()
+        # Annulation = arrêt rapide du travail lourd, puis finalisation légère
+        # (VRT + projet QGIS + chargement des couches déjà produites).
+        cancelled = False
+        try:
+            if products.needs_mnt() and merged_result.merged_files:
+                rvt_params = ctx.rvt_params
+                active_products = products.active()
 
-            log_section("TRAITEMENT DES DALLES", "process", slog=slog, reporter=reporter)
-            reporter.stage("Traitement des dalles")
-            reporter.progress(strategy.products_progress_start())
+                log_section("TRAITEMENT DES DALLES", "process", slog=slog, reporter=reporter)
+                reporter.stage("Traitement des dalles")
+                reporter.progress(strategy.products_progress_start())
 
-            total_mnt = len(merged_result.merged_files)
-            narrator.products_phase_start(total_mnt, active_products)
+                total_mnt = len(merged_result.merged_files)
+                narrator.products_phase_start(total_mnt, active_products)
 
-            for i, merged_path in enumerate(merged_result.merged_files, start=1):
-                if cancel.is_cancelled():
-                    break
+                for i, merged_path in enumerate(merged_result.merged_files, start=1):
+                    if cancel.is_cancelled():
+                        break
 
-                tile_label = merged_path.name.replace(".copc.laz", "").replace(".laz", "")
-                narrator.tile_progress(i, total_mnt, tile_label)
+                    tile_label = merged_path.name.replace(".copc.laz", "").replace(".laz", "")
+                    narrator.tile_progress(i, total_mnt, tile_label)
 
-                self._process_tile(
-                    merged_path=merged_path,
-                    output_dir=ctx.output_dir,
-                    tile_overlap=processing.tile_overlap,
-                    mnt_resolution=processing.mnt_resolution,
-                    density_resolution=processing.density_resolution,
-                    filter_expression=processing.filter_expression,
-                    products_cfg=products.as_dict(),
-                    output_structure=processing.output_structure,
-                    output_formats=processing.output_formats,
-                    rvt_params=rvt_params,
-                    reporter=reporter,
-                    cancel=cancel,
-                    feedback=feedback,
-                    slog=slog,
-                    tile_index=i,
-                    total_tiles=total_mnt,
-                    active_products=active_products,
-                )
-
-                reporter.progress(strategy.products_progress_for_tile(i, total_mnt))
-
-            # Computer Vision globale (post-boucle)
-            if ctx.cv.enabled and not cancel.is_cancelled():
-                from ..services.cv_post_service import run_cv_post_loop
-                try:
-                    run_cv_post_loop(
-                        ctx=ctx,
+                    self._process_tile(
+                        merged_path=merged_path,
+                        output_dir=ctx.output_dir,
+                        tile_overlap=processing.tile_overlap,
+                        mnt_resolution=processing.mnt_resolution,
+                        density_resolution=processing.density_resolution,
+                        filter_expression=processing.filter_expression,
+                        products_cfg=products.as_dict(),
                         output_structure=processing.output_structure,
+                        output_formats=processing.output_formats,
                         rvt_params=rvt_params,
                         reporter=reporter,
                         cancel=cancel,
+                        feedback=feedback,
                         slog=slog,
-                        base_progress=90,
+                        tile_index=i,
+                        total_tiles=total_mnt,
+                        active_products=active_products,
                     )
-                except Exception as e:
-                    reporter.error(f"Erreur Computer Vision: {e}")
 
-        # Finalisation commune (VRT + shapefiles + load_layers)
+                    reporter.progress(strategy.products_progress_for_tile(i, total_mnt))
+
+                # Computer Vision globale (post-boucle)
+                if ctx.cv.enabled and not cancel.is_cancelled():
+                    from ..services.cv_post_service import run_cv_post_loop
+                    try:
+                        run_cv_post_loop(
+                            ctx=ctx,
+                            output_structure=processing.output_structure,
+                            rvt_params=rvt_params,
+                            reporter=reporter,
+                            cancel=cancel,
+                            slog=slog,
+                            cv_band=plan.cv,
+                        )
+                    except PipelineCancelled:
+                        raise
+                    except Exception as e:
+                        reporter.error(f"Erreur Computer Vision: {e}")
+        except PipelineCancelled:
+            cancelled = True
+            reporter.info("Annulation demandée — finalisation des résultats partiels…")
+
+        # Finalisation commune LÉGÈRE — toujours exécutée (bornée → va au bout)
         finalize_pipeline(
             output_dir=ctx.output_dir,
             cv_cfg=ctx.cv.raw,
@@ -260,3 +280,6 @@ class IgnOrLocalRunner:
             extra_label="Dalles traitées",
             ui_config=ctx.ui_config,
         )
+
+        if cancelled or cancel.is_cancelled():
+            narrator.pipeline_cancelled()

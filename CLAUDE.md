@@ -69,6 +69,10 @@ Per-model behavior (clustering, SAHI slicing, image size, task type) lives in ea
 
 Multiple CV models can run in one pipeline (`computer_vision.runs` array in config). The consolidated output is always a single `detections/detections_validation.qgs` produced by `finalize_service`.
 
+### Entity orchestration (UI → `computer_vision.runs`)
+
+The V2 UI (étape 3) doesn't pick models — the user checks **entities** (parcellaire, trous d'obus…). `src/app/services/model_orchestrator.py` resolves entities into `(model, target_rvt, selected_classes)` runs from two sources: `data/entities_catalog.json` (presentable vocabulary, versioned) + each installed model's `model_card.yaml` (coverage: a class covers entity `E` via its `entity:` alias, else by `name`). This is what **populates `computer_vision.runs`** — the array above is the underlying contract, auto-written by the UI. The orchestrator is **pure-Python and must never import `pipeline.cv`** (whose `__init__` pulls `shapely`); YAML reads are deferred.
+
 ### Large rasters (`existing_mnt` / `existing_rvt` regime)
 
 `_classify_mnt_layout` / `_classify_rvt_layout` (in `src/pipeline/modes/`) inspect raster bounds:
@@ -106,7 +110,7 @@ Source de vérité : `metadata.txt` → `[general] version` (lu au runtime par `
 
 1. Lister les changements depuis la dernière version (`git log <last-tag>..HEAD --oneline` ou `git log main..HEAD --oneline` si pas de tag).
 2. Classer le changement le plus impactant selon le tableau ci-dessus → c'est lui qui fixe le bump.
-3. Proposer le nouveau numéro + une entrée `changelog=` à ajouter dans `metadata.txt` (champ actuellement commenté ligne 23).
+3. Proposer le nouveau numéro + une nouvelle entrée à ajouter **en tête** du champ `changelog=` de `metadata.txt` (le champ existe et est déjà rempli, vers la ligne 23).
 4. Si l'utilisateur valide : éditer `metadata.txt`, puis suggérer `git tag v<version>` au moment du merge.
 
 ## Git hooks (Talisman)

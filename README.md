@@ -3,7 +3,7 @@
 Plugin QGIS pour exécuter un pipeline de traitement LiDAR et produire des rasters de type MNT / densité / indices RVT, avec une étape optionnelle de détection / segmentation par *computer vision*.
 
 - Nom du plugin : **ArchéologIA**
-- Version : **0.2.0**
+- Version : **0.3.0**
 - QGIS minimum : **3.0**
 
 ## Fonctionnalités
@@ -14,8 +14,7 @@ Plugin QGIS pour exécuter un pipeline de traitement LiDAR et produire des raste
   - Indices **RVT** (via *Processing*) : **M-HS**, **SVF**, **SLO**, **LD**, **SLRM**, **VAT**
 - Export optionnel en **JPG + world file (JGW)** pour certains produits.
 - (Optionnel) Détection / segmentation d'instances par computer vision à partir des JPG produits (via runner externe ou dépendances Python) :
-  - **Multi-modèles** : plusieurs modèles peuvent être configurés en parallèle, chacun ciblant un RVT différent.
-  - **Sélection de classes** par modèle : cocher/décocher les classes à détecter par modèle. Si toutes les classes d'un modèle sont décochées, l'inférence est ignorée pour ce modèle (court-circuit avant toute inférence).
+  - **Sélection par entités archéologiques** (UI étape 3) : on coche les entités à détecter (parcellaire, trous d'obus…) et un orchestrateur résout automatiquement quels modèles lancer, sur quel indice RVT, avec quelles classes. Plusieurs modèles peuvent ainsi tourner en parallèle, chacun ciblant un RVT. En interne, le filtrage par classes subsiste : si aucune classe n'est retenue pour un modèle, l'inférence est ignorée (court-circuit `selected_classes=[]` avant toute inférence).
   - **Filtrage par aire minimale** (`min_area_m2`) par modèle : les détections trop petites sont écartées dans un shapefile séparé (`detections_filtered_too_small.shp`).
   - **Post-processing global** (appliqué après toutes les inférences, avant génération des shapefiles) :
     - Fusion des polygones de même classe qui se touchent ou sont séparés par ≤ 0.5 m (y compris **inter-dalles**), avec confiance = moyenne pondérée par l'aire des polygones sources. **Optionnel par modèle** via `postprocess.merge_adjacent` dans `args.yaml`.
@@ -112,6 +111,15 @@ Certaines étapes reposent sur des exécutables dans le `PATH` :
 - `gdalwarp` requis pour `ign_laz` / `local_laz` / `existing_mnt`
 - `gdal_translate` requis pour `existing_mnt` / `existing_rvt`
 - `gdaladdo` optionnel (pyramides / overviews). Si absent, la génération de pyramides est ignorée
+
+## Utilisation : l'assistant en 4 étapes
+
+Depuis la **v0.3.0**, le plugin s'utilise via un **assistant (wizard) en 4 étapes**. On navigue avec **Précédent / Suivant** ; un rail latéral indique l'étape courante et signale les erreurs bloquantes. La configuration est **auto-sauvegardée** entre deux sessions (`last_ui_config.json`) ; l'en-tête propose aussi **Charger / Enregistrer config** (profils `.json`).
+
+1. **Source** — Choix du mode de données (`ign_laz`, `local_laz`, `existing_mnt`, `existing_rvt`) et des chemins d'entrée (zone/liste IGN, dossier LAZ, dossier MNT ou dossier RVT selon le mode).
+2. **Indices** — Sélection des produits : **MNT / Densité** (modèle de base) + indices **RVT** (**M-HS, SVF, SLO, LD, SLRM, VAT**). Le bouton **« Réglages avancés… »** ouvre une vue à onglets pour régler finement chaque indice (paramètres RVT : directions, élévation solaire, rayons, etc.) ainsi que le **filtre PDAL**, la **résolution de densité** et la **marge de tuilage**.
+3. **Détection IA** *(optionnelle)* — On coche les **entités archéologiques** à détecter (parcellaire, trous d'obus, talus/fossés…). L'orchestrateur choisit automatiquement le(s) modèle(s) ONNX adapté(s) et l'indice RVT cible. Les seuils de **confiance** et d'**aire minimale** sont réglables par entité.
+4. **Lancer** — Un panneau **« État du système »** exécute le préflight en tâche de fond (outils CLI, Processing, runner ONNX, espace disque…) ; un **récapitulatif** résume les choix ; le nombre de **workers** parallèles est réglable dans les paramètres avancés repliables. Le bouton **▶ Lancer le pipeline** démarre le traitement : l'écran bascule alors sur la **vue d'exécution** (timeline 5 étapes + journal défilant avec auto-défilement / copier / effacer).
 
 ## Computer vision : runner ONNX + modèles
 
@@ -334,6 +342,15 @@ La section `postprocess` est optionnelle. Si elle est absente, les valeurs par d
 
 Le clustering DBSCAN est optionnel. Si la section `clustering` est absente de `args.yaml`, il est désactivé. Les classes générées par clustering contournent le filtre `selected_classes` et sont toujours incluses dans les shapefiles. La logique se trouve dans `src/pipeline/cv/clustering.py` (DBSCAN avec hystérésis et pondération par confiance).
 
+### Détection par entités (UI)
+
+Depuis la v0.3.0, l'utilisateur ne sélectionne plus des *modèles* puis filtre leurs *classes* : il coche des **entités** à détecter (étape 3 de l'assistant). Un **orchestrateur** (`src/app/services/model_orchestrator.py`) résout ce choix en *runs* concrets :
+
+- `data/entities_catalog.json` (versionné) fournit le **vocabulaire d'entités** présentable (id, libellé, description, ordre d'affichage) ;
+- le `model_card.yaml` de chaque modèle installé déclare sa **couverture** : son indice RVT (`preferred_rvt.type`) et ses `classes`, chacune pouvant pointer vers une entité du catalogue (`entity:` en alias, sinon le nom de classe fait foi). C'est une découverte **« drop-in »** : ajouter un modèle conforme suffit pour qu'il couvre ses entités.
+
+L'orchestrateur regroupe les entités cochées par couple `(modèle, target_rvt)` — chaque couple devient un *run* — et **peuple le tableau `computer_vision.runs`** ci-dessous. Ce format `config.json` reste donc le **contrat sous-jacent** du pipeline (auto-rempli par l'UI ; éditable à la main pour un usage avancé / scripté).
+
 ### Configuration
 
 Dans `config.json`, la section computer vision est sous la clé `computer_vision`. Le format **multi-modèles** utilise un tableau `runs`, chaque entrée ciblant un RVT (`target_rvt`) avec son propre modèle :
@@ -438,7 +455,7 @@ Les GeoTIFF peuvent contenir des **overviews** si l'option pyramides est activé
 ## Développement
 
 - Point d’entrée plugin : `main.py` (classe `ArcheologiaPipelinePlugin`)
-- UI : `src/ui/main_dialog.py`
+- UI : `src/ui/wizard_dialog.py` (assistant 4 étapes ; pages dans `src/ui/steps/`, vue d'exécution `src/ui/run_view.py`)
 - Pipeline : `src/pipeline/`
   - prérequis : `src/pipeline/preflight.py`
 
@@ -497,19 +514,14 @@ flowchart TD
         C --> D["initGui() → action menu + toolbar"]
     end
 
-    subgraph UI["Interface Utilisateur (MainDialog)"]
-        E["Clic sur plugin"] --> F["MainDialog"]
-        F --> G{"Action ?"}
-        G -->|"Lancer"| H["_on_run_clicked()"]
-        G -->|"Annuler"| I["_cancel_event.set()"]
-        G -->|"Sauvegarder préf."| J["_save_from_widgets()"]
-        G -->|"Effacer logs"| K["logs_text.clear() (bouton inline)"]
-        H --> H1["_sync_config_from_widgets()"]
-        H1 --> H2{"CV activée ?"}
-        H2 -->|"Oui, classes OK"| H3["Thread worker (daemon)"]
-        H2 -->|"Oui, 0 classe"| H2b["Avertissement dans confirmation\n(run concerné court-circuité plus tard)"]
-        H2b --> H3
-        H2 -->|"Non"| H3
+    subgraph UI["Interface (WizardDialog — assistant 4 étapes)"]
+        E["Clic sur plugin"] --> F["WizardDialog"]
+        F --> S1["Étape 1 · Source (mode + chemins)"]
+        S1 --> S2["Étape 2 · Indices (produits + réglages avancés RVT)"]
+        S2 --> S3["Étape 3 · Détection (entités → model_orchestrator → runs CV)"]
+        S3 --> S4["Étape 4 · Lancer (préflight + récap + workers)"]
+        S4 -->|"▶ Lancer le pipeline"| H3["Thread worker (daemon)"]
+        S4 -.->|"bascule l'affichage"| RV["RunView (timeline 5 étapes + journal)"]
     end
 
     subgraph Worker["Thread Worker"]
@@ -646,8 +658,9 @@ conftest.py                         # Config pytest (sys.path + fixtures)
 pytest.ini                          # Config pytest (testpaths, addopts, filters)
 last_ui_config.json                 # Dernière config UI sauvegardée automatiquement
 
-data/                               # Ressources statiques (gitignored sauf icon)
+data/                               # Ressources statiques (gitignored sauf icon.png + entities_catalog.json)
 ├── icon.png                        #   Icône plugin
+├── entities_catalog.json           #   Catalogue d'entités (vocabulaire UI étape 3, versionné)
 ├── models/                         #   Modèles ONNX (gitignored)
 │   └── <nom_modele>/
 │       ├── args.yaml               #   Paramètres inférence + clustering
@@ -686,11 +699,14 @@ tests/
 │   ├── test_existing_rvt.py        #   _cleanup_orphans
 │   ├── test_external_runner.py     #   RunnerPayload, find_external_cv_runner
 │   ├── test_helpers.py             #   safe_float (pipeline.types), log_section (app.structured_logger)
+│   ├── test_indices_model.py       #   Catalogue produits / indices (étape 2)
+│   ├── test_model_orchestrator.py  #   Entités → modèles → runs (étape 3)
 │   ├── test_model_profile.py       #   ModelProfile.load (args.yaml + sidecar + classes)
-│   ├── test_preflight.py           #   CheckResult, _check_input_path
+│   ├── test_preflight.py           #   CheckResult, _check_input_path, collect_preflight_results
 │   ├── test_progress_reporter.py
 │   ├── test_registry.py            #   get_runner (instanciation, modes)
 │   ├── test_run_context.py
+│   ├── test_source_modes.py        #   Métadonnées des modes (étape 1)
 │   └── test_structured_logger.py
 └── integration/                    # Tests d'intégration (config réelle, fichiers temp)
     ├── test_pipeline_controller_integration.py
@@ -715,6 +731,9 @@ src/
 │   │   ├── existing_mnt_runner.py  # existing_mnt
 │   │   └── existing_rvt_runner.py  # existing_rvt (indices_folder_name="RVT" forcé)
 │   └── services/
+│       ├── model_orchestrator.py   # Entités → modèles → runs CV (catalogue + model_card)
+│       ├── indices_model.py        # Catalogue produits / indices RVT (étape 2)
+│       ├── source_modes.py         # Métadonnées des modes de données (étape 1)
 │       ├── cv_post_service.py      # run_cv_post_loop() — boucle CV partagée entre runners
 │       └── finalize_service.py     # finalize_pipeline() — VRT, .qgs consolidé, load_layers
 │
@@ -766,8 +785,29 @@ src/
 │       ├── existing_rvt.py         # Traitement RVT existants (indices_folder_name param)
 │       └── local_laz.py            # Indexation nuages locaux
 │
-└── ui/
-    └── main_dialog.py              # Interface Qt (config + journal d'exécution + splitter)
+└── ui/                            # Interface Qt V2 (assistant 4 étapes)
+    ├── wizard_dialog.py            # Assistant : rail + 4 pages + navigation + validation
+    ├── run_view.py                 # Vue d'exécution : timeline 5 étapes + journal
+    ├── icons.py                    # Chargement / teinte des icônes SVG
+    ├── layer_loader.py             # Chargement des couches résultats dans QGIS
+    ├── log_bridge.py               # Pont logs → signaux Qt (QtLogEmitter / QtLogHandler)
+    ├── steps/                      # Pages du wizard
+    │   ├── step_1_source.py        #   Mode de données + chemins
+    │   ├── step_2_indices.py       #   Produits + réglages avancés RVT (onglets)
+    │   ├── step_3_detection.py     #   Sélection par entités
+    │   └── step_4_launch.py        #   Préflight + récap + workers + bascule run
+    ├── widgets/                    # Composants réutilisables
+    │   ├── card.py                 #   Carte « fieldset »
+    │   ├── collapsible.py          #   Section repliable
+    │   ├── entity_card.py          #   Carte d'entité (étape 3)
+    │   ├── no_wheel.py             #   Spinbox insensibles à la molette
+    │   ├── stage_button.py         #   Bouton de frise (étape 1)
+    │   ├── stepper_rail.py         #   Rail latéral du wizard
+    │   ├── toast.py                #   Notifications éphémères
+    │   └── toggle_switch.py        #   Interrupteur (étape 3)
+    └── theme/
+        ├── v2.qss                  # Thème QSS V2
+        └── icons/                  # Icônes SVG
 ```
 
 ## Environnement développeur
@@ -819,7 +859,7 @@ pip install -r dev/requirements/build.txt     # Compilation runner ONNX uniqueme
 ```bash
 pip install -r dev/requirements/test.txt
 
-python run_tests.py                       # Tous les tests (203 tests)
+python run_tests.py                       # Tous les tests
 python run_tests.py unit                  # Tests unitaires uniquement
 python run_tests.py integration           # Tests d'intégration uniquement
 python run_tests.py -k detection          # Filtrer par nom

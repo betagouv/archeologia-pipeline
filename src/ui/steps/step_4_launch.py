@@ -253,7 +253,7 @@ class LaunchPage(QWidget):
 
         note = QLabel(
             "Nombre de dalles traitées en parallèle. Plus de workers accélère le "
-            "traitement sur les machines multi-cœurs."
+            "traitement sur les machines multi-cœurs mais consomme plus de RAM."
         )
         note.setObjectName("WorkersNote")
         note.setWordWrap(True)
@@ -499,7 +499,7 @@ class LaunchPage(QWidget):
     def show_recap(self) -> None:
         self._stack.setCurrentWidget(self._recap_page)
 
-    def set_step_subtitles(self, subs: Dict[int, str]) -> None:
+    def set_step_subtitles(self, subs: Dict[str, str]) -> None:
         self._run_view.set_step_subtitles(subs)
 
     def start_run(self, config: dict) -> None:

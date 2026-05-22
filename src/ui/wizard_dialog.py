@@ -24,6 +24,7 @@ from qgis.PyQt.QtWidgets import (
     QWidget,
 )
 
+from ..app.progress_stages import Stage
 from ..app.services.indices_model import product, rvt_keys
 from ..app.services.source_modes import mode_info
 from ..config.config_manager import ConfigManager
@@ -290,17 +291,19 @@ class WizardDialog(QDialog):
             res = 0.5
         active = self._indices_page.active_rvt_keys()
         rvt_tags = [product(k).tag for k in rvt_keys() if k in active]
+        # Pastille « Produits » = MNT + indices fusionnés : on combine la
+        # résolution et les tags RVT en un seul sous-libellé.
+        products_sub = " · ".join([f"{res:g} m/pixel", *rvt_tags])
         subs = {
-            0: "",  # téléchargement : comptage de dalles différé (préflight)
-            1: f"{res:g} m/pixel",
-            2: " · ".join(rvt_tags),
-            4: "VRT · projet QGIS",
+            Stage.DOWNLOAD: "",  # téléchargement : comptage de dalles différé (préflight)
+            Stage.PRODUCTS: products_sub,
+            Stage.FINALIZE: "VRT · projet QGIS",
         }
         if cv.get("enabled"):
             n = self._detection_page.model_count()
-            subs[3] = f"{n} modèle{'s' if n > 1 else ''}" if n else "—"
+            subs[Stage.DETECTION] = f"{n} modèle{'s' if n > 1 else ''}" if n else "—"
         else:
-            subs[3] = "désactivée"
+            subs[Stage.DETECTION] = "désactivée"
         return subs
 
     def _on_workers_changed(self, n: int) -> None:

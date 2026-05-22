@@ -12,7 +12,7 @@ fileignoreconfig:
 - filename: src/app/services/finalize_service.py
   checksum: bf42590449a976dc72b8c37dec5e17bdb2cbe38524fab54b4c1f63603cd2ea14
 - filename: src/config/config_manager.py
-  checksum: 5b8420e9a0101decf896b57643d55107c11a68f4cf3dacd1cc347811ad03a6c8
+  checksum: acdfc05554f05aa655ba540f4c81bdd1cbbe956f1f5f92a493adc10693a6c774
 - filename: src/pipeline/cv/class_utils.py
   checksum: d3d9302c47f24d6d147460a21620debe9e2cbf60e405a88dadd9eca8674e1b0e
 - filename: src/pipeline/cv/computer_vision_onnx.py
@@ -38,7 +38,7 @@ fileignoreconfig:
 - filename: src/pipeline/modes/local_laz.py
   checksum: e85737748bf429880c54b0279aa662f4d25816c2dd864ade9ddb39c506c14f83
 - filename: src/pipeline/preflight.py
-  checksum: f6fc65ee8b5ac3ee06d9d83b271a1e0e8c8b2a66bf6241433898afface0c853d
+  checksum: 0ae0c74d31debe45012f90ae7753ab7126539d14bc91c4ec013df27c86fdf953
 - filename: src/pipeline/types.py
   checksum: cc071751349938091505bf7c7cbe20240ae757e05677e4184c939ccc2edca6d9
 - filename: src/ui/config_widget_adapter.py
@@ -48,7 +48,7 @@ fileignoreconfig:
 - filename: src/ui/main_dialog.py
   checksum: 5fc616f4d9ffeaf2f20f2bf49db9628363f89bfee53fde8b73f5c5feeb8079a9
 - filename: tests/unit/test_config_manager.py
-  checksum: ec1f8f540412d2fb12f016d340b77a648c0622801d2c32e5bfef632836851081
+  checksum: b05ecae2eb2f8e28c7e41ed89fcd917cd87a4bf7d3aea39bd6438c7924950c29
 - filename: tests/unit/test_config_widget_adapter.py
   checksum: 6602bb645fc8a72afac4b3c0bfb6727afc615e6ea533747b52cc6e652974ef11
 - filename: tests/unit/test_cv_runs_table.py
@@ -60,7 +60,27 @@ fileignoreconfig:
 - filename: tests/unit/test_models_connectivity.py
   checksum: 4ebf3d20042f2e7b59807db8122be4badd2a31f452dea0022dd7d41313df4779
 - filename: tests/unit/test_preflight.py
-  checksum: d2fce1b59ade7ad77e109b43bcb3d4e772c9b73ac117124f66f190655f75b42a
+  checksum: c64601a823050d2d02bf1ec19af7aa72ff98d6a9211ae1c2a1ba85e6044fe587
 - filename: tests/unit/test_run_context.py
-  checksum: 48a903c75c55cd6effca5634585ceed17c63e0f4b9756efe132726c0e9bfd5da
+  checksum: 2f8107c50e91a983f6d80a4255fa6abc0c9e45c9e9e67675da5039f81a50887c
+- filename: src/app/services/indices_model.py
+  checksum: e5f327cb6cd2fd69a50d6019fb414e0d462e22b956f3de89993f70e120ea6359
+- filename: src/app/services/model_orchestrator.py
+  checksum: 5c77060f91c424b0d256bbdfd3a5000aae9ec8248615bb58170df88a0362163f
+- filename: src/app/services/source_modes.py
+  checksum: ee98347524685732cd4f862492aa48dace890b13b590755edc3c0578f49b7a09
+- filename: src/ui/steps/step_1_source.py
+  checksum: 47cacd7755455c93b70e36f6c56533eb8d3ef04b0cd115a4e932a00021de7ac5
+- filename: src/ui/steps/step_2_indices.py
+  checksum: f96f5e97e9d15a93f4851306868748b6be2cb653d5ef58f5a5d4966ab0ab6be0
+- filename: src/ui/steps/step_3_detection.py
+  checksum: 57adf8b215bdb10b050c07c0e940db02b8aae227aad42bce57828e363777941a
+- filename: src/ui/steps/step_4_launch.py
+  checksum: 606214680da551239ac3bda5ed1ac6abb94eb8c2ec3638c450306144f1eb7cba
+- filename: src/ui/theme/v2.qss
+  checksum: ad564c071045cffd0f748a4d6b5bf9b3d557f049fb908f4372ce690462d08d1d
+- filename: tests/unit/test_indices_model.py
+  checksum: 92797289850b1659a0836a42855564621f3f52b304e3bcc2e642967d64b9f1f1
+- filename: tests/unit/test_source_modes.py
+  checksum: bfc4499e07ef97b8b9c9ef173e724cd1a58344abf8b7f37afac614da64fd7d51
 version: "1.0"

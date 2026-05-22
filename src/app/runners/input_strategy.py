@@ -8,17 +8,19 @@ du mode après l'appel à :meth:`InputStrategy.acquire` — et facilite
 l'ajout d'une 3e source LiDAR (drone, photogrammétrie…) en
 implémentant une nouvelle stratégie.
 
-Le plan de progression est intentionnellement préservé bit-pour-bit :
-
-- Mode IGN : 0–25 % téléchargement, 25–35 % fusion, 35–95 % produits.
-- Mode local : 0 % au démarrage, échelle absolue 0–100 % pour la
-  boucle des produits (pas de phase téléchargement à représenter).
+Le plan de progression n'est plus codé en dur ici : il est porté par un
+:class:`~app.runners.progress_plan.ProgressPlan` (construit par le runner à
+partir du mode + activation CV) et lu via ses bandes ``download`` / ``merge``
+/ ``products``. Cela garantit des bandes contiguës avec la phase CV et la
+finalisation (plus de recul de la barre au démarrage de la CV).
 """
 from __future__ import annotations
 
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional, Protocol
 
+from ..progress_reporter import report_stage_id
+from ..progress_stages import Stage
 from ..structured_logger import log_section
 from ..user_narrator import create_user_narrator
 
@@ -27,6 +29,7 @@ if TYPE_CHECKING:
     from ..progress_reporter import ProgressReporter
     from ..run_context import ProcessingConfig, RunContext
     from ..structured_logger import StructuredLogger
+    from .progress_plan import ProgressPlan
 
 
 class AcquireResult(Protocol):
@@ -79,9 +82,8 @@ class InputStrategy(Protocol):
 class IgnDownloadStrategy:
     """Mode ``ign_laz`` : résolution des dalles + téléchargement IGN."""
 
-    DOWNLOAD_RANGE = (0, 25)
-    MERGE_RANGE = (25, 35)
-    PRODUCTS_RANGE = (35, 95)
+    def __init__(self, plan: "ProgressPlan"):
+        self._plan = plan
 
     def acquire(
         self,
@@ -108,8 +110,9 @@ class IgnDownloadStrategy:
             from ...pipeline.ign.tile_resolver import resolve_tiles_from_polygon
 
             log_section("RÉSOLUTION DES DALLES IGN", "download", slog=slog, reporter=reporter)
+            report_stage_id(reporter, Stage.DOWNLOAD)
             reporter.stage("Identification des dalles à télécharger")
-            reporter.progress(self.DOWNLOAD_RANGE[0])
+            reporter.progress(self._plan.download[0])
             narrator.tiles_resolution_start()
 
             urls_file = ctx.output_dir / "dalles_urls.txt"
@@ -126,6 +129,7 @@ class IgnDownloadStrategy:
             input_path = urls_file
 
         log_section("TÉLÉCHARGEMENT DES DALLES IGN", "download", slog=slog, reporter=reporter)
+        report_stage_id(reporter, Stage.DOWNLOAD)
         reporter.stage("Téléchargement des dalles")
         # Compte les URLs à télécharger pour informer l'utilisateur.
         try:
@@ -149,7 +153,7 @@ class IgnDownloadStrategy:
             output_dir=ctx.output_dir,
             log=lambda m: reporter.info(m),
             progress=lambda p: reporter.progress(
-                int(self.DOWNLOAD_RANGE[0] + (self.DOWNLOAD_RANGE[1] - self.DOWNLOAD_RANGE[0]) * (int(p) / 100.0))
+                self._plan.at(self._plan.download, int(p) / 100.0)
             ),
             stage=lambda s: reporter.stage(str(s)),
             cancel=lambda: cancel.is_cancelled(),
@@ -158,18 +162,16 @@ class IgnDownloadStrategy:
         )
 
     def merge_progress_start(self) -> int:
-        return self.MERGE_RANGE[0]
+        return self._plan.merge[0]
 
     def merge_progress_end(self) -> Optional[int]:
-        return self.MERGE_RANGE[1]
+        return self._plan.merge[1]
 
     def products_progress_start(self) -> int:
-        return self.PRODUCTS_RANGE[0]
+        return self._plan.products[0]
 
     def products_progress_for_tile(self, i: int, total: int) -> int:
-        frac = i / max(1, total)
-        lo, hi = self.PRODUCTS_RANGE
-        return int(round(lo + (hi - lo) * frac))
+        return self._plan.at(self._plan.products, i / max(1, total))
 
 
 # ----------------------------------------------------------------------
@@ -177,6 +179,9 @@ class IgnDownloadStrategy:
 # ----------------------------------------------------------------------
 class LocalLazStrategy:
     """Mode ``local_laz`` : indexation d'un dossier LAZ local."""
+
+    def __init__(self, plan: "ProgressPlan"):
+        self._plan = plan
 
     def acquire(
         self,
@@ -197,7 +202,7 @@ class LocalLazStrategy:
 
         log_section("INDEXATION DES NUAGES LOCAUX", "download", slog=slog, reporter=reporter)
         reporter.stage("Indexation des nuages locaux")
-        reporter.progress(0)
+        reporter.progress(self._plan.products[0])
         result = run_local_laz(
             local_laz_dir=local_dir,
             output_dir=ctx.output_dir,
@@ -214,28 +219,29 @@ class LocalLazStrategy:
         return result
 
     def merge_progress_start(self) -> int:
-        return 0
+        return self._plan.merge[0]
 
     def merge_progress_end(self) -> Optional[int]:
-        # Mode local : pas de marqueur de fin de fusion (la barre reste
-        # à 0 jusqu'au début de la phase produits, qui démarre aussi
-        # à 0 mais en échelle absolue 0–100).
+        # Mode local : la fusion est rapide et sa bande est dégénérée
+        # (``merge == (0, 0)``) ; on ne pousse aucune mise à jour pour ne pas
+        # ré-émettre 0. La barre reste à 0 jusqu'au début des produits.
         return None
 
     def products_progress_start(self) -> int:
-        return 0
+        return self._plan.products[0]
 
     def products_progress_for_tile(self, i: int, total: int) -> int:
-        return int(round(100.0 * i / max(1, total)))
+        return self._plan.at(self._plan.products, i / max(1, total))
 
 
-def select_input_strategy(mode: str) -> InputStrategy:
+def select_input_strategy(mode: str, plan: "ProgressPlan") -> InputStrategy:
     """Retourne la stratégie correspondant au mode du run.
 
-    Lève :class:`ValueError` pour un mode inconnu.
+    ``plan`` fournit les bandes de progression (contiguës avec la phase CV /
+    finalisation). Lève :class:`ValueError` pour un mode inconnu.
     """
     if mode == "ign_laz":
-        return IgnDownloadStrategy()
+        return IgnDownloadStrategy(plan)
     if mode == "local_laz":
-        return LocalLazStrategy()
+        return LocalLazStrategy(plan)
     raise ValueError(f"Mode d'acquisition LAZ inconnu : {mode!r}")

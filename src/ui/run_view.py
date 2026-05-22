@@ -1,11 +1,13 @@
 """RunView — vue d'exécution du pipeline (en-tête + timeline + journal).
 
 Consomme les signaux d'un :class:`log_bridge.QtLogEmitter` alimenté par le
-``QtProgressReporter`` côté worker. La timeline à 5 étapes (Téléchargement, MNT,
-Indices, Détection, Finalisation) est dérivée du texte libre des ``stage(msg)``
-via une table mot-clé → étape, **monotone** (jamais en arrière). Les compteurs
-live (« 8/12 dalles ») viennent du canal structuré ``metric``. Le mapping et
-l'habillage vivent entièrement ici (côté reporter : un simple canal de plus).
+``QtProgressReporter`` côté worker. La timeline est **mode-aware** : sa
+séquence d'étapes est dérivée du ``data_mode`` + activation CV via
+:func:`app.progress_stages.build_stage_sequence`, et elle avance sur le canal
+sémantique ``stage_id`` (plus de matching texte fragile). La barre de
+progression suit ``progress`` (garde monotone : jamais en arrière) et bascule
+en indéterminé sur ``busy`` (régime large-raster mono-image). Les compteurs
+live (« 8/12 dalles ») viennent du canal structuré ``metric``.
 """
 from __future__ import annotations
 
@@ -31,47 +33,9 @@ from qgis.PyQt.QtWidgets import (
 )
 
 from ..app.progress_reporter import USER_INFO
+from ..app.progress_stages import STAGE_LABELS, build_stage_sequence
 from .layer_loader import load_result_layers
 from .log_bridge import QtLogEmitter, QtLogHandler
-
-# Étapes de la timeline (ordre = progression).
-_STAGES = ["Téléchargement", "MNT", "Indices", "Détection", "Finalisation"]
-
-# Règles texte-libre → indice d'étape (premier match gagne, puis garde monotone).
-# Ordonnées par spécificité pour lever les ambiguïtés (« dalles à télécharger »
-# contient « dalle » mais doit rester en Téléchargement, etc.).
-_STAGE_RULES = [
-    ("télécharg", 0),
-    ("identification des dalles", 0),
-    ("download", 0),
-    ("computer vision", 3),
-    ("détection", 3),
-    ("inférence", 3),
-    ("création des index", 4),
-    ("index vrt", 4),
-    ("chargement des couches", 4),
-    ("finalisation", 4),
-    ("terminé", 4),
-    ("rvt", 2),
-    ("traitement des dalles", 2),
-    ("indice", 2),
-    ("visualisation", 2),
-    ("indexation", 1),
-    ("traitement dalle", 1),
-    ("fusion", 1),
-    ("merge", 1),
-    ("voisins", 1),
-    ("mnt", 1),
-    ("nuage", 1),
-]
-
-
-def _stage_bucket(msg: str) -> Optional[int]:
-    low = (msg or "").lower()
-    for needle, idx in _STAGE_RULES:
-        if needle in low:
-            return idx
-    return None
 
 
 def _fmt_mmss(seconds: float) -> str:
@@ -155,21 +119,41 @@ class _TimelineStep(QFrame):
 
 
 class _Timeline(QWidget):
+    """Bandeau d'étapes reconstruit selon le mode (``set_stages``).
+
+    Les pastilles ne sont plus figées : ``set_stages`` recrée les
+    :class:`_TimelineStep` à partir de la séquence d'IDs sémantiques du mode
+    courant, de sorte qu'aucune pastille morte (téléchargement absent,
+    détection désactivée…) ne reste affichée.
+    """
+
     def __init__(self, parent=None):
         super().__init__(parent)
-        lay = QHBoxLayout(self)
-        lay.setContentsMargins(0, 0, 0, 0)
-        lay.setSpacing(0)
+        self._lay = QHBoxLayout(self)
+        self._lay.setContentsMargins(0, 0, 0, 0)
+        self._lay.setSpacing(0)
         self._steps: List[_TimelineStep] = []
-        for i, label in enumerate(_STAGES):
-            step = _TimelineStep(i, label)
+        self._stage_ids: List[str] = []
+
+    def set_stages(self, stage_ids: List[str], labels: Dict[str, str]) -> None:
+        # Purge les widgets existants (pastilles + lignes de liaison).
+        while self._lay.count():
+            item = self._lay.takeAt(0)
+            w = item.widget()
+            if w is not None:
+                w.setParent(None)
+                w.deleteLater()
+        self._steps = []
+        self._stage_ids = list(stage_ids)
+        for i, sid in enumerate(self._stage_ids):
+            step = _TimelineStep(i, labels.get(sid, sid))
             self._steps.append(step)
-            lay.addWidget(step)
-            if i < len(_STAGES) - 1:
+            self._lay.addWidget(step)
+            if i < len(self._stage_ids) - 1:
                 line = QFrame()
                 line.setObjectName("RunStepLine")
                 line.setFixedHeight(2)
-                lay.addWidget(line, 1)
+                self._lay.addWidget(line, 1)
 
     def set_active(self, bucket: int) -> None:
         for i, step in enumerate(self._steps):
@@ -188,9 +172,10 @@ class _Timeline(QWidget):
         if 0 <= i < len(self._steps):
             self._steps[i].set_count(text)
 
-    def set_step_subtitles(self, subs: Dict[int, str]) -> None:
+    def set_step_subtitles(self, subs: Dict[str, str]) -> None:
+        """Sous-libellés indexés par ID d'étape (``Stage.PRODUCTS`` …)."""
         for i, step in enumerate(self._steps):
-            step.set_subtitle(subs.get(i, ""))
+            step.set_subtitle(subs.get(self._stage_ids[i], ""))
 
     def mark_all_done(self) -> None:
         for step in self._steps:
@@ -217,11 +202,20 @@ class RunView(QWidget):
         self._running = False
         self._last_stage_text = ""
         self._run_started_at: Optional[float] = None
-        # Chronométrage + compteurs par étape (purement UI).
-        self._step_started: List[Optional[float]] = [None] * len(_STAGES)
-        self._step_elapsed: List[Optional[float]] = [None] * len(_STAGES)
+        # Timeline mode-aware : séquence d'IDs + mapping ID→bucket + sous-libellés.
+        self._stage_ids: List[str] = []
+        self._stage_bucket_map: Dict[str, int] = {}
+        self._subtitles: Dict[str, str] = {}
+        # Chronométrage + compteurs par étape (purement UI), dimensionnés sur
+        # la séquence d'étapes courante (cf. _apply_stage_sequence).
+        self._step_started: List[Optional[float]] = []
+        self._step_elapsed: List[Optional[float]] = []
         self._active_started: Optional[float] = None
         self._ui_timer: Optional[QTimer] = None
+        # Barre : dernière valeur déterminée (pour restaurer après un passage
+        # en indéterminé) + flag d'état indéterminé.
+        self._last_progress = 0
+        self._indeterminate = False
         # Journal : modèle d'entrées (catégorie, texte) + état transient + filtres.
         self._log_entries: List[list] = []
         self._transient_group: Optional[str] = None
@@ -238,6 +232,8 @@ class RunView(QWidget):
         self._emitter.message_transient.connect(self._update_transient_log)
         self._emitter.progress.connect(self._set_progress)
         self._emitter.stage.connect(self._set_stage)
+        self._emitter.stage_id.connect(self._on_stage_id)
+        self._emitter.busy.connect(self._on_busy)
         self._emitter.run_enabled.connect(self._on_run_enabled)
         self._emitter.load_layers.connect(self._on_load_layers)
         self._emitter.metric.connect(self._on_metric)
@@ -254,6 +250,9 @@ class RunView(QWidget):
         self._logger.addHandler(self._log_handler)
 
         self._build()
+        # Timeline initiale (au cas où la vue est affichée avant le 1er run) :
+        # dérivée de la config courante, ré-appliquée fermement dans start_run.
+        self._apply_stage_sequence()
 
     # ------------------------------------------------------------------
     def _build(self) -> None:
@@ -339,15 +338,44 @@ class RunView(QWidget):
     def is_running(self) -> bool:
         return self._running
 
-    def set_step_subtitles(self, subs: Dict[int, str]) -> None:
-        """Sous-libellés statiques de la timeline (calculés au lancement)."""
-        self._timeline.set_step_subtitles(subs or {})
+    def set_step_subtitles(self, subs: Dict[str, str]) -> None:
+        """Sous-libellés statiques de la timeline, indexés par ID d'étape.
+
+        Mémorisés puis ré-appliqués après chaque reconstruction de la timeline
+        (``_apply_stage_sequence``), pour survivre au changement de mode.
+        """
+        self._subtitles = subs or {}
+        self._timeline.set_step_subtitles(self._subtitles)
+
+    def _apply_stage_sequence(self) -> None:
+        """(Re)construit la timeline selon le mode + activation CV de la config.
+
+        Source de vérité : ``app.files.data_mode`` + ``computer_vision.enabled``.
+        Réinitialise les structures de chronométrage à la nouvelle longueur.
+        """
+        files = (self._config.get("app") or {}).get("files") or {}
+        mode = files.get("data_mode") or "ign_laz"
+        cv = (self._config.get("computer_vision") or {})
+        cv_enabled = bool(cv.get("enabled"))
+        try:
+            stage_ids = build_stage_sequence(mode, cv_enabled)
+        except ValueError:
+            stage_ids = build_stage_sequence("ign_laz", cv_enabled)
+        self._stage_ids = stage_ids
+        self._stage_bucket_map = {sid: i for i, sid in enumerate(stage_ids)}
+        self._timeline.set_stages(stage_ids, STAGE_LABELS)
+        self._timeline.set_step_subtitles(self._subtitles)
+        self._step_started = [None] * len(stage_ids)
+        self._step_elapsed = [None] * len(stage_ids)
+        self._bucket = -1
 
     def start_run(self, config: dict) -> None:
         """Valide la config puis lance le pipeline dans un thread worker."""
         if self._running:
             return
         self._config = config or {}
+        # Reconstruit la timeline pour le mode du run avant tout affichage.
+        self._apply_stage_sequence()
 
         try:
             from ..app.run_context import build_run_context, validate_run_context
@@ -411,12 +439,16 @@ class RunView(QWidget):
         self._bucket = -1
         self._last_stage_text = ""
         self._timeline.reset()  # états + chronos + compteurs (garde les sous-libellés)
+        # Barre : retour en mode déterminé, remise à zéro.
+        self._indeterminate = False
+        self._progress.setRange(0, 100)
+        self._last_progress = 0
         self._progress.setValue(0)
         self._run_metric_label.setText("")
         self._update_header()
         self._clear_journal()
-        self._step_started = [None] * len(_STAGES)
-        self._step_elapsed = [None] * len(_STAGES)
+        self._step_started = [None] * len(self._stage_ids)
+        self._step_elapsed = [None] * len(self._stage_ids)
         self._active_started = None
         if self._ui_timer is not None:
             self._ui_timer.stop()
@@ -483,14 +515,37 @@ class RunView(QWidget):
         self._maybe_scroll()
 
     def _set_progress(self, value: int) -> None:
-        self._progress.setValue(int(value))
+        # Garde monotone : en mode indéterminé on ignore les valeurs ; sinon on
+        # borne à [0,100] et on ne redescend jamais (plus de recul de la barre).
+        if self._indeterminate:
+            return
+        v = max(0, min(100, int(value)))
+        if v < self._last_progress:
+            return
+        self._last_progress = v
+        self._progress.setValue(v)
 
     def _set_stage(self, text: str) -> None:
+        # ``stage(text)`` ne porte plus que l'étiquette descriptive du header ;
+        # l'avancée de la timeline passe par le canal sémantique ``stage_id``.
         self._last_stage_text = text or ""
-        bucket = _stage_bucket(text)
+        self._update_header()
+
+    def _on_stage_id(self, stage_id: str) -> None:
+        bucket = self._stage_bucket_map.get(stage_id)
         if bucket is not None and bucket > self._bucket:
             self._enter_bucket(bucket)
         self._update_header()
+
+    def _on_busy(self, active: bool) -> None:
+        """Bascule barre indéterminée (phase sans signal fin) / déterminée."""
+        if active and not self._indeterminate:
+            self._indeterminate = True
+            self._progress.setRange(0, 0)  # marquee animé
+        elif not active and self._indeterminate:
+            self._indeterminate = False
+            self._progress.setRange(0, 100)
+            self._progress.setValue(self._last_progress)
 
     def _on_metric(self, current: int, total: int, label: str) -> None:
         if self._bucket < 0:
@@ -504,8 +559,9 @@ class RunView(QWidget):
             self._run_step_label.setText("Préparation…" if self._running else "En attente")
             self._run_sub_label.setText("")
             return
+        label = STAGE_LABELS.get(self._stage_ids[self._bucket], "") if self._stage_ids else ""
         self._run_step_label.setText(
-            f"Étape {self._bucket + 1}/{len(_STAGES)} · {_STAGES[self._bucket]}"
+            f"Étape {self._bucket + 1}/{len(self._stage_ids)} · {label}"
         )
         parts = []
         if self._last_stage_text:
@@ -518,7 +574,7 @@ class RunView(QWidget):
         """Transition d'étape : fige le chrono de la précédente, démarre la
         nouvelle, lance le rafraîchissement live."""
         now = time.monotonic()
-        if 0 <= self._bucket < len(_STAGES) and self._active_started is not None:
+        if 0 <= self._bucket < len(self._stage_ids) and self._active_started is not None:
             self._step_elapsed[self._bucket] = now - self._active_started
             self._timeline.set_timing(self._bucket, _fmt_mmss(self._step_elapsed[self._bucket]))
         self._bucket = bucket
@@ -539,7 +595,7 @@ class RunView(QWidget):
     def _tick_active(self) -> None:
         if not self._running or self._active_started is None:
             return
-        if 0 <= self._bucket < len(_STAGES):
+        if 0 <= self._bucket < len(self._stage_ids):
             self._timeline.set_timing(
                 self._bucket, _fmt_mmss(time.monotonic() - self._active_started)
             )
@@ -551,14 +607,19 @@ class RunView(QWidget):
         self._running = False
         self._cancel_btn.setEnabled(False)
         self._cancel_event.clear()
+        # Filet de sécurité : ne jamais rester bloqué en barre indéterminée.
+        if self._indeterminate:
+            self._indeterminate = False
+            self._progress.setRange(0, 100)
+            self._progress.setValue(self._last_progress)
         # Fige le chrono de l'étape active courante puis arrête le rafraîchissement.
-        if 0 <= self._bucket < len(_STAGES) and self._active_started is not None:
+        if 0 <= self._bucket < len(self._stage_ids) and self._active_started is not None:
             self._step_elapsed[self._bucket] = time.monotonic() - self._active_started
             self._timeline.set_timing(self._bucket, _fmt_mmss(self._step_elapsed[self._bucket]))
         self._active_started = None
         if self._ui_timer is not None:
             self._ui_timer.stop()
-        if self._bucket >= len(_STAGES) - 1:
+        if self._stage_ids and self._bucket >= len(self._stage_ids) - 1:
             self._timeline.mark_all_done()
         self.run_finished.emit()
 

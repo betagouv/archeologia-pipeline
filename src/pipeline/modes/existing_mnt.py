@@ -3,7 +3,7 @@ from __future__ import annotations
 import shutil
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Callable, Dict, Optional, Tuple
 
 from ..coords import extract_xy_from_filename, get_raster_bounds, infer_xy_from_file
 from ..subprocess_utils import run_subprocess_cancellable
@@ -245,6 +245,7 @@ def run_existing_mnt(
     log: LogFn = lambda _: None,
     cancel_check: CancelCheckFn | None = None,
     feedback: Optional[Any] = None,
+    mnt_progress: Callable[[int, int, str], None] | None = None,
 ) -> ExistingMntResult:
     if not existing_mnt_dir.exists() or not existing_mnt_dir.is_dir():
         raise FileNotFoundError(f"Dossier MNT inexistant ou invalide: {existing_mnt_dir}")
@@ -265,6 +266,12 @@ def run_existing_mnt(
         if cancel_check is not None and cancel_check():
             log("Annulation demandée, arrêt du traitement MNT.")
             break
+
+        if mnt_progress is not None:
+            try:
+                mnt_progress(idx, total, mnt_path.name)
+            except Exception:
+                pass
 
         log(f"── MNT {idx}/{total} : {mnt_path.name}")
 

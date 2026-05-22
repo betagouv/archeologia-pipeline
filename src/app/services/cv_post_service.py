@@ -15,8 +15,11 @@ pipeline, et a donc une logique différente.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Dict, Optional
+from typing import TYPE_CHECKING, Any, Dict, Optional, Tuple
 
+from ..progress_reporter import report_busy, report_stage_id
+from ..progress_stages import Stage
+from ..runners.progress_plan import cv_pct
 from ..structured_logger import log_section
 from ..user_narrator import create_user_narrator
 
@@ -47,7 +50,7 @@ def run_cv_post_loop(
     reporter: "ProgressReporter",
     cancel: "CancelToken",
     slog: Optional["StructuredLogger"],
-    base_progress: int = 90,
+    cv_band: Tuple[int, int] = (90, 95),
 ) -> None:
     """Lance la Computer Vision sur les RVT générés par le pipeline.
 
@@ -59,8 +62,11 @@ def run_cv_post_loop(
     3. Délègue à :func:`pipeline.modes.existing_rvt.run_existing_rvt`.
 
     Args:
-        base_progress: Pourcentage à afficher au début de la phase
-            (90 pour ign_local, 80 pour existing_mnt — historique).
+        cv_band: Bande de progression ``(lo, hi)`` allouée à la CV par le
+            :class:`~app.runners.progress_plan.ProgressPlan` du mode. La barre
+            démarre à ``lo`` et progresse jusqu'à ``hi`` au fil des images
+            (réparties équitablement entre les runs via :func:`cv_pct`) — plus
+            de recul de la barre au démarrage de la CV.
 
     Cette fonction n'attrape pas les exceptions : l'appelant décide de
     sa politique (le pattern actuel est de logger via ``reporter.error``
@@ -86,8 +92,9 @@ def run_cv_post_loop(
         reporter.info(f"Computer Vision: impossible de construire le mapping couleurs: {_e}")
 
     log_section("COMPUTER VISION", "cv", slog=slog, reporter=reporter)
+    report_stage_id(reporter, Stage.DETECTION)
     reporter.stage("Computer Vision")
-    reporter.progress(base_progress)
+    reporter.progress(cv_band[0])
 
     narrator = create_user_narrator(reporter)
     narrator.cv_start(len(cv_runs))
@@ -118,11 +125,16 @@ def run_cv_post_loop(
 
         # Callback bindé au modèle courant : remonte la sous-progression
         # (index/total images traitées) au narrator → ligne USER_INFO
-        # discrète dans le journal. ``model_display`` est figé par
-        # défaut-d'argument pour éviter le late-binding classique en
-        # boucle Python.
-        def _on_image_progress(idx, total, image_name, _model=model_display):
+        # discrète dans le journal, ET fait avancer la barre dans la bande CV
+        # (répartie entre les runs). ``model_display``/``run_idx``/``n_runs``
+        # sont figés par défaut-d'argument pour éviter le late-binding
+        # classique en boucle Python.
+        def _on_image_progress(
+            idx, total, image_name,
+            _model=model_display, _ri=run_idx, _n=len(cv_runs),
+        ):
             narrator.cv_run_image_progress(_model, idx, total, image_name)
+            reporter.progress(cv_pct(_ri, _n, idx, total, cv_band))
 
         run_existing_rvt(
             existing_rvt_dir=generated_rvt_tif_dir,
@@ -134,4 +146,5 @@ def run_cv_post_loop(
             rvt_params=rvt_params,
             global_color_map=global_color_map,
             image_progress=_on_image_progress,
+            on_busy=lambda active: report_busy(reporter, active),
         )

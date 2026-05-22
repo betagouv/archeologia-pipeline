@@ -3,7 +3,7 @@ from __future__ import annotations
 import shutil
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from ..geo_utils import extract_tif_transform_data
 from ..coords import extract_xy_from_filename, get_raster_bounds, infer_xy_from_file
@@ -120,6 +120,7 @@ def run_existing_rvt(
     global_color_map: Dict[str, Any] | None = None,
     indices_folder_name: str | None = None,
     image_progress: Optional[ImageProgressFn] = None,
+    on_busy: Optional[Callable[[bool], None]] = None,
 ) -> ExistingRvtResult:
     if not existing_rvt_dir.exists() or not existing_rvt_dir.is_dir():
         raise FileNotFoundError(f"Dossier RVT inexistant ou invalide: {existing_rvt_dir}")
@@ -160,10 +161,12 @@ def run_existing_rvt(
     # La limite PIL ``MAX_IMAGE_PIXELS`` est désactivée dans
     # ``convert_tif_to_png.py`` et ``computer_vision_onnx.py`` pour autoriser
     # les grandes emprises.
+    has_large = False
     for tif_path in tif_files:
         bounds = get_raster_bounds(tif_path)
         layout = _classify_rvt_layout(bounds) if bounds is not None else "standard"
         if layout == "large" and bounds is not None:
+            has_large = True
             width = bounds[2] - bounds[0]
             height = bounds[3] - bounds[1]
             log(
@@ -223,18 +226,29 @@ def run_existing_rvt(
         # cv_config est déjà un run_cfg unique (le caller boucle sur les runs)
         cv_config["scan_all"] = True
 
-        run_cv_on_folder(
-            jpg_dir=jpg_output_dir,
-            cv_config=cv_config,
-            target_rvt=target_rvt,
-            rvt_base_dir=rvt_output_dir,
-            output_dir=output_dir,
-            tif_transform_data=tif_transform_data,
-            run_shapefile_dedup=True,
-            global_color_map=global_color_map,
-            log=log,
-            cancel_check=cancel_check,
-            image_progress=image_progress,
-        )
+        # Régime large-raster : SAHI découpe une seule image géante en interne
+        # → image_progress vaut 1/1, aucun signal fin. On bascule la barre en
+        # indéterminé (busy) pour ne pas figer un faux pourcentage pendant
+        # cette phase potentiellement longue.
+        busy_large = bool(has_large and on_busy is not None)
+        if busy_large:
+            on_busy(True)
+        try:
+            run_cv_on_folder(
+                jpg_dir=jpg_output_dir,
+                cv_config=cv_config,
+                target_rvt=target_rvt,
+                rvt_base_dir=rvt_output_dir,
+                output_dir=output_dir,
+                tif_transform_data=tif_transform_data,
+                run_shapefile_dedup=True,
+                global_color_map=global_color_map,
+                log=log,
+                cancel_check=cancel_check,
+                image_progress=image_progress,
+            )
+        finally:
+            if busy_large:
+                on_busy(False)
 
     return ExistingRvtResult(total_images=len(jpg_files))

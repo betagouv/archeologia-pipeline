@@ -89,3 +89,17 @@ class QtProgressReporter:
             self._emitter.metric.emit(int(current), int(total), str(label))
         except Exception:
             pass
+
+    def stage_id(self, stage: str) -> None:
+        """ID d'étape sémantique → avancée de la timeline mode-aware."""
+        try:
+            self._emitter.stage_id.emit(str(stage))
+        except Exception:
+            pass
+
+    def busy(self, active: bool) -> None:
+        """Bascule barre indéterminée (True) / déterminée (False)."""
+        try:
+            self._emitter.busy.emit(bool(active))
+        except Exception:
+            pass

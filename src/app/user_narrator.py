@@ -242,6 +242,19 @@ class UserNarrator:
         )
         self._metric(index, total, "dalles")
 
+    def mnt_progress(self, index: int, total: int, mnt_name: str) -> None:
+        """Sous-progression du traitement des MNT existants (mode existing_mnt).
+
+        Ligne unique réécrite à chaque MNT (canal transient) + compteur
+        structuré « i/n MNT » pour la timeline.
+        """
+        short = mnt_name if len(mnt_name) <= 30 else mnt_name[:27] + "…"
+        self._user_info_transient(
+            f"   • MNT {index}/{total} : {short}",
+            group="mnt_progress",
+        )
+        self._metric(index, total, "MNT")
+
     # ------------------------------------------------------------------
     # Computer Vision
     # ------------------------------------------------------------------

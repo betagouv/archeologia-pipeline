@@ -60,6 +60,18 @@ class ProgressReporter(Protocol):
 
     def load_layers(self, vrt_paths: list, shapefile_paths: list, class_colors: list = None) -> None: ...
 
+    # ID d'étape sémantique (``Stage.DOWNLOAD``/``PRODUCTS``/``DETECTION``/
+    # ``FINALIZE``) qui fait avancer la timeline mode-aware de l'UI. Distinct
+    # de ``stage(text)`` qui reste l'étiquette descriptive libre du header.
+    # Optionnel : un reporter legacy/test peut l'ignorer (appel via
+    # :func:`report_stage_id`).
+    def stage_id(self, stage: str) -> None: ...
+
+    # Bascule la barre en mode indéterminé (``True``) ou déterminé (``False``)
+    # pour les phases sans signal fin (régime large-raster mono-image, slicing
+    # SAHI interne). Optionnel (appel via :func:`report_busy`).
+    def busy(self, active: bool) -> None: ...
+
     # Compteur structuré d'une phase (``current``/``total`` + ``label`` :
     # « dalles », « images »…) pour afficher « i/n » dans l'UI sans parser
     # le texte narratif. Optionnel : les reporters legacy peuvent l'ignorer
@@ -97,3 +109,38 @@ class NullProgressReporter:
 
     def metric(self, current: int, total: int, label: str) -> None:
         return
+
+    def stage_id(self, stage: str) -> None:
+        return
+
+    def busy(self, active: bool) -> None:
+        return
+
+
+# ----------------------------------------------------------------------
+# Helpers d'émission défensive pour les canaux optionnels.
+#
+# ``stage_id`` et ``busy`` sont des ajouts récents : un reporter legacy ou un
+# stub de test duck-typé peut ne pas les implémenter. Comme pour ``metric``
+# (cf. UserNarrator._metric), on appelle via ``getattr`` et on avale toute
+# erreur — ces canaux ne sont qu'un complément d'affichage, jamais un chemin
+# critique du pipeline.
+# ----------------------------------------------------------------------
+def report_stage_id(reporter: "ProgressReporter", stage: str) -> None:
+    fn = getattr(reporter, "stage_id", None)
+    if fn is None:
+        return
+    try:
+        fn(str(stage))
+    except Exception:
+        pass
+
+
+def report_busy(reporter: "ProgressReporter", active: bool) -> None:
+    fn = getattr(reporter, "busy", None)
+    if fn is None:
+        return
+    try:
+        fn(bool(active))
+    except Exception:
+        pass

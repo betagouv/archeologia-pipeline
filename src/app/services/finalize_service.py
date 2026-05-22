@@ -278,6 +278,8 @@ def finalize_pipeline(
     import time
 
     from ...pipeline.output_paths import indices_dir, detections_dir
+    from ..progress_reporter import report_busy, report_stage_id
+    from ..progress_stages import Stage
     from ..user_narrator import create_user_narrator
 
     narrator = create_user_narrator(reporter)
@@ -287,6 +289,12 @@ def finalize_pipeline(
     log: LogFn = lambda m: reporter.info(m)
 
     # 1. Création des index VRT
+    # La finalisation occupe la bande 95→100 du plan (toutes phases CV/produits
+    # terminées) : on entre à 95 pour garantir la continuité avec la phase
+    # précédente, et la barre passe à 100 en sortie (load_layers fait).
+    report_stage_id(reporter, Stage.FINALIZE)
+    report_busy(reporter, False)  # garde-fou : sortir d'un éventuel mode indéterminé
+    reporter.progress(95)
     reporter.stage("Création des index VRT")
     reporter.info("Création des fichiers VRT d’indexation...")
     narrator.finalize_start()

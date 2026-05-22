@@ -23,7 +23,9 @@ class QtLogEmitter(QObject):
     # dernière ligne du même ``group`` au lieu d'empiler (sous-progressions…).
     message_transient = pyqtSignal(str, str, str)
     progress = pyqtSignal(int)            # 0-100
-    stage = pyqtSignal(str)               # libellé d'étape (texte libre)
+    stage = pyqtSignal(str)               # libellé d'étape (texte libre, header)
+    stage_id = pyqtSignal(str)            # ID d'étape sémantique → timeline
+    busy = pyqtSignal(bool)               # True = barre indéterminée (phase sans signal fin)
     run_enabled = pyqtSignal(bool)        # True = run terminé → réactiver l'UI
     load_layers = pyqtSignal(list, list, list)  # (vrt_paths, shp_paths, class_colors)
     metric = pyqtSignal(int, int, str)    # (current, total, label) — compteur de phase

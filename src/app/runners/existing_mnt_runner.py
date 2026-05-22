@@ -4,6 +4,7 @@ import time
 from typing import TYPE_CHECKING, Optional
 
 from ..cancel_token import CancelToken
+from ..cancellable_feedback import create_cancellable_feedback
 from ..progress_reporter import ProgressReporter
 from ..run_context import RunContext
 from ..services.finalize_service import finalize_pipeline
@@ -41,6 +42,8 @@ class ExistingMntRunner:
         reporter.stage("Traitement MNT existants")
         reporter.progress(0)
 
+        feedback = create_cancellable_feedback(cancel.is_cancelled)
+
         res = run_existing_mnt(
             existing_mnt_dir=existing_mnt_dir,
             output_dir=ctx.output_dir,
@@ -50,6 +53,7 @@ class ExistingMntRunner:
             rvt_params=rvt_params,
             log=lambda m: reporter.info(m),
             cancel_check=cancel.is_cancelled,
+            feedback=feedback,
         )
 
         reporter.info(f"✅ {res.total} MNT traités")

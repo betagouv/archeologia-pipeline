@@ -104,6 +104,7 @@ class IgnOrLocalRunner:
             products=products_cfg,
             rvt_params=rvt_params,
             log=lambda m: reporter.info(m),
+            cancel_check=cancel.is_cancelled,
         )
 
         if cropped:
@@ -116,6 +117,7 @@ class IgnOrLocalRunner:
                 output_formats=output_formats,
                 rvt_params=rvt_params,
                 log=lambda m: reporter.info(m),
+                cancel_check=cancel.is_cancelled,
             )
 
         if slog:

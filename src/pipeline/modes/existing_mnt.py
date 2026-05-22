@@ -175,11 +175,14 @@ def _process_single_mnt_tile(
     skip_crop: bool,
     log: LogFn,
     cancel_check: CancelCheckFn | None,
+    feedback: Optional[Any] = None,
 ) -> bool:
     """Exécute le flux RVT → crop (ou copie) → copie finale pour une dalle unique.
 
     Le TIF source doit déjà exister à ``temp_dir / {current_tile_name}_MNT.tif``.
     Retourne False si une annulation a été demandée en cours de route.
+    ``feedback`` (QgsProcessingFeedback annulable) rend le calcul RVT QGIS
+    interruptible ; les subprocess GDAL le sont via ``cancel_check``.
     """
     create_visualization_products(
         temp_dir=temp_dir,
@@ -187,6 +190,7 @@ def _process_single_mnt_tile(
         products=products,
         rvt_params=rvt_params,
         log=log,
+        feedback=feedback,
     )
 
     if cancel_check is not None and cancel_check():
@@ -200,6 +204,7 @@ def _process_single_mnt_tile(
             products=products,
             rvt_params=rvt_params,
             log=log,
+            cancel_check=cancel_check,
         )
     else:
         crop_final_products(
@@ -208,6 +213,7 @@ def _process_single_mnt_tile(
             products=products,
             rvt_params=rvt_params,
             log=log,
+            cancel_check=cancel_check,
         )
 
     if cancel_check is not None and cancel_check():
@@ -223,6 +229,7 @@ def _process_single_mnt_tile(
         output_formats=output_formats,
         rvt_params=rvt_params,
         log=log,
+        cancel_check=cancel_check,
     )
     return True
 
@@ -237,6 +244,7 @@ def run_existing_mnt(
     rvt_params: Dict[str, Any],
     log: LogFn = lambda _: None,
     cancel_check: CancelCheckFn | None = None,
+    feedback: Optional[Any] = None,
 ) -> ExistingMntResult:
     if not existing_mnt_dir.exists() or not existing_mnt_dir.is_dir():
         raise FileNotFoundError(f"Dossier MNT inexistant ou invalide: {existing_mnt_dir}")
@@ -303,6 +311,7 @@ def run_existing_mnt(
                 skip_crop=True,
                 log=log,
                 cancel_check=cancel_check,
+                feedback=feedback,
             )
             if ok:
                 processed += 1
@@ -341,6 +350,7 @@ def run_existing_mnt(
             skip_crop=skip_crop,
             log=log,
             cancel_check=cancel_check,
+            feedback=feedback,
         )
         if ok:
             processed += 1

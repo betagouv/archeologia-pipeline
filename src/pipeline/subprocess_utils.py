@@ -3,7 +3,10 @@ from __future__ import annotations
 import os
 import subprocess
 import time
+from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
+
+from .cancellation import PipelineCancelled
 
 
 def subprocess_kwargs_no_window() -> Dict[str, Any]:
@@ -27,13 +30,18 @@ def run_subprocess_cancellable(
     cancel: Optional[Callable[[], bool]] = None,
     poll_interval_s: float = 0.2,
     timeout_s: Optional[float] = None,
-) -> Optional[subprocess.CompletedProcess]:
+    output_path: Optional[Path] = None,
+) -> subprocess.CompletedProcess:
     """Comme ``subprocess.run(capture_output=True, text=True)`` mais sonde ``cancel``.
 
-    Retourne le ``CompletedProcess`` en cas de succès, ou ``None`` si une annulation
-    est demandée (le process est alors terminé/tué). Lève ``subprocess.TimeoutExpired``
-    si ``timeout_s`` est dépassé. Ne lève jamais d'exception d'annulation : les
-    appelants gèrent le ``None`` de façon gracieuse.
+    Retourne le ``CompletedProcess`` en cas de succès. **Lève** :class:`PipelineCancelled`
+    si une annulation est demandée (le process est alors terminé/tué) — idiome
+    d'annulation unique du pipeline. Lève ``subprocess.TimeoutExpired`` si ``timeout_s``
+    est dépassé.
+
+    ``output_path`` (optionnel) : fichier de sortie écrit par la commande ; il est
+    supprimé s'il existe lorsqu'on tue le process pour annulation, afin qu'un fichier
+    partiel/tronqué ne soit pas pris pour « déjà fait » par les caches de reprise.
     """
     kwargs = subprocess_kwargs_no_window()
     creationflags = kwargs.pop("creationflags", 0)
@@ -63,7 +71,12 @@ def run_subprocess_cancellable(
                         p.kill()
                     except Exception:
                         pass
-                return None
+                if output_path is not None:
+                    try:
+                        Path(output_path).unlink(missing_ok=True)
+                    except Exception:
+                        pass
+                raise PipelineCancelled()
 
             try:
                 stdout, stderr = p.communicate(timeout=poll_interval_s)

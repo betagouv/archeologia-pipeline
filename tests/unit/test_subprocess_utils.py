@@ -6,6 +6,7 @@ import time
 
 import pytest
 
+from pipeline.cancellation import PipelineCancelled
 from pipeline.subprocess_utils import run_subprocess_cancellable
 
 
@@ -26,18 +27,30 @@ class TestRunSubprocessCancellable:
         assert r.returncode == 0
         assert "done" in r.stdout
 
-    def test_cancel_terminates_and_returns_none_quickly(self):
-        # Process long; cancel renvoie True immédiatement -> doit être interrompu vite
+    def test_cancel_raises_pipeline_cancelled_quickly(self):
+        # Process long; cancel renvoie True immédiatement -> doit lever vite
         start = time.time()
-        r = run_subprocess_cancellable(
-            [sys.executable, "-c", "import time; time.sleep(30)"],
-            cancel=lambda: True,
-            poll_interval_s=0.1,
-        )
+        with pytest.raises(PipelineCancelled):
+            run_subprocess_cancellable(
+                [sys.executable, "-c", "import time; time.sleep(30)"],
+                cancel=lambda: True,
+                poll_interval_s=0.1,
+            )
         elapsed = time.time() - start
-        assert r is None
         # Interruption quasi immédiate, bien avant les 30 s du sommeil
         assert elapsed < 10
+
+    def test_cancel_removes_partial_output(self, tmp_path):
+        out = tmp_path / "partial.bin"
+        out.write_bytes(b"partial")  # simule un fichier de sortie partiel
+        with pytest.raises(PipelineCancelled):
+            run_subprocess_cancellable(
+                [sys.executable, "-c", "import time; time.sleep(30)"],
+                cancel=lambda: True,
+                poll_interval_s=0.1,
+                output_path=out,
+            )
+        assert not out.exists()
 
     def test_nonzero_returncode_is_reported(self):
         r = run_subprocess_cancellable([sys.executable, "-c", "import sys; sys.exit(3)"])

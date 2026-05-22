@@ -5,14 +5,15 @@ import subprocess
 import shutil
 import tempfile
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Tuple
+from typing import Any, Dict, List, Tuple
 
+from ...cancellation import PipelineCancelled, check_cancelled
 from ...coords import extract_xy_from_tile_name as _extract_xy_from_tile_name
 from ...geo_utils import extract_tif_transform_data
-from ...output_paths import indices_dir, indice_tif_dir, indice_jpg_dir, indice_base_dir
-from ...subprocess_utils import subprocess_kwargs_no_window
-from .rvt_naming import get_rvt_temp_filename, get_rvt_param_suffix, get_rvt_source_and_dest_filenames
-from ...types import LogFn
+from ...output_paths import indices_dir, indice_tif_dir, indice_base_dir
+from ...subprocess_utils import run_subprocess_cancellable, subprocess_kwargs_no_window
+from .rvt_naming import get_rvt_source_and_dest_filenames
+from ...types import CancelCheckFn, LogFn
 
 
 # _extract_xy_from_tile_name importé depuis coords
@@ -72,6 +73,7 @@ def build_raster_pyramids(
     *,
     levels: List[int] | None = None,
     log: LogFn = lambda _: None,
+    cancel_check: CancelCheckFn | None = None,
 ) -> bool:
     try:
         gdaladdo = shutil.which("gdaladdo")
@@ -90,19 +92,23 @@ def build_raster_pyramids(
             "-r",
             "average",
             str(raster_file),
-            *[str(l) for l in levels],
+            *[str(lvl) for lvl in levels],
         ]
-        r = subprocess.run(cmd, capture_output=True, text=True, **subprocess_kwargs_no_window())
+        r = run_subprocess_cancellable(cmd, cancel=cancel_check)
         if r.returncode != 0:
             log(f"Échec gdaladdo (pyramides) pour {raster_file.name}: {r.stderr or r.stdout}")
             return False
         return True
+    except PipelineCancelled:
+        raise
     except Exception as e:
         log(f"Erreur génération pyramides (gdaladdo) pour {raster_file.name}: {e}")
         return False
 
 
-def _convert_tif_to_png(input_tif: Path, output_png: Path) -> bool:
+def _convert_tif_to_png(
+    input_tif: Path, output_png: Path, *, cancel_check: CancelCheckFn | None = None
+) -> bool:
     try:
         from .convert_tif_to_png import convert_tif_to_png
 
@@ -116,6 +122,8 @@ def _convert_tif_to_png(input_tif: Path, output_png: Path) -> bool:
             )
         )
         return ok and output_png.exists()
+    except PipelineCancelled:
+        raise
     except Exception:
         try:
             gdal_translate = shutil.which("gdal_translate")
@@ -131,8 +139,10 @@ def _convert_tif_to_png(input_tif: Path, output_png: Path) -> bool:
                 str(input_tif),
                 str(output_png),
             ]
-            subprocess.run(cmd, check=False, **subprocess_kwargs_no_window())
+            run_subprocess_cancellable(cmd, cancel=cancel_check, output_path=output_png)
             return output_png.exists()
+        except PipelineCancelled:
+            raise
         except Exception:
             return False
 
@@ -172,6 +182,7 @@ def copy_final_products_to_results(
     output_formats: Dict[str, Any],
     rvt_params: Dict[str, Any],
     log: LogFn = lambda _: None,
+    cancel_check: CancelCheckFn | None = None,
 ) -> Dict[str, Any]:
     x, y = _extract_xy_from_tile_name(current_tile_name)
 
@@ -200,6 +211,7 @@ def copy_final_products_to_results(
     for product_name in ["MNT", "DENSITE", "M_HS", "SVF", "SLO", "LD", "SLRM", "VAT"]:
         if not products.get(product_name, False):
             continue
+        check_cancelled(cancel_check)
 
         cropped_name = source_files_cropped[product_name]
         uncropped_name = source_files_uncropped[product_name]
@@ -219,7 +231,7 @@ def copy_final_products_to_results(
                 shutil.copy2(str(input_path_cropped), str(tif_path))
                 log(f"TIF rogné copié: {tif_path.relative_to(idx_dir)}")
                 if pyramids_enabled:
-                    build_raster_pyramids(tif_path, levels=pyramids_levels, log=log)
+                    build_raster_pyramids(tif_path, levels=pyramids_levels, log=log, cancel_check=cancel_check)
 
         should_jpg = bool(jpg_cfg.get(product_name, False))
         if should_jpg:
@@ -235,7 +247,7 @@ def copy_final_products_to_results(
                 created_jpgs.append(jpg_path)
                 created_jpgs_by_product.setdefault(product_name, []).append(jpg_path)
             else:
-                ok = _convert_tif_to_png(input_path_uncropped, jpg_path)
+                ok = _convert_tif_to_png(input_path_uncropped, jpg_path, cancel_check=cancel_check)
                 if ok:
                     log(f"PNG créé: {jpg_path.relative_to(idx_dir)}")
                     created_jpgs.append(jpg_path)

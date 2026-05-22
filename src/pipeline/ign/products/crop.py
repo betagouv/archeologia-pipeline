@@ -1,15 +1,14 @@
 from __future__ import annotations
 
-import os
 import shutil
-import subprocess
 from pathlib import Path
-from typing import Any, Callable, Dict, Optional, Tuple
+from typing import Any, Dict, Optional
 
+from ...cancellation import check_cancelled
 from ...coords import extract_xy_from_tile_name as _extract_xy_from_tile_name
-from ...subprocess_utils import subprocess_kwargs_no_window
+from ...subprocess_utils import run_subprocess_cancellable
 from .rvt_naming import get_rvt_source_and_dest_filenames
-from ...types import LogFn
+from ...types import CancelCheckFn, LogFn
 
 
 # _extract_xy_from_tile_name importé depuis coords
@@ -24,6 +23,7 @@ def crop_final_products(
     rvt_params: Dict[str, Any],
     log: LogFn = lambda _: None,
     gdalwarp_path: Optional[str] = None,
+    cancel_check: CancelCheckFn | None = None,
 ) -> Dict[str, Path]:
     temp_dir.mkdir(parents=True, exist_ok=True)
 
@@ -49,6 +49,7 @@ def crop_final_products(
     for product_name in ["MNT", "DENSITE", "M_HS", "SVF", "SLO", "LD", "SLRM", "VAT"]:
         if not products.get(product_name, False):
             continue
+        check_cancelled(cancel_check)
 
         src_name, dst_name = get_rvt_source_and_dest_filenames(
             product_name, current_tile_name, x, y, rvt_params
@@ -106,7 +107,7 @@ def crop_final_products(
                 "PREDICTOR=2",
             ]
 
-        result = subprocess.run(cmd, capture_output=True, text=True, **subprocess_kwargs_no_window())
+        result = run_subprocess_cancellable(cmd, cancel=cancel_check, output_path=dst_path)
         if result.returncode != 0:
             raise RuntimeError(f"Erreur gdalwarp ({product_name}): {result.stderr or result.stdout}")
 
@@ -123,6 +124,7 @@ def copy_products_without_crop(
     products: Dict[str, bool],
     rvt_params: Dict[str, Any],
     log: LogFn = lambda _: None,
+    cancel_check: CancelCheckFn | None = None,
 ) -> Dict[str, Path]:
     """Variante de ``crop_final_products`` qui préserve l'emprise native du MNT.
 
@@ -144,6 +146,7 @@ def copy_products_without_crop(
     for product_name in ["MNT", "DENSITE", "M_HS", "SVF", "SLO", "LD", "SLRM", "VAT"]:
         if not products.get(product_name, False):
             continue
+        check_cancelled(cancel_check)
 
         src_name, dst_name = get_rvt_source_and_dest_filenames(
             product_name, current_tile_name, x, y, rvt_params

@@ -30,7 +30,7 @@ from ...app.services.source_modes import (
 )
 from ..icons import colored_pixmap
 from ..widgets.card import build_card
-from ..widgets.stage_button import StageButton
+from ..widgets.stage_button import ArrowConnector, StageButton
 
 
 class SourcePage(QWidget):
@@ -70,13 +70,10 @@ class SourcePage(QWidget):
         frise_row.setContentsMargins(0, 12, 0, 0)  # place en haut pour le badge ENTRÉE
         frise_row.setSpacing(0)
         self._stage_buttons: dict = {}
-        self._connectors: list = []  # (QLabel, right_stage_id)
+        self._connectors: list = []  # (ArrowConnector, right_stage_id)
         for i, st in enumerate(pipeline_stages()):
             if i > 0:
-                conn = QLabel("▶")
-                conn.setObjectName("StageConnector")
-                conn.setAlignment(Qt.AlignCenter)
-                conn.setFixedWidth(20)
+                conn = ArrowConnector()
                 frise_row.addWidget(conn)
                 self._connectors.append((conn, st.id))
             btn = StageButton(
@@ -184,9 +181,7 @@ class SourcePage(QWidget):
                 role = "skipped"
             self._stage_buttons[st.id].set_role(role)
         for conn, right_id in self._connectors:
-            conn.setProperty("active", right_id >= entry)
-            conn.style().unpolish(conn)
-            conn.style().polish(conn)
+            conn.set_active(right_id >= entry)
 
         self._banner_icon.setPixmap(colored_pixmap(info.icon, "#ffffff", 18))
         self._banner_title.setText(

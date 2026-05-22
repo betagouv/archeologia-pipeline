@@ -77,15 +77,20 @@ def _find_external_cv_runner() -> Optional[Path]:
     return _find()
 
 
-def run_preflight(
+def collect_preflight_results(
     *,
     mode: str,
     cv_config: Dict,
     products: Dict,
-    log: LogFn,
     files_config: Optional[Dict] = None,
     output_dir: Optional[Path] = None,
-) -> bool:
+) -> List[CheckResult]:
+    """Construit la liste des vérifications préflight (dépendances + chemins).
+
+    Fonction pure (sans logging) : :func:`run_preflight` la logge puis en
+    déduit un booléen pour le pipeline ; l'UI (étape 4) l'appelle directement
+    pour afficher le panneau « État du système ».
+    """
     results: List[CheckResult] = []
     files_cfg = files_config or {}
 
@@ -202,11 +207,21 @@ def run_preflight(
 
     # Vérification des chemins selon le mode
     if output_dir is not None:
+        # Espace libre du volume cible (seul indicateur réellement mesuré
+        # qu'on affiche dans le panneau UI). Best-effort : sur un dossier
+        # encore inexistant on interroge le parent.
+        free_txt = ""
+        try:
+            probe = output_dir if output_dir.exists() else output_dir.parent
+            free_gb = shutil.disk_usage(str(probe)).free / (1024 ** 3)
+            free_txt = f" · {free_gb:.0f} Go libres"
+        except Exception:
+            free_txt = ""
         if output_dir.exists():
-            results.append(CheckResult(name="Dossier de sortie", ok=True, details=str(output_dir), critical=True))
+            results.append(CheckResult(name="Dossier de sortie", ok=True, details=f"{output_dir}{free_txt}", critical=True))
         else:
             # On peut créer le dossier, donc ce n'est pas critique
-            results.append(CheckResult(name="Dossier de sortie", ok=True, details=f"{output_dir} (sera créé)", critical=True))
+            results.append(CheckResult(name="Dossier de sortie", ok=True, details=f"{output_dir} (sera créé){free_txt}", critical=True))
 
     if mode == "ign_laz":
         raw_input = str(files_cfg.get("input_file", "")).strip()
@@ -221,6 +236,26 @@ def run_preflight(
         _check_input_path(files_cfg, "existing_mnt_dir", "Dossier MNT existants", extensions=["tif", "TIF", "tiff"], results=results)
     elif mode == "existing_rvt":
         _check_input_path(files_cfg, "existing_rvt_dir", "Dossier RVT existants", extensions=["tif", "TIF", "tiff"], results=results)
+
+    return results
+
+
+def run_preflight(
+    *,
+    mode: str,
+    cv_config: Dict,
+    products: Dict,
+    log: LogFn,
+    files_config: Optional[Dict] = None,
+    output_dir: Optional[Path] = None,
+) -> bool:
+    results = collect_preflight_results(
+        mode=mode,
+        cv_config=cv_config,
+        products=products,
+        files_config=files_config,
+        output_dir=output_dir,
+    )
 
     log("=== Préflight check: dépendances et chemins ===")
     any_critical_fail = False

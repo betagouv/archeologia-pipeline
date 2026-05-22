@@ -74,6 +74,11 @@ class ExistingRvtRunner:
         narrator = create_user_narrator(reporter)
         if cv_runs:
             narrator.cv_start(len(cv_runs))
+            # Le vrai travail de ce mode est la détection : on avance la timeline
+            # sur l'étape « Détection » (sinon elle reste bloquée sur « Indices »,
+            # héritée de la section « Traitement RVT existants »). Cohérent avec
+            # cv_post_service qui émet ce même stage pour les autres modes.
+            reporter.stage("Computer Vision")
 
         for run_idx, run_cfg in enumerate(run_configs, start=1):
             if cancel.is_cancelled():

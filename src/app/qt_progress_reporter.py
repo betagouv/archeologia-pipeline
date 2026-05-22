@@ -82,3 +82,10 @@ class QtProgressReporter:
             self._emitter.load_layers.emit(vrt_paths, shapefile_paths, class_colors or [])
         except Exception:
             pass
+
+    def metric(self, current: int, total: int, label: str) -> None:
+        """Compteur structuré de progression d'une phase (i/n) pour l'UI."""
+        try:
+            self._emitter.metric.emit(int(current), int(total), str(label))
+        except Exception:
+            pass

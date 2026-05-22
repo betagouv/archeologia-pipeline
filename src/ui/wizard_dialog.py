@@ -128,6 +128,7 @@ class WizardDialog(QDialog):
         self._source_page.mode_changed.connect(self._on_mode_changed)
         self._launch_page.run_started.connect(self._on_run_started)
         self._launch_page.run_finished.connect(self._on_run_finished)
+        self._launch_page.workers_changed.connect(self._on_workers_changed)
         self._refresh_rail_subs()
 
         self._goto_step(1)
@@ -243,6 +244,15 @@ class WizardDialog(QDialog):
         cv = self._config.get("computer_vision") or {}
         mode = files.get("data_mode") or "ign_laz"
 
+        # Workers : la config alimente le spin des paramètres avancés ; le spin
+        # devient ensuite la source de vérité (workers_changed réécrit la config).
+        try:
+            workers = int(proc.get("max_workers", 4) or 4)
+        except (TypeError, ValueError):
+            workers = 4
+        self._launch_page.set_workers(workers)
+        self._config.setdefault("processing", {})["max_workers"] = self._launch_page.workers_value()
+
         sections = [RecapSection("Mode", badges=[mode_info(mode).banner_label])]
 
         prods = self._indices_page.recap_products()
@@ -262,17 +272,13 @@ class WizardDialog(QDialog):
             sections.append(RecapSection("Détection IA", badges=ents, value=val, detail=detail))
 
         sections.append(RecapSection("Sortie", value=files.get("output_dir") or "—"))
-
-        try:
-            workers = int(proc.get("max_workers", 4) or 4)
-        except (TypeError, ValueError):
-            workers = 4
-        sections.append(
-            RecapSection("Performance", value=f"{workers} worker{'s' if workers > 1 else ''}")
-        )
+        # (Plus de ligne « Performance » : les workers sont dans les paramètres avancés.)
 
         self._launch_page.update_recap(sections)
         self._launch_page.set_step_subtitles(self._step_subtitles())
+        self._launch_page.refresh_preflight(self._config)
+        if not self._launch_page.is_running():
+            self._launch_page.show_recap()
 
     def _step_subtitles(self) -> dict:
         """Sous-libellés statiques de la timeline (depuis la config courante)."""
@@ -296,6 +302,14 @@ class WizardDialog(QDialog):
         else:
             subs[3] = "désactivée"
         return subs
+
+    def _on_workers_changed(self, n: int) -> None:
+        """Persiste le choix de workers (paramètres avancés de l'étape 4)."""
+        self._config.setdefault("processing", {})["max_workers"] = int(n)
+        try:
+            self._cm.save_last_ui_config(self._config)
+        except Exception:
+            pass  # la persistance ne doit jamais bloquer l'UI
 
     def _on_run_started(self) -> None:
         self._set_nav_enabled(False)

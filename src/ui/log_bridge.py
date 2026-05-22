@@ -18,14 +18,15 @@ from ..app.progress_reporter import USER_INFO
 class QtLogEmitter(QObject):
     """Signaux Qt consommés par le ``RunView`` (émis depuis le thread worker)."""
 
-    message = pyqtSignal(str)
-    # Ligne « transiente » : (group, message). La zone log réécrit la dernière
-    # ligne du même ``group`` au lieu d'empiler (sous-progressions Dalle i/N…).
-    message_transient = pyqtSignal(str, str)
+    message = pyqtSignal(str, str)        # (levelname, message)
+    # Ligne « transiente » : (group, levelname, message). La zone log réécrit la
+    # dernière ligne du même ``group`` au lieu d'empiler (sous-progressions…).
+    message_transient = pyqtSignal(str, str, str)
     progress = pyqtSignal(int)            # 0-100
     stage = pyqtSignal(str)               # libellé d'étape (texte libre)
     run_enabled = pyqtSignal(bool)        # True = run terminé → réactiver l'UI
     load_layers = pyqtSignal(list, list, list)  # (vrt_paths, shp_paths, class_colors)
+    metric = pyqtSignal(int, int, str)    # (current, total, label) — compteur de phase
 
 
 class QtLogHandler(logging.Handler):
@@ -40,8 +41,9 @@ class QtLogHandler(logging.Handler):
             msg = self.format(record)
         except Exception:
             msg = record.getMessage()
+        level = record.levelname
         transient_group = getattr(record, "transient_group", None)
         if transient_group:
-            self._emitter.message_transient.emit(str(transient_group), msg)
+            self._emitter.message_transient.emit(str(transient_group), level, msg)
         else:
-            self._emitter.message.emit(msg)
+            self._emitter.message.emit(level, msg)

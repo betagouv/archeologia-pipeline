@@ -60,6 +60,12 @@ class ProgressReporter(Protocol):
 
     def load_layers(self, vrt_paths: list, shapefile_paths: list, class_colors: list = None) -> None: ...
 
+    # Compteur structuré d'une phase (``current``/``total`` + ``label`` :
+    # « dalles », « images »…) pour afficher « i/n » dans l'UI sans parser
+    # le texte narratif. Optionnel : les reporters legacy peuvent l'ignorer
+    # (l'appelant garde l'appel via ``getattr``).
+    def metric(self, current: int, total: int, label: str) -> None: ...
+
 
 class NullProgressReporter:
     def info(self, msg: str) -> None:
@@ -87,4 +93,7 @@ class NullProgressReporter:
         return
 
     def load_layers(self, vrt_paths: list, shapefile_paths: list, class_colors: list = None) -> None:
+        return
+
+    def metric(self, current: int, total: int, label: str) -> None:
         return

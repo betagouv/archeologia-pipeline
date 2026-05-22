@@ -14,8 +14,6 @@ from __future__ import annotations
 import logging
 from unittest.mock import MagicMock
 
-import pytest
-
 from app.progress_reporter import USER_INFO, NullProgressReporter
 from app.qt_progress_reporter import QtProgressReporter
 from app.user_narrator import (
@@ -461,3 +459,41 @@ class TestNewNarratorEvents:
         narrator, reporter = self._make()
         narrator.finalize_layers_count(0)
         reporter.user_info.assert_not_called()
+
+
+# ----------------------------------------------------------------------
+# Canal structuré ``metric`` (compteur i/n) : émis EN PLUS du texte
+# narratif, pour que l'UI affiche « 8/12 dalles » sans parser le texte.
+# ----------------------------------------------------------------------
+class TestNarratorMetrics:
+    def _make(self):
+        reporter = MagicMock()
+        return UserNarrator(reporter), reporter
+
+    def test_download_tile_progress_emits_metric(self):
+        narrator, reporter = self._make()
+        narrator.download_tile_progress(1, 3, "T1")
+        reporter.metric.assert_called_once_with(1, 3, "dalles")
+
+    def test_tile_progress_emits_metric(self):
+        narrator, reporter = self._make()
+        narrator.tile_progress(2, 5, "T")
+        reporter.metric.assert_called_once_with(2, 5, "dalles")
+
+    def test_products_phase_start_inits_total(self):
+        narrator, reporter = self._make()
+        narrator.products_phase_start(12, ["MNT", "LD"])
+        reporter.metric.assert_called_once_with(0, 12, "dalles")
+
+    def test_cv_run_image_progress_emits_images_metric(self):
+        narrator, reporter = self._make()
+        narrator.cv_run_image_progress("m", 3, 8, "img")
+        reporter.metric.assert_called_once_with(3, 8, "images")
+
+    def test_metric_absent_on_legacy_reporter_does_not_raise(self):
+        # Reporter sans ``metric`` (legacy) : l'appel est ignoré silencieusement.
+        class LegacyReporter:
+            def user_info(self, msg): self.last = msg
+            def user_info_transient(self, msg, group): self.last = msg
+        narrator = UserNarrator(LegacyReporter())
+        narrator.tile_progress(1, 2, "T")  # ne doit pas lever

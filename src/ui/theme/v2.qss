@@ -101,8 +101,6 @@ QPushButton:disabled { color: #909090; border-color: #b0b0b0; }
     font-size: 9px; font-weight: bold; letter-spacing: 1px;
     padding: 2px 9px; border-radius: 3px;
 }
-#StageConnector { color: #a0a0a0; font-size: 16px; font-weight: bold; }
-#StageConnector[active="true"] { color: #2b79c2; }
 
 /* ---- Bandeau de mode ---- */
 #ModeBanner { background: #d6e6f4; border: 1px solid #2b79c2; border-radius: 7px; }
@@ -136,6 +134,21 @@ QPushButton:disabled { color: #909090; border-color: #b0b0b0; }
 #IndexName { font-weight: bold; color: #000000; font-size: 11px; }
 #IndexCard[checked="true"] #IndexName { color: #1d5a96; }
 #IndexDesc { color: #5a5a5a; font-size: 10px; }
+
+/* ---- Étape 2 : réglages avancés (onglets RVT) ---- */
+#AdvTabs::pane {
+    border: 1px solid #c4c4c4; border-radius: 4px;
+    background: #ffffff; top: -1px;
+}
+#AdvTabs QTabBar::tab {
+    background: #e3e3e3; color: #2c2c2c;
+    border: 1px solid #c4c4c4; border-bottom: none;
+    border-top-left-radius: 4px; border-top-right-radius: 4px;
+    padding: 4px 12px; margin-right: 2px;
+}
+#AdvTabs QTabBar::tab:selected { background: #ffffff; color: #1d5a96; font-weight: bold; }
+#AdvTabs QTabBar::tab:hover { background: #d6e6f4; }
+#AdvTabs QTabBar::tab:disabled { color: #909090; }
 
 /* ---- Bandeau info (mode) ---- */
 #InfoBanner {
@@ -215,6 +228,49 @@ QPushButton:disabled { color: #909090; border-color: #b0b0b0; }
 }
 #RecapDetail { color: #5a5a5a; font-size: 10px; }
 
+/* ---- Étape 4 : zone défilante du récap ---- */
+#LaunchScroll { background: transparent; border: none; }
+#LaunchScroll > QWidget { background: transparent; }
+#LaunchHint { color: #5a5a5a; font-size: 11px; font-style: italic; }
+
+/* ---- Étape 4 : panneau « État du système » (préflight) ---- */
+#PreflightPill {
+    font-size: 10px; font-weight: bold; letter-spacing: 0.5px;
+    padding: 1px 8px; border-radius: 3px;
+}
+#PreflightPill[kind="ok"]   { background: #e6f2e6; color: #2d6a2d; border: 1px solid #418141; }
+#PreflightPill[kind="warn"] { background: #f6efdc; color: #8a5e18; border: 1px solid #b07a20; }
+#PreflightPill[kind="err"]  { background: #fbe7e7; color: #7a2727; border: 1px solid #a83838; }
+#PreflightIcon { font-size: 12px; font-weight: bold; }
+#PreflightIcon[status="ok"]   { color: #418141; }
+#PreflightIcon[status="warn"] { color: #b07a20; }
+#PreflightIcon[status="err"]  { color: #a83838; }
+#PreflightName { color: #2c2c2c; font-size: 11px; }
+#PreflightDetail {
+    color: #5a5a5a; font-size: 10px;
+    font-family: "Consolas", "Courier New", monospace;
+}
+
+/* ---- Étape 4 : section repliable (paramètres avancés) ---- */
+#Collapsible { background: #ffffff; border: 1px solid #a0a0a0; border-radius: 6px; }
+#CollapsibleHeader { background: transparent; border-radius: 6px; }
+#CollapsibleHeader:hover { background: #e8e8e8; }
+#CollapsibleHeaderLabel { color: #000000; font-size: 11px; }
+#CollapsibleSep { min-height: 1px; max-height: 1px; background: #c4c4c4; border: none; }
+#CollapsibleBody { background: #ffffff; }
+#WorkersSpin {
+    background: #ffffff; border: 1px solid #888888; border-radius: 2px;
+    padding: 2px; min-height: 20px;
+    font-family: "Consolas", "Courier New", monospace; color: #000000;
+}
+#WorkersSpin:focus { border: 1px solid #2b79c2; }
+#WorkersNote { color: #5a5a5a; font-size: 10px; font-style: italic; }
+QPushButton[role="micro"] {
+    min-width: 24px; max-width: 24px;
+    min-height: 22px; max-height: 22px;
+    padding: 0; font-weight: bold; font-size: 14px;
+}
+
 /* ---- Run view : timeline (5 étapes) ---- */
 /* Bordure transparente de base → l'encadré de l'étape active n'ajoute aucun
    décalage d'1px (le box-model est identique dans tous les états). */
@@ -240,6 +296,14 @@ QPushButton:disabled { color: #909090; border-color: #b0b0b0; }
 /* ---- Run view : progression + journal ---- */
 #RunStageLabel { color: #1d5a96; font-weight: bold; font-size: 11px; }
 #RunJournalTitle { color: #2c2c2c; font-weight: bold; font-size: 11px; }
+
+/* ---- Run view : en-tête (étape courante + sous-étape + compteur live) ---- */
+#RunHeader { background: #eef3f8; border: 1px solid #c4c4c4; border-radius: 6px; }
+#RunHeaderStep { color: #1d5a96; font-weight: bold; font-size: 12px; }
+#RunHeaderSub { color: #5a5a5a; font-size: 10px; }
+#RunHeaderMetric { color: #1d5a96; font-weight: bold; font-size: 13px; }
+
+/* ---- Run view : progression ---- */
 #RunProgress {
     border: 1px solid #b0b0b0; border-radius: 3px;
     background: #e3e3e3; text-align: center; min-height: 18px; color: #000000;

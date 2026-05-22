@@ -94,6 +94,20 @@ class UserNarrator:
         except Exception:
             self._r.user_info(msg)
 
+    def _metric(self, current: int, total: int, label: str) -> None:
+        """Émet un compteur structuré (i/n) si le reporter le supporte.
+
+        Optionnel : un reporter sans ``metric`` (legacy/test) est simplement
+        ignoré — le compteur n'est qu'un complément du canal narratif texte.
+        """
+        fn = getattr(self._r, "metric", None)
+        if fn is None:
+            return
+        try:
+            fn(int(current), int(total), str(label))
+        except Exception:
+            pass
+
     # ------------------------------------------------------------------
     # Cycle de vie global
     # ------------------------------------------------------------------
@@ -175,6 +189,7 @@ class UserNarrator:
             f"   • Dalle {index}/{total} téléchargée : {short}",
             group="download_tile_progress",
         )
+        self._metric(index, total, "dalles")
 
     def download_done(self, n_downloaded: int) -> None:
         self._r.user_info(
@@ -203,6 +218,7 @@ class UserNarrator:
             f"   • Dalle {index}/{total} fusionnée{suffix}",
             group="merging_tile_progress",
         )
+        self._metric(index, total, "dalles")
 
     def products_phase_start(self, total_tiles: int, active_products: list) -> None:
         codes = [p for p in active_products if p != "MNT"]
@@ -214,6 +230,7 @@ class UserNarrator:
             f"🛠 Calcul des produits sur "
             f"{_human_count(total_tiles, 'dalle', 'dalles')}{details}…"
         )
+        self._metric(0, total_tiles, "dalles")  # initialise le total de la phase
 
     def tile_progress(self, index: int, total: int, tile_name: str) -> None:
         # Tronqué pour rester lisible (les noms IGN sont longs).
@@ -223,6 +240,7 @@ class UserNarrator:
             f"   • Dalle {index}/{total} : {short}",
             group="tile_progress",
         )
+        self._metric(index, total, "dalles")
 
     # ------------------------------------------------------------------
     # Computer Vision
@@ -255,6 +273,7 @@ class UserNarrator:
             f"      ↳ Image {index}/{total} : {short}",
             group="cv_image_progress",
         )
+        self._metric(index, total, "images")
 
     def cv_complete(self, n_detections: int) -> None:
         if n_detections == 0:

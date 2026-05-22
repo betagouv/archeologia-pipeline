@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from pipeline.preflight import CheckResult, _check_input_path
+from pipeline.preflight import CheckResult, _check_input_path, collect_preflight_results
 
 
 class TestCheckResult:
@@ -119,3 +119,43 @@ class TestCheckInputPath:
         )
         assert len(results) == 1
         assert results[0].ok is False
+
+
+class TestCollectPreflightResults:
+    """La fonction pure consommée par le panneau « État du système » (étape 4)."""
+
+    def test_returns_list_of_check_results(self):
+        results = collect_preflight_results(
+            mode="existing_rvt",
+            cv_config={"enabled": False},
+            products={},
+            files_config={"existing_rvt_dir": "/nonexistent"},
+            output_dir=None,
+        )
+        assert isinstance(results, list)
+        assert results  # au moins une vérification
+        assert all(isinstance(r, CheckResult) for r in results)
+
+    def test_missing_input_dir_is_critical_failure(self):
+        results = collect_preflight_results(
+            mode="existing_rvt",
+            cv_config={"enabled": False},
+            products={},
+            files_config={"existing_rvt_dir": "/nonexistent/path/xyz"},
+            output_dir=None,
+        )
+        assert any(r.critical and not r.ok for r in results)
+
+    def test_output_dir_reports_free_space(self):
+        with tempfile.TemporaryDirectory() as td:
+            results = collect_preflight_results(
+                mode="existing_rvt",
+                cv_config={"enabled": False},
+                products={},
+                files_config={"existing_rvt_dir": td},
+                output_dir=Path(td),
+            )
+        out = [r for r in results if r.name == "Dossier de sortie"]
+        assert len(out) == 1
+        assert out[0].ok is True
+        assert "Go libres" in out[0].details

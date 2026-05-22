@@ -8,9 +8,8 @@ from pathlib import Path
 from shutil import which
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
-
-class PipelineCancelled(Exception):
-    pass
+# Exception d'annulation canonique (réexportée pour compatibilité ascendante).
+from ..cancellation import PipelineCancelled  # noqa: F401
 
 
 # Cache thread-safe pour les fichiers déjà validés

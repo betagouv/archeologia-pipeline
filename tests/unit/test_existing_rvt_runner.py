@@ -109,3 +109,44 @@ class TestExistingRvtRunner:
         assert len(calls) == 1
         assert calls[0]["cv_config"]["enabled"] is False
         assert any("aucun modèle" in msg for msg in reporter.messages)
+
+    def test_progress_advances_in_cv_band_and_wires_on_busy(self, tmp_path: Path, monkeypatch):
+        captured = {}
+
+        def fake_run_existing_rvt(**kwargs):
+            captured.update(kwargs)
+            return SimpleNamespace(total_images=10)
+
+        # Un run CV unique, sans dépendre de la résolution réelle des modèles.
+        monkeypatch.setattr(
+            "pipeline.cv.class_utils.resolve_cv_runs",
+            lambda _cfg: [{"selected_model": "m", "target_rvt": "LD", "enabled": True}],
+        )
+        monkeypatch.setattr(
+            "app.services.finalize_service._build_global_class_color_map",
+            lambda _runs: {},
+        )
+        monkeypatch.setattr("pipeline.modes.existing_rvt.run_existing_rvt", fake_run_existing_rvt)
+        monkeypatch.setattr("app.runners.existing_rvt_runner.finalize_pipeline", lambda **_kwargs: None)
+
+        reporter = _Reporter()
+        ExistingRvtRunner().run(
+            ctx=_ctx(tmp_path, {"enabled": True, "target_rvt": "LD"}),
+            reporter=reporter,
+            cancel=CancelToken(threading.Event()),
+        )
+
+        # on_busy doit être câblé (régime large-raster).
+        assert callable(captured.get("on_busy"))
+
+        # En simulant la sous-progression image, la barre avance dans [10, 95].
+        img_cb = captured.get("image_progress")
+        assert callable(img_cb)
+        before = len(reporter.progress_values)
+        for i in range(0, 11):
+            img_cb(i, 10, f"img{i}")
+        emitted = reporter.progress_values[before:]
+        assert emitted, "image_progress doit émettre de la progression"
+        assert all(10 <= v <= 95 for v in emitted), emitted
+        assert emitted == sorted(emitted), "progression monotone"
+        assert emitted[-1] == 95

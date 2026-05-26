@@ -24,6 +24,7 @@ def run_fallback_inference(
     cv_config: Dict[str, Any],
     target_rvt: str,
     rvt_base_dir: Optional[Path] = None,
+    output_dir: Optional[Path] = None,
     effective_detection_dir: Optional[Path] = None,
     tif_transform_data: Optional[Dict[str, Tuple[float, float, float, float]]] = None,
     single_jpg: Optional[Path] = None,
@@ -94,8 +95,9 @@ def run_fallback_inference(
         annotated_output_dir.mkdir(parents=True, exist_ok=True)
 
     if generate_shapefiles:
+        # Pas de mkdir d'office : detections/<entity_slug>/ (ou le repli legacy)
+        # sont créés à l'écriture par conversion_shp. Évite un 'shapefiles/' vide.
         shapefile_output_dir = det_base / "shapefiles"
-        shapefile_output_dir.mkdir(parents=True, exist_ok=True)
 
     if single_jpg is not None:
         jpg_files = [single_jpg]
@@ -182,6 +184,7 @@ def run_fallback_inference(
             png_dir=jpg_dir,
             shp_dir=shapefile_output_dir,
             target_rvt=target_rvt,
+            output_dir=output_dir,
             cv_config=cv_config,
             tif_transform_data=tif_transform_data,
             crs="EPSG:2154",

@@ -11,6 +11,7 @@ from ..ign.products.crop import copy_products_without_crop, crop_final_products
 from ..ign.products.indices import create_visualization_products
 from ..ign.products.results import copy_final_products_to_results
 from ..constants import IGN_TILE_SIZE_M
+from ..tilespec import disambiguate, make_uid
 from ..types import CancelCheckFn, LogFn
 
 
@@ -176,6 +177,7 @@ def _process_single_mnt_tile(
     log: LogFn,
     cancel_check: CancelCheckFn | None,
     feedback: Optional[Any] = None,
+    name_suffix: str = "",
 ) -> bool:
     """Exécute le flux RVT → crop (ou copie) → copie finale pour une dalle unique.
 
@@ -183,6 +185,9 @@ def _process_single_mnt_tile(
     Retourne False si une annulation a été demandée en cours de route.
     ``feedback`` (QgsProcessingFeedback annulable) rend le calcul RVT QGIS
     interruptible ; les subprocess GDAL le sont via ``cancel_check``.
+    ``name_suffix`` (ex. ``"_<uid>"``) garantit l'unicité des produits de sortie
+    pour des dalles sub-km partageant la même cellule km (placement par métadonnées,
+    nommage par uid) ; ``""`` conserve le nommage IGN standard.
     """
     create_visualization_products(
         temp_dir=temp_dir,
@@ -205,6 +210,7 @@ def _process_single_mnt_tile(
             rvt_params=rvt_params,
             log=log,
             cancel_check=cancel_check,
+            name_suffix=name_suffix,
         )
     else:
         crop_final_products(
@@ -214,6 +220,7 @@ def _process_single_mnt_tile(
             rvt_params=rvt_params,
             log=log,
             cancel_check=cancel_check,
+            name_suffix=name_suffix,
         )
 
     if cancel_check is not None and cancel_check():
@@ -230,6 +237,7 @@ def _process_single_mnt_tile(
         rvt_params=rvt_params,
         log=log,
         cancel_check=cancel_check,
+        name_suffix=name_suffix,
     )
     return True
 
@@ -262,6 +270,9 @@ def run_existing_mnt(
 
     processed = 0
     total = len(mnt_files)
+    # Filet anti-collision : garantit l'unicité des uid (donc des noms de sortie)
+    # pour les dalles sub-km / hors-grille traitées par-dalle.
+    seen_uids: set[str] = set()
     for idx, mnt_path in enumerate(mnt_files, 1):
         if cancel_check is not None and cancel_check():
             log("Annulation demandée, arrêt du traitement MNT.")
@@ -294,6 +305,10 @@ def run_existing_mnt(
         #    couverture et préserve la cohérence des indices sur toute la scène.
         if layout == "large" and bounds is not None:
             current_tile_name = _large_tile_name_for(mnt_path, bounds)
+            # Suffixe d'unicité : le nom de destination RVT est bâti depuis x/y
+            # (cosmétiques) seuls ; sans uid, deux grands rasters partageant le
+            # même coin NW au km près s'écraseraient.
+            name_suffix = "_" + disambiguate(make_uid(mnt_path), seen_uids)
             temp_mnt_path = temp_dir / f"{current_tile_name}_MNT.tif"
             _copy_source_mnt_to_temp(
                 source_path=mnt_path,
@@ -319,17 +334,33 @@ def run_existing_mnt(
                 log=log,
                 cancel_check=cancel_check,
                 feedback=feedback,
+                name_suffix=name_suffix,
             )
             if ok:
                 processed += 1
             continue
 
         # 3) Cas STANDARD et SMALL: une seule dalle logique
-        x_str, y_str, tile_name = _infer_tile_coords_from_mnt(mnt_path, log)
-        if not x_str or not y_str or not tile_name:
-            raise ValueError(f"Impossible de déduire les coordonnées pour le MNT: {mnt_path.name}")
+        skip_crop = (layout == "small")
+        if skip_crop and bounds is not None:
+            # SMALL : nom unique incluant le stem source (comme le cas LARGE). Indispensable
+            # car le fichier temp ET les produits de sortie sont dérivés de ce nom ; sans
+            # unicité, les sous-dalles d'une même cellule km écraseraient leurs fichiers
+            # temp (réutilisation des mauvaises données) et leurs sorties (« trous noirs »).
+            current_tile_name = _large_tile_name_for(mnt_path, bounds)
+            name_suffix = "_" + disambiguate(make_uid(mnt_path), seen_uids)
+            log(
+                f"MNT {mnt_path.name}: emprise < 1 km (ou non alignée IGN) → "
+                f"crop sauté, emprise native conservée (uid={name_suffix[1:]})."
+            )
+        else:
+            # STANDARD : vraie dalle IGN 1 km, une par cellule → nommage historique.
+            x_str, y_str, tile_name = _infer_tile_coords_from_mnt(mnt_path, log)
+            if not x_str or not y_str or not tile_name:
+                raise ValueError(f"Impossible de déduire les coordonnées pour le MNT: {mnt_path.name}")
+            current_tile_name = tile_name
+            name_suffix = ""
 
-        current_tile_name = tile_name
         temp_mnt_path = temp_dir / f"{current_tile_name}_MNT.tif"
         _copy_source_mnt_to_temp(
             source_path=mnt_path,
@@ -338,13 +369,6 @@ def run_existing_mnt(
             log=log,
             cancel_check=cancel_check,
         )
-
-        skip_crop = (layout == "small")
-        if skip_crop:
-            log(
-                f"MNT {mnt_path.name}: emprise < 1 km (ou non alignée IGN) → "
-                f"crop sauté, emprise native conservée."
-            )
 
         ok = _process_single_mnt_tile(
             current_tile_name=current_tile_name,
@@ -358,8 +382,15 @@ def run_existing_mnt(
             log=log,
             cancel_check=cancel_check,
             feedback=feedback,
+            name_suffix=name_suffix,
         )
         if ok:
             processed += 1
+
+    if processed < total:
+        log(
+            f"⚠️ {total - processed} dalle(s) MNT sur {total} n'ont pas produit de sortie "
+            f"(annulation ou erreur) — vérifiez le journal."
+        )
 
     return ExistingMntResult(total=processed)

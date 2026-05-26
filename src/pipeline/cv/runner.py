@@ -63,18 +63,23 @@ def run_cv_on_folder(
     # quand plusieurs modèles ciblent le même RVT.
     model_slug = get_model_slug(cv_config)
 
-    # Déterminer le dossier de détections (nouvelle structure)
+    # Dossier TECHNIQUE du modèle (échafaudage non-livrable : raw_detections/ +
+    # annotated_images/) sous detections/_technique/<model_slug>/. Les détections
+    # vectorielles, elles, sont routées par ENTITÉ vers detections/<entity_slug>/
+    # (cf. runner_shapefiles), pour coller au vocabulaire utilisateur.
     if output_dir is not None:
-        from ..output_paths import detection_model_dir
-        effective_detection_dir = detection_model_dir(output_dir, model_slug)
+        from ..output_paths import detection_technique_dir, detection_technique_raw_dir
+        effective_detection_dir = detection_technique_dir(output_dir, model_slug)
         effective_detection_dir.mkdir(parents=True, exist_ok=True)
+        effective_raw_dir = detection_technique_raw_dir(output_dir, model_slug)
+        effective_raw_dir.mkdir(parents=True, exist_ok=True)
     else:
         effective_detection_dir = (rvt_base_dir or jpg_dir.parent) / model_slug
         effective_detection_dir.mkdir(parents=True, exist_ok=True)
+        effective_raw_dir = prepare_model_workdir(effective_detection_dir.parent, model_slug, log)
 
-    # Dossier raw_detections : stocke les JSON/TXT, les PNG restent dans jpg_dir (indices/)
+    # Base RVT (pour external_runner / fallback) — parent du dossier technique.
     effective_rvt_base = effective_detection_dir.parent if output_dir is not None else (rvt_base_dir or jpg_dir.parent)
-    effective_raw_dir = prepare_model_workdir(effective_rvt_base, model_slug, log)
 
     # Générer le fichier classes.txt dans le dossier raw_detections du modèle
     try:
@@ -163,6 +168,7 @@ def run_cv_on_folder(
                     png_dir=jpg_dir,
                     shp_dir=shapefile_output_dir,
                     target_rvt=target_rvt,
+                    output_dir=output_dir,
                     cv_config=cv_config,
                     tif_transform_data=tif_transform_data,
                     crs="EPSG:2154",
@@ -211,6 +217,7 @@ def run_cv_on_folder(
                     png_dir=jpg_dir,
                     shp_dir=shapefile_output_dir,
                     target_rvt=target_rvt,
+                    output_dir=output_dir,
                     cv_config=cv_config,
                     tif_transform_data=tif_transform_data,
                     crs="EPSG:2154",
@@ -242,6 +249,7 @@ def run_cv_on_folder(
         cv_config=cv_config,
         target_rvt=target_rvt,
         rvt_base_dir=effective_rvt_base,
+        output_dir=output_dir,
         effective_detection_dir=effective_detection_dir,
         tif_transform_data=tif_transform_data,
         single_jpg=single_jpg,

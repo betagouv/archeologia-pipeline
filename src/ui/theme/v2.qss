@@ -150,6 +150,11 @@ QPushButton:disabled { color: #909090; border-color: #b0b0b0; }
 #AdvTabs QTabBar::tab:hover { background: #d6e6f4; }
 #AdvTabs QTabBar::tab:disabled { color: #909090; }
 
+/* En-tête de panneau (paramètres détaillés) + aide par champ */
+#AdvIndexTitle { font-weight: bold; color: #000000; font-size: 12px; }
+#AdvIndexDesc { color: #5a5a5a; font-size: 10px; }
+#FieldHint { color: #5a5a5a; font-size: 10px; }
+
 /* ---- Bandeau info (mode) ---- */
 #InfoBanner {
     background: #d6e6f4; border: 1px solid #2b79c2; border-radius: 6px;
@@ -193,6 +198,7 @@ QPushButton:disabled { color: #909090; border-color: #b0b0b0; }
     padding: 1px 6px; border-radius: 2px;
 }
 #EntityRvtTag[missing="true"] { background: #b07a20; color: #ffffff; }
+#EntityDerivedBadge { color: #1d5a96; font-size: 9px; font-style: italic; }
 #EntityNoModel { color: #b07a20; font-size: 10px; font-style: italic; }
 #EntityRvtWarn { color: #b07a20; font-size: 10px; }
 #EntityActivateBtn { padding: 1px 8px; min-height: 16px; font-size: 10px; }

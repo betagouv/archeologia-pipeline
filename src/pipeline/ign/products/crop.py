@@ -24,6 +24,7 @@ def crop_final_products(
     log: LogFn = lambda _: None,
     gdalwarp_path: Optional[str] = None,
     cancel_check: CancelCheckFn | None = None,
+    name_suffix: str = "",
 ) -> Dict[str, Path]:
     temp_dir.mkdir(parents=True, exist_ok=True)
 
@@ -46,13 +47,13 @@ def crop_final_products(
     # Utiliser la fonction utilitaire pour générer les noms de fichiers avec paramètres
     cropped: Dict[str, Path] = {}
 
-    for product_name in ["MNT", "DENSITE", "M_HS", "SVF", "SLO", "LD", "SLRM", "VAT"]:
+    for product_name in ["MNT", "DENSITE", "HS", "M_HS", "SVF", "SLO", "LD", "SLRM", "VAT"]:
         if not products.get(product_name, False):
             continue
         check_cancelled(cancel_check)
 
         src_name, dst_name = get_rvt_source_and_dest_filenames(
-            product_name, current_tile_name, x, y, rvt_params
+            product_name, current_tile_name, x, y, rvt_params, name_suffix=name_suffix
         )
         src_path = temp_dir / src_name
         dst_path = temp_dir / dst_name
@@ -125,6 +126,7 @@ def copy_products_without_crop(
     rvt_params: Dict[str, Any],
     log: LogFn = lambda _: None,
     cancel_check: CancelCheckFn | None = None,
+    name_suffix: str = "",
 ) -> Dict[str, Path]:
     """Variante de ``crop_final_products`` qui préserve l'emprise native du MNT.
 
@@ -143,13 +145,13 @@ def copy_products_without_crop(
 
     copied: Dict[str, Path] = {}
 
-    for product_name in ["MNT", "DENSITE", "M_HS", "SVF", "SLO", "LD", "SLRM", "VAT"]:
+    for product_name in ["MNT", "DENSITE", "HS", "M_HS", "SVF", "SLO", "LD", "SLRM", "VAT"]:
         if not products.get(product_name, False):
             continue
         check_cancelled(cancel_check)
 
         src_name, dst_name = get_rvt_source_and_dest_filenames(
-            product_name, current_tile_name, x, y, rvt_params
+            product_name, current_tile_name, x, y, rvt_params, name_suffix=name_suffix
         )
         src_path = temp_dir / src_name
         dst_path = temp_dir / dst_name

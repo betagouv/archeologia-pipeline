@@ -69,9 +69,17 @@ Per-model behavior (clustering, SAHI slicing, image size, task type) lives in ea
 
 Multiple CV models can run in one pipeline (`computer_vision.runs` array in config). The consolidated output is always a single `detections/detections_validation.qgs` produced by `finalize_service`.
 
+### Index folder naming (`indices/<PRODUCT><param-suffix>/`)
+
+Index output folders are named `<PRODUCT>` + a parameter suffix derived from the RVT settings — e.g. `SVF_R10_D16_V1_N0`, `LD_A15_Rmin10_Rmax20_H1p7_V1`, `HS_Az315_E35_V1`. The single source of truth is `get_rvt_folder_name(product, rvt_params)` in `src/pipeline/ign/products/rvt_naming.py` (= product code + `get_rvt_param_suffix(...)`). This lets re-running into the same `output_dir` with different params produce separate folders instead of overwriting. MNT/DENSITE have no params → bare `MNT`/`DENSITE`; `existing_rvt` mode forces `indices/RVT/` (params unknown).
+
+**Invariant — same `rvt_params` on both sides.** `get_rvt_param_suffix` applies *defaults* for missing keys (empty dict → the default suffix, **not** `""`). Creation (`results.py:copy_final_products_to_results`) and CV consumption (`output_paths.resolve_rvt_tif_dir` → fed by `cv_post_service`) must therefore receive the *same* `rvt_params`, or they resolve to *different* folders. `run_existing_rvt` mirrors this: when `indices_folder_name` is None it re-derives the suffixed name via `get_rvt_folder_name`. `output_paths.py` imports `rvt_naming` **deferred** (top-level import would pull `ign/products/__init__` → QGIS, breaking standalone/test imports).
+
 ### Entity orchestration (UI → `computer_vision.runs`)
 
 The V2 UI (étape 3) doesn't pick models — the user checks **entities** (parcellaire, trous d'obus…). `src/app/services/model_orchestrator.py` resolves entities into `(model, target_rvt, selected_classes)` runs from two sources: `data/entities_catalog.json` (presentable vocabulary, versioned) + each installed model's `model_card.yaml` (coverage: a class covers entity `E` via its `entity:` alias, else by `name`). This is what **populates `computer_vision.runs`** — the array above is the underlying contract, auto-written by the UI. The orchestrator is **pure-Python and must never import `pipeline.cv`** (whose `__init__` pulls `shapely`); YAML reads are deferred.
+
+**Derived targets.** A clustering output can also be surfaced as a first-class checkable entity (a *derived target*). A model declares it in `model_card.yaml` via a `derived_targets:` list mapping a clustering rule's `output_class` (from `args.yaml`) to a catalog `entity` (+ `include_source` to also output the individual source detections). `discover_installed_models` folds the derived entity into the model's `coverage` (classes = `output_class` [+ source classes]) and records it in `InstalledModel.derived_entities` — so `resolve_runs_from_entities` is unchanged and the clustering fires via the normal "output_class ∈ selected_classes" path. **Order invariant**: `_build_cluster_options` runs *before* `_merge_derived_targets`, so a derived entity never gets a redundant "Regrouper en clusters" toggle (the UI shows a "regroupement automatique" badge instead). This is how `zones_extraction_materiaux` ("Zones d'extraction de matériaux") is exposed on the crater models.
 
 ### Large rasters (`existing_mnt` / `existing_rvt` regime)
 

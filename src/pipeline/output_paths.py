@@ -4,17 +4,19 @@ Centralise toutes les résolutions de chemins du dossier de sortie du pipeline.
 Nouvelle arborescence (v2) :
     <output_dir>/
     ├── indices/            # ex-results/ – rasters finaux (MNT, SVF, LD…)
-    │   ├── MNT/tif/
-    │   ├── SVF/tif/
-    │   └── LD/
+    │   ├── MNT/tif/                    # MNT/DENSITE : pas de paramètres → code brut
+    │   ├── SVF_R10_D16_V1_N0/tif/      # nom = code indice + suffixe de paramètres RVT
+    │   └── LD_A15_Rmin10_Rmax20_H1p7_V1/
     │       ├── tif/
     │       └── png/        # images PNG pour l'inférence
-    ├── detections/         # résultats par modèle CV
-    │   └── <model_slug>/
-    │       ├── shapefiles/
-    │       ├── par_dalle/          # JSON/TXT bruts par dalle
-    │       ├── raw_detections/     # JSON/TXT inférence (toujours présent)
-    │       └── annotated_images/   # images annotées (si option activée)
+    ├── detections/         # résultats CV, organisés par ENTITÉ (vocabulaire utilisateur)
+    │   ├── detections_validation.qgs   # projet consolidé (point d'entrée), couches groupées par entité
+    │   ├── <entity_slug>/              # ex. parcellaire/, chemins_creux/…
+    │   │   └── <entity_slug>.gpkg      # détections de l'entité
+    │   └── _technique/                 # échafaudage non-livrable (traçabilité/debug)
+    │       └── <model_slug>/
+    │           ├── raw_detections/     # JSON/TXT inférence
+    │           └── annotated_images/   # images annotées (si option activée)
     ├── sources/            # données d'entrée (dalles LAZ, urls…)
     │   ├── dalles/
     │   └── dalles_urls.txt
@@ -33,6 +35,7 @@ from typing import Any, Dict
 
 DIR_INDICES = "indices"
 DIR_DETECTIONS = "detections"
+DIR_TECHNIQUE = "_technique"   # sous-dossier de detections/ : échafaudage non-livrable
 DIR_SOURCES = "sources"
 DIR_INTERMEDIAIRES = "intermediaires"
 
@@ -106,6 +109,74 @@ def detection_jpg_dir(output_dir: Path, model_slug: str) -> Path:
 
 
 # ------------------------------------------------------------------ #
+#  Détections – arborescence entité-centrée (v2)                        #
+# ------------------------------------------------------------------ #
+
+def detection_entity_dir(output_dir: Path, entity_slug: str) -> Path:
+    """Dossier livrable d'une entité : ``<output>/detections/<entity_slug>/``.
+
+    1er niveau **entité-centré** (vocabulaire utilisateur). Contient le(s)
+    GeoPackage(s) de l'entité (ex. ``parcellaire/parcellaire.gpkg``).
+    """
+    return detections_dir(output_dir) / entity_slug
+
+
+def detection_technique_dir(output_dir: Path, model_slug: str) -> Path:
+    """Échafaudage technique d'un modèle : ``<output>/detections/_technique/<model_slug>/``.
+
+    Regroupe le **non-livrable** (dumps d'inférence, images annotées) hors de la
+    vue entité-centrée, sans le perdre (traçabilité / debug).
+    """
+    return detections_dir(output_dir) / DIR_TECHNIQUE / model_slug
+
+
+def detection_technique_raw_dir(output_dir: Path, model_slug: str) -> Path:
+    """JSON/TXT bruts d'inférence : ``…/_technique/<model_slug>/raw_detections/``."""
+    return detection_technique_dir(output_dir, model_slug) / "raw_detections"
+
+
+def detection_technique_annotated_dir(output_dir: Path, model_slug: str) -> Path:
+    """Images annotées : ``…/_technique/<model_slug>/annotated_images/``."""
+    return detection_technique_dir(output_dir, model_slug) / "annotated_images"
+
+
+def build_entity_class_targets(output_dir: Path, entities: Any):
+    """Routage ``classe → [(gpkg, nom_de_couche)]`` pour la sortie entité-centrée.
+
+    ``entities`` : la liste posée par l'orchestrateur dans le run
+    (``[{id, label, slug, classes, is_derived, layer_names}, …]``). ``layer_names``
+    (``classe → nom_de_couche``) porte le renommage décidé par l'orchestrateur
+    (libellés ``output_label`` / ``source_label`` du model_card, ou repli) ;
+    absent → la couche garde le nom de sa classe.
+
+    Une classe peut viser **plusieurs** GeoPackage. Cas concret : la classe
+    source ``cratere_obus`` appartient à « Trous d'obus » (entité de base) **et**
+    à « Zones d'extraction » (entité *dérivée*). Elle est alors **dupliquée** :
+    couche ``cratere_obus`` dans ``trous_d_obus.gpkg`` et couche renommée (via
+    ``layer_names``) dans ``zones_d_extraction_de_materiaux.gpkg``. Les cibles
+    sont ordonnées couche **canonique** d'abord (``nom_de_couche == classe``),
+    pour que la copie de référence reçoive le chemin d'écriture le plus robuste.
+    """
+    targets: Dict[str, list] = {}
+    for ent in (entities or []):
+        ent = ent or {}
+        slug = str(ent.get("slug") or ent.get("id") or "").strip()
+        if not slug:
+            continue
+        gpkg = str(detection_entity_dir(output_dir, slug) / f"{slug}.gpkg")
+        layer_names = ent.get("layer_names") or {}
+        for cls in (ent.get("classes") or []):
+            cls = str(cls)
+            layer = str(layer_names.get(cls, cls))
+            targets.setdefault(cls, []).append((gpkg, layer))
+    # Couche canonique (layer == classe) en tête : reçoit le chemin d'écriture
+    # principal (avec repli ogr2ogr) ; les copies renommées sont secondaires.
+    for cls, lst in targets.items():
+        lst.sort(key=lambda t: 0 if t[1] == cls else 1)
+    return targets
+
+
+# ------------------------------------------------------------------ #
 #  Sources                                                              #
 # ------------------------------------------------------------------ #
 
@@ -138,10 +209,21 @@ def resolve_rvt_tif_dir(
     output_structure: Dict[str, Any] | None = None,
     rvt_params: Dict[str, Any] | None = None,
 ) -> Path:
-    """Construit ``indices/<PRODUCT>/tif`` — remplace l'ancien ``results/RVT/<type><suffix>/tif``.
+    """Construit ``indices/<CODE><suffixe_params>/tif`` (ex: ``LD_A15_Rmin10_.../tif``).
 
-    Les paramètres ``output_structure`` et ``rvt_params`` sont conservés dans la
-    signature pour compatibilité mais ne sont plus utilisés pour construire le chemin.
-    Le nom du dossier est désormais toujours le nom court du produit (ex: ``LD``, ``SVF``).
+    Le suffixe de paramètres (issu de ``rvt_params``) permet à deux exécutions de
+    paramètres différents de viser des dossiers distincts plutôt que de s'écraser.
+    Il doit être identique à celui utilisé à la création (``copy_final_products_to_results``),
+    d'où l'invariant : passer le *même* ``rvt_params`` des deux côtés.
+
+    ``output_structure`` est conservé dans la signature pour compatibilité mais
+    n'est plus utilisé.
     """
-    return indice_tif_dir(output_dir, target_rvt)
+    # Import différé : importer ``ign.products.rvt_naming`` au top-level
+    # déclencherait ``ign/products/__init__.py`` → QGIS, alors que ce module doit
+    # rester importable en standalone (tests). ``rvt_naming`` n'importe jamais
+    # ``output_paths`` → pas de cycle.
+    from .ign.products.rvt_naming import get_rvt_folder_name
+
+    folder_name = get_rvt_folder_name(target_rvt, rvt_params or {})
+    return indice_tif_dir(output_dir, folder_name)

@@ -132,8 +132,16 @@ def run_existing_rvt(
     cv_enabled = bool((cv_config or {}).get("enabled", False))
     target_rvt = str((cv_config or {}).get("target_rvt", "LD"))
     # indices_folder_name permet de forcer le nom du dossier indices/<X>/
-    # (ex: "RVT" en mode existing_rvt UI où l'indice cible est inconnu)
-    folder_name = indices_folder_name if indices_folder_name is not None else target_rvt
+    # (ex: "RVT" en mode existing_rvt UI où les paramètres RVT sont inconnus).
+    # Sinon (flux CV-post sur RVT généré par le pipeline) : on dérive le MÊME
+    # dossier suffixé que resolve_rvt_tif_dir / la création, faute de quoi
+    # existing_rvt_dir (suffixé) et tif_out_dir (code brut) divergeraient et les
+    # TIF seraient recopiés dans un 2e dossier non suffixé.
+    if indices_folder_name is not None:
+        folder_name = indices_folder_name
+    else:
+        from ..ign.products.rvt_naming import get_rvt_folder_name  # différé : évite QGIS au top-level
+        folder_name = get_rvt_folder_name(target_rvt, rvt_params or {})
 
     rvt_output_dir: Path | None = None
     try:

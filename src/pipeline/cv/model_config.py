@@ -330,6 +330,10 @@ def resolve_cv_runs(cv_config: Dict) -> List[Dict]:
         # Propager les champs spécifiques au run (sinon écrasés par le global)
         if "selected_classes" in run:
             run_cfg["selected_classes"] = run["selected_classes"]
+        # Découpage par entité (orchestrateur V2) : pilote l'organisation
+        # entité-centrée de detections/<entity_slug>/ en aval (runner_shapefiles).
+        if "entities" in run:
+            run_cfg["entities"] = run["entities"]
         if "min_area_m2" in run:
             run_cfg["min_area_m2"] = float(run["min_area_m2"])
         # Seuils par modèle (orchestrateur V2) : confiance + IoU propres au run.

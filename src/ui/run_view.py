@@ -21,7 +21,6 @@ from qgis.PyQt.QtCore import Qt, QTimer, QUrl, pyqtSignal
 from qgis.PyQt.QtGui import QDesktopServices, QTextCursor
 from qgis.PyQt.QtWidgets import (
     QApplication,
-    QCheckBox,
     QFrame,
     QHBoxLayout,
     QLabel,
@@ -38,10 +37,11 @@ from .layer_loader import load_result_layers
 from .log_bridge import QtLogEmitter, QtLogHandler
 
 
-def _fmt_mmss(seconds: float) -> str:
-    """Durée en m:ss (ex. 134 → « 2:14 », 722 → « 12:02 », 0 → « 0:00 »)."""
-    m, s = divmod(int(max(0.0, seconds)), 60)
-    return f"{m}:{s:02d}"
+def _fmt_hms(seconds: float) -> str:
+    """Durée en h:mm:ss (ex. 134 → « 0:02:14 », 3722 → « 1:02:02 », 0 → « 0:00:00 »)."""
+    h, rem = divmod(int(max(0.0, seconds)), 3600)
+    m, s = divmod(rem, 60)
+    return f"{h}:{m:02d}:{s:02d}"
 
 
 def _fmt_since(seconds: float) -> str:
@@ -88,7 +88,7 @@ class _TimelineStep(QFrame):
         self._timing = QLabel("")
         self._timing.setObjectName("RunStepTiming")
         self._timing.setAlignment(Qt.AlignCenter)
-        self._timing.setFixedWidth(46)  # ~"59:59" → pas de reflow quand ça défile
+        self._timing.setFixedWidth(64)  # ~"9:59:59" → pas de reflow quand ça défile
         lay.addWidget(self._circle, 0, Qt.AlignHCenter)
         lay.addWidget(self._caption, 0, Qt.AlignHCenter)
         lay.addWidget(self._subtitle, 0, Qt.AlignHCenter)
@@ -260,8 +260,8 @@ class RunView(QWidget):
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(10)
 
-        # En-tête : « Étape N/5 · <étape> » + sous-ligne (texte + démarré il y a)
-        # + compteur live à droite.
+        # En-tête : « Étape N/M · <étape> » (M = nb d'étapes du mode) + sous-ligne
+        # (texte + démarré il y a) + compteur live à droite.
         header = QFrame()
         header.setObjectName("RunHeader")
         hl = QHBoxLayout(header)
@@ -294,8 +294,6 @@ class RunView(QWidget):
         jhead.setSpacing(8)
         jtitle = QLabel("Journal d'exécution")
         jtitle.setObjectName("RunJournalTitle")
-        self._autoscroll_check = QCheckBox("Auto-défilement")
-        self._autoscroll_check.setChecked(True)
         copy_btn = QPushButton("Copier")
         copy_btn.setObjectName("GhostButton")
         copy_btn.clicked.connect(self._copy_journal)
@@ -304,7 +302,6 @@ class RunView(QWidget):
         clear_btn.clicked.connect(self._clear_journal)
         jhead.addWidget(jtitle)
         jhead.addStretch(1)
-        jhead.addWidget(self._autoscroll_check)
         jhead.addWidget(copy_btn)
         jhead.addWidget(clear_btn)
         root.addLayout(jhead)
@@ -454,9 +451,9 @@ class RunView(QWidget):
             self._ui_timer.stop()
 
     def _maybe_scroll(self) -> None:
-        if self._autoscroll_check.isChecked():
-            sb = self._journal.verticalScrollBar()
-            sb.setValue(sb.maximum())
+        # Auto-défilement toujours actif (option UI retirée).
+        sb = self._journal.verticalScrollBar()
+        sb.setValue(sb.maximum())
 
     def _copy_journal(self) -> None:
         QApplication.clipboard().setText(self._journal.toPlainText())
@@ -576,12 +573,12 @@ class RunView(QWidget):
         now = time.monotonic()
         if 0 <= self._bucket < len(self._stage_ids) and self._active_started is not None:
             self._step_elapsed[self._bucket] = now - self._active_started
-            self._timeline.set_timing(self._bucket, _fmt_mmss(self._step_elapsed[self._bucket]))
+            self._timeline.set_timing(self._bucket, _fmt_hms(self._step_elapsed[self._bucket]))
         self._bucket = bucket
         self._step_started[bucket] = now
         self._active_started = now
         self._timeline.set_active(bucket)
-        self._timeline.set_timing(bucket, "0:00")
+        self._timeline.set_timing(bucket, "0:00:00")
         self._ensure_timer()
 
     def _ensure_timer(self) -> None:
@@ -597,7 +594,7 @@ class RunView(QWidget):
             return
         if 0 <= self._bucket < len(self._stage_ids):
             self._timeline.set_timing(
-                self._bucket, _fmt_mmss(time.monotonic() - self._active_started)
+                self._bucket, _fmt_hms(time.monotonic() - self._active_started)
             )
         self._update_header()  # rafraîchit « démarré il y a X »
 
@@ -615,7 +612,7 @@ class RunView(QWidget):
         # Fige le chrono de l'étape active courante puis arrête le rafraîchissement.
         if 0 <= self._bucket < len(self._stage_ids) and self._active_started is not None:
             self._step_elapsed[self._bucket] = time.monotonic() - self._active_started
-            self._timeline.set_timing(self._bucket, _fmt_mmss(self._step_elapsed[self._bucket]))
+            self._timeline.set_timing(self._bucket, _fmt_hms(self._step_elapsed[self._bucket]))
         self._active_started = None
         if self._ui_timer is not None:
             self._ui_timer.stop()

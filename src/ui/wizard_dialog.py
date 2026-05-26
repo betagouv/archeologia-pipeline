@@ -10,6 +10,7 @@ import copy
 import json
 from pathlib import Path
 
+from qgis.PyQt.QtCore import Qt
 from qgis.PyQt.QtWidgets import (
     QDialog,
     QFileDialog,
@@ -83,6 +84,9 @@ class WizardDialog(QDialog):
         version = get_plugin_version() or ""
         suffix = f" — v{version}" if version else ""
         self.setWindowTitle(f"Archéolog'IA{suffix}")
+        # Bouton « réduire » dans la barre de titre native (cf. main.py:run()
+        # qui restaure via show() au reclic sur l'icône du plugin).
+        self.setWindowFlags(self.windowFlags() | Qt.WindowMinimizeButtonHint)
         self.resize(980, 660)
 
         self._apply_theme()

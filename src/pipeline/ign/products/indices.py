@@ -63,6 +63,35 @@ def create_visualization_products(
 
     outputs: Dict[str, Path] = {}
 
+    if products.get("HS", False):
+        hs = (rvt_params or {}).get("hs", {})
+        sun_azimuth = _as_int(hs.get("sun_azimuth", 315), 315)
+        sun_elevation = _as_int(hs.get("sun_elevation", 35), 35)
+        ve_factor = _as_int(hs.get("ve_factor", 1), 1)
+        save_as_8bit = _as_bool(hs.get("save_as_8bit", True), True)
+        out = temp_dir / get_rvt_temp_filename("HS", current_tile_name, rvt_params)
+        if not out.exists():
+            log(format_params_line("RVT/HS", {
+                "tile": current_tile_name,
+                "sun_azimuth": sun_azimuth,
+                "sun_elevation": sun_elevation,
+                "ve_factor": ve_factor,
+                "save_as_8bit": save_as_8bit,
+            }))
+            params = {
+                "INPUT": str(input_path),
+                "OUTPUT": str(out),
+                "SUN_AZIMUTH": sun_azimuth,
+                "SUN_ELEVATION": sun_elevation,
+                "VE_FACTOR": ve_factor,
+                "SAVE_AS_8BIT": save_as_8bit,
+            }
+            run_qgis_algorithm("rvt:rvt_hillshade", params, feedback=feedback, context=context)
+        if out.exists():
+            outputs["HS"] = out
+        else:
+            log(f"HS non créé: {out.name}")
+
     if products.get("M_HS", False):
         mdh = (rvt_params or {}).get("mdh", {})
         num_directions = _as_int(mdh.get("num_directions", 16), 16)

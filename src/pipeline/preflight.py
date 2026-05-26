@@ -156,7 +156,7 @@ def collect_preflight_results(
             )
         )
 
-    need_rvt = bool(products.get("M_HS", False) or products.get("SVF", False) or products.get("SLO", False) or products.get("LD", False) or products.get("SLRM", False) or products.get("VAT", False))
+    need_rvt = bool(products.get("HS", False) or products.get("M_HS", False) or products.get("SVF", False) or products.get("SLO", False) or products.get("LD", False) or products.get("SLRM", False) or products.get("VAT", False))
     if need_rvt and mode in ("ign_laz", "local_laz", "existing_mnt"):
         if _processing_ok is True:
             results.append(CheckResult(name="RVT algos (via processing)", ok=True, details="expected available in QGIS", critical=False))

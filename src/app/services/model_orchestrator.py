@@ -41,6 +41,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, FrozenSet, List, Optional, Sequence, Set, Tuple
 
+from ..text_slug import slugify
+
 logger = logging.getLogger(__name__)
 
 
@@ -69,6 +71,19 @@ class InstalledModel:
     # entity_id -> sorties de clustering disponibles (args.yaml:clustering),
     # proposées comme option « regrouper en zones » sur la carte d'entité.
     cluster_options: Dict[str, Tuple[str, ...]] = field(default_factory=dict)
+    # entity_ids dont la couverture provient d'une *cible dérivée* (model_card:
+    # derived_targets) : une sortie de clustering présentée comme une entité à
+    # part entière. Le regroupement y est intrinsèque (pas de case cluster).
+    derived_entities: FrozenSet[str] = frozenset()
+    # Pour chaque entité dérivée : ses classes SOURCES (les détections
+    # individuelles à dupliquer/renommer dans le dossier de la dérivée) et le
+    # libellé de couche source optionnel (model_card derived_targets.source_label).
+    # Absent → repli ``<classe>_source`` côté routage.
+    derived_source_classes: Dict[str, Tuple[str, ...]] = field(default_factory=dict)
+    derived_source_labels: Dict[str, str] = field(default_factory=dict)
+    # entity_id → libellé de couche du cluster (model_card derived_targets.output_label).
+    # Absent → la couche cluster garde son nom de classe brut.
+    derived_output_labels: Dict[str, str] = field(default_factory=dict)
     # Seuils par défaut (model_card:thresholds) — injectés par run, surchargeables
     # par entité côté UI (confiance + aire min). IoU jamais exposé dans l'UI.
     default_confidence: float = 0.3
@@ -158,6 +173,13 @@ def discover_installed_models(models_dir: Any) -> List[InstalledModel]:
             logger.warning("Modèle '%s' sans classe exploitable, ignoré", sub.name)
             continue
         conf, area, iou = _extract_thresholds(card)
+        clustering_rules = _load_args_clustering(sub)
+        # cluster_options construites AVANT le merge des cibles dérivées : sinon
+        # une cible déjà agrégée se verrait proposer une case « cluster » redondante.
+        cluster_options = _build_cluster_options(coverage, clustering_rules)
+        derived_meta = _merge_derived_targets(
+            coverage, _load_derived_targets(card), clustering_rules
+        )
         models.append(
             InstalledModel(
                 name=sub.name,
@@ -167,7 +189,11 @@ def discover_installed_models(models_dir: Any) -> List[InstalledModel]:
                 status=str(card.get("status") or "").strip(),
                 coverage=coverage,
                 class_names=class_names,
-                cluster_options=_build_cluster_options(coverage, _load_args_clustering(sub)),
+                cluster_options=cluster_options,
+                derived_entities=frozenset(derived_meta.keys()),
+                derived_source_classes={k: v[0] for k, v in derived_meta.items()},
+                derived_source_labels={k: v[1] for k, v in derived_meta.items() if v[1]},
+                derived_output_labels={k: v[2] for k, v in derived_meta.items() if v[2]},
                 default_confidence=conf,
                 default_min_area=area,
                 default_iou=iou,
@@ -329,6 +355,77 @@ def _build_cluster_options(
     return {k: tuple(v) for k, v in options.items()}
 
 
+def _load_derived_targets(
+    card: Dict[str, Any],
+) -> List[Tuple[str, str, bool, Optional[str], Optional[str]]]:
+    """Lit ``model_card:derived_targets`` → ``[(output_class, entity_id, include_source, source_label, output_label)]``.
+
+    Une *cible dérivée* présente une sortie de clustering (``output_class``,
+    définie dans ``args.yaml``) comme une entité de catalogue à part entière.
+    ``include_source`` (défaut ``True``) : inclure aussi les classes sources du
+    clustering (les détections individuelles) dans la couverture de l'entité.
+    ``output_label`` (optionnel) : nom de couche à donner au cluster dans le
+    GeoPackage de l'entité (sinon nom de classe inchangé). ``source_label``
+    (optionnel) : nom de couche des sources (les distingue de l'entité de base
+    homonyme) ; absent → repli ``<classe>_source`` côté routage. Tolérant :
+    section absente/malformée → ``[]``.
+    """
+    raw = card.get("derived_targets")
+    if isinstance(raw, dict):
+        raw = [raw]
+    if not isinstance(raw, list):
+        return []
+    result: List[Tuple[str, str, bool, Optional[str], Optional[str]]] = []
+    for cfg in raw:
+        if not isinstance(cfg, dict):
+            continue
+        output = str(cfg.get("output_class") or "").strip()
+        entity = str(cfg.get("entity") or "").strip()
+        if not output or not entity:
+            continue
+        source_label = str(cfg.get("source_label") or "").strip() or None
+        output_label = str(cfg.get("output_label") or "").strip() or None
+        result.append((output, entity, bool(cfg.get("include_source", True)), source_label, output_label))
+    return result
+
+
+def _merge_derived_targets(
+    coverage: Dict[str, Tuple[str, ...]],
+    derived: Sequence[Tuple[str, str, bool, Optional[str], Optional[str]]],
+    clustering_rules: Sequence[Tuple[FrozenSet[str], str]],
+) -> Dict[str, Tuple[Tuple[str, ...], Optional[str], Optional[str]]]:
+    """Replie les cibles dérivées dans ``coverage`` (mutation) ; renvoie leur méta.
+
+    Chaque cible est rattachée à la règle de clustering dont l'``output_class_name``
+    correspond, pour récupérer ses ``target_classes`` (classes sources). La
+    couverture de l'entité vaut alors ``output_class`` (+ classes sources si
+    ``include_source``), triée. Aucune règle correspondante → ignoré + warning
+    (anti-dérive : la cible déclarée n'est plus produite par le modèle).
+
+    Renvoie ``{entity_id: (source_classes, source_label, output_label)}`` : les
+    classes sources (vides si ``include_source`` faux) + les libellés de couche
+    optionnels, pour piloter le renommage des couches (routage entité-centré).
+    """
+    outputs = {output: targets for targets, output in clustering_rules}
+    meta: Dict[str, Tuple[Tuple[str, ...], Optional[str], Optional[str]]] = {}
+    for output_class, entity_id, include_source, source_label, output_label in derived:
+        targets = outputs.get(output_class)
+        if targets is None:
+            logger.warning(
+                "Cible dérivée '%s' → sortie de clustering '%s' introuvable, ignorée",
+                entity_id, output_class,
+            )
+            continue
+        classes = {output_class}
+        source_classes: Tuple[str, ...] = ()
+        if include_source:
+            classes.update(targets)
+            source_classes = tuple(sorted(targets))
+        coverage[entity_id] = tuple(sorted(classes))
+        meta[entity_id] = (source_classes, source_label, output_label)
+    return meta
+
+
 # ----------------------------------------------------------------------
 # Couverture entité → modèles
 # ----------------------------------------------------------------------
@@ -361,6 +458,41 @@ def _pick_default_model(candidates: Sequence[InstalledModel]) -> Optional[str]:
     return ranked[0].name
 
 
+def _compute_layer_names(
+    model: InstalledModel, eid: str, ent_classes: Sequence[str]
+) -> Dict[str, str]:
+    """Renommage des couches d'une entité ``classe → nom_de_couche``.
+
+    Vide pour une entité non dérivée (chaque couche garde le nom de sa classe).
+    Pour une entité dérivée :
+
+    - classe **cluster** (sortie) : ``output_label`` si configuré, sinon le nom
+      de classe est conservé (pas de renommage par défaut) ;
+    - classe **source** : ``source_label`` si configuré, sinon repli
+      ``<classe>_source`` (pour la distinguer de l'entité de base homonyme).
+
+    Plusieurs clusters/sources + un seul libellé → libellé suffixé par la classe,
+    pour éviter une collision de noms de couche dans le même GeoPackage.
+    """
+    if eid not in model.derived_entities:
+        return {}
+    src = set(model.derived_source_classes.get(eid, ()))
+    out_label = model.derived_output_labels.get(eid)
+    src_label = model.derived_source_labels.get(eid)
+    out_classes = [c for c in ent_classes if c not in src]
+    src_classes = [c for c in ent_classes if c in src]
+    names: Dict[str, str] = {}
+    for oc in out_classes:
+        if out_label:
+            names[oc] = out_label if len(out_classes) == 1 else f"{out_label}_{oc}"
+    for sc in src_classes:
+        if src_label:
+            names[sc] = src_label if len(src_classes) == 1 else f"{src_label}_{sc}"
+        else:
+            names[sc] = f"{sc}_source"
+    return names
+
+
 # ----------------------------------------------------------------------
 # Résolution des runs
 # ----------------------------------------------------------------------
@@ -387,6 +519,7 @@ def resolve_runs_from_entities(
     entity_thresholds = entity_thresholds or {}
     coverage_by_id = {ec.entity.id: ec for ec in build_entity_coverage(catalog, installed_models)}
     models_by_name = {m.name: m for m in installed_models}
+    label_by_id = {e.id: e.label for e in catalog}
 
     # (modèle, rvt) -> {classes: set, entities: [ids]} pour pouvoir agréger les
     # seuils surchargés par entité au niveau du run.
@@ -408,11 +541,16 @@ def resolve_runs_from_entities(
         if not classes:
             logger.warning("Modèle '%s' ne couvre pas l'entité '%s', ignoré", model_name, eid)
             continue
-        group = groups.setdefault((model.name, model.target_rvt), {"classes": set(), "entities": []})
-        group["classes"].update(classes)
-        group["entities"].append(eid)
+        ec_classes = set(classes)
         if eid in cluster_enabled:
-            group["classes"].update(model.cluster_options.get(eid, ()))
+            ec_classes.update(model.cluster_options.get(eid, ()))
+        group = groups.setdefault(
+            (model.name, model.target_rvt),
+            {"classes": set(), "entities": [], "entity_classes": {}},
+        )
+        group["classes"].update(ec_classes)
+        group["entities"].append(eid)
+        group["entity_classes"][eid] = ec_classes
 
     runs: List[Dict[str, Any]] = []
     for key in sorted(groups):
@@ -436,6 +574,19 @@ def resolve_runs_from_entities(
                 "model": model_name,
                 "target_rvt": rvt,
                 "selected_classes": sorted(group["classes"]),
+                "entities": [
+                    {
+                        "id": eid,
+                        "label": label_by_id.get(eid, eid),
+                        "slug": slugify(label_by_id.get(eid, eid)) or eid,
+                        "classes": sorted(group["entity_classes"][eid]),
+                        "is_derived": eid in model.derived_entities,
+                        "layer_names": _compute_layer_names(
+                            model, eid, sorted(group["entity_classes"][eid])
+                        ),
+                    }
+                    for eid in sorted(group["entities"])
+                ],
                 "confidence_threshold": float(min(conf_over) if conf_over else model.default_confidence),
                 "iou_threshold": float(model.default_iou),
                 "min_area_m2": float(min(area_over) if area_over else model.default_min_area),

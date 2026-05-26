@@ -30,6 +30,7 @@ class ConfigManager:
                 "products": {
                     "MNT": True,
                     "DENSITE": False,
+                    "HS": False,
                     "M_HS": False,
                     "SVF": False,
                     "SLO": False,
@@ -39,6 +40,7 @@ class ConfigManager:
                 },
                 "output_formats": {
                     "jpg": {
+                        "HS": False,
                         "M_HS": False,
                         "SVF": False,
                         "SLO": False,
@@ -65,6 +67,12 @@ class ConfigManager:
                 "scan_all": True,
             },
             "rvt_params": {
+                "hs": {
+                    "sun_azimuth": 315,
+                    "sun_elevation": 35,
+                    "ve_factor": 1,
+                    "save_as_8bit": True,
+                },
                 "mdh": {
                     "num_directions": 16,
                     "sun_elevation": 35,

@@ -13,12 +13,12 @@ marge de tuilage. Ces réglages sont persistés dans ``rvt_params`` et
 """
 from __future__ import annotations
 
-from qgis.PyQt.QtCore import Qt, pyqtSignal
+from qgis.PyQt.QtCore import QRect, Qt, pyqtSignal
+from qgis.PyQt.QtGui import QColor, QPainter
 from qgis.PyQt.QtWidgets import (
     QCheckBox,
     QComboBox,
     QDoubleSpinBox,
-    QFormLayout,
     QFrame,
     QGridLayout,
     QHBoxLayout,
@@ -26,6 +26,7 @@ from qgis.PyQt.QtWidgets import (
     QLineEdit,
     QPushButton,
     QStackedWidget,
+    QTabBar,
     QTabWidget,
     QVBoxLayout,
     QWidget,
@@ -49,6 +50,64 @@ DEFAULT_FILTER = (
     "Classification = 2 OR Classification = 6 OR Classification = 66 "
     "OR Classification = 67 OR Classification = 9"
 )
+
+# Descriptions longues affichées en tête de chaque onglet de paramètres détaillés.
+_TAB_DESC = {
+    "MNT": "Reconstruit le sol à partir du nuage de points LiDAR classé.",
+    "HS": "Ombrage simple depuis une seule direction de lumière.",
+    "M_HS": "Combine plusieurs angles d'éclairage simulés pour révéler le micro-relief.",
+    "SVF": "Part de ciel visible en chaque point — révèle creux, fossés et dépressions.",
+    "SLO": "Pente du terrain — met en évidence ruptures de pente et talus.",
+    "LD": "Dominance locale — fait ressortir les structures en relief positif.",
+    "SLRM": "Soustrait le relief général pour isoler les micro-reliefs.",
+    "VAT": "Combinaison d'indices optimisée pour la prospection archéologique.",
+}
+
+# Aides communes à plusieurs indices.
+_HELP_VE = "Exagération verticale (1 = aucune)."
+_HELP_8BIT = "Fichier plus léger, suffisant pour l'affichage."
+
+
+class _AdvTabBar(QTabBar):
+    """Barre d'onglets des paramètres détaillés : grise les onglets d'indices
+    désactivés et y dessine un badge « OFF » encadré.
+
+    L'état désactivé est porté par ``tabData(i)`` (``True`` = indice désactivé).
+    Les onglets sans données (``None``, ex. MNT) sont ignorés.
+    """
+
+    _PILL_W = 26
+    _RESERVE = 44  # largeur réservée à droite pour le badge (anti-chevauchement)
+
+    def tabSizeHint(self, index):  # noqa: N802 (signature Qt)
+        size = super().tabSizeHint(index)
+        if self.tabData(index):  # onglet désactivé → place pour le badge
+            size.setWidth(size.width() + self._RESERVE)
+        return size
+
+    def paintEvent(self, event):  # noqa: N802 (signature Qt)
+        super().paintEvent(event)  # onglets stylés par la QSS
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing, True)
+        font = painter.font()
+        font.setPointSize(max(6, font.pointSize() - 2))
+        font.setBold(True)
+        painter.setFont(font)
+        for i in range(self.count()):
+            if not self.tabData(i):  # actif ou onglet non-indice → rien
+                continue
+            rect = self.tabRect(i)
+            # Voile gris : l'onglet paraît désactivé.
+            painter.fillRect(rect.adjusted(2, 2, -2, -2), QColor(236, 236, 236, 150))
+            # Badge « OFF » encadré, calé à droite.
+            pill = QRect(0, 0, self._PILL_W, 15)
+            pill.moveCenter(rect.center())
+            pill.moveRight(rect.right() - 8)
+            painter.setPen(Qt.NoPen)
+            painter.setBrush(QColor(0xCF, 0xCF, 0xCF))
+            painter.drawRoundedRect(pill, 3, 3)
+            painter.setPen(QColor(0x5A, 0x5A, 0x5A))
+            painter.drawText(pill, Qt.AlignCenter, "OFF")
 
 
 class _IndexCard(QFrame):
@@ -142,6 +201,8 @@ class IndicesPage(QWidget):
         self._loading = False
         self._index_cards: dict = {}
         self._adv_fields: list = []  # descripteurs (section, key, widget, kind, default)
+        self._activate_checks: dict = {}  # clé RVT → QCheckBox « Indice activé »
+        self._tab_index: dict = {}        # clé RVT → index d'onglet (badge OFF)
         self._build()
         self._refresh()
 
@@ -256,20 +317,30 @@ class IndicesPage(QWidget):
         back = QPushButton("←  Vue d'ensemble")
         back.setObjectName("GhostButton")
         back.clicked.connect(self._show_overview)
-        title = QLabel("Réglages avancés des indices")
+        titles = QVBoxLayout()
+        titles.setSpacing(2)
+        title = QLabel("Paramètres détaillés")
         title.setObjectName("WizardPageHeading")
-        reset = QPushButton("Réinitialiser")
+        subtitle = QLabel(
+            "Tous les paramètres techniques par produit · valeurs RVT-py officielles"
+        )
+        subtitle.setObjectName("WizardPageSub")
+        subtitle.setWordWrap(True)
+        titles.addWidget(title)
+        titles.addWidget(subtitle)
+        reset = QPushButton("↺  Réinitialiser")
         reset.setObjectName("GhostButton")
         reset.clicked.connect(self._reset_advanced)
         header.addWidget(back)
         header.addSpacing(10)
-        header.addWidget(title)
+        header.addLayout(titles)
         header.addStretch(1)
         header.addWidget(reset)
         root.addLayout(header)
 
         self._adv_tabs = QTabWidget()
         self._adv_tabs.setObjectName("AdvTabs")
+        self._adv_tabs.setTabBar(_AdvTabBar())  # voile + badge « OFF » des indices off
 
         # — Onglet MNT : filtre PDAL + résolution densité —
         # (mnt_resolution reste sur la vue d'ensemble pour ne pas dupliquer.)
@@ -279,10 +350,30 @@ class IndicesPage(QWidget):
         self._density_spin = self._mk_dspin(0.01, 100.0, 1.0)
         self._reg(("processing",), "filter_expression", self._filter_edit, "text", DEFAULT_FILTER)
         self._reg(("processing",), "density_resolution", self._density_spin, "float", 1.0)
-        self._adv_tabs.addTab(self._make_tab([
-            ("Filtre PDAL :", self._filter_edit),
-            ("Résolution densité (m) :", self._density_spin),
+        self._adv_tabs.addTab(self._make_param_tab("MNT", [
+            ("Filtre PDAL", self._filter_edit,
+             "Classes LiDAR conservées pour reconstruire le sol (codes ASPRS)."),
+            ("Résolution densité (m)", self._density_spin,
+             "Taille de cellule du raster de densité de points."),
         ]), "MNT")
+
+        # — HS (hs) —
+        hs_az = self._mk_spin(0, 360, 315)
+        hs_sun = self._mk_spin(0, 90, 35)
+        hs_ve = self._mk_spin(1, 100, 1)
+        hs_8 = self._mk_check()
+        self._reg(("rvt_params", "hs"), "sun_azimuth", hs_az, "int", 315)
+        self._reg(("rvt_params", "hs"), "sun_elevation", hs_sun, "int", 35)
+        self._reg(("rvt_params", "hs"), "ve_factor", hs_ve, "int", 1)
+        self._reg(("rvt_params", "hs"), "save_as_8bit", hs_8, "bool", True)
+        self._tab_index["HS"] = self._adv_tabs.addTab(self._make_param_tab("HS", [
+            ("Azimut solaire (°)", hs_az,
+             "Direction de la lumière (0 = N, 90 = E, 180 = S, 270 = O)."),
+            ("Élévation solaire (°)", hs_sun,
+             "Hauteur du soleil au-dessus de l'horizon."),
+            ("Facteur VE", hs_ve, _HELP_VE),
+            ("", hs_8, _HELP_8BIT),
+        ]), "HS")
 
         # — M-HS (mdh) —
         mdh_dirs = self._mk_spin(1, 360, 16)
@@ -293,11 +384,13 @@ class IndicesPage(QWidget):
         self._reg(("rvt_params", "mdh"), "sun_elevation", mdh_sun, "int", 35)
         self._reg(("rvt_params", "mdh"), "ve_factor", mdh_ve, "int", 1)
         self._reg(("rvt_params", "mdh"), "save_as_8bit", mdh_8, "bool", True)
-        self._adv_tabs.addTab(self._make_tab([
-            ("Nombre directions :", mdh_dirs),
-            ("Élévation solaire (°) :", mdh_sun),
-            ("Facteur VE :", mdh_ve),
-            ("", mdh_8),
+        self._tab_index["M_HS"] = self._adv_tabs.addTab(self._make_param_tab("M_HS", [
+            ("Nombre de directions", mdh_dirs,
+             "Angles d'éclairage simulés. 16 = bon compromis qualité/temps."),
+            ("Élévation solaire (°)", mdh_sun,
+             "Hauteur du soleil au-dessus de l'horizon."),
+            ("Facteur VE", mdh_ve, _HELP_VE),
+            ("", mdh_8, _HELP_8BIT),
         ]), "M-HS")
 
         # — SVF (svf) —
@@ -311,12 +404,15 @@ class IndicesPage(QWidget):
         self._reg(("rvt_params", "svf"), "radius", svf_radius, "int", 10)
         self._reg(("rvt_params", "svf"), "ve_factor", svf_ve, "int", 1)
         self._reg(("rvt_params", "svf"), "save_as_8bit", svf_8, "bool", True)
-        self._adv_tabs.addTab(self._make_tab([
-            ("Suppression bruit :", svf_noise),
-            ("Nombre directions :", svf_dirs),
-            ("Rayon (px) :", svf_radius),
-            ("Facteur VE :", svf_ve),
-            ("", svf_8),
+        self._tab_index["SVF"] = self._adv_tabs.addTab(self._make_param_tab("SVF", [
+            ("Suppression du bruit", svf_noise,
+             "Niveau de lissage du bruit (0 = aucun)."),
+            ("Nombre de directions", svf_dirs,
+             "Directions d'horizon échantillonnées autour de chaque pixel."),
+            ("Rayon (px)", svf_radius,
+             "Distance de recherche de l'horizon, en pixels."),
+            ("Facteur VE", svf_ve, _HELP_VE),
+            ("", svf_8, _HELP_8BIT),
         ]), "SVF")
 
         # — Slope (slope) —
@@ -329,11 +425,11 @@ class IndicesPage(QWidget):
         self._reg(("rvt_params", "slope"), "unit", slope_unit, "combo", 0)
         self._reg(("rvt_params", "slope"), "ve_factor", slope_ve, "int", 1)
         self._reg(("rvt_params", "slope"), "save_as_8bit", slope_8, "bool", True)
-        self._adv_tabs.addTab(self._make_tab([
-            ("Unité :", slope_unit),
-            ("Facteur VE :", slope_ve),
-            ("", slope_8),
-        ]), "Slope")
+        self._tab_index["SLO"] = self._adv_tabs.addTab(self._make_param_tab("SLO", [
+            ("Unité", slope_unit, "Pente exprimée en degrés ou en pourcentage."),
+            ("Facteur VE", slope_ve, _HELP_VE),
+            ("", slope_8, _HELP_8BIT),
+        ]), "SLO")
 
         # — LD (ldo) —
         ld_ang = self._mk_spin(1, 360, 15)
@@ -348,13 +444,17 @@ class IndicesPage(QWidget):
         self._reg(("rvt_params", "ldo"), "observer_h", ld_obs, "float", 1.7)
         self._reg(("rvt_params", "ldo"), "ve_factor", ld_ve, "int", 1)
         self._reg(("rvt_params", "ldo"), "save_as_8bit", ld_8, "bool", True)
-        self._adv_tabs.addTab(self._make_tab([
-            ("Résolution angulaire (°) :", ld_ang),
-            ("Rayon min (px) :", ld_rmin),
-            ("Rayon max (px) :", ld_rmax),
-            ("Hauteur observateur (m) :", ld_obs),
-            ("Facteur VE :", ld_ve),
-            ("", ld_8),
+        self._tab_index["LD"] = self._adv_tabs.addTab(self._make_param_tab("LD", [
+            ("Résolution angulaire (°)", ld_ang,
+             "Pas angulaire du balayage. Plus petit = plus précis mais plus lent."),
+            ("Rayon min (px)", ld_rmin,
+             "Distance minimale prise en compte autour du pixel."),
+            ("Rayon max (px)", ld_rmax,
+             "Distance maximale prise en compte autour du pixel."),
+            ("Hauteur observateur (m)", ld_obs,
+             "Hauteur de l'œil virtuel au-dessus du sol."),
+            ("Facteur VE", ld_ve, _HELP_VE),
+            ("", ld_8, _HELP_8BIT),
         ]), "LD")
 
         # — SLRM (slrm) —
@@ -364,10 +464,11 @@ class IndicesPage(QWidget):
         self._reg(("rvt_params", "slrm"), "radius", slrm_radius, "int", 20)
         self._reg(("rvt_params", "slrm"), "ve_factor", slrm_ve, "int", 1)
         self._reg(("rvt_params", "slrm"), "save_as_8bit", slrm_8, "bool", True)
-        self._adv_tabs.addTab(self._make_tab([
-            ("Rayon (px) :", slrm_radius),
-            ("Facteur VE :", slrm_ve),
-            ("", slrm_8),
+        self._tab_index["SLRM"] = self._adv_tabs.addTab(self._make_param_tab("SLRM", [
+            ("Rayon (px)", slrm_radius,
+             "Rayon du lissage : sépare le micro-relief du relief général."),
+            ("Facteur VE", slrm_ve, _HELP_VE),
+            ("", slrm_8, _HELP_8BIT),
         ]), "SLRM")
 
         # — VAT (vat) —
@@ -379,15 +480,16 @@ class IndicesPage(QWidget):
         vat_8 = self._mk_check()
         self._reg(("rvt_params", "vat"), "terrain_type", vat_terrain, "combo", 0)
         self._reg(("rvt_params", "vat"), "save_as_8bit", vat_8, "bool", True)
-        self._adv_tabs.addTab(self._make_tab([
-            ("Type de terrain :", vat_terrain),
-            ("", vat_8),
+        self._tab_index["VAT"] = self._adv_tabs.addTab(self._make_param_tab("VAT", [
+            ("Type de terrain", vat_terrain,
+             "Préréglage adapté au relief dominant de la zone."),
+            ("", vat_8, _HELP_8BIT),
         ]), "VAT")
 
         root.addWidget(self._adv_tabs)
 
         # — Tuilage (global à tous les indices) —
-        ov_card, ovv = build_card("Tuilage des indices")
+        ov_card, ovv = build_card("Tuilage & overlap")
         self._overlap_spin = self._mk_spin(0, 100, 20)
         self._reg(("processing",), "tile_overlap", self._overlap_spin, "int", 20)
         ov_row = QHBoxLayout()
@@ -398,8 +500,12 @@ class IndicesPage(QWidget):
         ov_row.addWidget(self._overlap_spin)
         ov_row.addWidget(QLabel("%"))
         ov_row.addStretch(1)
-        ov_hint = QLabel("Chevauchement entre tuiles — évite les artefacts en bordure.")
+        ov_hint = QLabel(
+            "Chevauchement entre tuiles lors du calcul RVT. Évite les artefacts "
+            "aux bordures. S'applique à tous les indices."
+        )
         ov_hint.setObjectName("MntHint")
+        ov_hint.setWordWrap(True)
         ovv.addLayout(ov_row)
         ovv.addWidget(ov_hint)
         root.addWidget(ov_card)
@@ -425,7 +531,7 @@ class IndicesPage(QWidget):
         return s
 
     def _mk_check(self) -> QCheckBox:
-        c = QCheckBox("Sauver en 8bit")
+        c = QCheckBox("Sauver en 8 bits")
         c.setChecked(True)
         c.toggled.connect(self._on_changed)
         return c
@@ -433,15 +539,99 @@ class IndicesPage(QWidget):
     def _reg(self, section: tuple, key: str, widget, kind: str, default) -> None:
         self._adv_fields.append((section, key, widget, kind, default))
 
-    @staticmethod
-    def _make_tab(rows) -> QWidget:
+    def _make_param_tab(self, key: str, rows) -> QWidget:
+        """Onglet de paramètres : en-tête (nom + description [+ « Indice activé »
+        pour les indices RVT]) puis grille 2 colonnes de champs avec aide.
+
+        ``rows`` = liste de ``(label, widget, help_text)``. Un ``QLineEdit``
+        occupe les deux colonnes (champ texte large, ex. filtre PDAL).
+        """
         tab = QWidget()
-        form = QFormLayout(tab)
-        form.setContentsMargins(12, 12, 12, 12)
-        form.setSpacing(8)
-        for label, widget in rows:
-            form.addRow(label, widget)
+        outer = QVBoxLayout(tab)
+        outer.setContentsMargins(14, 12, 14, 12)
+        outer.setSpacing(12)
+
+        # — En-tête : nom complet + description + (case « Indice activé ») —
+        head = QHBoxLayout()
+        titles = QVBoxLayout()
+        titles.setSpacing(2)
+        title = QLabel(product(key).full_name)
+        title.setObjectName("AdvIndexTitle")
+        desc = QLabel(_TAB_DESC.get(key, product(key).description))
+        desc.setObjectName("AdvIndexDesc")
+        desc.setWordWrap(True)
+        titles.addWidget(title)
+        titles.addWidget(desc)
+        head.addLayout(titles, 1)
+        if key in rvt_keys():
+            chk = QCheckBox("Indice activé")
+            chk.setObjectName("ActivateCheck")
+            chk.toggled.connect(lambda on, k=key: self._on_activate_toggled(k, on))
+            self._activate_checks[key] = chk
+            head.addWidget(chk, 0, Qt.AlignTop)
+        outer.addLayout(head)
+
+        # — Grille 2 colonnes de champs —
+        grid = QGridLayout()
+        grid.setHorizontalSpacing(24)
+        grid.setVerticalSpacing(12)
+        grid.setColumnStretch(0, 1)
+        grid.setColumnStretch(1, 1)
+        r = c = 0
+        for label, widget, help_text in rows:
+            cell = self._param_cell(label, widget, help_text)
+            if isinstance(widget, QLineEdit):
+                if c != 0:
+                    r += 1
+                    c = 0
+                grid.addWidget(cell, r, 0, 1, 2)
+                r += 1
+            else:
+                grid.addWidget(cell, r, c)
+                c += 1
+                if c == 2:
+                    c = 0
+                    r += 1
+        outer.addLayout(grid)
+        outer.addStretch(1)
         return tab
+
+    @staticmethod
+    def _param_cell(label: str, widget, help_text: str) -> QWidget:
+        """Cellule de paramètre : ligne [label · valeur] (ou case à cocher seule)
+        surmontant un sous-texte d'aide."""
+        cell = QVBoxLayout()
+        cell.setContentsMargins(0, 0, 0, 0)
+        cell.setSpacing(3)
+        if isinstance(widget, QCheckBox):
+            cell.addWidget(widget)
+        elif isinstance(widget, QLineEdit):
+            if label:
+                lbl = QLabel(label)
+                lbl.setObjectName("FieldLabel")
+                cell.addWidget(lbl)
+            cell.addWidget(widget)
+        else:
+            row = QHBoxLayout()
+            row.setSpacing(8)
+            lbl = QLabel(label)
+            lbl.setObjectName("FieldLabel")
+            if isinstance(widget, QComboBox):
+                widget.setMinimumWidth(130)
+            else:
+                widget.setFixedWidth(96)
+            row.addWidget(lbl)
+            row.addStretch(1)
+            row.addWidget(widget)
+            cell.addLayout(row)
+        if help_text:
+            hint = QLabel(help_text)
+            hint.setObjectName("FieldHint")
+            hint.setWordWrap(True)
+            cell.addWidget(hint)
+        wrap = QWidget()
+        wrap.setLayout(cell)
+        return wrap
 
     # ------------------------------------------------------------------
     # Logique
@@ -454,6 +644,20 @@ class IndicesPage(QWidget):
         self._refresh()
         if not self._loading:
             self.changed.emit()
+
+    def _on_activate_toggled(self, key: str, checked: bool) -> None:
+        """Case « Indice activé » d'un onglet détaillé : même logique que les
+        cartes de la vue d'ensemble (l'activation d'un indice RVT force MNT)."""
+        if self._loading:
+            return
+        if checked == bool(self._products.get(key, False)):
+            return  # déjà à l'état voulu (typiquement une resynchronisation)
+        new, toast = toggle(self._products, key)
+        if toast:
+            show_toast(self, toast)
+        self._products = new
+        self._refresh()
+        self.changed.emit()
 
     def _on_advanced(self) -> None:
         self._stack.setCurrentWidget(self._advanced_page)
@@ -476,6 +680,17 @@ class IndicesPage(QWidget):
         self._mnt_hint.setVisible(locked)
         for key, card in self._index_cards.items():
             card.set_checked(self._products.get(key, False))
+        # Vue détaillée : cases « Indice activé » + badges « OFF » sur les onglets.
+        for key, chk in self._activate_checks.items():
+            on = self._products.get(key, False)
+            chk.blockSignals(True)
+            chk.setChecked(on)
+            chk.blockSignals(False)
+        tab_bar = self._adv_tabs.tabBar()
+        for key, idx in self._tab_index.items():
+            tab_bar.setTabData(idx, not self._products.get(key))  # True = désactivé
+            tab_bar.setTabText(idx, product(key).tag)  # force le recalcul de largeur
+        tab_bar.update()
         n = count_selected(self._products)
         self._count_label.setText(
             f"{n} produit{'s' if n > 1 else ''} sélectionné{'s' if n > 1 else ''}"

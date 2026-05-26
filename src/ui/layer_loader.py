@@ -121,6 +121,7 @@ def load_result_layers(
 
             layer = QgsRasterLayer(vrt_path_str, layer_name, "gdal")
             if layer.isValid():
+                _ensure_layer_crs(layer, logger)
                 project.addMapLayer(layer)
                 loaded_layers.append(layer)
                 combined_extent = _combine(combined_extent, layer.extent())
@@ -155,6 +156,7 @@ def load_result_layers(
 
             layer = QgsVectorLayer(ogr_source, layer_name, "ogr")
             if layer.isValid():
+                _ensure_layer_crs(layer, logger)
                 if layer.fields().indexFromName("nb_detect") >= 0:
                     _apply_cluster_style(layer, logger)
                 else:
@@ -195,6 +197,30 @@ def _combine(extent, new_extent):
         return new_extent
     extent.combineExtentWith(new_extent)
     return extent
+
+
+def _ensure_layer_crs(layer, logger, fallback_authid: str = "EPSG:2154") -> None:
+    """Affecte le CRS canonique du pipeline si la couche n'en a pas d'exploitable.
+
+    Un CRS local « unnamed » (ex. MNT que PDAL a émis sans georéférencement
+    reconnu) est invalide ou dépourvu de code d'autorité (``authid`` vide) côté
+    QGIS. Comme tout le pipeline est en Lambert-93, on lui **affecte** EPSG:2154
+    (sans reprojeter — les coordonnées sont déjà correctes), ce qui évite l'erreur
+    « Pas de transformation disponible entre unnamed et EPSG:2154 » au zoom final.
+    Garde-fou défensif : la correction de fond se fait à la source (``mnt.py``).
+    """
+    try:
+        from qgis.core import QgsCoordinateReferenceSystem
+
+        crs = layer.crs()
+        if crs.isValid() and crs.authid():
+            return  # CRS exploitable (code d'autorité présent) → ne pas toucher
+        target = QgsCoordinateReferenceSystem(fallback_authid)
+        if target.isValid():
+            layer.setCrs(target)
+            logger.warning(f"CRS absent/local sur « {layer.name()} » → affecté {fallback_authid}")
+    except Exception as e:  # noqa: BLE001
+        logger.warning(f"Impossible de fixer le CRS de « {layer.name()} »: {e}")
 
 
 def _reuse_existing(project, layer_name, source, loaded_layers, combined_extent) -> bool:

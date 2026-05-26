@@ -35,6 +35,20 @@ class TestBuildRunContext:
         assert ctx.files.existing_mnt_dir == Path("/tmp/mnt")
         assert ctx.files.existing_rvt_dir == Path("/tmp/rvt")
 
+    def test_declared_crs_default_none(self, sample_config: dict):
+        ctx = build_run_context(sample_config)
+        assert ctx.files.declared_crs is None
+
+    def test_declared_crs_extracted_when_present(self):
+        config = {"app": {"files": {"data_mode": "existing_mnt", "declared_crs": "EPSG:2154"}}}
+        ctx = build_run_context(config)
+        assert ctx.files.declared_crs == "EPSG:2154"
+
+    def test_declared_crs_blank_is_none(self):
+        config = {"app": {"files": {"data_mode": "existing_mnt", "declared_crs": "   "}}}
+        ctx = build_run_context(config)
+        assert ctx.files.declared_crs is None
+
     def test_processing_config_typed(self, sample_config: dict):
         ctx = build_run_context(sample_config)
         assert isinstance(ctx.processing, ProcessingConfig)
@@ -158,8 +172,8 @@ class TestProductsConfigBehavior:
         assert "M_HS" not in p.active()
 
     def test_active_preserves_canonical_order(self):
-        p = ProductsConfig(MNT=True, DENSITE=True, M_HS=True, SVF=True, SLO=True, LD=True, SLRM=True, VAT=True)
-        assert p.active() == ["MNT", "DENSITE", "M_HS", "SVF", "SLO", "LD", "SLRM", "VAT"]
+        p = ProductsConfig(MNT=True, DENSITE=True, HS=True, M_HS=True, SVF=True, SLO=True, LD=True, SLRM=True, VAT=True)
+        assert p.active() == ["MNT", "DENSITE", "HS", "M_HS", "SVF", "SLO", "LD", "SLRM", "VAT"]
 
     def test_needs_mnt_true_when_mnt_only(self):
         assert ProductsConfig(MNT=True).needs_mnt() is True
@@ -167,6 +181,7 @@ class TestProductsConfigBehavior:
     def test_needs_mnt_true_when_visualization_index(self):
         assert ProductsConfig(MNT=False, SVF=True).needs_mnt() is True
         assert ProductsConfig(MNT=False, M_HS=True).needs_mnt() is True
+        assert ProductsConfig(MNT=False, HS=True).needs_mnt() is True
 
     def test_needs_mnt_false_when_density_only(self):
         # Densité ne dépend pas du MNT.
@@ -178,7 +193,7 @@ class TestProductsConfigBehavior:
         assert d["MNT"] is True
         assert d["SVF"] is True
         assert d["M_HS"] is False
-        assert set(d.keys()) == {"MNT", "DENSITE", "M_HS", "SVF", "SLO", "LD", "SLRM", "VAT"}
+        assert set(d.keys()) == {"MNT", "DENSITE", "HS", "M_HS", "SVF", "SLO", "LD", "SLRM", "VAT"}
 
 
 class TestFilesConfigBehavior:

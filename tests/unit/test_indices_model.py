@@ -15,13 +15,13 @@ from app.services.indices_model import (
 
 class TestCatalog:
     def test_rvt_keys_order(self):
-        assert rvt_keys() == ["M_HS", "SVF", "SLO", "LD", "SLRM", "VAT"]
+        assert rvt_keys() == ["HS", "M_HS", "SVF", "SLO", "LD", "SLRM", "VAT"]
 
     def test_base_keys(self):
         assert base_keys() == ["MNT", "DENSITE"]
 
     def test_all_products_count(self):
-        assert len(all_products()) == 8
+        assert len(all_products()) == 9
 
     def test_product_lookup_has_metadata(self):
         p = product("M_HS")
@@ -30,14 +30,11 @@ class TestCatalog:
         assert p.description
         assert p.is_rvt is True
 
-    def test_default_products_recommended(self):
+    def test_default_products_none_selected(self):
+        # Plus de sélection recommandée : aucun produit n'est pré-coché.
         d = default_products()
-        assert d["MNT"] is True
-        assert d["M_HS"] is True
-        assert d["SVF"] is True
-        assert d["LD"] is True
-        assert d["DENSITE"] is False
-        assert d["VAT"] is False
+        assert set(d.keys()) == {p.key for p in all_products()}
+        assert all(v is False for v in d.values())
 
 
 class TestRequiresMnt:

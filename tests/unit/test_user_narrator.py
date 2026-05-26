@@ -490,6 +490,18 @@ class TestNarratorMetrics:
         narrator.cv_run_image_progress("m", 3, 8, "img")
         reporter.metric.assert_called_once_with(3, 8, "images")
 
+    def test_mnt_progress_emits_mnt_metric(self):
+        narrator, reporter = self._make()
+        narrator.mnt_progress(2, 4, "0931_6519_MNT.tif")
+        reporter.metric.assert_called_once_with(2, 4, "MNT")
+
+    def test_mnt_progress_routes_to_transient(self):
+        narrator, reporter = self._make()
+        narrator.mnt_progress(1, 3, "tuile.tif")
+        reporter.user_info_transient.assert_called_once()
+        args = reporter.user_info_transient.call_args
+        assert args.kwargs.get("group") == "mnt_progress" or args[0][1] == "mnt_progress"
+
     def test_metric_absent_on_legacy_reporter_does_not_raise(self):
         # Reporter sans ``metric`` (legacy) : l'appel est ignoré silencieusement.
         class LegacyReporter:

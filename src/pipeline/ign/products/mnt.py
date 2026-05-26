@@ -6,6 +6,7 @@ from typing import Any, Callable, Dict, Optional, Tuple
 
 from ..pdal_validation import get_laz_bounds, validate_las_or_laz_with_pdal
 from .qgis_processing import run_qgis_algorithm
+from ...tilespec import assign_crs_if_missing
 from ...types import LogFn
 
 
@@ -117,5 +118,13 @@ def create_terrain_model(
 
     if not output_path.exists():
         raise RuntimeError(f"Échec création MNT: fichier non créé: {output_path}")
+
+    # pdal:exportraster* émet parfois le MNT en CRS local « unnamed » (dalles
+    # LiDAR HD à CRS compound) ; on réaffirme EPSG:2154 (assignation, pas de
+    # reprojection). Le CRS se propage ensuite fidèlement aux RVT/crop/VRT ;
+    # sans ça il casse la transformation au zoom QGIS de finalisation.
+    assigned = assign_crs_if_missing(output_path)
+    if assigned:
+        log(f"CRS absent/local sur le MNT → affecté {assigned} (assignation, sans reprojection)")
 
     return TerrainModelResult(mnt_path=output_path)

@@ -11,7 +11,7 @@ Plugin QGIS pour exécuter un pipeline de traitement LiDAR et produire des raste
 - Génération de produits raster :
   - **MNT**
   - **Densité**
-  - Indices **RVT** (via *Processing*) : **M-HS**, **SVF**, **SLO**, **LD**, **SLRM**, **VAT**
+  - Indices **RVT** (via *Processing*) : **HS**, **M-HS**, **SVF**, **SLO**, **LD**, **SLRM**, **VAT**
 - Export optionnel en **JPG + world file (JGW)** pour certains produits.
 - (Optionnel) Détection / segmentation d'instances par computer vision à partir des JPG produits (via runner externe ou dépendances Python) :
   - **Sélection par entités archéologiques** (UI étape 3) : on coche les entités à détecter (parcellaire, trous d'obus…) et un orchestrateur résout automatiquement quels modèles lancer, sur quel indice RVT, avec quelles classes. Plusieurs modèles peuvent ainsi tourner en parallèle, chacun ciblant un RVT. En interne, le filtrage par classes subsiste : si aucune classe n'est retenue pour un modèle, l'inférence est ignorée (court-circuit `selected_classes=[]` avant toute inférence).
@@ -31,7 +31,7 @@ Le pipeline peut être lancé dans plusieurs modes (selon l’UI/config) :
 - `ign_laz` : téléchargement/consommation de tuiles LAZ depuis l'IGN (à partir d'un polygone de zone ou d'une liste de dalles).
 - `local_laz` : consommation de tuiles LAZ/LAS déjà présentes localement.
 - `existing_mnt` : calcul d'indices RVT à partir d'un MNT existant. Supporte les MNT au format dalle IGN 1 km (ex. `LHD_FXX_xxxx_yyyy_*`), les MNT plus petits (< 1 km, emprise native conservée) **et les MNT de grande emprise** (plusieurs km²) qui sont traités **d'un seul bloc** : les indices RVT sont calculés sur le raster complet et SAHI assure le slicing 640 × 640 à l'inférence CV. Voir la section [MNT / RVT non-IGN](#mnt--rvt-non-ign--traitement-des-grandes-emprises).
-- `existing_rvt` : opérations sur RVT existants (TIF). Dans ce mode, le dossier de sortie est `indices/RVT/` (nom générique) ; dans les autres modes, le nom du dossier correspond à l'indice cible (`LD`, `SVF`, etc.). Comme pour `existing_mnt`, les rasters RVT de grande emprise sont **traités sans pré-découpage** : la limite PIL `MAX_IMAGE_PIXELS` est désactivée et SAHI découpe l'image en mémoire au moment de l'inférence.
+- `existing_rvt` : opérations sur RVT existants (TIF). Dans ce mode, le dossier de sortie est `indices/RVT/` (nom générique) ; dans les autres modes, le nom du dossier combine le code de l'indice **et ses paramètres RVT** (`SVF_R10_D16_V1_N0`, `LD_A15_Rmin10_Rmax20_H1p7_V1`, etc.), si bien que relancer avec d'autres paramètres ne réécrit pas les dossiers existants (cf. la section *Sorties*). Comme pour `existing_mnt`, les rasters RVT de grande emprise sont **traités sans pré-découpage** : la limite PIL `MAX_IMAGE_PIXELS` est désactivée et SAHI découpe l'image en mémoire au moment de l'inférence.
 
 ## Pré-requis
 
@@ -99,7 +99,7 @@ Sous Windows (profil par défaut) :
 Le plugin exécute un **préflight** (contrôle des dépendances) au lancement.
 
 - **Processing** : doit être disponible (dans QGIS : `Traitement` → `Boîte à outils`).
-- **Algorithmes RVT via Processing** : nécessaires si tu actives des produits RVT (M-HS/SVF/SLO/LD/VAT).
+- **Algorithmes RVT via Processing** : nécessaires si tu actives des produits RVT (HS/M-HS/SVF/SLO/LD/VAT).
 
 Si un élément est manquant, le préflight affichera une erreur et empêchera le lancement.
 
@@ -117,7 +117,7 @@ Certaines étapes reposent sur des exécutables dans le `PATH` :
 Depuis la **v0.3.0**, le plugin s'utilise via un **assistant (wizard) en 4 étapes**. On navigue avec **Précédent / Suivant** ; un rail latéral indique l'étape courante et signale les erreurs bloquantes. La configuration est **auto-sauvegardée** entre deux sessions (`last_ui_config.json`) ; l'en-tête propose aussi **Charger / Enregistrer config** (profils `.json`).
 
 1. **Source** — Choix du mode de données (`ign_laz`, `local_laz`, `existing_mnt`, `existing_rvt`) et des chemins d'entrée (zone/liste IGN, dossier LAZ, dossier MNT ou dossier RVT selon le mode).
-2. **Indices** — Sélection des produits : **MNT / Densité** (modèle de base) + indices **RVT** (**M-HS, SVF, SLO, LD, SLRM, VAT**). Le bouton **« Réglages avancés… »** ouvre une vue à onglets pour régler finement chaque indice (paramètres RVT : directions, élévation solaire, rayons, etc.) ainsi que le **filtre PDAL**, la **résolution de densité** et la **marge de tuilage**.
+2. **Indices** — Sélection des produits : **MNT / Densité** (modèle de base) + indices **RVT** (**HS, M-HS, SVF, SLO, LD, SLRM, VAT**). Le bouton **« Réglages avancés… »** ouvre une vue à onglets pour régler finement chaque indice (paramètres RVT : azimut/élévation solaire, directions, rayons, etc.) ainsi que le **filtre PDAL**, la **résolution de densité** et la **marge de tuilage**. *(HS = hillshade simple, mono-directionnel ; M-HS = multi-directionnel.)*
 3. **Détection IA** *(optionnelle)* — On coche les **entités archéologiques** à détecter (parcellaire, trous d'obus, talus/fossés…). L'orchestrateur choisit automatiquement le(s) modèle(s) ONNX adapté(s) et l'indice RVT cible. Les seuils de **confiance** et d'**aire minimale** sont réglables par entité.
 4. **Lancer** — Un panneau **« État du système »** exécute le préflight en tâche de fond (outils CLI, Processing, runner ONNX, espace disque…) ; un **récapitulatif** résume les choix ; le nombre de **workers** parallèles est réglable dans les paramètres avancés repliables. Le bouton **▶ Lancer le pipeline** démarre le traitement : l'écran bascule alors sur la **vue d'exécution** (timeline 5 étapes + journal défilant avec auto-défilement / copier / effacer).
 
@@ -351,6 +351,17 @@ Depuis la v0.3.0, l'utilisateur ne sélectionne plus des *modèles* puis filtre 
 
 L'orchestrateur regroupe les entités cochées par couple `(modèle, target_rvt)` — chaque couple devient un *run* — et **peuple le tableau `computer_vision.runs`** ci-dessous. Ce format `config.json` reste donc le **contrat sous-jacent** du pipeline (auto-rempli par l'UI ; éditable à la main pour un usage avancé / scripté).
 
+**Cibles dérivées.** Une sortie de clustering peut aussi être présentée comme une **entité cochable à part entière** — une *cible dérivée*. Le modèle la déclare dans son `model_card.yaml` via une section `derived_targets` qui rattache l'`output_class` d'une règle de `args.yaml:clustering` à une entité du catalogue :
+
+```yaml
+derived_targets:
+  - output_class: zone_crateres          # sortie d'une règle args.yaml:clustering
+    entity: zones_extraction_materiaux   # entité du catalogue
+    include_source: true                 # inclure aussi les détections individuelles
+```
+
+Sélectionner une cible dérivée active le regroupement **d'office** : pas de case « Regrouper en clusters » mais un badge « regroupement automatique en zones ». C'est ainsi qu'est exposée l'entité **« Zones d'extraction de matériaux »** (regroupement des dépressions circulaires détectées par un modèle de cratères : le libellé nomme l'usage, la description reste honnête sur la méthode). L'orchestrateur replie la cible dans la couverture du modèle (`classes` = `output_class` + classes sources si `include_source`) — la résolution des runs et le pipeline CV restent inchangés.
+
 ### Configuration
 
 Dans `config.json`, la section computer vision est sous la clé `computer_vision`. Le format **multi-modèles** utilise un tableau `runs`, chaque entrée ciblant un RVT (`target_rvt`) avec son propre modèle :
@@ -429,13 +440,13 @@ output_dir/
   sources/
     dalles/                             # Fichiers LAZ/LAS sources (mode local_laz)
   indices/
-    MNT/
+    MNT/                               # MNT/Densité : pas de paramètres → code brut
       tif/                             # GeoTIFF MNT
       jpg/                             # JPG + world files (si activé)
-    LD/                                # Nom = indice cible du run CV
+    LD_A15_Rmin10_Rmax20_H1p7_V1/      # Nom = code indice + paramètres RVT utilisés
       tif/
       jpg/
-    SVF/
+    SVF_R10_D16_V1_N0/
       tif/
       jpg/
   detections/
@@ -448,7 +459,15 @@ output_dir/
       jpg/                             # Workdir inférence (supprimé si images annotées désactivées)
 ```
 
-En mode `existing_rvt`, le dossier d'indices est `indices/RVT/` (nom générique).
+Le nom de chaque dossier d'indice RVT inclut les paramètres de génération (azimut, élévation,
+rayons, directions, etc.) sous forme de suffixe court (`SVF_R10_D16_V1_N0`,
+`LD_A15_Rmin10_Rmax20_H1p7_V1`…). Relancer le pipeline dans le **même** `output_dir` avec des
+paramètres différents crée donc un **nouveau** dossier au lieu d'écraser le précédent — les
+variantes coexistent. `MNT`/`DENSITE` (sans paramètres) gardent leur code brut, et un éventuel
+dossier hérité non suffixé (`indices/LD/`) n'est pas supprimé. Sur des `output_dir` très profonds,
+attention à la limite Windows MAX_PATH (260 caractères) avec ces noms plus longs.
+
+En mode `existing_rvt`, le dossier d'indices est `indices/RVT/` (nom générique, paramètres inconnus).
 
 Les GeoTIFF peuvent contenir des **overviews** si l'option pyramides est activée et si `gdaladdo` est disponible.
 
@@ -775,7 +794,7 @@ src/
 │   │       ├── convert_tif_to_jpg.py
 │   │       ├── crop.py             # Découpe aux limites dalle + copy_products_without_crop (MNT < 1 km)
 │   │       ├── density.py          # Carte de densité
-│   │       ├── indices.py          # Indices RVT (M-HS, SVF, SLO, LD, SLRM, VAT)
+│   │       ├── indices.py          # Indices RVT (HS, M-HS, SVF, SLO, LD, SLRM, VAT)
 │   │       ├── mnt.py              # MNT (PDAL + gdalwarp)
 │   │       ├── qgis_processing.py  # Wrapper QGIS Processing
 │   │       ├── results.py          # Copie résultats, VRT, pyramides

@@ -22,6 +22,7 @@ class ProductInfo:
 _PRODUCTS: List[ProductInfo] = [
     ProductInfo("MNT", "MNT", "Modèle numérique de terrain", "Altitude du sol", False),
     ProductInfo("DENSITE", "Densité", "Densité de points", "Points LiDAR / m²", False),
+    ProductInfo("HS", "HS", "Hillshade", "Ombrage simple (une direction)", True),
     ProductInfo("M_HS", "M-HS", "Multi-Hillshade", "Ombrage multi-directionnel", True),
     ProductInfo("SVF", "SVF", "Sky-View Factor", "Révèle creux et dépressions", True),
     ProductInfo("SLO", "SLO", "Slope", "Pente du terrain", True),
@@ -49,9 +50,8 @@ def base_keys() -> List[str]:
 
 
 def default_products() -> Dict[str, bool]:
-    """Sélection recommandée par défaut (bouton « ↺ Défaut »)."""
-    on = {"MNT", "M_HS", "SVF", "LD"}
-    return {p.key: (p.key in on) for p in _PRODUCTS}
+    """Plus de sélection recommandée : aucun produit pré-sélectionné."""
+    return {p.key: False for p in _PRODUCTS}
 
 
 def requires_mnt(products: Dict[str, bool]) -> bool:

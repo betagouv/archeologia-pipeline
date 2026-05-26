@@ -54,6 +54,12 @@
       "label": "Dépressions circulaires",
       "description": "Dépressions circulaires d'origine indéterminée.",
       "display_order": 90
+    },
+    {
+      "id": "zones_extraction_materiaux",
+      "label": "Zones d'extraction de matériaux",
+      "description": "Regroupe en zones les dépressions circulaires détectées (extraction de matériaux probable). Détection issue d'un modèle de cratères.",
+      "display_order": 95
     }
   ]
 }

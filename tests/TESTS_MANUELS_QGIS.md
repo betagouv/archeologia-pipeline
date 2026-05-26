@@ -276,6 +276,13 @@ Cette grille indique, pour chaque vague livrée, **quelles sections de tests son
   - Vérifier que les zones cluster sont chargées dans QGIS
   - Vérifier le style hachures croisées sur les couches cluster
   - **V2.2** : vérifier que `min_confidence`, `eps_m`, `min_cluster_size` du `args.yaml` sont bien appliqués
+- [ ] **13.2 Cible dérivée « Zones d'extraction de matériaux »** (UI étape 3, sélection par entités)
+  - À l'étape 3, cocher l'entité **« Zones d'extraction de matériaux »**
+  - Vérifier qu'un badge **« ↳ regroupement automatique en zones »** s'affiche (et **non** une case « Regrouper en clusters »)
+  - Panneau « Runs IA programmés » : **1 run** `Cratères circulaires (Verdun)` · `🔗 LD` · classes `cratere_obus, zone_crateres`
+  - Via « Changer ▾ », basculer sur `verdun_3_classes_1` → le run passe sur `🔗 SVF`
+  - Lancer sur un RVT LD existant → GeoPackage avec polygones `zone_crateres` (zones) **ET** points/masques `cratere_obus` (dépressions individuelles)
+  - Cocher en plus « Trous d'obus » (même modèle par défaut) → toujours **un seul run** (fusion, pas de double inférence)
 
 ---
 
@@ -289,6 +296,11 @@ Cette grille indique, pour chaque vague livrée, **quelles sections de tests son
   - [ ] **14.3.b** Projet QGIS configuré en EPSG:2154 : zoom direct, sans transformation, doit se centrer correctement.
   - [ ] **14.3.c** Re-run avec la **même** sortie (couches déjà présentes dans le projet) : les logs indiquent « Couche … déjà présente », et le zoom doit **quand même** se déclencher sur l'étendue cumulée.
 - [ ] **14.4** Logs de fin de pipeline (`StructuredLogger.end_pipeline`)
+- [ ] **14.5 CRS des sorties = EPSG:2154 (pas de « unnamed »)**
+  - Après un run `local_laz`/`ign_laz` sur dalle(s) LiDAR HD : `gdalsrsinfo -o epsg <output>/indices/MNT/tif/index.vrt` → **EPSG:2154** (et non `EPSG:-1`)
+  - Vérifier qu'aucun message **« Pas de transformation disponible entre unnamed et EPSG:2154 / Point outside of projection domain »** n'apparaît au chargement/zoom
+  - Cas où le MNT sortait en CRS local : log attendu `CRS absent/local sur le MNT → affecté EPSG:2154` (côté pipeline) ou `CRS absent/local sur « … » → affecté EPSG:2154` (garde-fou chargement)
+  - Les couches chargées s'affichent bien en Lambert-93 et le zoom se centre sur la zone (cf. §14.3)
 
 ---
 

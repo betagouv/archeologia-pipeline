@@ -300,10 +300,25 @@ def _tile_extent_polygon_from_jpg(jpg_path: "Path") -> Optional["Polygon"]:
     try:
         if not jpg_path.exists():
             return None
-        jgw_path = jpg_path.with_suffix(".jgw")
-        if not jgw_path.exists():
+        # Le fichier world dépend du format image : .pgw pour PNG, .jgw pour JPEG,
+        # .wld en repli. (Bug historique : seul .jgw était tenté → la dédup par
+        # emprise ne se déclenchait jamais pour le pipeline PNG.)
+        suffix = jpg_path.suffix.lower()
+        if suffix == ".png":
+            candidate_exts = (".pgw", ".wld")
+        elif suffix in (".jpg", ".jpeg"):
+            candidate_exts = (".jgw", ".wld")
+        else:
+            candidate_exts = (".wld", ".pgw", ".jgw")
+        world_path = None
+        for ext in candidate_exts:
+            cand = jpg_path.with_suffix(ext)
+            if cand.exists():
+                world_path = cand
+                break
+        if world_path is None:
             return None
-        pw, ph, xo, yo = read_world_file(str(jgw_path))
+        pw, ph, xo, yo = read_world_file(str(world_path))
         if not all(val is not None for val in [pw, ph, xo, yo]):
             return None
         from PIL import Image
@@ -759,6 +774,7 @@ def create_shapefile_from_detections(
     clustering_configs: list = None,
     postprocess_config: dict = None,
     min_confidence: float = 0.0,
+    class_targets: dict = None,
     cancel_check: Optional[CancelCheckFn] = None,
 ) -> bool:
     """
@@ -1235,11 +1251,13 @@ def create_shapefile_from_detections(
             logger.warning("Aucune détection trouvée pour créer le GeoPackage")
             return False
         
-        # Créer le répertoire de sortie si nécessaire
+        # Répertoire de sortie : NON créé ici. Il est créé paresseusement juste
+        # avant chaque écriture (cf. routage par entité plus bas), pour ne pas
+        # laisser de dossier 'shapefiles/' vide quand toutes les classes sont
+        # routées vers detections/<entity_slug>/.
         output_path = Path(output_shapefile)
         output_dir = output_path.parent
-        output_dir.mkdir(parents=True, exist_ok=True)
-        
+
         # Créer une couche par classe dans un GeoPackage unique
         total_detections = 0
         created_shapefiles = []
@@ -1383,8 +1401,10 @@ def create_shapefile_from_detections(
             except Exception as e:
                 logger.warning(f"Clustering ignoré (erreur): {e}")
         
-        # Chemin du GeoPackage unique (même répertoire, nom basé sur le stem du paramètre output_shapefile)
-        gpkg_path = output_dir / f"{output_path.stem}.gpkg"
+        # Chemin du GeoPackage par défaut (modèle-centré, repli). Le routage
+        # entité-centré (class_targets) le remplace classe par classe ci-dessous.
+        _default_gpkg_path = output_dir / f"{output_path.stem}.gpkg"
+        gpkg_path = _default_gpkg_path
 
         for class_name, detections in data_by_class_name.items():
             check_cancelled(cancel_check)
@@ -1394,9 +1414,20 @@ def create_shapefile_from_detections(
                 if class_name not in selected_classes and class_name not in _cluster_class_names:
                     logger.info(f"Classe '{class_name}' ignorée (non sélectionnée)")
                     continue
-            
-            # Identifiant de couche dans le GeoPackage
-            class_shapefile = gpkg_path  # référence pour compatibilité aval
+
+            # Routage entité-centré : une classe peut viser PLUSIEURS GeoPackage
+            # d'entité, chacun avec son nom de couche (ex. classe source d'une
+            # entité dérivée, dupliquée + renommée). class_targets : classe →
+            # [(gpkg, nom_de_couche)]. Repli (pas de mapping) → GeoPackage unique
+            # modèle-centré, couche = nom de classe. La 1re cible (canonique)
+            # reçoit l'écriture principale (avec repli ogr2ogr) ; les suivantes
+            # sont des copies renommées (best-effort).
+            class_write_targets = (class_targets or {}).get(class_name)
+            if not class_write_targets:
+                class_write_targets = [(str(_default_gpkg_path), class_name)]
+            gpkg_path, class_layer = Path(class_write_targets[0][0]), class_write_targets[0][1]
+            # Création paresseuse du dossier cible, seulement quand on écrit vraiment.
+            gpkg_path.parent.mkdir(parents=True, exist_ok=True)
             
             # Créer le GeoDataFrame pour cette classe
             gdf = gpd.GeoDataFrame(detections, geometry="geometry", crs=crs)
@@ -1488,11 +1519,11 @@ def create_shapefile_from_detections(
             except Exception as clean_e:
                 logger.warning(f"Nettoyage/normalisation shapefile ignoré (erreur): {clean_e}")
             
-            # Sauvegarder comme couche dans le GeoPackage
+            # Sauvegarder comme couche dans le GeoPackage (cible canonique)
             try:
-                logger.info(f"🔍 Sauvegarde GeoPackage couche '{class_name}': {gpkg_path}")
-                _safe_to_gpkg(gdf, str(gpkg_path), layer=class_name)
-                logger.info(f"✅ Couche '{class_name}' écrite dans le GeoPackage")
+                logger.info(f"🔍 Sauvegarde GeoPackage couche '{class_layer}': {gpkg_path}")
+                _safe_to_gpkg(gdf, str(gpkg_path), layer=class_layer)
+                logger.info(f"✅ Couche '{class_layer}' écrite dans le GeoPackage")
             except Exception as save_e:
                 logger.error(f"❌ ERREUR SAUVEGARDE GEOPACKAGE couche '{class_name}': {save_e}")
                 import traceback
@@ -1527,7 +1558,7 @@ def create_shapefile_from_detections(
                     cmd = [
                         ogr2ogr, "-update", "-append",
                         "-f", "GPKG", "-a_srs", crs_str,
-                        "-nln", class_name,
+                        "-nln", class_layer,
                         str(gpkg_path), tmp_geojson_path,
                     ]
                     res = subprocess.run(cmd, capture_output=True, text=True)
@@ -1539,10 +1570,24 @@ def create_shapefile_from_detections(
                     logger.error(f"❌ Fallback ogr2ogr échoué: {cli_e}")
                     raise save_e
             
-            # Enregistrer la référence gpkg|layername=<class_name> pour aval
-            layer_ref = f"{gpkg_path}|layername={class_name}"
+            # Enregistrer la référence gpkg|layername=<couche> pour aval (couche canonique)
+            layer_ref = f"{gpkg_path}|layername={class_layer}"
             if layer_ref not in created_shapefiles:
                 created_shapefiles.append(layer_ref)
+
+            # Copies supplémentaires (ex. source d'une entité dérivée, renommée) :
+            # même GeoDataFrame écrit dans d'autres GeoPackage/couches (best-effort).
+            for _extra_gpkg, _extra_layer in class_write_targets[1:]:
+                try:
+                    _gp = Path(_extra_gpkg)
+                    _gp.parent.mkdir(parents=True, exist_ok=True)
+                    _safe_to_gpkg(gdf, str(_gp), layer=_extra_layer)
+                    _ref = f"{_gp}|layername={_extra_layer}"
+                    if _ref not in created_shapefiles:
+                        created_shapefiles.append(_ref)
+                    logger.info(f"✅ Copie '{_extra_layer}' écrite dans {_gp.name}")
+                except Exception as _dup_e:
+                    logger.warning(f"Duplication couche '{_extra_layer}' → {_extra_gpkg} ignorée: {_dup_e}")
             total_detections += len(detections)
             
             logger.info(f"📊 {len(detections)} détections de classe '{class_name}'")

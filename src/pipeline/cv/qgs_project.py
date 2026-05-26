@@ -530,10 +530,16 @@ def generate_qgs_project(
     cluster_class_names: Optional[set] = None,
     output_dir: Optional[Path] = None,
     min_confidence: float = 0.0,
+    entity_labels: Optional[Dict[str, str]] = None,
 ) -> Optional[Path]:
     """
     Génère un projet QGIS ``detections_validation.qgs`` contenant les shapefiles
     de détection et les rasters RVT.
+
+    ``entity_labels`` (slug d'entité → libellé FR) active le regroupement des
+    couches de détection par entité dans l'arbre QGIS (un groupe par entité,
+    nommé avec le vocabulaire utilisateur). Absent → arbre plat (comportement
+    hérité / repli).
 
     Returns:
         Le chemin du fichier .qgs généré, ou None en cas d'échec.
@@ -602,6 +608,26 @@ def generate_qgs_project(
         style_path = Path(__file__).parents[2] / 'resources' / 'styles' / 'style_detections.qml'
         _, style_selection, style_customprops = _load_qml_style(style_path)
 
+        # Regroupement par entité (vocabulaire utilisateur) : chaque GeoPackage
+        # detections/<entity_slug>/<entity_slug>.gpkg → un groupe nommé par le
+        # libellé FR. Sans entity_labels (repli / ancien flux) → arbre plat.
+        group_by_entity = bool(entity_labels)
+        _entity_group_nodes: Dict[str, Any] = {}
+
+        def _layer_parent_for(_shp_path: Path):
+            if not group_by_entity:
+                return layer_tree
+            slug = _shp_path.parent.name
+            node = _entity_group_nodes.get(slug)
+            if node is None:
+                label = (entity_labels or {}).get(slug, slug)
+                node = SubElement(
+                    layer_tree, 'layer-tree-group',
+                    attrib={'name': label, 'checked': 'Qt::Checked', 'expanded': '1'},
+                )
+                _entity_group_nodes[slug] = node
+            return node
+
         # 1) Couches de détection (GPKG ou shapefile, au-dessus des rasters)
         for shp_idx, ref in enumerate(created_shapefiles):
             path_str, layer_name = _parse_layer_ref(ref)
@@ -620,7 +646,7 @@ def generate_qgs_project(
                     shp_ds = f"{str(shp_path.resolve()).replace(chr(92), '/')}|layername={layer_name}"
                 else:
                     shp_ds = str(shp_path.resolve()).replace('\\', '/')
-            SubElement(layer_tree, 'layer-tree-layer', attrib={'id': layer_id, 'name': layer_id})
+            SubElement(_layer_parent_for(shp_path), 'layer-tree-layer', attrib={'id': layer_id, 'name': layer_id})
 
             ml = SubElement(maplayers, 'maplayer', attrib={'type': 'vector'})
             _add_vector_layer(

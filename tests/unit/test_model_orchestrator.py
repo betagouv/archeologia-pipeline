@@ -122,6 +122,74 @@ thresholds:
 """
 
 
+# Cratère + cible dérivée : la sortie de clustering 'zone_crateres' est présentée
+# comme l'entité 'zones_extraction_materiaux' (zones + dépressions individuelles).
+CRATERE_DERIVED = """
+display_name: "Cratères circulaires"
+status: production
+preferred_rvt:
+  type: LD
+classes:
+  - {id: 0, name: cratere_obus, label_fr: "Cratère d'obus"}
+derived_targets:
+  - output_class: zone_crateres
+    entity: zones_extraction_materiaux
+    include_source: true
+"""
+
+# Cratère + cible dérivée AVEC libellés de couche configurés (cluster + source).
+CRATERE_DERIVED_LABELED = """
+display_name: "Cratères circulaires"
+status: production
+preferred_rvt:
+  type: LD
+classes:
+  - {id: 0, name: cratere_obus, label_fr: "Cratère d'obus"}
+derived_targets:
+  - output_class: zone_crateres
+    entity: zones_extraction_materiaux
+    include_source: true
+    output_label: zones_extraction
+    source_label: crateres_constitutifs
+"""
+
+# Idem mais zones SEULEMENT (sans les dépressions individuelles).
+CRATERE_DERIVED_ZONES_ONLY = """
+display_name: "Cratères circulaires"
+status: production
+preferred_rvt:
+  type: LD
+classes:
+  - {id: 0, name: cratere_obus}
+derived_targets:
+  - output_class: zone_crateres
+    entity: zones_extraction_materiaux
+    include_source: false
+"""
+
+# Cible dérivée pointant vers une sortie de clustering inexistante (aucune règle
+# args.yaml correspondante) → doit être ignorée sans casser.
+CRATERE_DERIVED_DANGLING = """
+display_name: "Cratères circulaires"
+status: production
+preferred_rvt:
+  type: LD
+classes:
+  - {id: 0, name: cratere_obus}
+derived_targets:
+  - output_class: zone_inexistante
+    entity: zones_extraction_materiaux
+    include_source: true
+"""
+
+# Verdun (SVF) avec la même cible dérivée → second modèle candidat.
+VERDUN_DERIVED = VERDUN + """derived_targets:
+  - output_class: zone_crateres
+    entity: zones_extraction_materiaux
+    include_source: true
+"""
+
+
 def _summ(runs):
     """Réduit les runs à (model, target_rvt, selected_classes) — compare la
     structure sans dépendre des seuils injectés (testés à part)."""
@@ -137,6 +205,7 @@ def _catalog() -> list:
         EntityDef(id="parcellaire", label="Parcellaire", display_order=50),
         EntityDef(id="talus_fosse", label="Talus/fossés", display_order=60),
         EntityDef(id="charbonniere", label="Charbonnières", display_order=70),
+        EntityDef(id="zones_extraction_materiaux", label="Zones d'extraction", display_order=95),
     ]
 
 
@@ -351,6 +420,59 @@ class TestResolveRuns:
         assert _summ(runs) == [("cratere_circulaire_2", "LD", ["cratere_obus"])]
 
 
+# ----------------------------------------------------------------------
+# Cibles dérivées : une sortie de clustering présentée comme une entité
+# ----------------------------------------------------------------------
+class TestDerivedTargets:
+    def test_include_source_covers_source_and_output_classes(self, tmp_path):
+        _write_model(tmp_path, "cratere_circulaire_2", CRATERE_DERIVED, args_yaml=CRATERE_ARGS)
+        m = discover_installed_models(tmp_path)[0]
+        assert m.coverage["zones_extraction_materiaux"] == ("cratere_obus", "zone_crateres")
+        assert m.derived_entities == {"zones_extraction_materiaux"}
+
+    def test_zones_only_covers_output_class_alone(self, tmp_path):
+        _write_model(tmp_path, "cratere_circulaire_2", CRATERE_DERIVED_ZONES_ONLY, args_yaml=CRATERE_ARGS)
+        m = discover_installed_models(tmp_path)[0]
+        assert m.coverage["zones_extraction_materiaux"] == ("zone_crateres",)
+
+    def test_derived_entity_excluded_from_cluster_options(self, tmp_path):
+        # Garde-fou : pas de case « Regrouper en clusters » sur une cible déjà agrégée.
+        _write_model(tmp_path, "cratere_circulaire_2", CRATERE_DERIVED, args_yaml=CRATERE_ARGS)
+        m = discover_installed_models(tmp_path)[0]
+        assert m.cluster_options == {"cratere_obus": ("zone_crateres",)}
+        assert "zones_extraction_materiaux" not in m.cluster_options
+
+    def test_dangling_derived_target_ignored(self, tmp_path):
+        # output_class sans règle de clustering correspondante → ignoré, pas d'exception.
+        _write_model(tmp_path, "cratere_circulaire_2", CRATERE_DERIVED_DANGLING, args_yaml=CRATERE_ARGS)
+        m = discover_installed_models(tmp_path)[0]
+        assert "zones_extraction_materiaux" not in m.coverage
+        assert m.derived_entities == frozenset()
+
+    def test_coverage_lists_both_models_default_specialized(self, tmp_path):
+        _write_model(tmp_path, "cratere_circulaire_2", CRATERE_DERIVED, args_yaml=CRATERE_ARGS)
+        _write_model(tmp_path, "verdun_3_classes_1", VERDUN_DERIVED, args_yaml=CRATERE_ARGS)
+        installed = discover_installed_models(tmp_path)
+        cov = {ec.entity.id: ec for ec in build_entity_coverage(_catalog(), installed)}
+        ze = cov["zones_extraction_materiaux"]
+        assert set(ze.candidate_models) == {"cratere_circulaire_2", "verdun_3_classes_1"}
+        assert ze.default_model == "cratere_circulaire_2"
+
+    def test_resolve_run_for_derived_entity(self, tmp_path):
+        _write_model(tmp_path, "cratere_circulaire_2", CRATERE_DERIVED, args_yaml=CRATERE_ARGS)
+        installed = discover_installed_models(tmp_path)
+        runs = resolve_runs_from_entities(["zones_extraction_materiaux"], {}, installed, _catalog())
+        assert _summ(runs) == [("cratere_circulaire_2", "LD", ["cratere_obus", "zone_crateres"])]
+
+    def test_crater_and_extraction_merge_into_one_run(self, tmp_path):
+        _write_model(tmp_path, "cratere_circulaire_2", CRATERE_DERIVED, args_yaml=CRATERE_ARGS)
+        installed = discover_installed_models(tmp_path)
+        runs = resolve_runs_from_entities(
+            ["cratere_obus", "zones_extraction_materiaux"], {}, installed, _catalog()
+        )
+        assert _summ(runs) == [("cratere_circulaire_2", "LD", ["cratere_obus", "zone_crateres"])]
+
+
 class TestThresholds:
     def test_discover_reads_default_thresholds(self, tmp_path):
         _write_model(tmp_path, "m", THRESH)
@@ -384,6 +506,92 @@ class TestThresholds:
         assert run["confidence_threshold"] == 0.7
         assert run["min_area_m2"] == 50.0
         assert run["iou_threshold"] == 0.6  # IoU jamais surchargé par l'UI
+
+
+# ----------------------------------------------------------------------
+# Découpage par entité dans chaque run (clé "entities")
+# ----------------------------------------------------------------------
+# Le run porte, en plus de selected_classes (plat, rétro-compat), un détail
+# par entité {id, label, slug, classes, is_derived} permettant à l'étape de
+# sortie d'organiser detections/<slug>/ par entité (vocabulaire utilisateur).
+class TestRunEntities:
+    def test_single_entity_breakdown(self, tmp_path):
+        _write_model(tmp_path, "formes", FORMES)
+        installed = discover_installed_models(tmp_path)
+        run = resolve_runs_from_entities(["parcellaire"], {}, installed, _catalog())[0]
+        assert run["entities"] == [
+            {"id": "parcellaire", "label": "Parcellaire", "slug": "parcellaire",
+             "classes": ["parcellaire"], "is_derived": False, "layer_names": {}},
+        ]
+
+    def test_n_entities_one_model_listed_separately_sorted(self, tmp_path):
+        _write_model(tmp_path, "formes", FORMES)
+        installed = discover_installed_models(tmp_path)
+        run = resolve_runs_from_entities(
+            ["talus_fosse", "chemin_creux", "parcellaire"], {}, installed, _catalog()
+        )[0]
+        assert [e["id"] for e in run["entities"]] == ["chemin_creux", "parcellaire", "talus_fosse"]
+        assert all(e["is_derived"] is False for e in run["entities"])
+        assert {e["id"]: e["classes"] for e in run["entities"]} == {
+            "chemin_creux": ["chemin_creux"],
+            "parcellaire": ["parcellaire"],
+            "talus_fosse": ["talus_fosse"],
+        }
+        # slug dérive du libellé FR (≠ id) : "Chemins creux" -> chemins_creux
+        slugs = {e["id"]: e["slug"] for e in run["entities"]}
+        assert slugs["chemin_creux"] == "chemins_creux"
+        assert slugs["talus_fosse"] == "talus_fosses"
+
+    def test_derived_entity_marked_and_carries_output_and_source_classes(self, tmp_path):
+        _write_model(tmp_path, "cratere_circulaire_2", CRATERE_DERIVED, args_yaml=CRATERE_ARGS)
+        installed = discover_installed_models(tmp_path)
+        run = resolve_runs_from_entities(["zones_extraction_materiaux"], {}, installed, _catalog())[0]
+        ent = run["entities"]
+        assert len(ent) == 1
+        assert ent[0]["id"] == "zones_extraction_materiaux"
+        assert ent[0]["is_derived"] is True
+        assert ent[0]["classes"] == ["cratere_obus", "zone_crateres"]
+        assert ent[0]["slug"] == "zones_d_extraction"
+
+    def test_cluster_enabled_class_attributed_to_entity(self, tmp_path):
+        _write_model(tmp_path, "cratere_circulaire_2", CRATERE, args_yaml=CRATERE_ARGS)
+        installed = discover_installed_models(tmp_path)
+        run = resolve_runs_from_entities(
+            ["cratere_obus"], {}, installed, _catalog(), cluster_enabled={"cratere_obus"}
+        )[0]
+        ent = run["entities"]
+        assert len(ent) == 1
+        assert ent[0]["id"] == "cratere_obus"
+        assert ent[0]["is_derived"] is False
+        # la sortie de clustering activée est rattachée à l'entité
+        assert ent[0]["classes"] == ["cratere_obus", "zone_crateres"]
+
+    def test_derived_entity_layer_names_with_configured_labels(self, tmp_path):
+        # output_label renomme la couche cluster, source_label la couche source
+        _write_model(tmp_path, "cratere_circulaire_2", CRATERE_DERIVED_LABELED, args_yaml=CRATERE_ARGS)
+        installed = discover_installed_models(tmp_path)
+        run = resolve_runs_from_entities(["zones_extraction_materiaux"], {}, installed, _catalog())[0]
+        ent = run["entities"][0]
+        assert ent["id"] == "zones_extraction_materiaux"
+        assert ent["layer_names"] == {
+            "zone_crateres": "zones_extraction",        # cluster (output_label)
+            "cratere_obus": "crateres_constitutifs",    # source (source_label)
+        }
+
+    def test_derived_entity_layer_names_defaults(self, tmp_path):
+        # sans libellés : cluster gardé tel quel, source suffixée _source
+        _write_model(tmp_path, "cratere_circulaire_2", CRATERE_DERIVED, args_yaml=CRATERE_ARGS)
+        installed = discover_installed_models(tmp_path)
+        run = resolve_runs_from_entities(["zones_extraction_materiaux"], {}, installed, _catalog())[0]
+        ent = run["entities"][0]
+        assert ent["layer_names"] == {"cratere_obus": "cratere_obus_source"}
+
+    def test_non_derived_entity_no_layer_names(self, tmp_path):
+        _write_model(tmp_path, "formes", FORMES)
+        installed = discover_installed_models(tmp_path)
+        run = resolve_runs_from_entities(["parcellaire"], {}, installed, _catalog())[0]
+        ent = run["entities"][0]
+        assert ent["layer_names"] == {}
 
 
 # ----------------------------------------------------------------------

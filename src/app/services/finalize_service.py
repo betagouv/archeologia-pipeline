@@ -61,22 +61,33 @@ def _list_gpkg_layers(gpkg_path: Path) -> List[str]:
 
 
 def _collect_shapefiles(det_dir: Path) -> List[str]:
-    """Collecte les couches GeoPackage de détection CV depuis detections/**/shapefiles/."""
+    """Collecte les couches GeoPackage de détection CV (organisation entité-centrée).
+
+    Parcourt ``detections/<entity_slug>/<entity_slug>.gpkg`` (et tout ``.gpkg``
+    livrable) en **excluant** l'échafaudage technique ``detections/_technique/``
+    (dumps d'inférence, GeoPackage modèle de repli vide). Reste tolérant aux
+    anciens layouts (``shapefiles/``) tant qu'ils ne sont pas sous ``_technique/``.
+    """
     shapefile_paths: List[str] = []
     if not det_dir.exists():
         return shapefile_paths
 
-    for shp_dir in det_dir.rglob("shapefiles"):
-        if not shp_dir.is_dir():
+    try:
+        from ...pipeline.output_paths import DIR_TECHNIQUE
+    except ImportError:
+        from pipeline.output_paths import DIR_TECHNIQUE
+
+    for gpkg_file in sorted(det_dir.rglob("*.gpkg")):
+        # Exclure l'échafaudage technique (detections/_technique/…)
+        if DIR_TECHNIQUE in gpkg_file.relative_to(det_dir).parts:
             continue
-        for gpkg_file in shp_dir.glob("*.gpkg"):
-            layers = _list_gpkg_layers(gpkg_file)
-            if layers:
-                for layer in layers:
-                    shapefile_paths.append(f"{gpkg_file}|layername={layer}")
-            else:
-                # Dernier recours : on inscrit le GPKG seul (nom de couche inconnu)
-                shapefile_paths.append(str(gpkg_file))
+        layers = _list_gpkg_layers(gpkg_file)
+        if layers:
+            for layer in layers:
+                shapefile_paths.append(f"{gpkg_file}|layername={layer}")
+        else:
+            # Dernier recours : on inscrit le GPKG seul (nom de couche inconnu)
+            shapefile_paths.append(str(gpkg_file))
 
     return shapefile_paths
 
@@ -228,6 +239,7 @@ def _generate_consolidated_qgs_project(
     cluster_class_names: Optional[set] = None,
     output_dir: Optional[Path] = None,
     min_confidence: float = 0.0,
+    entity_labels: Optional[Dict[str, str]] = None,
 ) -> None:
     """Génère un projet QGIS consolidé avec les shapefiles de tous les runs."""
     if not shapefile_paths:
@@ -247,6 +259,7 @@ def _generate_consolidated_qgs_project(
             cluster_class_names=cluster_class_names,
             output_dir=output_dir,
             min_confidence=min_confidence,
+            entity_labels=entity_labels,
         )
         if qgs_path:
             log(f"Projet QGIS consolidé (multi-modèles) généré: {qgs_path}")
@@ -329,7 +342,15 @@ def finalize_pipeline(
     except Exception:
         pass
 
-    # 3c. Projet QGIS consolidé (multi-modèles)
+    # 3c. Libellés d'entités (slug → libellé FR) pour le regroupement du .qgs.
+    entity_labels: Dict[str, str] = {}
+    for r in cv_runs:
+        for ent in (r.get("entities") or []):
+            slug = str(ent.get("slug") or "").strip()
+            if slug:
+                entity_labels[slug] = str(ent.get("label") or slug)
+
+    # 3d. Projet QGIS consolidé (multi-modèles), couches groupées par entité.
     if shapefile_paths and cv_runs:
         _min_conf_sym = float((cv_cfg or {}).get("confidence_threshold", 0.0) or 0.0)
         _generate_consolidated_qgs_project(
@@ -341,6 +362,7 @@ def finalize_pipeline(
             cluster_class_names=cluster_class_names if cluster_class_names else None,
             output_dir=output_dir,
             min_confidence=_min_conf_sym,
+            entity_labels=entity_labels or None,
         )
 
     # 4. Génération du fichier metadata.json
@@ -360,6 +382,22 @@ def finalize_pipeline(
                     "target_rvt": r.get("target_rvt", ""),
                 }
                 for r in cv_runs
+            ],
+            # Correspondance entité (vocabulaire utilisateur) → dossier/fichier
+            # livrable. Trace le lien entre ce que l'utilisateur a coché et où
+            # les résultats atterrissent (detections/<slug>/<slug>.gpkg).
+            "detections_entities": [
+                {
+                    "entity": ent.get("id", ""),
+                    "label": ent.get("label", ""),
+                    "slug": ent.get("slug", ""),
+                    "folder": f"detections/{ent.get('slug', '')}",
+                    "gpkg": f"detections/{ent.get('slug', '')}/{ent.get('slug', '')}.gpkg",
+                    "is_derived": bool(ent.get("is_derived", False)),
+                    "model": r.get("selected_model", ""),
+                }
+                for r in cv_runs
+                for ent in (r.get("entities") or [])
             ],
             "structure": {
                 "indices": str(idx_dir),

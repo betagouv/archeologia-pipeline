@@ -118,6 +118,14 @@ class EntityCard(QFrame):
         self._cluster_check.setVisible(False)
         layout.addWidget(self._cluster_check)
 
+        # Badge cible dérivée : le regroupement est intrinsèque à l'entité
+        # (remplace la case cluster, jamais affichés ensemble).
+        self._derived_badge = QLabel("↳ regroupement automatique en zones")
+        self._derived_badge.setObjectName("EntityDerivedBadge")
+        self._derived_badge.setWordWrap(True)
+        self._derived_badge.setVisible(False)
+        layout.addWidget(self._derived_badge)
+
         # Réglages avancés (mode avancé) : confiance + aire min surchargeables.
         self._adv_row = _Row()
         conf_lbl = QLabel("Confiance")
@@ -152,28 +160,36 @@ class EntityCard(QFrame):
 
     # ------------------------------------------------------------------
     def set_candidates(
-        self, candidates: Sequence[Tuple[str, str]], *, has_cluster: bool = False
+        self,
+        candidates: Sequence[Tuple[str, str]],
+        *,
+        has_cluster: bool = False,
+        is_derived: bool = False,
     ) -> None:
         """``candidates`` = [(model_name, display_name)…] ; couvre l'entité.
 
         ``has_cluster`` : au moins un modèle candidat propose un regroupement
         pour cette entité → la ligne clustering réserve sa place en permanence.
+        ``is_derived`` : l'entité est une *cible dérivée* (sortie de clustering
+        présentée comme entité) → badge « regroupement automatique » à la place
+        de la case cluster ; sa place est réservée en permanence.
         """
         self._candidates = {name: disp for name, disp in candidates}
         self._has_model = bool(candidates)
-        self._configure_reservations(has_cluster)
+        self._configure_reservations(has_cluster, is_derived)
 
-    def _configure_reservations(self, has_cluster: bool) -> None:
+    def _configure_reservations(self, has_cluster: bool, is_derived: bool = False) -> None:
         """Verrouille le gabarit : les lignes du contenu MAXIMAL réservent leur
         place même cachées → la hauteur ne bouge plus jamais (cf. __init__)."""
         if self._has_model:
             self._retain(self._model_row, True)
             self._retain(self._adv_row, True)
             self._retain(self._cluster_check, has_cluster)
+            self._retain(self._derived_badge, is_derived)
             self._retain(self._nomodel, False)
         else:
             self._retain(self._nomodel, True)
-            for w in (self._model_row, self._adv_row, self._cluster_check):
+            for w in (self._model_row, self._adv_row, self._cluster_check, self._derived_badge):
                 self._retain(w, False)
 
     @staticmethod
@@ -195,6 +211,7 @@ class EntityCard(QFrame):
         default_min_area: float = 0.0,
         conf_override: Optional[float] = None,
         area_override: Optional[float] = None,
+        is_derived: bool = False,
     ) -> None:
         self._selected = selected
         self._rvt_key = rvt
@@ -246,6 +263,10 @@ class EntityCard(QFrame):
                 self._cluster_check.setChecked(cluster_on)
             finally:
                 self._loading = False
+
+        # Badge cible dérivée (regroupement intrinsèque) — exclusif de la case
+        # cluster : pour une cible dérivée, ``cluster_outputs`` est vide.
+        self._derived_badge.setVisible(bool(selected and self._has_model and is_derived))
 
         # Réglages avancés (confiance + aire min) : visibles si mode avancé.
         show_adv = bool(selected and self._has_model and self._advanced)

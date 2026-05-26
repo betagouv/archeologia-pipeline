@@ -12,7 +12,7 @@ from ...coords import extract_xy_from_tile_name as _extract_xy_from_tile_name
 from ...geo_utils import extract_tif_transform_data
 from ...output_paths import indices_dir, indice_tif_dir, indice_base_dir
 from ...subprocess_utils import run_subprocess_cancellable, subprocess_kwargs_no_window
-from .rvt_naming import get_rvt_source_and_dest_filenames
+from .rvt_naming import get_rvt_source_and_dest_filenames, get_rvt_folder_name
 from ...types import CancelCheckFn, LogFn
 
 
@@ -183,6 +183,7 @@ def copy_final_products_to_results(
     rvt_params: Dict[str, Any],
     log: LogFn = lambda _: None,
     cancel_check: CancelCheckFn | None = None,
+    name_suffix: str = "",
 ) -> Dict[str, Any]:
     x, y = _extract_xy_from_tile_name(current_tile_name)
 
@@ -190,11 +191,13 @@ def copy_final_products_to_results(
     idx_dir.mkdir(parents=True, exist_ok=True)
 
     # Générer les noms de fichiers avec paramètres pour invalider le cache
-    all_products = ["MNT", "DENSITE", "M_HS", "SVF", "SLO", "LD", "SLRM", "VAT"]
+    all_products = ["MNT", "DENSITE", "HS", "M_HS", "SVF", "SLO", "LD", "SLRM", "VAT"]
     source_files_cropped: Dict[str, str] = {}
     source_files_uncropped: Dict[str, str] = {}
     for product in all_products:
-        uncropped, cropped = get_rvt_source_and_dest_filenames(product, current_tile_name, x, y, rvt_params)
+        uncropped, cropped = get_rvt_source_and_dest_filenames(
+            product, current_tile_name, x, y, rvt_params, name_suffix=name_suffix
+        )
         source_files_uncropped[product] = uncropped
         source_files_cropped[product] = cropped
 
@@ -208,7 +211,7 @@ def copy_final_products_to_results(
     created_jpgs_by_product: Dict[str, List[Path]] = {}
     tif_transform_data: Dict[str, Tuple[float, float, float, float]] = {}
 
-    for product_name in ["MNT", "DENSITE", "M_HS", "SVF", "SLO", "LD", "SLRM", "VAT"]:
+    for product_name in ["MNT", "DENSITE", "HS", "M_HS", "SVF", "SLO", "LD", "SLRM", "VAT"]:
         if not products.get(product_name, False):
             continue
         check_cancelled(cancel_check)
@@ -218,7 +221,12 @@ def copy_final_products_to_results(
         input_path_cropped = temp_dir / cropped_name
         input_path_uncropped = temp_dir / uncropped_name
 
-        base_dir = indice_base_dir(output_dir, product_name)
+        # Dossier suffixé par les paramètres RVT (ex: indices/SVF_R10_D16_V1_N0/) :
+        # deux exécutions de paramètres différents ne s'écrasent plus.
+        # MNT/DENSITE → suffixe vide → dossier brut. Doit rester symétrique avec
+        # resolve_rvt_tif_dir côté consommation CV (même rvt_params).
+        folder_name = get_rvt_folder_name(product_name, rvt_params)
+        base_dir = indice_base_dir(output_dir, folder_name)
 
         # Utiliser le nom du fichier croppé (sans extension) comme base
         output_base = cropped_name.replace(".tif", "")

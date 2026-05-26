@@ -53,6 +53,9 @@ class FilesConfig:
     local_laz_dir: Optional[Path] = None    # mode local_laz
     existing_mnt_dir: Optional[Path] = None  # mode existing_mnt
     existing_rvt_dir: Optional[Path] = None  # mode existing_rvt
+    # CRS déclaré par l'utilisateur (authid, ex. "EPSG:2154"), utilisé comme repli
+    # pour les entrées sans CRS dans les métadonnées (ex. .asc). None = non déclaré.
+    declared_crs: Optional[str] = None
 
     def input_path_for_mode(self) -> Optional[Path]:
         """Renvoie le chemin d'entrée pertinent pour le mode courant."""
@@ -74,6 +77,7 @@ class ProductsConfig:
 
     MNT: bool = True
     DENSITE: bool = False
+    HS: bool = False
     M_HS: bool = False
     SVF: bool = False
     SLO: bool = False
@@ -83,16 +87,16 @@ class ProductsConfig:
 
     def active(self) -> List[str]:
         """Liste des produits activés (pour les logs/metadata)."""
-        return [k for k in ("MNT", "DENSITE", "M_HS", "SVF", "SLO", "LD", "SLRM", "VAT") if getattr(self, k)]
+        return [k for k in ("MNT", "DENSITE", "HS", "M_HS", "SVF", "SLO", "LD", "SLRM", "VAT") if getattr(self, k)]
 
     def needs_mnt(self) -> bool:
         """Vrai si on doit calculer un MNT (soit demandé directement,
         soit comme dépendance d'un indice de visualisation)."""
-        return self.MNT or self.M_HS or self.SVF or self.SLO or self.LD or self.VAT
+        return self.MNT or self.HS or self.M_HS or self.SVF or self.SLO or self.LD or self.VAT
 
     def as_dict(self) -> Dict[str, bool]:
         """Vue dict (pour les call-sites qui en attendent encore un)."""
-        return {k: getattr(self, k) for k in ("MNT", "DENSITE", "M_HS", "SVF", "SLO", "LD", "SLRM", "VAT")}
+        return {k: getattr(self, k) for k in ("MNT", "DENSITE", "HS", "M_HS", "SVF", "SLO", "LD", "SLRM", "VAT")}
 
 
 @dataclass(frozen=True)
@@ -250,6 +254,9 @@ def _build_files_config(files_dict: Dict[str, Any]) -> FilesConfig:
         local_laz_dir=_to_path(files_dict.get("local_laz_dir")),
         existing_mnt_dir=_to_path(files_dict.get("existing_mnt_dir")),
         existing_rvt_dir=_to_path(files_dict.get("existing_rvt_dir")),
+        declared_crs=(str(files_dict.get("declared_crs")).strip() or None)
+        if files_dict.get("declared_crs")
+        else None,
     )
 
 
@@ -264,6 +271,7 @@ def _build_products_config(products_dict: Dict[str, Any]) -> ProductsConfig:
     return ProductsConfig(
         MNT=bool(products_dict.get("MNT", True)),
         DENSITE=bool(products_dict.get("DENSITE", False)),
+        HS=bool(products_dict.get("HS", False)),
         M_HS=bool(products_dict.get("M_HS", False)),
         SVF=bool(products_dict.get("SVF", False)),
         SLO=bool(products_dict.get("SLO", False)),

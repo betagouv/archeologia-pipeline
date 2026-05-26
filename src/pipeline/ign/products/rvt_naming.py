@@ -44,8 +44,15 @@ def get_rvt_param_suffix(product_name: str, rvt_params: Dict[str, Any]) -> str:
         Suffixe à ajouter au nom de fichier (ex: "_R10_D16_V1_N0" pour SVF)
     """
     rvt_params = rvt_params or {}
-    
-    if product_name == "M_HS":
+
+    if product_name == "HS":
+        hs = rvt_params.get("hs", {})
+        sun_azimuth = _as_int(hs.get("sun_azimuth", 315), 315)
+        sun_elevation = _as_int(hs.get("sun_elevation", 35), 35)
+        ve_factor = _as_int(hs.get("ve_factor", 1), 1)
+        return f"_Az{sun_azimuth}_E{sun_elevation}_V{ve_factor}"
+
+    elif product_name == "M_HS":
         mdh = rvt_params.get("mdh", {})
         num_directions = _as_int(mdh.get("num_directions", 16), 16)
         if num_directions < 2:
@@ -100,6 +107,24 @@ def get_rvt_param_suffix(product_name: str, rvt_params: Dict[str, Any]) -> str:
     return ""
 
 
+def get_rvt_folder_name(product_name: str, rvt_params: Dict[str, Any]) -> str:
+    """Nom du dossier d'indice = code produit + suffixe de paramètres RVT.
+
+    Permet à deux exécutions de paramètres différents d'écrire dans des dossiers
+    distincts (``indices/<CODE><suffixe>/``) plutôt que de s'écraser.
+
+    Ex: ``"SVF"`` -> ``"SVF_R10_D16_V1_N0"``,
+        ``"LD"`` -> ``"LD_A15_Rmin10_Rmax20_H1p7_V1"``.
+    MNT / DENSITE (suffixe vide) renvoient le code brut (``"MNT"``, ``"DENSITE"``).
+
+    NB : ``get_rvt_param_suffix`` applique les valeurs *par défaut* quand un
+    paramètre est absent (dict vide → suffixe par défaut, pas ``""``). Il faut
+    donc passer le *même* ``rvt_params`` à la création et à la consommation pour
+    viser le même dossier.
+    """
+    return f"{product_name}{get_rvt_param_suffix(product_name, rvt_params)}"
+
+
 def get_rvt_temp_filename(
     product_name: str,
     current_tile_name: str,
@@ -121,6 +146,7 @@ def get_rvt_temp_filename(
     base_names = {
         "MNT": "MNT",
         "DENSITE": "densite",
+        "HS": "HS",
         "M_HS": "hillshade",
         "SVF": "SVF",
         "SLO": "Slope",
@@ -143,7 +169,7 @@ def get_all_rvt_temp_filenames(
     Returns:
         Dict[product_name, filename]
     """
-    products = ["MNT", "DENSITE", "M_HS", "SVF", "SLO", "LD", "SLRM", "VAT"]
+    products = ["MNT", "DENSITE", "HS", "M_HS", "SVF", "SLO", "LD", "SLRM", "VAT"]
     return {
         p: get_rvt_temp_filename(p, current_tile_name, rvt_params)
         for p in products
@@ -156,32 +182,40 @@ def get_rvt_source_and_dest_filenames(
     x: str,
     y: str,
     rvt_params: Dict[str, Any],
+    *,
+    name_suffix: str = "",
 ) -> Tuple[str, str]:
     """
     Génère les noms de fichiers source (temp) et destination (cropped) pour un produit.
-    
+
     Args:
         product_name: Nom du produit
         current_tile_name: Nom de la dalle
-        x, y: Coordonnées extraites du nom de dalle
+        x, y: Coordonnées extraites du nom de dalle (cosmétiques)
         rvt_params: Paramètres RVT
-    
+        name_suffix: Suffixe d'unicité inséré avant ``.tif`` dans le nom de destination
+            (ex. ``"_<uid>"``). Le placement venant des métadonnées, ``x``/``y`` ne
+            servent qu'au préfixe cosmétique ``LHD_FXX_{x}_{y}`` ; pour des dalles
+            sub-km partageant la même cellule km, ce suffixe évite l'écrasement des
+            produits (le nom de destination est bâti depuis ``x``/``y`` seuls).
+            ``""`` (défaut) → nom strictement identique au comportement historique.
+
     Returns:
         Tuple (source_filename, dest_filename)
     """
     source_filename = get_rvt_temp_filename(product_name, current_tile_name, rvt_params)
-    
+
     # Suffixe de paramètres pour invalider le cache si config change
     param_suffix = get_rvt_param_suffix(product_name, rvt_params)
-    
+
     # Noms de destination avec paramètres pour invalider le cache
     if product_name == "MNT":
-        dest_filename = f"LHD_FXX_{x}_{y}_MNT_A_0M50_LAMB93_IGN69.tif"
+        dest_filename = f"LHD_FXX_{x}_{y}_MNT_A_0M50_LAMB93_IGN69{name_suffix}.tif"
     elif product_name == "DENSITE":
-        dest_filename = f"LHD_FXX_{x}_{y}_densite_A_LAMB93.tif"
+        dest_filename = f"LHD_FXX_{x}_{y}_densite_A_LAMB93{name_suffix}.tif"
     elif product_name == "M_HS":
-        dest_filename = f"LHD_FXX_{x}_{y}_M-HS{param_suffix}_A_LAMB93.tif"
+        dest_filename = f"LHD_FXX_{x}_{y}_M-HS{param_suffix}_A_LAMB93{name_suffix}.tif"
     else:
-        dest_filename = f"LHD_FXX_{x}_{y}_{product_name}{param_suffix}_A_LAMB93.tif"
-    
+        dest_filename = f"LHD_FXX_{x}_{y}_{product_name}{param_suffix}_A_LAMB93{name_suffix}.tif"
+
     return source_filename, dest_filename

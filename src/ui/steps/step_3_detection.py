@@ -159,7 +159,12 @@ class DetectionPage(QWidget):
             has_cluster = any(
                 self._models[name].cluster_options.get(entity.id) for name in cand_names
             )
-            card.set_candidates(candidates, has_cluster=has_cluster)
+            # Cible dérivée : couverte par une sortie de clustering (regroupement
+            # intrinsèque) → badge au lieu de la case « regrouper en zones ».
+            is_derived = any(
+                entity.id in self._models[name].derived_entities for name in cand_names
+            )
+            card.set_candidates(candidates, has_cluster=has_cluster, is_derived=is_derived)
             card.toggled.connect(self._on_entity_toggled)
             card.model_changed.connect(self._on_model_changed)
             card.cluster_toggled.connect(self._on_cluster_toggled)
@@ -282,6 +287,7 @@ class DetectionPage(QWidget):
             model = self._models.get(model_name) if model_name else None
             rvt = model.target_rvt if model else "—"
             cluster_outputs = model.cluster_options.get(eid, ()) if model else ()
+            is_derived = bool(model) and eid in model.derived_entities
             ov = self._entity_thresholds.get(eid, {})
             card.update_state(
                 selected=bool(self._selected.get(eid)),
@@ -294,6 +300,7 @@ class DetectionPage(QWidget):
                 default_min_area=model.default_min_area if model else 0.0,
                 conf_override=ov.get("confidence_threshold"),
                 area_override=ov.get("min_area_m2"),
+                is_derived=is_derived,
             )
         self._update_selection_count()
         self._rebuild_runs()

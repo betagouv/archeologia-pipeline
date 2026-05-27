@@ -626,7 +626,44 @@ class RunView(QWidget):
             conf = float(cv.get("confidence_threshold", 0.0) or 0.0)
         except Exception:
             conf = 0.0
-        load_result_layers(vrt_paths, shapefile_paths, class_colors, self._logger, conf)
+        # Regroupement live identique au .qgs : un groupe par entité dérivée
+        # (zone + constituants), reste à plat. Helper partagé avec finalize_service.
+        from ..app.services.finalize_service import (
+            build_entity_grouping,
+            build_min_confidence_by_slug,
+        )
+        entity_labels, derived_slugs = build_entity_grouping(cv.get("runs"))
+        # Seuil de confiance PAR ENTITÉ (= seuil du run qui a binné conf_bin) :
+        # la symbologie catégorisée doit utiliser ce seuil par couche, pas le seuil
+        # global cv.confidence_threshold, sinon les libellés de catégories
+        # ([0.3:0.4[) ne matchent pas les conf_bin et la tranche basse est invisible.
+        min_conf_by_slug = build_min_confidence_by_slug(cv.get("runs"))
+        load_result_layers(
+            vrt_paths, shapefile_paths, class_colors, self._logger, conf,
+            entity_labels=entity_labels, derived_slugs=derived_slugs,
+            min_conf_by_slug=min_conf_by_slug,
+        )
+        # Écrire le projet .qgs consolidé via l'API QGIS (thread principal) : QGIS
+        # sérialise lui-même un projet relisable (CRS complet, datasources cohérentes),
+        # ce que l'ancienne écriture XML à la main ne garantissait pas. Échec toléré.
+        try:
+            out_dir = self._output_dir()
+            if out_dir is not None and (vrt_paths or shapefile_paths):
+                from .qgs_writer import write_validation_project
+                gcm = class_colors[0] if (class_colors and isinstance(class_colors[0], dict)) else {}
+                all_classes = sorted({
+                    s.split("|layername=")[-1] for s in shapefile_paths if s
+                })
+                qgs_path = out_dir / "detections" / "detections_validation.qgs"
+                qgs_path.parent.mkdir(parents=True, exist_ok=True)
+                write_validation_project(
+                    qgs_path, list(vrt_paths), list(shapefile_paths),
+                    global_color_map=gcm, all_classes=all_classes, confidence_threshold=conf,
+                    entity_labels=entity_labels, derived_slugs=derived_slugs,
+                    min_conf_by_slug=min_conf_by_slug, logger=self._logger,
+                )
+        except Exception as e:  # noqa: BLE001
+            self._logger.warning(f"Écriture du projet QGIS non effectuée : {e}")
 
     # ------------------------------------------------------------------
     # Accès dossier de sortie / log

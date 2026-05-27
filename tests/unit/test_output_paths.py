@@ -55,51 +55,54 @@ def _ent(eid, slug, classes, *, layer_names=None):
 class TestEntityClassTargets:
     """Routage classe → [(GeoPackage, nom_de_couche)], piloté par ``layer_names``.
 
-    Cas critique : « Trous d'obus » (cratere_obus) et « Zones d'extraction »
-    (dérivée : cratere_obus + zone_crateres) résolvent au même run. La classe
-    source cratere_obus est DUPLIQUÉE : couche 'cratere_obus' dans le dossier
-    Trous d'obus, et couche renommée (layer_names) dans le dossier Zones.
+    Cas critique (décision C) : « Cratères » (base) et « Regroupement de cratères »
+    (dérivée : cratere + zone_crateres) résolvent au même run. La classe source
+    cratere n'est PAS dupliquée : elle n'apparaît qu'une fois, comme constituant
+    renommé du groupe (la couche « Cratères » à plat est supprimée).
     """
 
-    def test_shared_source_duplicated_with_configured_labels(self):
+    def test_shared_source_deduped_into_derived_group(self):
         entities = [
-            _ent("cratere_obus", "trous_d_obus", ["cratere_obus"]),
-            _ent("zones_extraction_materiaux", "zones_d_extraction_de_materiaux",
-                 ["cratere_obus", "zone_crateres"],
-                 layer_names={"cratere_obus": "crateres_constitutifs",
-                              "zone_crateres": "zones_extraction"}),
+            _ent("cratere", "crateres", ["cratere"]),
+            _ent("regroupement_crateres", "regroupement_de_crateres",
+                 ["cratere", "zone_crateres"],
+                 layer_names={"cratere": "Cratères",
+                              "zone_crateres": "Regroupements"}),
         ]
         t = build_entity_class_targets(OUT, entities)
-        # cratere_obus écrit dans les DEUX, couche canonique (Trous d'obus) en 1er
-        assert t["cratere_obus"] == [
-            (_gpkg("trous_d_obus"), "cratere_obus"),
-            (_gpkg("zones_d_extraction_de_materiaux"), "crateres_constitutifs"),
+        # cratere n'apparaît QUE dans le groupe (couche renommée), pas à plat
+        assert t["cratere"] == [
+            (_gpkg("regroupement_de_crateres"), "Cratères"),
         ]
-        # le cluster est renommé via layer_names
-        assert t["zone_crateres"] == [(_gpkg("zones_d_extraction_de_materiaux"), "zones_extraction")]
+        assert t["zone_crateres"] == [(_gpkg("regroupement_de_crateres"), "Regroupements")]
 
-    def test_canonical_target_is_first_regardless_of_order(self):
-        # même si la dérivée est listée d'abord, la couche canonique reste primaire
+    def test_dedup_independent_of_entity_order(self):
+        # même si la dérivée est listée d'abord, la dédup garde la couche du groupe
         entities = [
-            _ent("zones_extraction_materiaux", "zones_d_extraction_de_materiaux",
-                 ["cratere_obus", "zone_crateres"],
-                 layer_names={"cratere_obus": "crateres_constitutifs"}),
-            _ent("cratere_obus", "trous_d_obus", ["cratere_obus"]),
+            _ent("regroupement_crateres", "regroupement_de_crateres",
+                 ["cratere", "zone_crateres"],
+                 layer_names={"cratere": "Cratères"}),
+            _ent("cratere", "crateres", ["cratere"]),
         ]
         t = build_entity_class_targets(OUT, entities)
-        assert t["cratere_obus"][0] == (_gpkg("trous_d_obus"), "cratere_obus")
+        assert t["cratere"] == [(_gpkg("regroupement_de_crateres"), "Cratères")]
 
-    def test_no_rename_when_layer_names_empty(self):
-        # entité dérivée seule, layer_names ne renomme que la source (défaut _source)
+    def test_base_entity_alone_keeps_canonical(self):
+        entities = [_ent("cratere", "crateres", ["cratere"])]
+        t = build_entity_class_targets(OUT, entities)
+        assert t["cratere"] == [(_gpkg("crateres"), "cratere")]
+
+    def test_derived_alone_keeps_source_layer(self):
+        # entité dérivée seule : la source garde son libellé (pas de canonique à plat)
         entities = [
-            _ent("zones_extraction_materiaux", "zones_d_extraction_de_materiaux",
-                 ["cratere_obus", "zone_crateres"],
-                 layer_names={"cratere_obus": "cratere_obus_source"}),
+            _ent("regroupement_crateres", "regroupement_de_crateres",
+                 ["cratere", "zone_crateres"],
+                 layer_names={"cratere": "cratere_source"}),
         ]
         t = build_entity_class_targets(OUT, entities)
-        assert t["cratere_obus"] == [(_gpkg("zones_d_extraction_de_materiaux"), "cratere_obus_source")]
+        assert t["cratere"] == [(_gpkg("regroupement_de_crateres"), "cratere_source")]
         # cluster non renommé (absent de layer_names) → garde son nom de classe
-        assert t["zone_crateres"] == [(_gpkg("zones_d_extraction_de_materiaux"), "zone_crateres")]
+        assert t["zone_crateres"] == [(_gpkg("regroupement_de_crateres"), "zone_crateres")]
 
     def test_independent_entities_each_own_layer(self):
         entities = [

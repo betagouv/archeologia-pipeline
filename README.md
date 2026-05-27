@@ -118,7 +118,7 @@ Depuis la **v0.3.0**, le plugin s'utilise via un **assistant (wizard) en 4 étap
 
 1. **Source** — Choix du mode de données (`ign_laz`, `local_laz`, `existing_mnt`, `existing_rvt`) et des chemins d'entrée (zone/liste IGN, dossier LAZ, dossier MNT ou dossier RVT selon le mode).
 2. **Indices** — Sélection des produits : **MNT / Densité** (modèle de base) + indices **RVT** (**HS, M-HS, SVF, SLO, LD, SLRM, VAT**). Le bouton **« Réglages avancés… »** ouvre une vue à onglets pour régler finement chaque indice (paramètres RVT : azimut/élévation solaire, directions, rayons, etc.) ainsi que le **filtre PDAL**, la **résolution de densité** et la **marge de tuilage**. *(HS = hillshade simple, mono-directionnel ; M-HS = multi-directionnel.)*
-3. **Détection IA** *(optionnelle)* — On coche les **entités archéologiques** à détecter (parcellaire, trous d'obus, talus/fossés…). L'orchestrateur choisit automatiquement le(s) modèle(s) ONNX adapté(s) et l'indice RVT cible. Les seuils de **confiance** et d'**aire minimale** sont réglables par entité.
+3. **Détection IA** *(optionnelle)* — On coche les **entités archéologiques** à détecter (parcellaire, trous d'obus, talus/fossés…). L'orchestrateur choisit automatiquement le(s) modèle(s) ONNX adapté(s) et l'indice RVT cible. Les seuils de **confiance** et d'**aire minimale** sont réglables par entité. Le seuil de confiance est **filtrant** : les détections sous le seuil sont écartées du `.gpkg` de l'entité (après clustering, donc l'hystérésis de regroupement reste alimentée), et la **légende** du `.qgs` (tranches `conf_bin`) part du seuil propre à chaque entité — une entité dont rien ne dépasse son seuil donne une couche vide.
 4. **Lancer** — Un panneau **« État du système »** exécute le préflight en tâche de fond (outils CLI, Processing, runner ONNX, espace disque…) ; un **récapitulatif** résume les choix ; le nombre de **workers** parallèles est réglable dans les paramètres avancés repliables. Le bouton **▶ Lancer le pipeline** démarre le traitement : l'écran bascule alors sur la **vue d'exécution** (timeline 5 étapes + journal défilant avec auto-défilement / copier / effacer).
 
 ## Computer vision : runner ONNX + modèles
@@ -515,7 +515,7 @@ Ensuite, un `git push` déclenchera automatiquement Talisman et pourra bloquer l
 - **Classes non filtrées** : vider les fichiers `.txt`/`.json` existants dans le dossier `jpg/` du modèle si les anciens résultats ont été générés sans filtrage de classes
 - **Inférence lancée malgré 0 classe cochée** : s'assurer que `selected_classes` est bien une liste vide `[]` dans la config et non `null` — le court-circuit dans `run_cv_on_folder` ne s'active que pour `[]` explicite
 - **Dossier `jpg/` persistant** : le workdir est supprimé après génération des shapefiles uniquement si *Générer des images annotées* est désactivé. Si le dossier persiste, vérifier que l'option est bien décochée
-- **Projet QGIS manquant** : `detections_validation.qgs` est généré par `finalize_service`. Si absent, vérifier que le pipeline s'est terminé sans erreur (section `PIPELINE TERMINÉ AVEC SUCCÈS` dans les logs)
+- **Projet QGIS manquant** : `detections_validation.qgs` est écrit par `ui/qgs_writer.write_validation_project` (API QGIS, thread principal), déclenché depuis `run_view._on_load_layers` lors du chargement des couches — **pas** par `finalize_service` (qui tourne sur le thread worker et se contente d'émettre le signal `load_layers`). Si absent, vérifier que le pipeline s'est terminé sans erreur (section `PIPELINE TERMINÉ AVEC SUCCÈS` dans les logs) et que les couches ont bien été chargées dans QGIS
 - **MNT/RVT de grande emprise** (plusieurs km²) : le régime `large` est déclenché dès que largeur ou hauteur > 1,05 km. Vérifier dans les logs la ligne `emprise > 1 km → RVT et CV sur le raster complet` (mode MNT) ou `SAHI assure le slicing à l'inférence (pas de pré-découpage)` (mode RVT). Le raster d'entrée **doit** être projeté en Lambert-93 (EPSG:2154) pour que `_classify_*_layout` puisse évaluer correctement l'emprise.
 - **PIL `DecompressionBombError`** sur un grand raster : la limite est désactivée via `Image.MAX_IMAGE_PIXELS = None` dans `convert_tif_to_png.py` et `computer_vision_onnx.py`. Si l'erreur réapparaît, vérifier qu'un autre module PIL importé plus tôt n'a pas réinitialisé la limite (ordre d'import).
 - **Pic de RAM élevé** sur un grand raster : prévoir ~3 Go de mémoire libre pour une scène 10 × 10 km à 0,5 m/px (PNG 20 000² en numpy + slices SAHI). Pour réduire, fermer les autres projets QGIS ou passer par `existing_rvt` après avoir pré-calculé les indices hors ligne (ex. via `rvt-py` en script).
@@ -624,12 +624,10 @@ flowchart TD
         FIN3 --> F1
         F1 --> F2["_collect_shapefiles() — couches GeoPackage\n detections/**/shapefiles/*.gpkg"]
         F2 --> F3["_build_global_class_color_map() — mapping unique classe→couleur"]
-        F3 --> F3b{"shapefiles présents ?"}
-        F3b -->|"Oui"| F3c["_generate_consolidated_qgs_project() → detections_validation.qgs"]
-        F3b -->|"Non"| F3d["metadata.json"]
-        F3c --> F3d
+        F3 --> F3d["metadata.json"]
         F3d --> F4["Logs de fin de pipeline (slog.end_pipeline ou reporter)"]
-        F4 --> F5["load_layers(VRT + shapefiles, global_color_map) → QGIS"]
+        F4 --> F5["reporter.load_layers(VRT + shapefiles, global_color_map) → signal vers l'UI"]
+        F5 --> F6["UI thread principal : load_result_layers + qgs_writer.write_validation_project()\n→ detections_validation.qgs (API QGIS, symbologie conf_bin par entité)"]
     end
 
     subgraph CV["Computer Vision — runner.py (orchestration) + runner_cache / runner_inference / runner_shapefiles"]
@@ -754,7 +752,7 @@ src/
 │       ├── indices_model.py        # Catalogue produits / indices RVT (étape 2)
 │       ├── source_modes.py         # Métadonnées des modes de données (étape 1)
 │       ├── cv_post_service.py      # run_cv_post_loop() — boucle CV partagée entre runners
-│       └── finalize_service.py     # finalize_pipeline() — VRT, .qgs consolidé, load_layers
+│       └── finalize_service.py     # finalize_pipeline() — VRT, metadata.json, signal load_layers (le .qgs est écrit côté UI)
 │
 ├── config/
 │   └── config_manager.py           # Lecture/écriture config.json + last_ui_config.json
@@ -773,12 +771,11 @@ src/
 │   │   ├── class_utils.py          # Palette couleurs, utilitaires classes (façade vers model_profile)
 │   │   ├── clustering.py           # DBSCAN spatial (scipy, confidence-weighted)
 │   │   ├── computer_vision_onnx.py # Inférence ONNX (YOLO / RF-DETR / RF-DETR Seg / SegFormer / SMP)
-│   │   ├── conversion_shp.py       # Labels → shapefiles géoréférencés + clustering + filtre selected_classes
+│   │   ├── conversion_shp.py       # Labels → shapefiles géoréférencés + clustering + filtre selected_classes + filtrage confiance < seuil (après clustering)
 │   │   ├── cv_output.py            # Gestion sorties CV (labels, annotations, légende) — consomme List[Detection]
 │   │   ├── external_runner.py      # Subprocess runner ONNX externe (inférence seule) + RunnerPayload
 │   │   ├── model_config.py         # resolve_cv_runs(), resolve_model_weights_path (façade legacy)
 │   │   ├── postprocessing.py       # Post-processing : validation, fusion intra-classe (optionnelle), suppression superpositions (optionnelle)
-│   │   ├── qgs_project.py          # Génération projet QGIS consolidé (.qgs)
 │   │   ├── runner.py               # run_cv_on_folder — orchestration pure (court-circuit si selected_classes=[])
 │   │   ├── runner_cache.py         # get_model_slug, prepare_model_workdir, has_cached_detection, list_candidate_pngs
 │   │   ├── runner_inference.py     # run_fallback_inference (fallback Python ONNX si runner externe absent)
@@ -808,7 +805,8 @@ src/
     ├── wizard_dialog.py            # Assistant : rail + 4 pages + navigation + validation
     ├── run_view.py                 # Vue d'exécution : timeline 5 étapes + journal
     ├── icons.py                    # Chargement / teinte des icônes SVG
-    ├── layer_loader.py             # Chargement des couches résultats dans QGIS
+    ├── layer_loader.py             # Chargement live des couches dans QGIS + fabrique build_detection_vector_layer (symbologie conf_bin par couche)
+    ├── qgs_writer.py               # Écriture du .qgs consolidé via l'API QGIS (QgsProject.write, thread principal)
     ├── log_bridge.py               # Pont logs → signaux Qt (QtLogEmitter / QtLogHandler)
     ├── steps/                      # Pages du wizard
     │   ├── step_1_source.py        #   Mode de données + chemins

@@ -11,8 +11,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from qgis.PyQt.QtCore import Qt, QTimer, pyqtSignal
+from qgis.PyQt.QtCore import Qt, pyqtSignal
 from qgis.PyQt.QtWidgets import (
+    QButtonGroup,
     QCheckBox,
     QFrame,
     QHBoxLayout,
@@ -27,6 +28,7 @@ from qgis.PyQt.QtWidgets import (
 from ...app.services.model_orchestrator import (
     build_entity_coverage,
     discover_installed_models,
+    group_entities_by_morphology,
     load_entities_catalog,
     resolve_runs_from_entities,
 )
@@ -58,9 +60,13 @@ class DetectionPage(QWidget):
         self._overrides: dict = {}
         self._cluster: set = set()
         self._entity_thresholds: dict = {}  # eid -> {confidence_threshold, min_area_m2}
+        self._entity_cluster_params: dict = {}  # eid -> {eps_m, min_cluster_size, …}
         self._active_rvts: set = set()
         self._loading = False
         self._cards: dict = {}
+        self._filter = "all"            # filtre morphologique courant (affichage only)
+        self._filter_buttons: dict = {}
+        self._section_widgets: dict = {}  # morpho_key -> (header, container)
         self._run_rows: list = []
         self._content_scroll = None
         self._sel_count = None
@@ -138,47 +144,50 @@ class DetectionPage(QWidget):
         self._adv_check.toggled.connect(self._on_advanced_toggled)
         adv_row.addWidget(self._adv_check)
         ev.addLayout(adv_row)
-        grid_host = QWidget()
-        cols = QHBoxLayout(grid_host)
-        cols.setContentsMargins(0, 0, 0, 0)
-        cols.setSpacing(8)
-        left = QVBoxLayout()
-        left.setContentsMargins(0, 0, 0, 0)
-        left.setSpacing(8)
-        right = QVBoxLayout()
-        right.setContentsMargins(0, 0, 0, 0)
-        right.setSpacing(8)
-        for i, entity in enumerate(self._catalog):
-            ec = self._coverage.get(entity.id)
-            card = EntityCard(entity.id, entity.label, entity.description)
-            cand_names = list(ec.candidate_models if ec else ())
-            candidates = [(name, self._models[name].display_name) for name in cand_names]
-            # La ligne « regrouper en zones » réserve sa place dès qu'un candidat
-            # propose un clustering pour cette entité → hauteur stable au changement
-            # de modèle.
-            has_cluster = any(
-                self._models[name].cluster_options.get(entity.id) for name in cand_names
-            )
-            # Cible dérivée : couverte par une sortie de clustering (regroupement
-            # intrinsèque) → badge au lieu de la case « regrouper en zones ».
-            is_derived = any(
-                entity.id in self._models[name].derived_entities for name in cand_names
-            )
-            card.set_candidates(candidates, has_cluster=has_cluster, is_derived=is_derived)
-            card.toggled.connect(self._on_entity_toggled)
-            card.model_changed.connect(self._on_model_changed)
-            card.cluster_toggled.connect(self._on_cluster_toggled)
-            card.activate_rvt.connect(self.activate_rvt)
-            card.thresholds_changed.connect(self._on_thresholds_changed)
-            self._cards[entity.id] = card
+
+        # ── Filtres morphologiques (organisation seulement, jamais la sélection) ──
+        groups = group_entities_by_morphology(self._catalog)
+        chip_row = QHBoxLayout()
+        chip_row.setContentsMargins(0, 0, 0, 0)
+        chip_row.setSpacing(6)
+        self._chip_group = QButtonGroup(self)
+        self._chip_group.setExclusive(True)
+        self._add_filter_chip(chip_row, "all", "Tout")
+        for key, label, glyph, _ents in groups:
+            self._add_filter_chip(chip_row, key, f"{glyph} {label.split(' / ')[0]}")
+        chip_row.addStretch(1)
+        ev.addLayout(chip_row)
+        hint = QLabel("Le filtre n'affecte que l'affichage, pas la sélection.")
+        hint.setObjectName("EntityDesc")
+        ev.addWidget(hint)
+
+        # ── Sections par morphologie (en-tête + cartes en 2 colonnes) ──
+        for key, label, glyph, ents in groups:
+            header = QLabel(f"{glyph}  {label}")
+            header.setObjectName("EntitySectionHeader")
+            ev.addWidget(header)
+            container = QWidget()
+            container.setObjectName("EntitySection")
+            cols = QHBoxLayout(container)
+            cols.setContentsMargins(0, 0, 0, 0)
+            cols.setSpacing(8)
+            left = QVBoxLayout()
+            left.setContentsMargins(0, 0, 0, 0)
+            left.setSpacing(8)
+            right = QVBoxLayout()
+            right.setContentsMargins(0, 0, 0, 0)
+            right.setSpacing(8)
             # Deux colonnes INDÉPENDANTES : développer une carte ne pousse que
-            # les cartes situées sous elle dans la même colonne (pas toute la grille).
-            (left if i % 2 == 0 else right).addWidget(card)
-        left.addStretch(1)
-        right.addStretch(1)
-        cols.addLayout(left)
-        cols.addLayout(right)
-        ev.addWidget(grid_host)
+            # les cartes sous elle dans la même colonne (pas toute la grille).
+            for i, entity in enumerate(ents):
+                card = self._make_entity_card(entity)
+                (left if i % 2 == 0 else right).addWidget(card)
+            left.addStretch(1)
+            right.addStretch(1)
+            cols.addLayout(left)
+            cols.addLayout(right)
+            ev.addWidget(container)
+            self._section_widgets[key] = (header, container)
         cv.addWidget(ent_card)
 
         runs_card, rv = build_card("Runs IA programmés", "2")
@@ -218,6 +227,50 @@ class DetectionPage(QWidget):
         footer.addWidget(self._annot_check)
         footer.addStretch(1)
         return footer
+
+    def _add_filter_chip(self, row, key: str, text: str) -> None:
+        btn = QPushButton(text)
+        btn.setObjectName("EntityChip")
+        btn.setCheckable(True)
+        btn.setCursor(Qt.PointingHandCursor)
+        btn.setChecked(key == "all")
+        btn.clicked.connect(lambda _checked=False, k=key: self._on_filter_changed(k))
+        self._chip_group.addButton(btn)
+        self._filter_buttons[key] = btn
+        row.addWidget(btn)
+
+    def _make_entity_card(self, entity) -> EntityCard:
+        """Crée et câble une EntityCard pour une entité du catalogue."""
+        ec = self._coverage.get(entity.id)
+        card = EntityCard(entity.id, entity.label, entity.description)
+        cand_names = list(ec.candidate_models if ec else ())
+        candidates = [(name, self._models[name].display_name) for name in cand_names]
+        has_cluster = any(
+            self._models[name].cluster_options.get(entity.id) for name in cand_names
+        )
+        is_derived = any(
+            entity.id in self._models[name].derived_entities for name in cand_names
+        )
+        card.set_candidates(candidates, has_cluster=has_cluster, is_derived=is_derived)
+        card.toggled.connect(self._on_entity_toggled)
+        card.model_changed.connect(self._on_model_changed)
+        card.cluster_toggled.connect(self._on_cluster_toggled)
+        card.activate_rvt.connect(self.activate_rvt)
+        card.thresholds_changed.connect(self._on_thresholds_changed)
+        card.cluster_params_changed.connect(self._on_cluster_params_changed)
+        self._cards[entity.id] = card
+        return card
+
+    def _on_filter_changed(self, key: str) -> None:
+        # Filtre d'AFFICHAGE uniquement : ne touche jamais self._selected ni runs.
+        self._filter = key
+        self._apply_filter()
+
+    def _apply_filter(self) -> None:
+        for key, (header, container) in self._section_widgets.items():
+            visible = self._filter == "all" or self._filter == key
+            header.setVisible(visible)
+            container.setVisible(visible)
 
     # ------------------------------------------------------------------
     # Handlers
@@ -267,6 +320,11 @@ class DetectionPage(QWidget):
         if not self._loading:
             self.changed.emit()
 
+    def _on_cluster_params_changed(self, entity_id: str, params: dict) -> None:
+        self._entity_cluster_params[entity_id] = dict(params or {})
+        if not self._loading:
+            self.changed.emit()
+
     # ------------------------------------------------------------------
     # Rafraîchissement
     # ------------------------------------------------------------------
@@ -276,11 +334,6 @@ class DetectionPage(QWidget):
         if not self._enabled:
             return
 
-        # Mémorise le défilement : reconstruire les runs peut faire « sauter » la
-        # page (Qt suit un enfant qui prend le focus) → on restaure la position.
-        bar = self._content_scroll.verticalScrollBar() if self._content_scroll else None
-        keep = bar.value() if (bar is not None and not self._loading) else None
-
         for eid, card in self._cards.items():
             ec = self._coverage.get(eid)
             model_name = self._overrides.get(eid) or (ec.default_model if ec else None)
@@ -289,6 +342,19 @@ class DetectionPage(QWidget):
             cluster_outputs = model.cluster_options.get(eid, ()) if model else ()
             is_derived = bool(model) and eid in model.derived_entities
             ov = self._entity_thresholds.get(eid, {})
+            # Défauts des paramètres de regroupement (DBSCAN) pour cette entité :
+            # ceux de la 1ʳᵉ sortie de clustering qu'elle produit (dérivée ou cluster).
+            cluster_default_params: dict = {}
+            if model:
+                if is_derived:
+                    src = set(model.derived_source_classes.get(eid, ()))
+                    outs = [c for c in model.coverage.get(eid, ()) if c not in src]
+                else:
+                    outs = list(cluster_outputs)
+                for oc in outs:
+                    if oc in model.cluster_defaults:
+                        cluster_default_params = model.cluster_defaults[oc]
+                        break
             card.update_state(
                 selected=bool(self._selected.get(eid)),
                 current_model=model_name,
@@ -301,11 +367,12 @@ class DetectionPage(QWidget):
                 conf_override=ov.get("confidence_threshold"),
                 area_override=ov.get("min_area_m2"),
                 is_derived=is_derived,
+                cluster_default_params=cluster_default_params,
+                cluster_params_override=self._entity_cluster_params.get(eid),
             )
         self._update_selection_count()
         self._rebuild_runs()
-        if keep is not None:
-            QTimer.singleShot(0, lambda b=bar, v=keep: b.setValue(v))
+        self._apply_filter()
 
     def _update_selection_count(self) -> None:
         if self._sel_count is None:
@@ -318,7 +385,13 @@ class DetectionPage(QWidget):
         self._sel_count.setText(f"{n} sur {total} sélectionnée{'s' if n != 1 else ''}")
 
     def _rebuild_runs(self) -> None:
+        # Retrait SYNCHRONE des anciennes lignes : deleteLater() seul les laisse
+        # dans le layout (espace fantôme) jusqu'au tour de boucle suivant → churn
+        # de hauteur + repaint = clignotement. removeWidget + setParent(None)
+        # détachent immédiatement ; deleteLater ne sert plus qu'au nettoyage mémoire.
         for w in self._run_rows:
+            self._runs_layout.removeWidget(w)
+            w.setParent(None)
             w.deleteLater()
         self._run_rows = []
 
@@ -326,6 +399,7 @@ class DetectionPage(QWidget):
         runs = resolve_runs_from_entities(
             selected_ids, self._overrides, self._installed, self._catalog, self._cluster,
             entity_thresholds=self._entity_thresholds,
+            entity_cluster_params=self._entity_cluster_params,
         )
         self._runs_count.setText(f"{len(runs)} run{'s' if len(runs) > 1 else ''} · 1 modèle = 1 indice")
         if not runs:
@@ -426,6 +500,7 @@ class DetectionPage(QWidget):
             self._overrides = dict(cv.get("entity_model_overrides") or {})
             self._cluster = set(cv.get("entity_cluster_enabled") or [])
             self._entity_thresholds = dict(cv.get("entity_thresholds") or {})
+            self._entity_cluster_params = dict(cv.get("entity_cluster_params") or {})
             self._annot_check.setChecked(bool(cv.get("generate_annotated_images", False)))
             # Rétrocompat : config legacy avec des « runs » explicites mais aucune
             # entité → on préserve ces runs (jamais d'écrasement silencieux) tant
@@ -450,6 +525,9 @@ class DetectionPage(QWidget):
         cv["entity_thresholds"] = {
             e: t for e, t in self._entity_thresholds.items() if self._selected.get(e)
         }
+        cv["entity_cluster_params"] = {
+            e: p for e, p in self._entity_cluster_params.items() if self._selected.get(e)
+        }
         cv["generate_annotated_images"] = self._annot_check.isChecked()
         cv["generate_shapefiles"] = True  # toujours : le GeoPackage des détections est produit
         # Runs pour le pipeline (l'aval ne consomme que 'runs') : résolus depuis
@@ -460,6 +538,7 @@ class DetectionPage(QWidget):
             cv["runs"] = resolve_runs_from_entities(
                 selected_ids, self._overrides, self._installed, self._catalog, self._cluster,
                 entity_thresholds=self._entity_thresholds,
+                entity_cluster_params=self._entity_cluster_params,
             )
         elif self._legacy_runs is not None:
             cv["runs"] = self._legacy_runs

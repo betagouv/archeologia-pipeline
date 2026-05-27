@@ -56,6 +56,7 @@ class ConfigManager:
                 "entity_model_overrides": {},
                 "entity_cluster_enabled": [],
                 "entity_thresholds": {},
+                "entity_cluster_params": {},
                 "selected_model": "",
                 "target_rvt": "LD",
                 "confidence_threshold": 0.3,
@@ -126,6 +127,7 @@ class ConfigManager:
 
         cfg = self.default_config()
         self._deep_update(cfg, data)
+        self._migrate_entity_ids(cfg)
         self._migrate_cv_runs(cfg)
         return cfg
 
@@ -151,6 +153,7 @@ class ConfigManager:
 
         cfg = self.default_config()
         self._deep_update(cfg, data)
+        self._migrate_entity_ids(cfg)
         self._migrate_cv_runs(cfg)
         return cfg
 
@@ -160,6 +163,56 @@ class ConfigManager:
         self.last_ui_path.parent.mkdir(parents=True, exist_ok=True)
         with self.last_ui_path.open("w", encoding="utf-8") as f:
             json.dump(config, f, indent=2, ensure_ascii=False)
+
+    # Renommages d'identifiants d'entités (cf. refonte morphologique étape 3) :
+    # une sélection sauvegardée avec un ancien id deviendrait un fantôme (droppée
+    # silencieusement + case sans carte). On remappe à la lecture.
+    _ENTITY_ID_RENAMES = {
+        "cratere_obus": "cratere",
+        "zones_extraction_materiaux": "regroupement_crateres",
+    }
+
+    @classmethod
+    def _migrate_entity_ids(cls, cfg: Dict[str, Any]) -> None:
+        """Remappe les anciens ids d'entités/classes dans la section CV.
+
+        Couvre ``selected_entities`` / ``entity_cluster_enabled`` (listes),
+        ``entity_model_overrides`` / ``entity_thresholds`` / ``entity_cluster_params``
+        (dicts indexés par entité), et ``runs[].selected_classes`` +
+        ``runs[].entities[].{id,classes}``. ``zone_crateres`` (sortie de
+        clustering) n'est pas concerné. Tolérant aux structures malformées.
+        """
+        cv = cfg.get("computer_vision")
+        if not isinstance(cv, dict):
+            return
+        rename = cls._ENTITY_ID_RENAMES
+
+        def _remap(value: str) -> str:
+            return rename.get(value, value)
+
+        for key in ("selected_entities", "entity_cluster_enabled"):
+            v = cv.get(key)
+            if isinstance(v, list):
+                cv[key] = [_remap(str(x)) for x in v]
+        for key in ("entity_model_overrides", "entity_thresholds", "entity_cluster_params"):
+            v = cv.get(key)
+            if isinstance(v, dict):
+                cv[key] = {_remap(str(k)): val for k, val in v.items()}
+        runs = cv.get("runs")
+        if isinstance(runs, list):
+            for run in runs:
+                if not isinstance(run, dict):
+                    continue
+                sc = run.get("selected_classes")
+                if isinstance(sc, list):
+                    run["selected_classes"] = [_remap(str(c)) for c in sc]
+                for ent in run.get("entities") or []:
+                    if not isinstance(ent, dict):
+                        continue
+                    if "id" in ent:
+                        ent["id"] = _remap(str(ent["id"]))
+                    if isinstance(ent.get("classes"), list):
+                        ent["classes"] = [_remap(str(c)) for c in ent["classes"]]
 
     @staticmethod
     def _migrate_cv_runs(cfg: Dict[str, Any]) -> None:

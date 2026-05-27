@@ -10,6 +10,86 @@ if TYPE_CHECKING:
 LogFn = Callable[[str], None]
 
 
+def build_entity_grouping(
+    runs: Optional[List[Dict[str, Any]]],
+) -> "tuple[Dict[str, str], set]":
+    """Depuis les runs, renvoie ``(entity_labels: slug→libellé, derived_slugs)``.
+
+    ``derived_slugs`` = slugs des entités **dérivées** (zone + constituants) : seules
+    elles forment un groupe de couches — dans le ``.qgs`` (``ui/qgs_writer``) **et** au
+    chargement live (``layer_loader.load_result_layers``). Helper partagé par les deux
+    chemins pour garantir le **même** regroupement.
+    """
+    entity_labels: Dict[str, str] = {}
+    derived_slugs: set = set()
+    for r in runs or []:
+        if not isinstance(r, dict):
+            continue
+        for ent in (r.get("entities") or []):
+            if not isinstance(ent, dict):
+                continue
+            slug = str(ent.get("slug") or "").strip()
+            if not slug:
+                continue
+            entity_labels[slug] = str(ent.get("label") or slug)
+            if ent.get("is_derived"):
+                derived_slugs.add(slug)
+    return entity_labels, derived_slugs
+
+
+def build_min_confidence_by_slug(
+    cv_runs: Optional[List[Dict[str, Any]]],
+    *,
+    model_slug_fn: Optional[Callable[[Dict[str, Any]], str]] = None,
+) -> Dict[str, float]:
+    """Mappe chaque slug de couche → seuil de confiance du run qui la produit.
+
+    La symbologie catégorisée du ``.qgs`` consolidé doit utiliser, par couche,
+    le **même** ``min_confidence`` que celui ayant servi à binner le champ
+    ``conf_bin`` à la conversion (``cv_config["confidence_threshold"]`` du run,
+    cf. ``runner_shapefiles.deduplicate_cv_shapefiles_final``). Sinon les
+    libellés de catégories (ex. ``[0.2:0.4[``) ne matchent pas les ``conf_bin``
+    réels (ex. ``[0.3:0.4[``) et la tranche basse devient invisible.
+
+    Les seuils étant **par entité** (réglages avancés), un unique seuil global
+    ne convient pas : on indexe par slug d'entité (route entité-centrée
+    ``detections/<slug>/<slug>.gpkg``), avec repli sur le slug de modèle pour
+    les runs legacy sans ``entities``.
+
+    Si un slug est alimenté par plusieurs runs, on conserve le **minimum** :
+    la 1ʳᵉ tranche de légende couvre alors toutes les ``conf_bin`` présentes.
+
+    ``model_slug_fn`` : injecté pour les tests ; par défaut, import différé de
+    ``pipeline.cv.runner_cache.get_model_slug`` (évite de tirer QGIS/shapely
+    sur le chemin entité, pur).
+    """
+    result: Dict[str, float] = {}
+
+    def _put(slug: str, conf: float) -> None:
+        slug = (slug or "").strip()
+        if not slug:
+            return
+        prev = result.get(slug)
+        result[slug] = conf if prev is None else min(prev, conf)
+
+    for run in cv_runs or []:
+        if not isinstance(run, dict):
+            continue
+        conf = float(run.get("confidence_threshold", 0.0) or 0.0)
+        entities = run.get("entities") or []
+        if entities:
+            for ent in entities:
+                if isinstance(ent, dict):
+                    _put(str(ent.get("slug") or ""), conf)
+        else:
+            fn = model_slug_fn
+            if fn is None:
+                from ...pipeline.cv.runner_cache import get_model_slug as fn  # import différé
+            _put(fn(run), conf)
+
+    return result
+
+
 def _collect_vrt_paths_and_build(idx_dir: Path, det_dir: Path, log: LogFn) -> List[str]:
     """Parcourt indices/ pour créer les index.vrt et retourne les chemins VRT."""
     try:
@@ -210,63 +290,6 @@ def _build_global_class_color_map(cv_runs: List[Dict[str, Any]]) -> Dict[str, in
     return class_color_map
 
 
-def _collect_all_classes(cv_runs: List[Dict[str, Any]]) -> List[str]:
-    """Agrège les noms de classes de tous les modèles CV (sans doublons, ordre stable)."""
-    from ...pipeline.cv.class_utils import resolve_model_weights_path, load_class_names_from_model
-    all_classes: List[str] = []
-    seen: set = set()
-    for run_cfg in cv_runs:
-        try:
-            weights = resolve_model_weights_path(run_cfg)
-            if weights and weights.exists():
-                names = load_class_names_from_model(weights)
-                if names:
-                    for n in names:
-                        if n not in seen:
-                            seen.add(n)
-                            all_classes.append(n)
-        except Exception:
-            continue
-    return all_classes
-
-
-def _generate_consolidated_qgs_project(
-    shapefile_paths: List[str],
-    cv_runs: List[Dict[str, Any]],
-    class_colors: Optional[list],
-    log: LogFn,
-    global_color_map: Optional[Dict[str, int]] = None,
-    cluster_class_names: Optional[set] = None,
-    output_dir: Optional[Path] = None,
-    min_confidence: float = 0.0,
-    entity_labels: Optional[Dict[str, str]] = None,
-) -> None:
-    """Génère un projet QGIS consolidé avec les shapefiles de tous les runs."""
-    if not shapefile_paths:
-        return
-    try:
-        all_classes = _collect_all_classes(cv_runs)
-        output_shapefile = shapefile_paths[0] if shapefile_paths else ""
-
-        from ...pipeline.cv.qgs_project import generate_qgs_project
-        qgs_path = generate_qgs_project(
-            created_shapefiles=shapefile_paths,
-            output_shapefile=output_shapefile,
-            all_classes=all_classes,
-            crs="EPSG:2154",
-            class_colors=class_colors,
-            global_color_map=global_color_map,
-            cluster_class_names=cluster_class_names,
-            output_dir=output_dir,
-            min_confidence=min_confidence,
-            entity_labels=entity_labels,
-        )
-        if qgs_path:
-            log(f"Projet QGIS consolidé (multi-modèles) généré: {qgs_path}")
-    except Exception as e:
-        log(f"Note: Génération du projet QGIS consolidé échouée: {e}")
-
-
 def finalize_pipeline(
     *,
     output_dir: Path,
@@ -327,43 +350,12 @@ def finalize_pipeline(
         # Fallback mono-modèle
         class_colors = _load_class_colors(cv_cfg or {})
 
-    # 3b. Collecter les noms de classes cluster depuis les configs des modèles
-    cluster_class_names: set = set()
-    try:
-        from ...pipeline.cv.model_config import load_clustering_config_from_model
-        from ...pipeline.cv.class_utils import resolve_model_weights_path
-        for run_cfg in cv_runs:
-            wp = resolve_model_weights_path(run_cfg)
-            if wp and wp.exists():
-                cc = load_clustering_config_from_model(wp)
-                if cc:
-                    for c in cc:
-                        cluster_class_names.add(c.get("output_class_name", ""))
-    except Exception:
-        pass
-
-    # 3c. Libellés d'entités (slug → libellé FR) pour le regroupement du .qgs.
-    entity_labels: Dict[str, str] = {}
-    for r in cv_runs:
-        for ent in (r.get("entities") or []):
-            slug = str(ent.get("slug") or "").strip()
-            if slug:
-                entity_labels[slug] = str(ent.get("label") or slug)
-
-    # 3d. Projet QGIS consolidé (multi-modèles), couches groupées par entité.
-    if shapefile_paths and cv_runs:
-        _min_conf_sym = float((cv_cfg or {}).get("confidence_threshold", 0.0) or 0.0)
-        _generate_consolidated_qgs_project(
-            shapefile_paths=shapefile_paths,
-            cv_runs=cv_runs,
-            class_colors=class_colors,
-            log=log,
-            global_color_map=global_color_map,
-            cluster_class_names=cluster_class_names if cluster_class_names else None,
-            output_dir=output_dir,
-            min_confidence=_min_conf_sym,
-            entity_labels=entity_labels or None,
-        )
+    # 3b. Le projet QGIS consolidé (detections_validation.qgs) n'est PLUS écrit ici.
+    # L'API QGIS n'est pas thread-safe et finalize_pipeline tourne sur le thread worker ;
+    # l'écriture XML à la main produisait des projets non relisables (CRS absent, couche
+    # invalide). Le .qgs est désormais généré via l'API QGIS (QgsProject.write) sur le
+    # thread principal, par ui/qgs_writer.write_validation_project, déclenché depuis
+    # run_view._on_load_layers (même chemin que le chargement live, qui fonctionne).
 
     # 4. Génération du fichier metadata.json
     try:

@@ -178,6 +178,23 @@ QPushButton:disabled { color: #909090; border-color: #b0b0b0; }
 #EmptyState { background: #f0f0f0; border: 1px dashed #a0a0a0; border-radius: 8px; }
 #EmptyStateTitle { font-weight: bold; color: #2c2c2c; font-size: 13px; }
 
+/* ---- Étape 3 : filtres morphologiques + sections ---- */
+#EntityChip {
+    background: #ffffff; border: 1px solid #c4c4c4; border-radius: 11px;
+    color: #5a5a5a; font-size: 10px; padding: 4px 14px; min-height: 16px;
+}
+#EntityChip:hover { border-color: #2b79c2; color: #1d5a96; }
+/* Pas de font-weight ici : un changement de graisse via QSS sur :checked ne
+   recalcule pas la largeur du bouton (texte tronqué). Le fond bleu + texte blanc
+   suffisent à marquer l'état actif. */
+#EntityChip:checked { background: #2b79c2; border-color: #1d5a96; color: #ffffff; }
+#EntitySectionHeader {
+    color: #1d5a96; font-size: 10px; font-weight: bold;
+    letter-spacing: 1px; margin-top: 4px;
+}
+#EntitySection { background: transparent; border: none; }
+#EntityClusterParams { background: transparent; border: none; }
+
 /* ---- Étape 3 : cartes d'entités ---- */
 #EntityScroll { background: transparent; }
 #EntityRow { background: transparent; border: none; }

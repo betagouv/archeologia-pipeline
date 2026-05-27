@@ -76,15 +76,79 @@ def _apply_confidence_style(
         logger.warning(f"Impossible d'appliquer le style: {e}")
 
 
+def _parse_gpkg_source(shp_path_str: str):
+    """``(gpkg_path, layer_name, class_name)`` depuis ``path.gpkg|layername=X`` ou ``path.shp``.
+
+    Pour un GPKG, ``layer_name`` = ``class_name`` = la table. Pour un shapefile legacy
+    ``detections_<RVT>_<classe>``, ``class_name`` est extrait du stem.
+    """
+    if "|layername=" in shp_path_str:
+        _gpkg, layer_name = shp_path_str.split("|layername=", 1)
+        class_name = layer_name
+    else:
+        _gpkg = shp_path_str
+        layer_name = Path(shp_path_str).stem
+        parts = layer_name.split("_")
+        class_name = (
+            "_".join(parts[2:])
+            if len(parts) >= 3 and parts[0] == "detections"
+            else layer_name
+        )
+    return _gpkg, layer_name, class_name
+
+
+def build_detection_vector_layer(
+    ogr_source: str,
+    layer_name: str,
+    *,
+    color_idx: int,
+    confidence_threshold: float,
+    logger: logging.Logger,
+):
+    """Construit un ``QgsVectorLayer`` de détection valide, CRS fixé + symbologie appliquée.
+
+    Symbologie : cluster (hachures) si le champ ``nb_detect`` est présent, sinon
+    catégorisée par tranche de confiance. **N'ajoute la couche à AUCUN projet** —
+    l'appelant en est propriétaire (une couche n'appartient qu'à un projet). Source
+    unique de vérité partagée par le chargement live (:func:`load_result_layers`) ET
+    l'écriture du projet ``.qgs`` (``ui/qgs_writer.py``). ``None`` si la couche est
+    invalide.
+    """
+    from qgis.core import QgsVectorLayer
+
+    from ..pipeline.cv.class_utils import get_color_for_confidence
+
+    layer = QgsVectorLayer(ogr_source, layer_name, "ogr")
+    if not layer.isValid():
+        return None
+    _ensure_layer_crs(layer, logger)
+    if layer.fields().indexFromName("nb_detect") >= 0:
+        _apply_cluster_style(layer, logger)
+    else:
+        _apply_confidence_style(
+            layer, color_idx, get_color_for_confidence, confidence_threshold, logger
+        )
+    return layer
+
+
 def load_result_layers(
     vrt_paths: list,
     shapefile_paths: list,
     class_colors: Optional[list],
     logger: logging.Logger,
     confidence_threshold: float = 0.0,
+    entity_labels: Optional[dict] = None,
+    derived_slugs: Optional[set] = None,
+    min_conf_by_slug: Optional[dict] = None,
 ) -> None:
     """Charge les VRT (raster) et vecteurs (détections) dans le projet QGIS,
-    applique la symbologie, puis zoome sur l'étendue combinée (déféré)."""
+    applique la symbologie, puis zoome sur l'étendue combinée (déféré).
+
+    ``derived_slugs`` (slugs d'entités dérivées) + ``entity_labels`` (slug→libellé)
+    pilotent le **regroupement** des couches de détection : une couche dont le slug
+    de dossier est dans ``derived_slugs`` est placée dans un groupe d'arbre nommé
+    par son libellé (zone + constituants ensemble, ex. « Regroupement de cratères ») ;
+    toutes les autres restent à plat. Miroir de ``ui/qgs_writer.write_validation_project``."""
     try:
         from qgis.core import (
             QgsProject,
@@ -93,9 +157,13 @@ def load_result_layers(
             QgsVectorLayer,
         )
 
-        from ..pipeline.cv.class_utils import BASE_COLOR_PALETTE, get_color_for_confidence
+        from ..pipeline.cv.class_utils import BASE_COLOR_PALETTE
 
         project = QgsProject.instance()
+        root = project.layerTreeRoot()
+        derived_slugs = derived_slugs or set()
+        entity_labels = entity_labels or {}
+        min_conf_by_slug = min_conf_by_slug or {}
         loaded_count = 0
         combined_extent = QgsRectangle()
         loaded_layers: List = []
@@ -135,18 +203,10 @@ def load_result_layers(
             if not shp_path:
                 continue
             shp_path_str = str(shp_path)
-            if "|layername=" in shp_path_str:
-                _gpkg, layer_name = shp_path_str.split("|layername=", 1)
-                class_name = layer_name
-            else:
-                layer_name = Path(shp_path_str).stem
-                parts = layer_name.split("_")
-                class_name = (
-                    "_".join(parts[2:])
-                    if len(parts) >= 3 and parts[0] == "detections"
-                    else layer_name
-                )
+            _gpkg, layer_name, class_name = _parse_gpkg_source(shp_path_str)
             ogr_source = shp_path_str
+            # slug d'entité = dossier du GeoPackage (detections/<slug>/<slug>.gpkg)
+            slug = Path(_gpkg).parent.name
 
             color_idx = _resolve_color_idx(global_color_map, class_name, ogr_source, layer_name, logger)
 
@@ -154,16 +214,25 @@ def load_result_layers(
                 logger.info(f"Couche vecteur déjà présente: {layer_name}")
                 continue
 
-            layer = QgsVectorLayer(ogr_source, layer_name, "ogr")
-            if layer.isValid():
-                _ensure_layer_crs(layer, logger)
-                if layer.fields().indexFromName("nb_detect") >= 0:
-                    _apply_cluster_style(layer, logger)
+            # Seuil par entité (= seuil du run qui a binné conf_bin) ; repli sur le
+            # seuil global pour un slug absent de la map (run legacy / sécurité).
+            layer_conf = min_conf_by_slug.get(slug, confidence_threshold)
+            layer = build_detection_vector_layer(
+                ogr_source, layer_name, color_idx=color_idx,
+                confidence_threshold=layer_conf, logger=logger,
+            )
+            if layer is not None:
+                # Entité dérivée → groupe d'arbre (zone + constituants ensemble) ;
+                # sinon couche à plat (racine), comme le .qgs.
+                if slug in derived_slugs:
+                    label = entity_labels.get(slug, slug)
+                    project.addMapLayer(layer, False)  # pas à la racine
+                    # insertGroup(0) (et non addGroup, qui appende EN BAS) : le groupe
+                    # se place EN HAUT de l'arbre, donc au-dessus des rasters MNT/indices.
+                    grp = root.findGroup(label) or root.insertGroup(0, label)
+                    grp.addLayer(layer)
                 else:
-                    _apply_confidence_style(
-                        layer, color_idx, get_color_for_confidence, confidence_threshold, logger
-                    )
-                project.addMapLayer(layer)
+                    project.addMapLayer(layer)
                 loaded_layers.append(layer)
                 combined_extent = _combine(combined_extent, layer.extent())
                 loaded_count += 1

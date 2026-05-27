@@ -124,7 +124,7 @@ def load_clustering_config_from_model(model_path: Union[str, Path]) -> Optional[
     
     Format attendu dans args.yaml:
         clustering:
-          - target_classes: ["cratere_obus"]
+          - target_classes: ["cratere"]
             min_confidence: 0.5            # seuil core : initie/étend un cluster
             min_confidence_extend: 0.3     # (optionnel) seuil bas hystérésis :
                                            # absorbé comme "border" mais ne crée
@@ -334,6 +334,10 @@ def resolve_cv_runs(cv_config: Dict) -> List[Dict]:
         # entité-centrée de detections/<entity_slug>/ en aval (runner_shapefiles).
         if "entities" in run:
             run_cfg["entities"] = run["entities"]
+        # Surcharges de paramètres de clustering éditées dans l'UI (par
+        # output_class_name) : consommées par runner_shapefiles avant DBSCAN.
+        if "clustering_overrides" in run:
+            run_cfg["clustering_overrides"] = run["clustering_overrides"]
         if "min_area_m2" in run:
             run_cfg["min_area_m2"] = float(run["min_area_m2"])
         # Seuils par modèle (orchestrateur V2) : confiance + IoU propres au run.

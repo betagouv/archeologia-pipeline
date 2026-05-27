@@ -1,65 +1,75 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "entities": [
     {
-      "id": "cratere_obus",
-      "label": "Trous d'obus",
-      "description": "Cratères d'explosion d'obus (zones de combat, WWI).",
-      "display_order": 10
+      "id": "cratere",
+      "label": "Cratères",
+      "description": "Cratères circulaires en cuvette. Détectés par un modèle entraîné à l'origine sur les trous d'obus de Verdun (Première Guerre mondiale) ; applicable à d'autres cratères de signature comparable.",
+      "display_order": 10,
+      "morphology": "circulaire"
     },
     {
       "id": "tranchees_et_boyaux",
       "label": "Tranchées et boyaux",
       "description": "Réseaux de tranchées et boyaux de communication.",
-      "display_order": 20
+      "display_order": 20,
+      "morphology": "lineaire"
     },
     {
       "id": "abri",
       "label": "Abris",
       "description": "Abris et sapes militaires.",
-      "display_order": 30
+      "display_order": 30,
+      "morphology": "circulaire"
     },
     {
       "id": "chemin_creux",
       "label": "Chemins creux",
       "description": "Voies en creux / chemins anciens encaissés.",
-      "display_order": 40
+      "display_order": 40,
+      "morphology": "lineaire"
     },
     {
       "id": "parcellaire",
       "label": "Parcellaire",
       "description": "Limites de parcelles agricoles fossiles.",
-      "display_order": 50
+      "display_order": 50,
+      "morphology": "lineaire"
     },
     {
       "id": "talus_fosse",
       "label": "Talus et fossés",
       "description": "Talus et fossés linéaires.",
-      "display_order": 60
+      "display_order": 60,
+      "morphology": "lineaire"
     },
     {
       "id": "charbonniere",
       "label": "Charbonnières",
       "description": "Plateformes de charbonnage (production de charbon de bois).",
-      "display_order": 70
+      "display_order": 70,
+      "morphology": "circulaire"
     },
     {
       "id": "four",
       "label": "Fours",
       "description": "Structures de combustion (fours à chaux, etc.).",
-      "display_order": 80
+      "display_order": 80,
+      "morphology": "circulaire"
     },
     {
       "id": "circular_depression",
       "label": "Dépressions circulaires",
       "description": "Dépressions circulaires d'origine indéterminée.",
-      "display_order": 90
+      "display_order": 90,
+      "morphology": "circulaire"
     },
     {
-      "id": "zones_extraction_materiaux",
-      "label": "Zones d'extraction de matériaux",
-      "description": "Regroupe en zones les dépressions circulaires détectées (extraction de matériaux probable). Détection issue d'un modèle de cratères.",
-      "display_order": 95
+      "id": "regroupement_crateres",
+      "label": "Regroupement de cratères",
+      "description": "Regroupe en zones les cratères proches détectés (clustering DBSCAN). Peut indiquer des zones d'extraction de matériaux. Détection issue d'un modèle de cratères.",
+      "display_order": 95,
+      "morphology": "zone"
     }
   ]
 }

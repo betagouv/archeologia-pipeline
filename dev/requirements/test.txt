@@ -12,3 +12,10 @@ pyyaml>=6.0
 # QGIS l'embarque, mais les tests hors QGIS le requièrent. Optionnel
 # côté plugin (les fonctions concernées font import lazy dans except).
 shapely>=2.0
+
+# Lecture des métadonnées raster + interprétation CRS : nécessaire pour
+# tester pipeline.tilespec (crs_is_projected, TileSpec.from_raster,
+# assign_crs_if_missing) et pipeline.ingest_plan. Côté plugin l'accès
+# géospatial passe par osgeo/GDAL (fourni par QGIS) ; rasterio est importé
+# en lazy dans des except, donc absent = ces fonctions renvoient None.
+rasterio>=1.3

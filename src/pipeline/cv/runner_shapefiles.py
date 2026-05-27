@@ -72,6 +72,17 @@ def deduplicate_cv_shapefiles_final(
         else:
             log(f"Computer Vision: {len(clustering_configs)} config(s) de clustering actives après filtrage")
 
+    # Surcharges utilisateur des paramètres de clustering (UI étape 3), indexées
+    # par output_class_name → appliquées sur la config chargée du modèle AVANT
+    # l'exécution DBSCAN (sinon les champs édités dans l'UI resteraient cosmétiques).
+    _cluster_overrides = (cv_config or {}).get("clustering_overrides")
+    if clustering_configs and isinstance(_cluster_overrides, dict) and _cluster_overrides:
+        for cc in clustering_configs:
+            ov = _cluster_overrides.get(str(cc.get("output_class_name") or "").strip())
+            if isinstance(ov, dict) and ov:
+                cc.update(ov)
+        log(f"Computer Vision: surcharges de clustering appliquées ({len(_cluster_overrides)} sortie(s))")
+
     # shp_dir n'est PLUS créé d'office : la sortie est routée par entité vers
     # detections/<entity_slug>/ (créés à l'écriture). shp_dir ne sert que de
     # repli legacy, créé paresseusement par conversion_shp s'il est réellement utilisé.
@@ -88,9 +99,9 @@ def deduplicate_cv_shapefiles_final(
     if output_dir is not None and entities:
         from ..output_paths import build_entity_class_targets
         # Routage classe → [(gpkg d'entité, nom_de_couche)] (helper pur testé) :
-        # gère les classes partagées et la DUPLICATION renommée (ex. source
-        # 'cratere_obus' → couche 'cratere_obus' dans « Trous d'obus » ET couche
-        # renommée dans la dérivée « Zones d'extraction »).
+        # gère les classes partagées et la déduplication source/dérivée (ex. la
+        # classe 'cratere', quand « Regroupement de cratères » est sélectionné,
+        # n'apparaît qu'une fois — couche renommée « Cratères » dans le groupe).
         class_targets = build_entity_class_targets(output_dir, entities)
         _n_gpkg = len({gp for lst in class_targets.values() for gp, _ in lst})
         log(f"Computer Vision: routage par entité actif ({_n_gpkg} GeoPackage(s) d'entité)")

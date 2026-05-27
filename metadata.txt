@@ -8,7 +8,7 @@
 name=Archéolog'IA
 qgisMinimumVersion=3.0
 description=Détection de sites archéologiques par réseaux de neurones
-version=0.3.0
+version=0.4.0
 author=Valentin VIEUX
 email=valentin.vieux.pro@outlook.com
 about=Plugin pour automatiser la production d'indices de visualisation (à l'aide du plugin Relief Visualization Toolbox) à partir de données LiDAR ou de MNT et pour détecter des sites archéologiques à l'aide de réseaux de neurones (YOLO détection ou segmentation)
@@ -20,7 +20,16 @@ repository=https://github.com/betagouv/archeologia-pipeline
 #
 
 hasProcessingProvider=no
-changelog=0.3.0 (2026-05-21)
+changelog=0.4.0 (2026-05-27)
+    * Détection par morphologie : étape 3 réorganisée, regroupement (clustering) avec paramètres éditables par entité, couches groupées dans le projet QGIS
+    * Cibles dérivées : une sortie de regroupement peut être cochée comme entité à part entière (ex. « Zones d'extraction de matériaux »)
+    * Seuil de confiance par entité désormais filtrant : les détections sous le seuil sont exclues du GeoPackage (filtrage après clustering, hystérésis préservée)
+    * Symbologie du projet QGIS : tranches de confiance (conf_bin) alignées sur le seuil propre à chaque entité — corrige les tranches basses invisibles
+    * Projet .qgs consolidé écrit via l'API QGIS sur le thread principal (CRS, symbologie et clusters relisables) au lieu d'une écriture XML manuelle
+    * Annulation propre et fine du pipeline à tout moment (Computer Vision, sous-process GDAL, conversion MNT)
+    * Nommage paramétré des dossiers d'indices, indice HS, placement spatial métadonnées-first
+    * Réglages avancés des indices RVT et de la densité ; progression mode-aware
+ 0.3.0 (2026-05-21)
     * Nouvelle interface en assistant (wizard) 4 étapes : Source → Indices → Détection → Lancer
     * Détection par entités archéologiques : on coche les entités, les modèles sont choisis automatiquement (orchestrateur + catalogue d'entités)
     * Seuils confiance / aire min réglables par entité ; IoU géré par modèle, appliqué à tous les runs

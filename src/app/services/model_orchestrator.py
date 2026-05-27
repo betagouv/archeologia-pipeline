@@ -1,7 +1,7 @@
 """Orchestrateur de modèles CV : entités → modèles → runs.
 
 Dans la V2, l'utilisateur ne choisit plus des *modèles* puis filtre leurs
-*classes* ; il coche des **entités** à détecter (parcellaire, trous d'obus…)
+*classes* ; il coche des **entités** à détecter (parcellaire, cratères…)
 et cet orchestrateur résout automatiquement quels modèles lancer, sur quel
 indice RVT, avec quelles classes.
 
@@ -46,6 +46,19 @@ from ..text_slug import slugify
 logger = logging.getLogger(__name__)
 
 
+# Vocabulaire morphologique (axe d'organisation de l'étape 3). ``autre`` = repli
+# pour une entité sans morphologie déclarée (catalogue v1) ou de valeur inconnue.
+VALID_MORPHOLOGIES = ("circulaire", "lineaire", "zone")
+_MORPHOLOGY_FALLBACK = "autre"
+# Sections présentables : (clé, libellé, glyphe), dans l'ordre d'affichage.
+MORPHOLOGY_SECTIONS = (
+    ("circulaire", "Circulaires / ponctuelles", "●"),
+    ("lineaire", "Linéaires", "╱"),
+    ("zone", "Zones / surfaces", "▦"),
+    (_MORPHOLOGY_FALLBACK, "Autres", "•"),
+)
+
+
 # ----------------------------------------------------------------------
 # Types
 # ----------------------------------------------------------------------
@@ -56,6 +69,7 @@ class EntityDef:
     label: str
     description: str = ""
     display_order: int = 1_000_000
+    morphology: str = _MORPHOLOGY_FALLBACK   # circulaire | lineaire | zone | autre
 
 
 @dataclass(frozen=True)
@@ -71,6 +85,10 @@ class InstalledModel:
     # entity_id -> sorties de clustering disponibles (args.yaml:clustering),
     # proposées comme option « regrouper en zones » sur la carte d'entité.
     cluster_options: Dict[str, Tuple[str, ...]] = field(default_factory=dict)
+    # Paramètres DBSCAN par défaut lus depuis args.yaml:clustering, indexés par
+    # output_class_name (ex. {"zone_crateres": {"eps_m": 40.0, …}}). Sert à
+    # pré-remplir les champs éditables côté UI sans importer ``pipeline.cv``.
+    cluster_defaults: Dict[str, Dict[str, float]] = field(default_factory=dict)
     # entity_ids dont la couverture provient d'une *cible dérivée* (model_card:
     # derived_targets) : une sortie de clustering présentée comme une entité à
     # part entière. Le regroupement y est intrinsèque (pas de case cluster).
@@ -135,16 +153,44 @@ def load_entities_catalog(catalog_path: Any) -> List[EntityDef]:
             order = int(entry.get("display_order", 1_000_000))
         except (TypeError, ValueError):
             order = 1_000_000
+        morpho = str(entry.get("morphology") or "").strip().lower()
+        if morpho not in VALID_MORPHOLOGIES:
+            morpho = _MORPHOLOGY_FALLBACK
         result.append(
             EntityDef(
                 id=eid,
                 label=label,
                 description=str(entry.get("description") or ""),
                 display_order=order,
+                morphology=morpho,
             )
         )
     result.sort(key=lambda e: (e.display_order, e.id))
     return result
+
+
+def group_entities_by_morphology(
+    catalog: Sequence[EntityDef],
+) -> List[Tuple[str, str, str, List[EntityDef]]]:
+    """Regroupe le catalogue par morphologie pour l'affichage de l'étape 3.
+
+    Renvoie ``[(clé, libellé_section, glyphe, [entités triées])]`` pour les
+    sections **non vides** seulement, dans l'ordre canonique de
+    ``MORPHOLOGY_SECTIONS``. Les entités de chaque section sont triées par
+    ``display_order`` puis ``id``. Pur (testable sans QGIS) : la source unique
+    du vocabulaire/ordre morphologique vit ici, pas dans l'UI.
+    """
+    by_key: Dict[str, List[EntityDef]] = {}
+    for e in catalog:
+        by_key.setdefault(e.morphology, []).append(e)
+    out: List[Tuple[str, str, str, List[EntityDef]]] = []
+    for key, label, glyph in MORPHOLOGY_SECTIONS:
+        bucket = by_key.get(key)
+        if bucket:
+            out.append(
+                (key, label, glyph, sorted(bucket, key=lambda e: (e.display_order, e.id)))
+            )
+    return out
 
 
 # ----------------------------------------------------------------------
@@ -177,9 +223,12 @@ def discover_installed_models(models_dir: Any) -> List[InstalledModel]:
         # cluster_options construites AVANT le merge des cibles dérivées : sinon
         # une cible déjà agrégée se verrait proposer une case « cluster » redondante.
         cluster_options = _build_cluster_options(coverage, clustering_rules)
-        derived_meta = _merge_derived_targets(
-            coverage, _load_derived_targets(card), clustering_rules
-        )
+        derived_targets = _load_derived_targets(card)
+        derived_meta = _merge_derived_targets(coverage, derived_targets, clustering_rules)
+        # Une sortie de clustering déjà exposée comme entité dérivée (ex.
+        # zone_crateres → « Regroupement de cratères ») ne doit pas aussi proposer
+        # une case « regrouper en clusters » sur l'entité source (redondant).
+        cluster_options = _strip_derived_outputs(cluster_options, derived_targets)
         models.append(
             InstalledModel(
                 name=sub.name,
@@ -190,6 +239,7 @@ def discover_installed_models(models_dir: Any) -> List[InstalledModel]:
                 coverage=coverage,
                 class_names=class_names,
                 cluster_options=cluster_options,
+                cluster_defaults=_load_cluster_defaults(sub),
                 derived_entities=frozenset(derived_meta.keys()),
                 derived_source_classes={k: v[0] for k, v in derived_meta.items()},
                 derived_source_labels={k: v[1] for k, v in derived_meta.items() if v[1]},
@@ -338,6 +388,61 @@ def _load_args_clustering(model_dir: Path) -> List[Tuple[FrozenSet[str], str]]:
     return rules
 
 
+_CLUSTER_PARAM_INT = ("min_cluster_size", "min_samples")
+_CLUSTER_PARAM_FLOAT = ("eps_m", "min_confidence", "min_area_m2", "buffer_m")
+
+
+def _load_cluster_defaults(model_dir: Path) -> Dict[str, Dict[str, float]]:
+    """Lit ``args.yaml:clustering`` → ``{output_class_name: {param: défaut}}``.
+
+    Seuls les paramètres exposables/éditables dans l'UI sont retenus
+    (``eps_m``, ``min_cluster_size``, ``min_samples``, ``min_confidence``,
+    ``min_area_m2``, ``buffer_m``). Lecture YAML directe — l'orchestrateur ne
+    doit pas importer ``pipeline.cv``/``ModelProfile``. Tolérant : absent → {}.
+    """
+    args_file = model_dir / "args.yaml"
+    if not args_file.is_file():
+        return {}
+    try:
+        import yaml  # import différé
+    except ImportError:
+        return {}
+    try:
+        data = yaml.safe_load(args_file.read_text(encoding="utf-8"))
+    except Exception as e:  # noqa: BLE001
+        logger.warning("Erreur lecture %s: %s", args_file, e)
+        return {}
+    if not isinstance(data, dict):
+        return {}
+    raw = data.get("clustering")
+    if isinstance(raw, dict):
+        raw = [raw]
+    if not isinstance(raw, list):
+        return {}
+    out: Dict[str, Dict[str, float]] = {}
+    for cfg in raw:
+        if not isinstance(cfg, dict):
+            continue
+        output = str(cfg.get("output_class_name") or "").strip()
+        if not output:
+            continue
+        params: Dict[str, float] = {}
+        for key in _CLUSTER_PARAM_FLOAT:
+            if key in cfg:
+                try:
+                    params[key] = float(cfg[key])
+                except (TypeError, ValueError):
+                    pass
+        for key in _CLUSTER_PARAM_INT:
+            if key in cfg:
+                try:
+                    params[key] = int(cfg[key])
+                except (TypeError, ValueError):
+                    pass
+        out[output] = params
+    return out
+
+
 def _build_cluster_options(
     coverage: Dict[str, Tuple[str, ...]],
     rules: Sequence[Tuple[FrozenSet[str], str]],
@@ -353,6 +458,24 @@ def _build_cluster_options(
                 if output not in bucket:
                     bucket.append(output)
     return {k: tuple(v) for k, v in options.items()}
+
+
+def _strip_derived_outputs(
+    cluster_options: Dict[str, Tuple[str, ...]],
+    derived_targets: Sequence[Tuple[str, str, bool, Optional[str], Optional[str]]],
+) -> Dict[str, Tuple[str, ...]]:
+    """Retire des ``cluster_options`` les sorties déjà exposées comme entité
+    dérivée : une seule voie de regroupement (l'entité dérivée), pas de case
+    « regrouper en clusters » redondante sur l'entité source. Une entité dont
+    toutes les options disparaissent est retirée."""
+    derived_outputs = {output for output, *_ in derived_targets}
+    if not derived_outputs:
+        return cluster_options
+    pruned = {
+        eid: tuple(o for o in outs if o not in derived_outputs)
+        for eid, outs in cluster_options.items()
+    }
+    return {eid: outs for eid, outs in pruned.items() if outs}
 
 
 def _load_derived_targets(
@@ -503,6 +626,7 @@ def resolve_runs_from_entities(
     catalog: Sequence[EntityDef],
     cluster_enabled: Optional[Set[str]] = None,
     entity_thresholds: Optional[Dict[str, Dict[str, float]]] = None,
+    entity_cluster_params: Optional[Dict[str, Dict[str, float]]] = None,
 ) -> List[Dict[str, Any]]:
     """Résout les entités sélectionnées en liste de ``runs`` (schéma pipeline).
 
@@ -517,6 +641,7 @@ def resolve_runs_from_entities(
     overrides = overrides or {}
     cluster_enabled = cluster_enabled or set()
     entity_thresholds = entity_thresholds or {}
+    entity_cluster_params = entity_cluster_params or {}
     coverage_by_id = {ec.entity.id: ec for ec in build_entity_coverage(catalog, installed_models)}
     models_by_name = {m.name: m for m in installed_models}
     label_by_id = {e.id: e.label for e in catalog}
@@ -569,11 +694,24 @@ def resolve_runs_from_entities(
             for e in group["entities"]
             if e in entity_thresholds and "min_area_m2" in entity_thresholds[e]
         ]
+        # Surcharges de paramètres de clustering, mappées par output_class_name
+        # (ce que le pipeline applique). Une entité (dérivée, ou de base avec
+        # « regrouper » coché) porte ses params ; on les rattache à la/les
+        # sortie(s) de clustering présentes dans ses classes.
+        clustering_overrides: Dict[str, Dict[str, float]] = {}
+        for e in group["entities"]:
+            params = entity_cluster_params.get(e)
+            if not params:
+                continue
+            for oc in group["entity_classes"][e]:
+                if oc in model.cluster_defaults:
+                    clustering_overrides[oc] = dict(params)
         runs.append(
             {
                 "model": model_name,
                 "target_rvt": rvt,
                 "selected_classes": sorted(group["classes"]),
+                "clustering_overrides": clustering_overrides,
                 "entities": [
                     {
                         "id": eid,

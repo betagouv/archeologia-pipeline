@@ -1400,7 +1400,25 @@ def create_shapefile_from_detections(
                 logger.warning(f"Clustering ignoré (dépendance manquante): {e}")
             except Exception as e:
                 logger.warning(f"Clustering ignoré (erreur): {e}")
-        
+
+        # ── Filtrage final des détections sous le seuil du run ──
+        # APRÈS le clustering uniquement : l'hystérésis (min_confidence_extend) a
+        # déjà absorbé les détections sous-seuil comme points d'extension dans les
+        # clusters. On ne garde que les détections >= min_confidence pour les
+        # classes individuelles ; les classes de clusters sont épargnées. Aligne
+        # le contenu du .gpkg sur le binning conf_bin (même min_confidence).
+        if min_confidence > 0:
+            from .class_utils import filter_detections_below_confidence
+            _before = sum(len(v) for v in data_by_class_name.values())
+            data_by_class_name = filter_detections_below_confidence(
+                data_by_class_name, min_confidence, exempt_classes=_cluster_class_names
+            )
+            _after = sum(len(v) for v in data_by_class_name.values())
+            if _after != _before:
+                logger.info(
+                    f"Filtrage confiance < {min_confidence}: {_before} -> {_after} détections"
+                )
+
         # Chemin du GeoPackage par défaut (modèle-centré, repli). Le routage
         # entité-centré (class_targets) le remplace classe par classe ci-dessous.
         _default_gpkg_path = output_dir / f"{output_path.stem}.gpkg"

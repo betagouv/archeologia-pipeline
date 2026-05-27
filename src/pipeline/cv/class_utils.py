@@ -226,6 +226,27 @@ def _format_conf_bound(x: float) -> str:
     return f"{x:g}"
 
 
+def conf_bin_lower_bound(label: Optional[str]) -> Optional[float]:
+    """Borne inférieure d'un libellé de tranche ``conf_bin`` (ex. ``"[0.3:0.4["`` → 0.3).
+
+    Sert à reconstruire le renderer du ``.qgs`` à partir des ``conf_bin``
+    réellement présents dans une couche : on dérive ``min_confidence`` du
+    **minimum** des bornes inférieures observées, garantissant que les catégories
+    de légende matchent les valeurs des features (sinon la tranche basse devient
+    invisible). Renvoie ``None`` si le libellé est illisible.
+    """
+    if not isinstance(label, str):
+        return None
+    s = label.strip().lstrip("[").rstrip("]").rstrip("[")
+    head = s.split(":", 1)[0].strip()
+    if not head:
+        return None
+    try:
+        return float(head)
+    except (TypeError, ValueError):
+        return None
+
+
 def _suffix_for_confidence(value: float) -> str:
     """Retourne le suffixe textuel (low / medium_low / medium / medium_high / high)
     utilisé dans `conf_color`, basé sur la même grille 0.2 que
@@ -334,6 +355,47 @@ def assign_confidence_bin(
     # fallback : dernier bin
     last = bins[-1]
     return last["label"], f"color{color_index}_{last['suffix']}"
+
+
+def filter_detections_below_confidence(
+    data_by_class_name: Dict[str, list],
+    min_confidence: Optional[float],
+    exempt_classes: Optional[set] = None,
+) -> Dict[str, list]:
+    """Retire les détections dont ``confidence < min_confidence``.
+
+    À appeler **après** le clustering : l'hystérésis ``min_confidence_extend`` a
+    déjà absorbé les détections sous-seuil comme points « extension » dans les
+    clusters, donc filtrer ici ne casse pas le regroupement. Les classes listées
+    dans ``exempt_classes`` (sorties de clustering) sont conservées intégralement.
+
+    Garanties :
+    - ``min_confidence`` ``None``/``<= 0`` → no-op (renvoie les listes inchangées) ;
+    - une détection sans ``confidence`` (None / non numérique) est **conservée**
+      (cas défensif : normalement toute détection en porte une) ;
+    - n'altère jamais ``data_by_class_name`` ni ses listes en place (nouvelles listes).
+
+    Cohérent avec le binning ``conf_bin`` (cf. :func:`assign_confidence_bin`) : on
+    utilise le **même** ``min_confidence`` que celui ayant servi à binner, si bien
+    qu'aucune détection conservée n'a un ``conf_bin`` ``None``.
+    """
+    if not min_confidence or min_confidence <= 0:
+        return data_by_class_name
+    exempt = set(exempt_classes or ())
+    result: Dict[str, list] = {}
+    for class_name, detections in data_by_class_name.items():
+        if class_name in exempt:
+            result[class_name] = detections
+            continue
+        result[class_name] = [
+            det
+            for det in detections
+            if not (
+                isinstance(det.get("confidence"), (int, float))
+                and det["confidence"] < min_confidence
+            )
+        ]
+    return result
 
 
 def load_class_colors_from_model(model_path: Union[str, Path]) -> Optional[List[int]]:

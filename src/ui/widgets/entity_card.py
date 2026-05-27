@@ -27,12 +27,31 @@ from qgis.PyQt.QtWidgets import (
 from .no_wheel import NoWheelDoubleSpinBox
 
 
+# Paramètres de regroupement (DBSCAN) éditables, avec explications (tooltips).
+# (clé, libellé, min, max, pas, décimales, est_entier, tooltip)
+_CLUSTER_PARAM_SPECS = (
+    ("eps_m", "Distance max (m)", 0.0, 1000.0, 5.0, 0, True,
+     "Deux cratères plus proches que cette distance sont regroupés."),
+    ("min_cluster_size", "Nb min de cratères", 1.0, 10000.0, 1.0, 0, True,
+     "Taille minimale d'un groupe pour créer une zone."),
+    ("min_confidence", "Confiance min", 0.0, 1.0, 0.05, 2, False,
+     "Ignore les cratères sous ce seuil POUR le regroupement (≠ seuil de détection)."),
+    ("min_area_m2", "Aire min zone (m²)", 0.0, 1_000_000.0, 50.0, 0, True,
+     "Supprime les zones de surface inférieure."),
+    ("buffer_m", "Tampon (m)", 0.0, 200.0, 1.0, 0, True,
+     "Dilate l'enveloppe de chaque groupe."),
+    ("min_samples", "Densité (avancé)", 1.0, 100.0, 1.0, 0, True,
+     "min_samples DBSCAN : nb de voisins pour qu'un point soit « cœur » de cluster."),
+)
+
+
 class EntityCard(QFrame):
     toggled = pyqtSignal(str, bool)        # entity_id, selected
     model_changed = pyqtSignal(str, str)   # entity_id, model_name
     cluster_toggled = pyqtSignal(str, bool)
     activate_rvt = pyqtSignal(str)         # rvt key
     thresholds_changed = pyqtSignal(str, float, float)  # entity_id, confiance, aire min
+    cluster_params_changed = pyqtSignal(str, dict)  # entity_id, {param: valeur}
 
     def __init__(self, entity_id: str, label: str, description: str, parent=None):
         super().__init__(parent)
@@ -43,6 +62,7 @@ class EntityCard(QFrame):
         self._advanced = False
         self._candidates: Dict[str, str] = {}  # name -> display_name
         self._current_model: Optional[str] = None
+        self._active_cluster_keys: set = set()  # params de cluster effectivement édités
         self.setObjectName("EntityCard")
         self.setProperty("state", "off")
 
@@ -151,6 +171,40 @@ class EntityCard(QFrame):
         self._adv_row.setVisible(False)
         layout.addWidget(self._adv_row)
 
+        # Paramètres du regroupement (DBSCAN) : éditables en mode avancé pour une
+        # entité dérivée / clusterisée. Place NON réservée (apparaît seulement pour
+        # ces entités-là) → ne bloate pas les cartes simples.
+        self._cluster_params_box = QFrame()
+        self._cluster_params_box.setObjectName("EntityClusterParams")
+        cpv = QVBoxLayout(self._cluster_params_box)
+        cpv.setContentsMargins(0, 2, 0, 0)
+        cpv.setSpacing(2)
+        cp_title = QLabel("Paramètres du regroupement")
+        cp_title.setObjectName("EntityModelLabel")
+        cpv.addWidget(cp_title)
+        self._cluster_spins: Dict[str, NoWheelDoubleSpinBox] = {}
+        self._cluster_int_keys = set()
+        for key, lbl, mn, mx, step, dec, is_int, tip in _CLUSTER_PARAM_SPECS:
+            r = _Row()
+            wl = QLabel(lbl)
+            wl.setObjectName("EntityModelLabel")
+            sp = NoWheelDoubleSpinBox()
+            sp.setRange(mn, mx)
+            sp.setSingleStep(step)
+            sp.setDecimals(dec)
+            sp.setFixedWidth(92)
+            sp.setToolTip(tip)
+            wl.setToolTip(tip)
+            sp.valueChanged.connect(self._on_cluster_params_changed)
+            r.addWidget(wl, 1)
+            r.addWidget(sp)
+            cpv.addWidget(r)
+            self._cluster_spins[key] = sp
+            if is_int:
+                self._cluster_int_keys.add(key)
+        self._cluster_params_box.setVisible(False)
+        layout.addWidget(self._cluster_params_box)
+
         # Pas de hauteur fixe : la carte épouse son contenu MAXIMAL. Les lignes
         # « réglages » (modèle, cluster, avancé) réservent en permanence leur
         # place (retainSizeWhenHidden, cf. set_candidates) → cocher/décocher ou
@@ -212,6 +266,8 @@ class EntityCard(QFrame):
         conf_override: Optional[float] = None,
         area_override: Optional[float] = None,
         is_derived: bool = False,
+        cluster_default_params: Optional[Dict[str, float]] = None,
+        cluster_params_override: Optional[Dict[str, float]] = None,
     ) -> None:
         self._selected = selected
         self._rvt_key = rvt
@@ -283,6 +339,34 @@ class EntityCard(QFrame):
             finally:
                 self._loading = False
 
+        # Paramètres du regroupement (DBSCAN) — en mode avancé, pour une entité
+        # dérivée ou clusterisée disposant de défauts. Pré-remplis (override sinon
+        # défaut du modèle). Seuls les paramètres réellement utilisés par le modèle
+        # (présents dans les défauts) sont affichés et émis.
+        defaults = cluster_default_params or {}
+        override = cluster_params_override or {}
+        show_cluster_params = bool(
+            selected and self._has_model and self._advanced
+            and (is_derived or cluster_on) and defaults
+        )
+        self._cluster_params_box.setVisible(show_cluster_params)
+        if show_cluster_params:
+            self._active_cluster_keys = set(defaults.keys())
+            self._loading = True
+            try:
+                for key, spin in self._cluster_spins.items():
+                    active = key in defaults
+                    # cacher la ligne (le parent _Row) d'un paramètre non utilisé
+                    spin.parent().setVisible(active)
+                    if active:
+                        val = override.get(key, defaults.get(key))
+                        try:
+                            spin.setValue(float(val))
+                        except (TypeError, ValueError):
+                            pass
+            finally:
+                self._loading = False
+
         self._repolish()
 
     def set_advanced(self, on: bool) -> None:
@@ -296,6 +380,15 @@ class EntityCard(QFrame):
             self.thresholds_changed.emit(
                 self._id, float(self._conf_spin.value()), float(self._area_spin.value())
             )
+
+    def _on_cluster_params_changed(self, *_args) -> None:
+        if self._loading:
+            return
+        params: dict = {}
+        for key in self._active_cluster_keys:
+            val = self._cluster_spins[key].value()
+            params[key] = int(round(val)) if key in self._cluster_int_keys else float(val)
+        self.cluster_params_changed.emit(self._id, params)
 
     # ------------------------------------------------------------------
     def _on_change_clicked(self) -> None:

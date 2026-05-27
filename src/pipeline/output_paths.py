@@ -149,13 +149,14 @@ def build_entity_class_targets(output_dir: Path, entities: Any):
     (libellés ``output_label`` / ``source_label`` du model_card, ou repli) ;
     absent → la couche garde le nom de sa classe.
 
-    Une classe peut viser **plusieurs** GeoPackage. Cas concret : la classe
-    source ``cratere_obus`` appartient à « Trous d'obus » (entité de base) **et**
-    à « Zones d'extraction » (entité *dérivée*). Elle est alors **dupliquée** :
-    couche ``cratere_obus`` dans ``trous_d_obus.gpkg`` et couche renommée (via
-    ``layer_names``) dans ``zones_d_extraction_de_materiaux.gpkg``. Les cibles
-    sont ordonnées couche **canonique** d'abord (``nom_de_couche == classe``),
-    pour que la copie de référence reçoive le chemin d'écriture le plus robuste.
+    **Déduplication (décision C)** : si une classe est revendiquée à la fois par
+    une couche **canonique** (``nom_de_couche == classe``, entité de base) et par
+    une copie **renommée** (constituant d'une entité dérivée, via ``layer_names``),
+    on ne garde que la copie renommée — les éléments individuels n'apparaissent
+    qu'une fois, dans le groupe de la zone. Cas concret : ``cratere`` cochée à la
+    fois comme « Cratères » (base) et comme constituant de « Regroupement de
+    cratères » → une seule couche « Cratères » dans le dossier du regroupement.
+    Sinon (pas de conflit), la couche canonique reste en tête.
     """
     targets: Dict[str, list] = {}
     for ent in (entities or []):
@@ -169,11 +170,17 @@ def build_entity_class_targets(output_dir: Path, entities: Any):
             cls = str(cls)
             layer = str(layer_names.get(cls, cls))
             targets.setdefault(cls, []).append((gpkg, layer))
-    # Couche canonique (layer == classe) en tête : reçoit le chemin d'écriture
-    # principal (avec repli ogr2ogr) ; les copies renommées sont secondaires.
+    deduped: Dict[str, list] = {}
     for cls, lst in targets.items():
-        lst.sort(key=lambda t: 0 if t[1] == cls else 1)
-    return targets
+        has_canonical = any(layer == cls for _g, layer in lst)
+        has_renamed = any(layer != cls for _g, layer in lst)
+        if has_canonical and has_renamed:
+            # conflit base/dérivée → on ne garde que la couche du groupe (renommée)
+            deduped[cls] = [t for t in lst if t[1] != cls]
+        else:
+            # couche canonique (layer == classe) en tête : chemin d'écriture principal
+            deduped[cls] = sorted(lst, key=lambda t: 0 if t[1] == cls else 1)
+    return deduped
 
 
 # ------------------------------------------------------------------ #

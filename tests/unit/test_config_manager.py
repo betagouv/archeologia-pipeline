@@ -59,6 +59,7 @@ class TestDefaultConfig:
         assert cv["entity_model_overrides"] == {}
         assert cv["entity_cluster_enabled"] == []
         assert cv["entity_thresholds"] == {}
+        assert cv["entity_cluster_params"] == {}
 
     def test_default_has_no_ui_block(self, cm: ConfigManager):
         # Le toggle Simple/Expert (ui.display_mode) est supprimé en V2.
@@ -239,6 +240,76 @@ class TestMigrateCvRuns:
         assert cfg["computer_vision"]["runs"] == [
             {"model": "model_y", "target_rvt": "M_HS"}
         ]
+
+
+# ── _migrate_entity_ids (renommages cratere_obus / zones_extraction_materiaux) ─
+
+def _old_ids_cv_config() -> dict:
+    return {
+        "computer_vision": {
+            "selected_entities": ["cratere_obus", "zones_extraction_materiaux", "parcellaire"],
+            "entity_cluster_enabled": ["cratere_obus"],
+            "entity_model_overrides": {"cratere_obus": "verdun_3_classes_1"},
+            "entity_thresholds": {"cratere_obus": {"confidence_threshold": 0.5}},
+            "entity_cluster_params": {"zones_extraction_materiaux": {"eps_m": 50}},
+            "runs": [
+                {
+                    "model": "cratere_circulaire_2",
+                    "target_rvt": "LD",
+                    "selected_classes": ["cratere_obus", "zone_crateres"],
+                    "entities": [
+                        {"id": "zones_extraction_materiaux",
+                         "classes": ["cratere_obus", "zone_crateres"]},
+                        {"id": "cratere_obus", "classes": ["cratere_obus"]},
+                    ],
+                }
+            ],
+        }
+    }
+
+
+class TestMigrateEntityIds:
+    def test_remaps_selection_lists(self):
+        cfg = _old_ids_cv_config()
+        ConfigManager._migrate_entity_ids(cfg)
+        cv = cfg["computer_vision"]
+        assert cv["selected_entities"] == ["cratere", "regroupement_crateres", "parcellaire"]
+        assert cv["entity_cluster_enabled"] == ["cratere"]
+
+    def test_remaps_dict_keyed_fields(self):
+        cfg = _old_ids_cv_config()
+        ConfigManager._migrate_entity_ids(cfg)
+        cv = cfg["computer_vision"]
+        assert cv["entity_model_overrides"] == {"cratere": "verdun_3_classes_1"}
+        assert set(cv["entity_thresholds"]) == {"cratere"}
+        assert set(cv["entity_cluster_params"]) == {"regroupement_crateres"}
+
+    def test_remaps_runs_classes_and_entities(self):
+        cfg = _old_ids_cv_config()
+        ConfigManager._migrate_entity_ids(cfg)
+        run = cfg["computer_vision"]["runs"][0]
+        # zone_crateres (sortie de clustering) inchangé ; cratere_obus → cratere
+        assert run["selected_classes"] == ["cratere", "zone_crateres"]
+        ids = [e["id"] for e in run["entities"]]
+        assert ids == ["regroupement_crateres", "cratere"]
+        assert run["entities"][0]["classes"] == ["cratere", "zone_crateres"]
+        assert run["entities"][1]["classes"] == ["cratere"]
+
+    def test_no_cv_section_does_not_raise(self):
+        cfg = {"app": {}}
+        ConfigManager._migrate_entity_ids(cfg)
+
+    def test_non_dict_cv_does_not_raise(self):
+        cfg = {"computer_vision": "invalid"}
+        ConfigManager._migrate_entity_ids(cfg)
+
+    def test_load_applies_entity_migration(self, tmp_path: Path):
+        (tmp_path / "config.json").write_text(
+            json.dumps(_old_ids_cv_config()), encoding="utf-8"
+        )
+        cfg = ConfigManager(tmp_path).load()
+        assert "cratere" in cfg["computer_vision"]["selected_entities"]
+        assert "cratere_obus" not in cfg["computer_vision"]["selected_entities"]
 
 
 # ── _strip_deprecated_keys (V2 : retrait du toggle Simple/Expert) ─

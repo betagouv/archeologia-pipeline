@@ -5,6 +5,43 @@ from pathlib import Path
 from app.services import finalize_service
 
 
+class TestBuildEntityGrouping:
+    """slug→libellé + ensemble des slugs d'entités dérivées (regroupement partagé)."""
+
+    def test_derived_entity_in_derived_slugs(self):
+        runs = [{
+            "model": "cratere_circulaire_2",
+            "entities": [
+                {"id": "cratere", "slug": "crateres", "label": "Cratères", "is_derived": False},
+                {"id": "regroupement_crateres", "slug": "regroupement_de_crateres",
+                 "label": "Regroupement de cratères", "is_derived": True},
+            ],
+        }]
+        labels, derived = finalize_service.build_entity_grouping(runs)
+        assert labels == {
+            "crateres": "Cratères",
+            "regroupement_de_crateres": "Regroupement de cratères",
+        }
+        assert derived == {"regroupement_de_crateres"}
+
+    def test_no_derived_means_empty_set(self):
+        runs = [{"entities": [{"slug": "parcellaire", "label": "Parcellaire"}]}]
+        labels, derived = finalize_service.build_entity_grouping(runs)
+        assert labels == {"parcellaire": "Parcellaire"}
+        assert derived == set()
+
+    def test_empty_or_malformed_runs(self):
+        assert finalize_service.build_entity_grouping(None) == ({}, set())
+        assert finalize_service.build_entity_grouping([]) == ({}, set())
+        assert finalize_service.build_entity_grouping([{"model": "m"}]) == ({}, set())
+        assert finalize_service.build_entity_grouping(["bad", {"entities": ["x"]}]) == ({}, set())
+
+    def test_label_falls_back_to_slug(self):
+        runs = [{"entities": [{"slug": "fours"}]}]
+        labels, _ = finalize_service.build_entity_grouping(runs)
+        assert labels == {"fours": "fours"}
+
+
 class TestCollectVrtPathsAndBuild:
     def test_builds_and_returns_vrt_for_tif_dirs_only(self, tmp_path: Path, monkeypatch):
         """Seuls les dossiers tif/ sont indexés ; png/ et annotated_images/ sont ignorés."""
@@ -81,6 +118,71 @@ class TestCollectVrtPathsAndBuild:
         paths = finalize_service._collect_vrt_paths_and_build(idx_dir, det_dir, lambda _m: None)
 
         assert paths == []
+
+
+class TestBuildMinConfidenceBySlug:
+    """Le seuil de confiance par couche du .qgs consolidé doit refléter le
+    seuil du run qui a produit la couche (= valeur utilisée pour binner conf_bin),
+    pas un unique seuil global. Sinon les catégories de légende ne matchent pas
+    les conf_bin et la tranche basse devient invisible.
+    """
+
+    def test_maps_each_entity_slug_to_its_run_threshold(self):
+        runs = [
+            {"confidence_threshold": 0.3, "entities": [{"slug": "parcellaire", "label": "Parcellaire"}]},
+            {"confidence_threshold": 0.5, "entities": [{"slug": "talus_et_fosses"}]},
+        ]
+        result = finalize_service.build_min_confidence_by_slug(runs)
+        assert result == {"parcellaire": 0.3, "talus_et_fosses": 0.5}
+
+    def test_same_slug_from_two_runs_keeps_minimum(self):
+        runs = [
+            {"confidence_threshold": 0.5, "entities": [{"slug": "x"}]},
+            {"confidence_threshold": 0.3, "entities": [{"slug": "x"}]},
+        ]
+        result = finalize_service.build_min_confidence_by_slug(runs)
+        assert result == {"x": 0.3}
+
+    def test_run_without_entities_uses_model_slug(self):
+        runs = [{"confidence_threshold": 0.3, "selected_model": "whatever"}]
+        result = finalize_service.build_min_confidence_by_slug(
+            runs, model_slug_fn=lambda _run: "mymodel"
+        )
+        assert result == {"mymodel": 0.3}
+
+    def test_missing_or_empty_threshold_defaults_to_zero(self):
+        runs = [
+            {"entities": [{"slug": "a"}]},  # pas de confidence_threshold
+            {"confidence_threshold": None, "entities": [{"slug": "b"}]},
+        ]
+        result = finalize_service.build_min_confidence_by_slug(runs)
+        assert result == {"a": 0.0, "b": 0.0}
+
+    def test_ignores_empty_input_and_malformed_runs(self):
+        assert finalize_service.build_min_confidence_by_slug([]) == {}
+        assert finalize_service.build_min_confidence_by_slug(None) == {}
+        # entité sans slug ignorée, run non-dict ignoré
+        runs = ["bad", {"confidence_threshold": 0.4, "entities": [{"label": "no slug"}]}]
+        assert finalize_service.build_min_confidence_by_slug(runs) == {}
+
+    def test_output_78_regression_per_entity_threshold_not_global(self):
+        # Régression du bug d'affichage : sur output_78, le seuil GLOBAL
+        # (computer_vision.confidence_threshold = 0.2) doit être ignoré au profit
+        # du seuil PAR RUN (0.3, posé par entité dans l'UI). La map ne dépend que
+        # des runs — la symbologie doit la consommer, pas le global 0.2.
+        runs = [
+            {"confidence_threshold": 0.3, "entities": [{"slug": "regroupement_de_crateres"}]},
+            {"confidence_threshold": 0.3, "entities": [
+                {"slug": "chemins_creux"}, {"slug": "parcellaire"}, {"slug": "talus_et_fosses"},
+            ]},
+            {"confidence_threshold": 0.3, "entities": [
+                {"slug": "charbonnieres"}, {"slug": "depressions_circulaires"}, {"slug": "fours"},
+            ]},
+        ]
+        result = finalize_service.build_min_confidence_by_slug(runs)
+        assert set(result.values()) == {0.3}  # aucun 0.2
+        assert result["regroupement_de_crateres"] == 0.3
+        assert result["parcellaire"] == 0.3
 
 
 class TestCollectDetectionLayers:

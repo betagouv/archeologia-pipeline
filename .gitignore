@@ -2,6 +2,7 @@ __pycache__/
 *.pyc
 .vscode/
 .claude/
+.superpowers/
 
 # PyInstaller (dev/runner_onnx build artifacts)
 dev/runner_onnx/build/

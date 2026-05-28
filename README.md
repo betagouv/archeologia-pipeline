@@ -435,29 +435,29 @@ Structure typique (modes `local_laz` / `ign_laz` / `existing_mnt`) :
 
 ```text
 output_dir/
-  metadata.json                          # Résumé du run (version, dalles, produits, runs CV)
-  pipeline_log_<date>.txt               # Log complet du run
+  metadata.json                          # Résumé du run (version, dalles, produits, runs CV, entités)
+  pipeline_log_<date>.txt                # Log complet du run
   sources/
-    dalles/                             # Fichiers LAZ/LAS sources (mode local_laz)
+    dalles/                              # Fichiers LAZ/LAS sources (modes local_laz / ign_laz)
   indices/
-    MNT/                               # MNT/Densité : pas de paramètres → code brut
-      tif/                             # GeoTIFF MNT
-      jpg/                             # JPG + world files (si activé)
-    LD_A15_Rmin10_Rmax20_H1p7_V1/      # Nom = code indice + paramètres RVT utilisés
+    MNT/                                 # MNT/Densité : pas de paramètres → code brut
+      tif/                               # GeoTIFF MNT
+    LD_A15_Rmin10_Rmax20_H1p7_V1/        # Nom = code indice + paramètres RVT utilisés
       tif/
-      jpg/
-    SVF_R10_D16_V1_N0/
-      tif/
-      jpg/
-  detections/
-    detections_validation.qgs          # Projet QGIS consolidé (unique, multi-modèles)
-    <nom_modele>/                      # Dossier par modèle
-      shapefiles/                      # Shapefiles par classe (avec clustering si activé)
-        detections_LD_parcellaire.shp
-        detections_LD_talus-fosse_fossebutte.shp
-        detections_filtered_too_small.shp
-      jpg/                             # Workdir inférence (supprimé si images annotées désactivées)
+      png/                               # Images d'inférence (entrée Computer Vision)
+    SVF_R10_D16_V1_N0/  HS_Az315_E35_V1/  …
+  detections/                            # Organisé PAR ENTITÉ (vocabulaire utilisateur)
+    detections_validation.qgs            # Projet QGIS consolidé (point d'entrée)
+    parcellaire/                         # Un dossier PAR ENTITÉ cochée
+      parcellaire.gpkg                   # 1 GeoPackage par entité (couches par classe)
+    chemins_creux/  fours/  charbonnieres/  regroupement_de_crateres/  …
+    _technique/                          # Échafaudage non-livrable (traçabilité/debug)
+      <nom_modele>/
+        raw_detections/                  # Sorties brutes (JSON/TXT)
+        annotated_images/                # PNG annotés + legend.png (si option activée)
 ```
+
+**Routage des détections.** Un run UI normal (où l'utilisateur coche des entités à l'étape 3) écrit en **entité-centré** : un dossier `detections/<entity_slug>/` par entité cochée, avec un seul `.gpkg` à l'intérieur (couches par classe). Les sorties brutes du runner ONNX et les images annotées sont reléguées sous `detections/_technique/<modèle>/`. **Repli legacy** : un run construit programmatiquement sans champ `entities` retombe sur `detections/<modèle>/<modèle>.gpkg` (un seul `.gpkg` modèle-centré). Cf. `src/pipeline/output_paths.py` et `src/pipeline/cv/runner_shapefiles.py`.
 
 Le nom de chaque dossier d'indice RVT inclut les paramètres de génération (azimut, élévation,
 rayons, directions, etc.) sous forme de suffixe court (`SVF_R10_D16_V1_N0`,

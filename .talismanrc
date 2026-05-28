@@ -1,6 +1,6 @@
 fileignoreconfig:
 - filename: README.md
-  checksum: 1fcd68a351434d1f2d433f0f1d5ef9b8b71342f48a4f8bb8b2a00c39c01a2e5c
+  checksum: c93563c6fe56267e5f52403975abe13d541a82046fbcf51bced6690f91dd5f80
 - filename: dev/docs/documentation_utilisateur_v1.docx
   checksum: 9984314b88553c8aa0de31f28403d664eba5a2426681c22a6b1c29e5c787cc5e
 - filename: dev/runner_onnx/export_to_onnx.py
@@ -66,7 +66,7 @@ fileignoreconfig:
 - filename: src/app/services/indices_model.py
   checksum: a14975177455e20d8821790dc49048525f7e4d14eb9ac7470b8069b13822b829
 - filename: src/app/services/model_orchestrator.py
-  checksum: b76401d0b8b10599877f7e18189f2464ae9f280931ae4cabc36b661da82e4d80
+  checksum: 1ef16057660b2c570acf797be35f50d76df912266660259c579b530dc1723273
 - filename: src/app/services/source_modes.py
   checksum: ee98347524685732cd4f862492aa48dace890b13b590755edc3c0578f49b7a09
 - filename: src/ui/steps/step_1_source.py
@@ -74,11 +74,11 @@ fileignoreconfig:
 - filename: src/ui/steps/step_2_indices.py
   checksum: ec3096abb1f434c56955051dcd3bc0c5768d288d6c62c546bfe9e522a82b1a77
 - filename: src/ui/steps/step_3_detection.py
-  checksum: 1e5cb74cfb4570c85beea3c17ac9ae96434f3b86d42910a97031bc458cea3837
+  checksum: 72afbc7bda6c3ed8edccc6776199ab9a9ca8e0ece42cb67bee3f28bf294e8806
 - filename: src/ui/steps/step_4_launch.py
   checksum: 7442f4674b05f295e1942bcedba156f346cdcf790fabf96d3b5934abd88225e9
 - filename: src/ui/theme/v2.qss
-  checksum: 95faa2648f82b2af33da9a242b99c5a7686eed498629cd31427e6be5a5909112
+  checksum: 15aeadecf71f173b17fef6ca97766a9ec30f0ec57a2263c1a979f9868476c41e
 - filename: tests/unit/test_indices_model.py
   checksum: 2e84a3805f83eb1ccec2d5d8508d704e1b7c6c14866c08b906b6d09be43721e7
 - filename: tests/unit/test_source_modes.py
@@ -93,4 +93,6 @@ fileignoreconfig:
   checksum: bed286af6662d47892c878c150827f78d40b818470d011f11cf663572a277266
 - filename: tests/unit/test_model_orchestrator.py
   checksum: df1a9eac402b80229ab406cac8862d4ccae573be8440a8df1f9b1c5521b9ecef
+- filename: src/ui/dialogs/_model_info_data.py
+  checksum: 436f45caea7f37475cbf683873fa6c25fa439b6eb671194d5c806e7168497e16
 version: "1.0"

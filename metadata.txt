@@ -8,7 +8,7 @@
 name=Archéolog'IA
 qgisMinimumVersion=3.0
 description=Détection de sites archéologiques par réseaux de neurones
-version=0.4.0
+version=0.5.0
 author=Valentin VIEUX
 email=valentin.vieux.pro@outlook.com
 about=Plugin pour automatiser la production d'indices de visualisation (à l'aide du plugin Relief Visualization Toolbox) à partir de données LiDAR ou de MNT et pour détecter des sites archéologiques à l'aide de réseaux de neurones (YOLO détection ou segmentation)
@@ -20,7 +20,10 @@ repository=https://github.com/betagouv/archeologia-pipeline
 #
 
 hasProcessingProvider=no
-changelog=0.4.0 (2026-05-27)
+changelog=0.5.0 (2026-05-28)
+    * Fenêtre d'info modèle (ⓘ) depuis « Runs IA programmés » à l'étape 3 : architecture, indice RVT et MNT d'entraînement, regroupement (DBSCAN), notes & limites, bouton « Ouvrir le dossier »
+    * README § « Sorties » réécrit pour refléter la structure entité-centrée réelle (detections/<entité>/<entité>.gpkg + _technique/<modèle>/)
+ 0.4.0 (2026-05-27)
     * Détection par morphologie : étape 3 réorganisée, regroupement (clustering) avec paramètres éditables par entité, couches groupées dans le projet QGIS
     * Cibles dérivées : une sortie de regroupement peut être cochée comme entité à part entière (ex. « Zones d'extraction de matériaux »)
     * Seuil de confiance par entité désormais filtrant : les détections sous le seuil sont exclues du GeoPackage (filtrage après clustering, hystérésis préservée)

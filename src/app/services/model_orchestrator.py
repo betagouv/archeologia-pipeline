@@ -107,6 +107,10 @@ class InstalledModel:
     default_confidence: float = 0.3
     default_min_area: float = 0.0
     default_iou: float = 0.5
+    # Dossier du modèle sur disque (``data/models/<name>/``). Utile côté UI pour
+    # ouvrir le dossier dans l'explorateur ou (re)lire ``model_card.yaml`` /
+    # ``args.yaml`` à la demande sans relancer ``discover_installed_models``.
+    model_dir: Optional[Path] = None
 
 
 @dataclass(frozen=True)
@@ -247,6 +251,7 @@ def discover_installed_models(models_dir: Any) -> List[InstalledModel]:
                 default_confidence=conf,
                 default_min_area=area,
                 default_iou=iou,
+                model_dir=sub,
             )
         )
     return models
@@ -267,6 +272,11 @@ def _load_model_card(model_dir: Path) -> Optional[Dict[str, Any]]:
         logger.warning("Erreur lecture %s: %s", card_file, e)
         return None
     return data if isinstance(data, dict) else None
+
+
+# Alias public : la fonction est utile à l'UI (dialog d'info modèle) pour
+# (re)lire le ``model_card.yaml`` à l'ouverture du dialog. Pas de duplication.
+load_model_card = _load_model_card
 
 
 def _find_weights(model_dir: Path) -> Optional[Path]:

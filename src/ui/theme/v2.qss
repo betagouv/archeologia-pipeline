@@ -353,3 +353,70 @@ QPushButton[role="micro"] {
     background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #cee2fa, stop:1 #94bce4);
 }
 #WizardPrimaryButton:disabled { background: #d0d0d0; border-color: #a0a0a0; color: #909090; }
+
+/* ---- Dialog d'info modèle (ⓘ depuis « Runs IA programmés ») ---- */
+/* Bouton ⓘ à droite du nom du modèle dans chaque ligne de récap. */
+#ModelInfoButton {
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 9px;
+    color: #2b79c2;
+    font-size: 13px;
+    padding: 0px 4px;
+    min-width: 18px;
+    min-height: 18px;
+}
+#ModelInfoButton:hover { background: #d6e6f4; border: 1px solid #2b79c2; color: #1d5a96; }
+#ModelInfoButton:disabled { color: #b0b0b0; }
+
+/* Fenêtre. Le QDialog hérite déjà du fond #f0f0f0 global. */
+#ModelInfoDialog { background: #f0f0f0; }
+
+/* En-tête fixe au-dessus du scroll. */
+#ModelInfoHeader { background: #ffffff; border-bottom: 1px solid #c4c4c4; }
+#ModelInfoKicker {
+    color: #5a5a5a;
+    font-size: 9px;
+    font-weight: bold;
+    letter-spacing: 1px;
+}
+#ModelInfoSlug { color: #000000; font-size: 15px; font-weight: bold; }
+#ModelInfoDisplayName { color: #1d5a96; font-size: 12px; }
+#ModelInfoDescription { color: #2c2c2c; font-size: 11px; }
+#ModelInfoMeta { color: #5a5a5a; font-size: 10px; font-style: italic; }
+
+/* Zone scrollable. */
+#ModelInfoScroll { background: transparent; border: none; }
+
+/* Section (chacun des blocs ARCHITECTURE / RVT / MNT / …). */
+#ModelInfoSection { background: transparent; }
+#ModelInfoSectionHeader {
+    background: transparent;
+    border-top: 1px solid #d0d0d0;
+}
+#ModelInfoSectionHeader:hover { background: #e8e8e8; }
+#ModelInfoSectionTitle {
+    color: #1d5a96;
+    font-size: 11px;
+    font-weight: bold;
+    letter-spacing: 0.5px;
+}
+#ModelInfoSectionBody { background: transparent; }
+
+/* Lignes label / valeur dans une section. */
+#ModelInfoRowLabel { color: #5a5a5a; font-size: 11px; }
+#ModelInfoRowValue { color: #000000; font-size: 11px; }
+#ModelInfoRowValueMono {
+    color: #000000;
+    font-family: "Consolas", "Courier New", monospace;
+    font-size: 10px;
+    background: #f6f6f6;
+    border: 1px solid #e3e3e3;
+    border-radius: 2px;
+    padding: 2px 6px;
+}
+
+/* Pied avec « Ouvrir le dossier » + « Fermer ». */
+#ModelInfoFooter { background: #f0f0f0; border-top: 1px solid #c4c4c4; }
+#ModelInfoOpenDirButton { padding: 4px 12px; }
+#ModelInfoCloseButton { padding: 4px 18px; font-weight: bold; }

@@ -21,6 +21,7 @@ from qgis.PyQt.QtWidgets import (
     QPushButton,
     QScrollArea,
     QStackedWidget,
+    QToolButton,
     QVBoxLayout,
     QWidget,
 )
@@ -418,15 +419,44 @@ class DetectionPage(QWidget):
             h.setSpacing(8)
             name = QLabel(disp)
             name.setObjectName("RunName")
+            # Bouton ⓘ : ouvre un dialog modal d'info détaillée sur le modèle
+            # (model_card.yaml + args.yaml). Désactivé si le modèle n'est pas
+            # résolu (run orphelin, ne devrait pas arriver en pratique).
+            info_btn = QToolButton()
+            info_btn.setObjectName("ModelInfoButton")
+            info_btn.setText("ⓘ")
+            info_btn.setCursor(Qt.PointingHandCursor)
+            info_btn.setToolTip("Voir les détails du modèle")
+            if model is not None:
+                # Capture du modèle dans la signature par défaut pour figer la
+                # référence (sans ça, toutes les lambdas pointeraient sur le
+                # dernier modèle du loop).
+                info_btn.clicked.connect(lambda _checked=False, m=model: self._open_model_info(m))
+            else:
+                info_btn.setEnabled(False)
             classes = QLabel(", ".join(run.get("selected_classes") or []))
             classes.setObjectName("EntityDesc")
             rvt_tag = QLabel(f"🔗 {run['target_rvt']}")
             rvt_tag.setObjectName("RunRvtTag")
             h.addWidget(name)
+            h.addWidget(info_btn)
             h.addWidget(classes, 1)
             h.addWidget(rvt_tag)
             self._runs_layout.insertWidget(idx, row)  # au-dessus du stretch final
             self._run_rows.append(row)
+
+    # ------------------------------------------------------------------
+    def _open_model_info(self, model) -> None:
+        """Ouvre la fenêtre d'info détaillée pour ``model`` (carte modèle).
+
+        Import différé du dialog pour éviter de charger les widgets Qt du
+        sous-package ``ui.dialogs`` tant qu'on n'en a pas besoin (la majorité
+        des sessions n'ouvrent jamais cette fenêtre).
+        """
+        if model is None:
+            return
+        from ..dialogs.model_info_dialog import ModelInfoDialog
+        ModelInfoDialog(model, parent=self).exec_()
 
     # ------------------------------------------------------------------
     # API page

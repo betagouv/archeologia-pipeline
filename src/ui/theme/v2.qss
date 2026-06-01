@@ -161,6 +161,12 @@ QPushButton:disabled { color: #909090; border-color: #b0b0b0; }
     padding: 6px 10px; color: #2c2c2c;
 }
 
+/* ---- Bandeau « lecture seule » (consultation pendant un run) ---- */
+#ReviewBanner {
+    background: #fdf0d5; border-bottom: 1px solid #d9a441;
+    color: #7a5400; font-weight: bold; padding: 6px 16px;
+}
+
 /* ---- Toast (verrou MNT) ---- */
 #Toast {
     background: #1c1b18; color: #f6f4ef;

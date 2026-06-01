@@ -355,6 +355,18 @@ Cette grille indique, pour chaque vague livrée, **quelles sections de tests son
 
 ---
 
+## 19. Consultation lecture-seule pendant un run ⭐ P0
+
+- [ ] **19.1** Lancer un run ; pendant l'exécution, cliquer **étape 1** dans le rail → page Source affichée, bandeau « 🔒 Lecture seule — run en cours » visible ; chemins, boutons « Parcourir… »/« Couche QGIS » et frise de mode **inactifs** mais valeurs lisibles
+- [ ] **19.2** **Étape 2** → « Réglages avancés… » fonctionne, bascule entre les onglets RVT fonctionne ; tous les spinbox/checkbox/combos grisés-inactifs ; « ↺ Réinitialiser » inactif ; valeurs lancées affichées
+- [ ] **19.3** **Étape 3** → interrupteur, cartes d'entités, combos « Changer ▾ », case « Regrouper », case « Générer images annotées » **inactifs** ; chips de filtre morphologique + scroll **utilisables** ; cocher « Réglages avancés » révèle les seuils par entité (en lecture seule)
+- [ ] **19.4** Cliquer **étape 4** dans le rail (1 clic) → retour au **RunView en direct** (pas le récap), la progression continue ; bandeau lecture-seule disparu
+- [ ] **19.5** Enchaîner « Suivant » de l'étape 1 jusqu'à l'étape 4 pendant le run → autorisé ; sur l'étape 4 le bouton « ▶ Lancer le pipeline » reste **désactivé** (pas de relance)
+- [ ] **19.6** Fin / annulation du run → les 3 étapes redeviennent **éditables**, bandeau disparu, autosave + validation refonctionnent, l'étape 4 réaffiche le récap
+- [ ] **19.7** Mode `existing_rvt` : étape 2 « sans objet » (sections masquées) reste masquée en lecture-seule ; détection désactivée → empty-state non activable pendant le run
+
+---
+
 ## Résumé
 
 - **Total tests** : 60+

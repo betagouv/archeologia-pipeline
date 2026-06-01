@@ -120,10 +120,10 @@ class SourcePage(QWidget):
         self._output_edit = QLineEdit()
         self._output_edit.setPlaceholderText("Chemin du dossier de sortie des résultats")
         self._output_edit.textChanged.connect(self._on_output_changed)
-        out_browse = QPushButton("Parcourir…")
-        out_browse.clicked.connect(self._browse_output)
+        self._out_browse_btn = QPushButton("Parcourir…")
+        self._out_browse_btn.clicked.connect(self._browse_output)
         row2.addWidget(self._output_edit, 1)
-        row2.addWidget(out_browse)
+        row2.addWidget(self._out_browse_btn)
         iv.addWidget(out_label)
         iv.addLayout(row2)
 
@@ -345,6 +345,19 @@ class SourcePage(QWidget):
     def summary(self) -> str:
         """Résumé court pour le sous-libellé du rail (étape Source)."""
         return mode_info(self._mode).banner_label
+
+    def set_readonly(self, ro: bool) -> None:
+        """Verrouille la saisie pour consultation pendant un run (lecture seule).
+
+        N'agit que sur ``setEnabled``/``setReadOnly`` (jamais ``setText``/…),
+        donc n'émet aucun signal ``changed`` et ne déclenche pas l'autosave.
+        """
+        self._source_edit.setReadOnly(ro)
+        self._output_edit.setReadOnly(ro)
+        for btn in (self._browse_btn, self._qgis_btn, self._out_browse_btn):
+            btn.setEnabled(not ro)
+        for btn in self._stage_buttons.values():
+            btn.setEnabled(not ro)
 
     def load_from(self, config: dict) -> None:
         files = (config.get("app") or {}).get("files") or {}

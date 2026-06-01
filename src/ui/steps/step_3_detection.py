@@ -124,11 +124,11 @@ class DetectionPage(QWidget):
         es_desc.setObjectName("WizardPageSub")
         es_desc.setAlignment(Qt.AlignCenter)
         es_desc.setWordWrap(True)
-        es_btn = QPushButton("Activer la détection")
-        es_btn.clicked.connect(lambda: self._enable_check.setChecked(True))
+        self._es_btn = QPushButton("Activer la détection")
+        self._es_btn.clicked.connect(lambda: self._enable_check.setChecked(True))
         es.addWidget(es_title)
         es.addWidget(es_desc)
-        es.addWidget(es_btn, 0, Qt.AlignCenter)
+        es.addWidget(self._es_btn, 0, Qt.AlignCenter)
 
         # ── Contenu (détection activée) ──
         self._content = QWidget()
@@ -464,6 +464,20 @@ class DetectionPage(QWidget):
     def set_active_rvts(self, rvt_keys) -> None:
         self._active_rvts = set(rvt_keys or [])
         self._refresh()
+
+    def set_readonly(self, ro: bool) -> None:
+        """Verrouille la saisie pour consultation pendant un run (lecture seule).
+
+        Désactive l'interrupteur, les cartes d'entités et la case « images
+        annotées » ; garde actifs le scroll, les filtres morphologiques
+        (navigation) et la case « Réglages avancés » (révèle les seuils en
+        lecture seule). N'agit que sur ``setEnabled`` → aucun ``changed``/autosave.
+        """
+        self._enable_check.setEnabled(not ro)
+        self._annot_check.setEnabled(not ro)
+        self._es_btn.setEnabled(not ro)
+        for card in self._cards.values():
+            card.setEnabled(not ro)
 
     def summary(self) -> str:
         if not self._enabled:

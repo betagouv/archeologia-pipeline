@@ -292,12 +292,12 @@ class IndicesPage(QWidget):
         footer = QHBoxLayout()
         self._count_label = QLabel("")
         self._count_label.setObjectName("WizardPageSub")
-        adv_btn = QPushButton("Réglages avancés…")
-        adv_btn.setObjectName("GhostButton")
-        adv_btn.clicked.connect(self._on_advanced)
+        self._adv_btn = QPushButton("Réglages avancés…")
+        self._adv_btn.setObjectName("GhostButton")
+        self._adv_btn.clicked.connect(self._on_advanced)
         footer.addWidget(self._count_label)
         footer.addStretch(1)
-        footer.addWidget(adv_btn)
+        footer.addWidget(self._adv_btn)
         rv.addLayout(footer)
         root.addWidget(self._rvt_card)
 
@@ -314,9 +314,9 @@ class IndicesPage(QWidget):
         root.setSpacing(12)
 
         header = QHBoxLayout()
-        back = QPushButton("←  Vue d'ensemble")
-        back.setObjectName("GhostButton")
-        back.clicked.connect(self._show_overview)
+        self._adv_back_btn = QPushButton("←  Vue d'ensemble")
+        self._adv_back_btn.setObjectName("GhostButton")
+        self._adv_back_btn.clicked.connect(self._show_overview)
         titles = QVBoxLayout()
         titles.setSpacing(2)
         title = QLabel("Paramètres détaillés")
@@ -328,14 +328,14 @@ class IndicesPage(QWidget):
         subtitle.setWordWrap(True)
         titles.addWidget(title)
         titles.addWidget(subtitle)
-        reset = QPushButton("↺  Réinitialiser")
-        reset.setObjectName("GhostButton")
-        reset.clicked.connect(self._reset_advanced)
-        header.addWidget(back)
+        self._reset_btn = QPushButton("↺  Réinitialiser")
+        self._reset_btn.setObjectName("GhostButton")
+        self._reset_btn.clicked.connect(self._reset_advanced)
+        header.addWidget(self._adv_back_btn)
         header.addSpacing(10)
         header.addLayout(titles)
         header.addStretch(1)
-        header.addWidget(reset)
+        header.addWidget(self._reset_btn)
         root.addLayout(header)
 
         self._adv_tabs = QTabWidget()
@@ -760,6 +760,27 @@ class IndicesPage(QWidget):
         if n_rvt:
             return f"{base} + {n_rvt} indice{'s' if n_rvt > 1 else ''} RVT"
         return base
+
+    def set_readonly(self, ro: bool) -> None:
+        """Verrouille la saisie pour consultation pendant un run (lecture seule).
+
+        Désactive uniquement les widgets de *saisie* ; les widgets de
+        navigation/dépliage (« Réglages avancés… », retour, barre d'onglets RVT,
+        scroll) restent actifs pour permettre de tout consulter. N'agit que sur
+        ``setEnabled``/``setReadOnly`` → aucun signal ``changed`` ni autosave.
+        """
+        self._mnt_chip.setEnabled(not ro)
+        self._dens_chip.setEnabled(not ro)
+        self._res_spin.setEnabled(not ro)
+        self._reset_btn.setEnabled(not ro)
+        for card in self._index_cards.values():
+            card.setEnabled(not ro)
+        for chk in self._activate_checks.values():
+            chk.setEnabled(not ro)
+        for _section, _key, widget, kind, _default in self._adv_fields:
+            widget.setEnabled(not ro)
+            if kind == "text":
+                widget.setReadOnly(ro)
 
     def load_from(self, config: dict) -> None:
         proc = config.get("processing") or {}

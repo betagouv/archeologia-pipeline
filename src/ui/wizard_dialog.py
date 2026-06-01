@@ -75,6 +75,7 @@ class WizardDialog(QDialog):
         super().__init__(parent)
         self._n_steps = len(self.RAIL_STEPS)
         self._current_step = 1
+        self._review_mode = False  # consultation lecture seule pendant un run
         self._plugin_root = Path(__file__).resolve().parents[2]
         self._cm = ConfigManager(self._plugin_root)
         self._config = self._cm.load_last_ui_config()
@@ -96,6 +97,12 @@ class WizardDialog(QDialog):
         root.setSpacing(0)
         root.addWidget(self._build_title_bar())
         root.addWidget(self._build_progress_liseret())
+
+        # Bandeau « lecture seule » affiché sur les étapes 1-3 pendant un run.
+        self._review_banner = QLabel("🔒  Lecture seule — run en cours")
+        self._review_banner.setObjectName("ReviewBanner")
+        self._review_banner.setVisible(False)
+        root.addWidget(self._review_banner)
 
         body = QHBoxLayout()
         body.setContentsMargins(0, 0, 0, 0)
@@ -226,6 +233,7 @@ class WizardDialog(QDialog):
             self._apply_validation()
         else:
             self._update_launch_button()
+        self._update_review_banner()
 
     def _on_prev(self) -> None:
         self._goto_step(self._current_step - 1)
@@ -319,20 +327,43 @@ class WizardDialog(QDialog):
             pass  # la persistance ne doit jamais bloquer l'UI
 
     def _on_run_started(self) -> None:
-        self._set_nav_enabled(False)
+        self._enter_review_mode()
 
     def _on_run_finished(self) -> None:
-        self._set_nav_enabled(True)
+        self._exit_review_mode()
 
-    def _set_nav_enabled(self, on: bool) -> None:
-        """Verrouille la navigation pendant un run (l'annulation reste possible
-        via le bouton dédié du RunView)."""
-        self._prev_btn.setEnabled(on and self._current_step > 1)
-        self._rail.setEnabled(on)
-        if on:
-            self._update_launch_button()  # respecte la validation en étape 4
-        else:
-            self._next_btn.setEnabled(False)
+    def _enter_review_mode(self) -> None:
+        """Pendant un run : navigation conservée mais étapes 1-3 en lecture seule.
+
+        L'utilisateur peut revenir consulter les paramètres lancés (rail +
+        Précédent/Suivant restent actifs) sans pouvoir rien modifier ; seule la
+        relance (bouton « Lancer » de l'étape 4) reste désactivée.
+        """
+        self._review_mode = True
+        self._source_page.set_readonly(True)
+        self._indices_page.set_readonly(True)
+        self._detection_page.set_readonly(True)
+        self._rail.setEnabled(True)
+        self._prev_btn.setEnabled(self._current_step > 1)
+        self._update_launch_button()
+        self._update_review_banner()
+
+    def _exit_review_mode(self) -> None:
+        """Fin/annulation du run : restaure l'édition complète des étapes 1-3."""
+        self._review_mode = False
+        self._source_page.set_readonly(False)
+        self._indices_page.set_readonly(False)
+        self._detection_page.set_readonly(False)
+        self._rail.setEnabled(True)
+        self._prev_btn.setEnabled(self._current_step > 1)
+        self._update_launch_button()
+        self._update_review_banner()
+
+    def _update_review_banner(self) -> None:
+        """Affiche le bandeau « Lecture seule » uniquement sur les étapes 1-3
+        pendant un run (masqué sur l'étape 4 = RunView, et hors run)."""
+        show = self._review_mode and self._current_step < self._n_steps
+        self._review_banner.setVisible(show)
 
     # ------------------------------------------------------------------
     # Validation bloquante (rail + bandeau étape 4 + bouton Lancer)
@@ -363,10 +394,13 @@ class WizardDialog(QDialog):
         self._update_launch_button()
 
     def _update_launch_button(self) -> None:
-        if self._launch_page.is_running():
-            self._next_btn.setEnabled(False)
-            return
+        running = self._launch_page.is_running()
         if self._current_step == self._n_steps:
+            # Étape 4 : pendant un run, jamais de relance possible.
+            if running:
+                self._next_btn.setEnabled(False)
+                self._next_btn.setToolTip("Run en cours — relance impossible")
+                return
             ok = not self._validation_errors
             self._next_btn.setEnabled(ok)
             self._next_btn.setToolTip(
@@ -374,6 +408,8 @@ class WizardDialog(QDialog):
                 else "Corrigez avant de lancer :\n• " + "\n• ".join(self._validation_errors)
             )
         else:
+            # Étapes 1-3 : « Suivant » = navigation pure, autorisée même pendant
+            # un run (permet de remonter jusqu'à l'étape 4 = suivi du run).
             self._next_btn.setEnabled(True)
             self._next_btn.setToolTip("")
 

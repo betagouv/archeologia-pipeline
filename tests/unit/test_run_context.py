@@ -182,6 +182,8 @@ class TestProductsConfigBehavior:
         assert ProductsConfig(MNT=False, SVF=True).needs_mnt() is True
         assert ProductsConfig(MNT=False, M_HS=True).needs_mnt() is True
         assert ProductsConfig(MNT=False, HS=True).needs_mnt() is True
+        # SLRM est un indice de visualisation dérivé du MNT — il l'exige aussi.
+        assert ProductsConfig(MNT=False, SLRM=True).needs_mnt() is True
 
     def test_needs_mnt_false_when_density_only(self):
         # Densité ne dépend pas du MNT.
@@ -382,6 +384,16 @@ class TestValidateProductsRule:
 
     def test_existing_mnt_svf_ok(self, tmp_path: Path):
         ctx = self._ctx("existing_mnt", ProductsConfig(SVF=True), tmp_path)
+        assert validate_run_context(ctx) == ([], [])
+
+    def test_existing_mnt_hs_ok(self, tmp_path: Path):
+        # HS (ombrage simple) est un indice de visualisation à part entière :
+        # le cocher seul doit suffire, comme les autres indices.
+        ctx = self._ctx("existing_mnt", ProductsConfig(HS=True), tmp_path)
+        assert validate_run_context(ctx) == ([], [])
+
+    def test_existing_mnt_slrm_ok(self, tmp_path: Path):
+        ctx = self._ctx("existing_mnt", ProductsConfig(SLRM=True), tmp_path)
         assert validate_run_context(ctx) == ([], [])
 
     def test_existing_rvt_no_product_required(self, tmp_path: Path):

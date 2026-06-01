@@ -67,6 +67,14 @@ class FilesConfig:
         }.get(self.data_mode)
 
 
+# Codes des indices de visualisation RVT (tous dérivés du MNT). Source unique :
+# toute logique « au moins un indice » / « faut-il un MNT » doit s'appuyer
+# dessus, sinon on réintroduit le bug d'un indice oublié dans une liste codée
+# en dur (HS absent de la validation, SLRM absent de needs_mnt…).
+_VISUALIZATION_PRODUCTS: Tuple[str, ...] = ("HS", "M_HS", "SVF", "SLO", "LD", "SLRM", "VAT")
+_ALL_PRODUCTS: Tuple[str, ...] = ("MNT", "DENSITE", *_VISUALIZATION_PRODUCTS)
+
+
 @dataclass(frozen=True)
 class ProductsConfig:
     """Drapeaux d'activation des produits visualisation.
@@ -87,16 +95,20 @@ class ProductsConfig:
 
     def active(self) -> List[str]:
         """Liste des produits activés (pour les logs/metadata)."""
-        return [k for k in ("MNT", "DENSITE", "HS", "M_HS", "SVF", "SLO", "LD", "SLRM", "VAT") if getattr(self, k)]
+        return [k for k in _ALL_PRODUCTS if getattr(self, k)]
+
+    def has_visualization_index(self) -> bool:
+        """Vrai si au moins un indice de visualisation RVT est actif."""
+        return any(getattr(self, k) for k in _VISUALIZATION_PRODUCTS)
 
     def needs_mnt(self) -> bool:
         """Vrai si on doit calculer un MNT (soit demandé directement,
         soit comme dépendance d'un indice de visualisation)."""
-        return self.MNT or self.HS or self.M_HS or self.SVF or self.SLO or self.LD or self.VAT
+        return self.MNT or self.has_visualization_index()
 
     def as_dict(self) -> Dict[str, bool]:
         """Vue dict (pour les call-sites qui en attendent encore un)."""
-        return {k: getattr(self, k) for k in ("MNT", "DENSITE", "HS", "M_HS", "SVF", "SLO", "LD", "SLRM", "VAT")}
+        return {k: getattr(self, k) for k in _ALL_PRODUCTS}
 
 
 @dataclass(frozen=True)
@@ -429,15 +441,10 @@ def validate_run_context(ctx: RunContext) -> Tuple[List[str], List[str]]:
     # les RVT déjà fournis).
     if ctx.mode in ("ign_laz", "local_laz", "existing_mnt"):
         if ctx.mode == "existing_mnt":
-            visu_active = (
-                ctx.processing.products.M_HS
-                or ctx.processing.products.SVF
-                or ctx.processing.products.SLO
-                or ctx.processing.products.LD
-                or ctx.processing.products.SLRM
-                or ctx.processing.products.VAT
-            )
-            if not visu_active:
+            # En existing_mnt le MNT est déjà fourni : seul un indice RVT
+            # constitue un calcul à faire (cf. _VISUALIZATION_PRODUCTS, source
+            # unique — ne jamais réénumérer les indices à la main ici).
+            if not ctx.processing.products.has_visualization_index():
                 errors.append("Cochez au moins un indice de visualisation")
         elif not ctx.processing.products.active():
             errors.append("Cochez au moins un produit à générer")

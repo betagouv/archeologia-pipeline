@@ -8,7 +8,7 @@ fileignoreconfig:
 - filename: scripts/_apply_notebook_standardization.py
   checksum: 6e0ed4488d8a8af1730676c54ef79200ea56acf9efcdb8ec9b784a94c875ea4e
 - filename: src/app/run_context.py
-  checksum: 8c64a761d4ea46c63d3f7518366b51f3a9cf325a19734ae647bd4c81d98ec58c
+  checksum: f7bd85e575d4dfe752bfb20d834d185ce263577e2213bb0a56f22a42222f416f
 - filename: src/app/services/finalize_service.py
   checksum: 1c7c9d586adeddb6e142668caf10d8da5f92d7fedc142b2e831fe1039d5e0904
 - filename: src/config/config_manager.py
@@ -52,7 +52,7 @@ fileignoreconfig:
 - filename: tests/unit/test_preflight.py
   checksum: 4d01a9e7e556c0cdeb6dd77a4e299b18c939f921a1827d80f2b3a139df624d84
 - filename: tests/unit/test_run_context.py
-  checksum: 164537388ef868cb808fd12c16068777bbc25625ef3e331129d6c5b46052dcf8
+  checksum: 310314715da80dd9537137b35b6d440d2de37892daac6fabc6b036e599c2e393
 - filename: src/app/services/indices_model.py
   checksum: a14975177455e20d8821790dc49048525f7e4d14eb9ac7470b8069b13822b829
 - filename: src/app/services/model_orchestrator.py
@@ -60,15 +60,15 @@ fileignoreconfig:
 - filename: src/app/services/source_modes.py
   checksum: ee98347524685732cd4f862492aa48dace890b13b590755edc3c0578f49b7a09
 - filename: src/ui/steps/step_1_source.py
-  checksum: 47cacd7755455c93b70e36f6c56533eb8d3ef04b0cd115a4e932a00021de7ac5
+  checksum: 40869ae536eb61f7346d818e79736ed55a587e5d39c0e6a28b3a2aeaf3dbd210
 - filename: src/ui/steps/step_2_indices.py
-  checksum: ec3096abb1f434c56955051dcd3bc0c5768d288d6c62c546bfe9e522a82b1a77
+  checksum: 0b361732c18524c8f9d90db54de994096c2a0c3e58a3157fff2bab41854afb26
 - filename: src/ui/steps/step_3_detection.py
-  checksum: 72afbc7bda6c3ed8edccc6776199ab9a9ca8e0ece42cb67bee3f28bf294e8806
+  checksum: 3337c33a4c5122405196085cdc8329f9033165d9584e15100b401a3ce2a0616e
 - filename: src/ui/steps/step_4_launch.py
   checksum: 7442f4674b05f295e1942bcedba156f346cdcf790fabf96d3b5934abd88225e9
 - filename: src/ui/theme/v2.qss
-  checksum: 15aeadecf71f173b17fef6ca97766a9ec30f0ec57a2263c1a979f9868476c41e
+  checksum: 245d55eeeb6fe28cc21478432e4c1a357d5eb985f7bc12564f4c48044b15db3f
 - filename: tests/unit/test_indices_model.py
   checksum: 2e84a3805f83eb1ccec2d5d8508d704e1b7c6c14866c08b906b6d09be43721e7
 - filename: tests/unit/test_source_modes.py

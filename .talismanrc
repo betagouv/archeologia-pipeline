@@ -41,18 +41,8 @@ fileignoreconfig:
   checksum: 55bb3e95c969f60f7739973a3509e6be12ea030d735172a3e7671122428f9abd
 - filename: src/pipeline/types.py
   checksum: cc071751349938091505bf7c7cbe20240ae757e05677e4184c939ccc2edca6d9
-- filename: src/ui/config_widget_adapter.py
-  checksum: bafad5df72ebab9ca138b29023cc526a1303cfd5e5c223c5ef8a1c2c4c566bc8
-- filename: src/ui/cv_runs_table.py
-  checksum: 4558aa1b573ce329d094d3ba5a46630b51896ace486e681c4b91b2783092b7b7
-- filename: src/ui/main_dialog.py
-  checksum: 5fc616f4d9ffeaf2f20f2bf49db9628363f89bfee53fde8b73f5c5feeb8079a9
 - filename: tests/unit/test_config_manager.py
   checksum: 12018cbdbfea83221d9f1c4fb40db717f70bad790d9236ac191d8b30df6ef869
-- filename: tests/unit/test_config_widget_adapter.py
-  checksum: 6602bb645fc8a72afac4b3c0bfb6727afc615e6ea533747b52cc6e652974ef11
-- filename: tests/unit/test_cv_runs_table.py
-  checksum: 139046a8c8575707942917b72f516c25d0877df4a4f061476d5398af857a4d64
 - filename: tests/unit/test_existing_rvt_runner.py
   checksum: 5dcd4284844aa3a9c876675a09f0e64b4e867df79cb0dda72fd0332595404eb6
 - filename: tests/unit/test_finalize_service.py

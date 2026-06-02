@@ -52,7 +52,7 @@ VALID_MORPHOLOGIES = ("circulaire", "lineaire", "zone")
 _MORPHOLOGY_FALLBACK = "autre"
 # Sections présentables : (clé, libellé, glyphe), dans l'ordre d'affichage.
 MORPHOLOGY_SECTIONS = (
-    ("circulaire", "Circulaires / ponctuelles", "●"),
+    ("circulaire", "Ponctuelles", "●"),
     ("lineaire", "Linéaires", "╱"),
     ("zone", "Zones / surfaces", "▦"),
     (_MORPHOLOGY_FALLBACK, "Autres", "•"),

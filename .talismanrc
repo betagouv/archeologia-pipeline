@@ -56,7 +56,7 @@ fileignoreconfig:
 - filename: src/app/services/indices_model.py
   checksum: a14975177455e20d8821790dc49048525f7e4d14eb9ac7470b8069b13822b829
 - filename: src/app/services/model_orchestrator.py
-  checksum: 1ef16057660b2c570acf797be35f50d76df912266660259c579b530dc1723273
+  checksum: c5166e900e18b1fe12804521e945b9d8f7241a1f10264320e895e97253940b98
 - filename: src/app/services/source_modes.py
   checksum: ee98347524685732cd4f862492aa48dace890b13b590755edc3c0578f49b7a09
 - filename: src/ui/steps/step_1_source.py

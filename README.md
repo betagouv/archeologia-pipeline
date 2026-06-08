@@ -43,6 +43,19 @@ Le plugin s’exécute dans QGIS et s’appuie sur des outils externes. Un contr
 - Module **Processing** (fourni avec QGIS)
 - Les algorithmes RVT accessibles via Processing (selon installation QGIS)
 
+### Réseau d'entreprise (proxy)
+
+Le téléchargement des dalles LiDAR (IGN, `data.geopf.fr`) se fait en HTTPS direct. Sur un réseau d'entreprise où l'accès Internet n'est autorisé **que via un proxy** (Ministère de la Culture, collectivités, etc.), il faut le déclarer dans QGIS :
+
+**Préférences → Options → Réseau → « Utiliser un proxy pour l'accès Internet »**
+- Type : `HttpProxy`
+- Hôte / Port : ceux fournis par la DSI (ex. `proxy.culture.fr` / `8000`)
+- Authentification : renseigner identifiant / mot de passe si le proxy l'exige
+
+Le plugin lit automatiquement cette configuration pour télécharger les dalles. **Sans proxy déclaré alors que le réseau l'impose**, les téléchargements échouent en `ConnectTimeoutError` (`Connection to data.geopf.fr timed out`).
+
+> **Limites** : l'authentification **NTLM / Kerberos** n'est pas prise en charge (seule l'authentification basique l'est). Si le proxy l'exige, demandez à la DSI une exception réseau pour `data.geopf.fr` ou un proxy acceptant l'auth basique. À défaut de proxy QGIS, le plugin tente aussi les variables d'environnement `HTTP_PROXY` / `HTTPS_PROXY`.
+
 ### Outils externes (CLI)
 
 - **PDAL** (`pdal`) requis pour les modes `ign_laz` et `local_laz`

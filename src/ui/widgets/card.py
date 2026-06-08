@@ -35,16 +35,16 @@ class _CardFrame(QFrame):
 
     def eventFilter(self, obj, event):  # noqa: N802 (signature Qt)
         if obj is self._header and event.type() in (
-            QEvent.Resize, QEvent.Move, QEvent.Show,
+            QEvent.Type.Resize, QEvent.Type.Move, QEvent.Type.Show,
         ):
             self.update()
         return super().eventFilter(obj, event)
 
     def paintEvent(self, _event):  # noqa: N802 (signature Qt)
         p = QPainter(self)
-        p.setRenderHint(QPainter.Antialiasing)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
         p.setPen(QPen(QColor(_BORDER), 1))
-        p.setBrush(Qt.NoBrush)
+        p.setBrush(Qt.BrushStyle.NoBrush)
 
         left, right = 0.5, self.width() - 0.5
         bottom = self.height() - 0.5
@@ -102,7 +102,7 @@ def build_card(title: str = "", num: str = "") -> Tuple[QFrame, QVBoxLayout]:
         badge = QLabel(num)
         badge.setObjectName("CardNum")
         badge.setFixedSize(18, 18)
-        badge.setAlignment(Qt.AlignCenter)
+        badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
         hl.addWidget(badge)
     tlabel = QLabel(title)
     tlabel.setObjectName("CardTitle")
@@ -113,7 +113,7 @@ def build_card(title: str = "", num: str = "") -> Tuple[QFrame, QVBoxLayout]:
 
     # Aligné à gauche (pas de stretch interne) → la largeur de l'en-tête = celle
     # de son contenu, donc la coupure de bordure ne couvre que le titre.
-    outer.addWidget(header, 0, Qt.AlignLeft)
+    outer.addWidget(header, 0, Qt.AlignmentFlag.AlignLeft)
     card.set_header(header)
     card.counter = counter  # type: ignore[attr-defined]
     return card, outer

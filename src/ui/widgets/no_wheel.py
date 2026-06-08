@@ -13,7 +13,7 @@ from qgis.PyQt.QtWidgets import QDoubleSpinBox, QSpinBox
 class NoWheelDoubleSpinBox(QDoubleSpinBox):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.setFocusPolicy(Qt.StrongFocus)
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
 
     def wheelEvent(self, event):  # noqa: N802 (signature Qt)
         if self.hasFocus():
@@ -25,7 +25,7 @@ class NoWheelDoubleSpinBox(QDoubleSpinBox):
 class NoWheelSpinBox(QSpinBox):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.setFocusPolicy(Qt.StrongFocus)
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
 
     def wheelEvent(self, event):  # noqa: N802 (signature Qt)
         if self.hasFocus():

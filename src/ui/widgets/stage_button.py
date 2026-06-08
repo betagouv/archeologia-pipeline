@@ -43,16 +43,16 @@ class ArrowConnector(QWidget):
 
     def paintEvent(self, _event):  # noqa: N802 (signature Qt)
         p = QPainter(self)
-        p.setRenderHint(QPainter.Antialiasing)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
         color = QColor("#2b79c2" if self._active else "#a0a0a0")
         cy = self.height() / 2.0
         left, right = 5.0, self.width() - 5.0
         head = 6.0  # longueur de la pointe
         pen = QPen(color, 2.0)
-        pen.setCapStyle(Qt.RoundCap)
+        pen.setCapStyle(Qt.PenCapStyle.RoundCap)
         p.setPen(pen)
         p.drawLine(QPointF(left, cy), QPointF(right - head, cy))
-        p.setPen(Qt.NoPen)
+        p.setPen(Qt.PenStyle.NoPen)
         p.setBrush(QBrush(color))
         p.drawPolygon(QPolygonF([
             QPointF(right, cy),
@@ -72,25 +72,25 @@ class StageButton(QFrame):
         self._clickable = clickable
         self.setProperty("role", "executed")
         self.setProperty("optional", bool(optional))
-        self.setCursor(Qt.PointingHandCursor if clickable else Qt.ArrowCursor)
+        self.setCursor(Qt.CursorShape.PointingHandCursor if clickable else Qt.CursorShape.ArrowCursor)
         self.setMinimumHeight(78)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(8, 12, 8, 10)
         layout.setSpacing(3)
-        layout.setAlignment(Qt.AlignTop)
+        layout.setAlignment(Qt.AlignmentFlag.AlignTop)
 
         self._glyph = QLabel()
         self._glyph.setObjectName("StageGlyph")
-        self._glyph.setAlignment(Qt.AlignCenter)
+        self._glyph.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._glyph.setFixedHeight(_ICON_SIZE + 2)
         self._name = QLabel(label)
         self._name.setObjectName("StageName")
-        self._name.setAlignment(Qt.AlignCenter)
+        self._name.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._name.setWordWrap(True)
         self._sub = QLabel(sub)
         self._sub.setObjectName("StageSub")
-        self._sub.setAlignment(Qt.AlignCenter)
+        self._sub.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._sub.setWordWrap(True)
 
         layout.addWidget(self._glyph)

@@ -87,7 +87,7 @@ class WizardDialog(QDialog):
         self.setWindowTitle(f"Archéolog'IA{suffix}")
         # Bouton « réduire » dans la barre de titre native (cf. main.py:run()
         # qui restaure via show() au reclic sur l'icône du plugin).
-        self.setWindowFlags(self.windowFlags() | Qt.WindowMinimizeButtonHint)
+        self.setWindowFlags(self.windowFlags() | Qt.WindowType.WindowMinimizeButtonHint)
         self.resize(980, 660)
 
         self._apply_theme()

@@ -102,9 +102,9 @@ class DetectionPage(QWidget):
         text.addWidget(sub)
         opt = QLabel("FACULTATIF")
         opt.setObjectName("FacultatifTag")
-        tl.addWidget(self._enable_check, 0, Qt.AlignVCenter)
+        tl.addWidget(self._enable_check, 0, Qt.AlignmentFlag.AlignVCenter)
         tl.addLayout(text, 1)
-        tl.addWidget(opt, 0, Qt.AlignVCenter)
+        tl.addWidget(opt, 0, Qt.AlignmentFlag.AlignVCenter)
         root.addWidget(toggle)
 
         # ── Empty state (détection désactivée) ──
@@ -113,22 +113,22 @@ class DetectionPage(QWidget):
         es = QVBoxLayout(self._empty_state)
         es.setContentsMargins(24, 24, 24, 24)
         es.setSpacing(6)
-        es.setAlignment(Qt.AlignCenter)
+        es.setAlignment(Qt.AlignmentFlag.AlignCenter)
         es_title = QLabel("Détection IA désactivée")
         es_title.setObjectName("EmptyStateTitle")
-        es_title.setAlignment(Qt.AlignCenter)
+        es_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         es_desc = QLabel(
             "Passez à l'étape 4 pour calculer les rasters seuls, ou activez la "
             "détection pour analyser automatiquement vos indices."
         )
         es_desc.setObjectName("WizardPageSub")
-        es_desc.setAlignment(Qt.AlignCenter)
+        es_desc.setAlignment(Qt.AlignmentFlag.AlignCenter)
         es_desc.setWordWrap(True)
         self._es_btn = QPushButton("Activer la détection")
         self._es_btn.clicked.connect(lambda: self._enable_check.setChecked(True))
         es.addWidget(es_title)
         es.addWidget(es_desc)
-        es.addWidget(self._es_btn, 0, Qt.AlignCenter)
+        es.addWidget(self._es_btn, 0, Qt.AlignmentFlag.AlignCenter)
 
         # ── Contenu (détection activée) ──
         self._content = QWidget()
@@ -209,7 +209,7 @@ class DetectionPage(QWidget):
         content_scroll = QScrollArea()
         content_scroll.setObjectName("DetectionScroll")
         content_scroll.setWidgetResizable(True)
-        content_scroll.setFrameShape(QFrame.NoFrame)
+        content_scroll.setFrameShape(QFrame.Shape.NoFrame)
         content_scroll.setWidget(self._content)
         self._content_scroll = content_scroll
 
@@ -233,7 +233,7 @@ class DetectionPage(QWidget):
         btn = QPushButton(text)
         btn.setObjectName("EntityChip")
         btn.setCheckable(True)
-        btn.setCursor(Qt.PointingHandCursor)
+        btn.setCursor(Qt.CursorShape.PointingHandCursor)
         btn.setChecked(key == "all")
         btn.clicked.connect(lambda _checked=False, k=key: self._on_filter_changed(k))
         self._chip_group.addButton(btn)
@@ -425,7 +425,7 @@ class DetectionPage(QWidget):
             info_btn = QToolButton()
             info_btn.setObjectName("ModelInfoButton")
             info_btn.setText("ⓘ")
-            info_btn.setCursor(Qt.PointingHandCursor)
+            info_btn.setCursor(Qt.CursorShape.PointingHandCursor)
             info_btn.setToolTip("Voir les détails du modèle")
             if model is not None:
                 # Capture du modèle dans la signature par défaut pour figer la
@@ -456,7 +456,7 @@ class DetectionPage(QWidget):
         if model is None:
             return
         from ..dialogs.model_info_dialog import ModelInfoDialog
-        ModelInfoDialog(model, parent=self).exec_()
+        ModelInfoDialog(model, parent=self).exec()
 
     # ------------------------------------------------------------------
     # API page

@@ -212,7 +212,14 @@ def _resolve_model_dir_from_run(run_cfg: Dict[str, Any]) -> Optional[Path]:
     if not p.is_absolute():
         models_dir_val = str(cfg.get("models_dir") or "").strip()
         if models_dir_val:
-            candidate = Path(models_dir_val) / model_val
+            models_dir_path = Path(models_dir_val)
+            if not models_dir_path.is_absolute():
+                # models_dir relatif (« data/models ») → résoudre contre la
+                # racine du plugin, sinon il pointe à côté selon le CWD
+                # (sous QGIS 4 le CWD est le dossier d'install de QGIS, d'où
+                # « Aucun fichier de classes trouvé dans . » + couleurs vides).
+                models_dir_path = Path(__file__).resolve().parents[3] / models_dir_path
+            candidate = models_dir_path / model_val
             if candidate.is_dir():
                 return candidate
     return parent if parent != p else None

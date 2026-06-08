@@ -1,6 +1,6 @@
 fileignoreconfig:
 - filename: README.md
-  checksum: c93563c6fe56267e5f52403975abe13d541a82046fbcf51bced6690f91dd5f80
+  checksum: 0bdaf4510ccea0d6e6135281e6b6e5b16ecd3b6bac7700713776a25bcd27c628
 - filename: dev/docs/documentation_utilisateur_v1.docx
   checksum: 9984314b88553c8aa0de31f28403d664eba5a2426681c22a6b1c29e5c787cc5e
 - filename: dev/runner_onnx/export_to_onnx.py
@@ -10,7 +10,7 @@ fileignoreconfig:
 - filename: src/app/run_context.py
   checksum: f7bd85e575d4dfe752bfb20d834d185ce263577e2213bb0a56f22a42222f416f
 - filename: src/app/services/finalize_service.py
-  checksum: 1c7c9d586adeddb6e142668caf10d8da5f92d7fedc142b2e831fe1039d5e0904
+  checksum: 8e6f5ec71ae019db5232f11c1e9986dbda3a7ed095cfe061048e66eccc2a209d
 - filename: src/config/config_manager.py
   checksum: 96aae47c653eeca63ef92376511a9f9892d0f9d2c6f81af5f600123d3b20b569
 - filename: src/pipeline/cv/class_utils.py
@@ -60,13 +60,13 @@ fileignoreconfig:
 - filename: src/app/services/source_modes.py
   checksum: ee98347524685732cd4f862492aa48dace890b13b590755edc3c0578f49b7a09
 - filename: src/ui/steps/step_1_source.py
-  checksum: 40869ae536eb61f7346d818e79736ed55a587e5d39c0e6a28b3a2aeaf3dbd210
+  checksum: 5acc90f6950b02e93c7ca261163b791ede34c453a64f36e35e9b2e14bf26b66c
 - filename: src/ui/steps/step_2_indices.py
-  checksum: 0b361732c18524c8f9d90db54de994096c2a0c3e58a3157fff2bab41854afb26
+  checksum: 3b02c6a7c58961ff71eaeefbf2dc517a0c9916e666aa35d301b1113a23efe436
 - filename: src/ui/steps/step_3_detection.py
-  checksum: 3337c33a4c5122405196085cdc8329f9033165d9584e15100b401a3ce2a0616e
+  checksum: 914a36be784133acae2216b27f9d5470dac01f3fbe7a32339c30cfecfb40a25c
 - filename: src/ui/steps/step_4_launch.py
-  checksum: 7442f4674b05f295e1942bcedba156f346cdcf790fabf96d3b5934abd88225e9
+  checksum: da5d65c8cb4098b26f1d5c296f1110901325b9fed04aae3c9b4057187c003d7f
 - filename: src/ui/theme/v2.qss
   checksum: 245d55eeeb6fe28cc21478432e4c1a357d5eb985f7bc12564f4c48044b15db3f
 - filename: tests/unit/test_indices_model.py
@@ -74,13 +74,13 @@ fileignoreconfig:
 - filename: tests/unit/test_source_modes.py
   checksum: bfc4499e07ef97b8b9c9ef173e724cd1a58344abf8b7f37afac614da64fd7d51
 - filename: src/ui/qgs_writer.py
-  checksum: b78e0926cfae6567229c311a9ddd256c7d3df4b8f370e25da9991b5039503693
+  checksum: 91b7e79cc5b25a5d3e8e702e4b1af0d2be974776c316afae3581236b265e8c05
 - filename: src/pipeline/output_paths.py
   checksum: 121e5fa67d3bc94bb778e9ab6eeb6cd0fa516114197907521b016f0e6a94bd11
 - filename: CLAUDE.md
-  checksum: 684f627a1d3b02cc98a90966efaedcf4684cf6b4e8ab741e6e162dd2640a00dc
+  checksum: 24fc00e1ead7c1fcc1d2f7736937bb9286e02078469921da9478bbf21133dea6
 - filename: src/ui/widgets/entity_card.py
-  checksum: bed286af6662d47892c878c150827f78d40b818470d011f11cf663572a277266
+  checksum: b2f09f1f799cb4b2f157fb91deeef6b7c2921356e25240536901ffc3f67af31f
 - filename: tests/unit/test_model_orchestrator.py
   checksum: df1a9eac402b80229ab406cac8862d4ccae573be8440a8df1f9b1c5521b9ecef
 - filename: src/ui/dialogs/_model_info_data.py

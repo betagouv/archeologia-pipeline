@@ -56,10 +56,10 @@ def colored_pixmap(name: str, color: str, size: int = 24) -> QPixmap:
     renderer = QSvgRenderer(QByteArray(_recolor(svg, color).encode("utf-8")))
     px = max(1, size) * 2  # rendu 2× pour la netteté hi-DPI
     pixmap = QPixmap(px, px)
-    pixmap.fill(Qt.transparent)
+    pixmap.fill(Qt.GlobalColor.transparent)
     painter = QPainter(pixmap)
-    painter.setRenderHint(QPainter.Antialiasing, True)
-    painter.setRenderHint(QPainter.SmoothPixmapTransform, True)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+    painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform, True)
     renderer.render(painter)
     painter.end()
     pixmap.setDevicePixelRatio(2.0)

@@ -90,7 +90,7 @@ class SourcePage(QWidget):
         # Badge « ENTRÉE » flottant — overlay sur la bordure haute du stade d'entrée.
         self._entry_badge = QLabel("ENTRÉE", self._frise_card)
         self._entry_badge.setObjectName("StageBadge")
-        self._entry_badge.setAlignment(Qt.AlignCenter)
+        self._entry_badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._entry_badge.hide()
 
         # ── Carte entrée & sortie ──
@@ -139,7 +139,7 @@ class SourcePage(QWidget):
         self._banner_icon = QLabel("")
         self._banner_icon.setObjectName("ModeBannerIcon")
         self._banner_icon.setFixedSize(28, 28)
-        self._banner_icon.setAlignment(Qt.AlignCenter)
+        self._banner_icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
         text = QVBoxLayout()
         text.setSpacing(1)
         self._banner_title = QLabel("")
@@ -149,7 +149,7 @@ class SourcePage(QWidget):
         self._banner_desc.setWordWrap(True)
         text.addWidget(self._banner_title)
         text.addWidget(self._banner_desc)
-        layout.addWidget(self._banner_icon, 0, Qt.AlignTop)
+        layout.addWidget(self._banner_icon, 0, Qt.AlignmentFlag.AlignTop)
         layout.addLayout(text, 1)
         return self._banner
 
@@ -260,7 +260,7 @@ class SourcePage(QWidget):
         layers = [
             lyr
             for lyr in project.mapLayers().values()
-            if hasattr(lyr, "geometryType") and lyr.geometryType() == QgsWkbTypes.PolygonGeometry
+            if hasattr(lyr, "geometryType") and lyr.geometryType() == QgsWkbTypes.GeometryType.PolygonGeometry
         ]
         if not layers:
             QMessageBox.information(
@@ -292,7 +292,7 @@ class SourcePage(QWidget):
         error = QgsVectorFileWriter.writeAsVectorFormatV3(
             layer, str(tmp_shp), project.transformContext(), save_options
         )
-        if error[0] != QgsVectorFileWriter.NoError:
+        if error[0] != QgsVectorFileWriter.WriterError.NoError:
             QMessageBox.warning(
                 self,
                 "Erreur d'export",

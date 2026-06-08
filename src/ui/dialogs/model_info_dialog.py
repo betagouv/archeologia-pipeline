@@ -66,7 +66,7 @@ class _SectionHeader(QFrame):
     def __init__(self, title: str, expanded: bool, parent: Optional[QWidget] = None):
         super().__init__(parent)
         self.setObjectName("ModelInfoSectionHeader")
-        self.setCursor(Qt.PointingHandCursor)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
         self._title = title
         self._expanded = expanded
         lay = QHBoxLayout(self)
@@ -74,7 +74,7 @@ class _SectionHeader(QFrame):
         lay.setSpacing(0)
         self._label = QLabel()
         self._label.setObjectName("ModelInfoSectionTitle")
-        self._label.setTextFormat(Qt.RichText)
+        self._label.setTextFormat(Qt.TextFormat.RichText)
         lay.addWidget(self._label)
         lay.addStretch(1)
         self._refresh()
@@ -91,7 +91,7 @@ class _SectionHeader(QFrame):
         )
 
     def mousePressEvent(self, ev):  # noqa: N802 (signature Qt)
-        if ev.button() == Qt.LeftButton:
+        if ev.button() == Qt.MouseButton.LeftButton:
             self.clicked.emit()
         super().mousePressEvent(ev)
 
@@ -124,13 +124,13 @@ class _SectionWidget(QFrame):
             label = QLabel(row.label)
             label.setObjectName("ModelInfoRowLabel")
             label.setMinimumWidth(180)
-            label.setAlignment(Qt.AlignTop | Qt.AlignLeft)
+            label.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft)
             value = QLabel(row.value)
             value.setObjectName(
                 "ModelInfoRowValueMono" if row.mono else "ModelInfoRowValue"
             )
             value.setWordWrap(True)
-            value.setTextInteractionFlags(Qt.TextSelectableByMouse)
+            value.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
             rl.addWidget(label)
             rl.addWidget(value, 1)
             body_lay.addWidget(row_frame)
@@ -186,7 +186,7 @@ class ModelInfoDialog(QDialog):
         scroll = QScrollArea()
         scroll.setObjectName("ModelInfoScroll")
         scroll.setWidgetResizable(True)
-        scroll.setFrameShape(QFrame.NoFrame)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
         content = QWidget()
         content_lay = QVBoxLayout(content)
         content_lay.setContentsMargins(20, 4, 20, 12)
@@ -214,7 +214,7 @@ class ModelInfoDialog(QDialog):
         slug_text = str(card.get("id") or self._model.name)
         slug = QLabel(slug_text)
         slug.setObjectName("ModelInfoSlug")
-        slug.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        slug.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         lay.addWidget(slug)
 
         disp = str(card.get("display_name") or self._model.display_name or "").strip()

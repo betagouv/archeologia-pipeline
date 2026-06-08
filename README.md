@@ -3,8 +3,8 @@
 Plugin QGIS pour exécuter un pipeline de traitement LiDAR et produire des rasters de type MNT / densité / indices RVT, avec une étape optionnelle de détection / segmentation par *computer vision*.
 
 - Nom du plugin : **ArchéologIA**
-- Version : **0.5.0**
-- QGIS minimum : **3.0**
+- Version : **0.6.0**
+- QGIS : **3.34+ (Qt5) ou 4.x (Qt6)** — base de code unique
 
 ## Fonctionnalités
 
@@ -39,7 +39,7 @@ Le plugin s’exécute dans QGIS et s’appuie sur des outils externes. Un contr
 
 ### Dépendances QGIS
 
-- **QGIS 3.x**
+- **QGIS 3.34+ (Qt5) ou QGIS 4.x (Qt6)**
 - Module **Processing** (fourni avec QGIS)
 - Les algorithmes RVT accessibles via Processing (selon installation QGIS)
 
@@ -66,6 +66,8 @@ Pour la **génération de shapefiles et le post-processing global** (fusion poly
 
 Ces dépendances sont disponibles dans l'environnement QGIS standard.
 
+> **Faux positif antivirus / SmartScreen (Windows).** Le runner `cv_runner_onnx.exe` est un exécutable **compilé avec PyInstaller** et **non signé numériquement**. Certains antivirus le signalent à tort par heuristique générique (p. ex. `Win64:Malware-gen`) : c'est un **faux positif** (auto-extraction PyInstaller + absence de signature), pas un code malveillant. Si l'antivirus le met en quarantaine, autorisez/restaurez le fichier ou ajoutez une exception sur le dossier `data/third_party/cv_runner_onnx/`. À défaut, le plugin **bascule automatiquement** sur l'inférence ONNX en pur Python (`onnxruntime` dans l'environnement QGIS) : la détection reste possible, simplement sans l'exécutable dédié.
+
 **Note** : Les modèles doivent être exportés au format ONNX avant utilisation (voir section dédiée).
 
 ## Installation
@@ -88,10 +90,11 @@ Ces dépendances sont disponibles dans l'environnement QGIS standard.
 
 ### Où se trouve le dossier des plugins
 
-Sous Windows (profil par défaut) :
+Sous Windows (profil par défaut) — `QGIS3` pour QGIS 3.x, `QGIS4` pour QGIS 4.x :
 
 ```text
-%APPDATA%\QGIS\QGIS3\profiles\default\python\plugins\
+%APPDATA%\QGIS\QGIS3\profiles\default\python\plugins\   (QGIS 3.x)
+%APPDATA%\QGIS\QGIS4\profiles\default\python\plugins\   (QGIS 4.x)
 ```
 
 ### Dépendances à avoir dans QGIS
@@ -832,7 +835,7 @@ src/
 ### Prérequis
 
 - **Python 3.10+** (recommandé : la même version que celle embarquée par QGIS)
-- **QGIS 3.34+** installé (fournit `qgis.core`, `osgeo`, `processing`)
+- **QGIS 3.34+ (Qt5) ou 4.x (Qt6)** installé (fournit `qgis.core`, `osgeo`, `processing`)
 
 ### Organisation des dépendances
 

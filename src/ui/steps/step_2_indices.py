@@ -88,7 +88,7 @@ class _AdvTabBar(QTabBar):
     def paintEvent(self, event):  # noqa: N802 (signature Qt)
         super().paintEvent(event)  # onglets stylés par la QSS
         painter = QPainter(self)
-        painter.setRenderHint(QPainter.Antialiasing, True)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
         font = painter.font()
         font.setPointSize(max(6, font.pointSize() - 2))
         font.setBold(True)
@@ -103,11 +103,11 @@ class _AdvTabBar(QTabBar):
             pill = QRect(0, 0, self._PILL_W, 15)
             pill.moveCenter(rect.center())
             pill.moveRight(rect.right() - 8)
-            painter.setPen(Qt.NoPen)
+            painter.setPen(Qt.PenStyle.NoPen)
             painter.setBrush(QColor(0xCF, 0xCF, 0xCF))
             painter.drawRoundedRect(pill, 3, 3)
             painter.setPen(QColor(0x5A, 0x5A, 0x5A))
-            painter.drawText(pill, Qt.AlignCenter, "OFF")
+            painter.drawText(pill, Qt.AlignmentFlag.AlignCenter, "OFF")
 
 
 class _IndexCard(QFrame):
@@ -120,7 +120,7 @@ class _IndexCard(QFrame):
         self._key = key
         self.setObjectName("IndexCard")
         self.setProperty("checked", False)
-        self.setCursor(Qt.PointingHandCursor)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(10, 8, 10, 8)
@@ -131,7 +131,7 @@ class _IndexCard(QFrame):
         self._check = QLabel("")
         self._check.setObjectName("IndexCheck")
         self._check.setFixedSize(15, 15)
-        self._check.setAlignment(Qt.AlignCenter)
+        self._check.setAlignment(Qt.AlignmentFlag.AlignCenter)
         top.addWidget(self._tag)
         top.addStretch(1)
         top.addWidget(self._check)
@@ -169,7 +169,7 @@ class _Chip(QFrame):
         self._key = key
         self.setObjectName("Chip")
         self.setProperty("checked", False)
-        self.setCursor(Qt.PointingHandCursor)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
         layout = QHBoxLayout(self)
         layout.setContentsMargins(12, 5, 12, 5)
         layout.setSpacing(6)
@@ -568,7 +568,7 @@ class IndicesPage(QWidget):
             chk.setObjectName("ActivateCheck")
             chk.toggled.connect(lambda on, k=key: self._on_activate_toggled(k, on))
             self._activate_checks[key] = chk
-            head.addWidget(chk, 0, Qt.AlignTop)
+            head.addWidget(chk, 0, Qt.AlignmentFlag.AlignTop)
         outer.addLayout(head)
 
         # — Grille 2 colonnes de champs —

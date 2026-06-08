@@ -103,7 +103,7 @@ def _apply_validation_form(layer, all_classes: List[str], logger: logging.Logger
                 layer.setEditorWidgetSetup(i, setup)
 
         cfg = layer.editFormConfig()
-        cfg.setLayout(QgsEditFormConfig.TabLayout)
+        cfg.setLayout(QgsEditFormConfig.EditorLayout.TabLayout)
         root_c = cfg.invisibleRootContainer()
         try:
             root_c.clear()

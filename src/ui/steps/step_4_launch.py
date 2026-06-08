@@ -69,7 +69,7 @@ class _FlowLayout(QLayout):
         return self._items.pop(index) if 0 <= index < len(self._items) else None
 
     def expandingDirections(self):  # noqa: N802
-        return Qt.Orientations(Qt.Orientation(0))
+        return Qt.Orientation(0)
 
     def hasHeightForWidth(self):  # noqa: N802
         return True
@@ -150,7 +150,7 @@ class LaunchPage(QWidget):
         scroll = QScrollArea()
         scroll.setObjectName("LaunchScroll")
         scroll.setWidgetResizable(True)
-        scroll.setFrameShape(QScrollArea.NoFrame)
+        scroll.setFrameShape(QScrollArea.Shape.NoFrame)
 
         content = QWidget()
         v = QVBoxLayout(content)
@@ -188,7 +188,7 @@ class LaunchPage(QWidget):
         hint = QLabel("Le run produira un projet QGIS consolidé prêt à ouvrir.")
         hint.setObjectName("LaunchHint")
         hint.setWordWrap(True)
-        hint.setAlignment(Qt.AlignCenter)
+        hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
         v.addWidget(hint)
 
         v.addStretch(1)
@@ -237,10 +237,10 @@ class LaunchPage(QWidget):
         self._workers_spin.setObjectName("WorkersSpin")
         self._workers_spin.setRange(1, 16)
         self._workers_spin.setValue(self._workers)
-        self._workers_spin.setAlignment(Qt.AlignCenter)
+        self._workers_spin.setAlignment(Qt.AlignmentFlag.AlignCenter)
         # Flèches natives masquées : on a déjà des boutons −/+ explicites
         # (sinon les flèches Fusion se compriment dans le champ étroit).
-        self._workers_spin.setButtonSymbols(QAbstractSpinBox.NoButtons)
+        self._workers_spin.setButtonSymbols(QAbstractSpinBox.ButtonSymbols.NoButtons)
         self._workers_spin.setFixedWidth(48)
         self._workers_spin.valueChanged.connect(self._set_workers)
         h.addWidget(self._workers_spin)
@@ -296,7 +296,7 @@ class LaunchPage(QWidget):
         key = QLabel(sec.label)
         key.setObjectName("RecapKey")
         key.setFixedWidth(120)
-        top.addWidget(key, 0, Qt.AlignTop)
+        top.addWidget(key, 0, Qt.AlignmentFlag.AlignTop)
 
         if sec.badges:
             badge_host = QWidget()
@@ -309,7 +309,7 @@ class LaunchPage(QWidget):
             if sec.value:
                 val = QLabel(sec.value)
                 val.setObjectName("RecapVal")
-                top.addWidget(val, 0, Qt.AlignTop)
+                top.addWidget(val, 0, Qt.AlignmentFlag.AlignTop)
         else:
             val = QLabel(sec.value or "—")
             val.setObjectName("RecapVal")
@@ -457,18 +457,18 @@ class LaunchPage(QWidget):
             icon.setObjectName("PreflightIcon")
             icon.setProperty("status", status)
             icon.setFixedWidth(16)
-            icon.setAlignment(Qt.AlignTop | Qt.AlignHCenter)
+            icon.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignHCenter)
             self._preflight_grid.addWidget(icon, row, 0)
 
             name = QLabel(r.name)
             name.setObjectName("PreflightName")
-            self._preflight_grid.addWidget(name, row, 1, Qt.AlignTop)
+            self._preflight_grid.addWidget(name, row, 1, Qt.AlignmentFlag.AlignTop)
 
             detail = QLabel(r.details)
             detail.setObjectName("PreflightDetail")
             detail.setWordWrap(True)
             detail.setToolTip(r.details)
-            detail.setAlignment(Qt.AlignRight | Qt.AlignTop)
+            detail.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignTop)
             self._preflight_grid.addWidget(detail, row, 2)
 
         total = len(results)

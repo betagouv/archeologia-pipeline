@@ -11,6 +11,20 @@ Code in this repo runs in **one of two contexts**, and most surprises come from 
 1. **Inside QGIS** (production): `__init__.py` → `main.py:ArcheologiaPipelinePlugin` is loaded by QGIS. `qgis.core`, `qgis.processing`, and `osgeo` are available. UI is the 4-step wizard `src/ui/wizard_dialog.py` (pages in `src/ui/steps/`, run view in `src/ui/run_view.py`). Pipeline modules under `src/pipeline/` import QGIS at module load time.
 2. **Standalone** (tests / dev tooling): no QGIS available. `conftest.py` and `pytest.ini` deliberately exclude `src/ui/` and `src/pipeline/` from pytest collection (`norecursedirs`, `collect_ignore_glob`) because they would fail to import. Only modules under `src/app/` and pure helpers can be unit-tested directly. Don't add `from qgis.*` imports at module top level in code that needs to be testable — defer them inside functions, as `main.py:run()` already does.
 
+## Qt5 / Qt6 compatibility (QGIS 3.34+ and 4.x)
+
+The UI must run under **both Qt5 (QGIS 3.34–3.x) and Qt6 (QGIS 4.x)** from a single codebase (`metadata.txt`: `qgisMinimumVersion=3.34`, `qgisMaximumVersion=4.99`). QGIS 4.0 is the first Qt6 release; the original crash was flat enum access (`Qt.WindowMinimizeButtonHint`), which Qt6 removed. Two rules keep it dual-compatible:
+
+- **Always scope enums** — the scoped form also works in PyQt5, so it's the *only* form to use: `Qt.AlignmentFlag.AlignCenter`, `Qt.WindowType.WindowMinimizeButtonHint`, `Qt.CursorShape.PointingHandCursor`, `Qt.PenStyle.NoPen`, `QFrame.Shape.HLine`, `QPainter.RenderHint.Antialiasing`, etc. (never `Qt.AlignCenter`). **This applies to every Qt class, not just the `Qt` namespace** — e.g. `QEvent.Type.Resize`, `QScrollArea.Shape.NoFrame`, `QAbstractSpinBox.ButtonSymbols.NoButtons`, `QTextCursor.MoveOperation.StartOfBlock`/`QTextCursor.MoveMode.KeepAnchor`. Same for QGIS class enums: `QgsWkbTypes.GeometryType.PolygonGeometry`, `QgsEditFormConfig.EditorLayout.TabLayout`, `QgsVectorFileWriter.WriterError.NoError`. Use `.exec()` not `.exec_()`. **Exception**: keep `.raise_()`/`.lower_()` with the trailing underscore (`raise` is a Python keyword, so PyQt6 retains it). Don't add `supportsQt6` to `metadata.txt` — removed in QGIS 4.
+- Import Qt only via the `qgis.PyQt.*` shim (already the case everywhere), never `PyQt5`/`PyQt6` directly.
+
+`src/ui/` isn't covered by pytest (standalone has no QGIS), so a flat-enum regression only surfaces at runtime in QGIS. **Verify by class, not by a fixed token list** (a closed list misses classes like `QEvent`/`QScrollArea` — that exact mistake shipped once). Sweep and confirm every hit is a scoped form (`QClass.EnumType.Value`) or a call (`(`):
+- `rg "\bQ[A-Z]\w*\.[A-Z]\w+" src/` — all Qt widget/event classes
+- `rg "\bQt\.[A-Z]\w+" src/` — the `Qt` namespace (separate: `Qt` is `Q`+lowercase)
+- `rg "\bQgs\w*\.[A-Z]\w+|\bQgis\.[A-Z]\w+" src/` — QGIS classes
+
+Any terminal `QClass.Value` (not followed by another `.Value`, not a `(...)` call) is a flat enum to scope.
+
 ## Common commands
 
 ```bash

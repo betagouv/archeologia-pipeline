@@ -152,56 +152,38 @@ def _get_qgis_proxy_settings() -> Optional[Dict[str, str]]:
         return None
 
 
-def _is_proxy_reachable(proxy_url: str, timeout: float = 2.0) -> bool:
-    """Vérifie si le proxy est accessible (résolution DNS + connexion TCP)."""
-    import socket
-    try:
-        # Extraire host:port de l'URL proxy
-        # Format: http://[user:pass@]host:port
-        parsed = urllib.parse.urlparse(proxy_url)
-        host = parsed.hostname
-        port = parsed.port or 8080
-        if not host:
-            return False
-        # Test de connexion TCP rapide
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.settimeout(timeout)
-        sock.connect((host, port))
-        sock.close()
-        return True
-    except Exception:
-        return False
-
-
 def _get_proxy_config(log: LogFn = _default_log) -> Dict[str, str]:
     """Récupère la configuration proxy (QGIS ou système).
-    
-    Priorité: proxy QGIS (si accessible) > proxy système > pas de proxy
+
+    Priorité : proxy QGIS (Préférences → Réseau) > proxy système (variables
+    d'environnement ``HTTP_PROXY`` / ``HTTPS_PROXY``…) > connexion directe.
+
+    On NE teste PAS l'accessibilité du proxy avant de l'utiliser : un court
+    test TCP (timeout 2 s) échouait à tort sur certains proxys d'entreprise
+    (réponse lente, ou refus des connexions brutes), ce qui faisait
+    silencieusement retomber le plugin en accès *direct* — lequel expire
+    ensuite sur ``data.geopf.fr`` quand le réseau sortant est filtré. Si
+    l'utilisateur a configuré un proxy dans QGIS, on l'utilise et on laisse
+    ``requests`` gérer les échecs éventuels (avec les retries du download).
     """
     qgis_proxy = _get_qgis_proxy_settings()
     if qgis_proxy:
         proxy_url = qgis_proxy.get("http", "")
         # Masquer le mot de passe dans les logs
         if "@" in proxy_url:
-            import re
             masked = re.sub(r"://([^:]+):([^@]+)@", r"://\1:****@", proxy_url)
         else:
             masked = proxy_url
-        
-        # Vérifier si le proxy est accessible
-        if _is_proxy_reachable(proxy_url):
-            log(f"⚙️ Proxy QGIS configuré et accessible: {masked}")
-            return qgis_proxy
-        else:
-            log(f"⚙️ Proxy QGIS configuré mais non accessible: {masked} (connexion directe)")
-    
-    # Fallback: proxy système
+        log(f"⚙️ Proxy QGIS: {masked}")
+        return qgis_proxy
+
+    # Fallback : proxy système (variables d'environnement HTTP(S)_PROXY, etc.)
     system_proxy = urllib.request.getproxies()
     if system_proxy:
-        log(f"⚙️ Proxy système: {system_proxy}")
+        log(f"⚙️ Proxy système (variables d'environnement): {system_proxy}")
         return system_proxy
-    
-    log("⚙️ Connexion directe (aucun proxy)")
+
+    log("⚙️ Connexion directe (aucun proxy configuré dans QGIS)")
     return {}
 
 

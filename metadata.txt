@@ -24,6 +24,7 @@ hasProcessingProvider=no
 changelog=0.6.0 (2026-06-08)
     * Compatibilité QGIS 4 (Qt6/PyQt6) : portage des accès enum Qt et QGIS vers la forme scopée — base de code unique compatible QGIS 3.34+ et QGIS 4.x
     * Runner ONNX (cv_runner_onnx) compilé sans compression UPX pour limiter les faux positifs antivirus
+    * Détection du proxy fiabilisée : le proxy configuré dans QGIS (Préférences → Réseau) est désormais toujours utilisé pour les téléchargements IGN (suppression d'un test d'accessibilité trop strict qui faisait retomber en connexion directe sur réseau d'entreprise)
  0.5.0 (2026-05-28)
     * Fenêtre d'info modèle (ⓘ) depuis « Runs IA programmés » à l'étape 3 : architecture, indice RVT et MNT d'entraînement, regroupement (DBSCAN), notes & limites, bouton « Ouvrir le dossier »
     * README § « Sorties » réécrit pour refléter la structure entité-centrée réelle (detections/<entité>/<entité>.gpkg + _technique/<modèle>/)

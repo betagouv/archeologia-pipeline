@@ -1,6 +1,6 @@
 fileignoreconfig:
 - filename: README.md
-  checksum: 0bdaf4510ccea0d6e6135281e6b6e5b16ecd3b6bac7700713776a25bcd27c628
+  checksum: 1e2a4f6dd7d5611aa8b41509b2b08a946708a49caec71dadf52bb71741a9b625
 - filename: dev/docs/documentation_utilisateur_v1.docx
   checksum: 9984314b88553c8aa0de31f28403d664eba5a2426681c22a6b1c29e5c787cc5e
 - filename: dev/runner_onnx/export_to_onnx.py
@@ -28,7 +28,7 @@ fileignoreconfig:
 - filename: src/pipeline/ign/coords_fallback.py
   checksum: 2e1959d43bcfa05076134bfa27b62e6222285d054453945800a01d0dccffe76d
 - filename: src/pipeline/ign/downloader.py
-  checksum: ac1c2ffd76bf197a629c5f680c175e2bf9b5f5bb2c6259f4cdd26bff9b02c8a5
+  checksum: 2ff294edab4cc2ee9008be2d1b344102c786a58801ab475f68156f9f43b478a5
 - filename: src/pipeline/ign/pdal_validation.py
   checksum: 8867b41e31232f0047d39a3ed884b5e677848f2269c5e79d9b5cd5217bc6b407
 - filename: src/pipeline/ign/preprocess.py

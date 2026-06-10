@@ -72,6 +72,7 @@ def run_cv_post_loop(
     sa politique (le pattern actuel est de logger via ``reporter.error``
     et de continuer vers la finalisation).
     """
+    from ...pipeline.batch import process_items_isolated
     from ...pipeline.cv.class_utils import resolve_cv_runs
     from ...pipeline.modes.existing_rvt import run_existing_rvt
     from ...pipeline.output_paths import resolve_rvt_tif_dir
@@ -99,10 +100,7 @@ def run_cv_post_loop(
     narrator = create_user_narrator(reporter)
     narrator.cv_start(len(cv_runs))
 
-    for run_idx, run_cfg in enumerate(cv_runs, start=1):
-        if cancel.is_cancelled():
-            break
-
+    def _process_run(run_idx: int, run_cfg: Dict[str, Any]) -> None:
         run_model = run_cfg.get("selected_model", "?")
         run_rvt = run_cfg.get("target_rvt", "LD")
         model_display = _model_display_name(run_model)
@@ -121,7 +119,7 @@ def run_cv_post_loop(
                 f"Computer Vision: dossier RVT/TIF non trouvé pour {run_rvt}: "
                 f"{generated_rvt_tif_dir}"
             )
-            continue
+            return
 
         # Callback bindé au modèle courant : remonte la sous-progression
         # (index/total images traitées) au narrator → ligne USER_INFO
@@ -147,4 +145,26 @@ def run_cv_post_loop(
             global_color_map=global_color_map,
             image_progress=_on_image_progress,
             on_busy=lambda active: report_busy(reporter, active),
+        )
+
+    def _on_run_failure(run_idx: int, run_cfg: Dict[str, Any], exc: Exception) -> None:
+        model_display = _model_display_name(run_cfg.get("selected_model", "?"))
+        reporter.error(
+            f"Computer Vision: run {run_idx} (modèle={model_display}) en échec, "
+            f"ignoré : {exc}"
+        )
+
+    # Isolation par run : l'échec d'inférence/conversion d'un modèle n'empêche
+    # plus les runs suivants de produire leurs détections (cf. AUDIT ROB-04).
+    # PipelineCancelled reste propagée (annulation globale gérée par l'appelant).
+    _ok, failed = process_items_isolated(
+        cv_runs,
+        _process_run,
+        cancel=cancel.is_cancelled,
+        on_failure=_on_run_failure,
+    )
+    if failed:
+        reporter.error(
+            f"⚠️ Computer Vision: {len(failed)} run(s) sur {len(cv_runs)} en échec "
+            "— voir le journal."
         )

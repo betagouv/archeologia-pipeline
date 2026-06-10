@@ -17,8 +17,10 @@ from .progress_plan import build_progress_plan
 
 try:  # cross-package import : OK en QGIS, fallback en tests standalone (src/ sur le path)
     from ...pipeline.cancellation import PipelineCancelled
+    from ...pipeline.batch import process_items_isolated
 except ImportError:  # pragma: no cover
     from pipeline.cancellation import PipelineCancelled
+    from pipeline.batch import process_items_isolated
 
 if TYPE_CHECKING:
     from ..structured_logger import StructuredLogger
@@ -217,13 +219,9 @@ class IgnOrLocalRunner:
                 total_mnt = len(merged_result.merged_files)
                 narrator.products_phase_start(total_mnt, active_products)
 
-                for i, merged_path in enumerate(merged_result.merged_files, start=1):
-                    if cancel.is_cancelled():
-                        break
-
+                def _process_one_tile(i: int, merged_path: Path) -> None:
                     tile_label = merged_path.name.replace(".copc.laz", "").replace(".laz", "")
                     narrator.tile_progress(i, total_mnt, tile_label)
-
                     self._process_tile(
                         merged_path=merged_path,
                         output_dir=ctx.output_dir,
@@ -243,8 +241,26 @@ class IgnOrLocalRunner:
                         total_tiles=total_mnt,
                         active_products=active_products,
                     )
-
                     reporter.progress(strategy.products_progress_for_tile(i, total_mnt))
+
+                def _on_tile_failure(i: int, merged_path: Path, exc: Exception) -> None:
+                    label = merged_path.name.replace(".copc.laz", "").replace(".laz", "")
+                    reporter.error(f"Dalle {label} en échec, ignorée : {exc}")
+
+                # Isolation par dalle : une dalle illisible/échouée n'avorte plus
+                # tout le lot — les autres dalles sont traitées, la finalisation a
+                # toujours lieu (cf. AUDIT ROB-02).
+                _ok, failed = process_items_isolated(
+                    merged_result.merged_files,
+                    _process_one_tile,
+                    cancel=cancel.is_cancelled,
+                    on_failure=_on_tile_failure,
+                )
+                if failed:
+                    reporter.error(
+                        f"⚠️ {len(failed)} dalle(s) sur {total_mnt} en échec "
+                        "— voir le journal pour le détail."
+                    )
 
                 # Computer Vision globale (post-boucle)
                 if ctx.cv.enabled and not cancel.is_cancelled():
@@ -266,20 +282,23 @@ class IgnOrLocalRunner:
         except PipelineCancelled:
             cancelled = True
             reporter.info("Annulation demandée — finalisation des résultats partiels…")
-
-        # Finalisation commune LÉGÈRE — toujours exécutée (bornée → va au bout)
-        finalize_pipeline(
-            output_dir=ctx.output_dir,
-            cv_cfg=ctx.cv.raw,
-            rvt_params=ctx.rvt_params,
-            reporter=reporter,
-            slog=slog,
-            start_time=start_time,
-            tiles_processed=len(merged_result.merged_files) if merged_result else 0,
-            active_products=active_products,
-            extra_label="Dalles traitées",
-            ui_config=ctx.ui_config,
-        )
+        finally:
+            # Finalisation commune LÉGÈRE — TOUJOURS exécutée (y compris si une
+            # erreur inattendue remonte hors de la boucle isolée) : indexe et
+            # charge les produits déjà générés avant que l'erreur éventuelle
+            # ne remonte au contrôleur (cf. AUDIT ROB-01/02).
+            finalize_pipeline(
+                output_dir=ctx.output_dir,
+                cv_cfg=ctx.cv.raw,
+                rvt_params=ctx.rvt_params,
+                reporter=reporter,
+                slog=slog,
+                start_time=start_time,
+                tiles_processed=len(merged_result.merged_files) if merged_result else 0,
+                active_products=active_products,
+                extra_label="Dalles traitées",
+                ui_config=ctx.ui_config,
+            )
 
         if cancelled or cancel.is_cancelled():
             narrator.pipeline_cancelled()

@@ -102,20 +102,22 @@ class ExistingMntRunner:
         except PipelineCancelled:
             cancelled = True
             reporter.info("Annulation demandée — finalisation des résultats partiels…")
-
-        # Finalisation commune LÉGÈRE — toujours exécutée (bornée → va au bout)
-        finalize_pipeline(
-            output_dir=ctx.output_dir,
-            cv_cfg=ctx.cv.raw,
-            rvt_params=rvt_params,
-            reporter=reporter,
-            slog=slog,
-            start_time=start_time,
-            tiles_processed=tiles_processed,
-            active_products=active_products,
-            extra_label="MNT traités",
-            ui_config=ctx.ui_config,
-        )
+        finally:
+            # Finalisation commune LÉGÈRE — TOUJOURS exécutée (y compris si une
+            # erreur inattendue remonte) : indexe et charge les MNT déjà traités
+            # avant que l'erreur éventuelle ne remonte au contrôleur (AUDIT ROB-01/03).
+            finalize_pipeline(
+                output_dir=ctx.output_dir,
+                cv_cfg=ctx.cv.raw,
+                rvt_params=rvt_params,
+                reporter=reporter,
+                slog=slog,
+                start_time=start_time,
+                tiles_processed=tiles_processed,
+                active_products=active_products,
+                extra_label="MNT traités",
+                ui_config=ctx.ui_config,
+            )
 
         if cancelled or cancel.is_cancelled():
             narrator.pipeline_cancelled()

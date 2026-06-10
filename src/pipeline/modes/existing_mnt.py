@@ -273,10 +273,10 @@ def run_existing_mnt(
     # Filet anti-collision : garantit l'unicité des uid (donc des noms de sortie)
     # pour les dalles sub-km / hors-grille traitées par-dalle.
     seen_uids: set[str] = set()
-    for idx, mnt_path in enumerate(mnt_files, 1):
-        if cancel_check is not None and cancel_check():
-            log("Annulation demandée, arrêt du traitement MNT.")
-            break
+    from ..batch import process_items_isolated
+
+    def _process_one_mnt(idx: int, mnt_path: Path) -> None:
+        nonlocal processed
 
         if mnt_progress is not None:
             try:
@@ -338,7 +338,7 @@ def run_existing_mnt(
             )
             if ok:
                 processed += 1
-            continue
+            return
 
         # 3) Cas STANDARD et SMALL: une seule dalle logique
         skip_crop = (layout == "small")
@@ -386,6 +386,22 @@ def run_existing_mnt(
         )
         if ok:
             processed += 1
+
+    def _on_mnt_failure(idx: int, mnt_path: Path, exc: Exception) -> None:
+        log(f"⚠️ MNT {mnt_path.name} en échec, ignoré : {exc}")
+
+    # Isolation par MNT : un fichier illisible/corrompu (ex. .asc invalide,
+    # gdal_translate en échec) n'avorte plus tout le lot — les autres MNT sont
+    # traités et la finalisation a lieu (cf. AUDIT ROB-03). PipelineCancelled
+    # reste propagée pour une annulation globale propre.
+    process_items_isolated(
+        mnt_files,
+        _process_one_mnt,
+        cancel=cancel_check,
+        on_failure=_on_mnt_failure,
+    )
+    if cancel_check is not None and cancel_check():
+        log("Annulation demandée, arrêt du traitement MNT.")
 
     if processed < total:
         log(

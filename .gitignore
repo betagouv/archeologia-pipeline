@@ -21,7 +21,8 @@ ENV/
 .mypy_cache/
 .ruff_cache/
 
-# User config (last used session)
+# User config (chemins personnels, jamais versionné — voir config.example.json)
+config.json
 last_ui_config.json
 
 # Logs

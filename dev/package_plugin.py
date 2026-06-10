@@ -59,11 +59,15 @@ EXCLUDE_EXTENSIONS = {
 def should_exclude(path: Path, relative_path: str) -> bool:
     """Vérifie si un fichier/dossier doit être exclu."""
     name = path.name
-    
-    # Exclure les dossiers spécifiques
-    if path.is_dir() and name in EXCLUDE_DIRS:
+
+    # Exclure les dossiers cachés (commençant par ".") ET les dossiers dev
+    # explicitement listés. La règle "dossier caché" rend l'exclusion robuste :
+    # aucun dossier en "." n'est requis au runtime QGIS, et elle attrape les
+    # variantes que l'ancien match par nom EXACT laissait passer — .venv_dev
+    # (≠ .venv), .ruff_cache, .superpowers, .mypy_cache… (cf. AUDIT PKG-01/03/05).
+    if path.is_dir() and (name.startswith(".") or name in EXCLUDE_DIRS):
         return True
-    
+
     # Exclure les fichiers spécifiques
     if path.is_file() and name in EXCLUDE_FILES:
         return True

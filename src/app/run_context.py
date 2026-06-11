@@ -30,7 +30,7 @@ progressivement.
 from __future__ import annotations
 
 import copy
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -72,7 +72,7 @@ class FilesConfig:
 # dessus, sinon on réintroduit le bug d'un indice oublié dans une liste codée
 # en dur (HS absent de la validation, SLRM absent de needs_mnt…).
 _VISUALIZATION_PRODUCTS: Tuple[str, ...] = ("HS", "M_HS", "SVF", "SLO", "LD", "SLRM", "VAT")
-_ALL_PRODUCTS: Tuple[str, ...] = ("MNT", "DENSITE", *_VISUALIZATION_PRODUCTS)
+_ALL_PRODUCTS: Tuple[str, ...] = ("MNT", "DENSITE", "COUVERTURE", *_VISUALIZATION_PRODUCTS)
 
 
 @dataclass(frozen=True)
@@ -85,6 +85,7 @@ class ProductsConfig:
 
     MNT: bool = True
     DENSITE: bool = False
+    COUVERTURE: bool = False
     HS: bool = False
     M_HS: bool = False
     SVF: bool = False
@@ -106,6 +107,14 @@ class ProductsConfig:
         soit comme dépendance d'un indice de visualisation)."""
         return self.MNT or self.has_visualization_index()
 
+    def needs_tile_processing(self) -> bool:
+        """Vrai si la boucle de traitement par dalle a du travail.
+
+        Garde du runner LAZ : ``needs_mnt()`` seul sauterait silencieusement
+        tout le traitement pour une config « DENSITE/COUVERTURE seule ».
+        """
+        return self.needs_mnt() or self.DENSITE or self.COUVERTURE
+
     def as_dict(self) -> Dict[str, bool]:
         """Vue dict (pour les call-sites qui en attendent encore un)."""
         return {k: getattr(self, k) for k in _ALL_PRODUCTS}
@@ -120,6 +129,7 @@ class ProcessingConfig:
     tile_overlap: float = 5.0
     mnt_resolution: float = 0.5
     density_resolution: float = 1.0
+    coverage_threshold_percent: float = 30.0
     filter_expression: str = (
         "Classification = 2 OR Classification = 6 OR Classification = 66 "
         "OR Classification = 67 OR Classification = 9"
@@ -283,6 +293,7 @@ def _build_products_config(products_dict: Dict[str, Any]) -> ProductsConfig:
     return ProductsConfig(
         MNT=bool(products_dict.get("MNT", True)),
         DENSITE=bool(products_dict.get("DENSITE", False)),
+        COUVERTURE=bool(products_dict.get("COUVERTURE", False)),
         HS=bool(products_dict.get("HS", False)),
         M_HS=bool(products_dict.get("M_HS", False)),
         SVF=bool(products_dict.get("SVF", False)),
@@ -310,6 +321,12 @@ def _build_processing_config(processing_dict: Dict[str, Any]) -> ProcessingConfi
     if not filter_expr:
         filter_expr = DEFAULT_FILTER
 
+    # Seuil « zones mal couvertes » (produit COUVERTURE) : borné 5–95 %.
+    cov_thr = _coerce_positive_float(
+        processing_dict.get("coverage_threshold_percent", 30.0), 30.0
+    )
+    cov_thr = min(95.0, max(5.0, cov_thr))
+
     return ProcessingConfig(
         products=_build_products_config(products_dict),
         # max_workers >= 1 : 0 ferait planter ThreadPoolExecutor.
@@ -322,6 +339,7 @@ def _build_processing_config(processing_dict: Dict[str, Any]) -> ProcessingConfi
         # Résolutions PDAL : doivent être > 0 (pas de raster à RESOLUTION=0).
         mnt_resolution=_coerce_positive_float(processing_dict.get("mnt_resolution", 0.5), 0.5),
         density_resolution=_coerce_positive_float(processing_dict.get("density_resolution", 1.0), 1.0),
+        coverage_threshold_percent=cov_thr,
         filter_expression=filter_expr,
         output_structure=dict(processing_dict.get("output_structure") or {}),
         output_formats=dict(processing_dict.get("output_formats") or {}),
@@ -549,6 +567,15 @@ def build_run_context(config: Dict[str, Any]) -> RunContext:
     files = _build_files_config(files_dict)
     processing = _build_processing_config(processing_dict)
     cv = _build_cv_config(cv_dict)
+
+    # COUVERTURE exige le nuage de points : un MNT livré est déjà interpolé,
+    # l'information « où étaient les points » n'existe plus (vrai pour les
+    # trois layouts standard/small/large). Neutralisé hors modes LAZ — le
+    # runner existing_mnt logge l'indisponibilité depuis la config brute.
+    if processing.products.COUVERTURE and files.data_mode not in ("ign_laz", "local_laz"):
+        processing = replace(
+            processing, products=replace(processing.products, COUVERTURE=False)
+        )
 
     return RunContext(
         mode=files.data_mode,

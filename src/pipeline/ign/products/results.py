@@ -12,7 +12,7 @@ from ...coords import extract_xy_from_tile_name as _extract_xy_from_tile_name
 from ...geo_utils import extract_tif_transform_data
 from ...output_paths import indices_dir, indice_tif_dir, indice_base_dir
 from ...subprocess_utils import run_subprocess_cancellable, subprocess_kwargs_no_window
-from .rvt_naming import get_rvt_source_and_dest_filenames, get_rvt_folder_name
+from .rvt_naming import PRODUCT_ORDER, get_rvt_source_and_dest_filenames, get_rvt_folder_name
 from ...types import CancelCheckFn, LogFn
 
 
@@ -191,7 +191,7 @@ def copy_final_products_to_results(
     idx_dir.mkdir(parents=True, exist_ok=True)
 
     # Générer les noms de fichiers avec paramètres pour invalider le cache
-    all_products = ["MNT", "DENSITE", "HS", "M_HS", "SVF", "SLO", "LD", "SLRM", "VAT"]
+    all_products = list(PRODUCT_ORDER)
     source_files_cropped: Dict[str, str] = {}
     source_files_uncropped: Dict[str, str] = {}
     for product in all_products:
@@ -211,7 +211,7 @@ def copy_final_products_to_results(
     created_jpgs_by_product: Dict[str, List[Path]] = {}
     tif_transform_data: Dict[str, Tuple[float, float, float, float]] = {}
 
-    for product_name in ["MNT", "DENSITE", "HS", "M_HS", "SVF", "SLO", "LD", "SLRM", "VAT"]:
+    for product_name in PRODUCT_ORDER:
         if not products.get(product_name, False):
             continue
         check_cancelled(cancel_check)

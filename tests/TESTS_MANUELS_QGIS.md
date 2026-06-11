@@ -380,3 +380,29 @@ Cette grille indique, pour chaque vague livrée, **quelles sections de tests son
 | Version QGIS | __________________ |
 | Version plugin | __________________ |
 | Branche / commit | __________________ |
+
+---
+
+## 20. Produit Couverture (QA points sol)
+
+- [ ] **20.1 Étape 2 — carte et réglage**
+  - Mode IGN/LAZ local : carte « Couverture · QA points sol » visible à côté de « Densité », décochée par défaut
+  - Mode MNT existant : la carte « Modèle de base » (et donc Couverture) reste masquée
+  - Réglages avancés > onglet MNT : « Seuil zones mal couvertes (%) » (défaut 30, bornes 5–95), persisté entre sessions
+- [ ] **20.2 Run avec Couverture seule (sans Densité)**
+  - La passe densité tourne quand même (sert de source au calcul)
+  - `indices/COUVERTURE/tif/*.tif` créés, **pas** de dossier `indices/DENSITE/`
+- [ ] **20.3 Run avec Couverture + Densité**
+  - La passe densité ne tourne qu'**une** fois par dalle (vérifier le journal)
+  - Les deux dossiers `indices/DENSITE/` et `indices/COUVERTURE/` existent
+- [ ] **20.4 Polygones et couches QGIS**
+  - `indices/COUVERTURE/zones_mal_couvertes.gpkg` créé s'il existe des zones sous le seuil
+  - Couche « Zones mal couvertes (<30 %) » hachurée rouge **tout en haut** de l'arbre
+  - Raster `index_COUVERTURE` en pseudo-couleur : 0 % rouge → seuil orange → 100 % transparent
+- [ ] **20.5 Projet de validation**
+  - Rouvrir `detections/detections_validation.qgs` : mêmes couches, mêmes styles (vecteur QA + raster COUVERTURE)
+- [ ] **20.6 Mode MNT existant avec config résiduelle**
+  - Éditer `last_ui_config.json` pour forcer `COUVERTURE: true` puis lancer en mode MNT existant
+  - Warning « Produit Couverture indisponible… » dans le journal, pas d'erreur
+- [ ] **20.7 Cohérence terrain**
+  - Sur une zone partiellement boisée : les polygones correspondent aux masses boisées/plans d'eau (recouper visuellement avec `index_DENSITE`)

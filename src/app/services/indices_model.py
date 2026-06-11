@@ -22,6 +22,8 @@ class ProductInfo:
 _PRODUCTS: List[ProductInfo] = [
     ProductInfo("MNT", "MNT", "Modèle numérique de terrain", "Altitude du sol", False),
     ProductInfo("DENSITE", "Densité", "Densité de points", "Points LiDAR / m²", False),
+    ProductInfo("COUVERTURE", "Couverture", "Couverture des points sol",
+                "QA : zones où le MNT est interpolé", False),
     ProductInfo("HS", "HS", "Hillshade", "Ombrage simple (une direction)", True),
     ProductInfo("M_HS", "M-HS", "Multi-Hillshade", "Ombrage multi-directionnel", True),
     ProductInfo("SVF", "SVF", "Sky-View Factor", "Révèle creux et dépressions", True),

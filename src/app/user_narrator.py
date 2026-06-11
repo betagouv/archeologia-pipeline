@@ -31,6 +31,7 @@ if TYPE_CHECKING:
 PRODUCT_LABELS = {
     "MNT": "modèle de terrain (MNT)",
     "DENSITE": "carte de densité",
+    "COUVERTURE": "carte de couverture (QA points sol)",
     "HS": "ombrage simple",
     "M_HS": "ombrage multi-directionnel",
     "SVF": "facteur de vue du ciel (SVF)",

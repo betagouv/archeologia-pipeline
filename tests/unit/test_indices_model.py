@@ -18,10 +18,10 @@ class TestCatalog:
         assert rvt_keys() == ["HS", "M_HS", "SVF", "SLO", "LD", "SLRM", "VAT"]
 
     def test_base_keys(self):
-        assert base_keys() == ["MNT", "DENSITE"]
+        assert base_keys() == ["MNT", "DENSITE", "COUVERTURE"]
 
     def test_all_products_count(self):
-        assert len(all_products()) == 9
+        assert len(all_products()) == 10
 
     def test_product_lookup_has_metadata(self):
         p = product("M_HS")
@@ -79,4 +79,21 @@ class TestToggle:
     def test_toggle_densite_independent(self):
         new, toast = toggle({"MNT": True, "DENSITE": False}, "DENSITE")
         assert new["DENSITE"] is True
+        assert toast is None
+
+
+class TestCouvertureEntry:
+    def test_presente_au_catalogue_comme_produit_de_base(self):
+        p = product("COUVERTURE")
+        assert p.is_rvt is False
+        assert p.tag == "Couverture"
+        assert "COUVERTURE" in base_keys()
+
+    def test_decochee_par_defaut(self):
+        assert default_products()["COUVERTURE"] is False
+
+    def test_toggle_ne_force_pas_mnt(self):
+        new, toast = toggle(default_products(), "COUVERTURE")
+        assert new["COUVERTURE"] is True
+        assert new["MNT"] is False
         assert toast is None

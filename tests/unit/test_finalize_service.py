@@ -198,3 +198,54 @@ class TestCollectDetectionLayers:
             f"{gpkg}|layername=cratere",
             f"{gpkg}|layername=zone",
         ]
+
+
+class TestBuildCoveragePolygons:
+    @staticmethod
+    def _make_coverage_indices(tmp_path: Path) -> Path:
+        import numpy as np
+        import pytest
+
+        rasterio = pytest.importorskip("rasterio")
+        from rasterio.transform import from_origin
+
+        tif_dir = tmp_path / "indices" / "COUVERTURE" / "tif"
+        tif_dir.mkdir(parents=True)
+        arr = np.full((40, 40), 80, dtype=np.uint8)
+        arr[5:15, 5:15] = 0  # 100 m² sous le seuil
+        with rasterio.open(
+            tif_dir / "LHD_FXX_0624_6864_couverture_A_LAMB93.tif", "w",
+            driver="GTiff", height=40, width=40, count=1, dtype="uint8",
+            nodata=255, transform=from_origin(0.0, 40.0, 1.0, 1.0), crs="EPSG:2154",
+        ) as ds:
+            ds.write(arr, 1)
+        return tmp_path / "indices"
+
+    def test_dossier_absent_renvoie_none(self, tmp_path):
+        out = finalize_service._build_coverage_polygons(
+            tmp_path / "indices", 30.0, lambda m: None
+        )
+        assert out is None
+
+    def test_genere_le_gpkg(self, tmp_path):
+        import pytest
+
+        pytest.importorskip("shapely")
+        pytest.importorskip("geopandas")
+        idx_dir = self._make_coverage_indices(tmp_path)
+        out = finalize_service._build_coverage_polygons(idx_dir, 30.0, lambda m: None)
+        assert out is not None
+        assert Path(out) == idx_dir / "COUVERTURE" / "zones_mal_couvertes.gpkg"
+        assert Path(out).exists()
+
+    def test_erreur_isolee_renvoie_none(self, tmp_path):
+        # Un TIF corrompu ne doit JAMAIS faire échouer la finalisation (audit ROB).
+        tif_dir = tmp_path / "indices" / "COUVERTURE" / "tif"
+        tif_dir.mkdir(parents=True)
+        (tif_dir / "corrompu.tif").write_bytes(b"pas un tif")
+        logs = []
+        out = finalize_service._build_coverage_polygons(
+            tmp_path / "indices", 30.0, logs.append
+        )
+        assert out is None
+        assert any("non g" in m for m in logs)

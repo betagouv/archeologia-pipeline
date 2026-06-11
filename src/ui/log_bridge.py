@@ -27,7 +27,7 @@ class QtLogEmitter(QObject):
     stage_id = pyqtSignal(str)            # ID d'étape sémantique → timeline
     busy = pyqtSignal(bool)               # True = barre indéterminée (phase sans signal fin)
     run_enabled = pyqtSignal(bool)        # True = run terminé → réactiver l'UI
-    load_layers = pyqtSignal(list, list, list)  # (vrt_paths, shp_paths, class_colors)
+    load_layers = pyqtSignal(list, list, list, list)  # (vrt_paths, shp_paths, class_colors, qa_paths)
     metric = pyqtSignal(int, int, str)    # (current, total, label) — compteur de phase
 
 

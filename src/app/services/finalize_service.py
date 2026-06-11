@@ -113,6 +113,54 @@ def _collect_vrt_paths_and_build(idx_dir: Path, det_dir: Path, log: LogFn) -> Li
     return vrt_paths
 
 
+def _build_coverage_polygons(
+    idx_dir: Path,
+    threshold_percent: float,
+    log: LogFn,
+) -> Optional[str]:
+    """Vectorise les zones sous le seuil de ``indices/COUVERTURE/`` (si présent)
+    vers ``indices/COUVERTURE/zones_mal_couvertes.gpkg``.
+
+    Best-effort : toute erreur est loggée et renvoie ``None`` — la génération
+    QA ne doit jamais avorter la finalisation (audit ROB).
+    """
+    tif_dir = idx_dir / "COUVERTURE" / "tif"
+    if not tif_dir.is_dir():
+        return None
+    try:
+        try:
+            from ...pipeline.coverage_polygons import (
+                extract_low_coverage_polygons,
+                write_low_coverage_gpkg,
+            )
+        except ImportError:  # pragma: no cover — fallback tests standalone
+            from pipeline.coverage_polygons import (
+                extract_low_coverage_polygons,
+                write_low_coverage_gpkg,
+            )
+
+        raster = tif_dir / "index.vrt"
+        if not raster.exists():
+            tifs = sorted(tif_dir.glob("*.tif"))
+            if not tifs:
+                return None
+            raster = tifs[0]
+        polygons = extract_low_coverage_polygons(raster, threshold_percent)
+        if not polygons:
+            log("Couverture : aucune zone sous le seuil — pas de polygones générés")
+            return None
+        gpkg = write_low_coverage_gpkg(
+            polygons, idx_dir / "COUVERTURE" / "zones_mal_couvertes.gpkg"
+        )
+        if gpkg is None:
+            return None
+        log(f"Couverture : {len(polygons)} zone(s) mal couverte(s) → {gpkg.name}")
+        return str(gpkg)
+    except Exception as e:  # noqa: BLE001 — QA best-effort
+        log(f"Note: polygones de couverture non générés ({e})")
+        return None
+
+
 def _list_gpkg_layers(gpkg_path: Path) -> List[str]:
     """Liste les couches d'un GeoPackage avec plusieurs méthodes de fallback."""
     # Méthode 1 : fiona
@@ -308,6 +356,7 @@ def finalize_pipeline(
     tiles_processed: int = 0,
     active_products: Optional[List[str]] = None,
     extra_label: str = "",
+    coverage_threshold_percent: float = 30.0,
     ui_config: Optional[Dict[str, Any]] = None,
 ) -> None:
     """
@@ -342,6 +391,12 @@ def finalize_pipeline(
     reporter.info("Création des fichiers VRT d’indexation...")
     narrator.finalize_start()
     vrt_paths = _collect_vrt_paths_and_build(idx_dir, det_dir, log)
+
+    # Polygones QA « zones mal couvertes » (si le produit COUVERTURE a tourné).
+    qa_paths: List[str] = []
+    qa_gpkg = _build_coverage_polygons(idx_dir, coverage_threshold_percent, log)
+    if qa_gpkg:
+        qa_paths.append(qa_gpkg)
 
     # 2. Collecte des shapefiles CV (tous les runs)
     from ...pipeline.cv.class_utils import resolve_cv_runs
@@ -442,7 +497,7 @@ def finalize_pipeline(
         reporter.info("")
 
     # 5. Chargement des couches dans QGIS
-    if vrt_paths or shapefile_paths:
+    if vrt_paths or shapefile_paths or qa_paths:
         reporter.stage("Chargement des couches")
         reporter.info(f"Chargement de {len(vrt_paths)} VRT et {len(shapefile_paths)} shapefile(s) dans QGIS...")
         # Passer le mapping global si disponible (encodé comme dict dans la liste)
@@ -450,7 +505,13 @@ def finalize_pipeline(
         if global_color_map:
             colors_param = [global_color_map]  # dict wrappé dans une liste
         try:
-            reporter.load_layers(vrt_paths, shapefile_paths, colors_param)
+            # 4ᵉ argument seulement si nécessaire : les reporters/fakes legacy
+            # à 3 paramètres restent compatibles (aucun run sans COUVERTURE
+            # ne change de signature d'appel).
+            if qa_paths:
+                reporter.load_layers(vrt_paths, shapefile_paths, colors_param, qa_paths)
+            else:
+                reporter.load_layers(vrt_paths, shapefile_paths, colors_param)
         except Exception as e:
             reporter.info(f"Note: Chargement des couches non disponible ({e})")
 

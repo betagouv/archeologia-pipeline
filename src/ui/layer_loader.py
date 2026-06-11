@@ -131,6 +131,91 @@ def build_detection_vector_layer(
     return layer
 
 
+def apply_coverage_raster_symbology(layer, threshold_percent: float, logger: logging.Logger) -> None:
+    """Pseudo-couleur du raster COUVERTURE : 0 % rouge opaque → seuil orange
+    semi-transparent → 100 % entièrement transparent. Les lacunes « brillent »
+    par-dessus le MNT, le reste s'efface. Partagée chargement live / ``.qgs``."""
+    try:
+        from qgis.core import (
+            QgsColorRampShader,
+            QgsRasterShader,
+            QgsSingleBandPseudoColorRenderer,
+        )
+        from qgis.PyQt.QtGui import QColor
+
+        thr = float(threshold_percent)
+        items = [
+            QgsColorRampShader.ColorRampItem(0.0, QColor(178, 24, 43, 255), "0 % (pas de points sol)"),
+            QgsColorRampShader.ColorRampItem(thr, QColor(244, 165, 130, 180), f"{thr:.0f} % (seuil)"),
+            QgsColorRampShader.ColorRampItem(100.0, QColor(255, 255, 255, 0), "100 % (bien couvert)"),
+        ]
+        shader_fn = QgsColorRampShader(0.0, 100.0)
+        shader_fn.setColorRampType(QgsColorRampShader.Type.Interpolated)
+        shader_fn.setClassificationMode(QgsColorRampShader.ClassificationMode.Continuous)
+        shader_fn.setColorRampItemList(items)
+        shader = QgsRasterShader()
+        shader.setRasterShaderFunction(shader_fn)
+        renderer = QgsSingleBandPseudoColorRenderer(layer.dataProvider(), 1, shader)
+        renderer.setClassificationMin(0.0)
+        renderer.setClassificationMax(100.0)
+        layer.setRenderer(renderer)
+        layer.triggerRepaint()
+    except Exception as e:  # noqa: BLE001
+        logger.warning(f"Symbologie couverture non appliquée: {e}")
+
+
+def low_coverage_layer_display_name(threshold_percent: float) -> str:
+    """Nom d'affichage de la couche QA (partagé live / .qgs / réutilisation)."""
+    return f"Zones mal couvertes (<{float(threshold_percent):.0f} %)"
+
+
+def build_low_coverage_vector_layer(gpkg_path: str, threshold_percent: float, logger: logging.Logger):
+    """Couche « Zones mal couvertes » stylée (hachures rouges 45°/135° + contour
+    rouge, intérieur transparent), CRS fixé. N'ajoute la couche à AUCUN projet —
+    l'appelant en est propriétaire. Partagée chargement live / ``.qgs``.
+    ``None`` si invalide."""
+    try:
+        from qgis.core import (
+            QgsFillSymbol,
+            QgsLinePatternFillSymbolLayer,
+            QgsSimpleLineSymbolLayer,
+            QgsSingleSymbolRenderer,
+            QgsVectorLayer,
+        )
+        from qgis.PyQt.QtGui import QColor
+
+        from ..pipeline.coverage_polygons import GPKG_LAYER_NAME
+
+        name = low_coverage_layer_display_name(threshold_percent)
+        layer = QgsVectorLayer(f"{gpkg_path}|layername={GPKG_LAYER_NAME}", name, "ogr")
+        if not layer.isValid():
+            # Repli : GPKG mono-couche sans nom de couche connu.
+            layer = QgsVectorLayer(str(gpkg_path), name, "ogr")
+            if not layer.isValid():
+                return None
+        _ensure_layer_crs(layer, logger)
+        red = QColor(200, 30, 30)
+        symbol = QgsFillSymbol()
+        symbol.deleteSymbolLayer(0)
+        for angle in (45, 135):
+            hatch = QgsLinePatternFillSymbolLayer()
+            hatch.setLineAngle(angle)
+            hatch.setDistance(3.0)
+            hatch.setLineWidth(0.4)
+            hatch.setColor(red)
+            symbol.appendSymbolLayer(hatch)
+        outline = QgsSimpleLineSymbolLayer()
+        outline.setColor(red)
+        outline.setWidth(0.6)
+        symbol.appendSymbolLayer(outline)
+        layer.setRenderer(QgsSingleSymbolRenderer(symbol))
+        layer.triggerRepaint()
+        return layer
+    except Exception as e:  # noqa: BLE001
+        logger.warning(f"Couche zones mal couvertes non construite: {e}")
+        return None
+
+
 def load_result_layers(
     vrt_paths: list,
     shapefile_paths: list,
@@ -140,6 +225,8 @@ def load_result_layers(
     entity_labels: Optional[dict] = None,
     derived_slugs: Optional[set] = None,
     min_conf_by_slug: Optional[dict] = None,
+    qa_paths: Optional[list] = None,
+    coverage_threshold_percent: float = 30.0,
 ) -> None:
     """Charge les VRT (raster) et vecteurs (détections) dans le projet QGIS,
     applique la symbologie, puis zoome sur l'étendue combinée (déféré).
@@ -154,7 +241,6 @@ def load_result_layers(
             QgsProject,
             QgsRasterLayer,
             QgsRectangle,
-            QgsVectorLayer,
         )
 
         from ..pipeline.cv.class_utils import BASE_COLOR_PALETTE
@@ -190,6 +276,8 @@ def load_result_layers(
             layer = QgsRasterLayer(vrt_path_str, layer_name, "gdal")
             if layer.isValid():
                 _ensure_layer_crs(layer, logger)
+                if rvt_type == "COUVERTURE":
+                    apply_coverage_raster_symbology(layer, coverage_threshold_percent, logger)
                 project.addMapLayer(layer)
                 loaded_layers.append(layer)
                 combined_extent = _combine(combined_extent, layer.extent())
@@ -243,6 +331,26 @@ def load_result_layers(
                 )
             else:
                 logger.warning(f"Impossible de charger la couche: {ogr_source}")
+
+        # ── Vecteur QA : zones mal couvertes (tout en haut de l'arbre) ──
+        qa_name = low_coverage_layer_display_name(coverage_threshold_percent)
+        for qa_path in (qa_paths or []):
+            if not qa_path:
+                continue
+            qa_str = str(qa_path)
+            if _reuse_existing(project, qa_name, qa_str, loaded_layers, combined_extent):
+                logger.info(f"Couche QA déjà présente: {qa_name}")
+                continue
+            layer = build_low_coverage_vector_layer(qa_str, coverage_threshold_percent, logger)
+            if layer is None:
+                logger.warning(f"Impossible de charger la couche QA: {qa_str}")
+                continue
+            project.addMapLayer(layer, False)
+            root.insertLayer(0, layer)  # au-dessus des groupes d'entités et des rasters
+            loaded_layers.append(layer)
+            combined_extent = _combine(combined_extent, layer.extent())
+            loaded_count += 1
+            logger.info(f"Couche QA chargée: {qa_name}")
 
         if loaded_count > 0:
             from ..app.user_narrator import _human_count

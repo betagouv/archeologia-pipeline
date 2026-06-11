@@ -44,6 +44,15 @@ class ExistingMntRunner:
         rvt_params = ctx.rvt_params
         active_products = products.active()
 
+        # COUVERTURE a été neutralisée par build_run_context (pas de nuage de
+        # points dans ce mode) : prévenir si la config brute la demandait.
+        raw_products = ((ctx.ui_config.get("processing") or {}).get("products") or {})
+        if raw_products.get("COUVERTURE"):
+            reporter.user_warning(
+                "Produit Couverture indisponible en mode MNT existant "
+                "(nuage de points requis) — ignoré."
+            )
+
         plan = build_progress_plan(ctx.mode, ctx.cv.enabled)
         narrator = create_user_narrator(reporter)
 

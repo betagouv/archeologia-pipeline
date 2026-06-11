@@ -51,6 +51,7 @@ class IgnOrLocalRunner:
         total_tiles: int,
         active_products: list,
     ) -> None:
+        from ...pipeline.ign.products.coverage import create_coverage_map
         from ...pipeline.ign.products.crop import crop_final_products
         from ...pipeline.ign.products.density import create_density_map
         from ...pipeline.ign.products.indices import create_visualization_products
@@ -80,8 +81,14 @@ class IgnOrLocalRunner:
         if cancel.is_cancelled():
             return
 
-        if products_cfg.get("DENSITE", False):
-            create_density_map(
+        # La passe densité sert DENSITE (publié) ET COUVERTURE (dérivé).
+        # Si DENSITE est décoché, son TIF reste en temp sans être publié
+        # (les boucles crop/copy filtrent sur le dict produits).
+        needs_density = bool(
+            products_cfg.get("DENSITE", False) or products_cfg.get("COUVERTURE", False)
+        )
+        if needs_density:
+            density_result = create_density_map(
                 input_laz_path=merged_path,
                 temp_dir=temp_dir,
                 current_tile_name=tile_name,
@@ -94,6 +101,17 @@ class IgnOrLocalRunner:
 
             if cancel.is_cancelled():
                 return
+
+            if products_cfg.get("COUVERTURE", False):
+                create_coverage_map(
+                    density_path=density_result.density_path,
+                    temp_dir=temp_dir,
+                    current_tile_name=tile_name,
+                    log=lambda m: reporter.info(m),
+                )
+
+                if cancel.is_cancelled():
+                    return
 
         create_visualization_products(
             temp_dir=temp_dir,
@@ -208,7 +226,7 @@ class IgnOrLocalRunner:
         # (VRT + projet QGIS + chargement des couches déjà produites).
         cancelled = False
         try:
-            if products.needs_mnt() and merged_result.merged_files:
+            if products.needs_tile_processing() and merged_result.merged_files:
                 rvt_params = ctx.rvt_params
                 active_products = products.active()
 
@@ -297,6 +315,7 @@ class IgnOrLocalRunner:
                 tiles_processed=len(merged_result.merged_files) if merged_result else 0,
                 active_products=active_products,
                 extra_label="Dalles traitées",
+                coverage_threshold_percent=processing.coverage_threshold_percent,
                 ui_config=ctx.ui_config,
             )
 

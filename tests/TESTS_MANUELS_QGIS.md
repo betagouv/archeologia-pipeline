@@ -43,31 +43,27 @@ Cette grille indique, pour chaque vague livrée, **quelles sections de tests son
   - Ouvrir QGIS
   - Vérifier qu'aucune erreur n'apparaît dans la console Python
   - Vérifier que le plugin apparaît dans le menu Extensions
-- [ ] **1.2 Ouverture du plugin**
+- [ ] **1.2 Ouverture du plugin (assistant 4 étapes)**
   - Cliquer sur le menu/icône du plugin
-  - Vérifier que `NewMainDialog` s'ouvre sans erreur
-  - Vérifier le titre « Archéolog'IA »
-  - Vérifier la présence : combo Mode (Simple/Expert), sections config, zone de logs, boutons Lancer / Annuler / Nettoyer logs
-  - Vérifier le message « Pipeline prêt à être utilisé » dans les logs
+  - Vérifier que l'assistant (`WizardDialog`) s'ouvre sans erreur
+  - Vérifier le titre « Archéolog'IA » + numéro de version
+  - Vérifier la présence : rail latéral 4 étapes, boutons Précédent / Suivant, en-tête avec « Charger une config » / « Enregistrer la config »
 - [ ] **1.3 Fermeture et réouverture**
   - Fermer puis rouvrir le plugin
-  - Vérifier que la configuration précédente est conservée (`config.json`)
+  - Vérifier que la configuration précédente est conservée (`last_ui_config.json`, dossier de profil QGIS)
 
 ---
 
-## 2. Mode Simple / Expert
+## 2. Navigation de l'assistant
 
-- [ ] **2.1 Mode Simple (par défaut)**
-  - Vérifier que les sections suivantes sont **masquées** : Paramètres MNT, Paramètres RVT détaillés, Performance
-- [ ] **2.2 Basculer en mode Expert**
-  - Sélectionner « Expert » dans le combo Mode
-  - Vérifier que les sections MNT, RVT, Performance deviennent visibles
-  - Vérifier que les colonnes « Indice cible » et « Aire min » sont visibles
-  - Vérifier que les seuils détection expert sont visibles (si détection activée)
-- [ ] **2.3 Bascule Expert → Simple → Expert**
-  - Modifier des paramètres expert (ex. résolution MNT = 1.0)
-  - Passer en Simple puis revenir en Expert
-  - Vérifier que les valeurs modifiées sont conservées
+- [ ] **2.1 Rail latéral**
+  - Vérifier que l'étape courante est mise en évidence dans le rail
+  - Vérifier que les sous-libellés du rail reflètent les choix (mode, produits, entités)
+- [ ] **2.2 Précédent / Suivant**
+  - Parcourir les 4 étapes dans les deux sens
+  - Vérifier que les saisies sont conservées en revenant en arrière
+- [ ] **2.3 Erreurs bloquantes**
+  - Laisser un champ obligatoire vide → le rail signale l'étape en erreur et le bouton Lancer (étape 4) est désactivé avec une explication
 
 ---
 
@@ -100,33 +96,28 @@ Cette grille indique, pour chaque vague livrée, **quelles sections de tests son
 ## 4. Produits de visualisation
 
 - [ ] **4.1 Cocher / décocher chaque produit**
-  - MNT, DENSITÉ, M-HS, SVF, SLO, LD, SLRM, VAT
+  - MNT, DENSITÉ, HS, M-HS, SVF, SLO, LD, SLRM, VAT
   - Vérifier que le bouton Lancer est désactivé si aucun produit coché (hors mode « Indices existants »)
+  - Vérifier que HS est sélectionnable **seul** comme indice de visualisation
 
 ---
 
-## 5. Détection par IA (multi-modèles)
+## 5. Détection par IA (étape 3 — sélection par entités)
 
-- [ ] **5.1 Activer / désactiver la détection**
-  - Cocher « Activer la détection par intelligence artificielle »
-  - Vérifier que le contenu détection apparaît (table, classes)
-  - Vérifier le hint « La détection ne sera pas exécutée » quand désactivé
-  - En mode Expert : vérifier que la section seuils apparaît aussi
-- [ ] **5.2 Ajouter un modèle**
-  - Cliquer « + Ajouter un modèle »
-  - Vérifier qu'une ligne apparaît avec le combo des modèles disponibles
-  - Vérifier la présence des boutons ℹ et × sur chaque ligne
-- [ ] **5.3 Multi-modèles**
-  - Ajouter 2 modèles différents
-  - Vérifier que les classes sont affichées groupées par modèle (en-tête en gras `── modèle_name ──`)
-  - Sélectionner / désélectionner des classes individuelles
-  - Vérifier « Tout sélectionner » / « Tout désélectionner »
-- [ ] **5.4 Actualiser les modèles**
-  - Cliquer « Actualiser »
-  - Vérifier que les combos modèle sont mis à jour
-- [ ] **5.5 Supprimer un modèle**
-  - Cliquer × sur une ligne → la ligne disparaît
-  - Vérifier que les classes sont mises à jour
+- [ ] **5.1 Cocher une entité**
+  - À l'étape 3, cocher une entité (carte) dans son panneau morphologique
+  - Vérifier qu'un run apparaît dans « Runs IA programmés » (modèle, indice cible)
+- [ ] **5.2 Info modèle**
+  - Cliquer le bouton ⓘ d'un run programmé
+  - Vérifier que le dialogue d'information du modèle s'ouvre (classes, indice, paramètres)
+- [ ] **5.3 Multi-entités**
+  - Cocher plusieurs entités couvertes par des modèles/indices différents
+  - Vérifier que les runs sont regroupés par couple (modèle, indice cible)
+- [ ] **5.4 Seuil par entité**
+  - Ouvrir les réglages avancés d'une entité et modifier son seuil de confiance
+  - Vérifier que le seuil modifié est rappelé à la réouverture
+- [ ] **5.5 Décocher une entité**
+  - Décocher l'entité → le run correspondant disparaît de « Runs IA programmés »
 - [ ] **5.6 Info modèle (bouton ℹ)**
   - Cliquer ℹ sur un modèle
   - Vérifier la boîte de dialogue avec les paramètres d'entraînement
@@ -276,13 +267,13 @@ Cette grille indique, pour chaque vague livrée, **quelles sections de tests son
   - Vérifier que les zones cluster sont chargées dans QGIS
   - Vérifier le style hachures croisées sur les couches cluster
   - **V2.2** : vérifier que `min_confidence`, `eps_m`, `min_cluster_size` du `args.yaml` sont bien appliqués
-- [ ] **13.2 Cible dérivée « Zones d'extraction de matériaux »** (UI étape 3, sélection par entités)
-  - À l'étape 3, cocher l'entité **« Zones d'extraction de matériaux »**
+- [ ] **13.2 Cible dérivée « Regroupement de cratères »** (UI étape 3, sélection par entités)
+  - À l'étape 3, cocher l'entité **« Regroupement de cratères »**
   - Vérifier qu'un badge **« ↳ regroupement automatique en zones »** s'affiche (et **non** une case « Regrouper en clusters »)
-  - Panneau « Runs IA programmés » : **1 run** `Cratères circulaires (Verdun)` · `🔗 LD` · classes `cratere_obus, zone_crateres`
+  - Panneau « Runs IA programmés » : **1 run** `Cratères circulaires (Verdun)` · `🔗 LD` · classes `cratere, zone_crateres`
   - Via « Changer ▾ », basculer sur `verdun_3_classes_1` → le run passe sur `🔗 SVF`
-  - Lancer sur un RVT LD existant → GeoPackage avec polygones `zone_crateres` (zones) **ET** points/masques `cratere_obus` (dépressions individuelles)
-  - Cocher en plus « Trous d'obus » (même modèle par défaut) → toujours **un seul run** (fusion, pas de double inférence)
+  - Lancer sur un RVT LD existant → GeoPackage avec polygones `zone_crateres` (zones) **ET** points/masques `cratere` (dépressions individuelles)
+  - Cocher en plus « Cratères » (même modèle par défaut) → toujours **un seul run** (fusion, pas de double inférence)
 
 ---
 

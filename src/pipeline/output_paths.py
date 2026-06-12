@@ -25,6 +25,7 @@ Nouvelle arborescence (v2) :
 """
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import Any, Dict
 
@@ -162,6 +163,10 @@ def build_entity_class_targets(output_dir: Path, entities: Any):
     for ent in (entities or []):
         ent = ent or {}
         slug = str(ent.get("slug") or ent.get("id") or "").strip()
+        # Défense en profondeur (AUDIT PARSE-05) : le repli ``id`` n'est pas
+        # garanti slugifié — il entre dans un Path, on neutralise tout
+        # caractère de chemin/interdit Windows avant usage.
+        slug = re.sub(r"[^a-z0-9_-]+", "_", slug.lower()).strip("_")
         if not slug:
             continue
         gpkg = str(detection_entity_dir(output_dir, slug) / f"{slug}.gpkg")

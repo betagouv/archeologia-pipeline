@@ -230,6 +230,12 @@ class EntityCard(QFrame):
         """
         self._candidates = {name: disp for name, disp in candidates}
         self._has_model = bool(candidates)
+        # Affordance : toute la carte est cliquable quand un modèle la couvre
+        # (cf. mousePressEvent) — le curseur doit le dire, comme à l'étape 2.
+        self.setCursor(
+            Qt.CursorShape.PointingHandCursor if self._has_model
+            else Qt.CursorShape.ArrowCursor
+        )
         self._configure_reservations(has_cluster, is_derived)
 
     def _configure_reservations(self, has_cluster: bool, is_derived: bool = False) -> None:

@@ -90,23 +90,24 @@ class _AdvTabBar(QTabBar):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
         font = painter.font()
-        font.setPointSize(max(6, font.pointSize() - 2))
+        font.setPointSize(max(8, font.pointSize() - 1))
         font.setBold(True)
         painter.setFont(font)
         for i in range(self.count()):
             if not self.tabData(i):  # actif ou onglet non-indice → rien
                 continue
             rect = self.tabRect(i)
-            # Voile gris : l'onglet paraît désactivé.
-            painter.fillRect(rect.adjusted(2, 2, -2, -2), QColor(236, 236, 236, 150))
-            # Badge « OFF » encadré, calé à droite.
+            # Voile léger : l'onglet OFF reste lisible (il demeure cliquable
+            # pour réactiver l'indice — ne pas le confondre avec un disabled).
+            painter.fillRect(rect.adjusted(2, 2, -2, -2), QColor(236, 236, 236, 90))
+            # Badge « OFF » encadré, calé à droite (contraste AA : texte sombre).
             pill = QRect(0, 0, self._PILL_W, 15)
             pill.moveCenter(rect.center())
             pill.moveRight(rect.right() - 8)
-            painter.setPen(Qt.PenStyle.NoPen)
-            painter.setBrush(QColor(0xCF, 0xCF, 0xCF))
+            painter.setPen(QColor(0x90, 0x90, 0x90))
+            painter.setBrush(QColor(0xE3, 0xE3, 0xE3))
             painter.drawRoundedRect(pill, 3, 3)
-            painter.setPen(QColor(0x5A, 0x5A, 0x5A))
+            painter.setPen(QColor(0x2C, 0x2C, 0x2C))
             painter.drawText(pill, Qt.AlignmentFlag.AlignCenter, "OFF")
 
 
@@ -246,8 +247,11 @@ class IndicesPage(QWidget):
         self._mnt_chip.clicked.connect(self._on_product_clicked)
         self._dens_chip = _Chip("DENSITE")
         self._dens_chip.clicked.connect(self._on_product_clicked)
+        self._cov_chip = _Chip("COUVERTURE")
+        self._cov_chip.clicked.connect(self._on_product_clicked)
         chips.addWidget(self._mnt_chip)
         chips.addWidget(self._dens_chip)
+        chips.addWidget(self._cov_chip)
         chips.addStretch(1)
         bv.addLayout(chips)
         self._mnt_hint = QLabel("MNT requis tant qu'un indice RVT est coché.")
@@ -272,7 +276,9 @@ class IndicesPage(QWidget):
         self._res_spin.valueChanged.connect(self._on_changed)
         res_row.addWidget(res_label)
         res_row.addWidget(self._res_spin)
-        res_row.addWidget(QLabel("m / pixel"))
+        res_unit = QLabel("m / pixel")
+        res_unit.setObjectName("FieldUnit")
+        res_row.addWidget(res_unit)
         res_row.addStretch(1)
         bv.addLayout(res_row)
         root.addWidget(self._base_card)
@@ -348,13 +354,18 @@ class IndicesPage(QWidget):
         self._filter_edit.setPlaceholderText("Ex: Classification = 2 OR Classification = 6")
         self._filter_edit.textChanged.connect(self._on_changed)
         self._density_spin = self._mk_dspin(0.01, 100.0, 1.0)
+        self._cov_thr_spin = self._mk_spin(5, 95, 30)
         self._reg(("processing",), "filter_expression", self._filter_edit, "text", DEFAULT_FILTER)
         self._reg(("processing",), "density_resolution", self._density_spin, "float", 1.0)
+        self._reg(("processing",), "coverage_threshold_percent", self._cov_thr_spin, "int", 30)
         self._adv_tabs.addTab(self._make_param_tab("MNT", [
             ("Filtre PDAL", self._filter_edit,
              "Classes LiDAR conservées pour reconstruire le sol (codes ASPRS)."),
             ("Résolution densité (m)", self._density_spin,
              "Taille de cellule du raster de densité de points."),
+            ("Seuil zones mal couvertes (%)", self._cov_thr_spin,
+             "Produit Couverture : en-dessous de ce % de cellules avec points "
+             "sol dans le voisinage, la zone est marquée « mal couverte »."),
         ]), "MNT")
 
         # — HS (hs) —
@@ -498,7 +509,9 @@ class IndicesPage(QWidget):
         ov_lbl.setObjectName("FieldLabel")
         ov_row.addWidget(ov_lbl)
         ov_row.addWidget(self._overlap_spin)
-        ov_row.addWidget(QLabel("%"))
+        ov_unit = QLabel("%")
+        ov_unit.setObjectName("FieldUnit")
+        ov_row.addWidget(ov_unit)
         ov_row.addStretch(1)
         ov_hint = QLabel(
             "Chevauchement entre tuiles lors du calcul RVT. Évite les artefacts "
@@ -620,9 +633,12 @@ class IndicesPage(QWidget):
                 widget.setMinimumWidth(130)
             else:
                 widget.setFixedWidth(96)
+            # Label et champ accolés (stretch APRÈS) : avec le stretch entre
+            # les deux, le champ se retrouvait visuellement plus proche du
+            # label du paramètre voisin que du sien (loi de proximité).
             row.addWidget(lbl)
-            row.addStretch(1)
             row.addWidget(widget)
+            row.addStretch(1)
             cell.addLayout(row)
         if help_text:
             hint = QLabel(help_text)
@@ -673,6 +689,8 @@ class IndicesPage(QWidget):
         self._mnt_chip.set_checked(self._products.get("MNT", False))
         self._dens_chip.set_checked(self._products.get("DENSITE", False))
         self._dens_chip.set_text("Densité · points LiDAR / m²")
+        self._cov_chip.set_checked(self._products.get("COUVERTURE", False))
+        self._cov_chip.set_text("Couverture · QA points sol")
         locked = requires_mnt(self._products)
         self._mnt_chip.set_text(
             "MNT · altitude du sol" + ("   · REQUIS" if locked else "")
@@ -771,6 +789,7 @@ class IndicesPage(QWidget):
         """
         self._mnt_chip.setEnabled(not ro)
         self._dens_chip.setEnabled(not ro)
+        self._cov_chip.setEnabled(not ro)
         self._res_spin.setEnabled(not ro)
         self._reset_btn.setEnabled(not ro)
         for card in self._index_cards.values():

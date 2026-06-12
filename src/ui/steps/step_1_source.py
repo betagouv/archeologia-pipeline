@@ -65,7 +65,9 @@ class SourcePage(QWidget):
         root.addWidget(sub)
 
         # ── Carte frise + bandeau ──
-        self._frise_card, fv = build_card()
+        # Numérotée « 1 » : la carte « Entrée & sortie » porte le « 2 », la
+        # séquence visuelle doit être complète sur la page.
+        self._frise_card, fv = build_card("Point d'entrée du pipeline", "1")
         frise_row = QHBoxLayout()
         frise_row.setContentsMargins(0, 12, 0, 0)  # place en haut pour le badge ENTRÉE
         frise_row.setSpacing(0)
@@ -142,12 +144,21 @@ class SourcePage(QWidget):
         self._banner_icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
         text = QVBoxLayout()
         text.setSpacing(1)
+        # Titre + complément en deux QLabel stylés par le QSS (pas de couleur
+        # en dur dans du rich text, qui échapperait au thème).
+        title_row = QHBoxLayout()
+        title_row.setSpacing(6)
         self._banner_title = QLabel("")
         self._banner_title.setObjectName("ModeBannerTitle")
+        self._banner_sub = QLabel("")
+        self._banner_sub.setObjectName("ModeBannerSub")
+        title_row.addWidget(self._banner_title)
+        title_row.addWidget(self._banner_sub)
+        title_row.addStretch(1)
         self._banner_desc = QLabel("")
         self._banner_desc.setObjectName("ModeBannerText")
         self._banner_desc.setWordWrap(True)
-        text.addWidget(self._banner_title)
+        text.addLayout(title_row)
         text.addWidget(self._banner_desc)
         layout.addWidget(self._banner_icon, 0, Qt.AlignmentFlag.AlignTop)
         layout.addLayout(text, 1)
@@ -183,10 +194,11 @@ class SourcePage(QWidget):
         for conn, right_id in self._connectors:
             conn.set_active(right_id >= entry)
 
-        self._banner_icon.setPixmap(colored_pixmap(info.icon, "#ffffff", 18))
-        self._banner_title.setText(
-            f"<b>{info.banner_label}</b>  ·  <span style='color:#5a5a5a;'>{info.banner_sub}</span>"
+        self._banner_icon.setPixmap(
+            colored_pixmap(info.icon, "#ffffff", 20, dpr=self.devicePixelRatioF())
         )
+        self._banner_title.setText(info.banner_label)
+        self._banner_sub.setText(f"· {info.banner_sub}")
         self._banner_desc.setText(info.description)
         self._source_label.setText(info.source_label)
         self._source_edit.setPlaceholderText(info.placeholder)
@@ -220,6 +232,9 @@ class SourcePage(QWidget):
 
     def resizeEvent(self, event):  # noqa: N802 (signature Qt)
         super().resizeEvent(event)
+        # Appel synchrone : pendant un drag continu, le badge doit suivre la
+        # bulle dans la même frame (le timer seul le faisait « traîner »).
+        self._reposition_entry_badge()
         QTimer.singleShot(0, self._reposition_entry_badge)
 
     def showEvent(self, event):  # noqa: N802 (signature Qt)

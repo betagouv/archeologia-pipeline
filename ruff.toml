@@ -1,0 +1,20 @@
+# Garde-fou lint (AUDIT v2 HYG-01) — jeu de règles volontairement minimal :
+# erreurs réelles (F) + pyflakes/pycodestyle de base, pas de style imposé.
+# `ruff check src/` est documenté dans CLAUDE.md et branché au hook pre-push.
+line-length = 120
+target-version = "py39"
+
+[lint]
+select = ["E4", "E7", "E9", "F"]
+
+[lint.per-file-ignores]
+# Ré-exports volontaires des paquets (API publique des sous-modules).
+"src/pipeline/modes/__init__.py" = ["F401"]
+"src/pipeline/ign/products/__init__.py" = ["F401"]
+"src/pipeline/cv/__init__.py" = ["F401"]
+"src/app/runners/__init__.py" = ["F401"]
+# Imports volontairement APRÈS du code module (logger d'abord, ou définitions
+# utilisées par les imports suivants) — réorganiser serait du risque pur.
+"src/pipeline/cv/conversion_shp.py" = ["E402"]
+"src/pipeline/cv/cv_output.py" = ["E402"]
+"src/pipeline/ign/downloader.py" = ["E402"]

@@ -25,7 +25,6 @@ except Exception:
 from ..cancellation import check_cancelled
 from ..types import CancelCheckFn
 from .cv_output import (
-    get_detection_output_path,
     save_empty_outputs,
     save_detections_to_files,
     save_annotated_image,
@@ -143,8 +142,18 @@ def _postprocess_yolo(
     if len(output.shape) == 3:
         output = output[0]  # Enlever batch dimension
     
-    # Vérifier l'orientation (transposer si nécessaire)
-    if output.shape[0] < output.shape[1] and output.shape[0] < 10:
+    # Vérifier l'orientation (transposer si nécessaire).
+    # AUDIT v2 TEST-03 : l'ancienne heuristique (shape[0] < shape[1] et
+    # shape[0] < 10) transposait À TORT une sortie canonique [num, 4+nc] à
+    # peu de détections (ex. export avec NMS embarqué : (3, 6)) → lignes
+    # tronquées → détections perdues silencieusement. On ne transpose que si
+    # l'axe candidat « anchors » est réaliste (> 10 — les exports ultralytics
+    # bruts en ont des milliers).
+    if (
+        output.shape[0] < output.shape[1]
+        and output.shape[0] < 10
+        and output.shape[1] > 10
+    ):
         output = output.T  # [4+nc, num] -> [num, 4+nc]
     
     for row in output:
@@ -361,8 +370,10 @@ def _run_rfdetr_seg_with_sahi(
         """Calcule l'IoU entre un prob_map local et new_vals dans la zone [sy:ey, sx:ex]."""
         bb = inst["bbox"]  # [min_y, min_x, max_y, max_x]
         # Intersection de la zone de la slice avec le bbox de l'instance
-        iy0 = max(sy, bb[0]); ix0 = max(sx, bb[1])
-        iy1 = min(ey, bb[2]); ix1 = min(ex, bb[3])
+        iy0 = max(sy, bb[0])
+        ix0 = max(sx, bb[1])
+        iy1 = min(ey, bb[2])
+        ix1 = min(ex, bb[3])
         if iy0 >= iy1 or ix0 >= ix1:
             return 0.0
         # Extraire les sous-régions
@@ -478,7 +489,6 @@ def _run_rfdetr_seg_with_sahi(
                 if iou >= MASK_IOU_MERGE_THRESHOLD:
                     matched_key = base_key
                 else:
-                    new_bin = new_vals >= 0.5
                     # Chercher parmi les suffixes existants
                     for suffix in range(1, 100):
                         candidate = base_key + (suffix,)
@@ -761,7 +771,7 @@ def _save_segmentation_annotated_image(
     """
     try:
         from PIL import Image, ImageDraw
-        from .class_utils import get_class_color, BASE_COLOR_PALETTE
+        from .class_utils import get_class_color
         
         img_copy = pil_image.copy().convert("RGBA")
         img_width, img_height = img_copy.size
@@ -869,9 +879,12 @@ def _run_segformer_with_sahi(
     logger.info(f"SegFormer SAHI: {len(sliced_images)} tuiles à traiter")
     
     # Accumuler les probabilités par classe séparément [num_classes, H, W]
-    # C'est la méthode correcte : on somme les probas par classe puis on prend argmax
+    # C'est la méthode correcte : on somme les probas par classe puis on prend argmax.
+    # float16 (AUDIT v2 PERF-01) : ce buffer pleine résolution × num_classes
+    # domine le pic mémoire (≈1,2 Go/3 classes en float32 sur 100 Mpx) — fp16
+    # le divise par deux sans effet sur l'argmax (probas ∈ [0,1], ≤ ~9 votes).
     global_probs = None  # Initialisé à la première tuile (quand on connaît num_classes)
-    vote_count = np.zeros((img_height, img_width), dtype=np.float32)
+    vote_count = np.zeros((img_height, img_width), dtype=np.float16)
     num_classes = None
     
     for idx, sliced_img in enumerate(sliced_images):
@@ -892,7 +905,20 @@ def _run_segformer_with_sahi(
         # Initialiser global_probs à la première tuile
         if global_probs is None:
             num_classes = output.shape[0]
-            global_probs = np.zeros((num_classes, img_height, img_width), dtype=np.float32)
+            # Garde mémoire (AUDIT v2 PERF-01) : estimer AVANT d'allouer et
+            # prévenir l'utilisateur — un OOM ici tue le thread worker sans
+            # message sur le workflow « grands rasters » documenté.
+            est_mb = (num_classes + 2) * img_height * img_width * 2 / (1024 * 1024)
+            logger.info(
+                f"SegFormer SAHI: accumulation {num_classes}×{img_height}×{img_width} "
+                f"(≈{est_mb:.0f} Mo de buffers)"
+            )
+            if est_mb > 4096:
+                logger.warning(
+                    f"SegFormer SAHI: ≈{est_mb / 1024:.1f} Go de buffers nécessaires — "
+                    "risque de saturation mémoire ; réduisez la zone ou la résolution."
+                )
+            global_probs = np.zeros((num_classes, img_height, img_width), dtype=np.float16)
         
         # Softmax pour obtenir les probabilités
         exp_output = np.exp(output - np.max(output, axis=0, keepdims=True))
@@ -930,7 +956,8 @@ def _run_segformer_with_sahi(
     
     # Classe finale = argmax des probabilités moyennes par classe
     final_mask = np.argmax(global_probs, axis=0).astype(np.uint8)  # [H, W]
-    final_confidence = np.max(global_probs, axis=0)  # [H, W]
+    # Retour en float32 pour l'aval (comparaisons/JSON) — buffer H×W seulement.
+    final_confidence = np.max(global_probs, axis=0).astype(np.float32)  # [H, W]
     
     # Appliquer le seuil de confiance
     final_mask[final_confidence < confidence_threshold] = 0
@@ -1106,53 +1133,6 @@ def _merge_adjacent_polygons(
     return merged_detections
 
 
-def _apply_nms(detections: List[Dict], iou_threshold: float) -> List[Dict]:
-    """Applique Non-Maximum Suppression sur les détections."""
-    if not detections:
-        return []
-    
-    boxes = np.array([d["bbox"] for d in detections])
-    scores = np.array([d["confidence"] for d in detections])
-    class_ids = np.array([d["class_id"] for d in detections])
-    
-    keep_indices = []
-    for cls_id in np.unique(class_ids):
-        cls_mask = class_ids == cls_id
-        cls_indices = np.where(cls_mask)[0]
-        cls_boxes = boxes[cls_mask]
-        cls_scores = scores[cls_mask]
-        
-        order = cls_scores.argsort()[::-1]
-        cls_boxes = cls_boxes[order]
-        cls_indices = cls_indices[order]
-        
-        keep = []
-        while len(cls_boxes) > 0:
-            keep.append(cls_indices[0])
-            if len(cls_boxes) == 1:
-                break
-            
-            # Calculer IoU
-            x1 = np.maximum(cls_boxes[0, 0], cls_boxes[1:, 0])
-            y1 = np.maximum(cls_boxes[0, 1], cls_boxes[1:, 1])
-            x2 = np.minimum(cls_boxes[0, 2], cls_boxes[1:, 2])
-            y2 = np.minimum(cls_boxes[0, 3], cls_boxes[1:, 3])
-            
-            intersection = np.maximum(0, x2 - x1) * np.maximum(0, y2 - y1)
-            area1 = (cls_boxes[0, 2] - cls_boxes[0, 0]) * (cls_boxes[0, 3] - cls_boxes[0, 1])
-            areas2 = (cls_boxes[1:, 2] - cls_boxes[1:, 0]) * (cls_boxes[1:, 3] - cls_boxes[1:, 1])
-            union = area1 + areas2 - intersection
-            ious = intersection / np.maximum(union, 1e-6)
-            
-            mask = ious < iou_threshold
-            cls_boxes = cls_boxes[1:][mask]
-            cls_indices = cls_indices[1:][mask]
-        
-        keep_indices.extend(keep)
-    
-    return [detections[i] for i in keep_indices]
-
-
 def run_onnx_inference(
     *,
     image_path: str,
@@ -1227,7 +1207,7 @@ def run_onnx_inference(
         # Mode SEGMENTATION SÉMANTIQUE (SegFormer)
         # =====================================================================
         if model_type in ("segformer", "smp") or task == "semantic_segmentation":
-            logger.info(f"ONNX: mode segmentation sémantique")
+            logger.info("ONNX: mode segmentation sémantique")
             
             # Paramètres de segmentation depuis les métadonnées du modèle
             use_sahi = model_meta.get("use_sahi", True)

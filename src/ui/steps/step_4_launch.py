@@ -123,6 +123,11 @@ class LaunchPage(QWidget):
         self._recap_rows: List[QWidget] = []
         self._workers = 4
         self._preflight_gen = 0
+        self._validation_errors: List[str] = []
+        # État du préflight pour le bandeau : pending | ok | warn | err.
+        # Le bandeau ne doit pas dire « prêt à lancer » (vert) au-dessus d'un
+        # préflight rouge — les deux signaux doivent raconter la même histoire.
+        self._preflight_status = "pending"
         self._pf_emitter = _PreflightEmitter(self)
         self._pf_emitter.done.connect(self._on_preflight_done)
         self._build(config_ref)
@@ -328,10 +333,30 @@ class LaunchPage(QWidget):
         return row
 
     def set_validation(self, errors: list) -> None:
-        """Affiche le bandeau : erreurs bloquantes (rouge) ou « prêt » (vert)."""
-        if errors:
-            lines = "<br>".join(f"• {e}" for e in errors)
+        """Mémorise les erreurs bloquantes et met à jour le bandeau."""
+        self._validation_errors = list(errors or [])
+        self._update_banner()
+
+    def _update_banner(self) -> None:
+        """Bandeau d'état combiné : config (bloquant) + préflight (informateur).
+
+        - erreurs de config → rouge (liste) ;
+        - config valide mais préflight en cours → neutre (« vérification… ») ;
+        - config valide mais préflight critique en échec → rouge ;
+        - sinon → vert « prêt à lancer ».
+        """
+        if self._validation_errors:
+            lines = "<br>".join(f"• {e}" for e in self._validation_errors)
             self._banner.setText(f"<b>⚠ Impossible de lancer — corrigez :</b><br>{lines}")
+            self._banner.setProperty("state", "error")
+        elif self._preflight_status == "pending":
+            self._banner.setText("Configuration valide — vérification de l'environnement…")
+            self._banner.setProperty("state", "pending")
+        elif self._preflight_status == "err":
+            self._banner.setText(
+                "<b>⚠ Configuration valide, mais l'environnement n'est pas prêt</b> — "
+                "voir « État du système » ci-dessous."
+            )
             self._banner.setProperty("state", "error")
         else:
             self._banner.setText("✓ Configuration valide — prêt à lancer.")
@@ -418,7 +443,10 @@ class LaunchPage(QWidget):
 
     def _show_preflight_loading(self) -> None:
         self._clear_grid()
-        self._set_pill("●  …", "ok")
+        # Pastille neutre : le vert est réservé à un préflight réellement passé.
+        self._set_pill("●  …", "neutral")
+        self._preflight_status = "pending"
+        self._update_banner()
         lbl = QLabel("Vérification de l'environnement…")
         lbl.setObjectName("PreflightDetail")
         self._preflight_grid.addWidget(lbl, 0, 0, 1, 3)
@@ -426,6 +454,8 @@ class LaunchPage(QWidget):
     def _render_preflight_error(self, msg: str) -> None:
         self._clear_grid()
         self._set_pill("●  ✗", "err")
+        self._preflight_status = "err"
+        self._update_banner()
         lbl = QLabel(f"Configuration illisible : {msg}")
         lbl.setObjectName("PreflightDetail")
         lbl.setWordWrap(True)
@@ -438,7 +468,9 @@ class LaunchPage(QWidget):
             lbl.setObjectName("PreflightDetail")
             lbl.setWordWrap(True)
             self._preflight_grid.addWidget(lbl, 0, 0, 1, 3)
-            self._set_pill("●  —", "ok")
+            self._set_pill("●  —", "neutral")
+            self._preflight_status = "ok"
+            self._update_banner()
             return
 
         n_ok = 0
@@ -468,7 +500,9 @@ class LaunchPage(QWidget):
             detail.setObjectName("PreflightDetail")
             detail.setWordWrap(True)
             detail.setToolTip(r.details)
-            detail.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignTop)
+            # Aligné à gauche : les chemins longs qui wrappent restaient en
+            # drapeau gauche irrégulier avec l'alignement à droite.
+            detail.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
             self._preflight_grid.addWidget(detail, row, 2)
 
         total = len(results)
@@ -479,6 +513,8 @@ class LaunchPage(QWidget):
         else:
             kind = "ok"
         self._set_pill(f"●  {n_ok}/{total}", kind)
+        self._preflight_status = kind
+        self._update_banner()
 
     def _set_pill(self, text: str, kind: str) -> None:
         self._preflight_pill.setText(text)
@@ -508,3 +544,8 @@ class LaunchPage(QWidget):
 
     def is_running(self) -> bool:
         return self._run_view.is_running()
+
+    def request_cancel(self) -> None:
+        """Relaye la demande d'annulation au RunView (fermeture pendant un
+        run / unload du plugin — AUDIT v2 UIX-01/THR-04)."""
+        self._run_view.request_cancel()

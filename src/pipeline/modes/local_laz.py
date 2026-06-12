@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, List, Tuple
+from typing import List, Tuple
 
 from ..coords import extract_xy_from_filename, infer_xy_from_file
 from ..types import LogFn

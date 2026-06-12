@@ -77,6 +77,29 @@ def _find_external_cv_runner() -> Optional[Path]:
     return _find()
 
 
+def check_output_dir_creatable(output_dir: Path) -> tuple[bool, str]:
+    """Vérifie qu'un dossier de sortie encore inexistant pourra être créé.
+
+    Remonte au premier ancêtre existant : s'il n'y en a aucun (lecteur
+    externe débranché, partage réseau démonté — chemin conservé par
+    last_ui_config), le ``mkdir`` du lancement échouerait en WinError brut
+    alors que le panneau affichait ✓ « sera créé » (AUDIT v2 CFG-05).
+    """
+    ancestor: Optional[Path] = None
+    for cand in [output_dir, *output_dir.parents]:
+        try:
+            if cand.exists():
+                ancestor = cand
+                break
+        except OSError:
+            break
+    if ancestor is None:
+        return False, f"volume inaccessible ({output_dir.anchor or output_dir})"
+    if not os.access(str(ancestor), os.W_OK):
+        return False, f"dossier parent non inscriptible ({ancestor})"
+    return True, "(sera créé)"
+
+
 def collect_preflight_results(
     *,
     mode: str,
@@ -220,8 +243,11 @@ def collect_preflight_results(
         if output_dir.exists():
             results.append(CheckResult(name="Dossier de sortie", ok=True, details=f"{output_dir}{free_txt}", critical=True))
         else:
-            # On peut créer le dossier, donc ce n'est pas critique
-            results.append(CheckResult(name="Dossier de sortie", ok=True, details=f"{output_dir} (sera créé){free_txt}", critical=True))
+            # Créabilité réelle (AUDIT v2 CFG-05) : un volume disparu doit
+            # apparaître en ✗ ici, pas en WinError au lancement.
+            ok, why = check_output_dir_creatable(output_dir)
+            details = f"{output_dir} {why}{free_txt}" if ok else f"{output_dir} — {why}"
+            results.append(CheckResult(name="Dossier de sortie", ok=ok, details=details, critical=True))
 
     if mode == "ign_laz":
         raw_input = str(files_cfg.get("input_file", "")).strip()

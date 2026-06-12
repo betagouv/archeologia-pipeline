@@ -160,7 +160,7 @@ def save_detections_to_files(
 
 
 # Import des couleurs depuis class_utils (source unique de vérité)
-from .class_utils import BASE_COLOR_PALETTE, get_class_color, get_color_for_confidence
+from .class_utils import BASE_COLOR_PALETTE, get_class_color
 
 # Alias pour compatibilité
 CLASS_COLORS = BASE_COLOR_PALETTE

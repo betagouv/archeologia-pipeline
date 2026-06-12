@@ -23,6 +23,15 @@ class ArcheologiaPipelinePlugin:
             self.iface.removeToolBarIcon(self.action)
             self.iface.removePluginMenu(self.tr("Archéolog'IA"), self.action)
             self.action = None
+        if self.dialog is not None:
+            # Rechargement/désinstallation pendant un run : sans annulation,
+            # le thread orphelin continuerait d'écrire avec l'ancien code
+            # (AUDIT v2 THR-04). Pas de close() ici → pas de dialogue de
+            # confirmation pendant l'unload.
+            try:
+                self.dialog.request_cancel_if_running()
+            except Exception:
+                pass
         self.dialog = None
 
     def run(self):

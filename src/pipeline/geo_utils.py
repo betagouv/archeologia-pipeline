@@ -137,6 +137,28 @@ def write_world_file(
     return world_path
 
 
+def find_world_file(image_path: Path) -> Optional[Path]:
+    """Résout le fichier world existant d'une image selon son format.
+
+    .pgw pour PNG, .jgw pour JPEG, .wld en repli — symétrique de
+    :func:`write_world_file`. (Bug historique GEO-04 : des call sites ne
+    tentaient QUE .jgw à côté de PNG → branche « world file prioritaire »
+    jamais déclenchée pour le pipeline PNG.)
+    """
+    suffix = image_path.suffix.lower()
+    if suffix == ".png":
+        candidate_exts = (".pgw", ".wld")
+    elif suffix in (".jpg", ".jpeg"):
+        candidate_exts = (".jgw", ".wld")
+    else:
+        candidate_exts = (".wld", ".pgw", ".jgw")
+    for ext in candidate_exts:
+        cand = image_path.with_suffix(ext)
+        if cand.exists():
+            return cand
+    return None
+
+
 def create_world_file_from_tif(input_tif_path: Path, output_image_path: Path) -> bool:
     """
     Crée un fichier world pour ``output_image_path`` en lisant le géoréférencement

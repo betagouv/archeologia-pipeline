@@ -16,10 +16,10 @@ import logging
 from pathlib import Path
 from typing import List, Optional
 
+from ..pipeline.cv.class_color_registry import color_for_class
 from .layer_loader import (
     _ensure_layer_crs,
     _parse_gpkg_source,
-    _resolve_color_idx,
     apply_coverage_raster_symbology,
     build_detection_vector_layer,
     build_low_coverage_vector_layer,
@@ -194,7 +194,8 @@ def write_validation_project(
         entity_labels = entity_labels or {}
         derived_slugs = derived_slugs or set()
         min_conf_by_slug = min_conf_by_slug or {}
-        global_color_map = global_color_map or {}
+        # ``global_color_map`` n'est plus consulté (couleur dérivée du nom de
+        # classe via le registre) ; conservé en signature pour l'appelant.
 
         proj = QgsProject()
         proj.setFileName(str(qgs_path))  # ancre les chemins relatifs
@@ -214,12 +215,12 @@ def write_validation_project(
             shp_str = str(shp)
             gpkg, layer_name, class_name = _parse_gpkg_source(shp_str)
             slug = Path(gpkg).parent.name
-            color_idx = _resolve_color_idx(global_color_map, class_name, shp_str, layer_name, logger)
+            base_color = color_for_class(class_name)
             # Seuil par entité (= seuil du run qui a binné conf_bin) ; repli sur le
             # seuil global pour un slug absent de la map (run legacy / sécurité).
             layer_conf = min_conf_by_slug.get(slug, confidence_threshold)
             layer = build_detection_vector_layer(
-                shp_str, layer_name, color_idx=color_idx,
+                shp_str, layer_name, base_color=base_color,
                 confidence_threshold=layer_conf, logger=logger,
             )
             if layer is None:

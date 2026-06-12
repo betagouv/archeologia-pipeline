@@ -1,5 +1,5 @@
 {
-  "_comment": "Modèle de configuration. Copier en 'config.json' (gitignoré) et adapter les chemins. Aucun chemin personnel ne doit être versionné.",
+  "_comment": "Documente le format de configuration du plugin (schéma = ConfigManager.default_config, verrouillé par tests/unit/test_config_example_sync.py). Le plugin ne lit PAS config.json : l'interface persiste ses réglages dans last_ui_config.json et un fichier comme celui-ci se réutilise via le bouton « Charger une config » de l'assistant. Aucun chemin personnel ne doit être versionné.",
   "app": {
     "files": {
       "output_dir": "<chemin/vers/dossier_de_sortie>",
@@ -15,9 +15,11 @@
     "density_resolution": 1.0,
     "tile_overlap": 20,
     "filter_expression": "Classification = 2 OR Classification = 6 OR Classification = 66 OR Classification = 67 OR Classification = 9",
+    "max_workers": 4,
     "products": {
-      "MNT": false,
+      "MNT": true,
       "DENSITE": false,
+      "HS": false,
       "M_HS": false,
       "SVF": false,
       "SLO": false,
@@ -27,35 +29,47 @@
     },
     "output_formats": {
       "jpg": {
+        "HS": false,
         "M_HS": false,
         "SVF": false,
         "SLO": false,
         "LD": false,
         "VAT": false
       }
-    },
-    "max_workers": 2
+    }
   },
   "computer_vision": {
-    "enabled": true,
+    "enabled": false,
     "runs": [
       {
         "model": "<chemin/vers/data/models/<mon_modele>/weights/best.onnx>",
         "target_rvt": "LD",
+        "confidence_threshold": 0.3,
         "min_area_m2": 0.0
       }
     ],
-    "selected_model": "<chemin/vers/data/models/<mon_modele>/weights/best.onnx>",
+    "selected_entities": [],
+    "entity_model_overrides": {},
+    "entity_cluster_enabled": [],
+    "entity_thresholds": {},
+    "entity_cluster_params": {},
+    "selected_model": "",
     "target_rvt": "LD",
     "confidence_threshold": 0.3,
     "iou_threshold": 0.5,
     "generate_annotated_images": false,
-    "generate_shapefiles": true,
-    "models_dir": "<chemin/vers/data/models>",
-    "export_runner_config": true,
+    "generate_shapefiles": false,
+    "models_dir": "data/models",
+    "export_runner_config": false,
     "scan_all": true
   },
   "rvt_params": {
+    "hs": {
+      "sun_azimuth": 315,
+      "sun_elevation": 35,
+      "ve_factor": 1,
+      "save_as_8bit": true
+    },
     "mdh": {
       "num_directions": 16,
       "sun_elevation": 35,

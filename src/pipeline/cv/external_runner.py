@@ -147,7 +147,7 @@ def _parse_runner_stdout(
         except Exception:
             log(f"[cv_runner] {line}")
     elif line.startswith("legend_created="):
-        log(f"Computer Vision: Légende créée")
+        log("Computer Vision: Légende créée")
     else:
         # Relayer les lignes non reconnues (logs internes, debug, etc.)
         log(f"[cv_runner] {line}")
@@ -208,10 +208,17 @@ def run_external_cv_runner(
 
     try:
         cmd = [str(ext), "--config", str(cfg_path)]
+        # stderr FUSIONNÉ dans stdout (AUDIT v2 CVPROC-01) : avec deux tubes
+        # séparés, stderr n'était drainé qu'au communicate() final → dès ~64 Ko
+        # de tracebacks côté binaire (modèle incompatible → traceback PAR
+        # image), le binaire bloquait sur write(stderr) et le parent sur
+        # readline(stdout) : deadlock définitif, Annuler inopérant. Fusionnées,
+        # les lignes stderr sont relayées en direct par _parse_runner_stdout
+        # (repli « [cv_runner] … »).
         process = subprocess.Popen(
             cmd,
             stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
             text=True,
             encoding="utf-8",
             errors="replace",
@@ -240,11 +247,9 @@ def run_external_cv_runner(
         if cancelled:
             raise PipelineCancelled()
 
-        _, stderr = process.communicate()
-        if stderr:
-            for line in stderr.splitlines():
-                if line.strip():
-                    log(f"[cv_runner][stderr] {line}")
+        # stdout est à EOF (boucle ci-dessus) et stderr est fusionné dedans :
+        # communicate() ne fait plus que récolter le code retour.
+        process.communicate()
 
         if process.returncode != 0:
             raise RuntimeError(f"cv_runner failed (code={process.returncode})")

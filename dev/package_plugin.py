@@ -29,6 +29,10 @@ EXCLUDE_DIRS = {
     ".venv",
     "node_modules",
     "nouvelle_UI_a_supprimer_plus_tard",  # maquette de design (refonte V2)
+    # AUDIT v2 PKG-04 : specs/doc internes, scripts dev, artefacts de build.
+    "docs",
+    "scripts",
+    "dist",
 }
 
 EXCLUDE_FILES = {
@@ -38,11 +42,18 @@ EXCLUDE_FILES = {
     "conftest.py",
     "config.json",
     "last_ui_config.json",  # état de session UI (jamais distribué)
+    "class_color_registry.json",  # état runtime des couleurs (profil utilisateur)
     "pytest.ini",
     "run_tests.py",
     ".DS_Store",
     "Thumbs.db",
+    "CLAUDE.md",  # instructions assistant (AUDIT v2 PKG-04)
 }
+
+# Taille maximale plausible du ZIP : un dépassement signale une régression
+# d'exclusion (ex. virtualenv embarqué, cf. AUDIT v1 PKG-01 : 749 Mo) et doit
+# faire ÉCHOUER le build plutôt que livrer l'artefact (AUDIT v2 PKG-05).
+MAX_ZIP_SIZE_MB = 800
 
 EXCLUDE_EXTENSIONS = {
     ".pyc",
@@ -71,16 +82,35 @@ def should_exclude(path: Path, relative_path: str) -> bool:
     # Exclure les fichiers spécifiques
     if path.is_file() and name in EXCLUDE_FILES:
         return True
-    
-    # Exclure par extension
-    if path.is_file() and path.suffix in EXCLUDE_EXTENSIONS:
+
+    # Rapports d'audit internes (AUDIT*.md) : vulnérabilités non corrigées et
+    # chemins personnels — jamais distribués, même recréés à la racine
+    # (AUDIT v2 PKG-06 ; les rapports vivent normalement sous dev/).
+    if path.is_file() and name.startswith("AUDIT") and path.suffix == ".md":
         return True
     
+    # Exclure par extension — endswith et non path.suffix : les extensions
+    # composées (.tar.gz, .egg-info) ne matchaient JAMAIS car suffix vaut
+    # ".gz" / ".egg-info" sur le dernier point seulement (AUDIT v2 PKG-05).
+    if path.is_file() and any(name.endswith(ext) for ext in EXCLUDE_EXTENSIONS):
+        return True
+
     # Exclure les fichiers .pt et .pth (modèles PyTorch) - on garde seulement .onnx
     if path.is_file() and path.suffix in (".pt", ".pth"):
         return True
-    
+
     return False
+
+
+def enforce_zip_size_guard(zip_path: Path, max_mb: float = MAX_ZIP_SIZE_MB) -> None:
+    """Échoue si le ZIP dépasse la taille plausible (régression d'exclusion)."""
+    size_mb = zip_path.stat().st_size / (1024 * 1024)
+    if size_mb > max_mb:
+        raise RuntimeError(
+            f"ZIP anormalement gros ({size_mb:.0f} Mo > {max_mb:.0f} Mo) : "
+            "régression d'exclusion probable (venv/caches/données dev). "
+            "Build refusé — vérifier should_exclude avant de distribuer."
+        )
 
 
 def create_plugin_zip(output_dir: Path = None) -> Path:
@@ -126,7 +156,9 @@ def create_plugin_zip(output_dir: Path = None) -> Path:
     print(f"Fichiers exclus: {files_excluded}")
     print(f"ZIP créé: {zip_path}")
     print(f"Taille: {zip_path.stat().st_size / (1024*1024):.1f} MB")
-    
+
+    enforce_zip_size_guard(zip_path)
+
     return zip_path
 
 

@@ -106,11 +106,23 @@ def load_sahi_config_from_model(model_path: Union[str, Path]) -> Dict:
         if isinstance(args, dict):
             sahi = args.get("sahi")
             if isinstance(sahi, dict):
-                result = {
+                raw = {
                     "slice_height": int(sahi.get("slice_height", defaults["slice_height"])),
                     "slice_width": int(sahi.get("slice_width", defaults["slice_width"])),
                     "overlap_ratio": float(sahi.get("overlap_ratio", defaults["overlap_ratio"])),
                 }
+                # Bornes (AUDIT v2 PARSE-12) : slice ≥ 32, overlap ∈ [0, 0.9]
+                # — un overlap ≥ 1 ou un slice ≤ 0 gèle l'inférence en boucle
+                # infinie (pas d'avancement nul dans get_slice_bboxes).
+                result = {
+                    "slice_height": max(32, raw["slice_height"]),
+                    "slice_width": max(32, raw["slice_width"]),
+                    "overlap_ratio": min(max(raw["overlap_ratio"], 0.0), 0.9),
+                }
+                if result != raw:
+                    logger.warning(
+                        f"SAHI hors bornes dans {args_file.name} ({raw}) — clampé à {result}"
+                    )
                 logger.info(f"SAHI config chargée depuis {args_file.name}: {result}")
                 return result
     except Exception as e:
@@ -164,6 +176,8 @@ def load_clustering_config_from_model(model_path: Union[str, Path]) -> Optional[
             clustering_raw = [clustering_raw]
         if not isinstance(clustering_raw, list):
             return None
+        from .clustering_bounds import sanitize_clustering_rule
+
         configs = []
         for cfg in clustering_raw:
             if not isinstance(cfg, dict):
@@ -175,27 +189,36 @@ def load_clustering_config_from_model(model_path: Union[str, Path]) -> Optional[
             if not isinstance(target, list) or not target:
                 logger.warning("Clustering config ignorée: target_classes manquant ou invalide")
                 continue
-            min_confidence_val = float(cfg.get("min_confidence", 0.0))
-            # Hystérésis (Approche 1) : seuil bas pour absorber des détections
-            # faibles dans un cluster existant sans qu'elles puissent l'initier.
-            # Défaut = min_confidence → DBSCAN classique (rétro-compat).
-            min_confidence_extend_val = float(
-                cfg.get("min_confidence_extend", min_confidence_val)
-            )
-            parsed = {
-                "target_classes": target,
-                "min_confidence": min_confidence_val,
-                "min_confidence_extend": min_confidence_extend_val,
-                "min_cluster_size": int(cfg.get("min_cluster_size", 5)),
-                "min_samples": int(cfg.get("min_samples", 3)),
-                "eps_m": float(cfg.get("eps_m", 30.0)),
-                "output_class_name": str(cfg.get("output_class_name", "")),
-                "output_geometry": str(cfg.get("output_geometry", "convex_hull")),
-                "buffer_m": float(cfg.get("buffer_m", 10.0)),
-                "min_area_m2": float(cfg.get("min_area_m2", 0.0)),
-                "concave_ratio": float(cfg.get("concave_ratio", 0.3)),
-                "confidence_weight": float(cfg.get("confidence_weight", 0.0)),
-            }
+            # Isolation PAR RÈGLE (AUDIT PARSE-07) : une valeur non castable
+            # ne jette plus toutes les règles du modèle, seulement celle-ci.
+            try:
+                min_confidence_val = float(cfg.get("min_confidence", 0.0))
+                # Hystérésis (Approche 1) : seuil bas pour absorber des détections
+                # faibles dans un cluster existant sans qu'elles puissent l'initier.
+                # Défaut = min_confidence → DBSCAN classique (rétro-compat).
+                min_confidence_extend_val = float(
+                    cfg.get("min_confidence_extend", min_confidence_val)
+                )
+                parsed = {
+                    "target_classes": target,
+                    "min_confidence": min_confidence_val,
+                    "min_confidence_extend": min_confidence_extend_val,
+                    "min_cluster_size": int(cfg.get("min_cluster_size", 5)),
+                    "min_samples": int(cfg.get("min_samples", 3)),
+                    "eps_m": float(cfg.get("eps_m", 30.0)),
+                    "output_class_name": str(cfg.get("output_class_name", "")),
+                    "output_geometry": str(cfg.get("output_geometry", "convex_hull")),
+                    "buffer_m": float(cfg.get("buffer_m", 10.0)),
+                    "min_area_m2": float(cfg.get("min_area_m2", 0.0)),
+                    "concave_ratio": float(cfg.get("concave_ratio", 0.3)),
+                    "confidence_weight": float(cfg.get("confidence_weight", 0.0)),
+                }
+            except (TypeError, ValueError) as e:
+                logger.warning(f"Clustering config ignorée ({target}): {e}")
+                continue
+            # Bornes (AUDIT PARSE-02) : eps ≤ 0 / min_samples = 0 propagés à
+            # DBSCAN donnaient un clustering silencieusement vide ou un crash.
+            parsed = sanitize_clustering_rule(parsed, warn=logger.warning)
             # Nom par défaut basé sur les classes cibles
             if not parsed["output_class_name"]:
                 parsed["output_class_name"] = f"cluster_{'_'.join(target)}"
@@ -338,13 +361,24 @@ def resolve_cv_runs(cv_config: Dict) -> List[Dict]:
         # output_class_name) : consommées par runner_shapefiles avant DBSCAN.
         if "clustering_overrides" in run:
             run_cfg["clustering_overrides"] = run["clustering_overrides"]
-        if "min_area_m2" in run:
-            run_cfg["min_area_m2"] = float(run["min_area_m2"])
+        # Coercition TOLÉRANTE (AUDIT PARSE-04) : une valeur vide/non castable
+        # dans un run brut (config partagée éditée à la main) ne doit pas
+        # casser toute la phase CV — on retombe sur le seuil global/défaut.
+        def _safe_float(key: str) -> None:
+            if key not in run:
+                return
+            try:
+                run_cfg[key] = float(run[key])
+            except (TypeError, ValueError):
+                logger.warning(
+                    f"Run {model}: {key}={run[key]!r} non numérique — "
+                    "repli sur la valeur globale/défaut"
+                )
+
+        _safe_float("min_area_m2")
         # Seuils par modèle (orchestrateur V2) : confiance + IoU propres au run.
-        if "confidence_threshold" in run:
-            run_cfg["confidence_threshold"] = float(run["confidence_threshold"])
-        if "iou_threshold" in run:
-            run_cfg["iou_threshold"] = float(run["iou_threshold"])
+        _safe_float("confidence_threshold")
+        _safe_float("iou_threshold")
         # Charger la config SAHI depuis le dossier du modèle
         model_path = _resolve_model_path_for_sahi(model, cv_config)
         if model_path:

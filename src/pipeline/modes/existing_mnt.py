@@ -144,7 +144,11 @@ def _copy_source_mnt_to_temp(
     conversion .asc (le process est tué et le TIF partiel supprimé).
     """
     if temp_mnt_path.exists():
-        return
+        if temp_mnt_path.stat().st_size > 0:
+            return
+        # Résidu 0 octet d'un crash antérieur : ne pas le prendre pour un
+        # « déjà converti » (AUDIT v2 ROB-16) — on rematérialise.
+        temp_mnt_path.unlink(missing_ok=True)
     suffix = source_path.suffix.lower()
     if suffix in (".tif", ".tiff"):
         shutil.copy2(str(source_path), str(temp_mnt_path))
@@ -158,6 +162,15 @@ def _copy_source_mnt_to_temp(
         cmd = [gdal_translate, str(source_path), str(temp_mnt_path)]
         r = run_subprocess_cancellable(cmd, cancel=cancel_check, output_path=temp_mnt_path)
         if r.returncode != 0:
+            # Ne JAMAIS laisser la sortie partielle : au re-run dans le même
+            # dossier, l'early-return ci-dessus la réutiliserait et les
+            # indices RVT seraient calculés sur des données tronquées
+            # (AUDIT v2 ROB-16 ; run_subprocess_cancellable ne supprime la
+            # sortie que sur ANNULATION, pas sur échec).
+            try:
+                temp_mnt_path.unlink(missing_ok=True)
+            except OSError:
+                pass
             raise RuntimeError(r.stderr or r.stdout)
         log(f"Conversion ASC→TIF terminée : {temp_mnt_path.name}")
     else:
@@ -251,10 +264,15 @@ def run_existing_mnt(
     output_formats: Dict[str, Any],
     rvt_params: Dict[str, Any],
     log: LogFn = lambda _: None,
+    error_log: LogFn | None = None,
     cancel_check: CancelCheckFn | None = None,
     feedback: Optional[Any] = None,
     mnt_progress: Callable[[int, int, str], None] | None = None,
 ) -> ExistingMntResult:
+    # Canal d'erreur VISIBLE dans l'UI (reporter.error côté runner) : ``log``
+    # émet à INFO=20, filtré par la fenêtre (seuil USER_INFO=25) — un échec
+    # routé sur ``log`` n'apparaît que dans le fichier .txt (AUDIT v2 ROB-15).
+    err = error_log if error_log is not None else log
     if not existing_mnt_dir.exists() or not existing_mnt_dir.is_dir():
         raise FileNotFoundError(f"Dossier MNT inexistant ou invalide: {existing_mnt_dir}")
 
@@ -388,13 +406,13 @@ def run_existing_mnt(
             processed += 1
 
     def _on_mnt_failure(idx: int, mnt_path: Path, exc: Exception) -> None:
-        log(f"⚠️ MNT {mnt_path.name} en échec, ignoré : {exc}")
+        err(f"⚠️ MNT {mnt_path.name} en échec, ignoré : {exc}")
 
     # Isolation par MNT : un fichier illisible/corrompu (ex. .asc invalide,
     # gdal_translate en échec) n'avorte plus tout le lot — les autres MNT sont
     # traités et la finalisation a lieu (cf. AUDIT ROB-03). PipelineCancelled
     # reste propagée pour une annulation globale propre.
-    process_items_isolated(
+    _ok, failures = process_items_isolated(
         mnt_files,
         _process_one_mnt,
         cancel=cancel_check,
@@ -403,7 +421,12 @@ def run_existing_mnt(
     if cancel_check is not None and cancel_check():
         log("Annulation demandée, arrêt du traitement MNT.")
 
-    if processed < total:
+    if failures:
+        err(
+            f"⚠️ {len(failures)} dalle(s) MNT sur {total} en échec "
+            f"— voir le journal pour le détail."
+        )
+    elif processed < total:
         log(
             f"⚠️ {total - processed} dalle(s) MNT sur {total} n'ont pas produit de sortie "
             f"(annulation ou erreur) — vérifiez le journal."

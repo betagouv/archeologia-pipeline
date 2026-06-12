@@ -87,6 +87,8 @@ class DetectionPage(QWidget):
         # ── Toggle d'activation (interrupteur pilule + libellé + badge) ──
         toggle = QFrame()
         toggle.setObjectName("DetectionToggle")
+        toggle.setProperty("on", "false")
+        self._toggle_frame = toggle
         tl = QHBoxLayout(toggle)
         tl.setContentsMargins(14, 10, 14, 10)
         tl.setSpacing(12)
@@ -331,6 +333,11 @@ class DetectionPage(QWidget):
     # ------------------------------------------------------------------
     def _refresh(self) -> None:
         self._enable_check.setChecked(self._enabled)
+        # Le bandeau ne doit dire « actif » (bleu) que si la détection l'est :
+        # partout ailleurs dans le thème, #d6e6f4 + #2b79c2 code l'état coché.
+        self._toggle_frame.setProperty("on", "true" if self._enabled else "false")
+        self._toggle_frame.style().unpolish(self._toggle_frame)
+        self._toggle_frame.style().polish(self._toggle_frame)
         self._body_stack.setCurrentIndex(1 if self._enabled else 0)
         if not self._enabled:
             return
@@ -436,7 +443,9 @@ class DetectionPage(QWidget):
                 info_btn.setEnabled(False)
             classes = QLabel(", ".join(run.get("selected_classes") or []))
             classes.setObjectName("EntityDesc")
-            rvt_tag = QLabel(f"🔗 {run['target_rvt']}")
+            # Pas d'émoji couleur (rendu hétérogène, non teintable par le QSS) :
+            # le fond bleu de la pastille identifie déjà le tag RVT.
+            rvt_tag = QLabel(str(run["target_rvt"]))
             rvt_tag.setObjectName("RunRvtTag")
             h.addWidget(name)
             h.addWidget(info_btn)

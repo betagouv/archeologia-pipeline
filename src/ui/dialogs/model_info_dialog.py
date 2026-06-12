@@ -86,7 +86,7 @@ class _SectionHeader(QFrame):
     def _refresh(self) -> None:
         chevron = "▾" if self._expanded else "▸"
         self._label.setText(
-            f"<span style='color:#7a7a7a;'>{chevron}</span>&nbsp;&nbsp;"
+            f"<span style='color:#5a5a5a;'>{chevron}</span>&nbsp;&nbsp;"
             f"<b>{self._title}</b>"
         )
 

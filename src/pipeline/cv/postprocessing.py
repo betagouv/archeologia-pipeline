@@ -111,8 +111,6 @@ def _merge_touching_same_class(
             continue
 
         polys = [sp for sp, _ in items]
-        confs = [d.get("confidence", 0.5) for _, d in items]
-        areas = [sp.area for sp in polys]
 
         # Noyau partagé : buffer → union → debuffer (V2.3).
         merged_polys = buffer_union_debuffer(polys, TOUCH_BUFFER_PX)
@@ -731,7 +729,7 @@ def postprocess_geo_detections(
         from shapely import STRtree
     except ImportError:
         try:
-            from shapely.geometry import Polygon as ShapelyPolygon, MultiPolygon
+            from shapely.geometry import Polygon as ShapelyPolygon, MultiPolygon  # noqa: F401 — sonde de dispo
             from shapely.ops import unary_union
             from shapely.validation import make_valid
             STRtree = None  # type: ignore[assignment]

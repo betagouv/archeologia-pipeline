@@ -365,22 +365,22 @@ Depuis la v0.3.0, l'utilisateur ne sélectionne plus des *modèles* puis filtre 
 - `data/entities_catalog.json` (versionné) fournit le **vocabulaire d'entités** présentable (id, libellé, description, ordre d'affichage) ;
 - le `model_card.yaml` de chaque modèle installé déclare sa **couverture** : son indice RVT (`preferred_rvt.type`) et ses `classes`, chacune pouvant pointer vers une entité du catalogue (`entity:` en alias, sinon le nom de classe fait foi). C'est une découverte **« drop-in »** : ajouter un modèle conforme suffit pour qu'il couvre ses entités.
 
-L'orchestrateur regroupe les entités cochées par couple `(modèle, target_rvt)` — chaque couple devient un *run* — et **peuple le tableau `computer_vision.runs`** ci-dessous. Ce format `config.json` reste donc le **contrat sous-jacent** du pipeline (auto-rempli par l'UI ; éditable à la main pour un usage avancé / scripté).
+L'orchestrateur regroupe les entités cochées par couple `(modèle, target_rvt)` — chaque couple devient un *run* — et **peuple le tableau `computer_vision.runs`** ci-dessous. Ce format de configuration reste donc le **contrat sous-jacent** du pipeline (auto-rempli par l'UI). Pour un usage avancé : partir de `config.example.json` (schéma complet, verrouillé par test), éditer un profil `.json`, puis l'importer via le bouton **« Charger une config »** de l'assistant — le plugin ne lit **pas** de fichier `config.json` à la racine.
 
 **Cibles dérivées.** Une sortie de clustering peut aussi être présentée comme une **entité cochable à part entière** — une *cible dérivée*. Le modèle la déclare dans son `model_card.yaml` via une section `derived_targets` qui rattache l'`output_class` d'une règle de `args.yaml:clustering` à une entité du catalogue :
 
 ```yaml
 derived_targets:
   - output_class: zone_crateres          # sortie d'une règle args.yaml:clustering
-    entity: zones_extraction_materiaux   # entité du catalogue
+    entity: regroupement_crateres        # entité du catalogue (data/entities_catalog.json)
     include_source: true                 # inclure aussi les détections individuelles
 ```
 
-Sélectionner une cible dérivée active le regroupement **d'office** : pas de case « Regrouper en clusters » mais un badge « regroupement automatique en zones ». C'est ainsi qu'est exposée l'entité **« Zones d'extraction de matériaux »** (regroupement des dépressions circulaires détectées par un modèle de cratères : le libellé nomme l'usage, la description reste honnête sur la méthode). L'orchestrateur replie la cible dans la couverture du modèle (`classes` = `output_class` + classes sources si `include_source`) — la résolution des runs et le pipeline CV restent inchangés.
+Sélectionner une cible dérivée active le regroupement **d'office** : pas de case « Regrouper en clusters » mais un badge « regroupement automatique en zones ». C'est ainsi qu'est exposée l'entité **« Regroupement de cratères »** (regroupement des dépressions circulaires détectées par un modèle de cratères : le libellé nomme l'usage, la description reste honnête sur la méthode). ⚠️ L'`entity:` doit référencer un **id présent dans le catalogue** — un id inconnu est silencieusement ignoré par l'orchestrateur (pas de case à l'étape 3). L'orchestrateur replie la cible dans la couverture du modèle (`classes` = `output_class` + classes sources si `include_source`) — la résolution des runs et le pipeline CV restent inchangés.
 
 ### Configuration
 
-Dans `config.json`, la section computer vision est sous la clé `computer_vision`. Le format **multi-modèles** utilise un tableau `runs`, chaque entrée ciblant un RVT (`target_rvt`) avec son propre modèle :
+Dans un profil de configuration (cf. `config.example.json`), la section computer vision est sous la clé `computer_vision`. Le format **multi-modèles** utilise un tableau `runs`, chaque entrée ciblant un RVT (`target_rvt`) avec son propre modèle :
 
 ```json
 {

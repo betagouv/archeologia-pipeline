@@ -24,6 +24,11 @@ ENV/
 # User config (chemins personnels, jamais versionné — voir config.example.json)
 config.json
 last_ui_config.json
+class_color_registry.json
+
+# Rapports d'audit internes — NE JAMAIS pousser (vulnérabilités résiduelles +
+# chemins personnels ; le dépôt distant est public).
+AUDIT*.md
 
 # Logs
 *.log

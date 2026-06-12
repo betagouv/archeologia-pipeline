@@ -10,7 +10,8 @@ import copy
 import json
 from pathlib import Path
 
-from qgis.PyQt.QtCore import Qt
+from qgis.PyQt.QtCore import QSize, Qt, QTimer
+from qgis.PyQt.QtGui import QIcon
 from qgis.PyQt.QtWidgets import (
     QDialog,
     QFileDialog,
@@ -29,6 +30,7 @@ from ..app.progress_stages import Stage
 from ..app.services.indices_model import product, rvt_keys
 from ..app.services.source_modes import mode_info
 from ..config.config_manager import ConfigManager
+from .icons import colored_icon, colored_pixmap
 from .steps.step_1_source import SourcePage
 from .steps.step_2_indices import IndicesPage
 from .steps.step_3_detection import DetectionPage
@@ -77,7 +79,16 @@ class WizardDialog(QDialog):
         self._current_step = 1
         self._review_mode = False  # consultation lecture seule pendant un run
         self._plugin_root = Path(__file__).resolve().parents[2]
-        self._cm = ConfigManager(self._plugin_root)
+        # Réglages persistés dans le PROFIL QGIS, pas dans le dossier du
+        # plugin (remplacé à chaque mise à jour par ZIP — AUDIT v2 CFG-02).
+        # Migration automatique de l'ancien emplacement par ConfigManager.
+        settings_dir = None
+        try:
+            from qgis.core import QgsApplication
+            settings_dir = Path(QgsApplication.qgisSettingsDirPath()) / "archeologia"
+        except Exception:
+            pass  # hors QGIS (tests) : ancien comportement
+        self._cm = ConfigManager(self._plugin_root, settings_dir=settings_dir)
         self._config = self._cm.load_last_ui_config()
         self._loading = False
         self._validation_errors: list = []
@@ -97,12 +108,6 @@ class WizardDialog(QDialog):
         root.setSpacing(0)
         root.addWidget(self._build_title_bar())
         root.addWidget(self._build_progress_liseret())
-
-        # Bandeau « lecture seule » affiché sur les étapes 1-3 pendant un run.
-        self._review_banner = QLabel("🔒  Lecture seule — run en cours")
-        self._review_banner.setObjectName("ReviewBanner")
-        self._review_banner.setVisible(False)
-        root.addWidget(self._review_banner)
 
         body = QHBoxLayout()
         body.setContentsMargins(0, 0, 0, 0)
@@ -171,13 +176,39 @@ class WizardDialog(QDialog):
         self._subtitle_label.setObjectName("WizardSubtitle")
         titles.addWidget(self._title_label)
         titles.addWidget(self._subtitle_label)
-        load_btn = QPushButton("Charger config")
+        # Deux actions sœurs → même style (ghost) et même casse.
+        # Référence conservée : désactivé pendant un run (lecture seule
+        # étanche — AUDIT v2 UIX-02 : charger une config pendant un run
+        # remplaçait l'affichage ET last_ui_config.json).
+        load_btn = QPushButton("Charger une config")
         load_btn.setObjectName("GhostButton")
         load_btn.clicked.connect(self._load_config_file)
-        save_btn = QPushButton("Enregistrer Config")
+        self._load_btn = load_btn
+        save_btn = QPushButton("Enregistrer la config")
+        save_btn.setObjectName("GhostButton")
         save_btn.clicked.connect(self._save_config_file)
+        # Pastille « lecture seule » (pendant un run) : logée dans la barre de
+        # titre — hauteur fixe — pour ne JAMAIS décaler le contenu en dessous
+        # (l'ancien bandeau pleine largeur faisait sauter toute l'UI à son
+        # apparition). Icône lock du thème (pas d'émoji couleur).
+        self._review_pill = QFrame()
+        self._review_pill.setObjectName("ReviewPill")
+        pl = QHBoxLayout(self._review_pill)
+        pl.setContentsMargins(8, 3, 8, 3)
+        pl.setSpacing(5)
+        lock_icon = QLabel()
+        lock_icon.setPixmap(
+            colored_pixmap("lock", "#8a5e18", 12, dpr=self.devicePixelRatioF())
+        )
+        pill_text = QLabel("Lecture seule — run en cours")
+        pill_text.setObjectName("ReviewPillText")
+        pl.addWidget(lock_icon)
+        pl.addWidget(pill_text)
+        self._review_pill.setVisible(False)
+
         layout.addLayout(titles)
         layout.addStretch(1)
+        layout.addWidget(self._review_pill)
         layout.addWidget(load_btn)
         layout.addWidget(save_btn)
         return bar
@@ -199,6 +230,9 @@ class WizardDialog(QDialog):
         self._prev_btn.clicked.connect(self._on_prev)
         self._next_btn = QPushButton("Suivant  →")
         self._next_btn.setObjectName("WizardPrimaryButton")
+        # iconSize = taille de rendu du pixmap (14 px) : sans ça le bouton
+        # remet l'icône à sa taille par défaut (16 px) → upscale pixelisé.
+        self._next_btn.setIconSize(QSize(14, 14))
         self._next_btn.clicked.connect(self._on_next)
         layout.addWidget(self._prev_btn)
         layout.addStretch(1)
@@ -209,7 +243,11 @@ class WizardDialog(QDialog):
         qss_path = Path(__file__).parent / "theme" / "v2.qss"
         try:
             if qss_path.is_file():
-                self.setStyleSheet(qss_path.read_text(encoding="utf-8"))
+                qss = qss_path.read_text(encoding="utf-8")
+                # Les url() du QSS sont relatives au cwd, pas au fichier : on
+                # substitue le jeton @ICONS@ par le chemin absolu des icônes.
+                icons_dir = (Path(__file__).parent / "theme" / "icons").as_posix()
+                self.setStyleSheet(qss.replace("@ICONS@", icons_dir))
         except Exception:
             pass
 
@@ -227,7 +265,19 @@ class WizardDialog(QDialog):
         self._subtitle_label.setText(f"Étape {step} sur {self._n_steps} · {subtitle}")
         self._prev_btn.setEnabled(step > 1)
         is_last = step == self._n_steps
-        self._next_btn.setText("▶  Lancer le pipeline" if is_last else "Suivant  →")
+        if is_last:
+            # Icône SVG du thème (nette, teintable) plutôt qu'un émoji « ▶ »
+            # au rendu hétérogène. Variante grise pour l'état désactivé.
+            self._next_btn.setText("Lancer le pipeline")
+            dpr = self.devicePixelRatioF()
+            icon = colored_icon("play", "#ffffff", 14, dpr=dpr)
+            icon.addPixmap(
+                colored_pixmap("play", "#707070", 14, dpr=dpr), QIcon.Mode.Disabled
+            )
+            self._next_btn.setIcon(icon)
+        else:
+            self._next_btn.setText("Suivant  →")
+            self._next_btn.setIcon(QIcon())
         if is_last:
             self._update_launch_recap()
             self._apply_validation()
@@ -343,6 +393,10 @@ class WizardDialog(QDialog):
         self._source_page.set_readonly(True)
         self._indices_page.set_readonly(True)
         self._detection_page.set_readonly(True)
+        # Lecture seule étanche : charger une config pendant le run
+        # remplacerait les paramètres consultés (≠ ceux qui tournent).
+        self._load_btn.setEnabled(False)
+        self._load_btn.setToolTip("Indisponible pendant un traitement")
         self._rail.setEnabled(True)
         self._prev_btn.setEnabled(self._current_step > 1)
         self._update_launch_button()
@@ -354,16 +408,19 @@ class WizardDialog(QDialog):
         self._source_page.set_readonly(False)
         self._indices_page.set_readonly(False)
         self._detection_page.set_readonly(False)
+        self._load_btn.setEnabled(True)
+        self._load_btn.setToolTip("")
         self._rail.setEnabled(True)
         self._prev_btn.setEnabled(self._current_step > 1)
         self._update_launch_button()
         self._update_review_banner()
 
     def _update_review_banner(self) -> None:
-        """Affiche le bandeau « Lecture seule » uniquement sur les étapes 1-3
-        pendant un run (masqué sur l'étape 4 = RunView, et hors run)."""
+        """Affiche la pastille « Lecture seule » (barre de titre) uniquement sur
+        les étapes 1-3 pendant un run (masquée sur l'étape 4 = RunView, et hors
+        run). Dans la barre de titre, son apparition ne décale rien."""
         show = self._review_mode and self._current_step < self._n_steps
-        self._review_banner.setVisible(show)
+        self._review_pill.setVisible(show)
 
     # ------------------------------------------------------------------
     # Validation bloquante (rail + bandeau étape 4 + bouton Lancer)
@@ -427,6 +484,20 @@ class WizardDialog(QDialog):
         self._detection_page.collect_into(self._config)
 
     def _autosave(self) -> None:
+        """Débounce (AUDIT v2 UIX-03) : collecte + écriture JSON + validation
+        (stat()/exists() sur des chemins potentiellement réseau) tournaient sur
+        le thread UI À CHAQUE FRAPPE → saisie qui lague sur poste d'entreprise.
+        Le travail réel part 400 ms après la dernière modification."""
+        if self._loading:
+            return
+        if not hasattr(self, "_autosave_timer"):
+            self._autosave_timer = QTimer(self)
+            self._autosave_timer.setSingleShot(True)
+            self._autosave_timer.setInterval(400)
+            self._autosave_timer.timeout.connect(self._autosave_now)
+        self._autosave_timer.start()  # ré-arme à chaque appel
+
+    def _autosave_now(self) -> None:
         if self._loading:
             return
         self._collect_config()
@@ -436,13 +507,73 @@ class WizardDialog(QDialog):
             pass  # la persistance ne doit jamais bloquer l'UI
         self._apply_validation()  # config déjà collectée
 
+    def _confirm_close_during_run(self) -> bool:
+        """Garde de fermeture (AUDIT v2 UIX-01/THR-04).
+
+        Fermer la fenêtre pendant un run ne l'arrête PAS (le dialogue est
+        seulement masqué, le worker continue) — sans confirmation,
+        l'utilisateur croit avoir annulé et s'étonne du CPU/réseau occupés.
+        Renvoie True si la fermeture peut continuer.
+        """
+        try:
+            running = self._launch_page.is_running()
+        except Exception:
+            running = False
+        if not running:
+            return True
+        box = QMessageBox(self)
+        box.setWindowTitle("Traitement en cours")
+        box.setIcon(QMessageBox.Icon.Warning)
+        box.setText("Un traitement est en cours.")
+        box.setInformativeText(
+            "Fermer la fenêtre ne l'arrête pas : il continuera en arrière-plan\n"
+            "(rouvrez le plugin pour retrouver son avancement)."
+        )
+        close_keep = box.addButton(
+            "Fermer (laisser tourner)", QMessageBox.ButtonRole.AcceptRole
+        )
+        close_cancel = box.addButton(
+            "Annuler le traitement et fermer", QMessageBox.ButtonRole.DestructiveRole
+        )
+        stay = box.addButton("Rester", QMessageBox.ButtonRole.RejectRole)
+        box.setDefaultButton(stay)
+        box.exec()
+        clicked = box.clickedButton()
+        if clicked is stay:
+            return False
+        if clicked is close_cancel:
+            self._launch_page.request_cancel()
+        return clicked is close_keep or clicked is close_cancel
+
+    def request_cancel_if_running(self) -> None:
+        """Annulation propre demandée par l'hôte (unload du plugin) —
+        sans dialogue de confirmation (AUDIT v2 THR-04)."""
+        try:
+            if self._launch_page.is_running():
+                self._launch_page.request_cancel()
+        except Exception:
+            pass
+
     def closeEvent(self, event):  # noqa: N802 (signature Qt)
+        # PAS de garde ici : QDialog.closeEvent route déjà la croix vers
+        # reject() (garde + sauvegarde uniques là-bas). Une garde aux deux
+        # niveaux affichait la confirmation DEUX fois (croix → closeEvent →
+        # QDialog.closeEvent → reject). Si reject() refuse la fermeture
+        # (« Rester »), le dialogue reste visible et Qt ignore l'événement.
+        super().closeEvent(event)
+
+    def reject(self) -> None:
+        """Point de passage unique de la fermeture (croix via
+        QDialog.closeEvent, ET Échap) : garde « run en cours » + sauvegarde
+        de session."""
+        if not self._confirm_close_during_run():
+            return
         try:
             self._collect_config()
             self._cm.save_last_ui_config(self._config)
         except Exception:
             pass
-        super().closeEvent(event)
+        super().reject()
 
     # ------------------------------------------------------------------
     # Import / export d'un fichier de config (boutons de l'en-tête)
@@ -479,6 +610,11 @@ class WizardDialog(QDialog):
         cfg = self._cm.default_config()
         self._cm._deep_update(cfg, loaded if isinstance(loaded, dict) else {})
         self._cm._migrate_cv_runs(cfg)
+        # Même normalisation que ConfigManager.load/load_last_ui_config : sans
+        # ce remap, une entité sauvegardée sous un ancien id (cratere_obus,
+        # zones_extraction_materiaux…) devient un fantôme silencieusement
+        # décoché (AUDIT v2 CFG-03).
+        self._cm._migrate_entity_ids(cfg)
         self._config = cfg
         self._loading = True
         try:
@@ -490,4 +626,4 @@ class WizardDialog(QDialog):
         finally:
             self._loading = False
         self._refresh_rail_subs()
-        self._autosave()
+        self._autosave_now()  # chargement explicite → persistance immédiate

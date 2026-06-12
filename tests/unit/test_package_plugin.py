@@ -40,7 +40,10 @@ class TestShouldExcludeDirs:
     @pytest.mark.parametrize(
         "name",
         [".venv_dev", ".venv", ".ruff_cache", ".superpowers", ".mypy_cache",
-         ".pytest_cache", ".git", "dev", "tests", "node_modules"],
+         ".pytest_cache", ".git", "dev", "tests", "node_modules",
+         # PKG-04 (audit v2) : specs internes, scripts dev et artefacts de
+         # build n'ont rien à faire chez l'utilisateur.
+         "docs", "scripts", "dist"],
     )
     def test_excludes_dev_and_hidden_dirs(self, pkg, tmp_path, name):
         d = _mkdir(tmp_path, name)
@@ -54,7 +57,7 @@ class TestShouldExcludeDirs:
 
 
 class TestShouldExcludeFiles:
-    @pytest.mark.parametrize("name", ["config.json", "last_ui_config.json", "pytest.ini", ".gitignore"])
+    @pytest.mark.parametrize("name", ["config.json", "last_ui_config.json", "class_color_registry.json", "pytest.ini", ".gitignore"])
     def test_excludes_dev_files(self, pkg, tmp_path, name):
         f = tmp_path / name
         f.write_text("{}")
@@ -66,8 +69,44 @@ class TestShouldExcludeFiles:
         f.write_text("x")
         assert pkg.should_exclude(f, name) is True
 
-    @pytest.mark.parametrize("name", ["best.onnx", "main.py", "metadata.txt", "icon.png"])
+    @pytest.mark.parametrize("name", ["best.onnx", "main.py", "metadata.txt", "icon.png", "README.md"])
     def test_keeps_runtime_files(self, pkg, tmp_path, name):
         f = tmp_path / name
         f.write_text("x")
         assert pkg.should_exclude(f, name) is False
+
+    @pytest.mark.parametrize("name", ["AUDIT.md", "AUDIT_V1.md", "AUDIT_V2.md"])
+    def test_excludes_audit_reports(self, pkg, tmp_path, name):
+        # PKG-06 (audit v2) : un rapport d'audit interne (vulnérabilités non
+        # corrigées, chemins perso) ne doit JAMAIS partir dans le ZIP distribué,
+        # même recréé à la racine par erreur.
+        f = tmp_path / name
+        f.write_text("# audit")
+        assert pkg.should_exclude(f, name) is True
+
+    @pytest.mark.parametrize(
+        "name",
+        ["CLAUDE.md",                    # instructions assistant (PKG-04)
+         "archive.tar.gz", "pkg.egg-info",  # PKG-05 : extensions composées —
+         # path.suffix vaut ".gz"/".egg-info" ne matche jamais l'ancienne liste
+         "module.pyc", "lib.so"],
+    )
+    def test_excludes_dev_files_and_compound_extensions(self, pkg, tmp_path, name):
+        f = tmp_path / name
+        f.write_text("x")
+        assert pkg.should_exclude(f, name) is True
+
+
+class TestZipSizeGuard:
+    # PKG-05 (audit v2) : garde-fou — un ZIP anormalement gros (régression
+    # type .venv embarqué) doit faire ÉCHOUER le build, pas livrer 750 Mo.
+    def test_zip_trop_gros_leve(self, pkg, tmp_path):
+        z = tmp_path / "main.zip"
+        z.write_bytes(b"0" * 2048)
+        with pytest.raises(RuntimeError):
+            pkg.enforce_zip_size_guard(z, max_mb=0.001)
+
+    def test_zip_normal_passe(self, pkg, tmp_path):
+        z = tmp_path / "main.zip"
+        z.write_bytes(b"0" * 2048)
+        pkg.enforce_zip_size_guard(z, max_mb=1)

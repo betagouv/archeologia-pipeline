@@ -13,14 +13,14 @@ la page (pour pouvoir chevaucher la bordure supérieure, ce que Qt ne permet pas
 """
 from __future__ import annotations
 
-from qgis.PyQt.QtCore import QPointF, Qt, pyqtSignal
+from qgis.PyQt.QtCore import QEvent, QPointF, Qt, pyqtSignal
 from qgis.PyQt.QtGui import QBrush, QColor, QPainter, QPen, QPolygonF
 from qgis.PyQt.QtWidgets import QFrame, QLabel, QVBoxLayout, QWidget
 
 from ..icons import colored_pixmap
 
 _ROLE_COLORS = {"entry": "#1d5a96", "executed": "#000000", "skipped": "#5a5a5a"}
-_ICON_SIZE = 26
+_ICON_SIZE = 28
 
 
 class ArrowConnector(QWidget):
@@ -70,8 +70,12 @@ class StageButton(QFrame):
         self.setObjectName("StageButton")
         self._icon_name = icon_name
         self._clickable = clickable
+        self._role = "executed"
         self.setProperty("role", "executed")
         self.setProperty("optional", bool(optional))
+        # Propriété QSS : permet un :hover réservé aux stades cliquables et un
+        # style distinct pour le stade non interactif (Détection IA).
+        self.setProperty("clickable", bool(clickable))
         self.setCursor(Qt.CursorShape.PointingHandCursor if clickable else Qt.CursorShape.ArrowCursor)
         self.setMinimumHeight(78)
 
@@ -102,16 +106,28 @@ class StageButton(QFrame):
 
     def set_role(self, role: str) -> None:
         """role ∈ {'entry', 'executed', 'skipped'}."""
+        self._role = role
         self.setProperty("role", role)
-        self._glyph.setPixmap(
-            colored_pixmap(self._icon_name, _ROLE_COLORS.get(role, "#000000"), _ICON_SIZE)
-        )
+        self._apply_glyph()
         for w in (self, self._name, self._sub):
             try:
                 w.style().unpolish(w)
                 w.style().polish(w)
             except Exception:
                 pass
+
+    def _apply_glyph(self) -> None:
+        """Pixmap du glyphe : couleur du rôle, grisée si le stade est désactivé
+        (lecture seule pendant un run) pour que le verrou soit visible."""
+        color = _ROLE_COLORS.get(self._role, "#000000") if self.isEnabled() else "#909090"
+        self._glyph.setPixmap(
+            colored_pixmap(self._icon_name, color, _ICON_SIZE, dpr=self.devicePixelRatioF())
+        )
+
+    def changeEvent(self, event):  # noqa: N802 (signature Qt)
+        super().changeEvent(event)
+        if event.type() == QEvent.Type.EnabledChange:
+            self._apply_glyph()
 
     def mousePressEvent(self, event):  # noqa: N802 (signature Qt)
         if self._clickable:

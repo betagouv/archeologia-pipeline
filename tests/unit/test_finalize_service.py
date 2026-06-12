@@ -249,3 +249,64 @@ class TestBuildCoveragePolygons:
         )
         assert out is None
         assert any("non g" in m for m in logs)
+
+    def test_fallback_sans_vrt_couvre_toutes_les_dalles(self, tmp_path):
+        # Sans index.vrt (échec gdalbuildvrt), le repli doit traiter TOUTES les
+        # dalles, pas seulement la première (QA silencieusement incomplète sinon).
+        import numpy as np
+        import pytest
+
+        rasterio = pytest.importorskip("rasterio")
+        pytest.importorskip("shapely")
+        gpd = pytest.importorskip("geopandas")
+        from rasterio.transform import from_origin
+
+        tif_dir = tmp_path / "indices" / "COUVERTURE" / "tif"
+        tif_dir.mkdir(parents=True)
+        for i, x0 in enumerate((0.0, 1000.0)):
+            arr = np.full((40, 40), 80, dtype=np.uint8)
+            arr[5:15, 5:15] = 0
+            with rasterio.open(
+                tif_dir / f"dalle_{i}_couverture.tif", "w",
+                driver="GTiff", height=40, width=40, count=1, dtype="uint8",
+                nodata=255, transform=from_origin(x0, 40.0, 1.0, 1.0), crs="EPSG:2154",
+            ) as ds:
+                ds.write(arr, 1)
+
+        logs = []
+        out = finalize_service._build_coverage_polygons(
+            tmp_path / "indices", 30.0, logs.append
+        )
+        assert out is not None
+        gdf = gpd.read_file(out, layer="zones_mal_couvertes")
+        assert len(gdf) == 2  # une zone par dalle, pas seulement la première
+        assert any("dalle par dalle" in m for m in logs)
+
+    def test_collecte_sans_vrt_couvre_toutes_les_dalles(self, tmp_path):
+        # Variante standalone (sans geopandas) : la COLLECTE du repli sans VRT
+        # doit produire les zones de toutes les dalles, pas seulement la première.
+        import numpy as np
+        import pytest
+
+        rasterio = pytest.importorskip("rasterio")
+        pytest.importorskip("shapely")
+        from rasterio.transform import from_origin
+
+        tif_dir = tmp_path / "indices" / "COUVERTURE" / "tif"
+        tif_dir.mkdir(parents=True)
+        for i, x0 in enumerate((0.0, 1000.0)):
+            arr = np.full((40, 40), 80, dtype=np.uint8)
+            arr[5:15, 5:15] = 0
+            with rasterio.open(
+                tif_dir / f"dalle_{i}_couverture.tif", "w",
+                driver="GTiff", height=40, width=40, count=1, dtype="uint8",
+                nodata=255, transform=from_origin(x0, 40.0, 1.0, 1.0), crs="EPSG:2154",
+            ) as ds:
+                ds.write(arr, 1)
+
+        logs = []
+        polygons = finalize_service._collect_low_coverage_polygons(
+            tif_dir, 30.0, logs.append
+        )
+        assert len(polygons) == 2
+        assert any("dalle par dalle" in m for m in logs)

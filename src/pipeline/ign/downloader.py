@@ -24,6 +24,7 @@ try:
 except ImportError:
     HAS_QGIS = False
 
+from ..cancellation import PipelineCancelled
 from .coords_fallback import build_sorted_records_with_fallback
 
 
@@ -72,8 +73,46 @@ def _extract_real_url(url: str) -> str:
     match = re.search(r"(https?://[^\s\"'<>]+\.(?:laz|las|copc\.laz))", url, re.IGNORECASE)
     if match:
         return match.group(1)
-    
+
     return url
+
+
+# Domaines autorisés pour le téléchargement de dalles (AUDIT NET-02) :
+# diffusion IGN actuelle (Géoplateforme) + anciens buckets LiDAR HD.
+ALLOWED_DOWNLOAD_HOST_SUFFIXES = (
+    "data.geopf.fr",
+    "geopf.fr",
+    "ign.fr",
+    "storage.sbg.cloud.ovh.net",
+    "storage.gra.cloud.ovh.net",
+)
+
+# Cap de taille par dalle (AUDIT NET-01) : très au-dessus d'une dalle LiDAR HD
+# réelle (50-400 Mo) — protège le disque d'un flux anormal (×4 workers), la
+# validation PDAL n'intervenant qu'APRÈS écriture complète.
+MAX_DOWNLOAD_SIZE_MB = 2048
+
+
+def validate_download_url(url: str) -> Tuple[bool, str, str]:
+    """Valide une URL de dalle : ``(ok, url_normalisée, raison_du_refus)``.
+
+    ``_extract_real_url`` déballe des liens venant de MAILS
+    (Proofpoint/SafeLinks) : sans liste blanche, une URL piégée déclenchait
+    une requête sortante vers un hôte arbitraire (SSRF — AUDIT NET-02).
+    https est imposé (une URL http vers un hôte autorisé est upgradée).
+    """
+    parsed = urllib.parse.urlparse(url.strip())
+    if parsed.scheme not in ("http", "https"):
+        return False, url, f"schéma non supporté ({parsed.scheme or 'aucun'})"
+    host = (parsed.hostname or "").lower()
+    if not any(
+        host == suffix or host.endswith("." + suffix)
+        for suffix in ALLOWED_DOWNLOAD_HOST_SUFFIXES
+    ):
+        return False, url, f"hôte non autorisé ({host or 'vide'})"
+    if parsed.scheme == "http":
+        url = urllib.parse.urlunparse(parsed._replace(scheme="https"))
+    return True, url, ""
 
 
 from ..types import LogFn, ProgressFn, CancelFn
@@ -306,10 +345,47 @@ def download_one(
             return False, False
         return True, False
 
+    # Liste blanche d'hôtes + https imposé (AUDIT NET-02) — coupe AVANT toute
+    # requête sortante une URL piégée déballée d'un mail.
+    ok_url, url, refuse_reason = validate_download_url(_extract_real_url(url))
+    if not ok_url:
+        log(
+            f"❌ URL refusée pour {filename}: {refuse_reason} — seuls les "
+            f"domaines IGN connus sont autorisés ({', '.join(ALLOWED_DOWNLOAD_HOST_SUFFIXES[:2])}…)"
+        )
+        return False, False
+
     log(f"📥 Téléchargement de {filename}...")
 
     if proxies is None:
         proxies = {}
+
+    max_bytes = int(MAX_DOWNLOAD_SIZE_MB * 1024 * 1024)
+
+    def _declared_too_big(headers) -> bool:
+        try:
+            declared = int(headers.get("Content-Length") or 0)
+        except (TypeError, ValueError):
+            declared = 0
+        if declared > max_bytes:
+            log(
+                f"❌ {filename}: taille annoncée {declared / 1e6:.0f} Mo > cap "
+                f"de {MAX_DOWNLOAD_SIZE_MB} Mo — abandonné (AUDIT NET-01)"
+            )
+            return True
+        return False
+
+    def _over_cap(written: int, f) -> bool:
+        if written <= max_bytes:
+            return False
+        f.close()
+        if dest.exists():
+            dest.unlink()
+        log(
+            f"❌ {filename}: dépasse le cap de {MAX_DOWNLOAD_SIZE_MB} Mo en "
+            "cours de téléchargement — abandonné (anti-saturation disque)"
+        )
+        return True
 
     last_err: Optional[Exception] = None
     for attempt in range(1, max_retries + 1):
@@ -327,6 +403,9 @@ def download_one(
                     stream=True,
                 )
                 resp.raise_for_status()
+                if _declared_too_big(resp.headers):
+                    return False, False  # définitif : pas de retry
+                written = 0
                 with open(dest, "wb") as f:
                     for chunk in resp.iter_content(chunk_size=chunk_size):
                         if cancel():
@@ -335,6 +414,9 @@ def download_one(
                                 dest.unlink()
                             return False, False
                         if chunk:
+                            written += len(chunk)
+                            if _over_cap(written, f):
+                                return False, False  # définitif : pas de retry
                             f.write(chunk)
             else:
                 # Fallback urllib (peut ne pas fonctionner avec proxy HTTPS)
@@ -342,6 +424,9 @@ def download_one(
                 proxy_handler = urllib.request.ProxyHandler(proxies if proxies else None)
                 opener = urllib.request.build_opener(proxy_handler)
                 with opener.open(req, timeout=timeout_s) as r:
+                    if _declared_too_big(getattr(r, "headers", {})):
+                        return False, False  # définitif : pas de retry
+                    written = 0
                     with open(dest, "wb") as f:
                         while True:
                             if cancel():
@@ -352,6 +437,9 @@ def download_one(
                             chunk = r.read(chunk_size)
                             if not chunk:
                                 break
+                            written += len(chunk)
+                            if _over_cap(written, f):
+                                return False, False  # définitif : pas de retry
                             f.write(chunk)
 
             log(f"🔍 Validation PDAL rapide de {filename}...")
@@ -532,6 +620,14 @@ def download_ign_dalles(
     # Log des fichiers échoués (mais on continue)
     if failed[0] > 0:
         log(f"⚠️ {failed[0]} fichier(s) ignoré(s) (téléchargement échoué ou invalide)")
+
+    # Annulation pendant le téléchargement : sortie PROPRE via l'exception
+    # canonique. Sans cela, le tri/fallback ci-dessous (court-circuité par
+    # cancel) renvoie une liste vide → ValueError « Impossible de déterminer
+    # les coordonnées des dalles », traceback trompeur pour l'utilisateur
+    # qui vient juste de cliquer Annuler (AUDIT v2 ROB-17).
+    if cancel():
+        raise PipelineCancelled()
 
     # Tri final + fallback coords (Option B): si coords absentes, on infère via PDAL et on renomme le fichier.
     stage("Tri des fichiers (post-téléchargement)")

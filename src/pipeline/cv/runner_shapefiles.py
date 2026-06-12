@@ -77,10 +77,14 @@ def deduplicate_cv_shapefiles_final(
     # l'exécution DBSCAN (sinon les champs édités dans l'UI resteraient cosmétiques).
     _cluster_overrides = (cv_config or {}).get("clustering_overrides")
     if clustering_configs and isinstance(_cluster_overrides, dict) and _cluster_overrides:
+        from .clustering_bounds import sanitize_clustering_overrides
         for cc in clustering_configs:
             ov = _cluster_overrides.get(str(cc.get("output_class_name") or "").strip())
             if isinstance(ov, dict) and ov:
-                cc.update(ov)
+                # Clés CONNUES uniquement, castées et bornées (AUDIT PARSE-03) :
+                # la config modèle est validée au chargement, les surcharges UI
+                # doivent l'être aussi avant la fusion.
+                cc.update(sanitize_clustering_overrides(ov, warn=log))
         log(f"Computer Vision: surcharges de clustering appliquées ({len(_cluster_overrides)} sortie(s))")
 
     # shp_dir n'est PLUS créé d'office : la sortie est routée par entité vers

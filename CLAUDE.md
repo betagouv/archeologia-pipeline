@@ -48,7 +48,7 @@ pip install -r dev/requirements/build.txt         # pyinstaller/onnxruntime (run
 pip install -r dev/requirements.txt               # all of the above
 ```
 
-QGIS-side manual test checklist: `tests/TESTS_MANUELS_QGIS.txt`.
+QGIS-side manual test checklist: `tests/TESTS_MANUELS_QGIS.md`.
 
 ## Pipeline architecture (the parts that span multiple files)
 
@@ -93,9 +93,9 @@ Index output folders are named `<PRODUCT>` + a parameter suffix derived from the
 
 ### Entity orchestration (UI → `computer_vision.runs`)
 
-The V2 UI (étape 3) doesn't pick models — the user checks **entities** (parcellaire, trous d'obus…). `src/app/services/model_orchestrator.py` resolves entities into `(model, target_rvt, selected_classes)` runs from two sources: `data/entities_catalog.json` (presentable vocabulary, versioned) + each installed model's `model_card.yaml` (coverage: a class covers entity `E` via its `entity:` alias, else by `name`). This is what **populates `computer_vision.runs`** — the array above is the underlying contract, auto-written by the UI. The orchestrator is **pure-Python and must never import `pipeline.cv`** (whose `__init__` pulls `shapely`); YAML reads are deferred.
+The V2 UI (étape 3) doesn't pick models — the user checks **entities** (parcellaire, cratères…). `src/app/services/model_orchestrator.py` resolves entities into `(model, target_rvt, selected_classes)` runs from two sources: `data/entities_catalog.json` (presentable vocabulary, versioned) + each installed model's `model_card.yaml` (coverage: a class covers entity `E` via its `entity:` alias, else by `name`). This is what **populates `computer_vision.runs`** — the array above is the underlying contract, auto-written by the UI. The orchestrator is **pure-Python and must never import `pipeline.cv`** (whose `__init__` pulls `shapely`); YAML reads are deferred.
 
-**Derived targets.** A clustering output can also be surfaced as a first-class checkable entity (a *derived target*). A model declares it in `model_card.yaml` via a `derived_targets:` list mapping a clustering rule's `output_class` (from `args.yaml`) to a catalog `entity` (+ `include_source` to also output the individual source detections). `discover_installed_models` folds the derived entity into the model's `coverage` (classes = `output_class` [+ source classes]) and records it in `InstalledModel.derived_entities` — so `resolve_runs_from_entities` is unchanged and the clustering fires via the normal "output_class ∈ selected_classes" path. **Order invariant**: `_build_cluster_options` runs *before* `_merge_derived_targets`, so a derived entity never gets a redundant "Regrouper en clusters" toggle (the UI shows a "regroupement automatique" badge instead). This is how `zones_extraction_materiaux` ("Zones d'extraction de matériaux") is exposed on the crater models.
+**Derived targets.** A clustering output can also be surfaced as a first-class checkable entity (a *derived target*). A model declares it in `model_card.yaml` via a `derived_targets:` list mapping a clustering rule's `output_class` (from `args.yaml`) to a catalog `entity` (+ `include_source` to also output the individual source detections). `discover_installed_models` folds the derived entity into the model's `coverage` (classes = `output_class` [+ source classes]) and records it in `InstalledModel.derived_entities` — so `resolve_runs_from_entities` is unchanged and the clustering fires via the normal "output_class ∈ selected_classes" path. **Order invariant**: `_build_cluster_options` runs *before* `_merge_derived_targets`, so a derived entity never gets a redundant "Regrouper en clusters" toggle (the UI shows a "regroupement automatique" badge instead). This is how `regroupement_crateres` ("Regroupement de cratères") is exposed on the crater models. ⚠️ The `entity:` value must exist in `data/entities_catalog.json` — an unknown id is silently ignored by the orchestrator.
 
 ### Large rasters (`existing_mnt` / `existing_rvt` regime)
 

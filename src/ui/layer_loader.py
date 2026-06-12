@@ -6,7 +6,6 @@ V2 (``run_view``). Fonctions QGIS-side : ne pas importer hors QGIS.
 from __future__ import annotations
 
 import logging
-import re
 from pathlib import Path
 from typing import List, Optional
 
@@ -44,10 +43,13 @@ def _apply_cluster_style(layer, logger: logging.Logger) -> None:
 
 
 def _apply_confidence_style(
-    layer, color_idx: int, get_color_for_confidence_fn, confidence_threshold: float,
-    logger: logging.Logger,
+    layer, base_color, confidence_threshold: float, logger: logging.Logger,
 ) -> None:
-    """Symbologie catégorisée par tranche de confiance (contour coloré)."""
+    """Symbologie catégorisée par tranche de confiance (contour coloré).
+
+    ``base_color`` est la couleur de base RGB de la classe (registre) ; chaque
+    tranche de confiance la décline en luminosité via ``apply_confidence``.
+    """
     try:
         from qgis.core import (
             QgsCategorizedSymbolRenderer,
@@ -56,11 +58,12 @@ def _apply_confidence_style(
         )
 
         from ..pipeline.cv.class_utils import compute_confidence_bins
+        from ..pipeline.cv.color_palette import apply_confidence
 
         bins = compute_confidence_bins(max(0.0, float(confidence_threshold or 0.0)))
         categories = []
         for b in bins:
-            r, g, bl = get_color_for_confidence_fn(color_idx, b["repr"])
+            r, g, bl = apply_confidence(base_color, b["repr"])
             symbol = QgsFillSymbol.createSimple({
                 "color": "0,0,0,0",
                 "outline_color": f"{r},{g},{bl},255",
@@ -101,22 +104,20 @@ def build_detection_vector_layer(
     ogr_source: str,
     layer_name: str,
     *,
-    color_idx: int,
+    base_color,
     confidence_threshold: float,
     logger: logging.Logger,
 ):
     """Construit un ``QgsVectorLayer`` de détection valide, CRS fixé + symbologie appliquée.
 
-    Symbologie : cluster (hachures) si le champ ``nb_detect`` est présent, sinon
-    catégorisée par tranche de confiance. **N'ajoute la couche à AUCUN projet** —
-    l'appelant en est propriétaire (une couche n'appartient qu'à un projet). Source
-    unique de vérité partagée par le chargement live (:func:`load_result_layers`) ET
-    l'écriture du projet ``.qgs`` (``ui/qgs_writer.py``). ``None`` si la couche est
-    invalide.
+    ``base_color`` : couleur de base RGB de la classe (résolue via le registre par
+    l'appelant). Symbologie : cluster (hachures) si le champ ``nb_detect`` est
+    présent, sinon catégorisée par tranche de confiance. **N'ajoute la couche à
+    AUCUN projet** — l'appelant en est propriétaire. Source unique de vérité
+    partagée par le chargement live (:func:`load_result_layers`) ET l'écriture du
+    projet ``.qgs`` (``ui/qgs_writer.py``). ``None`` si la couche est invalide.
     """
     from qgis.core import QgsVectorLayer
-
-    from ..pipeline.cv.class_utils import get_color_for_confidence
 
     layer = QgsVectorLayer(ogr_source, layer_name, "ogr")
     if not layer.isValid():
@@ -125,9 +126,7 @@ def build_detection_vector_layer(
     if layer.fields().indexFromName("nb_detect") >= 0:
         _apply_cluster_style(layer, logger)
     else:
-        _apply_confidence_style(
-            layer, color_idx, get_color_for_confidence, confidence_threshold, logger
-        )
+        _apply_confidence_style(layer, base_color, confidence_threshold, logger)
     return layer
 
 
@@ -243,7 +242,7 @@ def load_result_layers(
             QgsRectangle,
         )
 
-        from ..pipeline.cv.class_utils import BASE_COLOR_PALETTE
+        from ..pipeline.cv.class_color_registry import color_for_class
 
         project = QgsProject.instance()
         root = project.layerTreeRoot()
@@ -253,12 +252,9 @@ def load_result_layers(
         loaded_count = 0
         combined_extent = QgsRectangle()
         loaded_layers: List = []
-        class_colors = class_colors or []
-
-        global_color_map: dict = {}
-        if class_colors and len(class_colors) == 1 and isinstance(class_colors[0], dict):
-            global_color_map = class_colors[0]
-            class_colors = []
+        # ``class_colors`` n'est plus consulté (la couleur dérive du nom de classe
+        # via le registre) ; le paramètre est conservé pour ne pas casser les
+        # appelants existants.
 
         # ── Rasters (VRT d'indices) ──
         for vrt_path in vrt_paths:
@@ -296,7 +292,7 @@ def load_result_layers(
             # slug d'entité = dossier du GeoPackage (detections/<slug>/<slug>.gpkg)
             slug = Path(_gpkg).parent.name
 
-            color_idx = _resolve_color_idx(global_color_map, class_name, ogr_source, layer_name, logger)
+            base_color = color_for_class(class_name)
 
             if _reuse_existing(project, layer_name, ogr_source, loaded_layers, combined_extent):
                 logger.info(f"Couche vecteur déjà présente: {layer_name}")
@@ -306,7 +302,7 @@ def load_result_layers(
             # seuil global pour un slug absent de la map (run legacy / sécurité).
             layer_conf = min_conf_by_slug.get(slug, confidence_threshold)
             layer = build_detection_vector_layer(
-                ogr_source, layer_name, color_idx=color_idx,
+                ogr_source, layer_name, base_color=base_color,
                 confidence_threshold=layer_conf, logger=logger,
             )
             if layer is not None:
@@ -324,10 +320,9 @@ def load_result_layers(
                 loaded_layers.append(layer)
                 combined_extent = _combine(combined_extent, layer.extent())
                 loaded_count += 1
-                base_color = BASE_COLOR_PALETTE[color_idx % len(BASE_COLOR_PALETTE)]
                 logger.info(
                     f"Couche vecteur chargée: {layer_name} "
-                    f"(classe={class_name}, couleur={color_idx} RGB{base_color})"
+                    f"(classe={class_name}, RGB{base_color})"
                 )
             else:
                 logger.warning(f"Impossible de charger la couche: {ogr_source}")
@@ -408,31 +403,6 @@ def _reuse_existing(project, layer_name, source, loaded_layers, combined_extent)
             _combine(combined_extent, existing.extent())
             return True
     return False
-
-
-def _resolve_color_idx(global_color_map, class_name, ogr_source, layer_name, logger) -> int:
-    if global_color_map and class_name in global_color_map:
-        return global_color_map[class_name]
-    if global_color_map:
-        for cname, cidx in global_color_map.items():
-            if cname.lower() in class_name.lower():
-                return cidx
-        return 0
-    # Pas de map globale : lire l'attribut conf_color de la première entité.
-    try:
-        from qgis.core import QgsVectorLayer
-        temp = QgsVectorLayer(ogr_source, "temp", "ogr")
-        if temp.isValid() and temp.featureCount() > 0:
-            for feat in temp.getFeatures():
-                val = feat.attribute("conf_color")
-                if val:
-                    m = re.match(r"color(\d+)_", str(val))
-                    if m:
-                        return int(m.group(1))
-                break
-    except Exception as e:  # noqa: BLE001
-        logger.warning(f"Impossible d'extraire conf_color de {layer_name}: {e}")
-    return 0
 
 
 def _deferred_zoom(loaded_layers, project, logger) -> None:

@@ -3,16 +3,15 @@ from __future__ import annotations
 import json
 import os
 import shutil
-import subprocess
 import tempfile
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Callable, Dict, List, Optional, Tuple
 
 from ..coords import extract_xy_from_filename, infer_xy_from_file
-from .downloader import download_one
+from .downloader import download_one, _get_proxy_config
 from .pdal_validation import (
     run_pdal_command_cancellable,
     validate_las_or_laz_with_pdal,
@@ -25,6 +24,10 @@ class IgnPreprocessResult:
     merged_dir: Path
     temp_dir: Path
     merged_files: List[Path]
+    # Dalles non fusionnées (« nom: erreur ») — la fusion n'est plus
+    # tout-ou-rien (AUDIT v2 ROB-12) : l'appelant rapporte ces échecs et
+    # continue avec ``merged_files``.
+    failed: List[str] = field(default_factory=list)
 
 
 def _default_log(_: str) -> None:
@@ -56,24 +59,6 @@ def calculate_neighbor_coordinates(x: str, y: str) -> List[Tuple[int, int, int]]
 
 def format_coordinate(coord: int) -> str:
     return f"{coord:04d}"
-
-
-def find_neighbor_file(sorted_list_file: Path, voisin_x: int, voisin_y: int, log: LogFn = _default_log) -> Optional[Tuple[str, str]]:
-    coord_x = format_coordinate(voisin_x)
-    coord_y = format_coordinate(voisin_y)
-    search_pattern = f"{coord_x}_{coord_y}"
-
-    try:
-        with sorted_list_file.open("r", encoding="utf-8") as f:
-            for line in f:
-                if search_pattern in line:
-                    parts = line.strip().split(",", 1)
-                    if len(parts) == 2:
-                        return parts[0], parts[1]
-    except FileNotFoundError:
-        log(f"Fichier trié non trouvé: {sorted_list_file}")
-
-    return None
 
 
 def calculate_crop_bounds(voisin_x: int, voisin_y: int, place_dalle: int, margin_m: int) -> Dict[str, str]:
@@ -300,6 +285,10 @@ class _PreprocessTask:
     merged_dir: Path
     margin_m: int
     dalles_dir: Path
+    # Proxy (QGIS ou env) résolu UNE fois par prepare_merged_tiles : les
+    # re-téléchargements de voisins doivent passer par le même proxy que
+    # l'acquisition (AUDIT v2 NET-06 — réseau d'entreprise).
+    proxies: Dict[str, str] = field(default_factory=dict)
 
 
 @dataclass
@@ -362,6 +351,7 @@ def _process_single_tile_preprocess(
                     task.dalles_dir,
                     log=lambda m: log(f"[{task.tile_name}] {m}"),
                     cancel=cancel,
+                    proxies=task.proxies,
                 )
                 if not ok or not neighbor_input.exists():
                     continue
@@ -483,7 +473,16 @@ def prepare_merged_tiles(
         lines = [ln.strip() for ln in f if ln.strip()]
 
     total = len(lines)
-    
+    failed: List[str] = []
+
+    # Proxy résolu UNE fois (même source que l'acquisition : QGIS puis env) —
+    # transporté par chaque tâche jusqu'aux download_one des voisins
+    # (AUDIT v2 NET-06).
+    try:
+        proxies = _get_proxy_config(log=log)
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        proxies = {}
+
     # Préparer les tâches
     tasks: List[_PreprocessTask] = []
     for idx, line in enumerate(lines, start=1):
@@ -496,7 +495,13 @@ def prepare_merged_tiles(
 
         central_path = dalles_dir / filename
         if not central_path.exists():
-            raise FileNotFoundError(f"Fichier central introuvable: {central_path}")
+            # Dalle listée dans fichier_tri.txt mais absente du disque
+            # (download échoué, nom parsable — ROB-08 v1) : on continue avec
+            # les autres dalles au lieu d'avorter tout le lot par un
+            # FileNotFoundError fatal (AUDIT v2 ROB-12).
+            log(f"⚠️ Dalle absente du disque, ignorée pour la fusion : {filename}")
+            failed.append(f"{filename}: fichier central introuvable")
+            continue
 
         x, y = _extract_coordinates(filename, dalles_dir=dalles_dir, log=log, cancel=cancel)
         tile_name = base_tile_name
@@ -516,6 +521,7 @@ def prepare_merged_tiles(
             merged_dir=merged_dir,
             margin_m=margin_m,
             dalles_dir=dalles_dir,
+            proxies=proxies,
         ))
 
     # Configuration parallélisation
@@ -575,16 +581,31 @@ def prepare_merged_tiles(
                     thread_safe_log(f"Échec prétraitement dalle {result.tile_name}: {result.error}")
             except Exception as e:
                 thread_safe_log(f"Exception prétraitement dalle {task.tile_name}: {e}")
+                failed.append(f"{task.tile_name}: {e}")
 
-    # Reconstituer la liste dans l'ordre original
+    # Reconstituer la liste dans l'ordre original. Isolation par dalle
+    # (AUDIT v2 ROB-12) : un merge en échec n'est plus re-levé en
+    # RuntimeError fatal — on continue avec les dalles fusionnées et on
+    # rapporte les échecs à l'appelant via ``failed``.
     for idx in sorted(results_by_index.keys()):
         result = results_by_index[idx]
         if result.success and result.merged_path is not None:
             merged_files.append(result.merged_path)
         elif result.error and "Annulation" not in (result.error or ""):
-            raise RuntimeError(f"[Dalle {result.index}/{total}] {result.tile_name}: {result.error}")
+            failed.append(f"{result.tile_name}: {result.error}")
 
-    return IgnPreprocessResult(merged_dir=merged_dir, temp_dir=temp_dir, merged_files=merged_files)
+    # Échec TOTAL (aucune dalle fusionnée alors qu'il y avait des échecs et
+    # pas d'annulation) : fatal — rien à traiter en aval.
+    if failed and not merged_files and not cancel():
+        raise RuntimeError(
+            f"Fusion impossible : {len(failed)} dalle(s) en échec, aucune "
+            f"fusionnée. Première erreur : {failed[0]}"
+        )
+
+    return IgnPreprocessResult(
+        merged_dir=merged_dir, temp_dir=temp_dir,
+        merged_files=merged_files, failed=failed,
+    )
 
 
 def _extract_coordinates(

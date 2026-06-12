@@ -12,13 +12,15 @@ os.environ.setdefault("GDAL_FILENAME_IS_UTF8", "YES")
 os.environ.setdefault("SHAPE_ENCODING", "UTF-8")
 
 from ..cancellation import PipelineCancelled, check_cancelled
+from ..geo_utils import find_world_file
 from ..types import CancelCheckFn
-from .class_utils import load_class_names_from_model, detect_indexing_offset
+from .class_color_registry import rank_for_class
+from .class_utils import detect_indexing_offset
 
 logger = logging.getLogger(__name__)
 
 import pandas as pd
-from shapely.geometry import Point, Polygon
+from shapely.geometry import Polygon
 import geopandas as gpd
 
 
@@ -141,8 +143,7 @@ def read_world_file(world_file_path: str) -> Tuple[Optional[float], Optional[flo
 
         if len(lines) >= 6:
             pixel_width = float(lines[0].strip())
-            row_rotation = float(lines[1].strip())
-            col_rotation = float(lines[2].strip())
+            # lines[1]/lines[2] = rotations, toujours 0 dans nos world files
             pixel_height = float(lines[3].strip())
             x_origin = float(lines[4].strip())
             y_origin = float(lines[5].strip())
@@ -224,24 +225,6 @@ def calculate_neighbor_tile_keys(x_coord: str, y_coord: str) -> List[str]:
         return [f"{x_coord}_{y_coord}"]
 
 
-def load_iou_threshold_from_config() -> float:
-    """Charge le seuil IoU depuis config.json"""
-    try:
-        from pathlib import Path
-        import json
-
-        config_path = Path(__file__).parents[3] / "config.json"
-        if config_path.exists():
-            with open(config_path, "r", encoding="utf-8") as f:
-                config = json.load(f)
-                return config.get("computer_vision", {}).get("iou_threshold", 0.3)
-    except Exception as e:
-        logger = logging.getLogger(__name__)
-        logger.debug(f"Impossible de charger le seuil IoU depuis config.json: {e}")
-
-    return 0.3
-
-
 def load_model_name_from_config() -> str:
     try:
         from pathlib import Path
@@ -300,22 +283,7 @@ def _tile_extent_polygon_from_jpg(jpg_path: "Path") -> Optional["Polygon"]:
     try:
         if not jpg_path.exists():
             return None
-        # Le fichier world dépend du format image : .pgw pour PNG, .jgw pour JPEG,
-        # .wld en repli. (Bug historique : seul .jgw était tenté → la dédup par
-        # emprise ne se déclenchait jamais pour le pipeline PNG.)
-        suffix = jpg_path.suffix.lower()
-        if suffix == ".png":
-            candidate_exts = (".pgw", ".wld")
-        elif suffix in (".jpg", ".jpeg"):
-            candidate_exts = (".jgw", ".wld")
-        else:
-            candidate_exts = (".wld", ".pgw", ".jgw")
-        world_path = None
-        for ext in candidate_exts:
-            cand = jpg_path.with_suffix(ext)
-            if cand.exists():
-                world_path = cand
-                break
+        world_path = find_world_file(jpg_path)
         if world_path is None:
             return None
         pw, ph, xo, yo = read_world_file(str(world_path))
@@ -809,9 +777,6 @@ def create_shapefile_from_detections(
 
         jgw_logged_for_jpg = set()
         
-        iou_threshold = load_iou_threshold_from_config()
-        logger.info(f"Seuil IoU chargé depuis config.json: {iou_threshold}")
-
         # Nom du modèle utilisé pour les détections (stocké comme attribut non éditable)
         model_name = load_model_name_from_config()
         if model_name:
@@ -821,20 +786,12 @@ def create_shapefile_from_detections(
 
         # Liste des classes disponibles (pour ValueMap QGIS)
         # Si class_names n'est pas fourni via le dossier du modèle, on bascule sur des libellés numériques.
-        if isinstance(class_names, dict):
-            all_classes = [_normalize_class_label(class_names[k]) for k in sorted(class_names.keys())]
-        elif isinstance(class_names, list):
-            all_classes = [_normalize_class_label(x) for x in list(class_names)]
-        else:
-            all_classes = []
-        
         # Parcourir tous les fichiers .txt dans le répertoire
         for label_file in labels_path.glob("*.txt"):
             base_name = label_file.stem
             
             # Récupérer les données de transformation du TIF correspondant
             pixel_width = pixel_height = x_origin = y_origin = None
-            transform_source = "unknown"
             tif_file = None  # Référence au TIF source (si trouvé dans Temp)
 
             # Essayer d'abord d'utiliser tif_transform_data (référentiel exact du JPG utilisé pour YOLO)
@@ -859,7 +816,6 @@ def create_shapefile_from_detections(
             if tif_key:
                 # Utiliser les données de transformation du TIF source (même raster que le JPG YOLO)
                 pixel_width, pixel_height, x_origin, y_origin = tif_transform_data[tif_key]
-                transform_source = "tif_source"
                 logger.debug(
                     f"Utilisation des données TIF pour {base_name} (clé: {tif_key}): px_w={pixel_width}, px_h={pixel_height}, x_orig={x_origin}, y_orig={y_origin}"
                 )
@@ -876,10 +832,10 @@ def create_shapefile_from_detections(
                     # Il faut donc utiliser les coordonnées globales des TIF avec marges pour la transformation
                     base_without_detections = base_name.replace('_detections', '')
                     search_patterns = [
-                        f"*_PTS_C_LAMB93_IGN69_LD.tif",  # Priorité 1: TIF avec marges (coordonnées globales correctes)
-                        f"*_PTS_C_LAMB93_IGN69_MNT.tif",  # Priorité 2: MNT avec marges
+                        "*_PTS_C_LAMB93_IGN69_LD.tif",  # Priorité 1: TIF avec marges (coordonnées globales correctes)
+                        "*_PTS_C_LAMB93_IGN69_MNT.tif",  # Priorité 2: MNT avec marges
                         f"{base_without_detections}.tif",  # Priorité 3: nom exact
-                        f"*_LD_A_LAMB93.tif",  # Priorité 4: TIF ROGNÉ (fallback)
+                        "*_LD_A_LAMB93.tif",  # Priorité 4: TIF ROGNÉ (fallback)
                         f"{base_name}.tif"  # Priorité 5: avec _detections
                     ]
 
@@ -939,7 +895,6 @@ def create_shapefile_from_detections(
                                 pixel_height = transform.e  # Garder le signe négatif pour Y
                                 x_origin = transform.c
                                 y_origin = transform.f
-                                transform_source = "temp_tif_rasterio"
                                 logger.info(
                                     f"✅ Utilisation du TIF Temp {tif_file.name}: dimensions={src.width}x{src.height}, px_w={pixel_width}, px_h={pixel_height}, x_orig={x_origin}, y_orig={y_origin}"
                                 )
@@ -962,14 +917,13 @@ def create_shapefile_from_detections(
                                     if len(gt) >= 6:
                                         x_origin, pixel_width, _, y_origin, _, pixel_height = gt[:6]
                                         pixel_width = abs(pixel_width)  # Assurer valeur positive
-                                        transform_source = "temp_tif_gdalinfo"
                                         logger.info(
                                             f"✅ Fallback gdalinfo pour {tif_file.name}: px_w={pixel_width}, px_h={pixel_height}, x_orig={x_origin}, y_orig={y_origin}"
                                         )
                                     else:
                                         logger.warning(f"❌ gdalinfo: geoTransform invalide pour {tif_file}")
                                 else:
-                                    logger.warning(f"❌ gdalinfo non trouvé pour fallback")
+                                    logger.warning("❌ gdalinfo non trouvé pour fallback")
                             except Exception as gdal_e:
                                 logger.warning(f"❌ Fallback gdalinfo échoué pour {tif_file}: {gdal_e}")
             
@@ -1007,6 +961,82 @@ def create_shapefile_from_detections(
             else:
                 logger.info(f"Fichier JSON non trouvé: {json_file}")
             
+            # ── Constantes PAR FICHIER label (AUDIT v2 PERF-09) ─────────────
+            # Chemin PNG, dimensions image et fichier world ne dépendent que de
+            # base_name : les recalculer PAR LIGNE (ouverture PNG + stat() ×3 +
+            # lecture .pgw × 2000 détections) coûtait des minutes d'I/O pur
+            # sous antivirus/lecteur réseau. Résolus UNE fois ici.
+            jpg_name = base_name.replace("_detections", "") + ".png"
+            jpg_path = None
+            # 1) Chercher dans png_dir (dossier source des PNG d'inférence)
+            if png_dir:
+                candidate = Path(png_dir) / jpg_name
+                if candidate.exists():
+                    jpg_path = candidate
+            # 2) Chercher dans labels_dir lui-même (fallback rétrocompat)
+            if jpg_path is None or not jpg_path.exists():
+                candidate = label_file.parent / jpg_name
+                if candidate.exists():
+                    jpg_path = candidate
+            # 3) Ancien chemin ../jpg/ (rétrocompat)
+            if jpg_path is None or not jpg_path.exists():
+                if labels_dir:
+                    old_jpg_dir = Path(labels_dir).parent / "jpg"
+                    if old_jpg_dir.exists():
+                        candidate = old_jpg_dir / jpg_name
+                        if candidate.exists():
+                            jpg_path = candidate
+            if jpg_path is None:
+                jpg_path = label_file.parent / jpg_name
+
+            img_width = img_height = None
+            if jpg_path.exists():
+                try:
+                    from PIL import Image
+                    with Image.open(jpg_path) as img:
+                        img_width, img_height = img.size
+                        logger.debug(f"Dimensions réelles de {jpg_name}: {img_width}x{img_height}")
+                except Exception as e:
+                    logger.warning(f"Impossible de lire les dimensions de {jpg_name}: {e}")
+
+            # Fallback : lire les dimensions depuis le TIF source
+            if (img_width is None or img_height is None) and tif_file and Path(tif_file).exists():
+                try:
+                    import rasterio
+                    with rasterio.open(str(tif_file)) as src:
+                        img_width, img_height = src.width, src.height
+                        logger.debug(f"Dimensions lues depuis TIF {Path(tif_file).name}: {img_width}x{img_height}")
+                except Exception:
+                    pass
+
+            if img_width is None or img_height is None:
+                logger.error(
+                    f"Impossible de déterminer les dimensions de l'image pour {base_name}, "
+                    f"JPG non trouvé ({jpg_path}) et pas de TIF source. Détections ignorées."
+                )
+                continue
+
+            # IMPORTANT: Utiliser en priorité le fichier world de l'image
+            # d'inférence (.pgw pour PNG, .jgw pour JPEG — AUDIT v2 GEO-04).
+            # Cela garantit que python run_pipeline et l'exécutable utilisent
+            # exactement la même source de géoréférencement pour les bboxes.
+            if jpg_path and jpg_path.exists():
+                jgw_path = find_world_file(jpg_path)
+                if jgw_path is not None:
+                    pw, ph, xo, yo = read_world_file(str(jgw_path))
+                    if all(val is not None for val in [pw, ph, xo, yo]):
+                        pixel_width, pixel_height, x_origin, y_origin = pw, ph, xo, yo
+                        try:
+                            jpg_key = str(jpg_path)
+                        except Exception:
+                            jpg_key = None
+                        if jpg_key is None or jpg_key not in jgw_logged_for_jpg:
+                            logger.info(
+                                f"Utilisation du .jgw pour {jpg_path.name}: px_w={pixel_width}, px_h={pixel_height}, x_orig={x_origin}, y_orig={y_origin}"
+                            )
+                            if jpg_key is not None:
+                                jgw_logged_for_jpg.add(jpg_key)
+
             # Lire les détections dans le fichier
             try:
                 with open(label_file, "r") as f:
@@ -1044,78 +1074,6 @@ def create_shapefile_from_detections(
                             seg_holes_rel = holes_data.get(detection_idx)  # trous normalisés depuis JSON
                         else:
                             continue
-
-                        # Récupérer les vraies dimensions de l'image PNG correspondante
-                        jpg_name = base_name.replace("_detections", "") + ".png"
-                        jpg_path = None
-                        # 1) Chercher dans png_dir (dossier source des PNG d'inférence)
-                        if png_dir:
-                            candidate = Path(png_dir) / jpg_name
-                            if candidate.exists():
-                                jpg_path = candidate
-                        # 2) Chercher dans labels_dir lui-même (fallback rétrocompat)
-                        if jpg_path is None or not jpg_path.exists():
-                            candidate = label_file.parent / jpg_name
-                            if candidate.exists():
-                                jpg_path = candidate
-                        # 3) Ancien chemin ../jpg/ (rétrocompat)
-                        if jpg_path is None or not jpg_path.exists():
-                            if labels_dir:
-                                old_jpg_dir = Path(labels_dir).parent / "jpg"
-                                if old_jpg_dir.exists():
-                                    candidate = old_jpg_dir / jpg_name
-                                    if candidate.exists():
-                                        jpg_path = candidate
-                        if jpg_path is None:
-                            jpg_path = label_file.parent / jpg_name
-
-                        img_width = img_height = None
-                        if jpg_path.exists():
-                            try:
-                                from PIL import Image
-                                with Image.open(jpg_path) as img:
-                                    img_width, img_height = img.size
-                                    logger.debug(f"Dimensions réelles de {jpg_name}: {img_width}x{img_height}")
-                            except Exception as e:
-                                logger.warning(f"Impossible de lire les dimensions de {jpg_name}: {e}")
-
-                        # Fallback : lire les dimensions depuis le TIF source
-                        if (img_width is None or img_height is None) and tif_file and Path(tif_file).exists():
-                            try:
-                                import rasterio
-                                with rasterio.open(str(tif_file)) as src:
-                                    img_width, img_height = src.width, src.height
-                                    logger.debug(f"Dimensions lues depuis TIF {Path(tif_file).name}: {img_width}x{img_height}")
-                            except Exception:
-                                pass
-
-                        if img_width is None or img_height is None:
-                            logger.error(
-                                f"Impossible de déterminer les dimensions de l'image pour {base_name}, "
-                                f"JPG non trouvé ({jpg_path}) et pas de TIF source. Détection ignorée."
-                            )
-                            continue
-
-                        # IMPORTANT: Utiliser en priorité le fichier world (.jgw) du JPG
-                        # Cela garantit que python run_pipeline et l'exécutable utilisent
-                        # exactement la même source de géoréférencement pour les bboxes.
-                        if jpg_path and jpg_path.exists():
-                            jgw_path = jpg_path.with_suffix('.jgw')
-                            if jgw_path.exists():
-                                pw, ph, xo, yo = read_world_file(str(jgw_path))
-                                if all(val is not None for val in [pw, ph, xo, yo]):
-                                    pixel_width, pixel_height, x_origin, y_origin = pw, ph, xo, yo
-                                    transform_source = "jpg_world"
-                                    try:
-                                        jpg_key = str(jpg_path)
-                                    except Exception:
-                                        jpg_key = None
-                                    if jpg_key is None or jpg_key not in jgw_logged_for_jpg:
-                                        logger.info(
-                                            f"Utilisation du .jgw pour {jpg_path.name}: px_w={pixel_width}, px_h={pixel_height}, x_orig={x_origin}, y_orig={y_origin}"
-                                        )
-                                        if jpg_key is not None:
-                                            jgw_logged_for_jpg.add(jpg_key)
 
                         if is_segmentation and seg_points_rel is not None:
                             # Conversion des sommets relatifs → pixels → géo
@@ -1226,14 +1184,12 @@ def create_shapefile_from_detections(
 
                         if confidence is not None:
                             detection_attrs["confidence"] = confidence
-                        # Déterminer l'index de couleur pour cette classe
-                        # Priorité: global_color_map (multi-modèles) > class_colors (local) > class_id
-                        if global_color_map and class_name in global_color_map:
-                            color_idx = global_color_map[class_name]
-                        elif class_colors and 0 <= class_id_int < len(class_colors):
-                            color_idx = class_colors[class_id_int]
-                        else:
-                            color_idx = class_id_int
+                        # Rang stable de la classe (registre partagé) : source
+                        # unique des couleurs, identique à l'affichage. conf_bin
+                        # (la tranche) est inchangé ; conf_color reste informatif
+                        # — la symbologie est dérivée du nom de classe à
+                        # l'affichage (refonte couleurs 2026-06-12).
+                        color_idx = rank_for_class(class_name)
                         conf_bin, conf_color = _confidence_bucket(confidence, color_idx, min_confidence)
                         detection_attrs["conf_bin"] = conf_bin
                         detection_attrs["conf_color"] = conf_color
@@ -1368,16 +1324,14 @@ def create_shapefile_from_detections(
                 f"{total_raw} détections conservées intactes"
             )
         
-        # Recalculer conf_bin/conf_color après post-processing (la confiance a pu changer par fusion)
+        # Recalculer conf_bin/conf_color après post-processing (la confiance a pu changer par fusion).
+        # Le rang de couleur est déjà figé dans __color_idx (registre, par classe).
         for class_name, detections in data_by_class_name.items():
             for det in detections:
                 conf = det.get("confidence")
                 if conf is None:
                     continue
-                if global_color_map and class_name in global_color_map:
-                    cidx = global_color_map[class_name]
-                else:
-                    cidx = det.get("__color_idx", 0)
+                cidx = det.get("__color_idx", rank_for_class(class_name))
                 det["conf_bin"], det["conf_color"] = _confidence_bucket(conf, cidx, min_confidence)
         
         # ── Clustering spatial (optionnel) ──

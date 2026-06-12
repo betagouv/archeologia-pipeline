@@ -77,20 +77,16 @@ def run_cv_post_loop(
     from ...pipeline.modes.existing_rvt import run_existing_rvt
     from ...pipeline.output_paths import resolve_rvt_tif_dir
 
-    from .finalize_service import _build_global_class_color_map
-
     cv_cfg = ctx.cv.raw
     cv_runs = resolve_cv_runs(cv_cfg)
     if not cv_runs:
         reporter.info("Computer Vision: aucun modèle configuré dans les runs")
         return
 
+    # La couleur dérive du nom de classe via le registre partagé (refonte
+    # couleurs) ; plus de mapping global à pré-calculer. Paramètre conservé
+    # (vide) dans la chaîne d'appel pour ne pas casser les signatures.
     global_color_map: Dict[str, int] = {}
-    try:
-        global_color_map = _build_global_class_color_map(cv_runs)
-        reporter.info(f"Computer Vision: mapping couleurs global = {global_color_map}")
-    except Exception as _e:  # noqa: BLE001 — on logge et continue
-        reporter.info(f"Computer Vision: impossible de construire le mapping couleurs: {_e}")
 
     log_section("COMPUTER VISION", "cv", slog=slog, reporter=reporter)
     report_stage_id(reporter, Stage.DETECTION)

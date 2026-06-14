@@ -75,6 +75,20 @@ class TestShouldExcludeFiles:
         f.write_text("x")
         assert pkg.should_exclude(f, name) is False
 
+    @pytest.mark.parametrize(
+        "name",
+        ["TA_diff_pkk_lidarhd_classe.shp", "TA_diff_pkk_lidarhd_classe.dbf",
+         "TA_diff_pkk_lidarhd_classe.shx", "TA_diff_pkk_lidarhd_classe.prj",
+         "TA_diff_pkk_lidarhd_classe.qix"],
+    )
+    def test_keeps_quadrillage_files(self, pkg, tmp_path, name):
+        # PKG-02 : le quadrillage IGN (shapefile + son index spatial .qix) est
+        # requis au runtime — l'index .qix (sélection des dalles sur carte) ne
+        # doit pas être écarté du ZIP.
+        f = tmp_path / name
+        f.write_text("x")
+        assert pkg.should_exclude(f, name) is False
+
     @pytest.mark.parametrize("name", ["AUDIT.md", "AUDIT_V1.md", "AUDIT_V2.md"])
     def test_excludes_audit_reports(self, pkg, tmp_path, name):
         # PKG-06 (audit v2) : un rapport d'audit interne (vulnérabilités non

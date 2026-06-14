@@ -39,6 +39,8 @@ PRODUCT_LABELS = {
     "LD": "détection des dépressions locales",
     "SLRM": "résidu local (SLRM)",
     "VAT": "visualisation pour l'archéologie (VAT)",
+    "MSTP": "position topographique multi-échelle (MSTP)",
+    "CVAT": "visualisation archéo combinée (CVAT)",
 }
 
 

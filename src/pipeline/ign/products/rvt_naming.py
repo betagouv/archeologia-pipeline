@@ -16,6 +16,7 @@ from typing import Any, Dict, Tuple
 #: package — un test verrouille la synchronisation des deux tuples).
 PRODUCT_ORDER: Tuple[str, ...] = (
     "MNT", "DENSITE", "COUVERTURE", "HS", "M_HS", "SVF", "SLO", "LD", "SLRM", "VAT",
+    "MSTP", "CVAT",
 )
 
 
@@ -111,8 +112,21 @@ def get_rvt_param_suffix(product_name: str, rvt_params: Dict[str, Any]) -> str:
         terrain_type = _as_int(vat.get("terrain_type", 0), 0)
         blend_combination = _as_int(vat.get("blend_combination", 0), 0)
         return f"_T{terrain_type}_B{blend_combination}"
-    
-    # MNT, DENSITE, COUVERTURE: pas de paramètres
+
+    elif product_name == "MSTP":
+        mstp = rvt_params.get("mstp", {})
+        l_min = _as_int(mstp.get("local_scale_min", 3), 3)
+        l_max = _as_int(mstp.get("local_scale_max", 21), 21)
+        m_min = _as_int(mstp.get("meso_scale_min", 23), 23)
+        m_max = _as_int(mstp.get("meso_scale_max", 203), 203)
+        b_min = _as_int(mstp.get("broad_scale_min", 223), 223)
+        b_max = _as_int(mstp.get("broad_scale_max", 2023), 2023)
+        lightness = _as_float(mstp.get("lightness", 1.2), 1.2)
+        # Pas de _ dans le token lightness (cohérent avec observer_h du LD).
+        lightness_str = str(lightness).replace(".", "p")
+        return f"_L{l_min}-{l_max}_M{m_min}-{m_max}_B{b_min}-{b_max}_Li{lightness_str}"
+
+    # MNT, DENSITE, COUVERTURE, CVAT (composition figée): pas de suffixe.
     return ""
 
 
@@ -163,6 +177,8 @@ def get_rvt_temp_filename(
         "LD": "LD",
         "SLRM": "SLRM",
         "VAT": "VAT",
+        "MSTP": "MSTP",
+        "CVAT": "CVAT",
     }
     
     base_name = base_names.get(product_name, product_name)

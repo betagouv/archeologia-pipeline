@@ -300,6 +300,13 @@ QPushButton:disabled { color: #909090; border-color: #b0b0b0; }
 /* ---- Étape 3 : runs IA programmés ---- */
 #RunRow { background: #ffffff; border: 1px solid #c4c4c4; border-radius: 6px; }
 #RunName { font-weight: bold; color: #000000; }
+/* Classes sélectionnées : pastilles « entité » lisibles (libellés du catalogue).
+   Fond neutre clair pour se lire comme un groupe, sans concurrencer le tag RVT bleu. */
+#RunClassChips { background: transparent; border: none; }
+#RunClassChip {
+    background: #f1f5f9; color: #2c2c2c; font-size: 10px;
+    padding: 1px 8px; border-radius: 9px; border: 1px solid #c8d2dc;
+}
 #RunRvtTag {
     background: #d6e6f4; color: #1d5a96; font-size: 10px; font-weight: bold;
     padding: 1px 7px; border-radius: 3px;

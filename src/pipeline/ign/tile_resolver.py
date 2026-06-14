@@ -2,10 +2,11 @@
 Résolution des dalles IGN LiDAR HD à partir d'un polygone de zone d'étude.
 
 Intersecte le polygone utilisateur avec le quadrillage France
-(data/quadrillage_france/TA_diff_pkk_lidarhd_classe.shp) pour déterminer
-quelles dalles télécharger.
+(``data/quadrillage_france/`` — GeoPackage slim à R-tree de préférence, sinon
+shapefile legacy ; cf. :func:`pipeline.ign.quadrillage_paths.resolve_quadrillage_path`)
+pour déterminer quelles dalles télécharger.
 
-Le shapefile de quadrillage contient :
+Le quadrillage contient :
   - nom_pkk   : nom de la dalle (ex: LHD_FXX_0946_6744_PTS_C_...)
   - url_telech : URL de téléchargement de la dalle
 
@@ -18,11 +19,9 @@ from pathlib import Path
 from typing import List, Optional, Tuple
 
 from ..types import CancelFn, LogFn
+from .quadrillage_paths import resolve_quadrillage_path
 
 logger = logging.getLogger(__name__)
-
-# ── Quadrillage path (relative to plugin root) ──
-_QUADRILLAGE_RELPATH = Path("data") / "quadrillage_france" / "TA_diff_pkk_lidarhd_classe.shp"
 
 
 def _default_log(_: str) -> None:
@@ -79,13 +78,14 @@ def resolve_tiles_from_polygon(
 
     ogr.UseExceptions()
 
-    # ── Résolution du quadrillage ──
+    # ── Résolution du quadrillage (shapefile + index .qix ; .gpkg si présent) ──
     if quadrillage_path is None:
-        quadrillage_path = _get_plugin_root() / _QUADRILLAGE_RELPATH
+        quadrillage_path = resolve_quadrillage_path(_get_plugin_root())
     if not quadrillage_path.exists():
         raise FileNotFoundError(
             f"Quadrillage France introuvable : {quadrillage_path}\n"
-            "Placez le shapefile dans data/quadrillage_france/."
+            "Placez le quadrillage IGN (TA_diff_pkk_lidarhd_classe.shp + son index "
+            ".qix) dans data/quadrillage_france/."
         )
 
     # ── Chargement du polygone utilisateur ──

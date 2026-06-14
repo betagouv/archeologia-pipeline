@@ -71,7 +71,9 @@ class FilesConfig:
 # toute logique « au moins un indice » / « faut-il un MNT » doit s'appuyer
 # dessus, sinon on réintroduit le bug d'un indice oublié dans une liste codée
 # en dur (HS absent de la validation, SLRM absent de needs_mnt…).
-_VISUALIZATION_PRODUCTS: Tuple[str, ...] = ("HS", "M_HS", "SVF", "SLO", "LD", "SLRM", "VAT")
+_VISUALIZATION_PRODUCTS: Tuple[str, ...] = (
+    "HS", "M_HS", "SVF", "SLO", "LD", "SLRM", "VAT", "MSTP", "CVAT",
+)
 _ALL_PRODUCTS: Tuple[str, ...] = ("MNT", "DENSITE", "COUVERTURE", *_VISUALIZATION_PRODUCTS)
 
 
@@ -93,6 +95,8 @@ class ProductsConfig:
     LD: bool = False
     SLRM: bool = False
     VAT: bool = False
+    MSTP: bool = False
+    CVAT: bool = False
 
     def active(self) -> List[str]:
         """Liste des produits activés (pour les logs/metadata)."""
@@ -301,6 +305,8 @@ def _build_products_config(products_dict: Dict[str, Any]) -> ProductsConfig:
         LD=bool(products_dict.get("LD", False)),
         SLRM=bool(products_dict.get("SLRM", False)),
         VAT=bool(products_dict.get("VAT", False)),
+        MSTP=bool(products_dict.get("MSTP", False)),
+        CVAT=bool(products_dict.get("CVAT", False)),
     )
 
 

@@ -199,6 +199,36 @@ class TestCollectDetectionLayers:
             f"{gpkg}|layername=zone",
         ]
 
+    def test_skips_empty_geopackage_layers(self, tmp_path: Path, monkeypatch):
+        # Une couche vide (0 entité, p.ex. vidée par le filtre d'aire) ne doit
+        # être ni collectée ni chargée → pas d'« avertissement CRS » au final.
+        gpkg = tmp_path / "detections" / "talus" / "talus.gpkg"
+        gpkg.parent.mkdir(parents=True)
+        gpkg.write_bytes(b"gpkg")
+        monkeypatch.setattr(finalize_service, "_list_gpkg_layers", lambda _p: ["talus_fosse", "cratere"])
+        counts = {"talus_fosse": 0, "cratere": 5}
+        monkeypatch.setattr(
+            finalize_service, "_gpkg_layer_feature_count", lambda _p, layer: counts[layer], raising=False
+        )
+
+        paths = finalize_service._collect_shapefiles(tmp_path / "detections")
+
+        assert paths == [f"{gpkg}|layername=cratere"]
+
+    def test_keeps_layer_when_feature_count_unknown(self, tmp_path: Path, monkeypatch):
+        # Comptage indéterminable (-1) → on conserve la couche (prudence).
+        gpkg = tmp_path / "detections" / "m" / "m.gpkg"
+        gpkg.parent.mkdir(parents=True)
+        gpkg.write_bytes(b"gpkg")
+        monkeypatch.setattr(finalize_service, "_list_gpkg_layers", lambda _p: ["x"])
+        monkeypatch.setattr(
+            finalize_service, "_gpkg_layer_feature_count", lambda _p, layer: -1, raising=False
+        )
+
+        paths = finalize_service._collect_shapefiles(tmp_path / "detections")
+
+        assert paths == [f"{gpkg}|layername=x"]
+
 
 class TestBuildCoveragePolygons:
     @staticmethod

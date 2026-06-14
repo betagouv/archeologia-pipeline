@@ -549,6 +549,10 @@ class WizardDialog(QDialog):
         """Annulation propre demandée par l'hôte (unload du plugin) —
         sans dialogue de confirmation (AUDIT v2 THR-04)."""
         try:
+            self._source_page.cancel_dalles_selection_if_active()
+        except Exception:
+            pass
+        try:
             if self._launch_page.is_running():
                 self._launch_page.request_cancel()
         except Exception:
@@ -568,6 +572,12 @@ class WizardDialog(QDialog):
         de session."""
         if not self._confirm_close_during_run():
             return
+        # Fermeture effective : refermer une sélection de dalles en cours
+        # (outil-carte + barre de message + couche) pour ne rien laisser d'orphelin.
+        try:
+            self._source_page.cancel_dalles_selection_if_active()
+        except Exception:
+            pass
         try:
             self._collect_config()
             self._cm.save_last_ui_config(self._config)

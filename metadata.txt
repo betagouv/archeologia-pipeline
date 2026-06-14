@@ -9,7 +9,7 @@ name=Archéolog'IA
 qgisMinimumVersion=3.34
 qgisMaximumVersion=4.99
 description=Détection de sites archéologiques par réseaux de neurones
-version=0.6.0
+version=0.7.0
 author=Valentin VIEUX
 email=valentin.vieux.pro@outlook.com
 about=Plugin pour automatiser la production d'indices de visualisation (à l'aide du plugin Relief Visualization Toolbox) à partir de données LiDAR ou de MNT et pour détecter des sites archéologiques à l'aide de réseaux de neurones (YOLO détection ou segmentation)
@@ -21,7 +21,13 @@ repository=https://github.com/betagouv/archeologia-pipeline
 #
 
 hasProcessingProvider=no
-changelog=0.6.0 (2026-06-08)
+changelog=0.7.0 (2026-06-14)
+    * Sélection des dalles IGN directement sur la carte QGIS (mode IGN LiDAR HD) : clic / encadré (Ctrl pour retirer), estimation du volume à télécharger, garde-fou au-delà de 50 dalles
+    * Nouveaux indices de visualisation : MSTP (position topographique multi-échelle) et CVAT (VAT combiné, calculé in-process via rvt-qgis)
+    * Produit Couverture (QA points sol) : carte des zones de MNT interpolées faute de points sol (modes IGN/LAZ)
+    * Contrôle preflight du CRS des rasters (EPSG:2154 requis en modes MNT/RVT existants) ; index spatial .qix du quadrillage IGN pour des requêtes rapides
+    * Les couches de détection vides ne sont plus chargées ni écrites dans le projet de validation (fin de l'avertissement « CRS absent »)
+ 0.6.0 (2026-06-08)
     * Compatibilité QGIS 4 (Qt6/PyQt6) : portage des accès enum Qt et QGIS vers la forme scopée — base de code unique compatible QGIS 3.34+ et QGIS 4.x
     * Runner ONNX (cv_runner_onnx) compilé sans compression UPX pour limiter les faux positifs antivirus
     * Détection du proxy fiabilisée : le proxy configuré dans QGIS (Préférences → Réseau) est désormais toujours utilisé pour les téléchargements IGN (suppression d'un test d'accessibilité trop strict qui faisait retomber en connexion directe sur réseau d'entreprise)

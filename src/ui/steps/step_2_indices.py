@@ -61,6 +61,10 @@ _TAB_DESC = {
     "LD": "Dominance locale — fait ressortir les structures en relief positif.",
     "SLRM": "Soustrait le relief général pour isoler les micro-reliefs.",
     "VAT": "Combinaison d'indices optimisée pour la prospection archéologique.",
+    "MSTP": "Position topographique multi-échelle : compose 3 échelles "
+            "(locale/méso/large) en une image RGB.",
+    "CVAT": "VAT combiné : fusionne les variantes « general » et « flat » du VAT. "
+            "Composition figée — aucun paramètre hormis la sortie 8 bits.",
 }
 
 # Aides communes à plusieurs indices.
@@ -496,6 +500,56 @@ class IndicesPage(QWidget):
              "Préréglage adapté au relief dominant de la zone."),
             ("", vat_8, _HELP_8BIT),
         ]), "VAT")
+
+        # — MSTP (mstp) : position topographique multi-échelle —
+        mstp_lmin = self._mk_spin(1, 100000, 3)
+        mstp_lmax = self._mk_spin(1, 100000, 21)
+        mstp_lstep = self._mk_spin(1, 100000, 2)
+        mstp_mmin = self._mk_spin(1, 100000, 23)
+        mstp_mmax = self._mk_spin(1, 100000, 203)
+        mstp_mstep = self._mk_spin(1, 100000, 18)
+        mstp_bmin = self._mk_spin(1, 100000, 223)
+        mstp_bmax = self._mk_spin(1, 100000, 2023)
+        mstp_bstep = self._mk_spin(1, 100000, 180)
+        mstp_light = self._mk_dspin(0.1, 5.0, 1.2)
+        mstp_ve = self._mk_spin(1, 100, 1)
+        mstp_8 = self._mk_check()
+        self._reg(("rvt_params", "mstp"), "local_scale_min", mstp_lmin, "int", 3)
+        self._reg(("rvt_params", "mstp"), "local_scale_max", mstp_lmax, "int", 21)
+        self._reg(("rvt_params", "mstp"), "local_scale_step", mstp_lstep, "int", 2)
+        self._reg(("rvt_params", "mstp"), "meso_scale_min", mstp_mmin, "int", 23)
+        self._reg(("rvt_params", "mstp"), "meso_scale_max", mstp_mmax, "int", 203)
+        self._reg(("rvt_params", "mstp"), "meso_scale_step", mstp_mstep, "int", 18)
+        self._reg(("rvt_params", "mstp"), "broad_scale_min", mstp_bmin, "int", 223)
+        self._reg(("rvt_params", "mstp"), "broad_scale_max", mstp_bmax, "int", 2023)
+        self._reg(("rvt_params", "mstp"), "broad_scale_step", mstp_bstep, "int", 180)
+        self._reg(("rvt_params", "mstp"), "lightness", mstp_light, "float", 1.2)
+        self._reg(("rvt_params", "mstp"), "ve_factor", mstp_ve, "int", 1)
+        self._reg(("rvt_params", "mstp"), "save_as_8bit", mstp_8, "bool", True)
+        self._tab_index["MSTP"] = self._adv_tabs.addTab(self._make_param_tab("MSTP", [
+            ("Échelle locale — rayon min (px)", mstp_lmin,
+             "Détails fins (canal bleu de la composition RGB)."),
+            ("Échelle locale — rayon max (px)", mstp_lmax, "Borne haute de l'échelle locale."),
+            ("Échelle locale — pas (px)", mstp_lstep, "Pas d'échantillonnage de l'échelle locale."),
+            ("Échelle méso — rayon min (px)", mstp_mmin,
+             "Structures intermédiaires (canal vert)."),
+            ("Échelle méso — rayon max (px)", mstp_mmax, "Borne haute de l'échelle méso."),
+            ("Échelle méso — pas (px)", mstp_mstep, "Pas d'échantillonnage de l'échelle méso."),
+            ("Échelle large — rayon min (px)", mstp_bmin,
+             "Grandes formes du paysage (canal rouge)."),
+            ("Échelle large — rayon max (px)", mstp_bmax, "Borne haute de l'échelle large."),
+            ("Échelle large — pas (px)", mstp_bstep, "Pas d'échantillonnage de l'échelle large."),
+            ("Luminosité", mstp_light, "Clarté globale de l'image composite (0.1–5)."),
+            ("Facteur VE", mstp_ve, _HELP_VE),
+            ("", mstp_8, _HELP_8BIT),
+        ]), "MSTP")
+
+        # — CVAT (cvat) : VAT combiné (general + flat), composition figée —
+        cvat_8 = self._mk_check()
+        self._reg(("rvt_params", "cvat"), "save_as_8bit", cvat_8, "bool", True)
+        self._tab_index["CVAT"] = self._adv_tabs.addTab(self._make_param_tab("CVAT", [
+            ("", cvat_8, _HELP_8BIT),
+        ]), "CVAT")
 
         root.addWidget(self._adv_tabs)
 

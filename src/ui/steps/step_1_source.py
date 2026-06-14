@@ -32,6 +32,9 @@ from ..icons import colored_pixmap
 from ..widgets.card import build_card
 from ..widgets.stage_button import ArrowConnector, StageButton
 
+# Au-delà de ce nombre de dalles, on demande confirmation (téléchargement lourd).
+_LARGE_SELECTION_THRESHOLD = 50
+
 
 class SourcePage(QWidget):
     """Page « Source » : frise de stades + bandeau de mode + entrée/sortie."""
@@ -44,6 +47,12 @@ class SourcePage(QWidget):
         self._mode = "ign_laz"
         self._source_values: dict = {}  # config_key -> texte (par mode)
         self._loading = False
+        # État de la sélection des dalles sur le canevas (mode ign_laz).
+        self._tile_tool = None
+        self._grid_layer = None
+        self._prev_map_tool = None
+        self._msg_item = None
+        self._validate_btn = None
         self._build()
         self._apply_mode_ui()
 
@@ -109,9 +118,14 @@ class SourcePage(QWidget):
         self._qgis_btn.setObjectName("GhostButton")
         self._qgis_btn.setToolTip("Sélectionner une couche polygone du projet QGIS")
         self._qgis_btn.clicked.connect(self._pick_qgis_layer)
+        self._dalles_btn = QPushButton("Sélectionner les dalles")
+        self._dalles_btn.setObjectName("GhostButton")
+        self._dalles_btn.setToolTip("Choisir les dalles IGN directement sur la carte")
+        self._dalles_btn.clicked.connect(self._pick_dalles_on_canvas)
         row1.addWidget(self._source_edit, 1)
         row1.addWidget(self._browse_btn)
         row1.addWidget(self._qgis_btn)
+        row1.addWidget(self._dalles_btn)
         iv.addWidget(self._source_label)
         iv.addLayout(row1)
 
@@ -203,6 +217,10 @@ class SourcePage(QWidget):
         self._source_label.setText(info.source_label)
         self._source_edit.setPlaceholderText(info.placeholder)
         self._qgis_btn.setVisible(self._mode == "ign_laz")
+        self._dalles_btn.setVisible(self._mode == "ign_laz")
+        if self._mode != "ign_laz":
+            # Changer de mode pendant une sélection en cours : on ferme proprement.
+            self.cancel_dalles_selection_if_active()
 
         prev = self._loading
         self._loading = True
@@ -317,6 +335,220 @@ class SourcePage(QWidget):
         self._source_edit.setText(str(tmp_shp))
 
     # ------------------------------------------------------------------
+    # Sélection des dalles IGN directement sur le canevas (mode ign_laz)
+    # ------------------------------------------------------------------
+    def _plugin_root(self) -> Path:
+        return Path(__file__).resolve().parents[3]
+
+    def _pick_dalles_on_canvas(self) -> None:
+        """Active l'outil de sélection des dalles sur la carte QGIS."""
+        try:
+            from qgis.core import Qgis
+            from qgis.utils import iface
+
+            from ..map_tools.grid_layer import load_quadrillage_layer, zoom_to_france_if_lost
+            from ..map_tools.tile_picker_tool import TilePickerMapTool
+        except ImportError:
+            QMessageBox.warning(self, "Erreur", "API QGIS non disponible.")
+            return
+        if iface is None or iface.mapCanvas() is None:
+            QMessageBox.warning(self, "Erreur", "Canevas QGIS indisponible.")
+            return
+        if self._tile_tool is not None:
+            return  # déjà actif
+
+        layer = load_quadrillage_layer(self._plugin_root())
+        if layer is None:
+            QMessageBox.warning(
+                self,
+                "Quadrillage introuvable",
+                "Le quadrillage IGN (data/quadrillage_france/) est introuvable ou "
+                "invalide. Placez le shapefile TA_diff_pkk_lidarhd_classe.shp (et son "
+                "index .qix) dans ce dossier.",
+            )
+            return
+        layer.removeSelection()
+        zoom_to_france_if_lost(layer)  # recadre si la vue est trop dézoomée (U1)
+
+        canvas = iface.mapCanvas()
+        self._grid_layer = layer
+        self._prev_map_tool = canvas.mapTool()
+        tool = TilePickerMapTool(canvas, layer)
+        tool.selection_changed.connect(self._on_tiles_selection_changed)
+        tool.cancelled.connect(self._on_tiles_cancel)
+        tool.too_zoomed_out.connect(self._on_too_zoomed_out)
+        self._tile_tool = tool
+        canvas.setMapTool(tool)
+
+        # Barre de message QGIS : reste visible même si le dialogue est réduit.
+        bar = iface.messageBar()
+        widget = bar.createMessage(
+            "Sélection des dalles IGN",
+            "Cliquez une dalle (bascule), encadrez pour ajouter, Ctrl+encadré pour retirer. "
+            "Échap pour annuler.",
+        )
+        self._validate_btn = QPushButton("Valider (0 dalle)", widget)
+        self._validate_btn.clicked.connect(self._on_tiles_validate)
+        clear_btn = QPushButton("Tout effacer", widget)
+        clear_btn.clicked.connect(self._on_clear_selection)
+        cancel_btn = QPushButton("Annuler", widget)
+        cancel_btn.clicked.connect(self._on_tiles_cancel)
+        widget.layout().addWidget(self._validate_btn)
+        widget.layout().addWidget(clear_btn)
+        widget.layout().addWidget(cancel_btn)
+        bar.pushWidget(widget, Qgis.MessageLevel.Info)
+        self._msg_item = widget
+
+        self._dalles_btn.setEnabled(False)
+        # Minimiser le dialogue du plugin pour dégager le canevas. NE PAS utiliser
+        # lower() : sur Windows, abaisser une fenêtre possédée par la fenêtre QGIS
+        # minimise QGIS lui-même. showMinimized() ne réduit que le dialogue.
+        try:
+            self.window().showMinimized()
+        except Exception:
+            pass
+
+    def _on_tiles_selection_changed(self, n: int) -> None:
+        if self._validate_btn is not None:
+            from ...app.services.tile_selection import estimate_download_size
+
+            est = estimate_download_size(n)
+            suffix = f" {est}" if est else ""
+            self._validate_btn.setText(f"Valider ({n} dalle{'s' if n > 1 else ''}{suffix})")
+
+    def _on_clear_selection(self) -> None:
+        if self._grid_layer is not None:
+            self._grid_layer.removeSelection()
+            self._on_tiles_selection_changed(0)
+
+    def _on_too_zoomed_out(self) -> None:
+        # Clic/encadré tenté alors que la grille est masquée (vue trop dézoomée).
+        try:
+            from qgis.core import Qgis
+            from qgis.utils import iface
+
+            if iface is not None:
+                iface.messageBar().pushMessage(
+                    "Zoomez davantage pour afficher et sélectionner les dalles",
+                    level=Qgis.MessageLevel.Warning,
+                    duration=3,
+                )
+        except Exception:
+            pass
+
+    def _on_tiles_validate(self) -> None:
+        layer = self._grid_layer
+        if layer is None:
+            self._defer_teardown()
+            return
+        ids = layer.selectedFeatureIds()
+        if not ids:
+            QMessageBox.information(
+                self, "Aucune dalle", "Sélectionnez au moins une dalle (clic ou encadré)."
+            )
+            return  # rester en mode sélection
+        from qgis.core import QgsFeatureRequest
+
+        from ...app.services.tile_selection import estimate_download_size, format_dalles_urls
+
+        n = len(ids)
+        if n > _LARGE_SELECTION_THRESHOLD:
+            resp = QMessageBox.question(
+                self,
+                "Téléchargement volumineux",
+                f"{n} dalles sélectionnées ({estimate_download_size(n)}). "
+                "Lancer un tel téléchargement ?",
+            )
+            if resp != QMessageBox.StandardButton.Yes:
+                return  # rester en mode sélection
+
+        tiles = [
+            (
+                str(f["nom_pkk"]) if f["nom_pkk"] else "",
+                str(f["url_telech"]) if f["url_telech"] else "",
+            )
+            for f in layer.getFeatures(QgsFeatureRequest().setFilterFids(ids))
+        ]
+        export_dir = self._plugin_root() / "data" / "temp_zones"
+        export_dir.mkdir(parents=True, exist_ok=True)
+        out_path = export_dir / "dalles_selection.txt"
+        out_path.write_text(format_dalles_urls(tiles), encoding="utf-8")
+        try:
+            from qgis.core import Qgis
+            from qgis.utils import iface
+
+            if iface is not None:
+                iface.messageBar().pushMessage(
+                    f"{n} dalle(s) enregistrée(s)", level=Qgis.MessageLevel.Success, duration=4
+                )
+        except Exception:
+            pass
+        self._defer_teardown()
+        self._source_edit.setText(str(out_path))
+
+    def _on_tiles_cancel(self) -> None:
+        self._defer_teardown()
+
+    def _defer_teardown(self) -> None:
+        # Différé : on est dans le slot d'un bouton de la barre de message ; la
+        # détruire de façon synchrone (popWidget) supprimerait l'émetteur courant.
+        QTimer.singleShot(0, self._teardown_dalles_selection)
+
+    def cancel_dalles_selection_if_active(self) -> None:
+        """Ferme proprement une sélection en cours (fermeture/unload/run/mode).
+
+        Synchrone (pas appelée depuis le slot d'un widget de la barre de message)
+        → nécessaire pour un teardown immédiat à la fermeture/l'unload.
+        """
+        if self._tile_tool is not None or self._grid_layer is not None or self._msg_item is not None:
+            self._teardown_dalles_selection()
+
+    def _teardown_dalles_selection(self) -> None:
+        """Restaure l'outil-carte, retire la barre de message et la couche. Idempotent."""
+        try:
+            from qgis.utils import iface
+        except ImportError:
+            iface = None
+        canvas = iface.mapCanvas() if iface is not None else None
+        if canvas is not None and self._tile_tool is not None:
+            if self._prev_map_tool is not None:
+                canvas.setMapTool(self._prev_map_tool)
+            else:
+                canvas.unsetMapTool(self._tile_tool)
+        if self._tile_tool is not None:
+            try:
+                self._tile_tool.cleanup()
+            except Exception:
+                pass
+        if iface is not None and self._msg_item is not None:
+            try:
+                iface.messageBar().popWidget(self._msg_item)
+            except Exception:
+                pass
+        try:
+            from ..map_tools.grid_layer import remove_quadrillage_layer
+
+            remove_quadrillage_layer()
+        except Exception:
+            pass
+        self._tile_tool = None
+        self._grid_layer = None
+        self._prev_map_tool = None
+        self._msg_item = None
+        self._validate_btn = None
+        # Ne ré-activer le bouton que hors lecture seule (run en cours).
+        if not self._source_edit.isReadOnly():
+            self._dalles_btn.setEnabled(True)
+        # Restaurer le dialogue minimisé (showNormal dé-minimise ; raise le ramène).
+        try:
+            win = self.window()
+            win.showNormal()
+            win.raise_()
+            win.activateWindow()
+        except Exception:
+            pass
+
+    # ------------------------------------------------------------------
     # Validation (bordure : ok / warn / error)
     # ------------------------------------------------------------------
     def _on_source_text_changed(self) -> None:
@@ -367,9 +599,13 @@ class SourcePage(QWidget):
         N'agit que sur ``setEnabled``/``setReadOnly`` (jamais ``setText``/…),
         donc n'émet aucun signal ``changed`` et ne déclenche pas l'autosave.
         """
+        if ro:
+            # Un run démarre : on referme une sélection de dalles en cours
+            # AVANT de désactiver le bouton (sinon il resterait actif).
+            self.cancel_dalles_selection_if_active()
         self._source_edit.setReadOnly(ro)
         self._output_edit.setReadOnly(ro)
-        for btn in (self._browse_btn, self._qgis_btn, self._out_browse_btn):
+        for btn in (self._browse_btn, self._qgis_btn, self._dalles_btn, self._out_browse_btn):
             btn.setEnabled(not ro)
         for btn in self._stage_buttons.values():
             btn.setEnabled(not ro)

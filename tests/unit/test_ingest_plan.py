@@ -65,6 +65,22 @@ class TestPlanFromSpecs:
         with pytest.raises(IngestValidationError, match="Aucune"):
             plan_from_specs([])
 
+    def test_expected_crs_identique_ok(self):
+        # GEO-02 : un CRS conforme au CRS attendu (EPSG:2154) passe.
+        plan = plan_from_specs([_spec("a.tif", crs="EPSG:2154")], expected_crs="EPSG:2154")
+        assert plan.crs == "EPSG:2154"
+
+    def test_expected_crs_different_refuse(self):
+        # GEO-02 : un raster projeté mais en Lambert-II (27572) est REFUSÉ
+        # (sinon ses détections seraient étiquetées 2154 → mal placées).
+        with pytest.raises(IngestValidationError, match="2154"):
+            plan_from_specs([_spec("a.tif", crs="EPSG:27572")], expected_crs="EPSG:2154")
+
+    def test_sans_expected_crs_comportement_inchange(self):
+        # Sans expected_crs : tout CRS projeté unique reste accepté (rétrocompat).
+        plan = plan_from_specs([_spec("a.tif", crs="EPSG:27572")])
+        assert plan.crs == "EPSG:27572"
+
     def test_skipped_passed_through(self):
         plan = plan_from_specs(
             [_spec("a.tif"), _spec("b.tif")],

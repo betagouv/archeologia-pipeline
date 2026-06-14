@@ -197,6 +197,7 @@ class TestProductsConfigBehavior:
         assert d["M_HS"] is False
         assert set(d.keys()) == {
             "MNT", "DENSITE", "COUVERTURE", "HS", "M_HS", "SVF", "SLO", "LD", "SLRM", "VAT",
+            "MSTP", "CVAT",
         }
 
 

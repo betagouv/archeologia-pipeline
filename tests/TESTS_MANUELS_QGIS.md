@@ -270,7 +270,7 @@ Cette grille indique, pour chaque vague livrée, **quelles sections de tests son
 - [ ] **13.2 Cible dérivée « Regroupement de cratères »** (UI étape 3, sélection par entités)
   - À l'étape 3, cocher l'entité **« Regroupement de cratères »**
   - Vérifier qu'un badge **« ↳ regroupement automatique en zones »** s'affiche (et **non** une case « Regrouper en clusters »)
-  - Panneau « Runs IA programmés » : **1 run** `Cratères circulaires (Verdun)` · `🔗 LD` · classes `cratere, zone_crateres`
+  - Panneau « Runs IA programmés » : **1 run** `Modèle Cratères d'obus` · `🔗 LD` · classes `cratere, zone_crateres`
   - Via « Changer ▾ », basculer sur `verdun_3_classes_1` → le run passe sur `🔗 SVF`
   - Lancer sur un RVT LD existant → GeoPackage avec polygones `zone_crateres` (zones) **ET** points/masques `cratere` (dépressions individuelles)
   - Cocher en plus « Cratères » (même modèle par défaut) → toujours **un seul run** (fusion, pas de double inférence)
@@ -397,3 +397,29 @@ Cette grille indique, pour chaque vague livrée, **quelles sections de tests son
   - Warning « Produit Couverture indisponible… » dans le journal, pas d'erreur
 - [ ] **20.7 Cohérence terrain**
   - Sur une zone partiellement boisée : les polygones correspondent aux masses boisées/plans d'eau (recouper visuellement avec `index_DENSITE`)
+
+---
+
+## 21. Sélection des dalles IGN sur la carte (mode `ign_laz`) ⭐ P0
+
+> **Pré-requis** : `data/quadrillage_france/TA_diff_pkk_lidarhd_classe.shp` + `.qix`
+> (générer le `.qix` via `python dev/build_quadrillage_index.py`). Avoir un fond de
+> carte chargé dans QGIS et être zoomé sur une zone couverte par le LiDAR HD.
+
+- [ ] **21.1 Visibilité du bouton** : « Sélectionner les dalles » visible **uniquement** en mode `ign_laz` (masqué dans les autres modes).
+- [ ] **21.2 Activation** : clic → la couche « Quadrillage IGN LiDAR HD » apparaît (contour seul, intérieur transparent) dans un groupe « Quadrillage IGN » ; **seul le dialogue du plugin se minimise** (la fenêtre QGIS reste affichée, le canevas visible) ; une barre de message QGIS « Valider (0 dalle) / Tout effacer / Annuler » s'affiche.
+- [ ] **21.3 Orientation + garde (U1)** : depuis une vue monde/ailleurs, le clic sur le bouton **recadre sur la France** ; tant que la vue est trop dézoomée (grille masquée), un clic/encadré **ne sélectionne rien** et affiche « Zoomez davantage… » ; après zoom, la sélection fonctionne. Dézoomé sur toute la France, la grille n'est pas dessinée (pas de figeage) ; en zoomant elle apparaît et reste fluide (index `.qix`).
+- [ ] **21.4 Clic toggle + estimation (U2)** : cliquer une dalle → surlignée ; recliquer → désélectionnée ; le bouton affiche « Valider (N dalles ≈ X–Y Go/Mo) ».
+- [ ] **21.5 Glisser-boîte (ajout)** : tracer un rectangle → toutes les dalles intersectées s'ajoutent ; rectangle **orange** ; compteur à jour.
+- [ ] **21.5 bis Glisser-boîte + Ctrl (retrait)** : **Ctrl** enfoncé → rectangle **gris** ; encadrer des dalles sélectionnées → elles sont **retirées** ; compteur à jour.
+- [ ] **21.5 ter Tout effacer** : le bouton « Tout effacer » remet la sélection à 0 (compteur « Valider (0 dalle) »).
+- [ ] **21.6 CRS** : projet en EPSG:3857 (fond OSM/Google) → les clics tombent bien sur la dalle visée (transformation canevas→couche OK).
+- [ ] **21.7 Échap / Annuler** : la sélection est abandonnée, la couche + le groupe retirés, la barre de message disparaît, l'outil-carte précédent est restauré, le champ source **inchangé**, le dialogue revient au premier plan.
+- [ ] **21.8 Valider sans sélection** → message « Aucune dalle », on reste en mode sélection.
+- [ ] **21.9 Valider 2–3 dalles** → `data/temp_zones/dalles_selection.txt` créé (lignes `nom_pkk,url_telech`, en-tête `#`) ; message vert « N dalle(s) enregistrée(s) » ; le champ source pointe ce fichier (bordure « ok ») ; couche retirée ; barre de message disparue ; dialogue ramené au premier plan.
+- [ ] **21.9 bis Grosse sélection (U2)** : sélectionner > 50 dalles puis Valider → boîte de confirmation « Téléchargement volumineux… » ; « Non » garde la sélection ; « Oui » écrit le fichier.
+- [ ] **21.10 Bout-en-bout** : renseigner le dossier de sortie puis lancer → le téléchargement démarre **directement** (pas d'étape « résolution des dalles » : `IgnDownloadStrategy` voit un `.txt`).
+- [ ] **21.11 Réutilisation** : relancer la sélection sans fermer → pas de double-chargement de la couche.
+- [ ] **21.12 Lecture seule pendant un run** : lancer un run, revenir à l'étape 1 → bouton désactivé ; si une sélection était active au lancement, elle est refermée proprement.
+- [ ] **21.13 Fermeture / rechargement pendant la sélection** : fermer le dialogue (croix) ou recharger le plugin pendant une sélection active → pas de crash, pas d'outil-carte ni de couche orphelins.
+- [ ] **21.14 Quadrillage absent** : renommer le `.shp` → clic sur le bouton affiche un message clair, l'outil ne s'active pas.

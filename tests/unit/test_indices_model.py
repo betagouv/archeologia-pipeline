@@ -15,13 +15,13 @@ from app.services.indices_model import (
 
 class TestCatalog:
     def test_rvt_keys_order(self):
-        assert rvt_keys() == ["HS", "M_HS", "SVF", "SLO", "LD", "SLRM", "VAT"]
+        assert rvt_keys() == ["HS", "M_HS", "SVF", "SLO", "LD", "SLRM", "VAT", "MSTP", "CVAT"]
 
     def test_base_keys(self):
         assert base_keys() == ["MNT", "DENSITE", "COUVERTURE"]
 
     def test_all_products_count(self):
-        assert len(all_products()) == 10
+        assert len(all_products()) == 12
 
     def test_product_lookup_has_metadata(self):
         p = product("M_HS")

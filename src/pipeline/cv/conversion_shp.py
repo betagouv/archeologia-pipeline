@@ -698,6 +698,8 @@ def _filter_gpkg_by_min_area(
             logger.warning(f"Impossible de lister les couches de {p.name} (pyogrio/geopandas/ogr indisponibles ou GPKG vide)")
             continue
 
+        total_remaining = 0
+        had_error = False
         for layer in layers:
             try:
                 gdf = _safe_read_file(str(p), layer=layer)
@@ -715,8 +717,19 @@ def _filter_gpkg_by_min_area(
                 if n_removed > 0:
                     logger.info(f"Filtrage GPKG: {n_removed} détection(s) supprimée(s) dans '{layer}' (<{min_area_m2} m²)")
                 _safe_to_gpkg(gdf, str(p), layer=layer)
+                total_remaining += len(gdf)
             except Exception as e:
+                had_error = True
                 logger.warning(f"Filtrage GPKG couche '{layer}' ignorée: {e}")
+
+        # GeoPackage entièrement vidé par le filtre → ne pas livrer un GPKG vide
+        # (couche de détection sans entité ne doit pas être créée/chargée).
+        if total_remaining == 0 and not had_error:
+            try:
+                p.unlink()
+                logger.info(f"GeoPackage vide après filtrage par aire, supprimé : {p.name}")
+            except Exception as e:
+                logger.warning(f"Suppression du GPKG vide {p.name} échouée : {e}")
 
 
 def _normalize_class_label(label: str) -> str:

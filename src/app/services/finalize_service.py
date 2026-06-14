@@ -211,13 +211,43 @@ def _list_gpkg_layers(gpkg_path: Path) -> List[str]:
     return []
 
 
+def _gpkg_layer_feature_count(gpkg_path: Path, layer: str) -> int:
+    """Nombre d'entités d'une couche GeoPackage, ou ``-1`` si indéterminable.
+
+    Sert à écarter les couches **vides** à la collecte (ne pas charger/écrire une
+    couche de détection sans entité → évite l'avertissement « CRS absent » sur une
+    couche vide). En cas de doute (``-1``), l'appelant **conserve** la couche.
+    """
+    # osgeo.ogr (toujours présent dans OSGeo4W)
+    try:
+        from osgeo import ogr
+
+        ds = ogr.Open(str(gpkg_path))
+        if ds is not None:
+            lyr = ds.GetLayerByName(layer)
+            n = int(lyr.GetFeatureCount()) if lyr is not None else -1
+            ds = None
+            return n
+    except Exception:
+        pass
+    # Repli geopandas/pyogrio
+    try:
+        import geopandas as gpd
+
+        return int(len(gpd.read_file(str(gpkg_path), layer=layer)))
+    except Exception:
+        return -1
+
+
 def _collect_shapefiles(det_dir: Path) -> List[str]:
     """Collecte les couches GeoPackage de détection CV (organisation entité-centrée).
 
     Parcourt ``detections/<entity_slug>/<entity_slug>.gpkg`` (et tout ``.gpkg``
     livrable) en **excluant** l'échafaudage technique ``detections/_technique/``
-    (dumps d'inférence, GeoPackage modèle de repli vide). Reste tolérant aux
-    anciens layouts (``shapefiles/``) tant qu'ils ne sont pas sous ``_technique/``.
+    (dumps d'inférence, GeoPackage modèle de repli vide) **et les couches vides**
+    (0 entité — p.ex. vidées par le filtre d'aire minimale) : une couche vide ne
+    doit être ni chargée ni écrite dans le ``.qgs``. Reste tolérant aux anciens
+    layouts (``shapefiles/``) tant qu'ils ne sont pas sous ``_technique/``.
     """
     shapefile_paths: List[str] = []
     if not det_dir.exists():
@@ -235,6 +265,9 @@ def _collect_shapefiles(det_dir: Path) -> List[str]:
         layers = _list_gpkg_layers(gpkg_file)
         if layers:
             for layer in layers:
+                # Sauter les couches vides (comptage == 0 ; -1 = inconnu → on garde).
+                if _gpkg_layer_feature_count(gpkg_file, layer) == 0:
+                    continue
                 shapefile_paths.append(f"{gpkg_file}|layername={layer}")
         else:
             # Dernier recours : on inscrit le GPKG seul (nom de couche inconnu)

@@ -61,6 +61,8 @@ class ConfigManager:
                     "LD": False,
                     "SLRM": False,
                     "VAT": False,
+                    "MSTP": False,
+                    "CVAT": False,
                 },
                 "output_formats": {
                     "jpg": {
@@ -70,6 +72,8 @@ class ConfigManager:
                         "SLO": False,
                         "LD": False,
                         "VAT": False,
+                        "MSTP": False,
+                        "CVAT": False,
                     }
                 },
             },
@@ -131,6 +135,23 @@ class ConfigManager:
                 },
                 "vat": {
                     "terrain_type": 0,
+                    "save_as_8bit": True,
+                },
+                "mstp": {
+                    "local_scale_min": 3,
+                    "local_scale_max": 21,
+                    "local_scale_step": 2,
+                    "meso_scale_min": 23,
+                    "meso_scale_max": 203,
+                    "meso_scale_step": 18,
+                    "broad_scale_min": 223,
+                    "broad_scale_max": 2023,
+                    "broad_scale_step": 180,
+                    "lightness": 1.2,
+                    "ve_factor": 1,
+                    "save_as_8bit": True,
+                },
+                "cvat": {
                     "save_as_8bit": True,
                 },
             },

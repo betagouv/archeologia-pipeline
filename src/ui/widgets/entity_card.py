@@ -111,10 +111,10 @@ class EntityCard(QFrame):
         self._rvt_key = ""
         layout.addWidget(self._rvt_row)
 
-        # Ligne modèle : « Modèle <nom>   Changer ▾ » (discret) / « seul disponible »
+        # Ligne modèle : « <nom>   Changer ▾ » (discret) / « seul disponible ».
+        # Pas de libellé « Modèle » séparé : le display_name le porte déjà
+        # (préfixé « Modèle … » dans chaque model_card.yaml) → évite le doublon.
         self._model_row = _Row()
-        model_lbl = QLabel("Modèle")
-        model_lbl.setObjectName("EntityModelLabel")
         self._model_name = QLabel("")
         self._model_name.setObjectName("EntityModelName")
         self._change_btn = QPushButton("Changer ▾")
@@ -124,7 +124,6 @@ class EntityCard(QFrame):
         self._change_btn.clicked.connect(self._on_change_clicked)
         self._single_hint = QLabel("seul disponible")
         self._single_hint.setObjectName("EntityModelSingle")
-        self._model_row.addWidget(model_lbl)
         self._model_row.addWidget(self._model_name, 1)
         self._model_row.addWidget(self._change_btn)
         self._model_row.addWidget(self._single_hint)

@@ -159,7 +159,9 @@ class ModelInfoDialog(QDialog):
         super().__init__(parent)
         self.setObjectName("ModelInfoDialog")
         self.setModal(True)
-        self.setWindowTitle(f"Modèle — {model.display_name}")
+        # Le display_name est déjà préfixé « Modèle … » → pas de « Modèle — »
+        # en plus (sinon doublon dans la barre de titre).
+        self.setWindowTitle(model.display_name)
         self.resize(620, 720)
 
         self._model = model

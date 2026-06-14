@@ -13,6 +13,7 @@ construits via ``from_values`` ; :func:`plan_raster_inputs` lit le disque.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Optional, Sequence, Tuple
@@ -20,6 +21,21 @@ from typing import List, Optional, Sequence, Tuple
 from .tilespec import TileSpec, crs_is_projected
 
 RASTER_EXTS = {".tif", ".tiff", ".asc"}
+
+
+def _epsg_code(crs: Optional[str]) -> Optional[str]:
+    """Extrait le code EPSG d'un authid (« EPSG:2154 » → « 2154 »), sinon None."""
+    m = re.match(r"^\s*EPSG:(\d+)\s*$", str(crs or ""), re.IGNORECASE)
+    return m.group(1) if m else None
+
+
+def same_epsg(a: Optional[str], b: Optional[str]) -> Optional[bool]:
+    """``True``/``False`` si les deux CRS ont un code EPSG comparable, ``None``
+    si l'un est un WKT non identifiable (comparaison indécidable)."""
+    ca, cb = _epsg_code(a), _epsg_code(b)
+    if ca is None or cb is None:
+        return None
+    return ca == cb
 
 
 class IngestValidationError(ValueError):
@@ -50,11 +66,17 @@ def plan_from_specs(
     skipped: Optional[Sequence[Tuple[Path, str]]] = None,
     model_resolution: Optional[float] = None,
     resolution_tol: float = 1e-6,
+    expected_crs: Optional[str] = None,
 ) -> IngestPlan:
     """Validation pure (sans I/O) à partir de ``TileSpec`` déjà construits.
 
     Lève :class:`IngestValidationError` pour les erreurs dures (CRS) ; accumule
     les problèmes souples (résolution) dans ``warnings``.
+
+    ``expected_crs`` (ex. ``"EPSG:2154"``) : si fourni, le CRS du run doit lui
+    correspondre. Sinon (AUDIT v2 GEO-02), un raster projeté mais dans un autre
+    CRS — ex. Lambert-II EPSG:27572 — serait traité comme si ses coordonnées
+    étaient en 2154 (étiquetage GeoPackage en dur) → détections mal placées.
     """
     skipped_list: List[Tuple[Path, str]] = list(skipped or [])
     tiles = list(tiles)
@@ -90,6 +112,14 @@ def plan_from_specs(
         raise IngestValidationError(
             f"CRS géographique (degrés) « {run_crs} » non supporté : les indices RVT exigent un "
             "CRS projeté en mètres. Reprojetez vos entrées (ex. EPSG:2154)."
+        )
+
+    # CRS attendu (GEO-02) : refuser un CRS projeté mais ≠ celui du pipeline.
+    if expected_crs is not None and same_epsg(run_crs, expected_crs) is False:
+        raise IngestValidationError(
+            f"CRS « {run_crs} » différent du CRS attendu « {expected_crs} » (Lambert-93). "
+            "Le pipeline étiquette toutes les sorties en EPSG:2154 : un autre CRS placerait "
+            "les détections au mauvais endroit. Reprojetez vos entrées en EPSG:2154."
         )
 
     # --- Résolution : avertir seulement (décision 4) ---
@@ -130,10 +160,12 @@ def plan_raster_inputs(
     *,
     declared_crs: Optional[str] = None,
     model_resolution: Optional[float] = None,
+    expected_crs: Optional[str] = None,
 ) -> IngestPlan:
     """Lit chaque raster (métadonnées), ignore illisibles/vides, puis valide.
 
     ``declared_crs`` sert de CRS de repli pour les entrées sans CRS (ex. ``.asc``).
+    ``expected_crs`` : CRS exigé pour le run (cf. :func:`plan_from_specs`).
     """
     tiles: List[TileSpec] = []
     skipped: List[Tuple[Path, str]] = []
@@ -149,7 +181,10 @@ def plan_raster_inputs(
             continue
         tiles.append(spec)
 
-    return plan_from_specs(tiles, skipped=skipped, model_resolution=model_resolution)
+    return plan_from_specs(
+        tiles, skipped=skipped, model_resolution=model_resolution,
+        expected_crs=expected_crs,
+    )
 
 
 def _raster_has_valid_data(path, nodata, *, sample: int = 64) -> bool:

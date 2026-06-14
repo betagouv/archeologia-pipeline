@@ -31,6 +31,10 @@ _PRODUCTS: List[ProductInfo] = [
     ProductInfo("LD", "LD", "Local Dominance", "Structures en relief", True),
     ProductInfo("SLRM", "SLRM", "Simple Local Relief", "Micro-reliefs isolés", True),
     ProductInfo("VAT", "VAT", "Visualisation archéo", "Combinaison optimisée", True),
+    ProductInfo("MSTP", "MSTP", "Multi-Scale Topographic Position",
+                "Position topographique multi-échelle (RGB)", True),
+    ProductInfo("CVAT", "CVAT", "Combined VAT",
+                "VAT combiné (general + flat), terrains variés", True),
 ]
 _BY_KEY = {p.key: p for p in _PRODUCTS}
 

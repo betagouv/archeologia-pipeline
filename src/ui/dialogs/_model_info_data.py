@@ -41,6 +41,8 @@ _RVT_LONG_NAMES: Dict[str, str] = {
     "SLO": "Pente (SLO)",
     "SLRM": "Simple Local Relief Model (SLRM)",
     "VAT": "Visualisation Archéologique Totale (VAT)",
+    "MSTP": "Multi-Scale Topographic Position (MSTP)",
+    "CVAT": "Combined VAT (CVAT)",
 }
 
 _TASK_LABELS: Dict[str, str] = {
@@ -117,6 +119,23 @@ RVT_PARAM_LABELS: Dict[str, Dict[str, str]] = {
     "VAT": {
         "terrain_type": "Type de terrain (0 = général, 1 = plat)",
         "blend_combination": "Combinaison de fusion",
+        "save_as_8bit": "Export 8 bits",
+    },
+    "MSTP": {
+        "local_scale_min": "Échelle locale — min",
+        "local_scale_max": "Échelle locale — max",
+        "local_scale_step": "Échelle locale — pas",
+        "meso_scale_min": "Échelle méso — min",
+        "meso_scale_max": "Échelle méso — max",
+        "meso_scale_step": "Échelle méso — pas",
+        "broad_scale_min": "Échelle large — min",
+        "broad_scale_max": "Échelle large — max",
+        "broad_scale_step": "Échelle large — pas",
+        "lightness": "Luminosité",
+        "ve_factor": "Facteur VE",
+        "save_as_8bit": "Export 8 bits",
+    },
+    "CVAT": {
         "save_as_8bit": "Export 8 bits",
     },
 }

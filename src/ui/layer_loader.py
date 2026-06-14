@@ -122,6 +122,12 @@ def build_detection_vector_layer(
     layer = QgsVectorLayer(ogr_source, layer_name, "ogr")
     if not layer.isValid():
         return None
+    # Couche de détection vide (0 entité, p.ex. vidée par le filtre d'aire) : ne pas
+    # la charger (évite l'avertissement « CRS absent » sur une couche sans donnée).
+    # featureCount() == -1 = inconnu → on conserve (prudence).
+    if layer.featureCount() == 0:
+        logger.info(f"Couche détection vide ignorée: {layer_name}")
+        return None
     _ensure_layer_crs(layer, logger)
     if layer.fields().indexFromName("nb_detect") >= 0:
         _apply_cluster_style(layer, logger)

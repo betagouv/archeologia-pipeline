@@ -441,15 +441,30 @@ class DetectionPage(QWidget):
                 info_btn.clicked.connect(lambda _checked=False, m=model: self._open_model_info(m))
             else:
                 info_btn.setEnabled(False)
-            classes = QLabel(", ".join(run.get("selected_classes") or []))
-            classes.setObjectName("EntityDesc")
+            # Classes sélectionnées en pastilles « entité » lisibles (libellés du
+            # catalogue, déjà portés par run["entities"]) plutôt qu'un texte gris
+            # de noms techniques. Repli sur les noms de classes bruts pour un run
+            # legacy (sans bloc "entities").
+            chips = QFrame()
+            chips.setObjectName("RunClassChips")
+            ch = QHBoxLayout(chips)
+            ch.setContentsMargins(0, 0, 0, 0)
+            ch.setSpacing(4)
+            chip_labels = [
+                e["label"] for e in (run.get("entities") or []) if e.get("label")
+            ] or list(run.get("selected_classes") or [])
+            for cl in chip_labels:
+                chip = QLabel(str(cl))
+                chip.setObjectName("RunClassChip")
+                ch.addWidget(chip)
+            ch.addStretch(1)
             # Pas d'émoji couleur (rendu hétérogène, non teintable par le QSS) :
             # le fond bleu de la pastille identifie déjà le tag RVT.
             rvt_tag = QLabel(str(run["target_rvt"]))
             rvt_tag.setObjectName("RunRvtTag")
             h.addWidget(name)
             h.addWidget(info_btn)
-            h.addWidget(classes, 1)
+            h.addWidget(chips, 1)
             h.addWidget(rvt_tag)
             self._runs_layout.insertWidget(idx, row)  # au-dessus du stretch final
             self._run_rows.append(row)

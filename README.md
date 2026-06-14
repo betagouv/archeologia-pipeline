@@ -11,7 +11,9 @@ Plugin QGIS pour exécuter un pipeline de traitement LiDAR et produire des raste
 - Génération de produits raster :
   - **MNT**
   - **Densité**
-  - Indices **RVT** (via *Processing*) : **HS**, **M-HS**, **SVF**, **SLO**, **LD**, **SLRM**, **VAT**
+  - **Couverture** (*QA points sol*) — carte qualité des zones où le MNT est interpolé faute de points sol (raster + polygones des zones sous le seuil). Disponible uniquement quand le nuage de points est traité (modes `ign_laz` / `local_laz`).
+  - Indices **RVT** (via *Processing*) : **HS**, **M-HS**, **SVF**, **SLO**, **LD**, **SLRM**, **VAT**, **MSTP**
+  - Indice **CVAT** (*Combined VAT*) — calculé *in-process* via le paquet `rvt` du plugin rvt-qgis (non exposé par *Processing*)
 - Export optionnel en **JPG + world file (JGW)** pour certains produits.
 - (Optionnel) Détection / segmentation d'instances par computer vision à partir des JPG produits (via runner externe ou dépendances Python) :
   - **Sélection par entités archéologiques** (UI étape 3) : on coche les entités à détecter (parcellaire, trous d'obus…) et un orchestrateur résout automatiquement quels modèles lancer, sur quel indice RVT, avec quelles classes. Plusieurs modèles peuvent ainsi tourner en parallèle, chacun ciblant un RVT. En interne, le filtrage par classes subsiste : si aucune classe n'est retenue pour un modèle, l'inférence est ignorée (court-circuit `selected_classes=[]` avant toute inférence).
@@ -28,7 +30,10 @@ Plugin QGIS pour exécuter un pipeline de traitement LiDAR et produire des raste
 
 Le pipeline peut être lancé dans plusieurs modes (selon l’UI/config) :
 
-- `ign_laz` : téléchargement/consommation de tuiles LAZ depuis l'IGN (à partir d'un polygone de zone ou d'une liste de dalles).
+- `ign_laz` : téléchargement/consommation de tuiles LAZ depuis l'IGN. Trois façons de désigner les dalles à l'étape 1 :
+  - **Sélection sur la carte** (bouton « Sélectionner les dalles ») : la grille IGN s'affiche sur le canevas QGIS et on **clique les dalles** (ou on les encadre) directement — WYSIWYG, sans fichier ni piège de CRS. La sélection est écrite dans un `dalles_selection.txt` consommé directement par le téléchargeur.
+  - **Polygone de zone** : un fichier vecteur (`.shp/.geojson/.gpkg`) intersecté avec la grille IGN par `tile_resolver.py`.
+  - **Liste de dalles** : un `.txt` de `nom,url` (ou d'URLs) déjà préparé.
 - `local_laz` : consommation de tuiles LAZ/LAS déjà présentes localement.
 - `existing_mnt` : calcul d'indices RVT à partir d'un MNT existant. Supporte les MNT au format dalle IGN 1 km (ex. `LHD_FXX_xxxx_yyyy_*`), les MNT plus petits (< 1 km, emprise native conservée) **et les MNT de grande emprise** (plusieurs km²) qui sont traités **d'un seul bloc** : les indices RVT sont calculés sur le raster complet et SAHI assure le slicing 640 × 640 à l'inférence CV. Voir la section [MNT / RVT non-IGN](#mnt--rvt-non-ign--traitement-des-grandes-emprises).
 - `existing_rvt` : opérations sur RVT existants (TIF). Dans ce mode, le dossier de sortie est `indices/RVT/` (nom générique) ; dans les autres modes, le nom du dossier combine le code de l'indice **et ses paramètres RVT** (`SVF_R10_D16_V1_N0`, `LD_A15_Rmin10_Rmax20_H1p7_V1`, etc.), si bien que relancer avec d'autres paramètres ne réécrit pas les dossiers existants (cf. la section *Sorties*). Comme pour `existing_mnt`, les rasters RVT de grande emprise sont **traités sans pré-découpage** : la limite PIL `MAX_IMAGE_PIXELS` est désactivée et SAHI découpe l'image en mémoire au moment de l'inférence.
@@ -115,7 +120,8 @@ Sous Windows (profil par défaut) — `QGIS3` pour QGIS 3.x, `QGIS4` pour QGIS 4
 Le plugin exécute un **préflight** (contrôle des dépendances) au lancement.
 
 - **Processing** : doit être disponible (dans QGIS : `Traitement` → `Boîte à outils`).
-- **Algorithmes RVT via Processing** : nécessaires si tu actives des produits RVT (HS/M-HS/SVF/SLO/LD/VAT).
+- **Algorithmes RVT via Processing** : nécessaires si tu actives des produits RVT (HS/M-HS/SVF/SLO/LD/SLRM/VAT/MSTP). Fournis par le plugin QGIS **« Relief Visualization Toolbox » (rvt-qgis)**.
+- **CVAT** (*Combined VAT*) : nécessite également le plugin **rvt-qgis** installé — il n'est pas exposé par *Processing*, le plugin réutilise donc directement son paquet Python `rvt`.
 
 Si un élément est manquant, le préflight affichera une erreur et empêchera le lancement.
 
@@ -133,7 +139,7 @@ Certaines étapes reposent sur des exécutables dans le `PATH` :
 Depuis la **v0.3.0**, le plugin s'utilise via un **assistant (wizard) en 4 étapes**. On navigue avec **Précédent / Suivant** ; un rail latéral indique l'étape courante et signale les erreurs bloquantes. La configuration est **auto-sauvegardée** entre deux sessions (`last_ui_config.json`) ; l'en-tête propose aussi **Charger / Enregistrer config** (profils `.json`).
 
 1. **Source** — Choix du mode de données (`ign_laz`, `local_laz`, `existing_mnt`, `existing_rvt`) et des chemins d'entrée (zone/liste IGN, dossier LAZ, dossier MNT ou dossier RVT selon le mode).
-2. **Indices** — Sélection des produits : **MNT / Densité** (modèle de base) + indices **RVT** (**HS, M-HS, SVF, SLO, LD, SLRM, VAT**). Le bouton **« Réglages avancés… »** ouvre une vue à onglets pour régler finement chaque indice (paramètres RVT : azimut/élévation solaire, directions, rayons, etc.) ainsi que le **filtre PDAL**, la **résolution de densité** et la **marge de tuilage**. *(HS = hillshade simple, mono-directionnel ; M-HS = multi-directionnel.)*
+2. **Indices** — Sélection des produits : **MNT / Densité** (modèle de base) + indices **RVT** (**HS, M-HS, SVF, SLO, LD, SLRM, VAT, MSTP, CVAT**). Le bouton **« Réglages avancés… »** ouvre une vue à onglets pour régler finement chaque indice (paramètres RVT : azimut/élévation solaire, directions, rayons, échelles multi-niveaux, etc.) ainsi que le **filtre PDAL**, la **résolution de densité** et la **marge de tuilage**. *(HS = hillshade simple, mono-directionnel ; M-HS = multi-directionnel ; MSTP = position topographique multi-échelle, sortie RGB ; CVAT = VAT combiné general+flat, composition figée.)*
 3. **Détection IA** *(optionnelle)* — On coche les **entités archéologiques** à détecter (parcellaire, trous d'obus, talus/fossés…). L'orchestrateur choisit automatiquement le(s) modèle(s) ONNX adapté(s) et l'indice RVT cible. Les seuils de **confiance** et d'**aire minimale** sont réglables par entité. Le seuil de confiance est **filtrant** : les détections sous le seuil sont écartées du `.gpkg` de l'entité (après clustering, donc l'hystérésis de regroupement reste alimentée), et la **légende** du `.qgs` (tranches `conf_bin`) part du seuil propre à chaque entité — une entité dont rien ne dépasse son seuil donne une couche vide.
 4. **Lancer** — Un panneau **« État du système »** exécute le préflight en tâche de fond (outils CLI, Processing, runner ONNX, espace disque…) ; un **récapitulatif** résume les choix ; le nombre de **workers** parallèles est réglable dans les paramètres avancés repliables. Le bouton **▶ Lancer le pipeline** démarre le traitement : l'écran bascule alors sur la **vue d'exécution** (timeline 5 étapes + journal défilant avec auto-défilement / copier / effacer).
 
@@ -704,8 +710,9 @@ data/                               # Ressources statiques (gitignored sauf icon
 │   └── cv_runner_onnx/
 │       ├── windows/cv_runner_onnx.exe
 │       └── linux/cv_runner_onnx
-└── quadrillage_france/             #   Grille IGN LiDAR HD (gitignored, ~200 MB)
-    └── TA_diff_pkk_lidarhd_classe.shp
+└── quadrillage_france/             #   Grille IGN LiDAR HD (gitignored, ~180 MB)
+    ├── TA_diff_pkk_lidarhd_classe.shp   # shapefile des dalles (nom_pkk + url_telech)
+    └── TA_diff_pkk_lidarhd_classe.qix   # index spatial R-tree (dev/build_quadrillage_index.py)
 
 dev/                                # Outillage développeur (exclu du ZIP distribué)
 ├── requirements.txt                #   Chapeau : inclut les 3 fichiers ci-dessous
@@ -714,6 +721,7 @@ dev/                                # Outillage développeur (exclu du ZIP distr
 │   ├── export.txt                  #   ultralytics, torch, onnx (export modèles)
 │   └── build.txt                   #   pyinstaller, onnxruntime (compilation runner)
 ├── package_plugin.py               #   Packaging plugin → ZIP (PLUGIN_NAME="archeologia")
+├── build_quadrillage_index.py      #   Index spatial .qix du quadrillage IGN (one-shot)
 ├── docs/
 │   ├── generate_doc.py             #   Générateur de la doc utilisateur (.docx)
 │   └── documentation_utilisateur_v1.docx
@@ -806,8 +814,9 @@ src/
 │   │   └── products/               # Génération produits
 │   │       ├── convert_tif_to_jpg.py
 │   │       ├── crop.py             # Découpe aux limites dalle + copy_products_without_crop (MNT < 1 km)
+│   │       ├── cvat.py             # CVAT (Combined VAT) — calcul in-process via le paquet rvt de rvt-qgis
 │   │       ├── density.py          # Carte de densité
-│   │       ├── indices.py          # Indices RVT (HS, M-HS, SVF, SLO, LD, SLRM, VAT)
+│   │       ├── indices.py          # Indices RVT (HS, M-HS, SVF, SLO, LD, SLRM, VAT, MSTP, CVAT)
 │   │       ├── mnt.py              # MNT (PDAL + gdalwarp)
 │   │       ├── qgis_processing.py  # Wrapper QGIS Processing
 │   │       ├── results.py          # Copie résultats, VRT, pyramides

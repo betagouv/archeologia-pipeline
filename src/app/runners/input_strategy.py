@@ -16,6 +16,7 @@ finalisation (plus de recul de la barre au démarrage de la CV).
 """
 from __future__ import annotations
 
+import shutil
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional, Protocol
 
@@ -30,6 +31,31 @@ if TYPE_CHECKING:
     from ..run_context import ProcessingConfig, RunContext
     from ..structured_logger import StructuredLogger
     from .progress_plan import ProgressPlan
+
+
+def persist_resolved_dalles_list(input_file: Path, output_dir: Path) -> Path:
+    """Recopie une liste de dalles déjà résolue vers ``<output_dir>/dalles_urls.txt``.
+
+    L'entrée d'un run ``ign_laz`` peut être une liste ``.txt`` (``nom,url``) issue de
+    la **sélection des dalles sur la carte** : elle vit dans un dossier temporaire
+    (``data/temp_zones/``) écrasé à chaque sélection. En la persistant dans le dossier
+    de sortie **dès le début du run** (avant tout téléchargement), un run interrompu
+    laisse une liste réutilisable pour reprendre — au **même emplacement** que la
+    branche polygone (``resolve_tiles_from_polygon`` écrit aussi ``dalles_urls.txt``).
+
+    No-op si la source EST déjà la destination (re-run pointant directement sur ce
+    fichier) — ``shutil`` lèverait sinon ``SameFileError``. Retourne le chemin
+    persistant.
+    """
+    dest = output_dir / "dalles_urls.txt"
+    try:
+        same = input_file.resolve() == dest.resolve()
+    except OSError:  # chemin illisible : on tente la copie quand même
+        same = False
+    if not same:
+        output_dir.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(input_file, dest)
+    return dest
 
 
 class AcquireResult(Protocol):
@@ -127,6 +153,16 @@ class IgnDownloadStrategy:
                 return None
             narrator.tiles_resolution_done(n_tiles)
             input_path = urls_file
+        else:
+            # Entrée déjà résolue (.txt : sélection sur carte ou liste pré-établie).
+            # On la persiste dans le dossier de sortie DÈS LE DÉBUT (avant tout
+            # téléchargement) : un run interrompu laisse alors une liste réutilisable
+            # pour reprendre (la source vit dans un dossier temporaire écrasable).
+            try:
+                input_path = persist_resolved_dalles_list(input_path, ctx.output_dir)
+                reporter.info(f"Liste des dalles enregistrée: {input_path.name}")
+            except Exception as e:  # noqa: BLE001 — best-effort, ne bloque pas le run
+                reporter.info(f"Liste des dalles non persistée ({e}) — téléchargement direct")
 
         log_section("TÉLÉCHARGEMENT DES DALLES IGN", "download", slog=slog, reporter=reporter)
         report_stage_id(reporter, Stage.DOWNLOAD)

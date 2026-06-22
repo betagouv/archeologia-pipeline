@@ -11,7 +11,6 @@ from pathlib import Path
 import pytest
 
 from pipeline.cv.model_profile import (
-    ClusteringRule,
     ModelProfile,
     PostprocessConfig,
     SahiConfig,
@@ -167,6 +166,116 @@ postprocess:
         )
         profile = ModelProfile.load(weights)
         assert profile.postprocess == PostprocessConfig(merge_adjacent=False, remove_overlaps=True)
+
+    def test_postprocess_merge_buffer_m_parsed(self, tmp_path):
+        # F6 : la distance de fusion est exposée dans args.yaml.
+        weights = _make_model(
+            tmp_path,
+            args_yaml="""
+postprocess:
+  merge_adjacent: true
+  merge_buffer_m: 1.5
+""",
+        )
+        profile = ModelProfile.load(weights)
+        assert profile.postprocess.merge_buffer_m == 1.5
+
+    def test_postprocess_merge_buffer_m_defaults_to_half_metre(self, tmp_path):
+        weights = _make_model(
+            tmp_path,
+            args_yaml="postprocess:\n  merge_adjacent: true\n",
+        )
+        profile = ModelProfile.load(weights)
+        assert profile.postprocess.merge_buffer_m == 0.5
+
+    def test_postprocess_merge_buffer_m_invalid_falls_back(self, tmp_path):
+        # Une valeur ≤ 0 (ou non numérique) retombe sur le défaut 0,5 m.
+        weights = _make_model(
+            tmp_path,
+            args_yaml="postprocess:\n  merge_buffer_m: -1\n",
+        )
+        profile = ModelProfile.load(weights)
+        assert profile.postprocess.merge_buffer_m == 0.5
+
+    def test_postprocess_merge_buffer_m_infinite_falls_back(self, tmp_path):
+        # `.inf` passe le garde « > 0 » mais fusionnerait tout → retombe sur 0,5.
+        weights = _make_model(
+            tmp_path,
+            args_yaml="postprocess:\n  merge_buffer_m: .inf\n",
+        )
+        profile = ModelProfile.load(weights)
+        assert profile.postprocess.merge_buffer_m == 0.5
+
+    def test_postprocess_to_dict_includes_merge_buffer_m(self):
+        assert PostprocessConfig(merge_buffer_m=0.8).to_dict()["merge_buffer_m"] == 0.8
+
+    # -- Audit chevauchement (2026-06-18) : stratégie de superposition par relation --
+    def test_overlap_strategy_defaults_to_difference(self):
+        cfg = PostprocessConfig()
+        assert cfg.overlap_strategy == "difference"
+        assert cfg.overlap_ios_threshold == 0.5
+
+    def test_overlap_strategy_relation_parsed(self, tmp_path):
+        weights = _make_model(
+            tmp_path,
+            args_yaml="""
+postprocess:
+  remove_overlaps: true
+  overlap_strategy: relation
+  overlap_ios_threshold: 0.7
+""",
+        )
+        profile = ModelProfile.load(weights)
+        assert profile.postprocess.overlap_strategy == "relation"
+        assert profile.postprocess.overlap_ios_threshold == 0.7
+
+    def test_overlap_strategy_unknown_falls_back_to_difference(self, tmp_path):
+        weights = _make_model(
+            tmp_path,
+            args_yaml="postprocess:\n  overlap_strategy: bogus\n",
+        )
+        profile = ModelProfile.load(weights)
+        assert profile.postprocess.overlap_strategy == "difference"
+
+    def test_overlap_ios_threshold_out_of_range_falls_back(self, tmp_path):
+        # Hors ]0,1] (ici 1,5) -> défaut 0,5.
+        weights = _make_model(
+            tmp_path,
+            args_yaml="postprocess:\n  overlap_ios_threshold: 1.5\n",
+        )
+        profile = ModelProfile.load(weights)
+        assert profile.postprocess.overlap_ios_threshold == 0.5
+
+    def test_postprocess_to_dict_includes_overlap_fields(self):
+        d = PostprocessConfig(
+            overlap_strategy="relation", overlap_ios_threshold=0.6
+        ).to_dict()
+        assert d["overlap_strategy"] == "relation"
+        assert d["overlap_ios_threshold"] == 0.6
+
+    def test_overlap_min_area_ratio_defaults_to_zero(self):
+        assert PostprocessConfig().overlap_min_area_ratio == 0.0
+
+    def test_overlap_min_area_ratio_parsed(self, tmp_path):
+        weights = _make_model(
+            tmp_path,
+            args_yaml="postprocess:\n  overlap_min_area_ratio: 0.7\n",
+        )
+        profile = ModelProfile.load(weights)
+        assert profile.postprocess.overlap_min_area_ratio == 0.7
+
+    def test_overlap_min_area_ratio_out_of_range_falls_back(self, tmp_path):
+        # Hors [0, 1] (ici 2) -> défaut 0,0 (garde-fou désactivé).
+        weights = _make_model(
+            tmp_path,
+            args_yaml="postprocess:\n  overlap_min_area_ratio: 2\n",
+        )
+        profile = ModelProfile.load(weights)
+        assert profile.postprocess.overlap_min_area_ratio == 0.0
+
+    def test_to_dict_includes_min_area_ratio(self):
+        d = PostprocessConfig(overlap_min_area_ratio=0.7).to_dict()
+        assert d["overlap_min_area_ratio"] == 0.7
 
     def test_class_colors(self, tmp_path):
         weights = _make_model(

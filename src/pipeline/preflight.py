@@ -104,12 +104,32 @@ def _check_raster_crs(dir_path, exts, results: List["CheckResult"]) -> None:
     if not paths:
         return
     try:
-        from .ingest_plan import IngestValidationError, plan_raster_inputs
+        from .ingest_plan import (
+            DEGENERATE_SKIP_REASON,
+            IngestValidationError,
+            _short_crs,
+            plan_raster_inputs,
+        )
         plan = plan_raster_inputs(paths, declared_crs="EPSG:2154", expected_crs="EPSG:2154")
-        results.append(CheckResult(
-            name="CRS des rasters", ok=True,
-            details=f"{plan.crs} · {len(plan.tiles)} dalle(s)", critical=True,
-        ))
+        if plan.crs_verified:
+            results.append(CheckResult(
+                name="CRS des rasters", ok=True,
+                details=f"{_short_crs(plan.crs)} · {len(plan.tiles)} dalle(s)", critical=True,
+            ))
+        else:
+            # CRS ni interprétable ni confirmé : on avertit sans bloquer (⚠ non critique).
+            results.append(CheckResult(
+                name="CRS des rasters", ok=False,
+                details="; ".join(plan.warnings) or "CRS non vérifiable", critical=False,
+            ))
+        # Dalles « placeholder » (1×1 px / origine 0) écartées : ⚠ non bloquant — sans
+        # ce filtrage elles gonfleraient l'emprise du VRT jusqu'à (0,0) (couches vides).
+        n_deg = sum(1 for _, reason in plan.skipped if reason == DEGENERATE_SKIP_REASON)
+        if n_deg:
+            results.append(CheckResult(
+                name="Dalles dégénérées", ok=False, critical=False,
+                details=f"{n_deg} dalle(s) 1×1/origine 0 ignorée(s) (exclues de la mosaïque)",
+            ))
     except IngestValidationError as e:
         results.append(CheckResult(
             name="CRS des rasters", ok=False, details=str(e), critical=True,

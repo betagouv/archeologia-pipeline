@@ -402,13 +402,61 @@ def _ensure_layer_crs(layer, logger, fallback_authid: str = "EPSG:2154") -> None
 
 
 def _reuse_existing(project, layer_name, source, loaded_layers, combined_extent) -> bool:
-    """Si une couche de même nom + source existe déjà, la réutilise."""
+    """Si une couche de même nom + source existe déjà, la réutilise.
+
+    Défensif : on force une relecture du datasource (``reload``) avant réutilisation.
+    Si le fichier (VRT régénéré, GPKG réécrit) a changé sur disque depuis son
+    chargement initial, QGIS afficherait sinon la version en mémoire (périmée).
+    Best-effort — la purge au lancement (``purge_output_dir_layers``) reste la
+    parade principale ; ceci couvre une couche chargée par un autre chemin.
+    """
     for existing in project.mapLayersByName(layer_name):
         if existing.source() == source:
+            try:
+                existing.reload()
+                existing.triggerRepaint()
+            except Exception:  # noqa: BLE001 — relecture best-effort, jamais bloquante
+                pass
             loaded_layers.append(existing)
             _combine(combined_extent, existing.extent())
             return True
     return False
+
+
+def purge_output_dir_layers(output_dir, logger: logging.Logger) -> int:
+    """Retire du projet QGIS les couches périmées d'un ``output_dir`` avant un re-run.
+
+    À appeler sur le **thread principal, au lancement** du run : libère les datasets
+    ``index_<produit>.vrt`` / GPKG encore détenus par QGIS depuis un run précédent dans le
+    **même** dossier de sortie, AVANT que le worker ne régénère les VRT. Sans cela,
+    QGIS réécrit sa version en mémoire (périmée) par-dessus le VRT fraîchement
+    régénéré → les dalles ajoutées restent invisibles. Best-effort : toute erreur est
+    loggée sans jamais bloquer le lancement. Retourne le nombre de couches retirées.
+
+    La décision (quelles couches) est déléguée au helper pur testable
+    ``app.services.layer_purge.select_layers_to_purge`` ; ici on ne fait que les
+    appels QGIS (énumération + ``removeMapLayers``).
+    """
+    try:
+        from qgis.core import QgsProject
+
+        from ..app.services.layer_purge import select_layers_to_purge
+
+        if not output_dir:
+            return 0
+        project = QgsProject.instance()
+        sources = {lid: lyr.source() for lid, lyr in project.mapLayers().items()}
+        to_remove = select_layers_to_purge(sources, str(output_dir))
+        if to_remove:
+            project.removeMapLayers(to_remove)  # libère chaque dataProvider/dataset
+            logger.info(
+                f"{len(to_remove)} couche(s) périmée(s) du run précédent retirée(s) "
+                "avant régénération (même dossier de sortie)."
+            )
+        return len(to_remove)
+    except Exception as e:  # noqa: BLE001 — purge best-effort, jamais bloquante
+        logger.warning(f"Purge des couches périmées impossible: {e}")
+        return 0
 
 
 def _deferred_zoom(loaded_layers, project, logger) -> None:

@@ -11,7 +11,7 @@ from ..ign.products.crop import copy_products_without_crop, crop_final_products
 from ..ign.products.indices import create_visualization_products
 from ..ign.products.results import copy_final_products_to_results
 from ..constants import IGN_TILE_SIZE_M
-from ..tilespec import disambiguate, make_uid
+from ..tilespec import TileSpec, disambiguate, is_degenerate_tile, make_uid
 from ..types import CancelCheckFn, LogFn
 
 
@@ -303,6 +303,18 @@ def run_existing_mnt(
                 pass
 
         log(f"── MNT {idx}/{total} : {mnt_path.name}")
+
+        # 0) Écarter les dalles « placeholder » (1×1 px / posées à l'origine du CRS).
+        #    Incluses, elles produisent une sortie 1×1 à (0,0) qui, agrégée par
+        #    gdalbuildvrt, étire l'emprise de la mosaïque jusqu'à l'origine → couches
+        #    QGIS quasi vides, données réelles invisibles. Détection métadonnées-first.
+        spec = TileSpec.from_raster(mnt_path)
+        if spec is not None and is_degenerate_tile(spec):
+            err(
+                f"⚠️ MNT {mnt_path.name} ignoré : dalle dégénérée "
+                "(1×1 px / origine ≈ 0,0), exclue de la mosaïque."
+            )
+            return
 
         # 1) Inspecter l'emprise du MNT pour choisir le flux adapté
         bounds = get_raster_bounds(mnt_path)

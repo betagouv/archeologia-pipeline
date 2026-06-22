@@ -75,6 +75,21 @@ def run_cv_on_folder(
     # (subprocess) ET le fallback trouvent le .onnx quel que soit le CWD.
     cv_config = _absolutize_models_dir(cv_config)
 
+    # Filet SAHI : ``resolve_cv_runs`` (cv_post_service / finalize) tourne avec
+    # le ``models_dir`` RELATIF de la config ; sous QGIS (CWD ≠ racine plugin)
+    # il échoue à résoudre le dossier modèle et omet ``cv_config["sahi"]`` → le
+    # runner externe retombe alors sur le défaut 640 (mauvaise échelle), alors
+    # que le fallback in-process lit ``profile.sahi`` (correct). ``models_dir``
+    # étant désormais absolu, on relit le vrai SAHI de l'args.yaml du modèle
+    # pour aligner binaire et fallback.
+    try:
+        from .model_config import resolve_sahi_config
+        _sahi = resolve_sahi_config(cv_config)
+        if _sahi is not None:
+            cv_config = {**cv_config, "sahi": _sahi}
+    except Exception as _e:  # ne jamais bloquer l'inférence sur ce filet
+        log(f"Avertissement: résolution SAHI ignorée ({_e})")
+
     # ── Court-circuit si aucune classe sélectionnée ───────────────────
     _sel = (cv_config or {}).get("selected_classes")
     if isinstance(_sel, list) and len(_sel) == 0:

@@ -71,18 +71,19 @@ class TestCollectVrtPathsAndBuild:
         paths = finalize_service._collect_vrt_paths_and_build(idx_dir, det_dir, lambda _m: None)
 
         assert built == [tif_dir]
-        assert paths == [str(tif_dir / "index.vrt")]
-        assert not (png_dir / "index.vrt").exists()
-        assert not (annotated_dir / "index.vrt").exists()
+        # Nom distinctif = nom de couche QGIS : index_<PRODUIT>.vrt (ici produit « LD »).
+        assert paths == [str(tif_dir / "index_LD.vrt")]
+        assert not list(png_dir.glob("*.vrt"))
+        assert not list(annotated_dir.glob("*.vrt"))
 
     def test_always_rebuilds_existing_vrt(self, tmp_path: Path, monkeypatch):
-        """Un index.vrt déjà présent est systématiquement régénéré (pas de skip-if-exists)."""
+        """Un VRT distinctif déjà présent est systématiquement régénéré (pas de skip-if-exists)."""
         idx_dir = tmp_path / "indices"
         det_dir = tmp_path / "detections"
         tif_dir = idx_dir / "LD" / "tif"
         tif_dir.mkdir(parents=True)
         (tif_dir / "tile.tif").write_bytes(b"tif")
-        (tif_dir / "index.vrt").write_text("stale", encoding="utf-8")  # VRT obsolète déjà présent
+        (tif_dir / "index_LD.vrt").write_text("stale", encoding="utf-8")  # VRT obsolète déjà présent
 
         built: list[Path] = []
 
@@ -99,8 +100,32 @@ class TestCollectVrtPathsAndBuild:
         paths = finalize_service._collect_vrt_paths_and_build(idx_dir, det_dir, lambda _m: None)
 
         assert built == [tif_dir]  # rebuild déclenché malgré le VRT existant
-        assert paths == [str(tif_dir / "index.vrt")]
-        assert (tif_dir / "index.vrt").read_text(encoding="utf-8") == "fresh"
+        assert paths == [str(tif_dir / "index_LD.vrt")]
+        assert (tif_dir / "index_LD.vrt").read_text(encoding="utf-8") == "fresh"
+
+    def test_removes_legacy_plain_index_vrt(self, tmp_path: Path, monkeypatch):
+        """Un ``index.vrt`` hérité (runs antérieurs au nommage distinctif) est supprimé
+        après régénération sous le nouveau nom — pas de doublon périmé sur disque."""
+        idx_dir = tmp_path / "indices"
+        det_dir = tmp_path / "detections"
+        tif_dir = idx_dir / "LD" / "tif"
+        tif_dir.mkdir(parents=True)
+        (tif_dir / "tile.tif").write_bytes(b"tif")
+        (tif_dir / "index.vrt").write_text("legacy", encoding="utf-8")  # ancien nom générique
+
+        def fake_build_vrt_index(folder, *, pattern="*.tif", output_name="index.vrt", log=lambda _m: None):
+            (folder / output_name).write_text("fresh", encoding="utf-8")
+            return True
+
+        monkeypatch.setattr(
+            "pipeline.ign.products.results.build_vrt_index",
+            fake_build_vrt_index,
+        )
+
+        paths = finalize_service._collect_vrt_paths_and_build(idx_dir, det_dir, lambda _m: None)
+
+        assert paths == [str(tif_dir / "index_LD.vrt")]
+        assert not (tif_dir / "index.vrt").exists()  # legacy nettoyé
 
     def test_skips_tif_dir_without_tif_files(self, tmp_path: Path, monkeypatch):
         """Un dossier tif/ sans .tif ne génère ni ne retourne de VRT, même avec un index.vrt résiduel."""

@@ -37,6 +37,7 @@ from ...app.services.indices_model import (
     count_selected,
     default_products,
     product,
+    products_unavailable_in_mode,
     requires_mnt,
     rvt_keys,
     toggle,
@@ -795,10 +796,25 @@ class IndicesPage(QWidget):
         # L'onglet MNT (filtre PDAL + densité) n'a de sens que pour les modes
         # qui calculent un MNT depuis un nuage de points.
         self._adv_tabs.setTabEnabled(0, mode in ("ign_laz", "local_laz"))
+        # Purge des produits dérivés du nuage (densité/couverture) dans les modes
+        # sans nuage : la carte « Modèle de base » est seulement masquée, jamais
+        # réinitialisée — sans ça une sélection héritée d'un run LAZ persiste dans
+        # self._products et se resérialise (faux « produit demandé », avertissement
+        # « Couverture indisponible… — ignoré » côté runner).
+        purged = False
+        for key in products_unavailable_in_mode(mode):
+            if self._products.get(key):
+                self._products[key] = False
+                purged = True
         # En existing_rvt l'étape est sans objet : revenir à la vue d'ensemble.
         if mode == "existing_rvt":
             self._show_overview()
         self._refresh()
+        # Persiste la purge (autosave nettoie last_ui_config). Garde anti-boucle
+        # identique à activate_product ; au démarrage le signal n'est pas encore
+        # connecté, donc l'émission est sans effet (cohérent).
+        if purged and not self._loading:
+            self.changed.emit()
 
     # ------------------------------------------------------------------
     # Persistance

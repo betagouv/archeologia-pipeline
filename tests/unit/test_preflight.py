@@ -5,7 +5,12 @@ from pathlib import Path
 
 import pytest
 
-from pipeline.preflight import CheckResult, _check_input_path, collect_preflight_results
+from pipeline.preflight import (
+    CheckResult,
+    _check_input_path,
+    _check_raster_crs,
+    collect_preflight_results,
+)
 
 
 class TestCheckResult:
@@ -175,3 +180,69 @@ class TestCollectPreflightResults:
         assert len(out) == 1
         assert out[0].ok is True
         assert "Go libres" in out[0].details
+
+
+class TestCheckRasterCrs:
+    """« CRS des rasters » : vérifié → vert bloquant ; invérifiable → ⚠ non bloquant."""
+
+    def _fake_plan(self, **over):
+        from pipeline.ingest_plan import IngestPlan
+
+        base = dict(
+            tiles=[object(), object()], crs="EPSG:2154", mosaicable=True,
+            skipped=[], warnings=[], crs_verified=True,
+        )
+        base.update(over)
+        return IngestPlan(**base)
+
+    def test_verified_crs_is_green_and_critical(self, monkeypatch, tmp_path):
+        (tmp_path / "mnt.tif").write_bytes(b"x")
+        import pipeline.ingest_plan as ip
+        monkeypatch.setattr(ip, "plan_raster_inputs", lambda *a, **k: self._fake_plan())
+        results = []
+        _check_raster_crs(str(tmp_path), ("tif",), results)
+        assert len(results) == 1
+        assert results[0].ok is True
+        assert results[0].critical is True
+        assert "EPSG:2154" in results[0].details
+
+    def test_unverifiable_crs_warns_without_blocking(self, monkeypatch, tmp_path):
+        (tmp_path / "mnt.tif").write_bytes(b"x")
+        import pipeline.ingest_plan as ip
+        plan = self._fake_plan(
+            crs='PROJCS["x"]', mosaicable=False, crs_verified=False,
+            warnings=["CRS « PROJCS[...] » non vérifiable (aucun backend) — vérifiez EPSG:2154."],
+        )
+        monkeypatch.setattr(ip, "plan_raster_inputs", lambda *a, **k: plan)
+        results = []
+        _check_raster_crs(str(tmp_path), ("tif",), results)
+        assert len(results) == 1
+        assert results[0].ok is False
+        assert results[0].critical is False  # ⚠ n'empêche pas le lancement
+        assert "vérifiable" in results[0].details
+
+    def test_degenerate_tiles_shown_as_noncritical(self, monkeypatch, tmp_path):
+        (tmp_path / "mnt.tif").write_bytes(b"x")
+        import pipeline.ingest_plan as ip
+        from pipeline.ingest_plan import DEGENERATE_SKIP_REASON
+        plan = self._fake_plan(skipped=[
+            (Path("p1.tif"), DEGENERATE_SKIP_REASON),
+            (Path("p2.tif"), DEGENERATE_SKIP_REASON),
+            (Path("broken.tif"), "illisible/corrompu"),  # ne doit PAS être compté
+        ])
+        monkeypatch.setattr(ip, "plan_raster_inputs", lambda *a, **k: plan)
+        results = []
+        _check_raster_crs(str(tmp_path), ("tif",), results)
+        deg = [r for r in results if r.name == "Dalles dégénérées"]
+        assert len(deg) == 1
+        assert deg[0].ok is False
+        assert deg[0].critical is False  # ⚠ n'empêche pas le lancement
+        assert "2" in deg[0].details
+
+    def test_no_degenerate_result_when_none(self, monkeypatch, tmp_path):
+        (tmp_path / "mnt.tif").write_bytes(b"x")
+        import pipeline.ingest_plan as ip
+        monkeypatch.setattr(ip, "plan_raster_inputs", lambda *a, **k: self._fake_plan())
+        results = []
+        _check_raster_crs(str(tmp_path), ("tif",), results)
+        assert not any(r.name == "Dalles dégénérées" for r in results)

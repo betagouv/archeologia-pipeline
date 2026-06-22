@@ -26,6 +26,8 @@ from qgis.core import (
 )
 from qgis.gui import QgsMapTool, QgsRubberBand
 
+from ...app.services.grid_view import grid_is_hidden
+
 # Déplacement écran (px) en deçà duquel un relâché est traité comme un clic
 # (sélection d'une dalle) plutôt qu'un glisser-boîte.
 _CLICK_THRESHOLD_PX = 4
@@ -95,9 +97,10 @@ class TilePickerMapTool(QgsMapTool):
 
     def _grid_hidden(self) -> bool:
         """La grille est-elle masquée à l'échelle courante (vue trop dézoomée) ?"""
-        return (
-            self._layer.hasScaleBasedVisibility()
-            and self._canvas.scale() > self._layer.minimumScale()
+        return grid_is_hidden(
+            self._layer.hasScaleBasedVisibility(),
+            self._canvas.scale(),
+            self._layer.minimumScale(),
         )
 
     def keyPressEvent(self, event):  # noqa: N802

@@ -16,6 +16,7 @@ from pipeline.output_paths import (
     detection_technique_dir,
     detection_technique_raw_dir,
     detections_dir,
+    index_vrt_filename,
 )
 
 OUT = Path("/out")
@@ -23,6 +24,23 @@ OUT = Path("/out")
 
 def _gpkg(slug: str) -> str:
     return str(OUT / "detections" / slug / f"{slug}.gpkg")
+
+
+class TestIndexVrtFilename:
+    """Le VRT d'index porte le nom de couche QGIS distinctif ``index_<PRODUIT>.vrt``
+    (cf. ui/layer_loader → ``index_<rvt_type>``) → identifiable sur disque et au
+    chargement manuel, là où tous les ``index.vrt`` étaient indistinguables."""
+
+    def test_distinctive_name_per_product(self):
+        assert index_vrt_filename("CVAT") == "index_CVAT.vrt"
+        assert index_vrt_filename("MNT") == "index_MNT.vrt"
+        assert (
+            index_vrt_filename("LD_A15_Rmin10_Rmax20_H1p7_V1")
+            == "index_LD_A15_Rmin10_Rmax20_H1p7_V1.vrt"
+        )
+
+    def test_empty_product_falls_back_to_plain_index(self):
+        assert index_vrt_filename("") == "index.vrt"
 
 
 class TestEntityPaths:

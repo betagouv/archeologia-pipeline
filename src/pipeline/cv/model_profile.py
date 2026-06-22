@@ -82,14 +82,41 @@ class ClusteringRule:
 
 @dataclass(frozen=True)
 class PostprocessConfig:
-    """Activation des étapes de post-traitement géométrique."""
+    """Activation des étapes de post-traitement géométrique.
+
+    ``merge_buffer_m`` est la VRAIE distance (mètres) en deçà de laquelle deux
+    polygones de même classe sont fusionnés (cf. ``postprocess_geo_detections``,
+    prédicat ``dwithin``). 0,5 m par défaut (~1 px à 0,5 m/px).
+
+    ``overlap_strategy`` pilote l'étape de suppression des superpositions
+    (``remove_overlaps``) :
+
+    - ``"difference"`` (défaut, historique) : découpe le polygone le moins
+      confiant le long du contour de l'autre (``geom.difference``). Pour un
+      modèle mono-classe (cratères) ce découpage FABRIQUE des artefacts —
+      anneau troué (petit imbriqué) ou arête droite partagée (accolés).
+    - ``"relation"`` : pour les détections de MÊME classe, on raisonne en
+      confinement (IoS = aire intersection / aire du plus petit) — si
+      IoS ≥ ``overlap_ios_threshold`` on FUSIONNE par union (l'union absorbe le
+      petit dans le grand sans anneau, et soude deux fragments fortement
+      chevauchants sans arête). Les superpositions INTER-classes restent gérées
+      par ``difference`` (un objet d'une classe rogne celui d'une autre).
+    """
     merge_adjacent: bool = True
     remove_overlaps: bool = True
+    merge_buffer_m: float = 0.5
+    overlap_strategy: str = "difference"
+    overlap_ios_threshold: float = 0.5
+    overlap_min_area_ratio: float = 0.0
 
-    def to_dict(self) -> Dict[str, bool]:
+    def to_dict(self) -> Dict[str, Any]:
         return {
             "merge_adjacent": self.merge_adjacent,
             "remove_overlaps": self.remove_overlaps,
+            "merge_buffer_m": self.merge_buffer_m,
+            "overlap_strategy": self.overlap_strategy,
+            "overlap_ios_threshold": self.overlap_ios_threshold,
+            "overlap_min_area_ratio": self.overlap_min_area_ratio,
         }
 
 
@@ -348,9 +375,38 @@ def _parse_postprocess(args_yaml: Dict[str, Any]) -> PostprocessConfig:
     pp = args_yaml.get("postprocess")
     if not isinstance(pp, dict):
         return PostprocessConfig()
+    try:
+        buffer_m = float(pp.get("merge_buffer_m", 0.5))
+    except (TypeError, ValueError):
+        buffer_m = 0.5
+    if not (0 < buffer_m < float("inf")):  # ≤ 0, NaN ou inf → défaut
+        buffer_m = 0.5
+
+    strategy = str(pp.get("overlap_strategy", "difference")).strip().lower()
+    if strategy not in ("difference", "relation"):
+        strategy = "difference"
+
+    try:
+        ios = float(pp.get("overlap_ios_threshold", 0.5))
+    except (TypeError, ValueError):
+        ios = 0.5
+    if not (0 < ios <= 1):  # hors ]0, 1], NaN → défaut
+        ios = 0.5
+
+    try:
+        ratio = float(pp.get("overlap_min_area_ratio", 0.0))
+    except (TypeError, ValueError):
+        ratio = 0.0
+    if not (0 <= ratio <= 1):  # hors [0, 1], NaN → garde-fou désactivé
+        ratio = 0.0
+
     return PostprocessConfig(
         merge_adjacent=bool(pp.get("merge_adjacent", True)),
         remove_overlaps=bool(pp.get("remove_overlaps", True)),
+        merge_buffer_m=buffer_m,
+        overlap_strategy=strategy,
+        overlap_ios_threshold=ios,
+        overlap_min_area_ratio=ratio,
     )
 
 

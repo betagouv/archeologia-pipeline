@@ -60,6 +60,28 @@ def default_products() -> Dict[str, bool]:
     return {p.key: False for p in _PRODUCTS}
 
 
+# Produits dérivés du nuage de points LiDAR (densité = points/m², couverture =
+# zones où le sol est mesuré) : impossibles quand l'entrée est un MNT/RVT déjà
+# interpolé. Le MNT (entrée du mode) et les indices RVT (calculés depuis le MNT)
+# restent disponibles en mode existing_mnt.
+_POINT_CLOUD_PRODUCTS: List[str] = ["DENSITE", "COUVERTURE"]
+
+
+def products_unavailable_in_mode(mode: str) -> List[str]:
+    """Clés de produits incompatibles avec ``mode`` (à forcer décochés en UI).
+
+    Sans nuage de points (``existing_mnt`` / ``existing_rvt``), les produits
+    dérivés du nuage sont impossibles. Comme la carte « Modèle de base » est
+    seulement *masquée* (pas réinitialisée) au changement de mode, une sélection
+    héritée d'un run LAZ y persisterait et serait resérialisée dans la config
+    (faux « produit demandé », avertissement « ignoré »). Cette liste pilote la
+    purge dans ``IndicesPage.set_mode``.
+    """
+    if mode in ("existing_mnt", "existing_rvt"):
+        return list(_POINT_CLOUD_PRODUCTS)
+    return []
+
+
 def requires_mnt(products: Dict[str, bool]) -> bool:
     """True si un indice RVT est actif (→ MNT requis)."""
     return any(products.get(k) for k in rvt_keys())

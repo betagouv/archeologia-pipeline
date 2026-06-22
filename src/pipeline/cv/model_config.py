@@ -130,6 +130,32 @@ def load_sahi_config_from_model(model_path: Union[str, Path]) -> Dict:
     return defaults
 
 
+def resolve_sahi_config(cv_config: Dict) -> Optional[Dict]:
+    """Relit la config SAHI du modèle sélectionné dans ``cv_config``.
+
+    À appeler une fois ``models_dir`` **absolutisé** (cf.
+    ``runner._absolutize_models_dir``). Renvoie le dict
+    ``{slice_height, slice_width, overlap_ratio}`` lu depuis l'``args.yaml`` du
+    modèle, ou ``None`` si le modèle / son ``args.yaml`` est introuvable — dans
+    ce cas l'appelant ne doit PAS écraser la valeur en place.
+
+    Filet anti-régression pour le runner EXTERNE : ``resolve_cv_runs`` peut
+    avoir tourné en amont avec un ``models_dir`` relatif (le CWD de QGIS n'est
+    pas la racine du plugin), échoué à résoudre le dossier modèle et donc omis
+    de poser ``cv_config["sahi"]`` → le binaire retombe alors sur le défaut 640
+    (mauvaise échelle d'inférence). Le chemin fallback in-process lit, lui,
+    ``profile.sahi`` après absolutisation et n'est pas touché — d'où la
+    divergence binaire (640) vs fallback (140). On réaligne ici les deux.
+    """
+    wp = resolve_model_weights_path(cv_config)
+    if wp is None:
+        return None
+    model_dir = _resolve_model_dir(wp)
+    if not (model_dir / "args.yaml").exists():
+        return None
+    return load_sahi_config_from_model(wp)
+
+
 def load_clustering_config_from_model(model_path: Union[str, Path]) -> Optional[List[Dict]]:
     """
     Charge la configuration de clustering depuis le args.yaml du modèle.

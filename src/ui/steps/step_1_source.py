@@ -7,6 +7,7 @@ validation de chemin) vient du module pur :mod:`app.services.source_modes`.
 """
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 
 from qgis.PyQt.QtCore import QPoint, Qt, QTimer, pyqtSignal
@@ -32,6 +33,8 @@ from ..icons import colored_pixmap
 from ..widgets.card import build_card
 from ..widgets.stage_button import ArrowConnector, StageButton
 
+logger = logging.getLogger(__name__)
+
 # Au-delà de ce nombre de dalles, on demande confirmation (téléchargement lourd).
 _LARGE_SELECTION_THRESHOLD = 50
 
@@ -53,6 +56,10 @@ class SourcePage(QWidget):
         self._prev_map_tool = None
         self._msg_item = None
         self._validate_btn = None
+        # Bandeau persistant « zoomez pour voir les dalles » + canevas connecté à
+        # ``scaleChanged`` (déconnecté au teardown pour ne pas fuiter le signal).
+        self._scale_msg_item = None
+        self._scale_canvas = None
         self._build()
         self._apply_mode_ui()
 
@@ -346,7 +353,10 @@ class SourcePage(QWidget):
             from qgis.core import Qgis
             from qgis.utils import iface
 
-            from ..map_tools.grid_layer import load_quadrillage_layer, zoom_to_france_if_lost
+            from ..map_tools.grid_layer import (
+                load_quadrillage_layer,
+                zoom_to_france_metro_if_hidden,
+            )
             from ..map_tools.tile_picker_tool import TilePickerMapTool
         except ImportError:
             QMessageBox.warning(self, "Erreur", "API QGIS non disponible.")
@@ -355,7 +365,13 @@ class SourcePage(QWidget):
             QMessageBox.warning(self, "Erreur", "Canevas QGIS indisponible.")
             return
         if self._tile_tool is not None:
-            return  # déjà actif
+            # Auto-réparation : si l'outil est posé mais plus actif sur le canevas
+            # (teardown précédent avorté), on nettoie l'état périmé puis on continue
+            # — sinon le bouton resterait bloqué jusqu'à un redémarrage de QGIS.
+            if iface.mapCanvas().mapTool() is self._tile_tool:
+                return  # réellement actif
+            logger.warning("Sélection dalles : état périmé (_tile_tool inactif) → nettoyage")
+            self._teardown_dalles_selection()
 
         layer = load_quadrillage_layer(self._plugin_root())
         if layer is None:
@@ -368,7 +384,7 @@ class SourcePage(QWidget):
             )
             return
         layer.removeSelection()
-        zoom_to_france_if_lost(layer)  # recadre si la vue est trop dézoomée (U1)
+        zoom_to_france_metro_if_hidden(layer)  # cadre la métropole si la vue est perdue (U1)
 
         canvas = iface.mapCanvas()
         self._grid_layer = layer
@@ -398,6 +414,13 @@ class SourcePage(QWidget):
         widget.layout().addWidget(cancel_btn)
         bar.pushWidget(widget, Qgis.MessageLevel.Info)
         self._msg_item = widget
+
+        # Bandeau persistant + suivi de l'échelle : tant que la grille est masquée
+        # (vue trop dézoomée), un avertissement reste affiché et se met à jour ;
+        # il disparaît dès que la grille redevient visible.
+        self._scale_canvas = canvas
+        canvas.scaleChanged.connect(self._on_canvas_scale_changed)
+        self._refresh_scale_notice()
 
         self._dalles_btn.setEnabled(False)
         # Minimiser le dialogue du plugin pour dégager le canevas. NE PAS utiliser
@@ -436,6 +459,52 @@ class SourcePage(QWidget):
         except Exception:
             pass
 
+    def _on_canvas_scale_changed(self, *_args) -> None:
+        # ``QgsMapCanvas.scaleChanged`` émet l'échelle ; on n'a besoin que de l'état.
+        self._refresh_scale_notice()
+
+    def _refresh_scale_notice(self) -> None:
+        """Affiche / actualise / retire le bandeau « zoomez pour voir les dalles ».
+
+        Persistant tant que la grille est masquée (vue trop dézoomée) ; le texte suit
+        l'échelle courante ; il disparaît dès que la grille redevient visible. On ne
+        re-pousse qu'à l'apparition (sinon ``setText`` sur l'item existant).
+        """
+        try:
+            from qgis.core import Qgis
+            from qgis.utils import iface
+
+            from ...app.services.grid_view import grid_is_hidden
+        except ImportError:
+            return
+        layer = self._grid_layer
+        canvas = self._scale_canvas
+        if iface is None or layer is None or canvas is None:
+            return
+        hidden = grid_is_hidden(
+            layer.hasScaleBasedVisibility(), canvas.scale(), layer.minimumScale()
+        )
+        bar = iface.messageBar()
+        if hidden:
+            cur = f"{int(canvas.scale()):,}".replace(",", " ")
+            req = f"{int(layer.minimumScale()):,}".replace(",", " ")
+            text = f"Zoomez pour afficher les dalles — échelle 1:{cur} (requise ≤ 1:{req})"
+            if self._scale_msg_item is None:
+                item = bar.createMessage("Sélection des dalles", text)
+                bar.pushWidget(item, Qgis.MessageLevel.Warning)
+                self._scale_msg_item = item
+            else:
+                try:
+                    self._scale_msg_item.setText(text)
+                except Exception:
+                    pass
+        elif self._scale_msg_item is not None:
+            try:
+                bar.popWidget(self._scale_msg_item)
+            except Exception:
+                pass
+            self._scale_msg_item = None
+
     def _on_tiles_validate(self) -> None:
         layer = self._grid_layer
         if layer is None:
@@ -462,17 +531,32 @@ class SourcePage(QWidget):
             if resp != QMessageBox.StandardButton.Yes:
                 return  # rester en mode sélection
 
-        tiles = [
-            (
-                str(f["nom_pkk"]) if f["nom_pkk"] else "",
-                str(f["url_telech"]) if f["url_telech"] else "",
+        # Lecture des entités + écriture du fichier : si ça échoue (champ illisible,
+        # dossier non inscriptible…), on NE déclenche PAS le teardown — la sélection
+        # est conservée et « Annuler » reste la porte de sortie (qui réactive le
+        # bouton). Sans ce garde-fou, un échec laissait l'outil/le bouton bloqués
+        # jusqu'au redémarrage de QGIS.
+        try:
+            tiles = [
+                (
+                    str(f["nom_pkk"]) if f["nom_pkk"] else "",
+                    str(f["url_telech"]) if f["url_telech"] else "",
+                )
+                for f in layer.getFeatures(QgsFeatureRequest().setFilterFids(ids))
+            ]
+            export_dir = self._plugin_root() / "data" / "temp_zones"
+            export_dir.mkdir(parents=True, exist_ok=True)
+            out_path = export_dir / "dalles_selection.txt"
+            out_path.write_text(format_dalles_urls(tiles), encoding="utf-8")
+        except Exception:
+            logger.exception("Échec de l'enregistrement de la sélection (n=%s)", n)
+            QMessageBox.warning(
+                self,
+                "Échec de l'enregistrement",
+                "Impossible d'enregistrer la sélection des dalles. La sélection est "
+                "conservée — réessayez ou cliquez « Annuler ».",
             )
-            for f in layer.getFeatures(QgsFeatureRequest().setFilterFids(ids))
-        ]
-        export_dir = self._plugin_root() / "data" / "temp_zones"
-        export_dir.mkdir(parents=True, exist_ok=True)
-        out_path = export_dir / "dalles_selection.txt"
-        out_path.write_text(format_dalles_urls(tiles), encoding="utf-8")
+            return  # rester en mode sélection
         try:
             from qgis.core import Qgis
             from qgis.utils import iface
@@ -500,7 +584,13 @@ class SourcePage(QWidget):
         Synchrone (pas appelée depuis le slot d'un widget de la barre de message)
         → nécessaire pour un teardown immédiat à la fermeture/l'unload.
         """
-        if self._tile_tool is not None or self._grid_layer is not None or self._msg_item is not None:
+        if (
+            self._tile_tool is not None
+            or self._grid_layer is not None
+            or self._msg_item is not None
+            or self._scale_msg_item is not None
+            or self._scale_canvas is not None
+        ):
             self._teardown_dalles_selection()
 
     def _teardown_dalles_selection(self) -> None:
@@ -525,6 +615,18 @@ class SourcePage(QWidget):
                 iface.messageBar().popWidget(self._msg_item)
             except Exception:
                 pass
+        # Déconnecter le suivi d'échelle (sinon le signal fuiterait d'une session de
+        # sélection à l'autre) et retirer le bandeau persistant.
+        if self._scale_canvas is not None:
+            try:
+                self._scale_canvas.scaleChanged.disconnect(self._on_canvas_scale_changed)
+            except (TypeError, RuntimeError):
+                pass  # déjà déconnecté / objet C++ détruit
+        if iface is not None and self._scale_msg_item is not None:
+            try:
+                iface.messageBar().popWidget(self._scale_msg_item)
+            except Exception:
+                pass
         try:
             from ..map_tools.grid_layer import remove_quadrillage_layer
 
@@ -536,6 +638,8 @@ class SourcePage(QWidget):
         self._prev_map_tool = None
         self._msg_item = None
         self._validate_btn = None
+        self._scale_msg_item = None
+        self._scale_canvas = None
         # Ne ré-activer le bouton que hors lecture seule (run en cours).
         if not self._source_edit.isReadOnly():
             self._dalles_btn.setEnabled(True)

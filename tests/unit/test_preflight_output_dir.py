@@ -88,7 +88,7 @@ class TestPreflightCrs:
         from types import SimpleNamespace
         results = self._results(
             tmp_path, monkeypatch,
-            lambda *a, **k: SimpleNamespace(crs="EPSG:2154", tiles=[1]),
+            lambda *a, **k: SimpleNamespace(crs="EPSG:2154", tiles=[1], crs_verified=True),
         )
         crs = [r for r in results if r.name == "CRS des rasters"]
         assert crs and crs[0].ok is True
@@ -97,7 +97,7 @@ class TestPreflightCrs:
         from types import SimpleNamespace
         results = self._results(
             tmp_path, monkeypatch,
-            lambda *a, **k: SimpleNamespace(crs="EPSG:2154", tiles=[1]),
+            lambda *a, **k: SimpleNamespace(crs="EPSG:2154", tiles=[1], crs_verified=True),
             mode="existing_mnt", key="existing_mnt_dir",
         )
         assert any(r.name == "CRS des rasters" for r in results)

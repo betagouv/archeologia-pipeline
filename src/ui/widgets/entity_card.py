@@ -266,7 +266,7 @@ class EntityCard(QFrame):
         rvt_active: bool,
         cluster_outputs: Sequence[str],
         cluster_on: bool,
-        default_confidence: float = 0.3,
+        default_confidence: float = 0.2,
         default_min_area: float = 0.0,
         conf_override: Optional[float] = None,
         area_override: Optional[float] = None,

@@ -104,7 +104,7 @@ class InstalledModel:
     derived_output_labels: Dict[str, str] = field(default_factory=dict)
     # Seuils par défaut (model_card:thresholds) — injectés par run, surchargeables
     # par entité côté UI (confiance + aire min). IoU jamais exposé dans l'UI.
-    default_confidence: float = 0.3
+    default_confidence: float = 0.2
     default_min_area: float = 0.0
     default_iou: float = 0.5
     # Dossier du modèle sur disque (``data/models/<name>/``). Utile côté UI pour
@@ -299,10 +299,10 @@ def _extract_target_rvt(card: Dict[str, Any]) -> str:
 def _extract_thresholds(card: Dict[str, Any]) -> Tuple[float, float, float]:
     """``(confidence_default, min_area_m2, iou)`` depuis ``model_card:thresholds``.
 
-    Défauts : confiance 0.3, aire min 0, IoU 0.5. L'IoU peut être déclaré sous
+    Défauts : confiance 0.2, aire min 0, IoU 0.5. L'IoU peut être déclaré sous
     ``iou`` ou ``iou_threshold`` (jamais exposé dans l'UI, seulement le pipeline).
     """
-    conf, area, iou = 0.3, 0.0, 0.5
+    conf, area, iou = 0.2, 0.0, 0.5
     th = card.get("thresholds")
     if isinstance(th, dict):
         try:

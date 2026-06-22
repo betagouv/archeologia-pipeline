@@ -91,11 +91,18 @@ def build_min_confidence_by_slug(
 
 
 def _collect_vrt_paths_and_build(idx_dir: Path, det_dir: Path, log: LogFn) -> List[str]:
-    """Parcourt indices/ pour créer les index.vrt et retourne les chemins VRT."""
+    """Parcourt indices/ pour créer les ``index_<PRODUIT>.vrt`` et retourne leurs chemins.
+
+    Le VRT porte le nom de couche QGIS distinctif (``index_<PRODUIT>.vrt``, cf.
+    ``output_paths.index_vrt_filename``) → identifiable sur disque, plus le générique
+    ``index.vrt`` indistinguable d'un produit à l'autre.
+    """
     try:
         from ...pipeline.ign.products.results import build_vrt_index
+        from ...pipeline.output_paths import index_vrt_filename
     except ImportError:
         from pipeline.ign.products.results import build_vrt_index
+        from pipeline.output_paths import index_vrt_filename
 
     vrt_paths: List[str] = []
 
@@ -104,11 +111,20 @@ def _collect_vrt_paths_and_build(idx_dir: Path, det_dir: Path, log: LogFn) -> Li
         for tif_dir in idx_dir.rglob("tif"):
             if not tif_dir.is_dir():
                 continue
-            vrt_path = tif_dir / "index.vrt"
+            vrt_name = index_vrt_filename(tif_dir.parent.name)
+            vrt_path = tif_dir / vrt_name
             if list(tif_dir.glob("*.tif")):
-                build_vrt_index(tif_dir, pattern="*.tif", output_name="index.vrt", log=log)
+                build_vrt_index(tif_dir, pattern="*.tif", output_name=vrt_name, log=log)
                 if vrt_path.exists():
                     vrt_paths.append(str(vrt_path))
+                    # Nettoyage best-effort d'un ``index.vrt`` hérité (runs antérieurs
+                    # au nommage distinctif) pour éviter un doublon périmé sur disque.
+                    legacy = tif_dir / "index.vrt"
+                    if vrt_name != "index.vrt" and legacy.exists():
+                        try:
+                            legacy.unlink()
+                        except OSError:
+                            pass
 
     return vrt_paths
 
@@ -120,17 +136,19 @@ def _collect_low_coverage_polygons(
 ) -> list:
     """Polygones « zones mal couvertes » de la mosaïque COUVERTURE.
 
-    Chemin nominal : l'``index.vrt`` construit juste avant (mosaïque complète,
-    coutures de dalles fusionnées). Repli si le VRT manque (échec gdalbuildvrt) :
-    extraction **dalle par dalle** — toutes les dalles sont couvertes, seules
-    les zones à cheval sur deux dalles restent scindées (loggé).
+    Chemin nominal : le ``index_<PRODUIT>.vrt`` construit juste avant (mosaïque
+    complète, coutures de dalles fusionnées). Repli si le VRT manque (échec
+    gdalbuildvrt) : extraction **dalle par dalle** — toutes les dalles sont
+    couvertes, seules les zones à cheval sur deux dalles restent scindées (loggé).
     """
     try:
         from ...pipeline.coverage_polygons import extract_low_coverage_polygons
+        from ...pipeline.output_paths import index_vrt_filename
     except ImportError:  # pragma: no cover — fallback tests standalone
         from pipeline.coverage_polygons import extract_low_coverage_polygons
+        from pipeline.output_paths import index_vrt_filename
 
-    raster = tif_dir / "index.vrt"
+    raster = tif_dir / index_vrt_filename(tif_dir.parent.name)
     if raster.exists():
         return extract_low_coverage_polygons(raster, threshold_percent)
     tifs = sorted(tif_dir.glob("*.tif"))

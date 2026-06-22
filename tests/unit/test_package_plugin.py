@@ -43,7 +43,9 @@ class TestShouldExcludeDirs:
          ".pytest_cache", ".git", "dev", "tests", "node_modules",
          # PKG-04 (audit v2) : specs internes, scripts dev et artefacts de
          # build n'ont rien à faire chez l'utilisateur.
-         "docs", "scripts", "dist"],
+         "docs", "scripts", "dist",
+         # État de dev / sorties / temp — ne doivent pas fuiter dans le ZIP utilisateur.
+         "temp_zones", "results", "output", "output_test", "temp"],
     )
     def test_excludes_dev_and_hidden_dirs(self, pkg, tmp_path, name):
         d = _mkdir(tmp_path, name)
@@ -109,6 +111,79 @@ class TestShouldExcludeFiles:
         f = tmp_path / name
         f.write_text("x")
         assert pkg.should_exclude(f, name) is True
+
+    @pytest.mark.parametrize("name", ["pipeline_log_20260618.txt", "pipeline_log_20260618_133000.txt"])
+    def test_excludes_pipeline_logs(self, pkg, tmp_path, name):
+        # Logs de run (.txt) : exclus par règle dédiée. L'extension .txt n'est PAS
+        # exclue globalement (classes.txt / dalles_urls.txt sont légitimes).
+        f = tmp_path / name
+        f.write_text("log")
+        assert pkg.should_exclude(f, name) is True
+
+    @pytest.mark.parametrize("name", ["classes.txt", "dalles_urls.txt", "metadata.txt"])
+    def test_keeps_legit_txt_files(self, pkg, tmp_path, name):
+        # Garde-fou : la règle pipeline_log_*.txt ne doit pas emporter les .txt runtime.
+        f = tmp_path / name
+        f.write_text("x")
+        assert pkg.should_exclude(f, name) is False
+
+
+class TestZipFilename:
+    """Le nom du ZIP suit la convention de **dépôt QGIS** ``<plugin_id>.<version>.zip``
+    (ex. ``archeologia.0.7.0.zip``). Invariant : le préfixe avant le 1er point == le
+    dossier racine du ZIP (``PLUGIN_NAME``), sinon l'install depuis un dépôt échoue
+    (« répertoire mal nommé » — QGIS déduit le dossier du nom de fichier)."""
+
+    @pytest.mark.parametrize(
+        "plugin_id, version, expected",
+        [
+            ("archeologia", "0.7.0", "archeologia.0.7.0.zip"),
+            ("archeologia", "1.2.3", "archeologia.1.2.3.zip"),
+            ("archeologia", "2.0", "archeologia.2.0.zip"),
+        ],
+    )
+    def test_build_name_is_id_dot_version(self, pkg, plugin_id, version, expected):
+        assert pkg._build_zip_name(plugin_id, version) == expected
+
+    def test_unreadable_version_omits_suffix(self, pkg):
+        # Version illisible : repli ``<plugin_id>.zip`` (pas de « ? » invalide sous Windows).
+        assert pkg._build_zip_name("archeologia", None) == "archeologia.zip"
+
+    def test_prefix_before_first_dot_equals_root_dir(self, pkg):
+        # Cœur du bug corrigé : QGIS coupe au 1er point pour déduire le dossier d'install,
+        # qui DOIT == le dossier racine du ZIP (PLUGIN_NAME).
+        name = pkg._build_zip_name(pkg.PLUGIN_NAME, "0.7.0")
+        assert name.split(".")[0] == pkg.PLUGIN_NAME
+
+    def test_zip_filename_from_real_metadata_matches_pattern(self, pkg):
+        # Intégration : lit le vrai metadata.txt → archeologia.<x.y.z>.zip (robuste aux bumps).
+        import re
+
+        fn = pkg.zip_filename()
+        assert fn.startswith(pkg.PLUGIN_NAME + ".")
+        assert re.fullmatch(rf"{pkg.PLUGIN_NAME}\.\d+\.\d+\.\d+\.zip", fn)
+
+
+class TestPluginsXml:
+    """Génération du plugins.xml du dépôt (`--repo-url`) : file_name/download_url
+    cohérents avec le ZIP produit, et XML bien formé."""
+
+    def test_file_name_and_download_match_zip(self, pkg):
+        xml = pkg._build_plugins_xml("http://host/qgis/")
+        fn = pkg.zip_filename()
+        assert f"<file_name>{fn}</file_name>" in xml
+        assert f"<download_url>http://host/qgis/{fn}</download_url>" in xml
+
+    def test_file_name_prefix_is_plugin_root(self, pkg):
+        # Invariant QGIS : file_name commence par le dossier racine du ZIP.
+        xml = pkg._build_plugins_xml("http://host/qgis")  # sans slash final
+        assert f"<file_name>{pkg.PLUGIN_NAME}." in xml
+        assert f"http://host/qgis/{pkg.PLUGIN_NAME}." in xml  # slash ajouté proprement
+
+    def test_is_wellformed_xml(self, pkg):
+        import xml.etree.ElementTree as ET
+
+        ET.fromstring(pkg._build_plugins_xml("http://host/qgis"))  # ne doit pas lever
 
 
 class TestZipSizeGuard:

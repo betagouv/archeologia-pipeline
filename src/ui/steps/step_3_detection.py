@@ -370,7 +370,7 @@ class DetectionPage(QWidget):
                 rvt_active=(rvt in self._active_rvts) if model else True,
                 cluster_outputs=cluster_outputs,
                 cluster_on=eid in self._cluster,
-                default_confidence=model.default_confidence if model else 0.3,
+                default_confidence=model.default_confidence if model else 0.2,
                 default_min_area=model.default_min_area if model else 0.0,
                 conf_override=ov.get("confidence_threshold"),
                 area_override=ov.get("min_area_m2"),

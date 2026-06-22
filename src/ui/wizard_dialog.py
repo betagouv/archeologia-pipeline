@@ -310,9 +310,9 @@ class WizardDialog(QDialog):
         # Workers : la config alimente le spin des paramètres avancés ; le spin
         # devient ensuite la source de vérité (workers_changed réécrit la config).
         try:
-            workers = int(proc.get("max_workers", 4) or 4)
+            workers = int(proc.get("max_workers", 3) or 3)
         except (TypeError, ValueError):
-            workers = 4
+            workers = 3
         self._launch_page.set_workers(workers)
         self._config.setdefault("processing", {})["max_workers"] = self._launch_page.workers_value()
 

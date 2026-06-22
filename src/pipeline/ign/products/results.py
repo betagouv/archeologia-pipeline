@@ -9,11 +9,45 @@ from typing import Any, Dict, List, Tuple
 
 from ...cancellation import PipelineCancelled, check_cancelled
 from ...coords import extract_xy_from_tile_name as _extract_xy_from_tile_name
+from ...coords import get_raster_bounds
 from ...geo_utils import extract_tif_transform_data
 from ...output_paths import indices_dir, indice_tif_dir, indice_base_dir
 from ...subprocess_utils import run_subprocess_cancellable, subprocess_kwargs_no_window
+from ...tilespec import TileSpec, assign_crs_if_missing, is_degenerate_tile
 from .rvt_naming import PRODUCT_ORDER, get_rvt_source_and_dest_filenames, get_rvt_folder_name
 from ...types import CancelCheckFn, LogFn
+
+
+def _select_vrt_inputs(files, *, read_spec):
+    """Sépare les fichiers d'un VRT en ``(kept, dropped)``.
+
+    ``dropped`` = dalles dégénérées (placeholder 1×1 / origine 0) détectées via
+    :func:`is_degenerate_tile`. **Conservateur** : un fichier illisible
+    (``read_spec`` → ``None``) est CONSERVÉ — on n'exclut jamais sur un doute.
+    Pur (lecture injectée) → testable sans GDAL.
+    """
+    kept, dropped = [], []
+    for f in files:
+        spec = read_spec(f)
+        (dropped if (spec is not None and is_degenerate_tile(spec)) else kept).append(f)
+    return kept, dropped
+
+
+def _vrt_bounds_look_suspect(
+    bounds, *, origin_radius_m: float = 10.0, max_span_m: float = 200_000.0
+) -> bool:
+    """Vrai si l'emprise d'un VRT semble polluée par une dalle dégénérée résiduelle.
+
+    Deux signaux : l'emprise **touche l'origine du CRS** (coin à < ``origin_radius_m``
+    de 0 — impossible pour des données françaises légitimes en Lambert-93), ou elle
+    s'étend de façon **implausible** (> ``max_span_m``). Contrôle best-effort.
+    """
+    if bounds is None:
+        return False
+    xmin, ymin, xmax, ymax = bounds
+    touches_origin = abs(xmin) <= origin_radius_m or abs(ymin) <= origin_radius_m
+    span = max(xmax - xmin, ymax - ymin)
+    return touches_origin or span > max_span_m
 
 
 # _extract_xy_from_tile_name importé depuis coords
@@ -25,11 +59,16 @@ def build_vrt_index(
     *,
     pattern: str = "*.tif",
     output_name: str = "index.vrt",
+    exclude_degenerate: bool = True,
     log: LogFn = lambda _: None,
 ) -> bool:
     """
     Crée un fichier VRT (Virtual Raster) indexant tous les fichiers correspondant au pattern.
     Permet de charger toutes les dalles d'un coup dans QGIS.
+
+    ``exclude_degenerate`` (défaut) écarte les dalles « placeholder » (1×1 px /
+    posées à l'origine du CRS) : incluses, ``gdalbuildvrt`` étire l'emprise de la
+    mosaïque jusqu'à (0,0) → couches QGIS quasi vides, données réelles invisibles.
     """
     try:
         gdalbuildvrt = shutil.which("gdalbuildvrt")
@@ -40,6 +79,28 @@ def build_vrt_index(
         files = sorted(folder.glob(pattern))
         if not files:
             return False
+
+        if exclude_degenerate:
+            files, dropped = _select_vrt_inputs(files, read_spec=TileSpec.from_raster)
+            if dropped:
+                log(
+                    f"VRT {folder.name}: {len(dropped)} dalle(s) dégénérée(s) "
+                    "(1×1 / origine 0) exclue(s) de la mosaïque."
+                )
+            if not files:
+                log(f"VRT {folder.name}: aucune dalle exploitable après filtrage.")
+                return False
+
+        # Garantir un CRS exploitable sur chaque source AVANT l'indexation :
+        # gdalbuildvrt n'a pas d'option -a_srs et hérite du CRS des sources.
+        # rvt-qgis/pdal émettent parfois un TIF sans CRS (ENGCRS « unnamed ») —
+        # on le ré-étiquette EPSG:2154 (assignation, sans reprojection). No-op si
+        # un vrai CRS est déjà présent ; le VRT hérite alors d'un CRS valide.
+        for src in files:
+            try:
+                assign_crs_if_missing(src)
+            except Exception:
+                pass  # best-effort : un TIF illisible ne doit pas avorter le VRT
 
         vrt_path = folder / output_name
         # gdalbuildvrt écrase toujours le VRT de sortie : on régénère systématiquement
@@ -61,6 +122,17 @@ def build_vrt_index(
         if r.returncode != 0:
             log(f"Échec gdalbuildvrt pour {folder.name}: {r.stderr or r.stdout}")
             return False
+        # Contrôle de cohérence best-effort : une dalle dégénérée résiduelle
+        # (filtrage contourné) gonflerait l'emprise jusqu'à l'origine. On alerte,
+        # sans jamais faire échouer la finalisation.
+        try:
+            if _vrt_bounds_look_suspect(get_raster_bounds(vrt_path)):
+                log(
+                    f"⚠️ VRT {folder.name}: emprise suspecte (touche l'origine du CRS "
+                    "ou démesurée) — dalle dégénérée résiduelle ? Vérifiez le placement."
+                )
+        except Exception:
+            pass
         log(f"VRT créé: {vrt_path.relative_to(folder.parent)}")
         return True
     except Exception as e:
@@ -169,6 +241,12 @@ def copy_mnt_to_results(
         shutil.copy2(str(temp_mnt_path), str(out_path))
         log(f"MNT copié: {out_path.relative_to(indices_dir(output_dir))}")
 
+    # Garantir un CRS exploitable (EPSG:2154, assignation sans reprojection) :
+    # pdal émet parfois le MNT sans CRS « unnamed ». Idempotent (no-op si déjà
+    # étiqueté) → robuste face aux runs partiels où le fichier préexiste.
+    if assign_crs_if_missing(out_path):
+        log("CRS absent sur le MNT copié → EPSG:2154 affecté (sans reprojection)")
+
     return out_path
 
 
@@ -238,6 +316,11 @@ def copy_final_products_to_results(
             if input_path_cropped.exists() and not tif_path.exists():
                 shutil.copy2(str(input_path_cropped), str(tif_path))
                 log(f"TIF rogné copié: {tif_path.relative_to(idx_dir)}")
+                # Garantir un CRS exploitable avant toute consommation aval (CV,
+                # VRT, chargement QGIS) : rvt-qgis/pdal émettent parfois un TIF
+                # sans CRS « unnamed ». EPSG:2154, assignation sans reprojection ;
+                # no-op si un vrai CRS est déjà présent.
+                assign_crs_if_missing(tif_path)
                 if pyramids_enabled:
                     build_raster_pyramids(tif_path, levels=pyramids_levels, log=log, cancel_check=cancel_check)
 

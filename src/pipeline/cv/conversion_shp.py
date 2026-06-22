@@ -1217,8 +1217,14 @@ def create_shapefile_from_detections(
             processed_files += 1
         
         if not data_by_class_and_tile:
-            logger.warning("Aucune détection trouvée pour créer le GeoPackage")
-            return False
+            # 0 détection est un cas LÉGITIME (le modèle a tourné, rien trouvé),
+            # PAS une panne → on renvoie True (succès, rien à écrire). L'appelant
+            # distingue « 0 détection » (True + 0 GeoPackage écrit → statut
+            # "empty") d'un échec réel (False / exception → "failed") via
+            # summarize_conversion_outcome (F1). False reste réservé aux pannes :
+            # répertoire de labels absent (ci-dessus) ou exception (ci-dessous).
+            logger.info("Aucune détection à convertir (0 détection) — rien à écrire")
+            return True
         
         # Répertoire de sortie : NON créé ici. Il est créé paresseusement juste
         # avant chaque écriture (cf. routage par entité plus bas), pour ne pas
@@ -1286,8 +1292,9 @@ def create_shapefile_from_detections(
         logger.info(f"Classes regroupées par nom: {list(data_by_class_name.keys())}")
         
         # ── Post-traitement global : fusion intra-classe + suppression superpositions ──
-        # Deux étapes pilotées par ``postprocess_config`` (chargé depuis
-        # ``args.yaml`` du modèle, voir :func:`load_postprocess_config_from_model`) :
+        # Deux étapes pilotées par ``postprocess_config`` (le dict produit par
+        # :class:`model_profile.PostprocessConfig`.to_dict() — merge_adjacent,
+        # remove_overlaps, merge_buffer_m — chargé depuis ``args.yaml`` du modèle) :
         #
         # 1. ``merge_adjacent`` : fusion des polygones de même classe qui se
         #    touchent entre dalles. Utile pour les modèles de segmentation
@@ -1317,15 +1324,52 @@ def create_shapefile_from_detections(
         if _do_merge or _do_remove_overlaps:
             try:
                 from .postprocessing import postprocess_geo_detections
+                # Distance de fusion (F6) : exposée par le modèle via
+                # ``postprocess.merge_buffer_m`` (args.yaml), défaut 0,5 m.
+                _merge_buffer_m = 0.5
+                # Stratégie de suppression des superpositions (args.yaml) :
+                # "difference" (défaut, découpage) ou "relation" (fusion IoS).
+                _overlap_strategy = "difference"
+                _overlap_ios = 0.5
+                _overlap_min_area_ratio = 0.0
+                if isinstance(postprocess_config, dict):
+                    try:
+                        _mb = float(postprocess_config.get("merge_buffer_m", 0.5))
+                        if _mb > 0:
+                            _merge_buffer_m = _mb
+                    except (TypeError, ValueError):
+                        pass
+                    _strat = str(
+                        postprocess_config.get("overlap_strategy", "difference")
+                    ).strip().lower()
+                    if _strat in ("difference", "relation"):
+                        _overlap_strategy = _strat
+                    try:
+                        _ios = float(postprocess_config.get("overlap_ios_threshold", 0.5))
+                        if 0 < _ios <= 1:
+                            _overlap_ios = _ios
+                    except (TypeError, ValueError):
+                        pass
+                    try:
+                        _ratio = float(postprocess_config.get("overlap_min_area_ratio", 0.0))
+                        if 0 <= _ratio <= 1:
+                            _overlap_min_area_ratio = _ratio
+                    except (TypeError, ValueError):
+                        pass
                 logger.info(
                     f"Post-traitement géo: {total_raw} détections brutes sur {processed_files} dalles "
-                    f"(task={model_task}, merge={_do_merge}, remove_overlaps={_do_remove_overlaps})"
+                    f"(task={model_task}, merge={_do_merge}, remove_overlaps={_do_remove_overlaps}, "
+                    f"merge_buffer_m={_merge_buffer_m}, overlap_strategy={_overlap_strategy}, "
+                    f"overlap_ios={_overlap_ios}, overlap_min_area_ratio={_overlap_min_area_ratio})"
                 )
                 data_by_class_name = postprocess_geo_detections(
                     data_by_class_name,
-                    merge_buffer_m=0.5,
+                    merge_buffer_m=_merge_buffer_m,
                     do_merge=_do_merge,
                     do_remove_overlaps=_do_remove_overlaps,
+                    overlap_strategy=_overlap_strategy,
+                    overlap_ios_threshold=_overlap_ios,
+                    overlap_min_area_ratio=_overlap_min_area_ratio,
                 )
                 total_pp = sum(len(v) for v in data_by_class_name.values())
                 logger.info(f"Post-traitement géo terminé: {total_raw} -> {total_pp} détections")

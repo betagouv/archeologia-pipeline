@@ -36,7 +36,7 @@ from qgis.PyQt.QtWidgets import (
 from ..app.progress_reporter import USER_INFO
 from ..app.progress_stages import STAGE_LABELS, build_stage_sequence
 from .icons import colored_icon
-from .layer_loader import load_result_layers
+from .layer_loader import load_result_layers, purge_output_dir_layers
 from .log_bridge import QtLogEmitter, QtLogHandler
 
 # Couleurs par niveau dans le journal sombre (#1c1b18) : warnings ambre,
@@ -482,6 +482,12 @@ class RunView(QWidget):
         for w in warnings:
             self._logger.warning(w)
         self._logger.log(USER_INFO, "Lancement du pipeline…")
+
+        # Re-run dans le même dossier : retirer les couches VRT/GPKG périmées encore
+        # chargées (run précédent) AVANT que le worker régénère les VRT. Sinon QGIS,
+        # qui détient toujours l'ancien dataset, réécrit sa version périmée par-dessus
+        # le VRT régénéré → les dalles ajoutées resteraient invisibles. Thread principal.
+        purge_output_dir_layers(ctx.output_dir, self._logger)
 
         self._running = True
         self._run_started_at = time.monotonic()

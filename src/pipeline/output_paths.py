@@ -70,6 +70,17 @@ def indice_base_dir(output_dir: Path, product_name: str) -> Path:
     return indices_dir(output_dir) / product_name
 
 
+def index_vrt_filename(product_name: str) -> str:
+    """Nom du VRT d'index d'un produit : ``index_<PRODUCT>.vrt``.
+
+    Reproduit le **nom de couche** affecté à l'ouverture dans QGIS (``ui/layer_loader``
+    → ``index_<rvt_type>``, ``rvt_type`` = nom du dossier produit) pour que le fichier
+    soit identifiable sur disque et au chargement manuel — là où tous les ``index.vrt``
+    génériques étaient indistinguables. ``product_name`` vide → repli ``index.vrt``.
+    """
+    return f"index_{product_name}.vrt" if product_name else "index.vrt"
+
+
 # ------------------------------------------------------------------ #
 #  Détections (CV)                                                      #
 # ------------------------------------------------------------------ #

@@ -279,7 +279,8 @@ Cette grille indique, pour chaque vague livrée, **quelles sections de tests son
 
 ## 14. Finalisation
 
-- [ ] **14.1** VRT générés pour `tif/`, `jpg/`, `annotated_images/`
+- [ ] **14.1** VRT générés dans chaque `indices/<PRODUIT>/tif/`
+  - [ ] **14.1.a Nom distinctif** : le fichier s'appelle `index_<PRODUIT>.vrt` (ex. `index_MNT.vrt`, `index_CVAT.vrt`, `index_SLO_U0_V1.vrt`) — **pas** le générique `index.vrt` — et correspond au nom de la couche dans QGIS (`index_<PRODUIT>`). Au chargement manuel d'un `.vrt` depuis l'explorateur, le nom de couche est donc immédiatement identifiable.
 - [ ] **14.2 Shapefiles collectés et chargés dans QGIS**
   - Vérifier le style par confiance (couleurs par bin)
 - [ ] **14.3 Zoom automatique sur l'étendue des résultats**
@@ -288,7 +289,7 @@ Cette grille indique, pour chaque vague livrée, **quelles sections de tests son
   - [ ] **14.3.c** Re-run avec la **même** sortie (couches déjà présentes dans le projet) : les logs indiquent « Couche … déjà présente », et le zoom doit **quand même** se déclencher sur l'étendue cumulée.
 - [ ] **14.4** Logs de fin de pipeline (`StructuredLogger.end_pipeline`)
 - [ ] **14.5 CRS des sorties = EPSG:2154 (pas de « unnamed »)**
-  - Après un run `local_laz`/`ign_laz` sur dalle(s) LiDAR HD : `gdalsrsinfo -o epsg <output>/indices/MNT/tif/index.vrt` → **EPSG:2154** (et non `EPSG:-1`)
+  - Après un run `local_laz`/`ign_laz` sur dalle(s) LiDAR HD : `gdalsrsinfo -o epsg <output>/indices/MNT/tif/index_MNT.vrt` → **EPSG:2154** (et non `EPSG:-1`)
   - Vérifier qu'aucun message **« Pas de transformation disponible entre unnamed et EPSG:2154 / Point outside of projection domain »** n'apparaît au chargement/zoom
   - Cas où le MNT sortait en CRS local : log attendu `CRS absent/local sur le MNT → affecté EPSG:2154` (côté pipeline) ou `CRS absent/local sur « … » → affecté EPSG:2154` (garde-fou chargement)
   - Les couches chargées s'affichent bien en Lambert-93 et le zoom se centre sur la zone (cf. §14.3)
@@ -408,7 +409,7 @@ Cette grille indique, pour chaque vague livrée, **quelles sections de tests son
 
 - [ ] **21.1 Visibilité du bouton** : « Sélectionner les dalles » visible **uniquement** en mode `ign_laz` (masqué dans les autres modes).
 - [ ] **21.2 Activation** : clic → la couche « Quadrillage IGN LiDAR HD » apparaît (contour seul, intérieur transparent) dans un groupe « Quadrillage IGN » ; **seul le dialogue du plugin se minimise** (la fenêtre QGIS reste affichée, le canevas visible) ; une barre de message QGIS « Valider (0 dalle) / Tout effacer / Annuler » s'affiche.
-- [ ] **21.3 Orientation + garde (U1)** : depuis une vue monde/ailleurs, le clic sur le bouton **recadre sur la France** ; tant que la vue est trop dézoomée (grille masquée), un clic/encadré **ne sélectionne rien** et affiche « Zoomez davantage… » ; après zoom, la sélection fonctionne. Dézoomé sur toute la France, la grille n'est pas dessinée (pas de figeage) ; en zoomant elle apparaît et reste fluide (index `.qix`).
+- [ ] **21.3 Orientation + garde (U1)** : depuis une vue monde/ailleurs, le clic sur le bouton **zoome automatiquement à une échelle où la grille rend**, centré sur la zone visée (bornée à la France) ; tant que la vue est trop dézoomée (grille masquée), un clic/encadré **ne sélectionne rien** et affiche « Zoomez davantage… » ; après zoom, la sélection fonctionne. Dézoomé sur toute la France, la grille n'est pas dessinée (pas de figeage) ; en zoomant elle apparaît et reste fluide (index `.qix`).
 - [ ] **21.4 Clic toggle + estimation (U2)** : cliquer une dalle → surlignée ; recliquer → désélectionnée ; le bouton affiche « Valider (N dalles ≈ X–Y Go/Mo) ».
 - [ ] **21.5 Glisser-boîte (ajout)** : tracer un rectangle → toutes les dalles intersectées s'ajoutent ; rectangle **orange** ; compteur à jour.
 - [ ] **21.5 bis Glisser-boîte + Ctrl (retrait)** : **Ctrl** enfoncé → rectangle **gris** ; encadrer des dalles sélectionnées → elles sont **retirées** ; compteur à jour.
@@ -423,3 +424,31 @@ Cette grille indique, pour chaque vague livrée, **quelles sections de tests son
 - [ ] **21.12 Lecture seule pendant un run** : lancer un run, revenir à l'étape 1 → bouton désactivé ; si une sélection était active au lancement, elle est refermée proprement.
 - [ ] **21.13 Fermeture / rechargement pendant la sélection** : fermer le dialogue (croix) ou recharger le plugin pendant une sélection active → pas de crash, pas d'outil-carte ni de couche orphelins.
 - [ ] **21.14 Quadrillage absent** : renommer le `.shp` → clic sur le bouton affiche un message clair, l'outil ne s'active pas.
+- [ ] **21.15 Persistance de la liste (reprise après interruption)** : lancer un run `ign_laz` à partir d'une **sélection sur carte**. Dès le début du téléchargement, `<output_dir>/dalles_urls.txt` est créé (lignes `nom,url`, en-tête `#`) et le journal indique « Liste des dalles enregistrée: dalles_urls.txt ». **Interrompre** le run après quelques dalles → le fichier est toujours présent et complet (toutes les dalles sélectionnées, pas seulement celles téléchargées).
+- [ ] **21.16 Reprise** : relancer en mode `ign_laz` avec ce `dalles_urls.txt` comme source et le **même** `output_dir` → les dalles déjà présentes dans `sources/dalles/` sont **sautées** (« déjà téléchargé »), seules les manquantes sont récupérées.
+
+> **Consolidation affichage (anti-« grille absente, réparée par redémarrage »)** — ⭐ P0
+
+- [ ] **21.17 Rendu fiable à l'activation (régression bug principal)** : zoomé sur une ville (échelle ≤ 1:1 500 000), cliquer « Sélectionner les dalles » → le quadrillage orange **apparaît immédiatement** (pas besoin de déplacer/zoomer). Répéter activer → Annuler **5 fois de suite** → la grille s'affiche **à chaque fois** (plus d'intermittence). Le journal Python QGIS montre `Quadrillage : chargement frais …` ou `… → reuse/readd`.
+- [ ] **21.18 Réutilisation avec nœud retiré de l'arbre** : pendant une sélection active, supprimer **manuellement** la couche « Quadrillage IGN LiDAR HD » depuis le panneau Couches, puis relancer la sélection → la grille **réapparaît** (ré-ajoutée au groupe, journal `… in_tree=False → readd`), pas de couche orpheline invisible.
+- [ ] **21.19 Recadrage métropole (remplace l'ancien U1)** : depuis une vue trop dézoomée (monde / hors France), cliquer le bouton → la vue **se recadre sur la France métropolitaine** (Brest→Strasbourg, Lille→Perpignan). À cette échelle la grille reste masquée (le bandeau 21.20 invite à zoomer). **Si la vue est déjà zoomée** sur une zone (grille visible), cliquer le bouton **ne change pas la vue** (on ne perturbe pas une vue de travail).
+- [ ] **21.20 Bandeau persistant + suivi d'échelle** : trop dézoomé → un bandeau **persistant** « Zoomez pour afficher les dalles — échelle 1:N (requise ≤ 1:1 500 000) » reste affiché et **le N se met à jour** en zoomant ; il **disparaît** dès que la grille devient visible ; il **réapparaît** en dézoomant à nouveau ; il est **absent** après Annuler/Valider (pas de signal `scaleChanged` fuité — vérifier qu'aucun bandeau ne ré-apparaît en zoomant après la fin de la sélection).
+- [ ] **21.21 Échec d'enregistrement (robustesse ré-entrée)** : rendre `data/temp_zones` non inscriptible (ou la verrouiller), sélectionner des dalles puis Valider → message « Échec de l'enregistrement », la **sélection est conservée**, « Annuler » fonctionne, et **après**, « Sélectionner les dalles » est de nouveau **cliquable** (le bouton ne reste jamais grisé bloqué).
+- [ ] **21.22 Auto-réparation d'état périmé** : changer l'outil-carte QGIS (p. ex. « Identifier les entités ») **pendant** une sélection active, puis recliquer « Sélectionner les dalles » → l'état périmé est nettoyé (journal `… état périmé … → nettoyage`) puis la sélection se ré-active proprement, **sans double barre de message**.
+
+---
+
+## 22. Re-run dans le même dossier de sortie (ajout de dalle, VRT régénéré) ⭐ P0
+
+> **Contexte** : un re-run dans le **même** `output_dir` régénérait bien les `index_<PRODUIT>.vrt`
+> sur disque, mais comme les couches du run précédent restaient chargées, QGIS
+> réécrivait sa version périmée par-dessus → les dalles ajoutées étaient invisibles.
+> Parade : purge des couches du dossier au **lancement** du run (thread principal,
+> avant la régénération) + relecture défensive d'une couche réutilisée.
+
+- [ ] **22.1 Premier run** : lancer un run `ign_laz`/`local_laz` sur ≥ 2 dalles contiguës dans un `output_dir` neuf → couches `index_*` chargées, mosaïque complète. **Ne pas fermer QGIS.**
+- [ ] **22.2 Re-run avec dalle ajoutée** : relancer dans **le même** `output_dir` en ajoutant 1 dalle (distante de préférence). Au lancement, le journal indique « N couche(s) périmée(s) … retirée(s) avant régénération ». À la fin, les couches `index_*` affichent **toutes** les dalles (ancienne(s) + nouvelle).
+- [ ] **22.3 Vérif disque** : dans `indices/<PRODUIT>/tif/index_<PRODUIT>.vrt`, le nombre de `<SourceFilename>` = nombre de TIF présents (toutes dalles incluses), **sans** balise `<OverviewList resampling="nearest">` ni bloc `STATISTICS_*` parasite (signature d'une réécriture QGIS périmée).
+- [ ] **22.4 Persistance** : sauvegarder le projet QGIS puis le rouvrir → toujours toutes les dalles visibles.
+- [ ] **22.5 Dossier différent (non-régression)** : relancer dans un `output_dir` **différent** → aucune couche du premier run n'est retirée ; fonds de carte, polygone d'emprise (étape 1) et couche quadrillage restent **intacts** (jamais purgés).
+- [ ] **22.6 Détections** : si des détections existent, le re-run rafraîchit aussi les couches `detections/<entité>/*.gpkg` (pas de doublon, données à jour).

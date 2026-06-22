@@ -18,15 +18,34 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Optional, Sequence, Tuple
 
-from .tilespec import TileSpec, crs_is_projected
+from .tilespec import (
+    TileSpec,
+    crs_is_projected,
+    partition_degenerate,
+    same_crs_geometry,
+)
 
 RASTER_EXTS = {".tif", ".tiff", ".asc"}
+
+# Raison de mise à l'écart des dalles « placeholder » (1×1 px / posées à l'origine
+# du CRS) — exploitée par le preflight pour les compter et avertir l'utilisateur.
+DEGENERATE_SKIP_REASON = "placeholder dégénéré (1×1 px / origine ≈ 0,0)"
 
 
 def _epsg_code(crs: Optional[str]) -> Optional[str]:
     """Extrait le code EPSG d'un authid (« EPSG:2154 » → « 2154 »), sinon None."""
     m = re.match(r"^\s*EPSG:(\d+)\s*$", str(crs or ""), re.IGNORECASE)
     return m.group(1) if m else None
+
+
+def _short_crs(crs: Optional[str]) -> str:
+    """Libellé court d'un CRS pour les messages utilisateur : authid si présent,
+    sinon le nom du PROJCS/PROJCRS du WKT, sinon « CRS projeté custom »."""
+    code = _epsg_code(crs)
+    if code:
+        return f"EPSG:{code}"
+    m = re.match(r'\s*PROJ(?:CS|CRS)\[\s*"([^"]+)"', str(crs or ""))
+    return m.group(1) if m else "CRS projeté custom"
 
 
 def same_epsg(a: Optional[str], b: Optional[str]) -> Optional[bool]:
@@ -49,6 +68,7 @@ class IngestPlan:
     mosaicable: bool                    # CRS + résolution uniformes et > 1 dalle
     skipped: List[Tuple[Path, str]]     # (chemin, raison)
     warnings: List[str]
+    crs_verified: bool = True           # False si CRS accepté faute de pouvoir le classer
 
     @property
     def summary(self) -> str:
@@ -82,6 +102,19 @@ def plan_from_specs(
     tiles = list(tiles)
     warnings: List[str] = []
 
+    # Retirer les dalles « dégénérées » (placeholder 1×1 px / posées à l'origine du
+    # CRS) AVANT toute validation : incluses dans un gdalbuildvrt, elles étirent
+    # l'emprise de la mosaïque jusqu'à (0,0) → couches QGIS quasi vides. Filtrées
+    # avant le contrôle CRS pour qu'un placeholder sans CRS ne déclenche pas
+    # l'erreur dure « CRS introuvable ».
+    tiles, degenerate = partition_degenerate(tiles)
+    if degenerate:
+        skipped_list.extend((d.source_path, DEGENERATE_SKIP_REASON) for d in degenerate)
+        warnings.append(
+            f"{len(degenerate)} dalle(s) dégénérée(s) ignorée(s) "
+            "(1×1 px / origine ≈ 0,0) — exclues de la mosaïque."
+        )
+
     if not tiles:
         raise IngestValidationError(
             "Aucune dalle raster exploitable (toutes illisibles ou vides)."
@@ -103,24 +136,51 @@ def plan_from_specs(
             "Reprojetez vos entrées dans un CRS commun avant traitement."
         )
     run_crs = distinct[0]
-    projected = crs_is_projected(run_crs)
-    if projected is None:
-        raise IngestValidationError(
-            f"CRS « {run_crs} » non interprétable comme projeté. Utilisez un CRS projeté en mètres."
-        )
-    if projected is False:
-        raise IngestValidationError(
-            f"CRS géographique (degrés) « {run_crs} » non supporté : les indices RVT exigent un "
-            "CRS projeté en mètres. Reprojetez vos entrées (ex. EPSG:2154)."
-        )
+    crs_verified = True
 
-    # CRS attendu (GEO-02) : refuser un CRS projeté mais ≠ celui du pipeline.
+    # CRS attendu (GEO-02) : refuser un CRS projeté mais ≠ celui du pipeline (ex. Lambert-II
+    # EPSG:27572). Comparaison purement textuelle (codes EPSG) → indépendante de tout backend.
     if expected_crs is not None and same_epsg(run_crs, expected_crs) is False:
         raise IngestValidationError(
             f"CRS « {run_crs} » différent du CRS attendu « {expected_crs} » (Lambert-93). "
             "Le pipeline étiquette toutes les sorties en EPSG:2154 : un autre CRS placerait "
             "les détections au mauvais endroit. Reprojetez vos entrées en EPSG:2154."
         )
+
+    # Garde-fou : si le code EPSG est celui attendu (CRS projeté connu), c'est valide par
+    # définition — inutile d'exiger un backend géo pour le confirmer (corrige le faux
+    # « EPSG:2154 non interprétable » quand rasterio manque dans QGIS).
+    confirmed_by_epsg = expected_crs is not None and same_epsg(run_crs, expected_crs) is True
+
+    if not confirmed_by_epsg:
+        projected = crs_is_projected(run_crs)
+        if projected is False:
+            raise IngestValidationError(
+                f"CRS géographique (degrés) « {run_crs} » non supporté : les indices RVT exigent "
+                "un CRS projeté en mètres. Reprojetez vos entrées (ex. EPSG:2154)."
+            )
+        if projected is None:
+            # Ni interprétable par un backend, ni confirmé par correspondance EPSG : on n'est
+            # pas SÛR que ce soit faux → avertir au lieu de bloquer (le pipeline ré-affecte 2154).
+            crs_verified = False
+            warnings.append(
+                f"CRS « {run_crs} » non vérifiable (aucun backend de lecture raster disponible) — "
+                "vérifiez que vos entrées sont en EPSG:2154, sinon les détections seront mal placées."
+            )
+        elif expected_crs is not None:
+            # Garde-fou (utilisateur : « avertir, ne pas forcer ») : CRS projeté SANS code
+            # EPSG comparable (WKT). On mesure géométriquement s'il place les coordonnées
+            # comme le CRS attendu — un Lambert-93 custom (datum « unnamed ») passe ; un
+            # autre CRS projeté (UTM, Lambert-II…) déclenche un avertissement NON bloquant.
+            geom = same_crs_geometry(run_crs, expected_crs)
+            if geom is False:
+                crs_verified = False
+                warnings.append(
+                    f"CRS projeté « {_short_crs(run_crs)} » différent géométriquement du CRS "
+                    f"attendu « {expected_crs} » (Lambert-93) — le pipeline étiquette les sorties "
+                    "en EPSG:2154 : vos indices/détections seront mal placés. "
+                    "Reprojetez vos entrées en EPSG:2154."
+                )
 
     # --- Résolution : avertir seulement (décision 4) ---
     resolutions = {
@@ -152,6 +212,7 @@ def plan_from_specs(
         mosaicable=mosaicable,
         skipped=skipped_list,
         warnings=warnings,
+        crs_verified=crs_verified,
     )
 
 

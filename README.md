@@ -3,7 +3,7 @@
 Plugin QGIS pour exécuter un pipeline de traitement LiDAR et produire des rasters de type MNT / densité / indices RVT, avec une étape optionnelle de détection / segmentation par *computer vision*.
 
 - Nom du plugin : **ArchéologIA**
-- Version : **0.6.0**
+- Version : **0.7.3**
 - QGIS : **3.34+ (Qt5) ou 4.x (Qt6)** — base de code unique
 
 ## Fonctionnalités
@@ -35,7 +35,7 @@ Le pipeline peut être lancé dans plusieurs modes (selon l’UI/config) :
   - **Polygone de zone** : un fichier vecteur (`.shp/.geojson/.gpkg`) intersecté avec la grille IGN par `tile_resolver.py`.
   - **Liste de dalles** : un `.txt` de `nom,url` (ou d'URLs) déjà préparé.
 - `local_laz` : consommation de tuiles LAZ/LAS déjà présentes localement.
-- `existing_mnt` : calcul d'indices RVT à partir d'un MNT existant. Supporte les MNT au format dalle IGN 1 km (ex. `LHD_FXX_xxxx_yyyy_*`), les MNT plus petits (< 1 km, emprise native conservée) **et les MNT de grande emprise** (plusieurs km²) qui sont traités **d'un seul bloc** : les indices RVT sont calculés sur le raster complet et SAHI assure le slicing 640 × 640 à l'inférence CV. Voir la section [MNT / RVT non-IGN](#mnt--rvt-non-ign--traitement-des-grandes-emprises).
+- `existing_mnt` : calcul d'indices RVT à partir d'un MNT existant. Supporte les MNT au format dalle IGN 1 km (ex. `LHD_FXX_xxxx_yyyy_*`), les MNT plus petits (< 1 km, emprise native conservée) **et les MNT de grande emprise** (plusieurs km²) qui sont traités **d'un seul bloc** : les indices RVT sont calculés sur le raster complet et SAHI assure le slicing 640 × 640 à l'inférence CV. Voir la section [MNT / RVT non-IGN](#mnt--rvt-non-ign--traitement-des-grandes-emprises). Formats acceptés : GeoTIFF (`.tif`/`.tiff`) ou grille ASCII ESRI (`.asc`).
 - `existing_rvt` : opérations sur RVT existants (TIF). Dans ce mode, le dossier de sortie est `indices/RVT/` (nom générique) ; dans les autres modes, le nom du dossier combine le code de l'indice **et ses paramètres RVT** (`SVF_R10_D16_V1_N0`, `LD_A15_Rmin10_Rmax20_H1p7_V1`, etc.), si bien que relancer avec d'autres paramètres ne réécrit pas les dossiers existants (cf. la section *Sorties*). Comme pour `existing_mnt`, les rasters RVT de grande emprise sont **traités sans pré-découpage** : la limite PIL `MAX_IMAGE_PIXELS` est désactivée et SAHI découpe l'image en mémoire au moment de l'inférence.
 
 ## Pré-requis
@@ -97,7 +97,7 @@ Ces dépendances sont disponibles dans l'environnement QGIS standard.
    - `Profils utilisateurs` → `Ouvrir le dossier du profil actif`
 3. Ouvrir le dossier :
    - `python/plugins`
-4. Dézipper le ZIP `main.zip` : on obtient le dossier :
+4. Dézipper le ZIP `ArcheologIA_v<version>.zip` (ex. `ArcheologIA_v0.7.0.zip`) : on obtient le dossier :
    - `archeologia`
 5. Copier le dossier `archeologia` dans `python/plugins`.
 6. Fermer puis relancer QGIS.
@@ -335,10 +335,11 @@ sahi:
   slice_width: 1032
 
 # (Optionnel) Désactiver certaines étapes de post-processing global.
-# Défauts : merge_adjacent=true, remove_overlaps=true.
+# Défauts : merge_adjacent=true, remove_overlaps=true, merge_buffer_m=0.5.
 postprocess:
   merge_adjacent: false   # ex. cratères disjoints → on ne fusionne pas
   remove_overlaps: true
+  merge_buffer_m: 0.5     # distance MAX (m) de fusion intra-classe (vraie distance)
 
 clustering:
   - target_classes: ["cratere_obus"]
@@ -360,7 +361,7 @@ clustering:
 
 Valeurs possibles pour `task` : `detect`, `instance_segmentation`, `semantic_segmentation`.
 
-La section `postprocess` est optionnelle. Si elle est absente, les valeurs par défaut historiques s'appliquent (`merge_adjacent=true`, `remove_overlaps=true`). C'est utile pour des classes où la fusion intra-classe est indésirable (ex. détections ponctuelles disjointes telles que des cratères d'obus).
+La section `postprocess` est optionnelle. Si elle est absente, les valeurs par défaut historiques s'appliquent (`merge_adjacent=true`, `remove_overlaps=true`, `merge_buffer_m=0.5`). C'est utile pour des classes où la fusion intra-classe est indésirable (ex. détections ponctuelles disjointes telles que des cratères d'obus). `merge_buffer_m` est la **vraie distance** (en mètres) en deçà de laquelle deux polygones de même classe sont fusionnés (test `dwithin`, et non l'intersection de polygones bufferisés qui doublait la portée).
 
 Le clustering DBSCAN est optionnel. Si la section `clustering` est absente de `args.yaml`, il est désactivé. Les classes générées par clustering contournent le filtre `selected_classes` et sont toujours incluses dans les shapefiles. La logique se trouve dans `src/pipeline/cv/clustering.py` (DBSCAN avec hystérésis et pondération par confiance).
 
@@ -463,7 +464,7 @@ output_dir/
     dalles/                              # Fichiers LAZ/LAS sources (modes local_laz / ign_laz)
   indices/
     MNT/                                 # MNT/Densité : pas de paramètres → code brut
-      tif/                               # GeoTIFF MNT
+      tif/                               # GeoTIFF des dalles + index_MNT.vrt (mosaïque)
     LD_A15_Rmin10_Rmax20_H1p7_V1/        # Nom = code indice + paramètres RVT utilisés
       tif/
       png/                               # Images d'inférence (entrée Computer Vision)
@@ -490,6 +491,8 @@ dossier hérité non suffixé (`indices/LD/`) n'est pas supprimé. Sur des `outp
 attention à la limite Windows MAX_PATH (260 caractères) avec ces noms plus longs.
 
 En mode `existing_rvt`, le dossier d'indices est `indices/RVT/` (nom générique, paramètres inconnus).
+
+Chaque dossier `<PRODUIT>/tif/` contient une **mosaïque VRT** nommée `index_<PRODUIT>.vrt` (`index_MNT.vrt`, `index_SVF_R10_D16_V1_N0.vrt`, `index_COUVERTURE.vrt`…) — c'est le fichier à charger dans QGIS. Son nom reprend celui de la couche, donc reste identifiable lors d'un chargement manuel (et non un générique `index.vrt`).
 
 Les GeoTIFF peuvent contenir des **overviews** si l'option pyramides est activée et si `gdaladdo` est disponible.
 
@@ -670,7 +673,7 @@ flowchart TD
         D0 --> D1["conversion_shp.create_shapefile_from_detections()"]
         D1 --> D2["postprocessing.postprocess_geo_detections()"]
         D2 --> D2a["1. Validation géométries (shapely make_valid)"]
-        D2a --> D2b["2. Fusion intra-classe (buffer 0.5m → unary_union → débuffer)"]
+        D2a --> D2b["2. Fusion intra-classe (connexion dwithin 0.5m → buffer/union/débuffer)"]
         D2b --> D2c["3. Suppression superpositions inter-classes (par confiance)"]
         D2c --> D3["clustering.py → DBSCAN confidence-weighted (si config args.yaml)"]
         D3 --> D4["Écriture shapefiles par classe (geopandas)\nFiltre selected_classes (None=tout, []=rien, [x,y]=filtre)"]
@@ -960,7 +963,7 @@ Le script :
 
 ### Tâche 4 — Packager le plugin (ZIP)
 
-Crée un fichier `main.zip` prêt à être installé dans QGIS via *Installer depuis un ZIP*.
+Crée un fichier `ArcheologIA_v<version>.zip` (le nom reflète la version lue dans `metadata.txt`, ex. `ArcheologIA_v0.7.0.zip`) prêt à être installé dans QGIS via *Installer depuis un ZIP*.
 
 ```bash
 python dev/package_plugin.py

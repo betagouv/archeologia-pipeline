@@ -30,6 +30,10 @@ class_color_registry.json
 # chemins personnels ; le dépôt distant est public).
 AUDIT*.md
 
+# Documentation locale non versionnée (docs utilisateur .docx, runbook OVH avec
+# login/chemins perso, plans internes ; le dépôt distant est public).
+dev/docs/_local/
+
 # Logs
 *.log
 pipeline_log_*.txt
@@ -59,3 +63,15 @@ data/models/**
 
 # Data: quadrillage France (large shapefile, not versioned)
 data/quadrillage_france/
+
+# Fichiers de mot de passe HTTP Basic (dépôt QGIS OVH) — jamais versionnés
+htpasswd.txt
+.htpasswd
+
+# Portage calcul OVH : TOUT dev/ovh/ reste LOCAL — JAMAIS poussé sur ce dépôt PUBLIC.
+# Infra interne (Dockerfile, runner headless, submit.py, plugin tiers vendoré rvt-qgis,
+# config compte OVH). Le versionnage éventuel se fera sur un dépôt privé séparé.
+dev/ovh/
+# Plan d'infra OVH + .dockerignore (build de l'image dev/ovh) : internes, hors public.
+dev/docs/PLAN_PORTAGE_CALCUL_OVH.md
+.dockerignore

@@ -375,6 +375,28 @@ class TestNewNarratorEvents:
         assert "2/5" in msg
         assert "…" in msg
 
+    def test_download_tile_progress_success_says_downloaded(self):
+        narrator, reporter = self._make()
+        narrator.download_tile_progress(1, 1, "T1", success=True)
+        msg, _group = reporter.user_info_transient.call_args[0]
+        assert "téléchargée" in msg
+        assert "échec" not in msg
+
+    def test_download_tile_progress_failure_says_failed_not_downloaded(self):
+        # Bug : la sous-progression affichait « téléchargée » même en échec.
+        narrator, reporter = self._make()
+        narrator.download_tile_progress(1, 1, "T1", success=False)
+        msg, _group = reporter.user_info_transient.call_args[0]
+        assert "échec" in msg
+        assert "téléchargée" not in msg
+
+    def test_download_tile_progress_defaults_to_success(self):
+        # Rétro-compat : sans argument explicite, comportement « téléchargée ».
+        narrator, reporter = self._make()
+        narrator.download_tile_progress(1, 1, "T1")
+        msg, _group = reporter.user_info_transient.call_args[0]
+        assert "téléchargée" in msg
+
     def test_merging_tile_progress_routes_to_transient(self):
         """Sous-progression de la fusion : canal transient avec son
         group dédié."""

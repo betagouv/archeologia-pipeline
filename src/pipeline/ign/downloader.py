@@ -27,6 +27,11 @@ except ImportError:
 from ..cancellation import PipelineCancelled
 from .coords_fallback import build_sorted_records_with_fallback
 
+try:  # fallback standalone (tests : src/ sur le path)
+    from ...app.services.proxy_config import build_proxy_url, is_pac_like
+except ImportError:  # pragma: no cover
+    from app.services.proxy_config import build_proxy_url, is_pac_like
+
 
 from .pdal_validation import validate_las_or_laz_with_pdal, validate_laz_deep
 
@@ -151,41 +156,48 @@ def _default_cancel() -> bool:
     return False
 
 
-def _get_qgis_proxy_settings() -> Optional[Dict[str, str]]:
+def _get_qgis_proxy_settings(log: LogFn = _default_log) -> Optional[Dict[str, str]]:
     """Récupère les paramètres proxy depuis les settings QGIS.
-    
+
     Retourne:
     - Dict avec proxy si configuré dans QGIS: {'http': 'http://host:port', 'https': 'http://host:port'}
     - None si pas de proxy QGIS (utiliser le proxy système)
     """
     if not HAS_QGIS:
         return None
-    
+
     try:
         settings = QSettings()
         proxy_enabled = settings.value("proxy/proxyEnabled", False, type=bool)
         if not proxy_enabled:
             return None
-        
+
         proxy_host = settings.value("proxy/proxyHost", "", type=str)
         proxy_port = settings.value("proxy/proxyPort", "", type=str)
         proxy_user = settings.value("proxy/proxyUser", "", type=str)
         proxy_password = settings.value("proxy/proxyPassword", "", type=str)
-        
+
         if not proxy_host:
             return None
-        
-        # Construire l'URL du proxy
-        if proxy_user and proxy_password:
-            proxy_url = f"http://{proxy_user}:{proxy_password}@{proxy_host}"
-        elif proxy_user:
-            proxy_url = f"http://{proxy_user}@{proxy_host}"
-        else:
-            proxy_url = f"http://{proxy_host}"
-        
-        if proxy_port:
-            proxy_url = f"{proxy_url}:{proxy_port}"
-        
+
+        # URL d'auto-configuration (PAC/WPAD) : ce n'est PAS un proxy direct
+        # utilisable par requests (le chemin ``/xxx.pac`` est ignoré). On
+        # l'ignore explicitement avec un message actionnable au lieu de
+        # fabriquer une URL cassée — c'était la cause du bug
+        # ``http://http://host/proxy.pac`` → ``Failed to resolve 'http'``.
+        if is_pac_like(proxy_host):
+            log(
+                f"⚠️ Proxy QGIS ignoré : « {proxy_host} » est une URL "
+                "d'auto-configuration (PAC), non prise en charge en "
+                "téléchargement direct. Définissez un proxy hôte:port explicite "
+                "(QGIS → Préférences → Réseau) ou les variables "
+                "HTTP_PROXY / HTTPS_PROXY. Repli sur le proxy système…"
+            )
+            return None
+
+        # ``build_proxy_url`` retire tout schéma déjà présent avant de préfixer
+        # ``http://`` (sinon double ``http://`` sur un host déjà schémé).
+        proxy_url = build_proxy_url(proxy_host, proxy_port, proxy_user, proxy_password)
         return {"http": proxy_url, "https": proxy_url}
     except Exception:
         return None
@@ -205,7 +217,7 @@ def _get_proxy_config(log: LogFn = _default_log) -> Dict[str, str]:
     l'utilisateur a configuré un proxy dans QGIS, on l'utilise et on laisse
     ``requests`` gérer les échecs éventuels (avec les retries du download).
     """
-    qgis_proxy = _get_qgis_proxy_settings()
+    qgis_proxy = _get_qgis_proxy_settings(log=log)
     if qgis_proxy:
         proxy_url = qgis_proxy.get("http", "")
         # Masquer le mot de passe dans les logs
@@ -507,12 +519,12 @@ def download_ign_dalles(
     stage: StageFn = _default_stage,
     cancel: CancelFn = _default_cancel,
     max_workers: Optional[int] = None,
-    on_tile_done: Optional[Callable[[int, int, str], None]] = None,
+    on_tile_done: Optional[Callable[[int, int, str, bool], None]] = None,
 ) -> IgnDownloadResult:
     """Télécharge les dalles IGN listées dans ``input_file``.
 
     ``on_tile_done`` (optionnel) est invoqué après chaque dalle traitée
-    avec ``(completed_index_1based, total, filename)`` — le caller s'en
+    avec ``(completed_index_1based, total, filename, success)`` — le caller s'en
     sert pour remonter une sous-progression à l'utilisateur (ligne
     réécrite dans le journal). Les téléchargements parallèles ne
     garantissent pas l'ordre des appels (``completed_index`` reflète
@@ -570,7 +582,7 @@ def download_ign_dalles(
             current = completed_count[0]
         if on_tile_done is not None:
             try:
-                on_tile_done(current, total, result.filename)
+                on_tile_done(current, total, result.filename, result.success)
             except Exception:
                 pass
 
@@ -613,7 +625,7 @@ def download_ign_dalles(
                     current = completed_count[0]
                 if on_tile_done is not None:
                     try:
-                        on_tile_done(current, total, task.filename)
+                        on_tile_done(current, total, task.filename, False)
                     except Exception:
                         pass
 
@@ -628,6 +640,17 @@ def download_ign_dalles(
     # qui vient juste de cliquer Annuler (AUDIT v2 ROB-17).
     if cancel():
         raise PipelineCancelled()
+
+    # Aucune dalle aboutie (réseau coupé / proxy invalide) : on s'arrête ICI avec
+    # un message actionnable, au lieu de laisser l'échec remonter en aval sous une
+    # forme opaque — soit « Impossible de déterminer les coordonnées des dalles »
+    # (tri sur liste vide), soit « fichier central introuvable » au stade fusion.
+    if downloaded[0] == 0 and skipped[0] == 0:
+        raise RuntimeError(
+            f"Aucune dalle téléchargée ({failed[0]}/{total} en échec). "
+            "Vérifiez votre connexion réseau et la configuration du proxy "
+            "(QGIS → Préférences → Réseau)."
+        )
 
     # Tri final + fallback coords (Option B): si coords absentes, on infère via PDAL et on renomme le fichier.
     stage("Tri des fichiers (post-téléchargement)")

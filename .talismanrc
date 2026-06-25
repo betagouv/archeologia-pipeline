@@ -27,8 +27,12 @@ fileignoreconfig:
   checksum: e948daa75a5cab62bbb54c6d7796e44ae434c5a7fe7cac6836a91098fc95fb57
 - filename: src/pipeline/ign/coords_fallback.py
   checksum: b1997408c2011b138fc5ffc525a10fa88a37848ffa763f355892b9d5dd0c1450
+- filename: src/app/services/proxy_config.py
+  checksum: cb7fe5903254aafead5171c65d9fcb148a9c5bd0ec4caeadc0a035ed83bc13fa
 - filename: src/pipeline/ign/downloader.py
   checksum: 0e37a19c67752fded947eb760583a1b6302497703d86253a0cafd218beff9673
+- filename: tests/unit/test_download_no_tiles.py
+  checksum: aac1a4dd3d1cb72c124a8e2d6d407d7493c83b0c8d00b743ae1b4579f7d4bf64
 - filename: src/pipeline/ign/pdal_validation.py
   checksum: 8867b41e31232f0047d39a3ed884b5e677848f2269c5e79d9b5cd5217bc6b407
 - filename: src/pipeline/ign/preprocess.py

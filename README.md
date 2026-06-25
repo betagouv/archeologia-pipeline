@@ -3,7 +3,7 @@
 Plugin QGIS pour exécuter un pipeline de traitement LiDAR et produire des rasters de type MNT / densité / indices RVT, avec une étape optionnelle de détection / segmentation par *computer vision*.
 
 - Nom du plugin : **ArchéologIA**
-- Version : **0.7.3**
+- Version : **0.7.4**
 - QGIS : **3.34+ (Qt5) ou 4.x (Qt6)** — base de code unique
 
 ## Fonctionnalités

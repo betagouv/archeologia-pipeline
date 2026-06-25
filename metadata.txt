@@ -9,7 +9,7 @@ name=Archéolog'IA
 qgisMinimumVersion=3.34
 qgisMaximumVersion=4.99
 description=Détection de sites archéologiques par réseaux de neurones
-version=0.7.3
+version=0.7.4
 author=Valentin VIEUX
 email=valentin.vieux.pro@outlook.com
 about=Plugin pour automatiser la production d'indices de visualisation (à l'aide du plugin Relief Visualization Toolbox) à partir de données LiDAR ou de MNT et pour détecter des sites archéologiques à l'aide de réseaux de neurones (YOLO, RF-DETR détection ou segmentation)
@@ -21,7 +21,11 @@ repository=https://github.com/betagouv/archeologia-pipeline
 #
 
 hasProcessingProvider=no
-changelog=0.7.3 (2026-06-22)
+changelog=0.7.4 (2026-06-25)
+    * Téléchargement IGN : correctif du proxy d'entreprise — une URL d'auto-configuration (PAC, ex. http://serveur/proxy.pac) renseignée comme proxy dans QGIS produisait une adresse cassée (double « http:// ») qui faisait échouer tous les téléchargements ; ces URL PAC sont désormais détectées et ignorées avec un message expliquant comment définir un proxy hôte:port explicite (QGIS → Préférences → Réseau)
+    * Téléchargement IGN : si aucune dalle n'a pu être récupérée (réseau coupé ou proxy invalide), le pipeline s'arrête immédiatement avec un message clair au lieu de remonter une erreur opaque plus loin (« fichier central introuvable »)
+    * Journal de téléchargement : la sous-progression affiche « échec » au lieu de « téléchargée » quand une dalle n'a pas pu être récupérée
+ 0.7.3 (2026-06-22)
     * Sélection des dalles IGN : correctif d'affichage — le quadrillage orange apparaît désormais de façon fiable au clic sur « Sélectionner les dalles » (rafraîchissement du canevas + réutilisation robuste de la couche), fin du symptôme « grille absente jusqu'au redémarrage de QGIS »
     * Sélection des dalles IGN : si la vue est trop dézoomée, recadrage automatique sur la France métropolitaine ; bandeau persistant « Zoomez pour afficher les dalles » qui suit l'échelle ; un échec d'enregistrement ou un état périmé ne bloque plus le bouton
  0.7.2 (2026-06-18)

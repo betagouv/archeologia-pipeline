@@ -68,10 +68,4 @@ data/quadrillage_france/
 htpasswd.txt
 .htpasswd
 
-# Portage calcul OVH : TOUT dev/ovh/ reste LOCAL — JAMAIS poussé sur ce dépôt PUBLIC.
-# Infra interne (Dockerfile, runner headless, submit.py, plugin tiers vendoré rvt-qgis,
-# config compte OVH). Le versionnage éventuel se fera sur un dépôt privé séparé.
-dev/ovh/
-# Plan d'infra OVH + .dockerignore (build de l'image dev/ovh) : internes, hors public.
-dev/docs/PLAN_PORTAGE_CALCUL_OVH.md
-.dockerignore
+# (Portage de calcul OVH déplacé vers un dépôt privé séparé.)

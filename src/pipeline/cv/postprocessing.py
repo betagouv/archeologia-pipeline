@@ -19,6 +19,13 @@ from .types import Detection
 
 logger = logging.getLogger(__name__)
 
+# IoS (aire intersection / aire du plus petit) au-delà duquel deux polygones de
+# même classe sont considérés en confinement quasi-total : ils fusionnent
+# TOUJOURS, même si le garde-fou de similarité de taille (``min_area_ratio``)
+# l'interdirait — sinon un petit polygone entièrement dans un grand
+# ré-apparaîtrait (artefact d'imbrication). Cf. _resolve_same_class_overlaps.
+_CONTAINMENT_IOS = 0.9
+
 
 def buffer_union_debuffer(
     polys: List[Any],
@@ -111,8 +118,6 @@ def _merge_touching_same_class(
             continue
 
         polys = [sp for sp, _ in items]
-        confs = [d.get("confidence", 0.5) for _, d in items]
-        areas = [sp.area for sp in polys]
 
         # Noyau partagé : buffer → union → debuffer (V2.3).
         merged_polys = buffer_union_debuffer(polys, TOUCH_BUFFER_PX)
@@ -499,7 +504,8 @@ def _connected_components_via_strtree(
     STRtree,
 ) -> list:
     """
-    Identifie les composantes connexes de polygones qui se touchent (avec buffer).
+    Identifie les composantes connexes de polygones qui se touchent ou sont
+    distants de ≤ ``merge_buffer_m`` (vraie distance, prédicat ``dwithin``).
 
     Utilise STRtree + union-find pour grouper en O(N log N) au lieu de
     ``unary_union`` global O(N²) en pratique. Pour les modèles à détections
@@ -522,23 +528,25 @@ def _connected_components_via_strtree(
     if n == 1:
         return [[0]]
 
-    # Bufferiser une seule fois — ces buffers servent à la fois à la requête
-    # spatiale (pour identifier les voisins) et à l'union par composante.
-    buffered = [p.buffer(merge_buffer_m, join_style=2) for p in polys]
+    # Connexion par VRAIE distance (F6) : deux polygones sont voisins si leur
+    # écart est ≤ ``merge_buffer_m``. On interroge le STRtree avec le prédicat
+    # ``dwithin`` (shapely ≥ 2.0) sur les polygones d'origine — et NON en testant
+    # l'intersection de polygones bufferisés de ``merge_buffer_m`` chacun, ce qui
+    # connectait dès qu'un gap ≤ ``2×merge_buffer_m`` (1,0 m au lieu des 0,5 m
+    # annoncés dans la doc).
+    tree = STRtree(polys)
 
-    tree = STRtree(buffered)
-
-    # Requête bulk : pour chaque polygone bufferisé, trouver les indices
-    # d'autres polygones bufferisés qui l'intersectent réellement.
-    # ``shapely.STRtree.query`` accepte une liste de géométries en entrée et
-    # renvoie deux arrays d'indices (input_idx, tree_idx).
+    # Requête bulk : ``shapely.STRtree.query`` accepte une liste de géométries
+    # en entrée et renvoie deux arrays d'indices (input_idx, tree_idx).
     try:
-        input_idx, tree_idx = tree.query(buffered, predicate="intersects")
+        input_idx, tree_idx = tree.query(
+            polys, predicate="dwithin", distance=merge_buffer_m
+        )
     except TypeError:
         # API plus ancienne (shapely 2.0.0) : query() ne prend qu'une seule géom
         input_idx_list, tree_idx_list = [], []
-        for i, b in enumerate(buffered):
-            for j in tree.query(b, predicate="intersects"):
+        for i, p in enumerate(polys):
+            for j in tree.query(p, predicate="dwithin", distance=merge_buffer_m):
                 input_idx_list.append(i)
                 tree_idx_list.append(int(j))
         import numpy as _np
@@ -685,12 +693,192 @@ def _merge_intra_class_components(
     return result
 
 
+def _resolve_same_class_overlaps(
+    dets: List[Dict],
+    ios_threshold: float,
+    unary_union_fn,
+    STRtree,
+    min_area_ratio: float = 0.0,
+) -> List[Dict]:
+    """Résout les superpositions entre détections d'UNE même classe par union.
+
+    Deux polygones dont l'IoS (aire intersection / aire du plus petit) est
+    ≥ ``ios_threshold`` sont **fusionnés par union** : un petit polygone
+    entièrement contenu dans un grand (IoS≈1) est absorbé par l'union (= le
+    grand, donc **sans anneau**), et deux fragments fortement chevauchants sont
+    soudés (donc **sans arête de découpe**). Les polygones disjoints ou
+    faiblement chevauchants (IoS < seuil) sont conservés intacts — deux cratères
+    sécants légitimes ne sont pas perdus.
+
+    ``min_area_ratio`` (garde-fou de similarité de taille, 0 = désactivé) : quand
+    > 0, deux polygones ne fusionnent que si leur ratio d'aire
+    ``min_aire / max_aire`` est ≥ ``min_area_ratio`` — SAUF confinement
+    quasi-total (IoS ≥ :data:`_CONTAINMENT_IOS`) qui fusionne toujours. Cela
+    permet d'abaisser ``ios_threshold`` pour rattraper les doublons modérés (deux
+    détections de taille proche d'un même cratère) sans fusionner un petit
+    cratère distinct posé sur le bord d'un grand.
+
+    Implémentation : graphe de chevauchement (arête = IoS ≥ seuil, garde-fou
+    respecté) via STRtree (fallback O(N²) si ``STRtree is None``), composantes
+    connexes par union-find, puis ``unary_union`` par composante. Le gabarit
+    (attributs) de chaque composante est la détection la plus confiante, avec la
+    géométrie unionnée.
+    """
+    items = [
+        d for d in dets
+        if d.get("geometry") is not None and not d["geometry"].is_empty
+    ]
+    n = len(items)
+    if n < 2:
+        return list(items)
+
+    geoms = [d["geometry"] for d in items]
+
+    parent = list(range(n))
+
+    def _find(i: int) -> int:
+        while parent[i] != i:
+            parent[i] = parent[parent[i]]
+            i = parent[i]
+        return i
+
+    def _union(i: int, j: int) -> None:
+        ri, rj = _find(i), _find(j)
+        if ri != rj:
+            parent[ri] = rj
+
+    tree = None
+    if STRtree is not None:
+        try:
+            tree = STRtree(geoms)
+        except Exception:
+            tree = None
+
+    for i in range(n):
+        gi = geoms[i]
+        if tree is not None:
+            try:
+                cand = [int(k) for k in tree.query(gi, predicate="intersects")]
+            except Exception:
+                cand = list(range(n))
+        else:
+            cand = list(range(n))
+        for j in cand:
+            if j <= i:
+                continue
+            gj = geoms[j]
+            try:
+                if not gi.intersects(gj):
+                    continue
+                inter = gi.intersection(gj).area
+            except Exception:
+                continue
+            if inter <= 0:
+                continue
+            min_area = min(gi.area, gj.area)
+            if min_area <= 0:
+                continue
+            ios = inter / min_area
+            if ios < ios_threshold:
+                continue
+            # Garde-fou de similarité de taille : sur la bande de chevauchement
+            # modéré on n'unit que des tailles proches (vrais doublons). Le
+            # confinement quasi-total (IoS ≥ _CONTAINMENT_IOS) y échappe pour
+            # préserver la correction de l'imbrication petit-dans-grand.
+            if min_area_ratio > 0 and ios < _CONTAINMENT_IOS:
+                if min_area / max(gi.area, gj.area) < min_area_ratio:
+                    continue
+            _union(i, j)
+
+    comps: Dict[int, List[int]] = {}
+    for i in range(n):
+        comps.setdefault(_find(i), []).append(i)
+
+    out: List[Dict] = []
+    for members in comps.values():
+        if len(members) == 1:
+            out.append(items[members[0]])
+            continue
+        best = max(members, key=lambda k: items[k].get("confidence", 0.0))
+        try:
+            merged = unary_union_fn([geoms[k] for k in members])
+        except Exception:
+            merged = geoms[best]
+        if merged.geom_type in ("MultiPolygon", "GeometryCollection"):
+            polys = [
+                g for g in merged.geoms
+                if g.geom_type == "Polygon" and not g.is_empty
+            ]
+            merged = max(polys, key=lambda g: g.area) if polys else geoms[best]
+        out.append(dict(items[best], geometry=merged))
+    return out
+
+
+def _remove_cross_class_overlaps(
+    data_by_class_name: Dict[str, List[Dict]],
+    unary_union_fn,
+    min_area_m2: float = 0.0,
+) -> Dict[str, List[Dict]]:
+    """Suppression des superpositions INTER-classes par ordre de confiance.
+
+    Chaque détection est rognée (``difference``) de l'union des détections déjà
+    acceptées d'une **autre** classe qui l'intersectent. Les détections de même
+    classe ne se rognent jamais (résolues en amont par
+    :func:`_resolve_same_class_overlaps`). Pour un modèle mono-classe, c'est un
+    no-op (aucune autre classe).
+    """
+    all_dets = [(cls, d) for cls, ds in data_by_class_name.items() for d in ds]
+    all_dets.sort(key=lambda t: t[1].get("confidence", 0), reverse=True)
+
+    accepted: list = []  # (class_name, geom, det)
+    for class_name, det in all_dets:
+        geom = det.get("geometry")
+        if geom is None or geom.is_empty:
+            continue
+        diff_geoms = [
+            g for (c, g, _) in accepted
+            if c != class_name and geom.intersects(g)
+        ]
+        if diff_geoms:
+            try:
+                geom = geom.difference(unary_union_fn(diff_geoms))
+            except Exception:
+                pass
+            if geom.is_empty:
+                continue
+            if geom.geom_type == "Polygon":
+                pass
+            elif geom.geom_type in ("MultiPolygon", "GeometryCollection"):
+                polys = [
+                    g for g in geom.geoms
+                    if g.geom_type == "Polygon" and not g.is_empty
+                ]
+                if not polys:
+                    continue
+                geom = max(polys, key=lambda g: g.area)
+            else:
+                continue
+        if geom.is_empty:
+            continue
+        if min_area_m2 > 0 and geom.area < min_area_m2:
+            continue
+        accepted.append((class_name, geom, dict(det, geometry=geom)))
+
+    out: Dict[str, List[Dict]] = {}
+    for class_name, _, det in accepted:
+        out.setdefault(class_name, []).append(det)
+    return out
+
+
 def postprocess_geo_detections(
     data_by_class_name: Dict[str, List[Dict]],
     merge_buffer_m: float = 0.5,
     min_area_m2: float = 0.0,
     do_merge: bool = True,
     do_remove_overlaps: bool = True,
+    overlap_strategy: str = "difference",
+    overlap_ios_threshold: float = 0.5,
+    overlap_min_area_ratio: float = 0.0,
 ) -> Dict[str, List[Dict]]:
     """
     Post-traitement global des détections en coordonnées géographiques,
@@ -704,8 +892,21 @@ def postprocess_geo_detections(
          O(N log N) au lieu de l'ancien ``unary_union`` global.
          Les polygones isolés (sans voisin) sont passés directement sans
          buffer/union/debuffer (gros gain sur les modèles type cratère).
-      3. **Suppression des superpositions inter-classes** par ordre de
-         confiance — activée par ``do_remove_overlaps=True``.
+      3. **Suppression des superpositions** — activée par
+         ``do_remove_overlaps=True``. Deux stratégies (``overlap_strategy``) :
+
+         - ``"difference"`` (défaut, historique) : **class-agnostic**, par ordre
+           de confiance décroissante, chaque polygone est rogné de l'union des
+           polygones déjà acceptés qui l'intersectent (``geom.difference``).
+           ⚠ Pour un modèle mono-classe ce découpage fabrique des artefacts :
+           anneau troué (petit imbriqué dans un grand plus confiant) ou arête
+           droite partagée (deux polygones accolés).
+         - ``"relation"`` : pour les détections de **même classe**, on raisonne
+           en confinement — si l'IoS (aire intersection / aire du plus petit) de
+           deux polygones est ≥ ``overlap_ios_threshold`` on les **fusionne par
+           union** (l'union absorbe le petit dans le grand sans anneau, et soude
+           deux fragments fortement chevauchants sans arête). Les superpositions
+           **inter-classes** restent gérées par ``difference``.
 
     Args:
         data_by_class_name: ``{class_name: [det_dict, ...]}``. Chaque
@@ -717,6 +918,13 @@ def postprocess_geo_detections(
             fusion. 0 = pas de filtre.
         do_merge: Si ``True`` (défaut), exécute l'étape 2.
         do_remove_overlaps: Si ``True`` (défaut), exécute l'étape 3.
+        overlap_strategy: ``"difference"`` (défaut) ou ``"relation"`` — voir ci-dessus.
+        overlap_ios_threshold: seuil IoS (]0, 1]) au-delà duquel deux polygones
+            de même classe sont fusionnés en stratégie ``"relation"``. 0.5 par défaut.
+        overlap_min_area_ratio: garde-fou de similarité de taille ([0, 1], 0 =
+            désactivé) appliqué en stratégie ``"relation"`` — sur la bande de
+            chevauchement modéré, ne fusionne que des polygones de taille proche
+            (ratio min_aire/max_aire ≥ ce seuil), sauf confinement quasi-total.
 
     Returns:
         Nouveau ``{class_name: [det_dict, ...]}`` post-traité. Si les deux
@@ -731,7 +939,7 @@ def postprocess_geo_detections(
         from shapely import STRtree
     except ImportError:
         try:
-            from shapely.geometry import Polygon as ShapelyPolygon, MultiPolygon
+            from shapely.geometry import Polygon as ShapelyPolygon, MultiPolygon  # noqa: F401 — sonde de dispo
             from shapely.ops import unary_union
             from shapely.validation import make_valid
             STRtree = None  # type: ignore[assignment]
@@ -783,7 +991,7 @@ def postprocess_geo_detections(
         merged_by_class = validated_by_class
         total_after_merge = sum(len(v) for v in merged_by_class.values())
 
-    # ── Étape 3 : suppression des superpositions inter-classes ──────
+    # ── Étape 3 : suppression des superpositions ──────
     if not do_remove_overlaps:
         t_end = _time.perf_counter()
         logger.info(
@@ -792,6 +1000,28 @@ def postprocess_geo_detections(
         )
         logger.info(f"Post-traitement géo terminé en {t_end - t_start:.1f}s")
         return merged_by_class
+
+    # ── Stratégie "relation" : fusion intra-classe par confinement (IoS),
+    #    puis découpage inter-classes seulement. Corrige les artefacts
+    #    "anneau troué" et "arête droite partagée" du découpage class-agnostic.
+    if overlap_strategy == "relation":
+        resolved_by_class: Dict[str, List[Dict]] = {}
+        for class_name, dets in merged_by_class.items():
+            resolved_by_class[class_name] = _resolve_same_class_overlaps(
+                dets, overlap_ios_threshold, unary_union, STRtree,
+                min_area_ratio=overlap_min_area_ratio,
+            )
+        result_by_class = _remove_cross_class_overlaps(
+            resolved_by_class, unary_union, min_area_m2
+        )
+        total_final = sum(len(v) for v in result_by_class.values())
+        t_end = _time.perf_counter()
+        logger.info(
+            f"Post-traitement géo (relation, IoS>={overlap_ios_threshold}): "
+            f"{total_after_merge} -> {total_final} polygones "
+            f"({t_end - t_start:.1f}s)"
+        )
+        return result_by_class
 
     # Collecter toutes les détections, trier par confiance décroissante
     all_dets = []

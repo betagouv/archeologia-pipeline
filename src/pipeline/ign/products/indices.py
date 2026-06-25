@@ -3,8 +3,9 @@ from __future__ import annotations
 import shutil
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, Dict, Optional
+from typing import Any, Dict, Optional
 
+from .cvat import compute_cvat
 from .qgis_processing import run_qgis_algorithm
 from .rvt_naming import get_rvt_temp_filename
 from ...types import LogFn, format_params_line
@@ -296,5 +297,73 @@ def create_visualization_products(
 
         if standard_vat_tif.exists():
             outputs["VAT"] = standard_vat_tif
+
+    if products.get("MSTP", False):
+        mstp = (rvt_params or {}).get("mstp", {})
+        local_scale_min = _as_int(mstp.get("local_scale_min", 3), 3)
+        local_scale_max = _as_int(mstp.get("local_scale_max", 21), 21)
+        local_scale_step = _as_int(mstp.get("local_scale_step", 2), 2)
+        meso_scale_min = _as_int(mstp.get("meso_scale_min", 23), 23)
+        meso_scale_max = _as_int(mstp.get("meso_scale_max", 203), 203)
+        meso_scale_step = _as_int(mstp.get("meso_scale_step", 18), 18)
+        broad_scale_min = _as_int(mstp.get("broad_scale_min", 223), 223)
+        broad_scale_max = _as_int(mstp.get("broad_scale_max", 2023), 2023)
+        broad_scale_step = _as_int(mstp.get("broad_scale_step", 180), 180)
+        lightness = _as_float(mstp.get("lightness", 1.2), 1.2)
+        ve_factor = _as_int(mstp.get("ve_factor", 1), 1)
+        save_as_8bit = _as_bool(mstp.get("save_as_8bit", True), True)
+        out = temp_dir / get_rvt_temp_filename("MSTP", current_tile_name, rvt_params)
+        if not out.exists():
+            log(format_params_line("RVT/MSTP", {
+                "tile": current_tile_name,
+                "local_scale": f"{local_scale_min}-{local_scale_max}/{local_scale_step}",
+                "meso_scale": f"{meso_scale_min}-{meso_scale_max}/{meso_scale_step}",
+                "broad_scale": f"{broad_scale_min}-{broad_scale_max}/{broad_scale_step}",
+                "lightness": lightness,
+                "ve_factor": ve_factor,
+                "save_as_8bit": save_as_8bit,
+            }))
+            params = {
+                "INPUT": str(input_path),
+                "OUTPUT": str(out),
+                "LOCAL_SCALE_MIN": local_scale_min,
+                "LOCAL_SCALE_MAX": local_scale_max,
+                "LOCAL_SCALE_STEP": local_scale_step,
+                "MESO_SCALE_MIN": meso_scale_min,
+                "MESO_SCALE_MAX": meso_scale_max,
+                "MESO_SCALE_STEP": meso_scale_step,
+                "BROAD_SCALE_MIN": broad_scale_min,
+                "BROAD_SCALE_MAX": broad_scale_max,
+                "BROAD_SCALE_STEP": broad_scale_step,
+                "LIGHTNESS": lightness,
+                "VE_FACTOR": ve_factor,
+                "SAVE_AS_8BIT": save_as_8bit,
+            }
+            run_qgis_algorithm("rvt:rvt_mstp", params, feedback=feedback, context=context)
+        if out.exists():
+            outputs["MSTP"] = out
+        else:
+            log(f"MSTP non créé: {out.name}")
+
+    if products.get("CVAT", False):
+        cvat = (rvt_params or {}).get("cvat", {})
+        save_as_8bit = _as_bool(cvat.get("save_as_8bit", True), True)
+        out = temp_dir / get_rvt_temp_filename("CVAT", current_tile_name, rvt_params)
+        if not out.exists():
+            log(format_params_line("RVT/CVAT", {
+                "tile": current_tile_name,
+                "save_as_8bit": save_as_8bit,
+            }))
+            # CVAT n'est pas exposé via Processing : calcul in-process (cf. cvat.py).
+            compute_cvat(
+                input_path=input_path,
+                output_path=out,
+                save_as_8bit=save_as_8bit,
+                log=log,
+            )
+        if out.exists():
+            outputs["CVAT"] = out
+        else:
+            log(f"CVAT non créé: {out.name}")
 
     return IndicesResult(outputs=outputs)

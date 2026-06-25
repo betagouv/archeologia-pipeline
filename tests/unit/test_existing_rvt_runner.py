@@ -122,10 +122,6 @@ class TestExistingRvtRunner:
             "pipeline.cv.class_utils.resolve_cv_runs",
             lambda _cfg: [{"selected_model": "m", "target_rvt": "LD", "enabled": True}],
         )
-        monkeypatch.setattr(
-            "app.services.finalize_service._build_global_class_color_map",
-            lambda _runs: {},
-        )
         monkeypatch.setattr("pipeline.modes.existing_rvt.run_existing_rvt", fake_run_existing_rvt)
         monkeypatch.setattr("app.runners.existing_rvt_runner.finalize_pipeline", lambda **_kwargs: None)
 

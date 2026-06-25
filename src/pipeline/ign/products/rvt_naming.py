@@ -9,6 +9,16 @@ from __future__ import annotations
 
 from typing import Any, Dict, Tuple
 
+#: Ordre canonique des produits raster — SOURCE UNIQUE pour les boucles
+#: crop/copy/nommage (anti-bug « produit oublié dans une liste », cf.
+#: avertissement run_context.py). Miroir app-side : ``run_context._ALL_PRODUCTS``
+#: (qui ne peut pas l'importer : src/app doit rester importable sans tirer ce
+#: package — un test verrouille la synchronisation des deux tuples).
+PRODUCT_ORDER: Tuple[str, ...] = (
+    "MNT", "DENSITE", "COUVERTURE", "HS", "M_HS", "SVF", "SLO", "LD", "SLRM", "VAT",
+    "MSTP", "CVAT",
+)
+
 
 def _as_int(value: Any, default: int) -> int:
     """Convertit une valeur en int, gère la virgule française."""
@@ -102,8 +112,21 @@ def get_rvt_param_suffix(product_name: str, rvt_params: Dict[str, Any]) -> str:
         terrain_type = _as_int(vat.get("terrain_type", 0), 0)
         blend_combination = _as_int(vat.get("blend_combination", 0), 0)
         return f"_T{terrain_type}_B{blend_combination}"
-    
-    # MNT, DENSITE: pas de paramètres
+
+    elif product_name == "MSTP":
+        mstp = rvt_params.get("mstp", {})
+        l_min = _as_int(mstp.get("local_scale_min", 3), 3)
+        l_max = _as_int(mstp.get("local_scale_max", 21), 21)
+        m_min = _as_int(mstp.get("meso_scale_min", 23), 23)
+        m_max = _as_int(mstp.get("meso_scale_max", 203), 203)
+        b_min = _as_int(mstp.get("broad_scale_min", 223), 223)
+        b_max = _as_int(mstp.get("broad_scale_max", 2023), 2023)
+        lightness = _as_float(mstp.get("lightness", 1.2), 1.2)
+        # Pas de _ dans le token lightness (cohérent avec observer_h du LD).
+        lightness_str = str(lightness).replace(".", "p")
+        return f"_L{l_min}-{l_max}_M{m_min}-{m_max}_B{b_min}-{b_max}_Li{lightness_str}"
+
+    # MNT, DENSITE, COUVERTURE, CVAT (composition figée): pas de suffixe.
     return ""
 
 
@@ -146,6 +169,7 @@ def get_rvt_temp_filename(
     base_names = {
         "MNT": "MNT",
         "DENSITE": "densite",
+        "COUVERTURE": "couverture",
         "HS": "HS",
         "M_HS": "hillshade",
         "SVF": "SVF",
@@ -153,6 +177,8 @@ def get_rvt_temp_filename(
         "LD": "LD",
         "SLRM": "SLRM",
         "VAT": "VAT",
+        "MSTP": "MSTP",
+        "CVAT": "CVAT",
     }
     
     base_name = base_names.get(product_name, product_name)
@@ -169,10 +195,9 @@ def get_all_rvt_temp_filenames(
     Returns:
         Dict[product_name, filename]
     """
-    products = ["MNT", "DENSITE", "HS", "M_HS", "SVF", "SLO", "LD", "SLRM", "VAT"]
     return {
         p: get_rvt_temp_filename(p, current_tile_name, rvt_params)
-        for p in products
+        for p in PRODUCT_ORDER
     }
 
 
@@ -213,6 +238,8 @@ def get_rvt_source_and_dest_filenames(
         dest_filename = f"LHD_FXX_{x}_{y}_MNT_A_0M50_LAMB93_IGN69{name_suffix}.tif"
     elif product_name == "DENSITE":
         dest_filename = f"LHD_FXX_{x}_{y}_densite_A_LAMB93{name_suffix}.tif"
+    elif product_name == "COUVERTURE":
+        dest_filename = f"LHD_FXX_{x}_{y}_couverture_A_LAMB93{name_suffix}.tif"
     elif product_name == "M_HS":
         dest_filename = f"LHD_FXX_{x}_{y}_M-HS{param_suffix}_A_LAMB93{name_suffix}.tif"
     else:

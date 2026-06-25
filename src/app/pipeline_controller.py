@@ -117,7 +117,10 @@ class PipelineController:
 
         slog.section("VÉRIFICATION DES DÉPENDANCES", "info")
 
-        from ..pipeline.preflight import run_preflight
+        try:  # fallback standalone (tests : src/ sur le path)
+            from ..pipeline.preflight import run_preflight
+        except ImportError:  # pragma: no cover
+            from pipeline.preflight import run_preflight
 
         if not run_preflight(
             mode=str(ctx.mode),
@@ -139,7 +142,10 @@ class PipelineController:
             narrator.pipeline_cancelled()
             return
 
-        from ..pipeline.cancellation import PipelineCancelled
+        try:  # fallback standalone (tests : src/ sur le path)
+            from ..pipeline.cancellation import PipelineCancelled
+        except ImportError:  # pragma: no cover
+            from pipeline.cancellation import PipelineCancelled
         from .runners.registry import get_runner
 
         runner = get_runner(ctx.mode)
@@ -153,3 +159,11 @@ class PipelineController:
             slog.end_pipeline(success=False)
             narrator.pipeline_cancelled()
             return
+        except Exception as e:
+            # Filet de sécurité (AUDIT v1 ROB-01) : la clôture d'échec est
+            # normalement déjà faite par le finally du runner (finalize avec
+            # outcome="failed") ; ici on garantit un message actionnable
+            # visible dans le journal UI même si l'erreur a fui AVANT le try
+            # du runner, puis on laisse le traceback remonter au worker.
+            reporter.error(f"Erreur fatale du pipeline : {e}")
+            raise

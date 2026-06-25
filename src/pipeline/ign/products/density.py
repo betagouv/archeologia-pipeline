@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, Dict, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple
 
 from ..pdal_validation import get_laz_bounds, validate_las_or_laz_with_pdal
 from .qgis_processing import run_qgis_algorithm

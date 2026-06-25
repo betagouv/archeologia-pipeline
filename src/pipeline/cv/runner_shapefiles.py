@@ -77,10 +77,14 @@ def deduplicate_cv_shapefiles_final(
     # l'exécution DBSCAN (sinon les champs édités dans l'UI resteraient cosmétiques).
     _cluster_overrides = (cv_config or {}).get("clustering_overrides")
     if clustering_configs and isinstance(_cluster_overrides, dict) and _cluster_overrides:
+        from .clustering_bounds import sanitize_clustering_overrides
         for cc in clustering_configs:
             ov = _cluster_overrides.get(str(cc.get("output_class_name") or "").strip())
             if isinstance(ov, dict) and ov:
-                cc.update(ov)
+                # Clés CONNUES uniquement, castées et bornées (AUDIT PARSE-03) :
+                # la config modèle est validée au chargement, les surcharges UI
+                # doivent l'être aussi avant la fusion.
+                cc.update(sanitize_clustering_overrides(ov, warn=log))
         log(f"Computer Vision: surcharges de clustering appliquées ({len(_cluster_overrides)} sortie(s))")
 
     # shp_dir n'est PLUS créé d'office : la sortie est routée par entité vers
@@ -116,8 +120,13 @@ def deduplicate_cv_shapefiles_final(
     # Générer les shapefiles par classe (le post-processing global
     # — fusion des polygones adjacents + suppression des superpositions —
     # est intégré directement dans create_shapefile_from_detections)
+    # F1 : on inspecte le RÉSULTAT de la conversion au lieu de l'avaler. Le
+    # retour booléen (et toute exception) sont classés par summarize_conversion_outcome
+    # — une panne réelle n'est plus un « succès » silencieux à zéro détection.
+    _conv_ok = False
+    _conv_error: Optional[str] = None
     try:
-        create_shapefile_from_detections(
+        _conv_ok = bool(create_shapefile_from_detections(
             labels_dir=str(labels_dir),
             png_dir=str(png_dir) if png_dir is not None else None,
             output_shapefile=str(out_shp),
@@ -134,7 +143,7 @@ def deduplicate_cv_shapefiles_final(
             min_confidence=float((cv_config or {}).get("confidence_threshold", 0.0) or 0.0),
             class_targets=class_targets,
             cancel_check=cancel_check,
-        )
+        ))
         qgs_root = shp_dir.parent if shp_dir.name.lower() in {"shapefiles", "shp"} else shp_dir
         qgs_path = qgs_root / "detections_validation.qgs"
         if qgs_path.exists():
@@ -142,7 +151,20 @@ def deduplicate_cv_shapefiles_final(
     except PipelineCancelled:
         raise
     except Exception as e:
-        log(f"Computer Vision: génération shapefile/projet QGIS ignorée (erreur): {e}")
+        _conv_error = str(e)
+
+    # Compter les GeoPackages réellement écrits (cibles d'entités si routage
+    # actif, sinon le GeoPackage de repli) pour distinguer « 0 détection » d'un échec.
+    if class_targets:
+        _expected_gpkgs = {gp for lst in class_targets.values() for gp, _ in lst}
+        _n_written = sum(1 for gp in _expected_gpkgs if Path(gp).exists())
+    else:
+        _n_written = 1 if Path(out_shp).exists() else 0
+    from .conversion_outcome import summarize_conversion_outcome
+    _outcome = summarize_conversion_outcome(
+        returned_ok=_conv_ok, error=_conv_error, n_gpkgs_written=_n_written
+    )
+    log(f"Computer Vision: {_outcome.message}")
 
     # Filtrage par aire minimale (optionnel) — cible les GeoPackage réellement
     # écrits : ceux des entités si routage actif, sinon le GeoPackage de repli.

@@ -25,7 +25,7 @@ class _RailItem(QFrame):
         self.setObjectName("RailItem")
         self.setProperty("state", "todo")
         self.setProperty("error", "false")
-        self.setCursor(Qt.PointingHandCursor)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
 
         layout = QHBoxLayout(self)
         layout.setContentsMargins(14, 10, 14, 10)
@@ -33,7 +33,7 @@ class _RailItem(QFrame):
 
         self._idx = QLabel(str(index))
         self._idx.setObjectName("RailIdx")
-        self._idx.setAlignment(Qt.AlignCenter)
+        self._idx.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._idx.setFixedSize(22, 22)
 
         meta = QVBoxLayout()
@@ -54,7 +54,7 @@ class _RailItem(QFrame):
         meta.addLayout(label_row)
         meta.addWidget(self._sub)
 
-        layout.addWidget(self._idx, 0, Qt.AlignTop)
+        layout.addWidget(self._idx, 0, Qt.AlignmentFlag.AlignTop)
         layout.addLayout(meta, 1)
 
     def set_state(self, state: str) -> None:

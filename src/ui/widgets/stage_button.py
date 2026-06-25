@@ -13,14 +13,14 @@ la page (pour pouvoir chevaucher la bordure supérieure, ce que Qt ne permet pas
 """
 from __future__ import annotations
 
-from qgis.PyQt.QtCore import QPointF, Qt, pyqtSignal
+from qgis.PyQt.QtCore import QEvent, QPointF, Qt, pyqtSignal
 from qgis.PyQt.QtGui import QBrush, QColor, QPainter, QPen, QPolygonF
 from qgis.PyQt.QtWidgets import QFrame, QLabel, QVBoxLayout, QWidget
 
 from ..icons import colored_pixmap
 
 _ROLE_COLORS = {"entry": "#1d5a96", "executed": "#000000", "skipped": "#5a5a5a"}
-_ICON_SIZE = 26
+_ICON_SIZE = 28
 
 
 class ArrowConnector(QWidget):
@@ -43,16 +43,16 @@ class ArrowConnector(QWidget):
 
     def paintEvent(self, _event):  # noqa: N802 (signature Qt)
         p = QPainter(self)
-        p.setRenderHint(QPainter.Antialiasing)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
         color = QColor("#2b79c2" if self._active else "#a0a0a0")
         cy = self.height() / 2.0
         left, right = 5.0, self.width() - 5.0
         head = 6.0  # longueur de la pointe
         pen = QPen(color, 2.0)
-        pen.setCapStyle(Qt.RoundCap)
+        pen.setCapStyle(Qt.PenCapStyle.RoundCap)
         p.setPen(pen)
         p.drawLine(QPointF(left, cy), QPointF(right - head, cy))
-        p.setPen(Qt.NoPen)
+        p.setPen(Qt.PenStyle.NoPen)
         p.setBrush(QBrush(color))
         p.drawPolygon(QPolygonF([
             QPointF(right, cy),
@@ -70,27 +70,31 @@ class StageButton(QFrame):
         self.setObjectName("StageButton")
         self._icon_name = icon_name
         self._clickable = clickable
+        self._role = "executed"
         self.setProperty("role", "executed")
         self.setProperty("optional", bool(optional))
-        self.setCursor(Qt.PointingHandCursor if clickable else Qt.ArrowCursor)
+        # Propriété QSS : permet un :hover réservé aux stades cliquables et un
+        # style distinct pour le stade non interactif (Détection IA).
+        self.setProperty("clickable", bool(clickable))
+        self.setCursor(Qt.CursorShape.PointingHandCursor if clickable else Qt.CursorShape.ArrowCursor)
         self.setMinimumHeight(78)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(8, 12, 8, 10)
         layout.setSpacing(3)
-        layout.setAlignment(Qt.AlignTop)
+        layout.setAlignment(Qt.AlignmentFlag.AlignTop)
 
         self._glyph = QLabel()
         self._glyph.setObjectName("StageGlyph")
-        self._glyph.setAlignment(Qt.AlignCenter)
+        self._glyph.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._glyph.setFixedHeight(_ICON_SIZE + 2)
         self._name = QLabel(label)
         self._name.setObjectName("StageName")
-        self._name.setAlignment(Qt.AlignCenter)
+        self._name.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._name.setWordWrap(True)
         self._sub = QLabel(sub)
         self._sub.setObjectName("StageSub")
-        self._sub.setAlignment(Qt.AlignCenter)
+        self._sub.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._sub.setWordWrap(True)
 
         layout.addWidget(self._glyph)
@@ -102,16 +106,28 @@ class StageButton(QFrame):
 
     def set_role(self, role: str) -> None:
         """role ∈ {'entry', 'executed', 'skipped'}."""
+        self._role = role
         self.setProperty("role", role)
-        self._glyph.setPixmap(
-            colored_pixmap(self._icon_name, _ROLE_COLORS.get(role, "#000000"), _ICON_SIZE)
-        )
+        self._apply_glyph()
         for w in (self, self._name, self._sub):
             try:
                 w.style().unpolish(w)
                 w.style().polish(w)
             except Exception:
                 pass
+
+    def _apply_glyph(self) -> None:
+        """Pixmap du glyphe : couleur du rôle, grisée si le stade est désactivé
+        (lecture seule pendant un run) pour que le verrou soit visible."""
+        color = _ROLE_COLORS.get(self._role, "#000000") if self.isEnabled() else "#909090"
+        self._glyph.setPixmap(
+            colored_pixmap(self._icon_name, color, _ICON_SIZE, dpr=self.devicePixelRatioF())
+        )
+
+    def changeEvent(self, event):  # noqa: N802 (signature Qt)
+        super().changeEvent(event)
+        if event.type() == QEvent.Type.EnabledChange:
+            self._apply_glyph()
 
     def mousePressEvent(self, event):  # noqa: N802 (signature Qt)
         if self._clickable:

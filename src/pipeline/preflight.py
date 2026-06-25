@@ -77,6 +77,90 @@ def _find_external_cv_runner() -> Optional[Path]:
     return _find()
 
 
+def _check_raster_crs(dir_path, exts, results: List["CheckResult"]) -> None:
+    """Valide le CRS des rasters fournis (AUDIT v2 GEO-02).
+
+    Le pipeline étiquette toutes ses sorties en EPSG:2154 ; un raster dans un
+    autre CRS (ex. Lambert-II EPSG:27572) produirait des détections mal placées
+    sans erreur. On lit le CRS et on refuse tout ce qui n'est pas du 2154.
+
+    Best-effort : sans backend de lecture raster, on ne bloque pas (l'existence
+    des fichiers est déjà vérifiée par ``_check_input_path``).
+    """
+    if not dir_path:
+        return
+    try:
+        import rasterio  # noqa: F401
+    except ImportError:
+        try:
+            from osgeo import gdal  # noqa: F401
+        except ImportError:
+            return  # aucun backend → validation impossible, ne pas bloquer
+    d = Path(str(dir_path))
+    if not d.is_dir():
+        return
+    norm = {e.lower().lstrip(".") for e in exts}
+    paths = [p for p in sorted(d.iterdir()) if p.is_file() and p.suffix.lower().lstrip(".") in norm]
+    if not paths:
+        return
+    try:
+        from .ingest_plan import (
+            DEGENERATE_SKIP_REASON,
+            IngestValidationError,
+            _short_crs,
+            plan_raster_inputs,
+        )
+        plan = plan_raster_inputs(paths, declared_crs="EPSG:2154", expected_crs="EPSG:2154")
+        if plan.crs_verified:
+            results.append(CheckResult(
+                name="CRS des rasters", ok=True,
+                details=f"{_short_crs(plan.crs)} · {len(plan.tiles)} dalle(s)", critical=True,
+            ))
+        else:
+            # CRS ni interprétable ni confirmé : on avertit sans bloquer (⚠ non critique).
+            results.append(CheckResult(
+                name="CRS des rasters", ok=False,
+                details="; ".join(plan.warnings) or "CRS non vérifiable", critical=False,
+            ))
+        # Dalles « placeholder » (1×1 px / origine 0) écartées : ⚠ non bloquant — sans
+        # ce filtrage elles gonfleraient l'emprise du VRT jusqu'à (0,0) (couches vides).
+        n_deg = sum(1 for _, reason in plan.skipped if reason == DEGENERATE_SKIP_REASON)
+        if n_deg:
+            results.append(CheckResult(
+                name="Dalles dégénérées", ok=False, critical=False,
+                details=f"{n_deg} dalle(s) 1×1/origine 0 ignorée(s) (exclues de la mosaïque)",
+            ))
+    except IngestValidationError as e:
+        results.append(CheckResult(
+            name="CRS des rasters", ok=False, details=str(e), critical=True,
+        ))
+    except Exception:
+        pass  # lecture impossible / autre : ne pas bloquer le préflight
+
+
+def check_output_dir_creatable(output_dir: Path) -> tuple[bool, str]:
+    """Vérifie qu'un dossier de sortie encore inexistant pourra être créé.
+
+    Remonte au premier ancêtre existant : s'il n'y en a aucun (lecteur
+    externe débranché, partage réseau démonté — chemin conservé par
+    last_ui_config), le ``mkdir`` du lancement échouerait en WinError brut
+    alors que le panneau affichait ✓ « sera créé » (AUDIT v2 CFG-05).
+    """
+    ancestor: Optional[Path] = None
+    for cand in [output_dir, *output_dir.parents]:
+        try:
+            if cand.exists():
+                ancestor = cand
+                break
+        except OSError:
+            break
+    if ancestor is None:
+        return False, f"volume inaccessible ({output_dir.anchor or output_dir})"
+    if not os.access(str(ancestor), os.W_OK):
+        return False, f"dossier parent non inscriptible ({ancestor})"
+    return True, "(sera créé)"
+
+
 def collect_preflight_results(
     *,
     mode: str,
@@ -156,7 +240,7 @@ def collect_preflight_results(
             )
         )
 
-    need_rvt = bool(products.get("HS", False) or products.get("M_HS", False) or products.get("SVF", False) or products.get("SLO", False) or products.get("LD", False) or products.get("SLRM", False) or products.get("VAT", False))
+    need_rvt = bool(products.get("HS", False) or products.get("M_HS", False) or products.get("SVF", False) or products.get("SLO", False) or products.get("LD", False) or products.get("SLRM", False) or products.get("VAT", False) or products.get("MSTP", False) or products.get("CVAT", False))
     if need_rvt and mode in ("ign_laz", "local_laz", "existing_mnt"):
         if _processing_ok is True:
             results.append(CheckResult(name="RVT algos (via processing)", ok=True, details="expected available in QGIS", critical=False))
@@ -168,6 +252,25 @@ def collect_preflight_results(
                 results.append(CheckResult(name="RVT algos (via processing)", ok=True, details="expected available in QGIS", critical=False))
             except Exception as e:
                 results.append(CheckResult(name="RVT algos (via processing)", ok=False, details=repr(e), critical=False))
+
+    # CVAT n'utilise pas Processing : il est calculé in-process via le paquet
+    # ``rvt`` fourni par le plugin rvt-qgis. On vérifie qu'il est localisable.
+    if products.get("CVAT", False) and mode in ("ign_laz", "local_laz", "existing_mnt"):
+        try:
+            # Import relatif différé : un import absolu `pipeline.*` ne résout pas
+            # dans QGIS (le package n'est pas exposé sous ce nom au runtime), et
+            # tirer ign.products au top-level casserait l'import standalone (QGIS
+            # via .mnt).
+            from .ign.products.cvat import _locate_rvt_package
+            ok = _locate_rvt_package() is not None
+            results.append(CheckResult(
+                name="CVAT (lib rvt in-process)",
+                ok=ok,
+                details="plugin rvt-qgis détecté" if ok else "plugin rvt-qgis introuvable",
+                critical=False,
+            ))
+        except Exception as e:
+            results.append(CheckResult(name="CVAT (lib rvt in-process)", ok=False, details=repr(e), critical=False))
 
     if cv_enabled:
         runner = _find_external_cv_runner()
@@ -220,8 +323,11 @@ def collect_preflight_results(
         if output_dir.exists():
             results.append(CheckResult(name="Dossier de sortie", ok=True, details=f"{output_dir}{free_txt}", critical=True))
         else:
-            # On peut créer le dossier, donc ce n'est pas critique
-            results.append(CheckResult(name="Dossier de sortie", ok=True, details=f"{output_dir} (sera créé){free_txt}", critical=True))
+            # Créabilité réelle (AUDIT v2 CFG-05) : un volume disparu doit
+            # apparaître en ✗ ici, pas en WinError au lancement.
+            ok, why = check_output_dir_creatable(output_dir)
+            details = f"{output_dir} {why}{free_txt}" if ok else f"{output_dir} — {why}"
+            results.append(CheckResult(name="Dossier de sortie", ok=ok, details=details, critical=True))
 
     if mode == "ign_laz":
         raw_input = str(files_cfg.get("input_file", "")).strip()
@@ -234,8 +340,10 @@ def collect_preflight_results(
         _check_input_path(files_cfg, "local_laz_dir", "Dossier LAZ locaux", extensions=["laz", "las", "LAZ", "LAS"], results=results)
     elif mode == "existing_mnt":
         _check_input_path(files_cfg, "existing_mnt_dir", "Dossier MNT existants", extensions=["tif", "tiff", "asc"], results=results)
+        _check_raster_crs(files_cfg.get("existing_mnt_dir"), ("tif", "tiff", "asc"), results)
     elif mode == "existing_rvt":
         _check_input_path(files_cfg, "existing_rvt_dir", "Dossier RVT existants", extensions=["tif", "tiff"], results=results)
+        _check_raster_crs(files_cfg.get("existing_rvt_dir"), ("tif", "tiff"), results)
 
     return results
 

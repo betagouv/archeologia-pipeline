@@ -5,12 +5,17 @@ from pathlib import Path
 import pytest
 
 from pipeline.tilespec import (
+    DEGENERATE_MIN_PX,
+    DEGENERATE_ORIGIN_RADIUS_M,
     TileSpec,
     _crs_from_rasterio,
     assign_crs_if_missing,
     crs_is_projected,
     disambiguate,
+    is_degenerate_tile,
     make_uid,
+    partition_degenerate,
+    same_crs_geometry,
 )
 
 
@@ -153,6 +158,69 @@ class TestCrsIsProjected:
         assert crs_is_projected("") is None
 
 
+class TestCrsIsProjectedGdalFallback:
+    """Sans rasterio (cas QGIS), ``crs_is_projected`` doit basculer sur ``osgeo.osr``.
+
+    On bloque rasterio (``sys.modules`` → ``None`` → ImportError sur l'import différé)
+    et on injecte un faux ``osgeo.osr`` pour rendre le test hermétique (osgeo n'est pas
+    forcément installé dans l'environnement de test standalone).
+    """
+
+    @staticmethod
+    def _install(monkeypatch, *, with_osgeo=True):
+        import sys
+        import types
+
+        # rasterio absent → ImportError sur ``from rasterio.crs import CRS``
+        monkeypatch.setitem(sys.modules, "rasterio", None)
+        monkeypatch.setitem(sys.modules, "rasterio.crs", None)
+
+        if not with_osgeo:
+            monkeypatch.setitem(sys.modules, "osgeo", None)
+            monkeypatch.setitem(sys.modules, "osgeo.osr", None)
+            return
+
+        class _FakeSRS:
+            def __init__(self):
+                self._in = None
+
+            def SetFromUserInput(self, s):  # 0 = OGRERR_NONE (succès)
+                self._in = s
+                return 0 if s in ("EPSG:2154", "EPSG:4326", "LOCAL") else 1
+
+            def IsLocal(self):
+                return 1 if self._in == "LOCAL" else 0
+
+            def IsGeographic(self):
+                return 1 if self._in == "EPSG:4326" else 0
+
+            def IsProjected(self):
+                return 1 if self._in == "EPSG:2154" else 0
+
+        osr = types.ModuleType("osgeo.osr")
+        osr.SpatialReference = _FakeSRS
+        osgeo = types.ModuleType("osgeo")
+        osgeo.osr = osr
+        monkeypatch.setitem(sys.modules, "osgeo", osgeo)
+        monkeypatch.setitem(sys.modules, "osgeo.osr", osr)
+
+    def test_projected_via_gdal_when_rasterio_absent(self, monkeypatch):
+        self._install(monkeypatch)
+        assert crs_is_projected("EPSG:2154") is True
+
+    def test_geographic_via_gdal(self, monkeypatch):
+        self._install(monkeypatch)
+        assert crs_is_projected("EPSG:4326") is False
+
+    def test_local_via_gdal_is_none(self, monkeypatch):
+        self._install(monkeypatch)
+        assert crs_is_projected("LOCAL") is None
+
+    def test_none_when_no_backend_available(self, monkeypatch):
+        self._install(monkeypatch, with_osgeo=False)
+        assert crs_is_projected("EPSG:2154") is None
+
+
 @pytest.fixture
 def _rasterio():
     return pytest.importorskip("rasterio")
@@ -267,3 +335,106 @@ class TestFromRaster:
         p = tmp_path / "broken.tif"
         p.write_bytes(b"not a raster")
         assert TileSpec.from_raster(p) is None
+
+
+def _deg_spec(**over):
+    """TileSpec helper for degeneracy tests (a normal 1 km tile by default)."""
+    base = dict(
+        source_path=Path("FONT_654500_6814500.tif"),
+        bounds=(654000.0, 6808000.0, 654500.0, 6808500.0),
+        pixel_size_x=1.0,
+        pixel_size_y=-1.0,
+        width_px=500,
+        height_px=500,
+        crs="EPSG:2154",
+    )
+    base.update(over)
+    return TileSpec.from_values(**base)
+
+
+class TestIsDegenerateTile:
+    """Détecte les dalles « placeholder » (1×1 px / posées à l'origine du CRS) qui,
+    incluses dans un gdalbuildvrt, gonflent l'emprise de la mosaïque jusqu'à (0,0)."""
+
+    def test_normal_tile_is_not_degenerate(self):
+        assert is_degenerate_tile(_deg_spec()) is False
+
+    def test_one_by_one_pixel_tile_is_degenerate(self):
+        # Signal A : taille triviale (le cas exact des placeholders FONT_*).
+        s = _deg_spec(width_px=1, height_px=1,
+                      bounds=(654000.0, 6808499.0, 654001.0, 6808500.0))
+        assert is_degenerate_tile(s) is True
+
+    def test_zero_pixel_tile_is_degenerate(self):
+        assert is_degenerate_tile(_deg_spec(width_px=0)) is True
+
+    def test_origin_at_crs_zero_is_degenerate(self):
+        # Signal B : coin NO ≈ (0,0) même avec des dimensions « normales »
+        # (le placeholder non carré qui n'est pas attrapé par la taille seule).
+        s = _deg_spec(width_px=500, height_px=500,
+                      bounds=(-0.5, -500.5, 499.5, 0.5))
+        assert is_degenerate_tile(s) is True
+
+    def test_slightly_off_grid_valid_tile_is_not_degenerate(self):
+        s = _deg_spec(bounds=(654001.3, 6789500.7, 654501.3, 6790000.7))
+        assert is_degenerate_tile(s) is False
+
+    def test_thresholds_are_parameterizable(self):
+        s = _deg_spec(width_px=3, height_px=3,
+                      bounds=(654000.0, 6808497.0, 654003.0, 6808500.0))
+        assert is_degenerate_tile(s) is False
+        assert is_degenerate_tile(s, min_px=4) is True
+
+    def test_default_thresholds_exposed(self):
+        assert DEGENERATE_MIN_PX == 2
+        assert DEGENERATE_ORIGIN_RADIUS_M == 10.0
+
+
+class TestPartitionDegenerate:
+    def test_splits_and_preserves_order(self):
+        good_a = _deg_spec(source_path=Path("a.tif"))
+        bad = _deg_spec(source_path=Path("placeholder.tif"), width_px=1, height_px=1,
+                        bounds=(-0.5, -0.5, 0.5, 0.5))
+        good_b = _deg_spec(source_path=Path("b.tif"), bounds=(655000.0, 6808000.0, 655500.0, 6808500.0))
+        kept, degenerate = partition_degenerate([good_a, bad, good_b])
+        assert [s.source_path.name for s in kept] == ["a.tif", "b.tif"]
+        assert [s.source_path.name for s in degenerate] == ["placeholder.tif"]
+
+    def test_all_good_returns_empty_degenerate(self):
+        kept, degenerate = partition_degenerate([_deg_spec()])
+        assert len(kept) == 1
+        assert degenerate == []
+
+
+class TestSameCrsGeometry:
+    """Compare le PLACEMENT (où atterrit un point lon/lat), pas l'identité stricte du
+    datum — pour reconnaître un Lambert-93 custom (WKT sans code EPSG) comme EPSG:2154."""
+
+    def test_none_for_empty_inputs(self):
+        assert same_crs_geometry(None, "EPSG:2154") is None
+        assert same_crs_geometry("", "EPSG:2154") is None
+        assert same_crs_geometry("EPSG:2154", None) is None
+
+    def test_identical_epsg_is_same(self):
+        pytest.importorskip("osgeo")
+        assert same_crs_geometry("EPSG:2154", "EPSG:2154") is True
+
+    def test_different_projection_is_not_same(self):
+        pytest.importorskip("osgeo")
+        assert same_crs_geometry("EPSG:2154", "EPSG:32631") is False
+
+    def test_custom_lambert_wkt_equals_epsg2154(self):
+        # Le SRC exact du fichier de l'utilisateur : Lambert custom, datum « unnamed »
+        # GRS80, paramètres = EPSG:2154, SANS code d'autorité → doit être reconnu == 2154.
+        pytest.importorskip("osgeo")
+        wkt = (
+            'PROJCS["Lambert Conformal Conic",'
+            'GEOGCS["grs80",DATUM["unnamed",SPHEROID["unnamed",6378137,298.257222101004]],'
+            'PRIMEM["Greenwich",0],UNIT["degree",0.0174532925199433]],'
+            'PROJECTION["Lambert_Conformal_Conic_2SP"],'
+            'PARAMETER["latitude_of_origin",46.5],PARAMETER["central_meridian",3],'
+            'PARAMETER["standard_parallel_1",49],PARAMETER["standard_parallel_2",44],'
+            'PARAMETER["false_easting",700000],PARAMETER["false_northing",6600000],'
+            'UNIT["metre",1]]'
+        )
+        assert same_crs_geometry(wkt, "EPSG:2154") is True

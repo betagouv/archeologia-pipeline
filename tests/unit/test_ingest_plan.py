@@ -65,6 +65,22 @@ class TestPlanFromSpecs:
         with pytest.raises(IngestValidationError, match="Aucune"):
             plan_from_specs([])
 
+    def test_expected_crs_identique_ok(self):
+        # GEO-02 : un CRS conforme au CRS attendu (EPSG:2154) passe.
+        plan = plan_from_specs([_spec("a.tif", crs="EPSG:2154")], expected_crs="EPSG:2154")
+        assert plan.crs == "EPSG:2154"
+
+    def test_expected_crs_different_refuse(self):
+        # GEO-02 : un raster projeté mais en Lambert-II (27572) est REFUSÉ
+        # (sinon ses détections seraient étiquetées 2154 → mal placées).
+        with pytest.raises(IngestValidationError, match="2154"):
+            plan_from_specs([_spec("a.tif", crs="EPSG:27572")], expected_crs="EPSG:2154")
+
+    def test_sans_expected_crs_comportement_inchange(self):
+        # Sans expected_crs : tout CRS projeté unique reste accepté (rétrocompat).
+        plan = plan_from_specs([_spec("a.tif", crs="EPSG:27572")])
+        assert plan.crs == "EPSG:27572"
+
     def test_skipped_passed_through(self):
         plan = plan_from_specs(
             [_spec("a.tif"), _spec("b.tif")],
@@ -72,6 +88,125 @@ class TestPlanFromSpecs:
         )
         assert plan.skipped == [(Path("broken.tif"), "illisible/corrompu")]
         assert "1 ignorée" in plan.summary
+
+
+def _degenerate_spec(name="placeholder.tif", *, crs="EPSG:2154"):
+    """Dalle « placeholder » 1×1 px posée à l'origine du CRS (cas réel FONT_*)."""
+    return TileSpec.from_values(
+        source_path=Path(name),
+        bounds=(-0.5, -0.5, 0.5, 0.5),
+        pixel_size_x=1.0, pixel_size_y=-1.0,
+        width_px=1, height_px=1, crs=crs,
+    )
+
+
+class TestDegenerateTileFiltering:
+    """Les dalles dégénérées (1×1 / origine 0) sont retirées AVANT les contrôles CRS
+    et signalées une fois (sinon elles gonflent l'emprise du VRT jusqu'à (0,0))."""
+
+    def test_degenerate_moved_to_skipped_and_warned(self):
+        plan = plan_from_specs([
+            _spec("a.tif"), _spec("b.tif", x=700500.0),
+            _degenerate_spec("p1.tif"), _degenerate_spec("p2.tif"),
+        ])
+        assert len(plan.tiles) == 2
+        names = {p.name for p, _ in plan.skipped}
+        assert names == {"p1.tif", "p2.tif"}
+        assert all("dégénér" in reason for _, reason in plan.skipped)
+        assert sum("dégénér" in w for w in plan.warnings) == 1
+
+    def test_all_degenerate_raises_aucune(self):
+        with pytest.raises(IngestValidationError, match="Aucune"):
+            plan_from_specs([_degenerate_spec("p1.tif"), _degenerate_spec("p2.tif")])
+
+    def test_degenerate_does_not_trip_crs_error(self):
+        # Un placeholder sans CRS ne doit PAS déclencher l'erreur « CRS introuvable » :
+        # il est filtré avant le contrôle CRS.
+        plan = plan_from_specs([
+            _spec("good.tif", crs="EPSG:2154"),
+            _degenerate_spec("nocrs_placeholder.tif", crs=None),
+        ])
+        assert len(plan.tiles) == 1
+        assert plan.crs == "EPSG:2154"
+
+
+class TestCrsVerificationPolicy:
+    """Garde-fou EPSG + politique « avertir sans bloquer » quand le CRS n'est pas
+    classable (ex. backend de lecture indisponible dans QGIS)."""
+
+    def test_crs_verified_true_by_default(self):
+        plan = plan_from_specs([_spec("a.tif", crs="EPSG:2154")], expected_crs="EPSG:2154")
+        assert plan.crs_verified is True
+
+    def test_garde_fou_accepts_when_unclassifiable_but_epsg_matches(self, monkeypatch):
+        # Aucun backend (crs_is_projected → None) mais code EPSG == attendu → accepté.
+        import pipeline.ingest_plan as ip
+        monkeypatch.setattr(ip, "crs_is_projected", lambda c: None)
+        plan = plan_from_specs([_spec("a.tif", crs="EPSG:2154")], expected_crs="EPSG:2154")
+        assert plan.crs == "EPSG:2154"
+        assert plan.crs_verified is True
+        assert not any("vérifiable" in w for w in plan.warnings)
+
+    def test_unverifiable_crs_warns_not_blocks(self, monkeypatch):
+        # CRS en WKT (pas de code EPSG) + aucun backend → on AVERTIT, on ne bloque pas.
+        import pipeline.ingest_plan as ip
+        monkeypatch.setattr(ip, "crs_is_projected", lambda c: None)
+        wkt = 'PROJCS["unknown",GEOGCS["x"]]'
+        plan = plan_from_specs([_spec("a.tif", crs=wkt)], expected_crs="EPSG:2154")
+        assert plan.crs == wkt
+        assert plan.crs_verified is False
+        assert any("vérifiable" in w for w in plan.warnings)
+
+    def test_unverifiable_without_expected_crs_warns(self, monkeypatch):
+        import pipeline.ingest_plan as ip
+        monkeypatch.setattr(ip, "crs_is_projected", lambda c: None)
+        wkt = 'PROJCS["unknown",GEOGCS["x"]]'
+        plan = plan_from_specs([_spec("a.tif", crs=wkt)])
+        assert plan.crs_verified is False
+        assert any("vérifiable" in w for w in plan.warnings)
+
+    def test_geographic_still_hard_error(self, monkeypatch):
+        # crs_is_projected → False doit toujours LEVER (erreur dure, pas un warn).
+        import pipeline.ingest_plan as ip
+        monkeypatch.setattr(ip, "crs_is_projected", lambda c: False)
+        with pytest.raises(IngestValidationError, match="géographique"):
+            plan_from_specs([_spec("a.tif", crs="EPSG:4326")])
+
+    def test_custom_wkt_geometrically_2154_accepted_without_warning(self, monkeypatch):
+        # Garde-fou : un Lambert custom (WKT sans code EPSG) reconnu géométriquement
+        # == EPSG:2154 est accepté SANS avertissement (cas exact de l'utilisateur).
+        import pipeline.ingest_plan as ip
+        monkeypatch.setattr(ip, "crs_is_projected", lambda c: True)
+        monkeypatch.setattr(ip, "same_crs_geometry", lambda a, b: True)
+        wkt = 'PROJCS["Lambert Conformal Conic",GEOGCS["grs80"]]'
+        plan = plan_from_specs([_spec("a.tif", crs=wkt)], expected_crs="EPSG:2154")
+        assert plan.crs == wkt
+        assert plan.crs_verified is True
+        assert not any("mal plac" in w for w in plan.warnings)
+
+    def test_different_projected_wkt_warns_not_blocks(self, monkeypatch):
+        # Garde-fou : un AUTRE CRS projeté en WKT (pas de code EPSG comparable, mais
+        # géométriquement ≠ 2154) → on AVERTIT sans bloquer (l'utilisateur a choisi
+        # « avertir, ne pas forcer »).
+        import pipeline.ingest_plan as ip
+        monkeypatch.setattr(ip, "crs_is_projected", lambda c: True)
+        monkeypatch.setattr(ip, "same_crs_geometry", lambda a, b: False)
+        wkt = 'PROJCS["WGS 84 / UTM zone 31N",GEOGCS["x"]]'
+        plan = plan_from_specs([_spec("a.tif", crs=wkt)], expected_crs="EPSG:2154")
+        assert plan.crs == wkt
+        assert plan.crs_verified is False
+        assert any("mal plac" in w for w in plan.warnings)
+
+    def test_indeterminate_geometry_no_mismatch_warning(self, monkeypatch):
+        # Géométrie indéterminable (aucun backend) → pas d'avertissement de
+        # non-correspondance (on n'accuse pas sans preuve).
+        import pipeline.ingest_plan as ip
+        monkeypatch.setattr(ip, "crs_is_projected", lambda c: True)
+        monkeypatch.setattr(ip, "same_crs_geometry", lambda a, b: None)
+        wkt = 'PROJCS["custom",GEOGCS["x"]]'
+        plan = plan_from_specs([_spec("a.tif", crs=wkt)], expected_crs="EPSG:2154")
+        assert plan.crs_verified is True
+        assert not any("mal plac" in w for w in plan.warnings)
 
 
 @pytest.fixture

@@ -1,0 +1,5 @@
+{
+  "_README": "Copiez ce fichier vers dev/docs/_local/deploy.config.json (gitignoré) et renseignez repo_url. Il fournit les valeurs par défaut de dev/package_plugin.py (--repo-url / --output-dir), pour qu'un simple 'python dev/package_plugin.py' produise le ZIP + plugins.xml dans output_dir sans committer l'URL du dépôt privé.",
+  "repo_url": "http://VOTRE-HOTE/qgis/",
+  "output_dir": "dev/docs/_local/depot"
+}

@@ -3,7 +3,9 @@
 Les SVG (``theme/icons/*.svg``) sont monochromes, couleur en dur ``#2c2c2c``
 (``currentColor`` ne fonctionne pas via QIcon dans Qt — cf. README des icônes).
 On remplace la couleur par celle voulue puis on rend en :class:`QPixmap`
-(rendu 2× + ``devicePixelRatio`` pour rester net en hi-DPI).
+rasterisé **directement à la résolution physique de l'écran** (DPR réel,
+pixels entiers) : aucun rééchantillonnage au dessin, donc pas de flou, quel
+que soit le facteur d'échelle Windows (100/125/150 %).
 
 L'import de ``QtSvg`` est **défensif** : si le module manque dans l'install
 QGIS, les icônes sont simplement vides — le dialogue continue de fonctionner.
@@ -15,6 +17,7 @@ from pathlib import Path
 
 from qgis.PyQt.QtCore import QByteArray, Qt
 from qgis.PyQt.QtGui import QIcon, QPainter, QPixmap
+from qgis.PyQt.QtWidgets import QApplication
 
 try:
     from qgis.PyQt.QtSvg import QSvgRenderer
@@ -45,26 +48,43 @@ def _recolor(svg: str, color: str) -> str:
     )
 
 
-def colored_pixmap(name: str, color: str, size: int = 24) -> QPixmap:
+def _screen_dpr() -> float:
+    """DPR réel de l'écran (1.0 hors application, p. ex. en import standalone)."""
+    app = QApplication.instance()
+    try:
+        return float(app.devicePixelRatio()) if app is not None else 1.0
+    except Exception:
+        return 1.0
+
+
+def colored_pixmap(name: str, color: str, size: int = 24, dpr: float | None = None) -> QPixmap:
     """Rend l'icône ``name`` teintée en ``color`` (hex) à ``size`` px logiques.
+
+    Le SVG est rasterisé à ``size × dpr`` pixels physiques **entiers**, et le
+    pixmap porte exactement ce ratio : QLabel le dessine alors pixel pour
+    pixel, sans rééchantillonnage (la source historique du flou — un rendu 2×
+    fixe rescalé à l'affichage). Passer ``dpr=widget.devicePixelRatioF()``
+    pour être exact en multi-écrans ; à défaut le DPR de l'application sert.
 
     Retourne un pixmap vide si QtSvg est absent ou l'icône introuvable.
     """
     svg = _svg_text(name)
     if not svg or not SVG_AVAILABLE:
         return QPixmap()
+    if dpr is None or dpr <= 0:
+        dpr = _screen_dpr()
+    size = max(1, size)
     renderer = QSvgRenderer(QByteArray(_recolor(svg, color).encode("utf-8")))
-    px = max(1, size) * 2  # rendu 2× pour la netteté hi-DPI
+    px = max(1, round(size * dpr))  # pixels physiques entiers
     pixmap = QPixmap(px, px)
-    pixmap.fill(Qt.transparent)
+    pixmap.fill(Qt.GlobalColor.transparent)
     painter = QPainter(pixmap)
-    painter.setRenderHint(QPainter.Antialiasing, True)
-    painter.setRenderHint(QPainter.SmoothPixmapTransform, True)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
     renderer.render(painter)
     painter.end()
-    pixmap.setDevicePixelRatio(2.0)
+    pixmap.setDevicePixelRatio(px / size)
     return pixmap
 
 
-def colored_icon(name: str, color: str, size: int = 24) -> QIcon:
-    return QIcon(colored_pixmap(name, color, size))
+def colored_icon(name: str, color: str, size: int = 24, dpr: float | None = None) -> QIcon:
+    return QIcon(colored_pixmap(name, color, size, dpr))

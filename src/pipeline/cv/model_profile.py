@@ -82,14 +82,41 @@ class ClusteringRule:
 
 @dataclass(frozen=True)
 class PostprocessConfig:
-    """Activation des étapes de post-traitement géométrique."""
+    """Activation des étapes de post-traitement géométrique.
+
+    ``merge_buffer_m`` est la VRAIE distance (mètres) en deçà de laquelle deux
+    polygones de même classe sont fusionnés (cf. ``postprocess_geo_detections``,
+    prédicat ``dwithin``). 0,5 m par défaut (~1 px à 0,5 m/px).
+
+    ``overlap_strategy`` pilote l'étape de suppression des superpositions
+    (``remove_overlaps``) :
+
+    - ``"difference"`` (défaut, historique) : découpe le polygone le moins
+      confiant le long du contour de l'autre (``geom.difference``). Pour un
+      modèle mono-classe (cratères) ce découpage FABRIQUE des artefacts —
+      anneau troué (petit imbriqué) ou arête droite partagée (accolés).
+    - ``"relation"`` : pour les détections de MÊME classe, on raisonne en
+      confinement (IoS = aire intersection / aire du plus petit) — si
+      IoS ≥ ``overlap_ios_threshold`` on FUSIONNE par union (l'union absorbe le
+      petit dans le grand sans anneau, et soude deux fragments fortement
+      chevauchants sans arête). Les superpositions INTER-classes restent gérées
+      par ``difference`` (un objet d'une classe rogne celui d'une autre).
+    """
     merge_adjacent: bool = True
     remove_overlaps: bool = True
+    merge_buffer_m: float = 0.5
+    overlap_strategy: str = "difference"
+    overlap_ios_threshold: float = 0.5
+    overlap_min_area_ratio: float = 0.0
 
-    def to_dict(self) -> Dict[str, bool]:
+    def to_dict(self) -> Dict[str, Any]:
         return {
             "merge_adjacent": self.merge_adjacent,
             "remove_overlaps": self.remove_overlaps,
+            "merge_buffer_m": self.merge_buffer_m,
+            "overlap_strategy": self.overlap_strategy,
+            "overlap_ios_threshold": self.overlap_ios_threshold,
+            "overlap_min_area_ratio": self.overlap_min_area_ratio,
         }
 
 
@@ -261,11 +288,22 @@ def _parse_sahi(args_yaml: Dict[str, Any]) -> SahiConfig:
     if not isinstance(sahi, dict):
         return SahiConfig()
     try:
-        return SahiConfig(
-            slice_height=int(sahi.get("slice_height", 640)),
-            slice_width=int(sahi.get("slice_width", 640)),
-            overlap_ratio=float(sahi.get("overlap_ratio", 0.2)),
+        raw_h = int(sahi.get("slice_height", 640))
+        raw_w = int(sahi.get("slice_width", 640))
+        raw_ov = float(sahi.get("overlap_ratio", 0.2))
+        # Bornes (AUDIT v2 PARSE-12) : slice ≥ 32, overlap ∈ [0, 0.9] — un
+        # overlap ≥ 1 ou un slice ≤ 0 gèle l'inférence en boucle infinie.
+        cfg = SahiConfig(
+            slice_height=max(32, raw_h),
+            slice_width=max(32, raw_w),
+            overlap_ratio=min(max(raw_ov, 0.0), 0.9),
         )
+        if (cfg.slice_height, cfg.slice_width, cfg.overlap_ratio) != (raw_h, raw_w, raw_ov):
+            logger.warning(
+                f"SAHI hors bornes ({raw_h}x{raw_w}, overlap {raw_ov}) — "
+                f"clampé à {cfg.slice_height}x{cfg.slice_width}, {cfg.overlap_ratio}"
+            )
+        return cfg
     except (TypeError, ValueError) as e:
         logger.warning(f"SAHI config invalide ({e}), valeurs par défaut")
         return SahiConfig()
@@ -291,23 +329,40 @@ def _parse_clustering(args_yaml: Dict[str, Any]) -> Tuple[ClusteringRule, ...]:
             logger.warning("Clustering rule ignorée : target_classes manquant/invalide")
             continue
         try:
+            from .clustering_bounds import sanitize_clustering_rule
+
             min_conf = float(cfg.get("min_confidence", 0.0))
-            min_conf_extend = float(cfg.get("min_confidence_extend", min_conf))
+            sane = sanitize_clustering_rule(
+                {
+                    "min_confidence": min_conf,
+                    "min_confidence_extend": float(
+                        cfg.get("min_confidence_extend", min_conf)
+                    ),
+                    "min_cluster_size": int(cfg.get("min_cluster_size", 5)),
+                    "min_samples": int(cfg.get("min_samples", 3)),
+                    "eps_m": float(cfg.get("eps_m", 30.0)),
+                    "buffer_m": float(cfg.get("buffer_m", 10.0)),
+                    "min_area_m2": float(cfg.get("min_area_m2", 0.0)),
+                    "concave_ratio": float(cfg.get("concave_ratio", 0.3)),
+                    "confidence_weight": float(cfg.get("confidence_weight", 0.0)),
+                },
+                warn=logger.warning,
+            )
             output_class = str(cfg.get("output_class_name", "")) or f"cluster_{'_'.join(target)}"
             rules.append(
                 ClusteringRule(
                     target_classes=tuple(str(t) for t in target),
-                    min_confidence=min_conf,
-                    min_confidence_extend=min_conf_extend,
-                    min_cluster_size=int(cfg.get("min_cluster_size", 5)),
-                    min_samples=int(cfg.get("min_samples", 3)),
-                    eps_m=float(cfg.get("eps_m", 30.0)),
+                    min_confidence=sane["min_confidence"],
+                    min_confidence_extend=sane["min_confidence_extend"],
+                    min_cluster_size=sane["min_cluster_size"],
+                    min_samples=sane["min_samples"],
+                    eps_m=sane["eps_m"],
                     output_class_name=output_class,
                     output_geometry=str(cfg.get("output_geometry", "convex_hull")),
-                    buffer_m=float(cfg.get("buffer_m", 10.0)),
-                    min_area_m2=float(cfg.get("min_area_m2", 0.0)),
-                    concave_ratio=float(cfg.get("concave_ratio", 0.3)),
-                    confidence_weight=float(cfg.get("confidence_weight", 0.0)),
+                    buffer_m=sane["buffer_m"],
+                    min_area_m2=sane["min_area_m2"],
+                    concave_ratio=sane["concave_ratio"],
+                    confidence_weight=sane["confidence_weight"],
                 )
             )
         except (TypeError, ValueError) as e:
@@ -320,9 +375,38 @@ def _parse_postprocess(args_yaml: Dict[str, Any]) -> PostprocessConfig:
     pp = args_yaml.get("postprocess")
     if not isinstance(pp, dict):
         return PostprocessConfig()
+    try:
+        buffer_m = float(pp.get("merge_buffer_m", 0.5))
+    except (TypeError, ValueError):
+        buffer_m = 0.5
+    if not (0 < buffer_m < float("inf")):  # ≤ 0, NaN ou inf → défaut
+        buffer_m = 0.5
+
+    strategy = str(pp.get("overlap_strategy", "difference")).strip().lower()
+    if strategy not in ("difference", "relation"):
+        strategy = "difference"
+
+    try:
+        ios = float(pp.get("overlap_ios_threshold", 0.5))
+    except (TypeError, ValueError):
+        ios = 0.5
+    if not (0 < ios <= 1):  # hors ]0, 1], NaN → défaut
+        ios = 0.5
+
+    try:
+        ratio = float(pp.get("overlap_min_area_ratio", 0.0))
+    except (TypeError, ValueError):
+        ratio = 0.0
+    if not (0 <= ratio <= 1):  # hors [0, 1], NaN → garde-fou désactivé
+        ratio = 0.0
+
     return PostprocessConfig(
         merge_adjacent=bool(pp.get("merge_adjacent", True)),
         remove_overlaps=bool(pp.get("remove_overlaps", True)),
+        merge_buffer_m=buffer_m,
+        overlap_strategy=strategy,
+        overlap_ios_threshold=ios,
+        overlap_min_area_ratio=ratio,
     )
 
 
@@ -361,8 +445,9 @@ def _load_class_names(model_dir: Path) -> Optional[List[str]]:
                 if isinstance(parsed, list) and parsed:
                     return [str(c).strip() for c in parsed]
                 if isinstance(parsed, dict) and parsed:
+                    # Clés JSON = strings → indexer str(i) (AUDIT v2 PARSE-08).
                     max_key = max(int(k) for k in parsed.keys())
-                    return [str(parsed.get(i, f"classe_{i}")).strip() for i in range(max_key + 1)]
+                    return [str(parsed.get(str(i), f"classe_{i}")).strip() for i in range(max_key + 1)]
             else:
                 lines = [ln.strip() for ln in candidate.read_text(encoding="utf-8-sig").splitlines()]
                 lines = [ln for ln in lines if ln]

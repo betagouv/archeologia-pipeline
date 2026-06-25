@@ -18,6 +18,43 @@ from ..types import LogFn, CancelCheckFn
 _ALIGN_TOLERANCE_M = 50
 
 
+def _png_size(path):
+    try:
+        from PIL import Image
+        with Image.open(str(path)) as im:
+            return im.size  # (largeur, hauteur)
+    except Exception:
+        return None
+
+
+def _tif_size(path):
+    try:
+        import rasterio
+        with rasterio.open(str(path)) as ds:
+            return (ds.width, ds.height)
+    except Exception:
+        return None
+
+
+def _png_consistent_with_tif(png_path, tif_path, *, png_size_fn=None, tif_size_fn=None) -> bool:
+    """Vrai si le PNG a les mêmes dimensions que le TIF (même raster source).
+
+    Garde-fou GEO-03 : si un PNG préexiste mais ne correspond pas au TIF dont on
+    prend le géotransform (ex. export d'indices non rogné, 2200 px, vs TIF rogné
+    2000 px), il faut le régénérer — sinon les détections sont décalées de la
+    marge de dalle. Conservateur : en cas d'incertitude (lecture impossible),
+    renvoie True (on ne régénère pas).
+    """
+    try:
+        ps = (png_size_fn or _png_size)(png_path)
+        ts = (tif_size_fn or _tif_size)(tif_path)
+        if ps is None or ts is None:
+            return True
+        return tuple(ps) == tuple(ts)
+    except Exception:
+        return True
+
+
 @dataclass(frozen=True)
 class ExistingRvtResult:
     total_images: int
@@ -208,6 +245,15 @@ def run_existing_rvt(
             kept_tif_names.add(tif_path.name)
 
         jpg_path = jpg_output_dir / (effective_tif_path.stem + ".png")
+        # GEO-03 : le PNG d'inférence DOIT venir du même raster que le transform
+        # (effective_tif_path, rogné). Un PNG préexistant aux mauvaises dimensions
+        # (export d'indices non rogné) est régénéré, sinon décalage de la marge.
+        if jpg_path.exists() and not _png_consistent_with_tif(jpg_path, effective_tif_path):
+            log(f"PNG incohérent avec le TIF (dimensions ≠), régénération: {jpg_path.name}")
+            try:
+                jpg_path.unlink()
+            except OSError:
+                pass
         if not jpg_path.exists():
             log(f"Conversion TIF->PNG (existing_rvt): {effective_tif_path.name} -> {jpg_path.name}")
             _convert_tif_to_png_with_world(effective_tif_path, jpg_path)

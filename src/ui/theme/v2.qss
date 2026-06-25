@@ -1,5 +1,16 @@
 /* Thème V2 — wizard. Palette QGIS native (Qt Fusion), d'après v2_handoff/tokens.css.
-   Chargé une fois au démarrage. Pas de variables QSS → couleurs en dur. */
+   Chargé une fois au démarrage (wizard_dialog._apply_theme, qui substitue le
+   jeton @ICONS@ par le chemin absolu de theme/icons). Pas de variables QSS →
+   couleurs en dur, mais selon des TOKENS implicites à respecter :
+
+   - Rayons : 2px contrôles (champs, boutons, barres) · 3px badges/tags ·
+     6px conteneurs (cartes, bulles, bandeaux, journal) · pilule = hauteur/2.
+   - Gris de bordure : #888888 contrôles · #a0a0a0 conteneurs interactifs ·
+     #c4c4c4 conteneurs passifs/séparateurs.
+   - Survol : #e8e8e8 (unique).
+   - Avertissement : fond #f6efdc · bordure #b07a20 · texte #8a5e18 (AA).
+   - Texte atténué : #5a5a5a (jamais #909090 hors :disabled).
+   - Tailles : 9px réservé aux badges MAJUSCULES ; texte informatif ≥ 10px. */
 
 QDialog { background: #f0f0f0; }
 QLabel { color: #2c2c2c; }
@@ -14,8 +25,22 @@ QLineEdit {
     color: #000000;
 }
 QLineEdit:focus { border: 1px solid #2b79c2; }
-QLineEdit[state="warn"]  { border: 1px solid #b07a20; background: #fbf3e0; }
+QLineEdit[state="warn"]  { border: 1px solid #b07a20; background: #f6efdc; }
 QLineEdit[state="error"] { border: 1px solid #a83838; background: #fbe7e7; }
+
+/* ---- Cases à cocher (alignées sur la coche dessinée #IndexCheck/#EntityCheck) ---- */
+QCheckBox::indicator {
+    width: 15px; height: 15px;
+    border: 1px solid #707070; border-radius: 2px;
+    background: #ffffff;
+}
+QCheckBox::indicator:hover { border-color: #2b79c2; }
+QCheckBox::indicator:checked {
+    background: #2b79c2; border-color: #1d5a96;
+    image: url("@ICONS@/check-white.svg");
+}
+QCheckBox::indicator:disabled { background: #e3e3e3; border-color: #b0b0b0; }
+QCheckBox::indicator:checked:disabled { background: #a0a0a0; border-color: #909090; }
 
 /* ---- Boutons (Qt Fusion gradient gris) ---- */
 QPushButton {
@@ -31,8 +56,10 @@ QPushButton:hover {
     border-color: #2b79c2;
 }
 QPushButton:disabled { color: #909090; border-color: #b0b0b0; }
-#GhostButton { background: transparent; border: 1px solid transparent; color: #2c2c2c; }
-#GhostButton:hover { background: #e3e3e3; border: 1px solid #a0a0a0; }
+/* Ghost : action secondaire, mais avec un indice d'interactivité au repos
+   (bordure discrète) — sans elle, le bouton ressemblait à un simple QLabel. */
+#GhostButton { background: transparent; border: 1px solid #c4c4c4; color: #2c2c2c; }
+#GhostButton:hover { background: #e8e8e8; border: 1px solid #a0a0a0; }
 
 /* ---- En-tête ---- */
 #WizardTitleBar { background: #ffffff; border-bottom: 1px solid #c4c4c4; }
@@ -58,9 +85,9 @@ QPushButton:disabled { color: #909090; border-color: #b0b0b0; }
 #RailLabel { font-weight: 600; color: #000000; }
 #RailSub { font-size: 10px; color: #5a5a5a; }
 #RailOpt {
-    background: #d0d0d0; color: #5a5a5a;
-    font-size: 8px; font-weight: bold;
-    padding: 1px 4px; border-radius: 2px;
+    background: #d0d0d0; color: #2c2c2c;
+    font-size: 9px; font-weight: bold; letter-spacing: 0.5px;
+    padding: 1px 5px; border-radius: 3px;
 }
 /* Marqueur d'erreur (indépendant de l'état) — placé après les règles d'état
    pour gagner en priorité quand error="true". */
@@ -70,7 +97,7 @@ QPushButton:disabled { color: #909090; border-color: #b0b0b0; }
 /* ---- Pages ---- */
 #WizardPageHeading { font-size: 13px; font-weight: bold; color: #000000; }
 #WizardPageSub { color: #5a5a5a; font-size: 11px; }
-#WizardPagePlaceholder { color: #807d72; font-style: italic; }
+#WizardPagePlaceholder { color: #5a5a5a; font-style: italic; }
 
 /* ---- Cartes (#Card) — bordure « fieldset » peinte par _CardFrame ---- */
 #Card { background: transparent; border: none; }
@@ -82,48 +109,66 @@ QPushButton:disabled { color: #909090; border-color: #b0b0b0; }
 #CardTitle { color: #1d5a96; font-weight: bold; font-size: 12px; }
 #CardCounter { color: #5a5a5a; font-size: 11px; }
 #FieldLabel { color: #000000; font-size: 11px; }
+#FieldUnit { color: #5a5a5a; font-size: 11px; }
 
 /* ---- Frise (StageButton) + connecteurs ▶ ---- */
-#StageButton { background: #ffffff; border: 1px solid #a0a0a0; border-radius: 9px; }
+#StageButton { background: #ffffff; border: 1px solid #a0a0a0; border-radius: 6px; }
 #StageButton[role="entry"] { background: #d6e6f4; border: 1px solid #2b79c2; }
-#StageButton[role="skipped"] { background: #e3e3e3; border: 1px solid #c4c4c4; }
+/* Sauté ≠ désactivé : bordure pleine #a0a0a0 (pas le #c4c4c4 des cartes) et
+   :hover bleu plus bas — cliquer un stade sauté EST le geste pour remonter
+   le point d'entrée. */
+#StageButton[role="skipped"] { background: #e3e3e3; border: 1px solid #a0a0a0; }
 #StageButton[optional="true"] { border: 1px dashed #a0a0a0; }
 #StageButton[optional="true"][role="entry"] { border: 1px dashed #2b79c2; }
-#StageGlyph { font-size: 17px; color: #000000; }
+/* Stade non cliquable (Détection IA) : surface légèrement retirée. */
+#StageButton[clickable="false"] { background: #f7f7f7; }
+/* Affordance : retour visuel au survol des stades cliquables uniquement. */
+#StageButton[clickable="true"]:hover { background: #eaf2fa; border-color: #2b79c2; }
+#StageButton[role="entry"][clickable="true"]:hover { background: #d6e6f4; border-color: #1d5a96; }
+/* Lecture seule pendant un run : la frise verrouillée doit se voir. */
+#StageButton:disabled { background: #e3e3e3; border-color: #c4c4c4; }
+#StageButton:disabled #StageName, #StageButton:disabled #StageSub { color: #909090; }
+#StageGlyph { color: #000000; }
 #StageButton[role="entry"] #StageGlyph { color: #1d5a96; }
 #StageButton[role="skipped"] #StageGlyph { color: #5a5a5a; }
 #StageName { font-weight: bold; font-size: 11px; color: #000000; }
 #StageButton[role="entry"] #StageName { color: #1d5a96; }
 #StageButton[role="skipped"] #StageName { color: #5a5a5a; }
-#StageSub { font-size: 9px; color: #5a5a5a; }
+#StageSub { font-size: 10px; color: #5a5a5a; }
+#StageButton[role="entry"] #StageSub { color: #1d5a96; }
 #StageBadge {
     background: #2b79c2; color: #ffffff;
-    font-size: 9px; font-weight: bold; letter-spacing: 1px;
+    font-size: 9px; font-weight: bold; letter-spacing: 0.5px;
     padding: 2px 9px; border-radius: 3px;
 }
 
 /* ---- Bandeau de mode ---- */
-#ModeBanner { background: #d6e6f4; border: 1px solid #2b79c2; border-radius: 7px; }
+#ModeBanner { background: #d6e6f4; border: 1px solid #2b79c2; border-radius: 6px; }
 #ModeBannerIcon {
     background: #2b79c2; color: #ffffff;
     border-radius: 3px; font-size: 13px; font-weight: bold;
 }
 #ModeBannerTitle { color: #1d5a96; font-weight: bold; font-size: 12px; }
+#ModeBannerSub { color: #5a5a5a; font-size: 11px; }
 #ModeBannerText { color: #2c2c2c; font-size: 11px; }
 
 /* ---- Étape 2 : chips MNT / Densité (QFrame + label) ---- */
-#Chip { background: #ececec; border: 1px solid #b0b0b0; border-radius: 6px; }
+#Chip { background: #e3e3e3; border: 1px solid #a0a0a0; border-radius: 6px; }
+#Chip:hover { border-color: #2b79c2; }
 #Chip[checked="true"] { background: #d6e6f4; border: 1px solid #2b79c2; }
 #ChipLabel { color: #000000; }
-#Chip[checked="true"] #ChipLabel { color: #1d5a96; font-weight: bold; }
+/* Pas de gras à l'état coché : le changement de graisse faisait varier la
+   largeur de la chip (décalage au clic) — même règle que #EntityChip. */
+#Chip[checked="true"] #ChipLabel { color: #1d5a96; }
 #MntHint { color: #5a5a5a; font-style: italic; font-size: 10px; }
 
 /* ---- Étape 2 : cartes d'indices ---- */
-#IndexCard { background: #ffffff; border: 1px solid #c4c4c4; border-radius: 7px; }
+#IndexCard { background: #ffffff; border: 1px solid #c4c4c4; border-radius: 6px; }
+#IndexCard:hover { border-color: #2b79c2; }
 #IndexCard[checked="true"] { background: #d6e6f4; border: 1px solid #2b79c2; }
 #IndexTag {
     background: #e3e3e3; color: #2c2c2c; font-size: 9px; font-weight: bold;
-    padding: 1px 6px; border-radius: 2px;
+    padding: 1px 7px; border-radius: 3px;
 }
 #IndexCard[checked="true"] #IndexTag { background: #2b79c2; color: #ffffff; }
 #IndexCheck {
@@ -133,11 +178,13 @@ QPushButton:disabled { color: #909090; border-color: #b0b0b0; }
 #IndexCheck[checked="true"] { background: #2b79c2; border-color: #1d5a96; }
 #IndexName { font-weight: bold; color: #000000; font-size: 11px; }
 #IndexCard[checked="true"] #IndexName { color: #1d5a96; }
-#IndexDesc { color: #5a5a5a; font-size: 10px; }
+/* 11px : c'est le texte sur lequel l'utilisateur choisit ses indices,
+   pas une aide contextuelle. */
+#IndexDesc { color: #5a5a5a; font-size: 11px; }
 
 /* ---- Étape 2 : réglages avancés (onglets RVT) ---- */
 #AdvTabs::pane {
-    border: 1px solid #c4c4c4; border-radius: 4px;
+    border: 1px solid #c4c4c4; border-radius: 6px;
     background: #ffffff; top: -1px;
 }
 #AdvTabs QTabBar::tab {
@@ -147,8 +194,9 @@ QPushButton:disabled { color: #909090; border-color: #b0b0b0; }
     padding: 4px 12px; margin-right: 2px;
 }
 #AdvTabs QTabBar::tab:selected { background: #ffffff; color: #1d5a96; font-weight: bold; }
-#AdvTabs QTabBar::tab:hover { background: #d6e6f4; }
-#AdvTabs QTabBar::tab:disabled { color: #909090; }
+/* :!selected : survoler l'onglet actif ne doit pas casser sa fusion avec le pane. */
+#AdvTabs QTabBar::tab:hover:!selected { background: #d6e6f4; }
+#AdvTabs QTabBar::tab:disabled { color: #707070; }
 
 /* En-tête de panneau (paramètres détaillés) + aide par champ */
 #AdvIndexTitle { font-weight: bold; color: #000000; font-size: 12px; }
@@ -161,6 +209,10 @@ QPushButton:disabled { color: #909090; border-color: #b0b0b0; }
     padding: 6px 10px; color: #2c2c2c;
 }
 
+/* ---- Pastille « lecture seule » (barre de titre, pendant un run) ---- */
+#ReviewPill { background: #f6efdc; border: 1px solid #b07a20; border-radius: 3px; }
+#ReviewPillText { color: #8a5e18; font-size: 10px; font-weight: bold; }
+
 /* ---- Toast (verrou MNT) ---- */
 #Toast {
     background: #1c1b18; color: #f6f4ef;
@@ -168,14 +220,18 @@ QPushButton:disabled { color: #909090; border-color: #b0b0b0; }
 }
 
 /* ---- Étape 3 : toggle + empty state ---- */
+/* #d6e6f4 + #2b79c2 code « actif » partout : le bandeau ne doit être bleu
+   que si la détection l'est (propriété ``on`` posée par la page). */
 #DetectionToggle { background: #d6e6f4; border: 1px solid #2b79c2; border-radius: 6px; }
+#DetectionToggle[on="false"] { background: #e3e3e3; border: 1px solid #a0a0a0; }
 #DetectionSwitch { font-weight: bold; color: #1d5a96; font-size: 12px; }
+#DetectionToggle[on="false"] #DetectionSwitch { color: #2c2c2c; }
 #FacultatifTag {
-    background: #d0d0d0; color: #5a5a5a;
-    font-size: 9px; font-weight: bold; letter-spacing: 1px;
-    padding: 3px 10px; border-radius: 3px;
+    background: #d0d0d0; color: #2c2c2c;
+    font-size: 9px; font-weight: bold; letter-spacing: 0.5px;
+    padding: 2px 9px; border-radius: 3px;
 }
-#EmptyState { background: #f0f0f0; border: 1px dashed #a0a0a0; border-radius: 8px; }
+#EmptyState { background: #e8e8e8; border: 1px dashed #a0a0a0; border-radius: 6px; }
 #EmptyStateTitle { font-weight: bold; color: #2c2c2c; font-size: 13px; }
 
 /* ---- Étape 3 : filtres morphologiques + sections ---- */
@@ -189,8 +245,8 @@ QPushButton:disabled { color: #909090; border-color: #b0b0b0; }
    suffisent à marquer l'état actif. */
 #EntityChip:checked { background: #2b79c2; border-color: #1d5a96; color: #ffffff; }
 #EntitySectionHeader {
-    color: #1d5a96; font-size: 10px; font-weight: bold;
-    letter-spacing: 1px; margin-top: 4px;
+    color: #1d5a96; font-size: 11px; font-weight: bold;
+    letter-spacing: 1px; margin-top: 10px;
 }
 #EntitySection { background: transparent; border: none; }
 #EntityClusterParams { background: transparent; border: none; }
@@ -198,30 +254,43 @@ QPushButton:disabled { color: #909090; border-color: #b0b0b0; }
 /* ---- Étape 3 : cartes d'entités ---- */
 #EntityScroll { background: transparent; }
 #EntityRow { background: transparent; border: none; }
-#EntityCard { background: #ffffff; border: 1px solid #c4c4c4; border-radius: 7px; }
+#EntityCard { background: #ffffff; border: 1px solid #c4c4c4; border-radius: 6px; }
 #EntityCard[state="on"] { background: #d6e6f4; border: 1px solid #2b79c2; }
 #EntityCard[state="warn"] { background: #f6efdc; border: 1px solid #b07a20; }
-#EntityCard[state="nomodel"] { background: #f0f0f0; border: 1px solid #c4c4c4; }
+/* Indisponible : pointillés + libellé grisé + case neutralisée — la carte ne
+   doit pas paraître aussi actionnable qu'une carte couverte par un modèle. */
+#EntityCard[state="nomodel"] { background: #f0f0f0; border: 1px dashed #c4c4c4; }
+#EntityCard:hover { border-color: #2b79c2; }
+#EntityCard[state="warn"]:hover { border-color: #8a5e18; }
+#EntityCard[state="nomodel"]:hover { border-color: #c4c4c4; }
 #EntityCheck {
     border: 1px solid #707070; border-radius: 2px;
     background: #ffffff; color: #ffffff; font-size: 10px; font-weight: bold;
 }
 #EntityCard[state="on"] #EntityCheck { background: #2b79c2; border-color: #1d5a96; }
+/* Sans cette règle, le ✓ blanc restait sur case blanche (invisible) dès que
+   la carte passait en warn (sélectionnée avec RVT inactif). */
+#EntityCard[state="warn"] #EntityCheck { background: #b07a20; border-color: #8a5e18; }
+#EntityCard[state="nomodel"] #EntityCheck { background: #e3e3e3; border-color: #c4c4c4; }
 #EntityLabel { font-weight: bold; color: #000000; }
 #EntityCard[state="on"] #EntityLabel { color: #1d5a96; }
+#EntityCard[state="nomodel"] #EntityLabel { color: #909090; }
 #EntityDesc { color: #5a5a5a; font-size: 10px; }
 #EntityRvtTag {
-    background: #d6e6f4; color: #1d5a96; font-size: 9px; font-weight: bold;
-    padding: 1px 6px; border-radius: 2px;
+    background: #d6e6f4; color: #1d5a96; font-size: 10px; font-weight: bold;
+    padding: 1px 7px; border-radius: 3px;
 }
-#EntityRvtTag[missing="true"] { background: #b07a20; color: #ffffff; }
-#EntityDerivedBadge { color: #1d5a96; font-size: 9px; font-style: italic; }
-#EntityNoModel { color: #b07a20; font-size: 10px; font-style: italic; }
-#EntityRvtWarn { color: #b07a20; font-size: 10px; }
+/* Sur carte cochée, le fond de la carte = celui du tag : fond blanc pour que
+   la pastille garde sa forme. */
+#EntityCard[state="on"] #EntityRvtTag { background: #ffffff; }
+#EntityRvtTag[missing="true"] { background: #8a5e18; color: #ffffff; }
+#EntityDerivedBadge { color: #1d5a96; font-size: 10px; font-style: italic; }
+#EntityNoModel { color: #8a5e18; font-size: 11px; font-style: italic; }
+#EntityRvtWarn { color: #8a5e18; font-size: 11px; }
 #EntityActivateBtn { padding: 1px 8px; min-height: 16px; font-size: 10px; }
 #EntityModelLabel { color: #5a5a5a; font-size: 10px; }
 #EntityModelName { color: #2c2c2c; font-size: 10px; }
-#EntityModelSingle { color: #909090; font-size: 9px; font-style: italic; }
+#EntityModelSingle { color: #5a5a5a; font-size: 10px; font-style: italic; }
 #EntityChangeBtn {
     background: transparent; border: none; color: #2b79c2;
     font-size: 10px; padding: 0 2px; min-height: 0;
@@ -229,17 +298,26 @@ QPushButton:disabled { color: #909090; border-color: #b0b0b0; }
 #EntityChangeBtn:hover { color: #1d5a96; text-decoration: underline; }
 
 /* ---- Étape 3 : runs IA programmés ---- */
-#RunRow { background: #f0f0f0; border: 1px solid #c4c4c4; border-radius: 5px; }
+#RunRow { background: #ffffff; border: 1px solid #c4c4c4; border-radius: 6px; }
 #RunName { font-weight: bold; color: #000000; }
+/* Classes sélectionnées : pastilles « entité » lisibles (libellés du catalogue).
+   Fond neutre clair pour se lire comme un groupe, sans concurrencer le tag RVT bleu. */
+#RunClassChips { background: transparent; border: none; }
+#RunClassChip {
+    background: #f1f5f9; color: #2c2c2c; font-size: 10px;
+    padding: 1px 8px; border-radius: 9px; border: 1px solid #c8d2dc;
+}
 #RunRvtTag {
     background: #d6e6f4; color: #1d5a96; font-size: 10px; font-weight: bold;
-    padding: 1px 6px; border-radius: 2px;
+    padding: 1px 7px; border-radius: 3px;
 }
 
 /* ---- Étape 4 : bandeau de validation ---- */
 #ValidationBanner { border-radius: 6px; padding: 8px 12px; font-size: 11px; }
-#ValidationBanner[state="error"] { background: #fbe7e7; border: 1px solid #a83838; color: #7a2727; }
-#ValidationBanner[state="ok"]    { background: #e6f2e6; border: 1px solid #418141; color: #2d6a2d; }
+#ValidationBanner[state="error"]   { background: #fbe7e7; border: 1px solid #a83838; color: #7a2727; }
+#ValidationBanner[state="ok"]      { background: #e6f2e6; border: 1px solid #418141; color: #2d6a2d; }
+/* Préflight en cours : neutre — le vert est réservé à « réellement prêt ». */
+#ValidationBanner[state="pending"] { background: #e3e3e3; border: 1px solid #a0a0a0; color: #2c2c2c; }
 
 /* ---- Étape 4 : récapitulatif ---- */
 #RecapKey { color: #5a5a5a; font-size: 11px; }
@@ -259,11 +337,12 @@ QPushButton:disabled { color: #909090; border-color: #b0b0b0; }
 /* ---- Étape 4 : panneau « État du système » (préflight) ---- */
 #PreflightPill {
     font-size: 10px; font-weight: bold; letter-spacing: 0.5px;
-    padding: 1px 8px; border-radius: 3px;
+    padding: 1px 7px; border-radius: 3px;
 }
-#PreflightPill[kind="ok"]   { background: #e6f2e6; color: #2d6a2d; border: 1px solid #418141; }
-#PreflightPill[kind="warn"] { background: #f6efdc; color: #8a5e18; border: 1px solid #b07a20; }
-#PreflightPill[kind="err"]  { background: #fbe7e7; color: #7a2727; border: 1px solid #a83838; }
+#PreflightPill[kind="ok"]      { background: #e6f2e6; color: #2d6a2d; border: 1px solid #418141; }
+#PreflightPill[kind="warn"]    { background: #f6efdc; color: #8a5e18; border: 1px solid #b07a20; }
+#PreflightPill[kind="err"]     { background: #fbe7e7; color: #7a2727; border: 1px solid #a83838; }
+#PreflightPill[kind="neutral"] { background: #e3e3e3; color: #5a5a5a; border: 1px solid #a0a0a0; }
 #PreflightIcon { font-size: 12px; font-weight: bold; }
 #PreflightIcon[status="ok"]   { color: #418141; }
 #PreflightIcon[status="warn"] { color: #b07a20; }
@@ -299,9 +378,10 @@ QPushButton[role="micro"] {
    décalage d'1px (le box-model est identique dans tous les états). */
 #RunStep { border: 1px solid transparent; border-radius: 6px; background: transparent; }
 #RunStep[state="active"] { background: #d6e6f4; border: 1px solid #2b79c2; }
+/* Pastille 22px / rayon 11 : même gabarit que #RailIdx (un seul stepper visuel). */
 #RunStepCircle {
     background: #e3e3e3; color: #5a5a5a;
-    border: 1px solid #a0a0a0; border-radius: 12px;
+    border: 1px solid #a0a0a0; border-radius: 11px;
     font-size: 11px; font-weight: bold;
 }
 #RunStep[state="active"] #RunStepCircle { background: #2b79c2; border-color: #1d5a96; color: #ffffff; }
@@ -309,50 +389,80 @@ QPushButton[role="micro"] {
 #RunStepCaption { font-size: 10px; color: #5a5a5a; }
 #RunStep[state="active"] #RunStepCaption { color: #1d5a96; font-weight: bold; }
 #RunStep[state="done"]   #RunStepCaption { color: #2d6a2d; }
-#RunStepSubtitle { font-size: 9px; color: #5a5a5a; }
+#RunStepSubtitle { font-size: 10px; color: #5a5a5a; }
 #RunStep[state="active"] #RunStepSubtitle { color: #1d5a96; }
-#RunStepTiming { font-size: 9px; color: #5a5a5a; font-weight: 600; }
+#RunStepTiming { font-size: 10px; color: #5a5a5a; font-weight: 600; }
 #RunStep[state="active"] #RunStepTiming { color: #1d5a96; }
 #RunStep[state="done"]   #RunStepTiming { color: #2d6a2d; }
 #RunStepLine { background: #c4c4c4; border: none; }
+/* Fil vert derrière les étapes faites, comme le fil du rail latéral. */
+#RunStepLine[state="done"] { background: #418141; }
 
 /* ---- Run view : progression + journal ---- */
 #RunStageLabel { color: #1d5a96; font-weight: bold; font-size: 11px; }
 #RunJournalTitle { color: #2c2c2c; font-weight: bold; font-size: 11px; }
 
-/* ---- Run view : en-tête (étape courante + sous-étape + compteur live) ---- */
-#RunHeader { background: #eef3f8; border: 1px solid #c4c4c4; border-radius: 6px; }
+/* ---- Run view : en-tête (étape courante + sous-étape + chrono total) ---- */
+#RunHeader { background: #d6e6f4; border: 1px solid #2b79c2; border-radius: 6px; }
 #RunHeaderStep { color: #1d5a96; font-weight: bold; font-size: 12px; }
 #RunHeaderSub { color: #5a5a5a; font-size: 10px; }
-#RunHeaderMetric { color: #1d5a96; font-weight: bold; font-size: 13px; }
+/* 12px max : le chrono ne doit pas dominer le titre d'étape (12px gras). */
+#RunHeaderMetric { color: #1d5a96; font-weight: bold; font-size: 12px; }
+/* Point d'activité pulsé (opacité animée côté Python). */
+#RunActivityDot { color: #2b79c2; font-size: 13px; font-weight: bold; }
+
+/* ---- Run view : bandeau de fin de run ---- */
+#RunEndBanner { border-radius: 6px; padding: 8px 12px; font-size: 11px; font-weight: bold; }
+#RunEndBanner[kind="ok"]     { background: #e6f2e6; border: 1px solid #418141; color: #2d6a2d; }
+#RunEndBanner[kind="err"]    { background: #fbe7e7; border: 1px solid #a83838; color: #7a2727; }
+#RunEndBanner[kind="cancel"] { background: #e3e3e3; border: 1px solid #a0a0a0; color: #2c2c2c; }
+
+/* ---- Run view : compteurs ⚠/✗ du journal (chips filtrantes, checkables) ---- */
+#JournalChipWarn, #JournalChipErr {
+    font-size: 10px; font-weight: bold;
+    border-radius: 3px; padding: 1px 7px;
+    min-height: 16px; min-width: 0;
+}
+#JournalChipWarn { background: #f6efdc; border: 1px solid #b07a20; color: #8a5e18; }
+#JournalChipWarn:hover { border-color: #8a5e18; }
+#JournalChipWarn:checked { background: #b07a20; border-color: #8a5e18; color: #ffffff; }
+#JournalChipErr { background: #fbe7e7; border: 1px solid #a83838; color: #7a2727; }
+#JournalChipErr:hover { border-color: #7a2727; }
+#JournalChipErr:checked { background: #a83838; border-color: #7a2727; color: #ffffff; }
 
 /* ---- Run view : progression ---- */
 #RunProgress {
-    border: 1px solid #b0b0b0; border-radius: 3px;
+    border: 1px solid #b0b0b0; border-radius: 2px;
     background: #e3e3e3; text-align: center; min-height: 18px; color: #000000;
 }
 #RunProgress::chunk { background: #2b79c2; border-radius: 2px; }
 #RunJournal {
     background: #1c1b18; color: #d8d4cc;
-    border: 1px solid #999999; border-radius: 4px;
-    font-family: "Consolas", "Courier New", monospace; font-size: 10px;
+    border: 1px solid #c4c4c4; border-radius: 6px;
+    font-family: "Consolas", "Courier New", monospace; font-size: 11px;
 }
-#RunCancelBtn { padding: 4px 16px; }
+/* Annuler = action destructive : teinte danger (tons des erreurs du thème). */
+#RunCancelBtn {
+    background: #fbe7e7; border: 1px solid #a83838; border-radius: 2px;
+    color: #7a2727; font-weight: bold; padding: 4px 16px;
+}
+#RunCancelBtn:hover { background: #f5d4d4; border-color: #7a2727; }
+#RunCancelBtn:disabled { background: #e3e3e3; border-color: #b0b0b0; color: #909090; }
 
 /* ---- Barre d'actions ---- */
 #WizardActionBar { background: #f0f0f0; border-top: 1px solid #c4c4c4; }
+/* Bouton primaire plein : l'action principale doit dominer un bouton standard
+   survolé (l'ancien gradient bleu pâle s'y confondait). */
 #WizardPrimaryButton {
-    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #d8eafc, stop:1 #a8c8ec);
-    border: 1px solid #2b79c2;
+    background: #2b79c2;
+    border: 1px solid #1d5a96;
     border-radius: 2px;
     padding: 5px 18px;
     font-weight: bold;
-    color: #000000;
+    color: #ffffff;
 }
-#WizardPrimaryButton:hover {
-    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #cee2fa, stop:1 #94bce4);
-}
-#WizardPrimaryButton:disabled { background: #d0d0d0; border-color: #a0a0a0; color: #909090; }
+#WizardPrimaryButton:hover { background: #1d5a96; }
+#WizardPrimaryButton:disabled { background: #d0d0d0; border-color: #a0a0a0; color: #707070; }
 
 /* ---- Dialog d'info modèle (ⓘ depuis « Runs IA programmés ») ---- */
 /* Bouton ⓘ à droite du nom du modèle dans chaque ligne de récap. */
@@ -380,7 +490,8 @@ QPushButton[role="micro"] {
     font-weight: bold;
     letter-spacing: 1px;
 }
-#ModelInfoSlug { color: #000000; font-size: 15px; font-weight: bold; }
+/* 14px : une modale secondaire ne titre pas plus grand que le dialogue (14px). */
+#ModelInfoSlug { color: #000000; font-size: 14px; font-weight: bold; }
 #ModelInfoDisplayName { color: #1d5a96; font-size: 12px; }
 #ModelInfoDescription { color: #2c2c2c; font-size: 11px; }
 #ModelInfoMeta { color: #5a5a5a; font-size: 10px; font-style: italic; }
@@ -392,7 +503,7 @@ QPushButton[role="micro"] {
 #ModelInfoSection { background: transparent; }
 #ModelInfoSectionHeader {
     background: transparent;
-    border-top: 1px solid #d0d0d0;
+    border-top: 1px solid #c4c4c4;
 }
 #ModelInfoSectionHeader:hover { background: #e8e8e8; }
 #ModelInfoSectionTitle {

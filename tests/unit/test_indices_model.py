@@ -7,6 +7,7 @@ from app.services.indices_model import (
     count_selected,
     default_products,
     product,
+    products_unavailable_in_mode,
     requires_mnt,
     rvt_keys,
     toggle,
@@ -15,13 +16,13 @@ from app.services.indices_model import (
 
 class TestCatalog:
     def test_rvt_keys_order(self):
-        assert rvt_keys() == ["HS", "M_HS", "SVF", "SLO", "LD", "SLRM", "VAT"]
+        assert rvt_keys() == ["HS", "M_HS", "SVF", "SLO", "LD", "SLRM", "VAT", "MSTP", "CVAT"]
 
     def test_base_keys(self):
-        assert base_keys() == ["MNT", "DENSITE"]
+        assert base_keys() == ["MNT", "DENSITE", "COUVERTURE"]
 
     def test_all_products_count(self):
-        assert len(all_products()) == 9
+        assert len(all_products()) == 12
 
     def test_product_lookup_has_metadata(self):
         p = product("M_HS")
@@ -80,3 +81,49 @@ class TestToggle:
         new, toast = toggle({"MNT": True, "DENSITE": False}, "DENSITE")
         assert new["DENSITE"] is True
         assert toast is None
+
+
+class TestCouvertureEntry:
+    def test_presente_au_catalogue_comme_produit_de_base(self):
+        p = product("COUVERTURE")
+        assert p.is_rvt is False
+        assert p.tag == "Couverture"
+        assert "COUVERTURE" in base_keys()
+
+    def test_decochee_par_defaut(self):
+        assert default_products()["COUVERTURE"] is False
+
+    def test_toggle_ne_force_pas_mnt(self):
+        new, toast = toggle(default_products(), "COUVERTURE")
+        assert new["COUVERTURE"] is True
+        assert new["MNT"] is False
+        assert toast is None
+
+
+class TestProductsUnavailableInMode:
+    """Produits dérivés du nuage de points : indisponibles dans les modes
+    existants (entrée déjà interpolée). Sert à purger la sélection résiduelle
+    au changement de mode (sinon COUVERTURE/DENSITE coché en mode LAZ persiste)."""
+
+    def test_laz_modes_have_no_unavailable_products(self):
+        assert products_unavailable_in_mode("ign_laz") == []
+        assert products_unavailable_in_mode("local_laz") == []
+
+    def test_existing_mnt_excludes_point_cloud_products(self):
+        assert products_unavailable_in_mode("existing_mnt") == ["DENSITE", "COUVERTURE"]
+
+    def test_existing_rvt_excludes_point_cloud_products(self):
+        assert products_unavailable_in_mode("existing_rvt") == ["DENSITE", "COUVERTURE"]
+
+    def test_mnt_input_stays_available_in_existing_mnt(self):
+        # Le MNT est l'ENTRÉE du mode (copiable vers les résultats) — pas purgé.
+        assert "MNT" not in products_unavailable_in_mode("existing_mnt")
+
+    def test_rvt_products_stay_available_in_existing_mnt(self):
+        # Les indices RVT se calculent depuis le MNT existant — pas purgés.
+        for k in rvt_keys():
+            assert k not in products_unavailable_in_mode("existing_mnt")
+
+    def test_unknown_mode_is_safe_empty(self):
+        assert products_unavailable_in_mode("") == []
+        assert products_unavailable_in_mode("autre") == []

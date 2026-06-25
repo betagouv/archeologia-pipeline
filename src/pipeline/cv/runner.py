@@ -36,6 +36,26 @@ from .runner_shapefiles import deduplicate_cv_shapefiles_final
 _find_external_cv_runner = find_external_cv_runner
 
 
+def _absolutize_models_dir(cv_config: Dict[str, Any]) -> Dict[str, Any]:
+    """Résout ``cv_config['models_dir']`` en chemin absolu (racine du plugin).
+
+    Le runner externe (subprocess) comme le fallback Python résolvent
+    ``models_dir`` relativement à leur **CWD** — qui n'est PAS la racine du
+    plugin (sous QGIS 4, le CWD est le dossier d'installation de QGIS). Un
+    ``models_dir`` relatif (« data/models » par défaut) pointe alors à côté
+    et le ``.onnx`` du modèle n'est pas trouvé. On le résout en absolu ici,
+    une seule fois, pour tous les consommateurs en aval. Retourne une copie ;
+    no-op si ``models_dir`` est absent ou déjà absolu.
+    """
+    if not isinstance(cv_config, dict):
+        return cv_config
+    raw = str(cv_config.get("models_dir") or "").strip()
+    if not raw or Path(raw).is_absolute():
+        return cv_config
+    plugin_root = Path(__file__).resolve().parents[3]
+    return {**cv_config, "models_dir": str((plugin_root / raw).resolve())}
+
+
 def run_cv_on_folder(
     *,
     jpg_dir: Path,
@@ -51,6 +71,25 @@ def run_cv_on_folder(
     cancel_check: Optional[CancelCheckFn] = None,
     image_progress: Optional[ImageProgressFn] = None,
 ) -> None:
+    # ``models_dir`` → absolu : indispensable pour que le runner externe
+    # (subprocess) ET le fallback trouvent le .onnx quel que soit le CWD.
+    cv_config = _absolutize_models_dir(cv_config)
+
+    # Filet SAHI : ``resolve_cv_runs`` (cv_post_service / finalize) tourne avec
+    # le ``models_dir`` RELATIF de la config ; sous QGIS (CWD ≠ racine plugin)
+    # il échoue à résoudre le dossier modèle et omet ``cv_config["sahi"]`` → le
+    # runner externe retombe alors sur le défaut 640 (mauvaise échelle), alors
+    # que le fallback in-process lit ``profile.sahi`` (correct). ``models_dir``
+    # étant désormais absolu, on relit le vrai SAHI de l'args.yaml du modèle
+    # pour aligner binaire et fallback.
+    try:
+        from .model_config import resolve_sahi_config
+        _sahi = resolve_sahi_config(cv_config)
+        if _sahi is not None:
+            cv_config = {**cv_config, "sahi": _sahi}
+    except Exception as _e:  # ne jamais bloquer l'inférence sur ce filet
+        log(f"Avertissement: résolution SAHI ignorée ({_e})")
+
     # ── Court-circuit si aucune classe sélectionnée ───────────────────
     _sel = (cv_config or {}).get("selected_classes")
     if isinstance(_sel, list) and len(_sel) == 0:

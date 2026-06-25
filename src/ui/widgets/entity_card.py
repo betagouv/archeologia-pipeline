@@ -75,7 +75,7 @@ class EntityCard(QFrame):
         self._check = QLabel("")
         self._check.setObjectName("EntityCheck")
         self._check.setFixedSize(15, 15)
-        self._check.setAlignment(Qt.AlignCenter)
+        self._check.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._label = QLabel(label)
         self._label.setObjectName("EntityLabel")
         self._rvt_tag = QLabel("")
@@ -111,20 +111,19 @@ class EntityCard(QFrame):
         self._rvt_key = ""
         layout.addWidget(self._rvt_row)
 
-        # Ligne modèle : « Modèle <nom>   Changer ▾ » (discret) / « seul disponible »
+        # Ligne modèle : « <nom>   Changer ▾ » (discret) / « seul disponible ».
+        # Pas de libellé « Modèle » séparé : le display_name le porte déjà
+        # (préfixé « Modèle … » dans chaque model_card.yaml) → évite le doublon.
         self._model_row = _Row()
-        model_lbl = QLabel("Modèle")
-        model_lbl.setObjectName("EntityModelLabel")
         self._model_name = QLabel("")
         self._model_name.setObjectName("EntityModelName")
         self._change_btn = QPushButton("Changer ▾")
         self._change_btn.setObjectName("EntityChangeBtn")
         self._change_btn.setFlat(True)
-        self._change_btn.setCursor(Qt.PointingHandCursor)
+        self._change_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self._change_btn.clicked.connect(self._on_change_clicked)
         self._single_hint = QLabel("seul disponible")
         self._single_hint.setObjectName("EntityModelSingle")
-        self._model_row.addWidget(model_lbl)
         self._model_row.addWidget(self._model_name, 1)
         self._model_row.addWidget(self._change_btn)
         self._model_row.addWidget(self._single_hint)
@@ -230,6 +229,12 @@ class EntityCard(QFrame):
         """
         self._candidates = {name: disp for name, disp in candidates}
         self._has_model = bool(candidates)
+        # Affordance : toute la carte est cliquable quand un modèle la couvre
+        # (cf. mousePressEvent) — le curseur doit le dire, comme à l'étape 2.
+        self.setCursor(
+            Qt.CursorShape.PointingHandCursor if self._has_model
+            else Qt.CursorShape.ArrowCursor
+        )
         self._configure_reservations(has_cluster, is_derived)
 
     def _configure_reservations(self, has_cluster: bool, is_derived: bool = False) -> None:
@@ -261,7 +266,7 @@ class EntityCard(QFrame):
         rvt_active: bool,
         cluster_outputs: Sequence[str],
         cluster_on: bool,
-        default_confidence: float = 0.3,
+        default_confidence: float = 0.2,
         default_min_area: float = 0.0,
         conf_override: Optional[float] = None,
         area_override: Optional[float] = None,
@@ -398,7 +403,7 @@ class EntityCard(QFrame):
             act.setData(name)
             act.setCheckable(True)
             act.setChecked(name == self._current_model)
-        chosen = menu.exec_(self._change_btn.mapToGlobal(self._change_btn.rect().bottomLeft()))
+        chosen = menu.exec(self._change_btn.mapToGlobal(self._change_btn.rect().bottomLeft()))
         if chosen is not None:
             name = chosen.data()
             if name and name != self._current_model:

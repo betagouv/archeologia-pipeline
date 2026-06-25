@@ -71,9 +71,10 @@ def load_class_names_from_model(model_path: Union[str, Path]) -> Optional[List[s
                     logger.info(f"Classes chargées depuis {candidate.name}: {len(parsed)} classes")
                     return [str(c).strip() for c in parsed]
                 elif isinstance(parsed, dict) and parsed:
-                    # Dict {0: "class0", 1: "class1", ...}
+                    # Dict {"0": "class0", "1": "class1", ...} — les clés JSON
+                    # sont des strings, indexer avec str(i) (AUDIT v2 PARSE-08).
                     max_key = max(int(k) for k in parsed.keys())
-                    result = [str(parsed.get(i, f"classe_{i}")).strip() for i in range(max_key + 1)]
+                    result = [str(parsed.get(str(i), f"classe_{i}")).strip() for i in range(max_key + 1)]
                     logger.info(f"Classes chargées depuis {candidate.name}: {len(result)} classes")
                     return result
             else:
@@ -120,9 +121,11 @@ def detect_indexing_offset(class_ids: List[int], num_classes: int) -> int:
     return 0
 
 
-# Palette de couleurs de base (12 couleurs numérotées 0-11)
-# Chaque couleur a 5 variantes de luminosité pour les gammes de confiance
-# Format: (R, G, B) - couleur de base (confiance haute)
+# Palette de couleurs de base (12 couleurs numérotées 0-11), indexée par class_id.
+# NOTE (refonte couleurs 2026-06-12) : ne sert PLUS à la symbologie QGIS — celle-ci
+# dérive désormais la couleur du nom de classe via ``class_color_registry``
+# (+ ``color_palette``). Cette palette reste utilisée uniquement pour colorier les
+# **images annotées** (JPG de sortie) dans ``cv_output``/``computer_vision_onnx``.
 BASE_COLOR_PALETTE = [
     (255, 59, 59),    # 0: Rouge vif
     (50, 205, 50),    # 1: Vert lime
@@ -137,72 +140,6 @@ BASE_COLOR_PALETTE = [
     (173, 255, 47),   # 10: Vert-jaune
     (65, 105, 225),   # 11: Bleu royal
 ]
-
-
-def _lighten_color(rgb: Tuple[int, int, int], factor: float) -> Tuple[int, int, int]:
-    """Éclaircit une couleur RGB par un facteur (0=original, 1=blanc)."""
-    r, g, b = rgb
-    return (
-        int(r + (255 - r) * factor),
-        int(g + (255 - g) * factor),
-        int(b + (255 - b) * factor),
-    )
-
-
-def _darken_color(rgb: Tuple[int, int, int], factor: float) -> Tuple[int, int, int]:
-    """Assombrit une couleur RGB par un facteur (0=original, 1=noir)."""
-    r, g, b = rgb
-    return (
-        int(r * (1 - factor)),
-        int(g * (1 - factor)),
-        int(b * (1 - factor)),
-    )
-
-
-def get_color_for_confidence(base_color_index: int, confidence: float) -> Tuple[int, int, int]:
-    """
-    Retourne une couleur RGB basée sur l'index de couleur et la confiance.
-    
-    Plus la confiance est haute, plus la couleur est saturée (foncée).
-    Plus la confiance est basse, plus la couleur est claire.
-    
-    Écart accentué:
-    - Confiance >= 0.8: couleur assombrie (30%)
-    - Confiance 0.6-0.8: couleur assombrie légèrement (15%)
-    - Confiance 0.4-0.6: couleur de base
-    - Confiance 0.2-0.4: couleur éclaircie (50%)
-    - Confiance < 0.2: couleur très claire (90%)
-    
-    Args:
-        base_color_index: Index de la couleur de base (0-11)
-        confidence: Valeur de confiance (0.0-1.0)
-        
-    Returns:
-        Tuple (R, G, B)
-    """
-    base_color = BASE_COLOR_PALETTE[base_color_index % len(BASE_COLOR_PALETTE)]
-    
-    # Normaliser la confiance
-    if confidence > 1.0:
-        confidence = confidence / 10.0 if confidence <= 10.0 else 1.0
-    confidence = max(0.0, min(1.0, confidence))
-    
-    # Écart accentué avec assombrissement pour haute confiance et éclaircissement pour basse
-    if confidence >= 0.8:
-        # Haute confiance: couleur foncée (assombrie de 30%)
-        return _darken_color(base_color, 0.30)
-    elif confidence >= 0.6:
-        # Confiance moyenne-haute: légèrement assombrie (15%)
-        return _darken_color(base_color, 0.15)
-    elif confidence >= 0.4:
-        # Confiance moyenne: couleur de base
-        return base_color
-    elif confidence >= 0.2:
-        # Confiance moyenne-basse: éclaircie (35%)
-        return _lighten_color(base_color, 0.35)
-    else:
-        # Basse confiance: claire (65%)
-        return _lighten_color(base_color, 0.65)
 
 
 # --- Tranches de confiance (conf_bin) ------------------------------------
@@ -396,48 +333,6 @@ def filter_detections_below_confidence(
             )
         ]
     return result
-
-
-def load_class_colors_from_model(model_path: Union[str, Path]) -> Optional[List[int]]:
-    """
-    Charge les indices de couleurs par classe depuis args.yaml du modèle.
-    
-    Format attendu dans args.yaml:
-        class_colors: [0, 1, 2]  # Index de couleur pour chaque classe
-    
-    Args:
-        model_path: Chemin vers le fichier weights ou le dossier du modèle
-        
-    Returns:
-        Liste des indices de couleurs (0-11) par classe, ou None si non défini
-    """
-    model_dir = _resolve_model_dir(model_path)
-    
-    args_file = model_dir / "args.yaml"
-    if not args_file.exists():
-        return None
-    
-    try:
-        import yaml
-        with open(args_file, 'r', encoding='utf-8') as f:
-            args = yaml.safe_load(f)
-        
-        if isinstance(args, dict) and "class_colors" in args:
-            colors = args["class_colors"]
-            if isinstance(colors, list):
-                result = []
-                for c in colors:
-                    try:
-                        idx = int(c)
-                        result.append(idx % len(BASE_COLOR_PALETTE))
-                    except (ValueError, TypeError):
-                        result.append(0)
-                logger.info(f"Couleurs de classes chargées depuis args.yaml: {result}")
-                return result
-    except Exception as e:
-        logger.warning(f"Erreur lecture class_colors depuis args.yaml: {e}")
-    
-    return None
 
 
 def get_class_color(class_id: int, class_colors: Optional[List[int]] = None) -> Tuple[int, int, int]:

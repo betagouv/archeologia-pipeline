@@ -7,7 +7,7 @@ from typing import Any, Dict, Optional
 from ...cancellation import check_cancelled
 from ...coords import extract_xy_from_tile_name as _extract_xy_from_tile_name
 from ...subprocess_utils import run_subprocess_cancellable
-from .rvt_naming import get_rvt_source_and_dest_filenames
+from .rvt_naming import PRODUCT_ORDER, get_rvt_source_and_dest_filenames
 from ...types import CancelCheckFn, LogFn
 
 
@@ -47,7 +47,7 @@ def crop_final_products(
     # Utiliser la fonction utilitaire pour générer les noms de fichiers avec paramètres
     cropped: Dict[str, Path] = {}
 
-    for product_name in ["MNT", "DENSITE", "HS", "M_HS", "SVF", "SLO", "LD", "SLRM", "VAT"]:
+    for product_name in PRODUCT_ORDER:
         if not products.get(product_name, False):
             continue
         check_cancelled(cancel_check)
@@ -145,7 +145,7 @@ def copy_products_without_crop(
 
     copied: Dict[str, Path] = {}
 
-    for product_name in ["MNT", "DENSITE", "HS", "M_HS", "SVF", "SLO", "LD", "SLRM", "VAT"]:
+    for product_name in PRODUCT_ORDER:
         if not products.get(product_name, False):
             continue
         check_cancelled(cancel_check)

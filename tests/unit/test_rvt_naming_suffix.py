@@ -7,6 +7,7 @@ from pipeline.ign.products.rvt_naming import (
     get_rvt_folder_name,
     get_rvt_param_suffix,
     get_rvt_source_and_dest_filenames,
+    get_rvt_temp_filename,
 )
 from pipeline.output_paths import indice_tif_dir
 
@@ -15,7 +16,8 @@ X, Y = "0624", "6864"
 LD_PARAMS = {"ldo": {"angular_res": 15, "min_radius": 10, "max_radius": 20,
                      "observer_h": 1.7, "ve_factor": 1}}
 HS_PARAMS = {"hs": {"sun_azimuth": 315, "sun_elevation": 35, "ve_factor": 1}}
-ALL_PRODUCTS = ["MNT", "DENSITE", "HS", "M_HS", "SVF", "SLO", "LD", "SLRM", "VAT"]
+ALL_PRODUCTS = ["MNT", "DENSITE", "HS", "M_HS", "SVF", "SLO", "LD", "SLRM", "VAT",
+                "MSTP", "CVAT"]
 
 
 def _dest(product, params=None, **kw):
@@ -98,6 +100,49 @@ class TestRvtFolderName:
         assert svf_r10 != svf_r20
         assert svf_r10 == "SVF_R10_D16_V1_N0"
         assert svf_r20 == "SVF_R20_D16_V1_N0"
+
+
+class TestMstpNaming:
+    """MSTP : suffixe multi-échelle (local/meso/broad + lightness)."""
+
+    def test_default_suffix(self):
+        # dict vide ⇒ valeurs par défaut RVT (3-21 / 23-203 / 223-2023, lightness 1.2).
+        assert get_rvt_folder_name("MSTP", {}) == "MSTP_L3-21_M23-203_B223-2023_Li1p2"
+
+    def test_temp_filename(self):
+        assert get_rvt_temp_filename("MSTP", TILE, {}) == \
+            f"{TILE}_MSTP_L3-21_M23-203_B223-2023_Li1p2.tif"
+
+    def test_dest_filename(self):
+        assert _dest("MSTP") == \
+            "LHD_FXX_0624_6864_MSTP_L3-21_M23-203_B223-2023_Li1p2_A_LAMB93.tif"
+
+    def test_distinct_params_give_distinct_folders(self):
+        a = get_rvt_folder_name("MSTP", {"mstp": {"local_scale_max": 21}})
+        b = get_rvt_folder_name("MSTP", {"mstp": {"local_scale_max": 31}})
+        assert a != b
+        assert a == "MSTP_L3-21_M23-203_B223-2023_Li1p2"
+        assert b == "MSTP_L3-31_M23-203_B223-2023_Li1p2"
+
+    def test_lightness_french_comma(self):
+        # La virgule française est tolérée et le point devient "p" dans le nom.
+        assert get_rvt_folder_name("MSTP", {"mstp": {"lightness": "1,5"}}) == \
+            "MSTP_L3-21_M23-203_B223-2023_Li1p5"
+
+
+class TestCvatNaming:
+    """CVAT : composition figée ⇒ pas de suffixe (dossier = code brut)."""
+
+    def test_no_suffix(self):
+        assert get_rvt_param_suffix("CVAT", {}) == ""
+        assert get_rvt_folder_name("CVAT", {}) == "CVAT"
+        assert get_rvt_folder_name("CVAT", {"cvat": {"save_as_8bit": False}}) == "CVAT"
+
+    def test_temp_filename(self):
+        assert get_rvt_temp_filename("CVAT", TILE, {}) == f"{TILE}_CVAT.tif"
+
+    def test_dest_filename(self):
+        assert _dest("CVAT") == "LHD_FXX_0624_6864_CVAT_A_LAMB93.tif"
 
 
 class TestFolderPathSymmetry:

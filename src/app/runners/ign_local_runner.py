@@ -17,8 +17,10 @@ from .progress_plan import build_progress_plan
 
 try:  # cross-package import : OK en QGIS, fallback en tests standalone (src/ sur le path)
     from ...pipeline.cancellation import PipelineCancelled
+    from ...pipeline.batch import process_items_isolated
 except ImportError:  # pragma: no cover
     from pipeline.cancellation import PipelineCancelled
+    from pipeline.batch import process_items_isolated
 
 if TYPE_CHECKING:
     from ..structured_logger import StructuredLogger
@@ -49,6 +51,7 @@ class IgnOrLocalRunner:
         total_tiles: int,
         active_products: list,
     ) -> None:
+        from ...pipeline.ign.products.coverage import create_coverage_map
         from ...pipeline.ign.products.crop import crop_final_products
         from ...pipeline.ign.products.density import create_density_map
         from ...pipeline.ign.products.indices import create_visualization_products
@@ -78,8 +81,14 @@ class IgnOrLocalRunner:
         if cancel.is_cancelled():
             return
 
-        if products_cfg.get("DENSITE", False):
-            create_density_map(
+        # La passe densité sert DENSITE (publié) ET COUVERTURE (dérivé).
+        # Si DENSITE est décoché, son TIF reste en temp sans être publié
+        # (les boucles crop/copy filtrent sur le dict produits).
+        needs_density = bool(
+            products_cfg.get("DENSITE", False) or products_cfg.get("COUVERTURE", False)
+        )
+        if needs_density:
+            density_result = create_density_map(
                 input_laz_path=merged_path,
                 temp_dir=temp_dir,
                 current_tile_name=tile_name,
@@ -92,6 +101,17 @@ class IgnOrLocalRunner:
 
             if cancel.is_cancelled():
                 return
+
+            if products_cfg.get("COUVERTURE", False):
+                create_coverage_map(
+                    density_path=density_result.density_path,
+                    temp_dir=temp_dir,
+                    current_tile_name=tile_name,
+                    log=lambda m: reporter.info(m),
+                )
+
+                if cancel.is_cancelled():
+                    return
 
         create_visualization_products(
             temp_dir=temp_dir,
@@ -141,7 +161,10 @@ class IgnOrLocalRunner:
         slog: Optional["StructuredLogger"] = None,
     ) -> None:
         # Vider le cache de validation PDAL au début de chaque run
-        from ...pipeline.ign.pdal_validation import clear_validation_cache
+        try:  # fallback standalone (tests : src/ sur le path), cf. imports module
+            from ...pipeline.ign.pdal_validation import clear_validation_cache
+        except ImportError:  # pragma: no cover
+            from pipeline.ign.pdal_validation import clear_validation_cache
         clear_validation_cache()
 
         start_time = time.time()
@@ -171,42 +194,60 @@ class IgnOrLocalRunner:
         if result is None:
             return
 
-        from ...pipeline.ign.preprocess import prepare_merged_tiles
-
-        log_section("FUSION DES TUILES", "process", slog=slog, reporter=reporter)
-        # Fusion + produits partagent la pastille « Produits » de la timeline
-        # (le calcul MNT+RVT est entrelacé dalle par dalle, sans frontière).
-        report_stage_id(reporter, Stage.PRODUCTS)
-        reporter.stage("Fusion (voisins + merge)")
-        reporter.progress(strategy.merge_progress_start())
-        narrator.merging_start()
-
-        def _on_tile_merged(i: int, n: int, tile_name: str) -> None:
-            narrator.merging_tile_progress(i, n, tile_name)
-
-        merged_result = prepare_merged_tiles(
-            sorted_list_file=result.sorted_list_file,
-            dalles_dir=result.dalles_dir,
-            output_dir=ctx.output_dir,
-            tile_overlap_percent=processing.tile_overlap,
-            log=lambda m: reporter.info(m),
-            cancel=lambda: cancel.is_cancelled(),
-            stage=lambda s: reporter.stage(s),
-            max_workers=processing.max_workers,
-            on_tile_merged=_on_tile_merged,
-        )
-
-        merge_end = strategy.merge_progress_end()
-        if merge_end is not None:
-            reporter.progress(merge_end)
+        try:  # fallback standalone (tests : src/ sur le path)
+            from ...pipeline.ign.preprocess import prepare_merged_tiles
+        except ImportError:  # pragma: no cover
+            from pipeline.ign.preprocess import prepare_merged_tiles
 
         active_products: list = []
+        merged_result = None
+        tiles_ok = 0
+        tiles_total = 0
 
         # Annulation = arrêt rapide du travail lourd, puis finalisation légère
         # (VRT + projet QGIS + chargement des couches déjà produites).
+        # La FUSION est DANS le try/finally (AUDIT v2 ROB-12) : un échec de
+        # fusion ne saute plus la finalisation des produits déjà sur disque.
         cancelled = False
+        fatal = False
         try:
-            if products.needs_mnt() and merged_result.merged_files:
+            log_section("FUSION DES TUILES", "process", slog=slog, reporter=reporter)
+            # Fusion + produits partagent la pastille « Produits » de la timeline
+            # (le calcul MNT+RVT est entrelacé dalle par dalle, sans frontière).
+            report_stage_id(reporter, Stage.PRODUCTS)
+            reporter.stage("Fusion (voisins + merge)")
+            reporter.progress(strategy.merge_progress_start())
+            narrator.merging_start()
+
+            def _on_tile_merged(i: int, n: int, tile_name: str) -> None:
+                narrator.merging_tile_progress(i, n, tile_name)
+
+            merged_result = prepare_merged_tiles(
+                sorted_list_file=result.sorted_list_file,
+                dalles_dir=result.dalles_dir,
+                output_dir=ctx.output_dir,
+                tile_overlap_percent=processing.tile_overlap,
+                log=lambda m: reporter.info(m),
+                cancel=lambda: cancel.is_cancelled(),
+                stage=lambda s: reporter.stage(s),
+                max_workers=processing.max_workers,
+                on_tile_merged=_on_tile_merged,
+            )
+            if merged_result.failed:
+                reporter.error(
+                    f"⚠️ {len(merged_result.failed)} dalle(s) non fusionnée(s), "
+                    "ignorée(s) — voir le journal pour le détail."
+                )
+
+            merge_end = strategy.merge_progress_end()
+            if merge_end is not None:
+                reporter.progress(merge_end)
+
+            # Par défaut (pas de traitement par dalle), le décompte reflète
+            # les dalles fusionnées ; la boucle produits le précise ensuite.
+            tiles_ok = tiles_total = len(merged_result.merged_files)
+
+            if products.needs_tile_processing() and merged_result.merged_files:
                 rvt_params = ctx.rvt_params
                 active_products = products.active()
 
@@ -217,13 +258,9 @@ class IgnOrLocalRunner:
                 total_mnt = len(merged_result.merged_files)
                 narrator.products_phase_start(total_mnt, active_products)
 
-                for i, merged_path in enumerate(merged_result.merged_files, start=1):
-                    if cancel.is_cancelled():
-                        break
-
+                def _process_one_tile(i: int, merged_path: Path) -> None:
                     tile_label = merged_path.name.replace(".copc.laz", "").replace(".laz", "")
                     narrator.tile_progress(i, total_mnt, tile_label)
-
                     self._process_tile(
                         merged_path=merged_path,
                         output_dir=ctx.output_dir,
@@ -243,8 +280,27 @@ class IgnOrLocalRunner:
                         total_tiles=total_mnt,
                         active_products=active_products,
                     )
-
                     reporter.progress(strategy.products_progress_for_tile(i, total_mnt))
+
+                def _on_tile_failure(i: int, merged_path: Path, exc: Exception) -> None:
+                    label = merged_path.name.replace(".copc.laz", "").replace(".laz", "")
+                    reporter.error(f"Dalle {label} en échec, ignorée : {exc}")
+
+                # Isolation par dalle : une dalle illisible/échouée n'avorte plus
+                # tout le lot — les autres dalles sont traitées, la finalisation a
+                # toujours lieu (cf. AUDIT ROB-02).
+                tiles_ok, failed = process_items_isolated(
+                    merged_result.merged_files,
+                    _process_one_tile,
+                    cancel=cancel.is_cancelled,
+                    on_failure=_on_tile_failure,
+                )
+                tiles_total = total_mnt
+                if failed:
+                    reporter.error(
+                        f"⚠️ {len(failed)} dalle(s) sur {total_mnt} en échec "
+                        "— voir le journal pour le détail."
+                    )
 
                 # Computer Vision globale (post-boucle)
                 if ctx.cv.enabled and not cancel.is_cancelled():
@@ -266,20 +322,37 @@ class IgnOrLocalRunner:
         except PipelineCancelled:
             cancelled = True
             reporter.info("Annulation demandée — finalisation des résultats partiels…")
-
-        # Finalisation commune LÉGÈRE — toujours exécutée (bornée → va au bout)
-        finalize_pipeline(
-            output_dir=ctx.output_dir,
-            cv_cfg=ctx.cv.raw,
-            rvt_params=ctx.rvt_params,
-            reporter=reporter,
-            slog=slog,
-            start_time=start_time,
-            tiles_processed=len(merged_result.merged_files) if merged_result else 0,
-            active_products=active_products,
-            extra_label="Dalles traitées",
-            ui_config=ctx.ui_config,
-        )
+        except Exception:
+            # L'issue est transmise à la finalisation (pas de faux « ✅ »,
+            # AUDIT v2 ROB-14) puis l'erreur remonte au contrôleur.
+            fatal = True
+            raise
+        finally:
+            # Finalisation commune LÉGÈRE — TOUJOURS exécutée (y compris si une
+            # erreur inattendue remonte hors de la boucle isolée) : indexe et
+            # charge les produits déjà générés avant que l'erreur éventuelle
+            # ne remonte au contrôleur (cf. AUDIT ROB-01/02).
+            if cancelled or cancel.is_cancelled():
+                outcome = "cancelled"
+            elif fatal:
+                outcome = "failed"
+            else:
+                outcome = "success"
+            finalize_pipeline(
+                output_dir=ctx.output_dir,
+                cv_cfg=ctx.cv.raw,
+                rvt_params=ctx.rvt_params,
+                reporter=reporter,
+                slog=slog,
+                start_time=start_time,
+                tiles_processed=tiles_ok,
+                tiles_total=tiles_total,
+                active_products=active_products,
+                extra_label="Dalles traitées",
+                coverage_threshold_percent=processing.coverage_threshold_percent,
+                ui_config=ctx.ui_config,
+                outcome=outcome,
+            )
 
         if cancelled or cancel.is_cancelled():
             narrator.pipeline_cancelled()

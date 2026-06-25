@@ -19,7 +19,7 @@ class ToggleSwitch(QAbstractButton):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setCheckable(True)
-        self.setCursor(Qt.PointingHandCursor)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
         self.setFixedSize(_TRACK_W, _TRACK_H)
 
     def sizeHint(self) -> QSize:  # noqa: N802 (signature Qt)
@@ -27,8 +27,8 @@ class ToggleSwitch(QAbstractButton):
 
     def paintEvent(self, _event):  # noqa: N802 (signature Qt)
         p = QPainter(self)
-        p.setRenderHint(QPainter.Antialiasing)
-        p.setPen(Qt.NoPen)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        p.setPen(Qt.PenStyle.NoPen)
 
         # Piste : bleu si activé, gris sinon (légèrement plus terne si désactivé).
         on = self.isChecked()

@@ -58,7 +58,7 @@ class ProgressReporter(Protocol):
 
     def progress(self, pct: int) -> None: ...
 
-    def load_layers(self, vrt_paths: list, shapefile_paths: list, class_colors: list = None) -> None: ...
+    def load_layers(self, vrt_paths: list, shapefile_paths: list, class_colors: list = None, qa_paths: list = None) -> None: ...
 
     # ID d'étape sémantique (``Stage.DOWNLOAD``/``PRODUCTS``/``DETECTION``/
     # ``FINALIZE``) qui fait avancer la timeline mode-aware de l'UI. Distinct
@@ -104,7 +104,7 @@ class NullProgressReporter:
     def progress(self, pct: int) -> None:
         return
 
-    def load_layers(self, vrt_paths: list, shapefile_paths: list, class_colors: list = None) -> None:
+    def load_layers(self, vrt_paths: list, shapefile_paths: list, class_colors: list = None, qa_paths: list = None) -> None:
         return
 
     def metric(self, current: int, total: int, label: str) -> None:

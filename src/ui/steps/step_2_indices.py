@@ -37,6 +37,7 @@ from ...app.services.indices_model import (
     count_selected,
     default_products,
     product,
+    products_unavailable_in_mode,
     requires_mnt,
     rvt_keys,
     toggle,
@@ -61,6 +62,10 @@ _TAB_DESC = {
     "LD": "Dominance locale — fait ressortir les structures en relief positif.",
     "SLRM": "Soustrait le relief général pour isoler les micro-reliefs.",
     "VAT": "Combinaison d'indices optimisée pour la prospection archéologique.",
+    "MSTP": "Position topographique multi-échelle : compose 3 échelles "
+            "(locale/méso/large) en une image RGB.",
+    "CVAT": "VAT combiné : fusionne les variantes « general » et « flat » du VAT. "
+            "Composition figée — aucun paramètre hormis la sortie 8 bits.",
 }
 
 # Aides communes à plusieurs indices.
@@ -88,26 +93,27 @@ class _AdvTabBar(QTabBar):
     def paintEvent(self, event):  # noqa: N802 (signature Qt)
         super().paintEvent(event)  # onglets stylés par la QSS
         painter = QPainter(self)
-        painter.setRenderHint(QPainter.Antialiasing, True)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
         font = painter.font()
-        font.setPointSize(max(6, font.pointSize() - 2))
+        font.setPointSize(max(8, font.pointSize() - 1))
         font.setBold(True)
         painter.setFont(font)
         for i in range(self.count()):
             if not self.tabData(i):  # actif ou onglet non-indice → rien
                 continue
             rect = self.tabRect(i)
-            # Voile gris : l'onglet paraît désactivé.
-            painter.fillRect(rect.adjusted(2, 2, -2, -2), QColor(236, 236, 236, 150))
-            # Badge « OFF » encadré, calé à droite.
+            # Voile léger : l'onglet OFF reste lisible (il demeure cliquable
+            # pour réactiver l'indice — ne pas le confondre avec un disabled).
+            painter.fillRect(rect.adjusted(2, 2, -2, -2), QColor(236, 236, 236, 90))
+            # Badge « OFF » encadré, calé à droite (contraste AA : texte sombre).
             pill = QRect(0, 0, self._PILL_W, 15)
             pill.moveCenter(rect.center())
             pill.moveRight(rect.right() - 8)
-            painter.setPen(Qt.NoPen)
-            painter.setBrush(QColor(0xCF, 0xCF, 0xCF))
+            painter.setPen(QColor(0x90, 0x90, 0x90))
+            painter.setBrush(QColor(0xE3, 0xE3, 0xE3))
             painter.drawRoundedRect(pill, 3, 3)
-            painter.setPen(QColor(0x5A, 0x5A, 0x5A))
-            painter.drawText(pill, Qt.AlignCenter, "OFF")
+            painter.setPen(QColor(0x2C, 0x2C, 0x2C))
+            painter.drawText(pill, Qt.AlignmentFlag.AlignCenter, "OFF")
 
 
 class _IndexCard(QFrame):
@@ -120,7 +126,7 @@ class _IndexCard(QFrame):
         self._key = key
         self.setObjectName("IndexCard")
         self.setProperty("checked", False)
-        self.setCursor(Qt.PointingHandCursor)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(10, 8, 10, 8)
@@ -131,7 +137,7 @@ class _IndexCard(QFrame):
         self._check = QLabel("")
         self._check.setObjectName("IndexCheck")
         self._check.setFixedSize(15, 15)
-        self._check.setAlignment(Qt.AlignCenter)
+        self._check.setAlignment(Qt.AlignmentFlag.AlignCenter)
         top.addWidget(self._tag)
         top.addStretch(1)
         top.addWidget(self._check)
@@ -169,7 +175,7 @@ class _Chip(QFrame):
         self._key = key
         self.setObjectName("Chip")
         self.setProperty("checked", False)
-        self.setCursor(Qt.PointingHandCursor)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
         layout = QHBoxLayout(self)
         layout.setContentsMargins(12, 5, 12, 5)
         layout.setSpacing(6)
@@ -246,8 +252,11 @@ class IndicesPage(QWidget):
         self._mnt_chip.clicked.connect(self._on_product_clicked)
         self._dens_chip = _Chip("DENSITE")
         self._dens_chip.clicked.connect(self._on_product_clicked)
+        self._cov_chip = _Chip("COUVERTURE")
+        self._cov_chip.clicked.connect(self._on_product_clicked)
         chips.addWidget(self._mnt_chip)
         chips.addWidget(self._dens_chip)
+        chips.addWidget(self._cov_chip)
         chips.addStretch(1)
         bv.addLayout(chips)
         self._mnt_hint = QLabel("MNT requis tant qu'un indice RVT est coché.")
@@ -272,7 +281,9 @@ class IndicesPage(QWidget):
         self._res_spin.valueChanged.connect(self._on_changed)
         res_row.addWidget(res_label)
         res_row.addWidget(self._res_spin)
-        res_row.addWidget(QLabel("m / pixel"))
+        res_unit = QLabel("m / pixel")
+        res_unit.setObjectName("FieldUnit")
+        res_row.addWidget(res_unit)
         res_row.addStretch(1)
         bv.addLayout(res_row)
         root.addWidget(self._base_card)
@@ -292,12 +303,12 @@ class IndicesPage(QWidget):
         footer = QHBoxLayout()
         self._count_label = QLabel("")
         self._count_label.setObjectName("WizardPageSub")
-        adv_btn = QPushButton("Réglages avancés…")
-        adv_btn.setObjectName("GhostButton")
-        adv_btn.clicked.connect(self._on_advanced)
+        self._adv_btn = QPushButton("Réglages avancés…")
+        self._adv_btn.setObjectName("GhostButton")
+        self._adv_btn.clicked.connect(self._on_advanced)
         footer.addWidget(self._count_label)
         footer.addStretch(1)
-        footer.addWidget(adv_btn)
+        footer.addWidget(self._adv_btn)
         rv.addLayout(footer)
         root.addWidget(self._rvt_card)
 
@@ -314,9 +325,9 @@ class IndicesPage(QWidget):
         root.setSpacing(12)
 
         header = QHBoxLayout()
-        back = QPushButton("←  Vue d'ensemble")
-        back.setObjectName("GhostButton")
-        back.clicked.connect(self._show_overview)
+        self._adv_back_btn = QPushButton("←  Vue d'ensemble")
+        self._adv_back_btn.setObjectName("GhostButton")
+        self._adv_back_btn.clicked.connect(self._show_overview)
         titles = QVBoxLayout()
         titles.setSpacing(2)
         title = QLabel("Paramètres détaillés")
@@ -328,14 +339,14 @@ class IndicesPage(QWidget):
         subtitle.setWordWrap(True)
         titles.addWidget(title)
         titles.addWidget(subtitle)
-        reset = QPushButton("↺  Réinitialiser")
-        reset.setObjectName("GhostButton")
-        reset.clicked.connect(self._reset_advanced)
-        header.addWidget(back)
+        self._reset_btn = QPushButton("↺  Réinitialiser")
+        self._reset_btn.setObjectName("GhostButton")
+        self._reset_btn.clicked.connect(self._reset_advanced)
+        header.addWidget(self._adv_back_btn)
         header.addSpacing(10)
         header.addLayout(titles)
         header.addStretch(1)
-        header.addWidget(reset)
+        header.addWidget(self._reset_btn)
         root.addLayout(header)
 
         self._adv_tabs = QTabWidget()
@@ -348,13 +359,18 @@ class IndicesPage(QWidget):
         self._filter_edit.setPlaceholderText("Ex: Classification = 2 OR Classification = 6")
         self._filter_edit.textChanged.connect(self._on_changed)
         self._density_spin = self._mk_dspin(0.01, 100.0, 1.0)
+        self._cov_thr_spin = self._mk_spin(5, 95, 30)
         self._reg(("processing",), "filter_expression", self._filter_edit, "text", DEFAULT_FILTER)
         self._reg(("processing",), "density_resolution", self._density_spin, "float", 1.0)
+        self._reg(("processing",), "coverage_threshold_percent", self._cov_thr_spin, "int", 30)
         self._adv_tabs.addTab(self._make_param_tab("MNT", [
             ("Filtre PDAL", self._filter_edit,
              "Classes LiDAR conservées pour reconstruire le sol (codes ASPRS)."),
             ("Résolution densité (m)", self._density_spin,
              "Taille de cellule du raster de densité de points."),
+            ("Seuil zones mal couvertes (%)", self._cov_thr_spin,
+             "Produit Couverture : en-dessous de ce % de cellules avec points "
+             "sol dans le voisinage, la zone est marquée « mal couverte »."),
         ]), "MNT")
 
         # — HS (hs) —
@@ -486,6 +502,56 @@ class IndicesPage(QWidget):
             ("", vat_8, _HELP_8BIT),
         ]), "VAT")
 
+        # — MSTP (mstp) : position topographique multi-échelle —
+        mstp_lmin = self._mk_spin(1, 100000, 3)
+        mstp_lmax = self._mk_spin(1, 100000, 21)
+        mstp_lstep = self._mk_spin(1, 100000, 2)
+        mstp_mmin = self._mk_spin(1, 100000, 23)
+        mstp_mmax = self._mk_spin(1, 100000, 203)
+        mstp_mstep = self._mk_spin(1, 100000, 18)
+        mstp_bmin = self._mk_spin(1, 100000, 223)
+        mstp_bmax = self._mk_spin(1, 100000, 2023)
+        mstp_bstep = self._mk_spin(1, 100000, 180)
+        mstp_light = self._mk_dspin(0.1, 5.0, 1.2)
+        mstp_ve = self._mk_spin(1, 100, 1)
+        mstp_8 = self._mk_check()
+        self._reg(("rvt_params", "mstp"), "local_scale_min", mstp_lmin, "int", 3)
+        self._reg(("rvt_params", "mstp"), "local_scale_max", mstp_lmax, "int", 21)
+        self._reg(("rvt_params", "mstp"), "local_scale_step", mstp_lstep, "int", 2)
+        self._reg(("rvt_params", "mstp"), "meso_scale_min", mstp_mmin, "int", 23)
+        self._reg(("rvt_params", "mstp"), "meso_scale_max", mstp_mmax, "int", 203)
+        self._reg(("rvt_params", "mstp"), "meso_scale_step", mstp_mstep, "int", 18)
+        self._reg(("rvt_params", "mstp"), "broad_scale_min", mstp_bmin, "int", 223)
+        self._reg(("rvt_params", "mstp"), "broad_scale_max", mstp_bmax, "int", 2023)
+        self._reg(("rvt_params", "mstp"), "broad_scale_step", mstp_bstep, "int", 180)
+        self._reg(("rvt_params", "mstp"), "lightness", mstp_light, "float", 1.2)
+        self._reg(("rvt_params", "mstp"), "ve_factor", mstp_ve, "int", 1)
+        self._reg(("rvt_params", "mstp"), "save_as_8bit", mstp_8, "bool", True)
+        self._tab_index["MSTP"] = self._adv_tabs.addTab(self._make_param_tab("MSTP", [
+            ("Échelle locale — rayon min (px)", mstp_lmin,
+             "Détails fins (canal bleu de la composition RGB)."),
+            ("Échelle locale — rayon max (px)", mstp_lmax, "Borne haute de l'échelle locale."),
+            ("Échelle locale — pas (px)", mstp_lstep, "Pas d'échantillonnage de l'échelle locale."),
+            ("Échelle méso — rayon min (px)", mstp_mmin,
+             "Structures intermédiaires (canal vert)."),
+            ("Échelle méso — rayon max (px)", mstp_mmax, "Borne haute de l'échelle méso."),
+            ("Échelle méso — pas (px)", mstp_mstep, "Pas d'échantillonnage de l'échelle méso."),
+            ("Échelle large — rayon min (px)", mstp_bmin,
+             "Grandes formes du paysage (canal rouge)."),
+            ("Échelle large — rayon max (px)", mstp_bmax, "Borne haute de l'échelle large."),
+            ("Échelle large — pas (px)", mstp_bstep, "Pas d'échantillonnage de l'échelle large."),
+            ("Luminosité", mstp_light, "Clarté globale de l'image composite (0.1–5)."),
+            ("Facteur VE", mstp_ve, _HELP_VE),
+            ("", mstp_8, _HELP_8BIT),
+        ]), "MSTP")
+
+        # — CVAT (cvat) : VAT combiné (general + flat), composition figée —
+        cvat_8 = self._mk_check()
+        self._reg(("rvt_params", "cvat"), "save_as_8bit", cvat_8, "bool", True)
+        self._tab_index["CVAT"] = self._adv_tabs.addTab(self._make_param_tab("CVAT", [
+            ("", cvat_8, _HELP_8BIT),
+        ]), "CVAT")
+
         root.addWidget(self._adv_tabs)
 
         # — Tuilage (global à tous les indices) —
@@ -498,7 +564,9 @@ class IndicesPage(QWidget):
         ov_lbl.setObjectName("FieldLabel")
         ov_row.addWidget(ov_lbl)
         ov_row.addWidget(self._overlap_spin)
-        ov_row.addWidget(QLabel("%"))
+        ov_unit = QLabel("%")
+        ov_unit.setObjectName("FieldUnit")
+        ov_row.addWidget(ov_unit)
         ov_row.addStretch(1)
         ov_hint = QLabel(
             "Chevauchement entre tuiles lors du calcul RVT. Évite les artefacts "
@@ -568,7 +636,7 @@ class IndicesPage(QWidget):
             chk.setObjectName("ActivateCheck")
             chk.toggled.connect(lambda on, k=key: self._on_activate_toggled(k, on))
             self._activate_checks[key] = chk
-            head.addWidget(chk, 0, Qt.AlignTop)
+            head.addWidget(chk, 0, Qt.AlignmentFlag.AlignTop)
         outer.addLayout(head)
 
         # — Grille 2 colonnes de champs —
@@ -620,9 +688,12 @@ class IndicesPage(QWidget):
                 widget.setMinimumWidth(130)
             else:
                 widget.setFixedWidth(96)
+            # Label et champ accolés (stretch APRÈS) : avec le stretch entre
+            # les deux, le champ se retrouvait visuellement plus proche du
+            # label du paramètre voisin que du sien (loi de proximité).
             row.addWidget(lbl)
-            row.addStretch(1)
             row.addWidget(widget)
+            row.addStretch(1)
             cell.addLayout(row)
         if help_text:
             hint = QLabel(help_text)
@@ -673,6 +744,8 @@ class IndicesPage(QWidget):
         self._mnt_chip.set_checked(self._products.get("MNT", False))
         self._dens_chip.set_checked(self._products.get("DENSITE", False))
         self._dens_chip.set_text("Densité · points LiDAR / m²")
+        self._cov_chip.set_checked(self._products.get("COUVERTURE", False))
+        self._cov_chip.set_text("Couverture · QA points sol")
         locked = requires_mnt(self._products)
         self._mnt_chip.set_text(
             "MNT · altitude du sol" + ("   · REQUIS" if locked else "")
@@ -723,10 +796,25 @@ class IndicesPage(QWidget):
         # L'onglet MNT (filtre PDAL + densité) n'a de sens que pour les modes
         # qui calculent un MNT depuis un nuage de points.
         self._adv_tabs.setTabEnabled(0, mode in ("ign_laz", "local_laz"))
+        # Purge des produits dérivés du nuage (densité/couverture) dans les modes
+        # sans nuage : la carte « Modèle de base » est seulement masquée, jamais
+        # réinitialisée — sans ça une sélection héritée d'un run LAZ persiste dans
+        # self._products et se resérialise (faux « produit demandé », avertissement
+        # « Couverture indisponible… — ignoré » côté runner).
+        purged = False
+        for key in products_unavailable_in_mode(mode):
+            if self._products.get(key):
+                self._products[key] = False
+                purged = True
         # En existing_rvt l'étape est sans objet : revenir à la vue d'ensemble.
         if mode == "existing_rvt":
             self._show_overview()
         self._refresh()
+        # Persiste la purge (autosave nettoie last_ui_config). Garde anti-boucle
+        # identique à activate_product ; au démarrage le signal n'est pas encore
+        # connecté, donc l'émission est sans effet (cohérent).
+        if purged and not self._loading:
+            self.changed.emit()
 
     # ------------------------------------------------------------------
     # Persistance
@@ -760,6 +848,28 @@ class IndicesPage(QWidget):
         if n_rvt:
             return f"{base} + {n_rvt} indice{'s' if n_rvt > 1 else ''} RVT"
         return base
+
+    def set_readonly(self, ro: bool) -> None:
+        """Verrouille la saisie pour consultation pendant un run (lecture seule).
+
+        Désactive uniquement les widgets de *saisie* ; les widgets de
+        navigation/dépliage (« Réglages avancés… », retour, barre d'onglets RVT,
+        scroll) restent actifs pour permettre de tout consulter. N'agit que sur
+        ``setEnabled``/``setReadOnly`` → aucun signal ``changed`` ni autosave.
+        """
+        self._mnt_chip.setEnabled(not ro)
+        self._dens_chip.setEnabled(not ro)
+        self._cov_chip.setEnabled(not ro)
+        self._res_spin.setEnabled(not ro)
+        self._reset_btn.setEnabled(not ro)
+        for card in self._index_cards.values():
+            card.setEnabled(not ro)
+        for chk in self._activate_checks.values():
+            chk.setEnabled(not ro)
+        for _section, _key, widget, kind, _default in self._adv_fields:
+            widget.setEnabled(not ro)
+            if kind == "text":
+                widget.setReadOnly(ro)
 
     def load_from(self, config: dict) -> None:
         proc = config.get("processing") or {}

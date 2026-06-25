@@ -1,12 +1,21 @@
 #!/usr/bin/env sh
 set -eu
 
+# Lint (AUDIT v2 HYG-01) : refuse le push si ruff trouve des erreurs.
+# `set -eu` fait échouer le hook sur un ruff non vert.
+if command -v ruff >/dev/null 2>&1; then
+  echo "[ruff] check src/ ..."
+  ruff check src/
+else
+  echo "[ruff] WARNING: 'ruff' introuvable dans le PATH - lint ignoré."
+fi
+
 # Talisman pre-push hook.
 # Requires 'talisman' to be available in PATH.
 
 if ! command -v talisman >/dev/null 2>&1; then
   echo "[talisman] ERROR: 'talisman' not found in PATH."
-  echo "[talisman] Install it, or disable hooksPath if you really must push without scanning." 
+  echo "[talisman] Install it, or disable hooksPath if you really must push without scanning."
   exit 1
 fi
 

@@ -87,6 +87,8 @@ class DetectionPage(QWidget):
         # ── Toggle d'activation (interrupteur pilule + libellé + badge) ──
         toggle = QFrame()
         toggle.setObjectName("DetectionToggle")
+        toggle.setProperty("on", "false")
+        self._toggle_frame = toggle
         tl = QHBoxLayout(toggle)
         tl.setContentsMargins(14, 10, 14, 10)
         tl.setSpacing(12)
@@ -102,9 +104,9 @@ class DetectionPage(QWidget):
         text.addWidget(sub)
         opt = QLabel("FACULTATIF")
         opt.setObjectName("FacultatifTag")
-        tl.addWidget(self._enable_check, 0, Qt.AlignVCenter)
+        tl.addWidget(self._enable_check, 0, Qt.AlignmentFlag.AlignVCenter)
         tl.addLayout(text, 1)
-        tl.addWidget(opt, 0, Qt.AlignVCenter)
+        tl.addWidget(opt, 0, Qt.AlignmentFlag.AlignVCenter)
         root.addWidget(toggle)
 
         # ── Empty state (détection désactivée) ──
@@ -113,22 +115,22 @@ class DetectionPage(QWidget):
         es = QVBoxLayout(self._empty_state)
         es.setContentsMargins(24, 24, 24, 24)
         es.setSpacing(6)
-        es.setAlignment(Qt.AlignCenter)
+        es.setAlignment(Qt.AlignmentFlag.AlignCenter)
         es_title = QLabel("Détection IA désactivée")
         es_title.setObjectName("EmptyStateTitle")
-        es_title.setAlignment(Qt.AlignCenter)
+        es_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         es_desc = QLabel(
             "Passez à l'étape 4 pour calculer les rasters seuls, ou activez la "
             "détection pour analyser automatiquement vos indices."
         )
         es_desc.setObjectName("WizardPageSub")
-        es_desc.setAlignment(Qt.AlignCenter)
+        es_desc.setAlignment(Qt.AlignmentFlag.AlignCenter)
         es_desc.setWordWrap(True)
-        es_btn = QPushButton("Activer la détection")
-        es_btn.clicked.connect(lambda: self._enable_check.setChecked(True))
+        self._es_btn = QPushButton("Activer la détection")
+        self._es_btn.clicked.connect(lambda: self._enable_check.setChecked(True))
         es.addWidget(es_title)
         es.addWidget(es_desc)
-        es.addWidget(es_btn, 0, Qt.AlignCenter)
+        es.addWidget(self._es_btn, 0, Qt.AlignmentFlag.AlignCenter)
 
         # ── Contenu (détection activée) ──
         self._content = QWidget()
@@ -209,7 +211,7 @@ class DetectionPage(QWidget):
         content_scroll = QScrollArea()
         content_scroll.setObjectName("DetectionScroll")
         content_scroll.setWidgetResizable(True)
-        content_scroll.setFrameShape(QFrame.NoFrame)
+        content_scroll.setFrameShape(QFrame.Shape.NoFrame)
         content_scroll.setWidget(self._content)
         self._content_scroll = content_scroll
 
@@ -233,7 +235,7 @@ class DetectionPage(QWidget):
         btn = QPushButton(text)
         btn.setObjectName("EntityChip")
         btn.setCheckable(True)
-        btn.setCursor(Qt.PointingHandCursor)
+        btn.setCursor(Qt.CursorShape.PointingHandCursor)
         btn.setChecked(key == "all")
         btn.clicked.connect(lambda _checked=False, k=key: self._on_filter_changed(k))
         self._chip_group.addButton(btn)
@@ -331,6 +333,11 @@ class DetectionPage(QWidget):
     # ------------------------------------------------------------------
     def _refresh(self) -> None:
         self._enable_check.setChecked(self._enabled)
+        # Le bandeau ne doit dire « actif » (bleu) que si la détection l'est :
+        # partout ailleurs dans le thème, #d6e6f4 + #2b79c2 code l'état coché.
+        self._toggle_frame.setProperty("on", "true" if self._enabled else "false")
+        self._toggle_frame.style().unpolish(self._toggle_frame)
+        self._toggle_frame.style().polish(self._toggle_frame)
         self._body_stack.setCurrentIndex(1 if self._enabled else 0)
         if not self._enabled:
             return
@@ -363,7 +370,7 @@ class DetectionPage(QWidget):
                 rvt_active=(rvt in self._active_rvts) if model else True,
                 cluster_outputs=cluster_outputs,
                 cluster_on=eid in self._cluster,
-                default_confidence=model.default_confidence if model else 0.3,
+                default_confidence=model.default_confidence if model else 0.2,
                 default_min_area=model.default_min_area if model else 0.0,
                 conf_override=ov.get("confidence_threshold"),
                 area_override=ov.get("min_area_m2"),
@@ -425,7 +432,7 @@ class DetectionPage(QWidget):
             info_btn = QToolButton()
             info_btn.setObjectName("ModelInfoButton")
             info_btn.setText("ⓘ")
-            info_btn.setCursor(Qt.PointingHandCursor)
+            info_btn.setCursor(Qt.CursorShape.PointingHandCursor)
             info_btn.setToolTip("Voir les détails du modèle")
             if model is not None:
                 # Capture du modèle dans la signature par défaut pour figer la
@@ -434,13 +441,30 @@ class DetectionPage(QWidget):
                 info_btn.clicked.connect(lambda _checked=False, m=model: self._open_model_info(m))
             else:
                 info_btn.setEnabled(False)
-            classes = QLabel(", ".join(run.get("selected_classes") or []))
-            classes.setObjectName("EntityDesc")
-            rvt_tag = QLabel(f"🔗 {run['target_rvt']}")
+            # Classes sélectionnées en pastilles « entité » lisibles (libellés du
+            # catalogue, déjà portés par run["entities"]) plutôt qu'un texte gris
+            # de noms techniques. Repli sur les noms de classes bruts pour un run
+            # legacy (sans bloc "entities").
+            chips = QFrame()
+            chips.setObjectName("RunClassChips")
+            ch = QHBoxLayout(chips)
+            ch.setContentsMargins(0, 0, 0, 0)
+            ch.setSpacing(4)
+            chip_labels = [
+                e["label"] for e in (run.get("entities") or []) if e.get("label")
+            ] or list(run.get("selected_classes") or [])
+            for cl in chip_labels:
+                chip = QLabel(str(cl))
+                chip.setObjectName("RunClassChip")
+                ch.addWidget(chip)
+            ch.addStretch(1)
+            # Pas d'émoji couleur (rendu hétérogène, non teintable par le QSS) :
+            # le fond bleu de la pastille identifie déjà le tag RVT.
+            rvt_tag = QLabel(str(run["target_rvt"]))
             rvt_tag.setObjectName("RunRvtTag")
             h.addWidget(name)
             h.addWidget(info_btn)
-            h.addWidget(classes, 1)
+            h.addWidget(chips, 1)
             h.addWidget(rvt_tag)
             self._runs_layout.insertWidget(idx, row)  # au-dessus du stretch final
             self._run_rows.append(row)
@@ -456,7 +480,7 @@ class DetectionPage(QWidget):
         if model is None:
             return
         from ..dialogs.model_info_dialog import ModelInfoDialog
-        ModelInfoDialog(model, parent=self).exec_()
+        ModelInfoDialog(model, parent=self).exec()
 
     # ------------------------------------------------------------------
     # API page
@@ -464,6 +488,20 @@ class DetectionPage(QWidget):
     def set_active_rvts(self, rvt_keys) -> None:
         self._active_rvts = set(rvt_keys or [])
         self._refresh()
+
+    def set_readonly(self, ro: bool) -> None:
+        """Verrouille la saisie pour consultation pendant un run (lecture seule).
+
+        Désactive l'interrupteur, les cartes d'entités et la case « images
+        annotées » ; garde actifs le scroll, les filtres morphologiques
+        (navigation) et la case « Réglages avancés » (révèle les seuils en
+        lecture seule). N'agit que sur ``setEnabled`` → aucun ``changed``/autosave.
+        """
+        self._enable_check.setEnabled(not ro)
+        self._annot_check.setEnabled(not ro)
+        self._es_btn.setEnabled(not ro)
+        for card in self._cards.values():
+            card.setEnabled(not ro)
 
     def summary(self) -> str:
         if not self._enabled:

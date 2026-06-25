@@ -21,8 +21,18 @@ ENV/
 .mypy_cache/
 .ruff_cache/
 
-# User config (last used session)
+# User config (chemins personnels, jamais versionné — voir config.example.json)
+config.json
 last_ui_config.json
+class_color_registry.json
+
+# Rapports d'audit internes — NE JAMAIS pousser (vulnérabilités résiduelles +
+# chemins personnels ; le dépôt distant est public).
+AUDIT*.md
+
+# Documentation locale non versionnée (docs utilisateur .docx, runbook OVH avec
+# login/chemins perso, plans internes ; le dépôt distant est public).
+dev/docs/_local/
 
 # Logs
 *.log
@@ -53,3 +63,9 @@ data/models/**
 
 # Data: quadrillage France (large shapefile, not versioned)
 data/quadrillage_france/
+
+# Fichiers de mot de passe HTTP Basic (dépôt QGIS OVH) — jamais versionnés
+htpasswd.txt
+.htpasswd
+
+# (Portage de calcul OVH déplacé vers un dépôt privé séparé.)

@@ -16,11 +16,13 @@ import logging
 from pathlib import Path
 from typing import List, Optional
 
+from ..pipeline.cv.class_color_registry import color_for_class
 from .layer_loader import (
     _ensure_layer_crs,
     _parse_gpkg_source,
-    _resolve_color_idx,
+    apply_coverage_raster_symbology,
     build_detection_vector_layer,
+    build_low_coverage_vector_layer,
 )
 
 _ALIASES = {
@@ -40,7 +42,10 @@ def _rvt_type_of(vrt) -> str:
     return vp.parent.parent.name if vp.parent.name == "tif" else vp.parent.name
 
 
-def _add_rasters(proj, root, vrt_paths: List[str], logger: logging.Logger) -> None:
+def _add_rasters(
+    proj, root, vrt_paths: List[str], logger: logging.Logger,
+    coverage_threshold_percent: float = 30.0,
+) -> None:
     """Ajoute les VRT comme couches raster (à plat, sous les vecteurs).
 
     Le MNT est placé **en dernier** → tout en bas de l'arbre (sous les indices),
@@ -60,6 +65,8 @@ def _add_rasters(proj, root, vrt_paths: List[str], logger: logging.Logger) -> No
             logger.warning(f"VRT invalide, ignoré: {vrt}")
             continue
         _ensure_layer_crs(layer, logger)
+        if rvt_type == "COUVERTURE":
+            apply_coverage_raster_symbology(layer, coverage_threshold_percent, logger)
         proj.addMapLayer(layer, False)
         root.addLayer(layer)
 
@@ -103,7 +110,7 @@ def _apply_validation_form(layer, all_classes: List[str], logger: logging.Logger
                 layer.setEditorWidgetSetup(i, setup)
 
         cfg = layer.editFormConfig()
-        cfg.setLayout(QgsEditFormConfig.TabLayout)
+        cfg.setLayout(QgsEditFormConfig.EditorLayout.TabLayout)
         root_c = cfg.invisibleRootContainer()
         try:
             root_c.clear()
@@ -163,6 +170,8 @@ def write_validation_project(
     entity_labels: Optional[dict] = None,
     derived_slugs: Optional[set] = None,
     min_conf_by_slug: Optional[dict] = None,
+    qa_paths: Optional[list] = None,
+    coverage_threshold_percent: float = 30.0,
     logger: logging.Logger,
     crs_authid: str = "EPSG:2154",
 ) -> Optional[Path]:
@@ -185,7 +194,8 @@ def write_validation_project(
         entity_labels = entity_labels or {}
         derived_slugs = derived_slugs or set()
         min_conf_by_slug = min_conf_by_slug or {}
-        global_color_map = global_color_map or {}
+        # ``global_color_map`` n'est plus consulté (couleur dérivée du nom de
+        # classe via le registre) ; conservé en signature pour l'appelant.
 
         proj = QgsProject()
         proj.setFileName(str(qgs_path))  # ancre les chemins relatifs
@@ -205,12 +215,12 @@ def write_validation_project(
             shp_str = str(shp)
             gpkg, layer_name, class_name = _parse_gpkg_source(shp_str)
             slug = Path(gpkg).parent.name
-            color_idx = _resolve_color_idx(global_color_map, class_name, shp_str, layer_name, logger)
+            base_color = color_for_class(class_name)
             # Seuil par entité (= seuil du run qui a binné conf_bin) ; repli sur le
             # seuil global pour un slug absent de la map (run legacy / sécurité).
             layer_conf = min_conf_by_slug.get(slug, confidence_threshold)
             layer = build_detection_vector_layer(
-                shp_str, layer_name, color_idx=color_idx,
+                shp_str, layer_name, base_color=base_color,
                 confidence_threshold=layer_conf, logger=logger,
             )
             if layer is None:
@@ -229,8 +239,23 @@ def write_validation_project(
             if ext is not None and not ext.isEmpty():
                 extent.combineExtentWith(ext)
 
+        # 1b) Couche QA « zones mal couvertes » — insérée à l'index 0 APRÈS les
+        # groupes d'entités (insertGroup(0)) : elle finit tout en haut de l'arbre.
+        for qa in qa_paths or []:
+            if not qa:
+                continue
+            qa_layer = build_low_coverage_vector_layer(str(qa), coverage_threshold_percent, logger)
+            if qa_layer is None:
+                logger.warning(f"Couche QA invalide, ignorée: {qa}")
+                continue
+            proj.addMapLayer(qa_layer, False)
+            root.insertLayer(0, qa_layer)
+            ext = qa_layer.extent()
+            if ext is not None and not ext.isEmpty():
+                extent.combineExtentWith(ext)
+
         # 2) Rasters VRT (en bas de l'arbre).
-        _add_rasters(proj, root, vrt_paths, logger)
+        _add_rasters(proj, root, vrt_paths, logger, coverage_threshold_percent)
 
         # 3) Étendue initiale du projet (zoom sur les données à la réouverture).
         try:

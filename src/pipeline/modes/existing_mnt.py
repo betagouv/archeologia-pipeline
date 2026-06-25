@@ -11,7 +11,7 @@ from ..ign.products.crop import copy_products_without_crop, crop_final_products
 from ..ign.products.indices import create_visualization_products
 from ..ign.products.results import copy_final_products_to_results
 from ..constants import IGN_TILE_SIZE_M
-from ..tilespec import disambiguate, make_uid
+from ..tilespec import TileSpec, disambiguate, is_degenerate_tile, make_uid
 from ..types import CancelCheckFn, LogFn
 
 
@@ -144,7 +144,11 @@ def _copy_source_mnt_to_temp(
     conversion .asc (le process est tué et le TIF partiel supprimé).
     """
     if temp_mnt_path.exists():
-        return
+        if temp_mnt_path.stat().st_size > 0:
+            return
+        # Résidu 0 octet d'un crash antérieur : ne pas le prendre pour un
+        # « déjà converti » (AUDIT v2 ROB-16) — on rematérialise.
+        temp_mnt_path.unlink(missing_ok=True)
     suffix = source_path.suffix.lower()
     if suffix in (".tif", ".tiff"):
         shutil.copy2(str(source_path), str(temp_mnt_path))
@@ -158,6 +162,15 @@ def _copy_source_mnt_to_temp(
         cmd = [gdal_translate, str(source_path), str(temp_mnt_path)]
         r = run_subprocess_cancellable(cmd, cancel=cancel_check, output_path=temp_mnt_path)
         if r.returncode != 0:
+            # Ne JAMAIS laisser la sortie partielle : au re-run dans le même
+            # dossier, l'early-return ci-dessus la réutiliserait et les
+            # indices RVT seraient calculés sur des données tronquées
+            # (AUDIT v2 ROB-16 ; run_subprocess_cancellable ne supprime la
+            # sortie que sur ANNULATION, pas sur échec).
+            try:
+                temp_mnt_path.unlink(missing_ok=True)
+            except OSError:
+                pass
             raise RuntimeError(r.stderr or r.stdout)
         log(f"Conversion ASC→TIF terminée : {temp_mnt_path.name}")
     else:
@@ -251,10 +264,15 @@ def run_existing_mnt(
     output_formats: Dict[str, Any],
     rvt_params: Dict[str, Any],
     log: LogFn = lambda _: None,
+    error_log: LogFn | None = None,
     cancel_check: CancelCheckFn | None = None,
     feedback: Optional[Any] = None,
     mnt_progress: Callable[[int, int, str], None] | None = None,
 ) -> ExistingMntResult:
+    # Canal d'erreur VISIBLE dans l'UI (reporter.error côté runner) : ``log``
+    # émet à INFO=20, filtré par la fenêtre (seuil USER_INFO=25) — un échec
+    # routé sur ``log`` n'apparaît que dans le fichier .txt (AUDIT v2 ROB-15).
+    err = error_log if error_log is not None else log
     if not existing_mnt_dir.exists() or not existing_mnt_dir.is_dir():
         raise FileNotFoundError(f"Dossier MNT inexistant ou invalide: {existing_mnt_dir}")
 
@@ -273,10 +291,10 @@ def run_existing_mnt(
     # Filet anti-collision : garantit l'unicité des uid (donc des noms de sortie)
     # pour les dalles sub-km / hors-grille traitées par-dalle.
     seen_uids: set[str] = set()
-    for idx, mnt_path in enumerate(mnt_files, 1):
-        if cancel_check is not None and cancel_check():
-            log("Annulation demandée, arrêt du traitement MNT.")
-            break
+    from ..batch import process_items_isolated
+
+    def _process_one_mnt(idx: int, mnt_path: Path) -> None:
+        nonlocal processed
 
         if mnt_progress is not None:
             try:
@@ -285,6 +303,18 @@ def run_existing_mnt(
                 pass
 
         log(f"── MNT {idx}/{total} : {mnt_path.name}")
+
+        # 0) Écarter les dalles « placeholder » (1×1 px / posées à l'origine du CRS).
+        #    Incluses, elles produisent une sortie 1×1 à (0,0) qui, agrégée par
+        #    gdalbuildvrt, étire l'emprise de la mosaïque jusqu'à l'origine → couches
+        #    QGIS quasi vides, données réelles invisibles. Détection métadonnées-first.
+        spec = TileSpec.from_raster(mnt_path)
+        if spec is not None and is_degenerate_tile(spec):
+            err(
+                f"⚠️ MNT {mnt_path.name} ignoré : dalle dégénérée "
+                "(1×1 px / origine ≈ 0,0), exclue de la mosaïque."
+            )
+            return
 
         # 1) Inspecter l'emprise du MNT pour choisir le flux adapté
         bounds = get_raster_bounds(mnt_path)
@@ -338,7 +368,7 @@ def run_existing_mnt(
             )
             if ok:
                 processed += 1
-            continue
+            return
 
         # 3) Cas STANDARD et SMALL: une seule dalle logique
         skip_crop = (layout == "small")
@@ -387,7 +417,28 @@ def run_existing_mnt(
         if ok:
             processed += 1
 
-    if processed < total:
+    def _on_mnt_failure(idx: int, mnt_path: Path, exc: Exception) -> None:
+        err(f"⚠️ MNT {mnt_path.name} en échec, ignoré : {exc}")
+
+    # Isolation par MNT : un fichier illisible/corrompu (ex. .asc invalide,
+    # gdal_translate en échec) n'avorte plus tout le lot — les autres MNT sont
+    # traités et la finalisation a lieu (cf. AUDIT ROB-03). PipelineCancelled
+    # reste propagée pour une annulation globale propre.
+    _ok, failures = process_items_isolated(
+        mnt_files,
+        _process_one_mnt,
+        cancel=cancel_check,
+        on_failure=_on_mnt_failure,
+    )
+    if cancel_check is not None and cancel_check():
+        log("Annulation demandée, arrêt du traitement MNT.")
+
+    if failures:
+        err(
+            f"⚠️ {len(failures)} dalle(s) MNT sur {total} en échec "
+            f"— voir le journal pour le détail."
+        )
+    elif processed < total:
         log(
             f"⚠️ {total - processed} dalle(s) MNT sur {total} n'ont pas produit de sortie "
             f"(annulation ou erreur) — vérifiez le journal."

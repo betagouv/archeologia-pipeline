@@ -6,12 +6,13 @@
 
 [general]
 name=Archéolog'IA
-qgisMinimumVersion=3.0
+qgisMinimumVersion=3.34
+qgisMaximumVersion=4.99
 description=Détection de sites archéologiques par réseaux de neurones
-version=0.5.0
+version=0.7.4
 author=Valentin VIEUX
 email=valentin.vieux.pro@outlook.com
-about=Plugin pour automatiser la production d'indices de visualisation (à l'aide du plugin Relief Visualization Toolbox) à partir de données LiDAR ou de MNT et pour détecter des sites archéologiques à l'aide de réseaux de neurones (YOLO détection ou segmentation)
+about=Plugin pour automatiser la production d'indices de visualisation (à l'aide du plugin Relief Visualization Toolbox) à partir de données LiDAR ou de MNT et pour détecter des sites archéologiques à l'aide de réseaux de neurones (YOLO, RF-DETR détection ou segmentation)
 tracker=https://github.com/betagouv/archeologia-pipeline/issues
 repository=https://github.com/betagouv/archeologia-pipeline
 
@@ -20,7 +21,30 @@ repository=https://github.com/betagouv/archeologia-pipeline
 #
 
 hasProcessingProvider=no
-changelog=0.5.0 (2026-05-28)
+changelog=0.7.4 (2026-06-25)
+    * Téléchargement IGN : correctif du proxy d'entreprise — une URL d'auto-configuration (PAC, ex. http://serveur/proxy.pac) renseignée comme proxy dans QGIS produisait une adresse cassée (double « http:// ») qui faisait échouer tous les téléchargements ; ces URL PAC sont désormais détectées et ignorées avec un message expliquant comment définir un proxy hôte:port explicite (QGIS → Préférences → Réseau)
+    * Téléchargement IGN : si aucune dalle n'a pu être récupérée (réseau coupé ou proxy invalide), le pipeline s'arrête immédiatement avec un message clair au lieu de remonter une erreur opaque plus loin (« fichier central introuvable »)
+    * Journal de téléchargement : la sous-progression affiche « échec » au lieu de « téléchargée » quand une dalle n'a pas pu être récupérée
+ 0.7.3 (2026-06-22)
+    * Sélection des dalles IGN : correctif d'affichage — le quadrillage orange apparaît désormais de façon fiable au clic sur « Sélectionner les dalles » (rafraîchissement du canevas + réutilisation robuste de la couche), fin du symptôme « grille absente jusqu'au redémarrage de QGIS »
+    * Sélection des dalles IGN : si la vue est trop dézoomée, recadrage automatique sur la France métropolitaine ; bandeau persistant « Zoomez pour afficher les dalles » qui suit l'échelle ; un échec d'enregistrement ou un état périmé ne bloque plus le bouton
+ 0.7.2 (2026-06-18)
+    * Détections : fin des doublons imbriqués / accolés — les détections d'une même classe qui se recouvrent sont fusionnées (au lieu d'être découpées, ce qui produisait des anneaux troués et des bords rectilignes). Réglable par modèle (args.yaml : overlap_strategy, overlap_ios_threshold, overlap_min_area_ratio)
+    * Correctif : le moteur de détection (runner externe) ignorait la fenêtre d'analyse SAHI du modèle et retombait sur 640 px — il utilise désormais la valeur définie dans args.yaml (échelle de détection correcte)
+ 0.7.1 (2026-06-18)
+    * Distribution : nom du ZIP conforme au dépôt QGIS (archeologia.<version>.zip) — corrige l'échec « répertoire mal nommé » à l'installation depuis un dépôt ; génération automatique du plugins.xml (dev/package_plugin.py --repo-url)
+    * Réglages par défaut : aucun produit présélectionné au démarrage, nombre de workers à 3, seuils de confiance à 0,2 pour toutes les classes
+ 0.7.0 (2026-06-14)
+    * Sélection des dalles IGN directement sur la carte QGIS (mode IGN LiDAR HD) : clic / encadré (Ctrl pour retirer), estimation du volume à télécharger, garde-fou au-delà de 50 dalles
+    * Nouveaux indices de visualisation : MSTP (position topographique multi-échelle) et CVAT (VAT combiné, calculé in-process via rvt-qgis)
+    * Produit Couverture (QA points sol) : carte des zones de MNT interpolées faute de points sol (modes IGN/LAZ)
+    * Contrôle preflight du CRS des rasters (EPSG:2154 requis en modes MNT/RVT existants) ; index spatial .qix du quadrillage IGN pour des requêtes rapides
+    * Les couches de détection vides ne sont plus chargées ni écrites dans le projet de validation (fin de l'avertissement « CRS absent »)
+ 0.6.0 (2026-06-08)
+    * Compatibilité QGIS 4 (Qt6/PyQt6) : portage des accès enum Qt et QGIS vers la forme scopée — base de code unique compatible QGIS 3.34+ et QGIS 4.x
+    * Runner ONNX (cv_runner_onnx) compilé sans compression UPX pour limiter les faux positifs antivirus
+    * Détection du proxy fiabilisée : le proxy configuré dans QGIS (Préférences → Réseau) est désormais toujours utilisé pour les téléchargements IGN (suppression d'un test d'accessibilité trop strict qui faisait retomber en connexion directe sur réseau d'entreprise)
+ 0.5.0 (2026-05-28)
     * Fenêtre d'info modèle (ⓘ) depuis « Runs IA programmés » à l'étape 3 : architecture, indice RVT et MNT d'entraînement, regroupement (DBSCAN), notes & limites, bouton « Ouvrir le dossier »
     * README § « Sorties » réécrit pour refléter la structure entité-centrée réelle (detections/<entité>/<entité>.gpkg + _technique/<modèle>/)
  0.4.0 (2026-05-27)

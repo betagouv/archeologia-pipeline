@@ -9,9 +9,56 @@ from pipeline.cv.model_config import (
     _resolve_model_dir,
     resolve_model_weights_path,
     resolve_cv_runs,
+    resolve_sahi_config,
     is_rfdetr_model,
     load_clustering_config_from_model,
 )
+
+
+def _make_model_with_sahi(tmp_path: Path, slice_px: int) -> Path:
+    """Crée models_dir/mymodel/{args.yaml, weights/best.onnx} et renvoie models_dir."""
+    models_dir = tmp_path / "models"
+    mdir = models_dir / "mymodel"
+    (mdir / "weights").mkdir(parents=True)
+    (mdir / "weights" / "best.onnx").write_bytes(b"")
+    (mdir / "args.yaml").write_text(
+        f"sahi:\n  slice_height: {slice_px}\n  slice_width: {slice_px}\n  overlap_ratio: 0.2\n",
+        encoding="utf-8",
+    )
+    return models_dir
+
+
+# ── resolve_sahi_config (bug binaire : SAHI 640 au lieu d'args.yaml) ──
+#
+# Régression : sur le chemin du runner EXTERNE, le SAHI vient de
+# cv_config["sahi"], posé par resolve_cv_runs AVANT que run_cv_on_folder
+# n'absolutise models_dir. Avec un models_dir relatif (CWD QGIS ≠ racine
+# plugin), la résolution échoue → "sahi" jamais posé → repli sur 640.
+# resolve_sahi_config relit l'args.yaml du modèle (models_dir absolu) pour
+# réinjecter la vraie valeur (140), alignant binaire et fallback.
+class TestResolveSahiConfig:
+    def test_reads_slice_from_args_yaml(self, tmp_path: Path):
+        models_dir = _make_model_with_sahi(tmp_path, 140)
+        cfg = {"models_dir": str(models_dir), "selected_model": "mymodel"}
+        sahi = resolve_sahi_config(cfg)
+        assert sahi is not None
+        assert sahi["slice_height"] == 140
+        assert sahi["slice_width"] == 140
+
+    def test_returns_none_when_no_args_yaml(self, tmp_path: Path):
+        # Modèle présent mais sans args.yaml -> None (ne pas écraser avec 640).
+        models_dir = tmp_path / "models"
+        (models_dir / "mymodel" / "weights").mkdir(parents=True)
+        (models_dir / "mymodel" / "weights" / "best.onnx").write_bytes(b"")
+        cfg = {"models_dir": str(models_dir), "selected_model": "mymodel"}
+        assert resolve_sahi_config(cfg) is None
+
+    def test_returns_none_when_model_unresolvable(self, tmp_path: Path):
+        cfg = {"models_dir": str(tmp_path / "absent"), "selected_model": "ghost"}
+        assert resolve_sahi_config(cfg) is None
+
+    def test_returns_none_when_no_model_selected(self):
+        assert resolve_sahi_config({}) is None
 
 
 # ── _resolve_model_dir ──────────────────────────────────────────

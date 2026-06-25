@@ -1,0 +1,130 @@
+{
+  "_comment": "Documente le format de configuration du plugin (schéma = ConfigManager.default_config, verrouillé par tests/unit/test_config_example_sync.py). Le plugin ne lit PAS config.json : l'interface persiste ses réglages dans last_ui_config.json et un fichier comme celui-ci se réutilise via le bouton « Charger une config » de l'assistant. Aucun chemin personnel ne doit être versionné.",
+  "app": {
+    "files": {
+      "output_dir": "<chemin/vers/dossier_de_sortie>",
+      "data_mode": "ign_laz",
+      "input_file": "<chemin/vers/zone.shp>",
+      "local_laz_dir": "<chemin/vers/dossier_laz>",
+      "existing_mnt_dir": "<chemin/vers/dossier_mnt>",
+      "existing_rvt_dir": "<chemin/vers/dossier_rvt>"
+    }
+  },
+  "processing": {
+    "mnt_resolution": 0.5,
+    "density_resolution": 1.0,
+    "tile_overlap": 20,
+    "filter_expression": "Classification = 2 OR Classification = 6 OR Classification = 66 OR Classification = 67 OR Classification = 9",
+    "max_workers": 3,
+    "products": {
+      "MNT": false,
+      "DENSITE": false,
+      "HS": false,
+      "M_HS": false,
+      "SVF": false,
+      "SLO": false,
+      "LD": false,
+      "SLRM": false,
+      "VAT": false,
+      "MSTP": false,
+      "CVAT": false
+    },
+    "output_formats": {
+      "jpg": {
+        "HS": false,
+        "M_HS": false,
+        "SVF": false,
+        "SLO": false,
+        "LD": false,
+        "VAT": false,
+        "MSTP": false,
+        "CVAT": false
+      }
+    }
+  },
+  "computer_vision": {
+    "enabled": false,
+    "runs": [
+      {
+        "model": "<chemin/vers/data/models/<mon_modele>/weights/best.onnx>",
+        "target_rvt": "LD",
+        "confidence_threshold": 0.2,
+        "min_area_m2": 0.0
+      }
+    ],
+    "selected_entities": [],
+    "entity_model_overrides": {},
+    "entity_cluster_enabled": [],
+    "entity_thresholds": {},
+    "entity_cluster_params": {},
+    "selected_model": "",
+    "target_rvt": "LD",
+    "confidence_threshold": 0.2,
+    "iou_threshold": 0.5,
+    "generate_annotated_images": false,
+    "generate_shapefiles": false,
+    "models_dir": "data/models",
+    "export_runner_config": false,
+    "scan_all": true
+  },
+  "rvt_params": {
+    "hs": {
+      "sun_azimuth": 315,
+      "sun_elevation": 35,
+      "ve_factor": 1,
+      "save_as_8bit": true
+    },
+    "mdh": {
+      "num_directions": 16,
+      "sun_elevation": 35,
+      "ve_factor": 1,
+      "save_as_8bit": true
+    },
+    "svf": {
+      "noise_remove": 0,
+      "num_directions": 16,
+      "radius": 10,
+      "ve_factor": 1,
+      "save_as_8bit": true
+    },
+    "slope": {
+      "unit": 0,
+      "ve_factor": 1,
+      "save_as_8bit": true
+    },
+    "ldo": {
+      "angular_res": 15,
+      "min_radius": 10,
+      "max_radius": 20,
+      "observer_h": 1.7,
+      "ve_factor": 1,
+      "save_as_8bit": true
+    },
+    "slrm": {
+      "radius": 20,
+      "ve_factor": 1,
+      "save_as_8bit": true
+    },
+    "vat": {
+      "terrain_type": 0,
+      "save_as_8bit": true
+    },
+    "mstp": {
+      "local_scale_min": 3,
+      "local_scale_max": 21,
+      "local_scale_step": 2,
+      "meso_scale_min": 23,
+      "meso_scale_max": 203,
+      "meso_scale_step": 18,
+      "broad_scale_min": 223,
+      "broad_scale_max": 2023,
+      "broad_scale_step": 180,
+      "lightness": 1.2,
+      "ve_factor": 1,
+      "save_as_8bit": true
+    },
+    "cvat": {
+      "save_as_8bit": true
+    }
+  }
+}

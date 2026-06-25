@@ -1,13 +1,37 @@
 import json
+import os
+import shutil
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 
 class ConfigManager:
-    def __init__(self, plugin_root: Path, filename: str = "config.json"):
+    def __init__(
+        self,
+        plugin_root: Path,
+        filename: str = "config.json",
+        settings_dir: Optional[Path] = None,
+    ):
         self.plugin_root = plugin_root
         self.path = plugin_root / filename
-        self.last_ui_path = plugin_root / "last_ui_config.json"
+        # AUDIT v2 CFG-02 : les réglages utilisateur vivent HORS du dossier du
+        # plugin (remplacé à chaque mise à jour par ZIP → tout était perdu)
+        # quand l'hôte fournit un dossier de profil (côté QGIS :
+        # QgsApplication.qgisSettingsDirPath()/archeologia). L'ancien
+        # emplacement est migré automatiquement au premier lancement.
+        base = Path(settings_dir) if settings_dir is not None else plugin_root
+        self.last_ui_path = base / "last_ui_config.json"
+        if settings_dir is not None:
+            self._migrate_legacy_last_ui()
+
+    def _migrate_legacy_last_ui(self) -> None:
+        legacy = self.plugin_root / "last_ui_config.json"
+        try:
+            if legacy.exists() and not self.last_ui_path.exists():
+                self.last_ui_path.parent.mkdir(parents=True, exist_ok=True)
+                shutil.move(str(legacy), str(self.last_ui_path))
+        except Exception:
+            pass  # best-effort : au pire, on repart des défauts
 
     def default_config(self) -> Dict[str, Any]:
         return {
@@ -26,9 +50,9 @@ class ConfigManager:
                 "density_resolution": 1.0,
                 "tile_overlap": 20,
                 "filter_expression": "Classification = 2 OR Classification = 6 OR Classification = 66 OR Classification = 67 OR Classification = 9",
-                "max_workers": 4,
+                "max_workers": 3,
                 "products": {
-                    "MNT": True,
+                    "MNT": False,
                     "DENSITE": False,
                     "HS": False,
                     "M_HS": False,
@@ -37,6 +61,8 @@ class ConfigManager:
                     "LD": False,
                     "SLRM": False,
                     "VAT": False,
+                    "MSTP": False,
+                    "CVAT": False,
                 },
                 "output_formats": {
                     "jpg": {
@@ -46,6 +72,8 @@ class ConfigManager:
                         "SLO": False,
                         "LD": False,
                         "VAT": False,
+                        "MSTP": False,
+                        "CVAT": False,
                     }
                 },
             },
@@ -59,7 +87,7 @@ class ConfigManager:
                 "entity_cluster_params": {},
                 "selected_model": "",
                 "target_rvt": "LD",
-                "confidence_threshold": 0.3,
+                "confidence_threshold": 0.2,
                 "iou_threshold": 0.5,
                 "generate_annotated_images": False,
                 "generate_shapefiles": False,
@@ -107,6 +135,23 @@ class ConfigManager:
                 },
                 "vat": {
                     "terrain_type": 0,
+                    "save_as_8bit": True,
+                },
+                "mstp": {
+                    "local_scale_min": 3,
+                    "local_scale_max": 21,
+                    "local_scale_step": 2,
+                    "meso_scale_min": 23,
+                    "meso_scale_max": 203,
+                    "meso_scale_step": 18,
+                    "broad_scale_min": 223,
+                    "broad_scale_max": 2023,
+                    "broad_scale_step": 180,
+                    "lightness": 1.2,
+                    "ve_factor": 1,
+                    "save_as_8bit": True,
+                },
+                "cvat": {
                     "save_as_8bit": True,
                 },
             },
@@ -158,11 +203,17 @@ class ConfigManager:
         return cfg
 
     def save_last_ui_config(self, config: Dict[str, Any]) -> None:
-        """Sauvegarde la dernière config UI (last_ui_config.json)."""
+        """Sauvegarde la dernière config UI (last_ui_config.json).
+
+        Écriture ATOMIQUE (tmp + os.replace) : un crash pendant l'autosave
+        n'efface plus toute la configuration (AUDIT v2 UIX-07/CFG-06).
+        """
         self._strip_deprecated_keys(config)
         self.last_ui_path.parent.mkdir(parents=True, exist_ok=True)
-        with self.last_ui_path.open("w", encoding="utf-8") as f:
+        tmp = self.last_ui_path.with_name(self.last_ui_path.name + ".tmp")
+        with tmp.open("w", encoding="utf-8") as f:
             json.dump(config, f, indent=2, ensure_ascii=False)
+        os.replace(tmp, self.last_ui_path)
 
     # Renommages d'identifiants d'entités (cf. refonte morphologique étape 3) :
     # une sélection sauvegardée avec un ancien id deviendrait un fantôme (droppée

@@ -3,7 +3,8 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Callable, Optional
 
 if TYPE_CHECKING:
-    from threading import Event
+    from threading import Event  # noqa: F401 — annotations différées
+    from qgis.core import QgsProcessingFeedback  # noqa: F401 — F821 latent (AUDIT HYG-01)
 
 
 def create_cancellable_feedback(cancel_check: Callable[[], bool]) -> Optional["QgsProcessingFeedback"]:

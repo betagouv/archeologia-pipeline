@@ -71,18 +71,19 @@ class TestCollectVrtPathsAndBuild:
         paths = finalize_service._collect_vrt_paths_and_build(idx_dir, det_dir, lambda _m: None)
 
         assert built == [tif_dir]
-        assert paths == [str(tif_dir / "index.vrt")]
-        assert not (png_dir / "index.vrt").exists()
-        assert not (annotated_dir / "index.vrt").exists()
+        # Nom distinctif = nom de couche QGIS : index_<PRODUIT>.vrt (ici produit « LD »).
+        assert paths == [str(tif_dir / "index_LD.vrt")]
+        assert not list(png_dir.glob("*.vrt"))
+        assert not list(annotated_dir.glob("*.vrt"))
 
     def test_always_rebuilds_existing_vrt(self, tmp_path: Path, monkeypatch):
-        """Un index.vrt déjà présent est systématiquement régénéré (pas de skip-if-exists)."""
+        """Un VRT distinctif déjà présent est systématiquement régénéré (pas de skip-if-exists)."""
         idx_dir = tmp_path / "indices"
         det_dir = tmp_path / "detections"
         tif_dir = idx_dir / "LD" / "tif"
         tif_dir.mkdir(parents=True)
         (tif_dir / "tile.tif").write_bytes(b"tif")
-        (tif_dir / "index.vrt").write_text("stale", encoding="utf-8")  # VRT obsolète déjà présent
+        (tif_dir / "index_LD.vrt").write_text("stale", encoding="utf-8")  # VRT obsolète déjà présent
 
         built: list[Path] = []
 
@@ -99,8 +100,32 @@ class TestCollectVrtPathsAndBuild:
         paths = finalize_service._collect_vrt_paths_and_build(idx_dir, det_dir, lambda _m: None)
 
         assert built == [tif_dir]  # rebuild déclenché malgré le VRT existant
-        assert paths == [str(tif_dir / "index.vrt")]
-        assert (tif_dir / "index.vrt").read_text(encoding="utf-8") == "fresh"
+        assert paths == [str(tif_dir / "index_LD.vrt")]
+        assert (tif_dir / "index_LD.vrt").read_text(encoding="utf-8") == "fresh"
+
+    def test_removes_legacy_plain_index_vrt(self, tmp_path: Path, monkeypatch):
+        """Un ``index.vrt`` hérité (runs antérieurs au nommage distinctif) est supprimé
+        après régénération sous le nouveau nom — pas de doublon périmé sur disque."""
+        idx_dir = tmp_path / "indices"
+        det_dir = tmp_path / "detections"
+        tif_dir = idx_dir / "LD" / "tif"
+        tif_dir.mkdir(parents=True)
+        (tif_dir / "tile.tif").write_bytes(b"tif")
+        (tif_dir / "index.vrt").write_text("legacy", encoding="utf-8")  # ancien nom générique
+
+        def fake_build_vrt_index(folder, *, pattern="*.tif", output_name="index.vrt", log=lambda _m: None):
+            (folder / output_name).write_text("fresh", encoding="utf-8")
+            return True
+
+        monkeypatch.setattr(
+            "pipeline.ign.products.results.build_vrt_index",
+            fake_build_vrt_index,
+        )
+
+        paths = finalize_service._collect_vrt_paths_and_build(idx_dir, det_dir, lambda _m: None)
+
+        assert paths == [str(tif_dir / "index_LD.vrt")]
+        assert not (tif_dir / "index.vrt").exists()  # legacy nettoyé
 
     def test_skips_tif_dir_without_tif_files(self, tmp_path: Path, monkeypatch):
         """Un dossier tif/ sans .tif ne génère ni ne retourne de VRT, même avec un index.vrt résiduel."""
@@ -198,3 +223,145 @@ class TestCollectDetectionLayers:
             f"{gpkg}|layername=cratere",
             f"{gpkg}|layername=zone",
         ]
+
+    def test_skips_empty_geopackage_layers(self, tmp_path: Path, monkeypatch):
+        # Une couche vide (0 entité, p.ex. vidée par le filtre d'aire) ne doit
+        # être ni collectée ni chargée → pas d'« avertissement CRS » au final.
+        gpkg = tmp_path / "detections" / "talus" / "talus.gpkg"
+        gpkg.parent.mkdir(parents=True)
+        gpkg.write_bytes(b"gpkg")
+        monkeypatch.setattr(finalize_service, "_list_gpkg_layers", lambda _p: ["talus_fosse", "cratere"])
+        counts = {"talus_fosse": 0, "cratere": 5}
+        monkeypatch.setattr(
+            finalize_service, "_gpkg_layer_feature_count", lambda _p, layer: counts[layer], raising=False
+        )
+
+        paths = finalize_service._collect_shapefiles(tmp_path / "detections")
+
+        assert paths == [f"{gpkg}|layername=cratere"]
+
+    def test_keeps_layer_when_feature_count_unknown(self, tmp_path: Path, monkeypatch):
+        # Comptage indéterminable (-1) → on conserve la couche (prudence).
+        gpkg = tmp_path / "detections" / "m" / "m.gpkg"
+        gpkg.parent.mkdir(parents=True)
+        gpkg.write_bytes(b"gpkg")
+        monkeypatch.setattr(finalize_service, "_list_gpkg_layers", lambda _p: ["x"])
+        monkeypatch.setattr(
+            finalize_service, "_gpkg_layer_feature_count", lambda _p, layer: -1, raising=False
+        )
+
+        paths = finalize_service._collect_shapefiles(tmp_path / "detections")
+
+        assert paths == [f"{gpkg}|layername=x"]
+
+
+class TestBuildCoveragePolygons:
+    @staticmethod
+    def _make_coverage_indices(tmp_path: Path) -> Path:
+        import numpy as np
+        import pytest
+
+        rasterio = pytest.importorskip("rasterio")
+        from rasterio.transform import from_origin
+
+        tif_dir = tmp_path / "indices" / "COUVERTURE" / "tif"
+        tif_dir.mkdir(parents=True)
+        arr = np.full((40, 40), 80, dtype=np.uint8)
+        arr[5:15, 5:15] = 0  # 100 m² sous le seuil
+        with rasterio.open(
+            tif_dir / "LHD_FXX_0624_6864_couverture_A_LAMB93.tif", "w",
+            driver="GTiff", height=40, width=40, count=1, dtype="uint8",
+            nodata=255, transform=from_origin(0.0, 40.0, 1.0, 1.0), crs="EPSG:2154",
+        ) as ds:
+            ds.write(arr, 1)
+        return tmp_path / "indices"
+
+    def test_dossier_absent_renvoie_none(self, tmp_path):
+        out = finalize_service._build_coverage_polygons(
+            tmp_path / "indices", 30.0, lambda m: None
+        )
+        assert out is None
+
+    def test_genere_le_gpkg(self, tmp_path):
+        import pytest
+
+        pytest.importorskip("shapely")
+        pytest.importorskip("geopandas")
+        idx_dir = self._make_coverage_indices(tmp_path)
+        out = finalize_service._build_coverage_polygons(idx_dir, 30.0, lambda m: None)
+        assert out is not None
+        assert Path(out) == idx_dir / "COUVERTURE" / "zones_mal_couvertes.gpkg"
+        assert Path(out).exists()
+
+    def test_erreur_isolee_renvoie_none(self, tmp_path):
+        # Un TIF corrompu ne doit JAMAIS faire échouer la finalisation (audit ROB).
+        tif_dir = tmp_path / "indices" / "COUVERTURE" / "tif"
+        tif_dir.mkdir(parents=True)
+        (tif_dir / "corrompu.tif").write_bytes(b"pas un tif")
+        logs = []
+        out = finalize_service._build_coverage_polygons(
+            tmp_path / "indices", 30.0, logs.append
+        )
+        assert out is None
+        assert any("non g" in m for m in logs)
+
+    def test_fallback_sans_vrt_couvre_toutes_les_dalles(self, tmp_path):
+        # Sans index.vrt (échec gdalbuildvrt), le repli doit traiter TOUTES les
+        # dalles, pas seulement la première (QA silencieusement incomplète sinon).
+        import numpy as np
+        import pytest
+
+        rasterio = pytest.importorskip("rasterio")
+        pytest.importorskip("shapely")
+        gpd = pytest.importorskip("geopandas")
+        from rasterio.transform import from_origin
+
+        tif_dir = tmp_path / "indices" / "COUVERTURE" / "tif"
+        tif_dir.mkdir(parents=True)
+        for i, x0 in enumerate((0.0, 1000.0)):
+            arr = np.full((40, 40), 80, dtype=np.uint8)
+            arr[5:15, 5:15] = 0
+            with rasterio.open(
+                tif_dir / f"dalle_{i}_couverture.tif", "w",
+                driver="GTiff", height=40, width=40, count=1, dtype="uint8",
+                nodata=255, transform=from_origin(x0, 40.0, 1.0, 1.0), crs="EPSG:2154",
+            ) as ds:
+                ds.write(arr, 1)
+
+        logs = []
+        out = finalize_service._build_coverage_polygons(
+            tmp_path / "indices", 30.0, logs.append
+        )
+        assert out is not None
+        gdf = gpd.read_file(out, layer="zones_mal_couvertes")
+        assert len(gdf) == 2  # une zone par dalle, pas seulement la première
+        assert any("dalle par dalle" in m for m in logs)
+
+    def test_collecte_sans_vrt_couvre_toutes_les_dalles(self, tmp_path):
+        # Variante standalone (sans geopandas) : la COLLECTE du repli sans VRT
+        # doit produire les zones de toutes les dalles, pas seulement la première.
+        import numpy as np
+        import pytest
+
+        rasterio = pytest.importorskip("rasterio")
+        pytest.importorskip("shapely")
+        from rasterio.transform import from_origin
+
+        tif_dir = tmp_path / "indices" / "COUVERTURE" / "tif"
+        tif_dir.mkdir(parents=True)
+        for i, x0 in enumerate((0.0, 1000.0)):
+            arr = np.full((40, 40), 80, dtype=np.uint8)
+            arr[5:15, 5:15] = 0
+            with rasterio.open(
+                tif_dir / f"dalle_{i}_couverture.tif", "w",
+                driver="GTiff", height=40, width=40, count=1, dtype="uint8",
+                nodata=255, transform=from_origin(x0, 40.0, 1.0, 1.0), crs="EPSG:2154",
+            ) as ds:
+                ds.write(arr, 1)
+
+        logs = []
+        polygons = finalize_service._collect_low_coverage_polygons(
+            tif_dir, 30.0, logs.append
+        )
+        assert len(polygons) == 2
+        assert any("dalle par dalle" in m for m in logs)

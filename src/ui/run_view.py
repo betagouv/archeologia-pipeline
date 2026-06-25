@@ -11,17 +11,19 @@ live (« 8/12 dalles ») viennent du canal structuré ``metric``.
 """
 from __future__ import annotations
 
+import html
 import logging
 import threading
 import time
 from pathlib import Path
 from typing import Dict, List, Optional
 
-from qgis.PyQt.QtCore import Qt, QTimer, QUrl, pyqtSignal
+from qgis.PyQt.QtCore import QPropertyAnimation, QSize, Qt, QTimer, QUrl, pyqtSignal
 from qgis.PyQt.QtGui import QDesktopServices, QTextCursor
 from qgis.PyQt.QtWidgets import (
     QApplication,
     QFrame,
+    QGraphicsOpacityEffect,
     QHBoxLayout,
     QLabel,
     QPlainTextEdit,
@@ -33,8 +35,14 @@ from qgis.PyQt.QtWidgets import (
 
 from ..app.progress_reporter import USER_INFO
 from ..app.progress_stages import STAGE_LABELS, build_stage_sequence
-from .layer_loader import load_result_layers
+from .icons import colored_icon
+from .layer_loader import load_result_layers, purge_output_dir_layers
 from .log_bridge import QtLogEmitter, QtLogHandler
+
+# Couleurs par niveau dans le journal sombre (#1c1b18) : warnings ambre,
+# erreurs rouges — le texte info garde la couleur par défaut du QSS (#d8d4cc).
+# Contrastes ≥ 4.5:1 sur le fond du journal.
+_LOG_LINE_COLORS = {"warn": "#e6c07b", "err": "#e06c75"}
 
 
 def _fmt_hms(seconds: float) -> str:
@@ -42,12 +50,6 @@ def _fmt_hms(seconds: float) -> str:
     h, rem = divmod(int(max(0.0, seconds)), 3600)
     m, s = divmod(rem, 60)
     return f"{h}:{m:02d}:{s:02d}"
-
-
-def _fmt_since(seconds: float) -> str:
-    """Ancienneté courte (« 12 s », « 3 min »)."""
-    s = int(max(0.0, seconds))
-    return f"{s} s" if s < 60 else f"{s // 60} min"
 
 
 def _level_category(levelname: str) -> str:
@@ -73,26 +75,28 @@ class _TimelineStep(QFrame):
         lay = QVBoxLayout(self)
         lay.setContentsMargins(6, 4, 6, 4)
         lay.setSpacing(3)
-        lay.setAlignment(Qt.AlignHCenter)
+        lay.setAlignment(Qt.AlignmentFlag.AlignHCenter)
         self._circle = QLabel(str(index + 1))
         self._circle.setObjectName("RunStepCircle")
-        self._circle.setFixedSize(24, 24)
-        self._circle.setAlignment(Qt.AlignCenter)
+        # 22 px comme la pastille du rail (#RailIdx) : un seul gabarit de
+        # stepper dans toute l'UI.
+        self._circle.setFixedSize(22, 22)
+        self._circle.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._caption = QLabel(label)
         self._caption.setObjectName("RunStepCaption")
-        self._caption.setAlignment(Qt.AlignCenter)
+        self._caption.setAlignment(Qt.AlignmentFlag.AlignCenter)
         # Sous-libellé + chrono TOUJOURS présents (même vides) → hauteur stable.
         self._subtitle = QLabel("")
         self._subtitle.setObjectName("RunStepSubtitle")
-        self._subtitle.setAlignment(Qt.AlignCenter)
+        self._subtitle.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._timing = QLabel("")
         self._timing.setObjectName("RunStepTiming")
-        self._timing.setAlignment(Qt.AlignCenter)
+        self._timing.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._timing.setFixedWidth(64)  # ~"9:59:59" → pas de reflow quand ça défile
-        lay.addWidget(self._circle, 0, Qt.AlignHCenter)
-        lay.addWidget(self._caption, 0, Qt.AlignHCenter)
-        lay.addWidget(self._subtitle, 0, Qt.AlignHCenter)
-        lay.addWidget(self._timing, 0, Qt.AlignHCenter)
+        lay.addWidget(self._circle, 0, Qt.AlignmentFlag.AlignHCenter)
+        lay.addWidget(self._caption, 0, Qt.AlignmentFlag.AlignHCenter)
+        lay.addWidget(self._subtitle, 0, Qt.AlignmentFlag.AlignHCenter)
+        lay.addWidget(self._timing, 0, Qt.AlignmentFlag.AlignHCenter)
         self.set_state("pending")
 
     def set_state(self, state: str) -> None:
@@ -133,6 +137,7 @@ class _Timeline(QWidget):
         self._lay.setContentsMargins(0, 0, 0, 0)
         self._lay.setSpacing(0)
         self._steps: List[_TimelineStep] = []
+        self._lines: List[QFrame] = []
         self._stage_ids: List[str] = []
 
     def set_stages(self, stage_ids: List[str], labels: Dict[str, str]) -> None:
@@ -144,6 +149,7 @@ class _Timeline(QWidget):
                 w.setParent(None)
                 w.deleteLater()
         self._steps = []
+        self._lines = []
         self._stage_ids = list(stage_ids)
         for i, sid in enumerate(self._stage_ids):
             step = _TimelineStep(i, labels.get(sid, sid))
@@ -152,8 +158,17 @@ class _Timeline(QWidget):
             if i < len(self._stage_ids) - 1:
                 line = QFrame()
                 line.setObjectName("RunStepLine")
+                line.setProperty("state", "pending")
                 line.setFixedHeight(2)
                 self._lay.addWidget(line, 1)
+                self._lines.append(line)
+
+    def _set_line_state(self, i: int, state: str) -> None:
+        line = self._lines[i]
+        if line.property("state") != state:
+            line.setProperty("state", state)
+            line.style().unpolish(line)
+            line.style().polish(line)
 
     def set_active(self, bucket: int) -> None:
         for i, step in enumerate(self._steps):
@@ -163,6 +178,9 @@ class _Timeline(QWidget):
                 step.set_state("active")
             else:
                 step.set_state("pending")
+        # Fil vert derrière les étapes faites, comme le fil du rail latéral.
+        for i in range(len(self._lines)):
+            self._set_line_state(i, "done" if i < bucket else "pending")
 
     def set_timing(self, i: int, text: str) -> None:
         if 0 <= i < len(self._steps):
@@ -180,12 +198,16 @@ class _Timeline(QWidget):
     def mark_all_done(self) -> None:
         for step in self._steps:
             step.set_state("done")
+        for i in range(len(self._lines)):
+            self._set_line_state(i, "done")
 
     def reset(self) -> None:
         for step in self._steps:
             step.set_state("pending")
             step.set_timing("")
             step.set_count("")
+        for i in range(len(self._lines)):
+            self._set_line_state(i, "pending")
 
 
 class RunView(QWidget):
@@ -222,6 +244,10 @@ class RunView(QWidget):
         self._transient_entry: Optional[list] = None
         self._transient_block: Optional[int] = None
         self._log_show = {"info": True, "warn": True, "err": True}
+        # Compteurs ⚠/✗ (chips de l'en-tête du journal) + issue du run pour le
+        # bandeau de fin (écrite par le thread worker, lue à run_enabled).
+        self._level_counts = {"warn": 0, "err": 0}
+        self._run_outcome = "ok"
 
         # ── Logger + pont Qt ──
         self._logger = logging.getLogger("archeologia_pipeline")
@@ -238,9 +264,10 @@ class RunView(QWidget):
         self._emitter.load_layers.connect(self._on_load_layers)
         self._emitter.metric.connect(self._on_metric)
         self._log_handler = QtLogHandler(self._emitter)
-        self._log_handler.setFormatter(
-            logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
-        )
+        # Message brut : l'horodatage (hh:mm discret) et le niveau (couleur +
+        # glyphe ⚠/✗) sont rendus par le journal lui-même — le préfixe complet
+        # « asctime - LEVEL - » reste réservé au fichier de log.
+        self._log_handler.setFormatter(logging.Formatter("%(message)s"))
         # Retire les handlers d'une instance précédente (réouverture du dialogue) :
         # sinon les logs partiraient vers un émetteur mort et le journal resterait
         # muet. On garantit qu'un seul QtLogHandler — celui-ci — est attaché.
@@ -260,13 +287,35 @@ class RunView(QWidget):
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(10)
 
-        # En-tête : « Étape N/M · <étape> » (M = nb d'étapes du mode) + sous-ligne
-        # (texte + démarré il y a) + compteur live à droite.
+        # Bandeau de fin de run (succès / échec / annulation) — chiffres réels
+        # uniquement (durée mesurée, compteurs ⚠/✗). Caché pendant le run.
+        self._end_banner = QLabel("")
+        self._end_banner.setObjectName("RunEndBanner")
+        self._end_banner.setProperty("kind", "ok")
+        self._end_banner.setWordWrap(True)
+        self._end_banner.setVisible(False)
+        root.addWidget(self._end_banner)
+
+        # En-tête : point d'activité pulsé + « Étape N/M · <étape> » + sous-ligne
+        # (sous-étape courante) + chrono total à droite. Le compteur live
+        # (« 8/12 dalles ») ne vit QUE dans la pastille active de la timeline.
         header = QFrame()
         header.setObjectName("RunHeader")
         hl = QHBoxLayout(header)
         hl.setContentsMargins(10, 6, 10, 6)
         hl.setSpacing(8)
+        self._activity_dot = QLabel("●")
+        self._activity_dot.setObjectName("RunActivityDot")
+        self._activity_dot.setVisible(False)
+        _dot_effect = QGraphicsOpacityEffect(self._activity_dot)
+        self._activity_dot.setGraphicsEffect(_dot_effect)
+        self._dot_anim = QPropertyAnimation(_dot_effect, b"opacity", self)
+        self._dot_anim.setDuration(1400)
+        self._dot_anim.setStartValue(1.0)
+        self._dot_anim.setKeyValueAt(0.5, 0.25)
+        self._dot_anim.setEndValue(1.0)
+        self._dot_anim.setLoopCount(-1)  # pulse tant que le run tourne
+        hl.addWidget(self._activity_dot, 0, Qt.AlignmentFlag.AlignVCenter)
         titles = QVBoxLayout()
         titles.setSpacing(1)
         self._run_step_label = QLabel("En attente")
@@ -275,10 +324,19 @@ class RunView(QWidget):
         self._run_sub_label.setObjectName("RunHeaderSub")
         titles.addWidget(self._run_step_label)
         titles.addWidget(self._run_sub_label)
-        self._run_metric_label = QLabel("")
-        self._run_metric_label.setObjectName("RunHeaderMetric")
+        right = QVBoxLayout()
+        right.setSpacing(0)
+        self._run_elapsed_label = QLabel("")
+        self._run_elapsed_label.setObjectName("RunHeaderMetric")
+        self._run_elapsed_label.setAlignment(Qt.AlignmentFlag.AlignRight)
+        self._elapsed_caption = QLabel("écoulé")
+        self._elapsed_caption.setObjectName("RunHeaderSub")
+        self._elapsed_caption.setAlignment(Qt.AlignmentFlag.AlignRight)
+        self._elapsed_caption.setVisible(False)
+        right.addWidget(self._run_elapsed_label)
+        right.addWidget(self._elapsed_caption)
         hl.addLayout(titles, 1)
-        hl.addWidget(self._run_metric_label, 0, Qt.AlignVCenter)
+        hl.addLayout(right)
         root.addWidget(header)
 
         self._timeline = _Timeline()
@@ -288,12 +346,28 @@ class RunView(QWidget):
         self._progress.setObjectName("RunProgress")
         self._progress.setRange(0, 100)
         self._progress.setValue(0)
+        self._progress.setTextVisible(True)
+        self._progress.setFormat("%p %")
         root.addWidget(self._progress)
 
         jhead = QHBoxLayout()
         jhead.setSpacing(8)
         jtitle = QLabel("Journal d'exécution")
         jtitle.setObjectName("RunJournalTitle")
+        # Compteurs ⚠/✗ cliquables : cochés, ils filtrent le journal sur leur
+        # niveau (première UI du mécanisme _log_show, déjà présent côté modèle).
+        self._warn_chip = QPushButton("⚠ 0")
+        self._warn_chip.setObjectName("JournalChipWarn")
+        self._warn_chip.setCheckable(True)
+        self._warn_chip.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._warn_chip.setToolTip("N'afficher que les avertissements")
+        self._warn_chip.clicked.connect(self._apply_level_filter)
+        self._err_chip = QPushButton("✗ 0")
+        self._err_chip.setObjectName("JournalChipErr")
+        self._err_chip.setCheckable(True)
+        self._err_chip.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._err_chip.setToolTip("N'afficher que les erreurs")
+        self._err_chip.clicked.connect(self._apply_level_filter)
         copy_btn = QPushButton("Copier")
         copy_btn.setObjectName("GhostButton")
         copy_btn.clicked.connect(self._copy_journal)
@@ -301,6 +375,8 @@ class RunView(QWidget):
         clear_btn.setObjectName("GhostButton")
         clear_btn.clicked.connect(self._clear_journal)
         jhead.addWidget(jtitle)
+        jhead.addWidget(self._warn_chip)
+        jhead.addWidget(self._err_chip)
         jhead.addStretch(1)
         jhead.addWidget(copy_btn)
         jhead.addWidget(clear_btn)
@@ -313,11 +389,23 @@ class RunView(QWidget):
         root.addWidget(self._journal, 1)
 
         actions = QHBoxLayout()
-        self._open_dir_btn = QPushButton("📁 Ouvrir le dossier")
+        # Icônes SVG du thème (teintées, nettes) plutôt que des émojis couleur
+        # au rendu hétérogène. Désactivés tant que le dossier/log n'existent pas
+        # (le clic était un no-op silencieux).
+        dpr = self.devicePixelRatioF()
+        self._open_dir_btn = QPushButton("Ouvrir le dossier")
         self._open_dir_btn.setObjectName("GhostButton")
+        self._open_dir_btn.setIcon(colored_icon("folder-open", "#2c2c2c", 14, dpr=dpr))
+        # iconSize = taille de rendu (14 px) : la taille par défaut du bouton
+        # (16 px) ferait un upscale pixelisé du pixmap.
+        self._open_dir_btn.setIconSize(QSize(14, 14))
+        self._open_dir_btn.setEnabled(False)
         self._open_dir_btn.clicked.connect(self._open_output_dir)
-        self._open_log_btn = QPushButton("📄 Log complet")
+        self._open_log_btn = QPushButton("Log complet")
         self._open_log_btn.setObjectName("GhostButton")
+        self._open_log_btn.setIcon(colored_icon("file-text", "#2c2c2c", 14, dpr=dpr))
+        self._open_log_btn.setIconSize(QSize(14, 14))
+        self._open_log_btn.setEnabled(False)
         self._open_log_btn.clicked.connect(self._open_log)
         actions.addWidget(self._open_dir_btn)
         actions.addWidget(self._open_log_btn)
@@ -395,10 +483,24 @@ class RunView(QWidget):
             self._logger.warning(w)
         self._logger.log(USER_INFO, "Lancement du pipeline…")
 
+        # Re-run dans le même dossier : retirer les couches VRT/GPKG périmées encore
+        # chargées (run précédent) AVANT que le worker régénère les VRT. Sinon QGIS,
+        # qui détient toujours l'ancien dataset, réécrit sa version périmée par-dessus
+        # le VRT régénéré → les dalles ajoutées resteraient invisibles. Thread principal.
+        purge_output_dir_layers(ctx.output_dir, self._logger)
+
         self._running = True
         self._run_started_at = time.monotonic()
         self._cancel_event.clear()
         self._cancel_btn.setEnabled(True)
+        # Le dossier de sortie (et le log) existent dès le démarrage du run.
+        self._open_dir_btn.setEnabled(True)
+        self._open_log_btn.setEnabled(True)
+        # Indicateur d'activité (point pulsé) + chrono total.
+        self._activity_dot.setVisible(True)
+        self._dot_anim.start()
+        self._run_elapsed_label.setText("0:00:00")
+        self._elapsed_caption.setVisible(True)
         self.run_started.emit()
         threading.Thread(target=self._worker, args=(ctx,), daemon=True).start()
 
@@ -410,6 +512,8 @@ class RunView(QWidget):
 
     # ------------------------------------------------------------------
     def _worker(self, ctx) -> None:
+        # Issue du run pour le bandeau de fin (lue à run_enabled, thread UI).
+        self._run_outcome = "err"
         try:
             from ..app.cancel_token import CancelToken
             from ..app.pipeline_controller import PipelineController, file_logging
@@ -418,11 +522,13 @@ class RunView(QWidget):
 
             reporter = QtProgressReporter(self._logger, self._emitter)
             with file_logging(ctx.output_dir, reporter):
-                PipelineController().run(
+                ok = PipelineController().run(
                     ctx=ctx, reporter=reporter, cancel=CancelToken(self._cancel_event)
                 )
+            self._run_outcome = "ok" if ok is not False else "err"
         except PipelineCancelled:
             # Annulation propre (filet de sécurité) : jamais journalisée comme erreur.
+            self._run_outcome = "cancel"
             self._logger.log(USER_INFO, "Pipeline annulé.")
         except Exception:
             self._logger.exception("Erreur pendant l'exécution du pipeline")
@@ -441,7 +547,9 @@ class RunView(QWidget):
         self._progress.setRange(0, 100)
         self._last_progress = 0
         self._progress.setValue(0)
-        self._run_metric_label.setText("")
+        self._run_elapsed_label.setText("")
+        self._elapsed_caption.setVisible(False)
+        self._end_banner.setVisible(False)
         self._update_header()
         self._clear_journal()
         self._step_started = [None] * len(self._stage_ids)
@@ -464,25 +572,72 @@ class RunView(QWidget):
         self._transient_group = None
         self._transient_entry = None
         self._transient_block = None
+        # Compteurs et filtres ⚠/✗ remis à zéro avec le contenu.
+        self._level_counts = {"warn": 0, "err": 0}
+        self._warn_chip.setText("⚠ 0")
+        self._err_chip.setText("✗ 0")
+        self._warn_chip.setChecked(False)
+        self._err_chip.setChecked(False)
+        self._log_show = {"info": True, "warn": True, "err": True}
+
+    @staticmethod
+    def _level_glyph(cat: str) -> str:
+        """Préfixe textuel du niveau — la couleur seule ne survit pas au
+        « Copier » (toPlainText) ni aux daltonismes."""
+        return {"warn": "⚠ ", "err": "✗ "}.get(cat, "")
+
+    def _append_journal_line(self, cat: str, msg: str, ts: str = "") -> None:
+        """Ligne de journal : horodatage hh:mm discret + texte coloré par
+        niveau (warn ambre / err rouge) — les lignes info gardent la couleur
+        par défaut du QSS."""
+        body = html.escape(self._level_glyph(cat) + msg)
+        body = body.replace("\n", "<br>").replace("  ", "&nbsp;&nbsp;")
+        color = _LOG_LINE_COLORS.get(cat)
+        if color:
+            body = f'<span style="color:{color};">{body}</span>'
+        stamp = f'<span style="color:#7d786c;">{ts}</span>&nbsp;&nbsp;' if ts else ""
+        self._journal.appendHtml(stamp + body)
 
     def _render_journal(self) -> None:
         """Reconstruit le journal filtré depuis le modèle d'entrées."""
-        lines = [t for (c, t) in self._log_entries if self._log_show.get(c, True)]
-        self._journal.setPlainText("\n".join(lines))
+        self._journal.clear()
+        for entry in self._log_entries:
+            cat, text = entry[0], entry[1]
+            ts = entry[2] if len(entry) > 2 else ""
+            if self._log_show.get(cat, True):
+                self._append_journal_line(cat, text, ts)
         # Le pointeur transient devient invalide après reconstruction : la
         # prochaine sous-progression repartira sur une nouvelle ligne.
         self._transient_block = None
         self._transient_group = None
         self._maybe_scroll()
 
+    def _apply_level_filter(self) -> None:
+        """Chips ⚠/✗ : cochée(s) → le journal ne montre que ces niveaux ;
+        aucune cochée → tout s'affiche."""
+        warn_on, err_on = self._warn_chip.isChecked(), self._err_chip.isChecked()
+        if warn_on or err_on:
+            self._log_show = {"info": False, "warn": warn_on, "err": err_on}
+        else:
+            self._log_show = {"info": True, "warn": True, "err": True}
+        self._render_journal()
+
+    def _bump_level_count(self, cat: str) -> None:
+        if cat in self._level_counts:
+            self._level_counts[cat] += 1
+            self._warn_chip.setText(f"⚠ {self._level_counts['warn']}")
+            self._err_chip.setText(f"✗ {self._level_counts['err']}")
+
     def _append_log(self, level: str, msg: str) -> None:
         cat = _level_category(level)
-        self._log_entries.append([cat, msg])
+        ts = time.strftime("%H:%M")
+        self._log_entries.append([cat, msg, ts])
+        self._bump_level_count(cat)
         self._transient_group = None
         self._transient_entry = None
         self._transient_block = None
         if self._log_show.get(cat, True):
-            self._journal.appendPlainText(msg)
+            self._append_journal_line(cat, msg, ts)
             self._maybe_scroll()
 
     def _update_transient_log(self, group: str, level: str, msg: str) -> None:
@@ -490,9 +645,12 @@ class RunView(QWidget):
         same = group == self._transient_group
         if same and self._transient_entry is not None:
             self._transient_entry[1] = msg
+            ts = self._transient_entry[2] if len(self._transient_entry) > 2 else ""
         else:
-            self._transient_entry = [cat, msg]
+            ts = time.strftime("%H:%M")
+            self._transient_entry = [cat, msg, ts]
             self._log_entries.append(self._transient_entry)
+            self._bump_level_count(cat)
             self._transient_group = group
             self._transient_block = None
         if not self._log_show.get(cat, True):
@@ -502,12 +660,14 @@ class RunView(QWidget):
             block = doc.findBlockByNumber(self._transient_block)
             if block.isValid():
                 cursor = QTextCursor(block)
-                cursor.movePosition(QTextCursor.StartOfBlock)
-                cursor.movePosition(QTextCursor.EndOfBlock, QTextCursor.KeepAnchor)
-                cursor.insertText(msg)
+                cursor.movePosition(QTextCursor.MoveOperation.StartOfBlock)
+                cursor.movePosition(QTextCursor.MoveOperation.EndOfBlock, QTextCursor.MoveMode.KeepAnchor)
+                # Réécriture en texte brut (l'horodatage perd son gris le temps
+                # de la sous-progression — la ligne est éphémère par nature).
+                cursor.insertText(f"{ts}  {self._level_glyph(cat)}{msg}" if ts else msg)
                 self._maybe_scroll()
                 return
-        self._journal.appendPlainText(msg)
+        self._append_journal_line(cat, msg, ts)
         self._transient_block = doc.blockCount() - 1
         self._maybe_scroll()
 
@@ -547,9 +707,9 @@ class RunView(QWidget):
     def _on_metric(self, current: int, total: int, label: str) -> None:
         if self._bucket < 0:
             return
-        text = f"{current}/{total} {label}"
-        self._timeline.set_count(self._bucket, text)
-        self._run_metric_label.setText(text)
+        # Une seule occurrence du compteur : la pastille active de la timeline
+        # (l'en-tête porte le chrono total, pas un doublon du compteur).
+        self._timeline.set_count(self._bucket, f"{current}/{total} {label}")
 
     def _update_header(self) -> None:
         if self._bucket < 0:
@@ -560,12 +720,8 @@ class RunView(QWidget):
         self._run_step_label.setText(
             f"Étape {self._bucket + 1}/{len(self._stage_ids)} · {label}"
         )
-        parts = []
-        if self._last_stage_text:
-            parts.append(self._last_stage_text)
-        if self._running and self._run_started_at is not None:
-            parts.append(f"démarré il y a {_fmt_since(time.monotonic() - self._run_started_at)}")
-        self._run_sub_label.setText(" · ".join(parts))
+        # « démarré il y a X » est devenu redondant avec le chrono « écoulé ».
+        self._run_sub_label.setText(self._last_stage_text or "")
 
     def _enter_bucket(self, bucket: int) -> None:
         """Transition d'étape : fige le chrono de la précédente, démarre la
@@ -596,13 +752,56 @@ class RunView(QWidget):
             self._timeline.set_timing(
                 self._bucket, _fmt_hms(time.monotonic() - self._active_started)
             )
-        self._update_header()  # rafraîchit « démarré il y a X »
+        if self._run_started_at is not None:
+            self._run_elapsed_label.setText(
+                _fmt_hms(time.monotonic() - self._run_started_at)
+            )
+
+    def _show_end_banner(self) -> None:
+        """Bandeau de synthèse de fin de run — uniquement des mesures réelles
+        (durée chronométrée, compteurs ⚠/✗), jamais d'estimation."""
+        if self._run_started_at is None:
+            return
+        elapsed = _fmt_hms(time.monotonic() - self._run_started_at)
+        outcome = self._run_outcome
+        # Annulation « douce » (le pipeline rend la main sans lever
+        # PipelineCancelled) : l'événement d'annulation fait foi.
+        if outcome == "ok" and self._cancel_event.is_set():
+            outcome = "cancel"
+        n_warn = self._level_counts.get("warn", 0)
+        n_err = self._level_counts.get("err", 0)
+        parts = []
+        if n_warn:
+            parts.append(f"{n_warn} avertissement{'s' if n_warn > 1 else ''}")
+        if n_err:
+            parts.append(f"{n_err} erreur{'s' if n_err > 1 else ''}")
+        suffix = (" — " + " · ".join(parts)) if parts else ""
+        if outcome == "ok":
+            text = f"✓  Pipeline terminé en {elapsed}{suffix}"
+        elif outcome == "cancel":
+            text = f"Pipeline annulé après {elapsed}{suffix}"
+        else:
+            text = f"✗  Pipeline en échec après {elapsed}{suffix} — voir le journal"
+        self._end_banner.setText(text)
+        self._end_banner.setProperty("kind", outcome)
+        self._end_banner.style().unpolish(self._end_banner)
+        self._end_banner.style().polish(self._end_banner)
+        self._end_banner.setVisible(True)
 
     def _on_run_enabled(self, enabled: bool) -> None:
         if not enabled:
             return
         self._running = False
         self._cancel_btn.setEnabled(False)
+        # Fige le chrono total, arrête le point d'activité, affiche la synthèse
+        # (avant le clear de _cancel_event, qui porte l'info « annulé »).
+        if self._run_started_at is not None:
+            self._run_elapsed_label.setText(
+                _fmt_hms(time.monotonic() - self._run_started_at)
+            )
+        self._dot_anim.stop()
+        self._activity_dot.setVisible(False)
+        self._show_end_banner()
         self._cancel_event.clear()
         # Filet de sécurité : ne jamais rester bloqué en barre indéterminée.
         if self._indeterminate:
@@ -620,12 +819,20 @@ class RunView(QWidget):
             self._timeline.mark_all_done()
         self.run_finished.emit()
 
-    def _on_load_layers(self, vrt_paths: list, shapefile_paths: list, class_colors: list) -> None:
+    def _on_load_layers(self, vrt_paths: list, shapefile_paths: list, class_colors: list, qa_paths: list) -> None:
         cv = (self._config or {}).get("computer_vision") or {}
         try:
             conf = float(cv.get("confidence_threshold", 0.0) or 0.0)
         except Exception:
             conf = 0.0
+        # Seuil du produit COUVERTURE : pilote le nom/style de la couche QA et
+        # la symbologie du raster index_COUVERTURE (même valeur que le seuillage
+        # des polygones au finalize).
+        proc = (self._config or {}).get("processing") or {}
+        try:
+            cov_thr = float(proc.get("coverage_threshold_percent", 30.0) or 30.0)
+        except (TypeError, ValueError):
+            cov_thr = 30.0
         # Regroupement live identique au .qgs : un groupe par entité dérivée
         # (zone + constituants), reste à plat. Helper partagé avec finalize_service.
         from ..app.services.finalize_service import (
@@ -638,17 +845,46 @@ class RunView(QWidget):
         # global cv.confidence_threshold, sinon les libellés de catégories
         # ([0.3:0.4[) ne matchent pas les conf_bin et la tranche basse est invisible.
         min_conf_by_slug = build_min_confidence_by_slug(cv.get("runs"))
-        load_result_layers(
-            vrt_paths, shapefile_paths, class_colors, self._logger, conf,
-            entity_labels=entity_labels, derived_slugs=derived_slugs,
-            min_conf_by_slug=min_conf_by_slug,
+        # Le chargement + l'écriture du .qgs DOIVENT rester sur le thread
+        # principal (API QGIS) : prévenir AVANT et afficher un curseur
+        # d'attente, sinon « QGIS ne répond pas » sans explication au moment
+        # où l'utilisateur croit que tout est fini (AUDIT v2 UIX-04).
+        self._logger.log(
+            25,  # USER_INFO : visible dans le journal de la fenêtre
+            "⏳ Chargement des couches dans QGIS — l'interface peut se figer "
+            "quelques instants…",
         )
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        try:
+            load_result_layers(
+                vrt_paths, shapefile_paths, class_colors, self._logger, conf,
+                entity_labels=entity_labels, derived_slugs=derived_slugs,
+                min_conf_by_slug=min_conf_by_slug,
+                qa_paths=qa_paths, coverage_threshold_percent=cov_thr,
+            )
+        finally:
+            QApplication.restoreOverrideCursor()
+        # Écriture du .qgs différée d'un tick d'event-loop : l'UI repeint les
+        # couches chargées avant la seconde passe (UIX-04).
+        QTimer.singleShot(
+            0,
+            lambda: self._write_validation_project(
+                vrt_paths, shapefile_paths, class_colors, qa_paths, conf,
+                entity_labels, derived_slugs, min_conf_by_slug, cov_thr,
+            ),
+        )
+
+    def _write_validation_project(
+        self, vrt_paths, shapefile_paths, class_colors, qa_paths, conf,
+        entity_labels, derived_slugs, min_conf_by_slug, cov_thr,
+    ) -> None:
         # Écrire le projet .qgs consolidé via l'API QGIS (thread principal) : QGIS
         # sérialise lui-même un projet relisable (CRS complet, datasources cohérentes),
         # ce que l'ancienne écriture XML à la main ne garantissait pas. Échec toléré.
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
         try:
             out_dir = self._output_dir()
-            if out_dir is not None and (vrt_paths or shapefile_paths):
+            if out_dir is not None and (vrt_paths or shapefile_paths or qa_paths):
                 from .qgs_writer import write_validation_project
                 gcm = class_colors[0] if (class_colors and isinstance(class_colors[0], dict)) else {}
                 all_classes = sorted({
@@ -660,10 +896,14 @@ class RunView(QWidget):
                     qgs_path, list(vrt_paths), list(shapefile_paths),
                     global_color_map=gcm, all_classes=all_classes, confidence_threshold=conf,
                     entity_labels=entity_labels, derived_slugs=derived_slugs,
-                    min_conf_by_slug=min_conf_by_slug, logger=self._logger,
+                    min_conf_by_slug=min_conf_by_slug,
+                    qa_paths=list(qa_paths or []), coverage_threshold_percent=cov_thr,
+                    logger=self._logger,
                 )
         except Exception as e:  # noqa: BLE001
             self._logger.warning(f"Écriture du projet QGIS non effectuée : {e}")
+        finally:
+            QApplication.restoreOverrideCursor()
 
     # ------------------------------------------------------------------
     # Accès dossier de sortie / log

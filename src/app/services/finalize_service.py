@@ -91,11 +91,18 @@ def build_min_confidence_by_slug(
 
 
 def _collect_vrt_paths_and_build(idx_dir: Path, det_dir: Path, log: LogFn) -> List[str]:
-    """Parcourt indices/ pour créer les index.vrt et retourne les chemins VRT."""
+    """Parcourt indices/ pour créer les ``index_<PRODUIT>.vrt`` et retourne leurs chemins.
+
+    Le VRT porte le nom de couche QGIS distinctif (``index_<PRODUIT>.vrt``, cf.
+    ``output_paths.index_vrt_filename``) → identifiable sur disque, plus le générique
+    ``index.vrt`` indistinguable d'un produit à l'autre.
+    """
     try:
         from ...pipeline.ign.products.results import build_vrt_index
+        from ...pipeline.output_paths import index_vrt_filename
     except ImportError:
         from pipeline.ign.products.results import build_vrt_index
+        from pipeline.output_paths import index_vrt_filename
 
     vrt_paths: List[str] = []
 
@@ -104,13 +111,95 @@ def _collect_vrt_paths_and_build(idx_dir: Path, det_dir: Path, log: LogFn) -> Li
         for tif_dir in idx_dir.rglob("tif"):
             if not tif_dir.is_dir():
                 continue
-            vrt_path = tif_dir / "index.vrt"
+            vrt_name = index_vrt_filename(tif_dir.parent.name)
+            vrt_path = tif_dir / vrt_name
             if list(tif_dir.glob("*.tif")):
-                build_vrt_index(tif_dir, pattern="*.tif", output_name="index.vrt", log=log)
+                build_vrt_index(tif_dir, pattern="*.tif", output_name=vrt_name, log=log)
                 if vrt_path.exists():
                     vrt_paths.append(str(vrt_path))
+                    # Nettoyage best-effort d'un ``index.vrt`` hérité (runs antérieurs
+                    # au nommage distinctif) pour éviter un doublon périmé sur disque.
+                    legacy = tif_dir / "index.vrt"
+                    if vrt_name != "index.vrt" and legacy.exists():
+                        try:
+                            legacy.unlink()
+                        except OSError:
+                            pass
 
     return vrt_paths
+
+
+def _collect_low_coverage_polygons(
+    tif_dir: Path,
+    threshold_percent: float,
+    log: LogFn,
+) -> list:
+    """Polygones « zones mal couvertes » de la mosaïque COUVERTURE.
+
+    Chemin nominal : le ``index_<PRODUIT>.vrt`` construit juste avant (mosaïque
+    complète, coutures de dalles fusionnées). Repli si le VRT manque (échec
+    gdalbuildvrt) : extraction **dalle par dalle** — toutes les dalles sont
+    couvertes, seules les zones à cheval sur deux dalles restent scindées (loggé).
+    """
+    try:
+        from ...pipeline.coverage_polygons import extract_low_coverage_polygons
+        from ...pipeline.output_paths import index_vrt_filename
+    except ImportError:  # pragma: no cover — fallback tests standalone
+        from pipeline.coverage_polygons import extract_low_coverage_polygons
+        from pipeline.output_paths import index_vrt_filename
+
+    raster = tif_dir / index_vrt_filename(tif_dir.parent.name)
+    if raster.exists():
+        return extract_low_coverage_polygons(raster, threshold_percent)
+    tifs = sorted(tif_dir.glob("*.tif"))
+    if not tifs:
+        return []
+    if len(tifs) > 1:
+        log(
+            "Couverture : index.vrt absent — extraction dalle par dalle "
+            "(les zones à cheval sur deux dalles ne sont pas fusionnées)"
+        )
+    polygons: list = []
+    for tif in tifs:
+        polygons.extend(extract_low_coverage_polygons(tif, threshold_percent))
+    polygons.sort(key=lambda g: g.area, reverse=True)
+    return polygons
+
+
+def _build_coverage_polygons(
+    idx_dir: Path,
+    threshold_percent: float,
+    log: LogFn,
+) -> Optional[str]:
+    """Vectorise les zones sous le seuil de ``indices/COUVERTURE/`` (si présent)
+    vers ``indices/COUVERTURE/zones_mal_couvertes.gpkg``.
+
+    Best-effort : toute erreur est loggée et renvoie ``None`` — la génération
+    QA ne doit jamais avorter la finalisation (audit ROB).
+    """
+    tif_dir = idx_dir / "COUVERTURE" / "tif"
+    if not tif_dir.is_dir():
+        return None
+    try:
+        try:
+            from ...pipeline.coverage_polygons import write_low_coverage_gpkg
+        except ImportError:  # pragma: no cover — fallback tests standalone
+            from pipeline.coverage_polygons import write_low_coverage_gpkg
+
+        polygons = _collect_low_coverage_polygons(tif_dir, threshold_percent, log)
+        if not polygons:
+            log("Couverture : aucune zone sous le seuil — pas de polygones générés")
+            return None
+        gpkg = write_low_coverage_gpkg(
+            polygons, idx_dir / "COUVERTURE" / "zones_mal_couvertes.gpkg"
+        )
+        if gpkg is None:
+            return None
+        log(f"Couverture : {len(polygons)} zone(s) mal couverte(s) → {gpkg.name}")
+        return str(gpkg)
+    except Exception as e:  # noqa: BLE001 — QA best-effort
+        log(f"Note: polygones de couverture non générés ({e})")
+        return None
 
 
 def _list_gpkg_layers(gpkg_path: Path) -> List[str]:
@@ -140,13 +229,43 @@ def _list_gpkg_layers(gpkg_path: Path) -> List[str]:
     return []
 
 
+def _gpkg_layer_feature_count(gpkg_path: Path, layer: str) -> int:
+    """Nombre d'entités d'une couche GeoPackage, ou ``-1`` si indéterminable.
+
+    Sert à écarter les couches **vides** à la collecte (ne pas charger/écrire une
+    couche de détection sans entité → évite l'avertissement « CRS absent » sur une
+    couche vide). En cas de doute (``-1``), l'appelant **conserve** la couche.
+    """
+    # osgeo.ogr (toujours présent dans OSGeo4W)
+    try:
+        from osgeo import ogr
+
+        ds = ogr.Open(str(gpkg_path))
+        if ds is not None:
+            lyr = ds.GetLayerByName(layer)
+            n = int(lyr.GetFeatureCount()) if lyr is not None else -1
+            ds = None
+            return n
+    except Exception:
+        pass
+    # Repli geopandas/pyogrio
+    try:
+        import geopandas as gpd
+
+        return int(len(gpd.read_file(str(gpkg_path), layer=layer)))
+    except Exception:
+        return -1
+
+
 def _collect_shapefiles(det_dir: Path) -> List[str]:
     """Collecte les couches GeoPackage de détection CV (organisation entité-centrée).
 
     Parcourt ``detections/<entity_slug>/<entity_slug>.gpkg`` (et tout ``.gpkg``
     livrable) en **excluant** l'échafaudage technique ``detections/_technique/``
-    (dumps d'inférence, GeoPackage modèle de repli vide). Reste tolérant aux
-    anciens layouts (``shapefiles/``) tant qu'ils ne sont pas sous ``_technique/``.
+    (dumps d'inférence, GeoPackage modèle de repli vide) **et les couches vides**
+    (0 entité — p.ex. vidées par le filtre d'aire minimale) : une couche vide ne
+    doit être ni chargée ni écrite dans le ``.qgs``. Reste tolérant aux anciens
+    layouts (``shapefiles/``) tant qu'ils ne sont pas sous ``_technique/``.
     """
     shapefile_paths: List[str] = []
     if not det_dir.exists():
@@ -164,130 +283,15 @@ def _collect_shapefiles(det_dir: Path) -> List[str]:
         layers = _list_gpkg_layers(gpkg_file)
         if layers:
             for layer in layers:
+                # Sauter les couches vides (comptage == 0 ; -1 = inconnu → on garde).
+                if _gpkg_layer_feature_count(gpkg_file, layer) == 0:
+                    continue
                 shapefile_paths.append(f"{gpkg_file}|layername={layer}")
         else:
             # Dernier recours : on inscrit le GPKG seul (nom de couche inconnu)
             shapefile_paths.append(str(gpkg_file))
 
     return shapefile_paths
-
-
-def _load_class_colors(cv_cfg: Dict[str, Any]) -> Optional[list]:
-    """Charge les couleurs de classes depuis le modèle CV sélectionné."""
-    try:
-        from ...pipeline.cv.class_utils import load_class_colors_from_model, resolve_model_weights_path
-        weights_path = resolve_model_weights_path(cv_cfg)
-        if weights_path and weights_path.exists():
-            return load_class_colors_from_model(weights_path)
-    except Exception:
-        pass
-    return None
-
-
-def _resolve_model_dir_from_run(run_cfg: Dict[str, Any]) -> Optional[Path]:
-    """Résout le dossier racine du modèle depuis un run_cfg.
-
-    Supporte les deux formats :
-    - runs bruts (clé 'model') : chemin absolu vers le fichier weights
-    - runs résolus par resolve_cv_runs (clé 'selected_model') : même chose
-    Le fichier weights peut ne pas exister (gitignored) ; on remonte quand même.
-    """
-    cfg = run_cfg or {}
-    # Priorité : 'model' (runs bruts), puis 'selected_model' (runs résolus)
-    model_val = str(cfg.get("model") or cfg.get("selected_model") or "").strip()
-    if not model_val:
-        return None
-    p = Path(model_val)
-    # Fichier weights existant
-    if p.is_file():
-        return p.parent.parent if p.parent.name == "weights" else p.parent
-    # Déjà un dossier
-    if p.is_dir():
-        return p
-    # Le fichier n'existe pas (gitignored) — remonter quand même
-    parent = p.parent
-    if parent.name == "weights":
-        return parent.parent
-    # Si c'est juste un nom de modèle sans chemin complet, chercher dans models_dir
-    if not p.is_absolute():
-        models_dir_val = str(cfg.get("models_dir") or "").strip()
-        if models_dir_val:
-            candidate = Path(models_dir_val) / model_val
-            if candidate.is_dir():
-                return candidate
-    return parent if parent != p else None
-
-
-def _build_global_class_color_map(cv_runs: List[Dict[str, Any]]) -> Dict[str, int]:
-    """Construit un mapping global {class_name: palette_index} unique pour toutes les classes de tous les modèles.
-
-    Chaque classe unique reçoit un index de palette distinct, en respectant
-    les couleurs définies dans args.yaml quand elles existent (sans collision).
-    """
-    from ...pipeline.cv.class_utils import (
-        load_class_names_from_model,
-        load_class_colors_from_model,
-        BASE_COLOR_PALETTE,
-    )
-
-    palette_size = len(BASE_COLOR_PALETTE)
-    class_color_map: Dict[str, int] = {}
-    used_indices: set = set()
-
-    def _get_model_dir(run_cfg):
-        """Retourne le dossier modèle même si les weights sont absents (gitignored)."""
-        model_dir = _resolve_model_dir_from_run(run_cfg)
-        if model_dir and model_dir.is_dir():
-            return model_dir
-        return None
-
-    # Premier passage: respecter les couleurs explicites de args.yaml
-    for run_cfg in cv_runs:
-        try:
-            model_dir = _get_model_dir(run_cfg)
-            if not model_dir:
-                continue
-            names = load_class_names_from_model(model_dir)
-            colors = load_class_colors_from_model(model_dir)
-            if not names:
-                continue
-            if isinstance(names, dict):
-                names = [names[k] for k in sorted(names.keys())]
-            for i, name in enumerate(names):
-                if name in class_color_map:
-                    continue
-                if colors and i < len(colors):
-                    idx = colors[i] % palette_size
-                    if idx not in used_indices:
-                        class_color_map[name] = idx
-                        used_indices.add(idx)
-        except Exception:
-            continue
-
-    # Deuxième passage: attribuer des couleurs aux classes restantes
-    next_free = 0
-    for run_cfg in cv_runs:
-        try:
-            model_dir = _get_model_dir(run_cfg)
-            if not model_dir:
-                continue
-            names = load_class_names_from_model(model_dir)
-            if not names:
-                continue
-            if isinstance(names, dict):
-                names = [names[k] for k in sorted(names.keys())]
-            for name in names:
-                if name in class_color_map:
-                    continue
-                while next_free in used_indices:
-                    next_free += 1
-                class_color_map[name] = next_free % palette_size
-                used_indices.add(next_free % palette_size)
-                next_free += 1
-        except Exception:
-            continue
-
-    return class_color_map
 
 
 def finalize_pipeline(
@@ -299,9 +303,12 @@ def finalize_pipeline(
     slog: Optional["StructuredLogger"] = None,
     start_time: float,
     tiles_processed: int = 0,
+    tiles_total: Optional[int] = None,
     active_products: Optional[List[str]] = None,
     extra_label: str = "",
+    coverage_threshold_percent: float = 30.0,
     ui_config: Optional[Dict[str, Any]] = None,
+    outcome: str = "success",
 ) -> None:
     """
     Finalisation commune à tous les runners :
@@ -310,10 +317,20 @@ def finalize_pipeline(
     3. Chargement des couleurs de classes
     4. Logs de fin de pipeline
     5. Chargement des couches dans QGIS
+
+    ``outcome`` (``success`` / ``cancelled`` / ``failed``) reflète l'issue
+    RÉELLE du run : appelée depuis les ``finally`` des runners, cette
+    fonction annonçait inconditionnellement « ✅ TERMINÉ AVEC SUCCÈS » même
+    quand une exception fatale était en vol (AUDIT v2 ROB-14).
+    ``tiles_total`` permet un décompte honnête (réussies/total) quand des
+    éléments ont échoué ; défaut = ``tiles_processed``.
     """
     import time
 
-    from ...pipeline.output_paths import indices_dir, detections_dir
+    try:  # fallback standalone (tests : src/ sur le path)
+        from ...pipeline.output_paths import indices_dir, detections_dir
+    except ImportError:  # pragma: no cover
+        from pipeline.output_paths import indices_dir, detections_dir
     from ..progress_reporter import report_busy, report_stage_id
     from ..progress_stages import Stage
     from ..user_narrator import create_user_narrator
@@ -322,7 +339,8 @@ def finalize_pipeline(
 
     idx_dir = indices_dir(output_dir)
     det_dir = detections_dir(output_dir)
-    log: LogFn = lambda m: reporter.info(m)
+    def log(m: str) -> None:
+        reporter.info(m)
 
     # 1. Création des index VRT
     # La finalisation occupe la bande 95→100 du plan (toutes phases CV/produits
@@ -336,19 +354,23 @@ def finalize_pipeline(
     narrator.finalize_start()
     vrt_paths = _collect_vrt_paths_and_build(idx_dir, det_dir, log)
 
+    # Polygones QA « zones mal couvertes » (si le produit COUVERTURE a tourné).
+    qa_paths: List[str] = []
+    qa_gpkg = _build_coverage_polygons(idx_dir, coverage_threshold_percent, log)
+    if qa_gpkg:
+        qa_paths.append(qa_gpkg)
+
     # 2. Collecte des shapefiles CV (tous les runs)
-    from ...pipeline.cv.class_utils import resolve_cv_runs
+    try:  # fallback standalone
+        from ...pipeline.cv.class_utils import resolve_cv_runs
+    except ImportError:  # pragma: no cover
+        from pipeline.cv.class_utils import resolve_cv_runs
     cv_runs = resolve_cv_runs(cv_cfg or {})
     shapefile_paths: List[str] = _collect_shapefiles(det_dir)
 
-    # 3. Construire un mapping global classe -> couleur unique
-    global_color_map: Dict[str, int] = {}
-    class_colors: Optional[list] = None
-    if cv_runs:
-        global_color_map = _build_global_class_color_map(cv_runs)
-    if not global_color_map:
-        # Fallback mono-modèle
-        class_colors = _load_class_colors(cv_cfg or {})
+    # 3. Les couleurs ne sont plus pré-calculées ici : chaque classe dérive sa
+    # couleur de son nom via le registre partagé (pipeline.cv.class_color_registry),
+    # à l'affichage comme à la génération (refonte couleurs 2026-06-12).
 
     # 3b. Le projet QGIS consolidé (detections_validation.qgs) n'est PLUS écrit ici.
     # L'API QGIS n'est pas thread-safe et finalize_pipeline tourne sur le thread worker ;
@@ -403,27 +425,39 @@ def finalize_pipeline(
     except Exception as _meta_e:
         reporter.info(f"Note: métadonnées non écrites ({_meta_e})")
 
-    # 5. Logs de fin de pipeline
+    # 5. Logs de fin de pipeline — conditionnés par l'issue réelle (ROB-14).
     elapsed = time.time() - start_time
     products_list = active_products or []
+    total = tiles_total if tiles_total is not None else tiles_processed
+    success = outcome == "success"
 
     if slog:
         slog.end_pipeline(
-            success=True,
+            success=success,
             tiles_processed=tiles_processed,
-            tiles_total=tiles_processed,
+            tiles_total=total,
             products=products_list,
         )
     # Annonce narrative à l'utilisateur (visible dans la fenêtre QGIS).
-    narrator.pipeline_complete(
-        tiles_processed=tiles_processed,
-        products=products_list,
-        start_time=start_time,
-    )
+    # « ⏹ Traitement annulé » est émis par le runner après la finalisation —
+    # rien à annoncer ici dans le cas cancelled.
+    if outcome == "failed":
+        narrator.pipeline_failed("erreur inattendue pendant le traitement")
+    elif success:
+        narrator.pipeline_complete(
+            tiles_processed=tiles_processed,
+            products=products_list,
+            start_time=start_time,
+        )
     if not slog:
         reporter.info("")
         reporter.info("════════════════════════════════════════════════════════════")
-        reporter.info("✅ PIPELINE TERMINÉ AVEC SUCCÈS")
+        if success:
+            reporter.info("✅ PIPELINE TERMINÉ AVEC SUCCÈS")
+        elif outcome == "cancelled":
+            reporter.info("⏹ PIPELINE ANNULÉ")
+        else:
+            reporter.info("❌ PIPELINE TERMINÉ AVEC ERREURS")
         reporter.info("════════════════════════════════════════════════════════════")
         reporter.info(f"  ⏱️ Durée totale : {elapsed:.1f}s")
         if extra_label:
@@ -435,17 +469,29 @@ def finalize_pipeline(
         reporter.info("")
 
     # 5. Chargement des couches dans QGIS
-    if vrt_paths or shapefile_paths:
+    if vrt_paths or shapefile_paths or qa_paths:
         reporter.stage("Chargement des couches")
         reporter.info(f"Chargement de {len(vrt_paths)} VRT et {len(shapefile_paths)} shapefile(s) dans QGIS...")
-        # Passer le mapping global si disponible (encodé comme dict dans la liste)
-        colors_param = class_colors or []
-        if global_color_map:
-            colors_param = [global_color_map]  # dict wrappé dans une liste
+        # ``colors_param`` conservé (signature de load_layers) mais désormais
+        # ignoré côté UI : la couleur dérive du nom de classe via le registre.
+        colors_param: list = []
         try:
-            reporter.load_layers(vrt_paths, shapefile_paths, colors_param)
+            # 4ᵉ argument seulement si nécessaire : les reporters/fakes legacy
+            # à 3 paramètres restent compatibles (aucun run sans COUVERTURE
+            # ne change de signature d'appel).
+            if qa_paths:
+                reporter.load_layers(vrt_paths, shapefile_paths, colors_param, qa_paths)
+            else:
+                reporter.load_layers(vrt_paths, shapefile_paths, colors_param)
         except Exception as e:
             reporter.info(f"Note: Chargement des couches non disponible ({e})")
 
-    reporter.stage("Terminé")
-    reporter.progress(100)
+    # La barre ne saute à 100 % que sur un vrai succès (ROB-14) : après un
+    # échec ou une annulation, une barre pleine contredirait le message.
+    if success:
+        reporter.stage("Terminé")
+        reporter.progress(100)
+    elif outcome == "cancelled":
+        reporter.stage("Annulé")
+    else:
+        reporter.stage("Interrompu par une erreur")

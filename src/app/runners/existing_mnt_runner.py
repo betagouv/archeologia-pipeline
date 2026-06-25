@@ -30,7 +30,10 @@ class ExistingMntRunner:
         cancel: CancelToken,
         slog: Optional["StructuredLogger"] = None,
     ) -> None:
-        from ...pipeline.modes.existing_mnt import run_existing_mnt
+        try:  # fallback standalone (tests : src/ sur le path)
+            from ...pipeline.modes.existing_mnt import run_existing_mnt
+        except ImportError:  # pragma: no cover
+            from pipeline.modes.existing_mnt import run_existing_mnt
 
         start_time = time.time()
 
@@ -43,6 +46,15 @@ class ExistingMntRunner:
         products = processing.products
         rvt_params = ctx.rvt_params
         active_products = products.active()
+
+        # COUVERTURE a été neutralisée par build_run_context (pas de nuage de
+        # points dans ce mode) : prévenir si la config brute la demandait.
+        raw_products = ((ctx.ui_config.get("processing") or {}).get("products") or {})
+        if raw_products.get("COUVERTURE"):
+            reporter.user_warning(
+                "Produit Couverture indisponible en mode MNT existant "
+                "(nuage de points requis) — ignoré."
+            )
 
         plan = build_progress_plan(ctx.mode, ctx.cv.enabled)
         narrator = create_user_narrator(reporter)
@@ -65,6 +77,7 @@ class ExistingMntRunner:
         # Annulation = arrêt rapide du travail lourd, puis finalisation légère
         # (VRT + projet QGIS + chargement des couches déjà produites).
         cancelled = False
+        fatal = False
         tiles_processed = 0
         try:
             res = run_existing_mnt(
@@ -75,6 +88,7 @@ class ExistingMntRunner:
                 output_formats=processing.output_formats,
                 rvt_params=rvt_params,
                 log=lambda m: reporter.info(m),
+                error_log=lambda m: reporter.error(m),
                 cancel_check=cancel.is_cancelled,
                 feedback=feedback,
                 mnt_progress=_on_mnt_progress,
@@ -102,20 +116,34 @@ class ExistingMntRunner:
         except PipelineCancelled:
             cancelled = True
             reporter.info("Annulation demandée — finalisation des résultats partiels…")
-
-        # Finalisation commune LÉGÈRE — toujours exécutée (bornée → va au bout)
-        finalize_pipeline(
-            output_dir=ctx.output_dir,
-            cv_cfg=ctx.cv.raw,
-            rvt_params=rvt_params,
-            reporter=reporter,
-            slog=slog,
-            start_time=start_time,
-            tiles_processed=tiles_processed,
-            active_products=active_products,
-            extra_label="MNT traités",
-            ui_config=ctx.ui_config,
-        )
+        except Exception:
+            # L'issue est transmise à la finalisation (pas de faux « ✅ »,
+            # AUDIT v2 ROB-14) puis l'erreur remonte au contrôleur.
+            fatal = True
+            raise
+        finally:
+            # Finalisation commune LÉGÈRE — TOUJOURS exécutée (y compris si une
+            # erreur inattendue remonte) : indexe et charge les MNT déjà traités
+            # avant que l'erreur éventuelle ne remonte au contrôleur (AUDIT ROB-01/03).
+            if cancelled or cancel.is_cancelled():
+                outcome = "cancelled"
+            elif fatal:
+                outcome = "failed"
+            else:
+                outcome = "success"
+            finalize_pipeline(
+                output_dir=ctx.output_dir,
+                cv_cfg=ctx.cv.raw,
+                rvt_params=rvt_params,
+                reporter=reporter,
+                slog=slog,
+                start_time=start_time,
+                tiles_processed=tiles_processed,
+                active_products=active_products,
+                extra_label="MNT traités",
+                ui_config=ctx.ui_config,
+                outcome=outcome,
+            )
 
         if cancelled or cancel.is_cancelled():
             narrator.pipeline_cancelled()

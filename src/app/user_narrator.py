@@ -31,6 +31,7 @@ if TYPE_CHECKING:
 PRODUCT_LABELS = {
     "MNT": "modèle de terrain (MNT)",
     "DENSITE": "carte de densité",
+    "COUVERTURE": "carte de couverture (QA points sol)",
     "HS": "ombrage simple",
     "M_HS": "ombrage multi-directionnel",
     "SVF": "facteur de vue du ciel (SVF)",
@@ -38,6 +39,8 @@ PRODUCT_LABELS = {
     "LD": "détection des dépressions locales",
     "SLRM": "résidu local (SLRM)",
     "VAT": "visualisation pour l'archéologie (VAT)",
+    "MSTP": "position topographique multi-échelle (MSTP)",
+    "CVAT": "visualisation archéo combinée (CVAT)",
 }
 
 
@@ -179,15 +182,22 @@ class UserNarrator:
             f"📥 Téléchargement de {_human_count(n_tiles, 'dalle', 'dalles')} IGN…"
         )
 
-    def download_tile_progress(self, index: int, total: int, tile_name: str) -> None:
+    def download_tile_progress(
+        self, index: int, total: int, tile_name: str, success: bool = True
+    ) -> None:
         """Sous-progression du téléchargement (1 dalle terminée).
+
+        ``success`` distingue une dalle réellement téléchargée d'un échec : sans
+        ça, la ligne affichait « téléchargée » même quand le téléchargement
+        avait échoué (message trompeur du bug proxy).
 
         Ligne unique réécrite à chaque appel dans la zone log Qt — voir
         :meth:`_user_info_transient`.
         """
         short = tile_name if len(tile_name) <= 30 else tile_name[:27] + "…"
+        statut = "téléchargée" if success else "échec"
         self._user_info_transient(
-            f"   • Dalle {index}/{total} téléchargée : {short}",
+            f"   • Dalle {index}/{total} {statut} : {short}",
             group="download_tile_progress",
         )
         self._metric(index, total, "dalles")

@@ -18,7 +18,7 @@ class _ClickableFrame(QFrame):
     clicked = pyqtSignal()
 
     def mousePressEvent(self, event):  # noqa: N802 (signature Qt)
-        if event.button() == Qt.LeftButton:
+        if event.button() == Qt.MouseButton.LeftButton:
             self.clicked.emit()
         super().mousePressEvent(event)
 
@@ -48,21 +48,21 @@ class CollapsibleSection(QFrame):
 
         self._header = _ClickableFrame()
         self._header.setObjectName("CollapsibleHeader")
-        self._header.setCursor(Qt.PointingHandCursor)
+        self._header.setCursor(Qt.CursorShape.PointingHandCursor)
         self._header.clicked.connect(self._toggle)
         hl = QHBoxLayout(self._header)
         hl.setContentsMargins(12, 8, 12, 8)
         hl.setSpacing(0)
         self._header_label = QLabel()
         self._header_label.setObjectName("CollapsibleHeaderLabel")
-        self._header_label.setTextFormat(Qt.RichText)
+        self._header_label.setTextFormat(Qt.TextFormat.RichText)
         hl.addWidget(self._header_label)
         hl.addStretch(1)
         root.addWidget(self._header)
 
         self._sep = QFrame()
         self._sep.setObjectName("CollapsibleSep")
-        self._sep.setFrameShape(QFrame.HLine)
+        self._sep.setFrameShape(QFrame.Shape.HLine)
         self._sep.setVisible(self._expanded)
         root.addWidget(self._sep)
 

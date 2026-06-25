@@ -24,7 +24,13 @@ try:
 except ImportError:
     HAS_QGIS = False
 
+from ..cancellation import PipelineCancelled
 from .coords_fallback import build_sorted_records_with_fallback
+
+try:  # fallback standalone (tests : src/ sur le path)
+    from ...app.services.proxy_config import build_proxy_url, is_pac_like
+except ImportError:  # pragma: no cover
+    from app.services.proxy_config import build_proxy_url, is_pac_like
 
 
 from .pdal_validation import validate_las_or_laz_with_pdal, validate_laz_deep
@@ -72,8 +78,46 @@ def _extract_real_url(url: str) -> str:
     match = re.search(r"(https?://[^\s\"'<>]+\.(?:laz|las|copc\.laz))", url, re.IGNORECASE)
     if match:
         return match.group(1)
-    
+
     return url
+
+
+# Domaines autorisés pour le téléchargement de dalles (AUDIT NET-02) :
+# diffusion IGN actuelle (Géoplateforme) + anciens buckets LiDAR HD.
+ALLOWED_DOWNLOAD_HOST_SUFFIXES = (
+    "data.geopf.fr",
+    "geopf.fr",
+    "ign.fr",
+    "storage.sbg.cloud.ovh.net",
+    "storage.gra.cloud.ovh.net",
+)
+
+# Cap de taille par dalle (AUDIT NET-01) : très au-dessus d'une dalle LiDAR HD
+# réelle (50-400 Mo) — protège le disque d'un flux anormal (×4 workers), la
+# validation PDAL n'intervenant qu'APRÈS écriture complète.
+MAX_DOWNLOAD_SIZE_MB = 2048
+
+
+def validate_download_url(url: str) -> Tuple[bool, str, str]:
+    """Valide une URL de dalle : ``(ok, url_normalisée, raison_du_refus)``.
+
+    ``_extract_real_url`` déballe des liens venant de MAILS
+    (Proofpoint/SafeLinks) : sans liste blanche, une URL piégée déclenchait
+    une requête sortante vers un hôte arbitraire (SSRF — AUDIT NET-02).
+    https est imposé (une URL http vers un hôte autorisé est upgradée).
+    """
+    parsed = urllib.parse.urlparse(url.strip())
+    if parsed.scheme not in ("http", "https"):
+        return False, url, f"schéma non supporté ({parsed.scheme or 'aucun'})"
+    host = (parsed.hostname or "").lower()
+    if not any(
+        host == suffix or host.endswith("." + suffix)
+        for suffix in ALLOWED_DOWNLOAD_HOST_SUFFIXES
+    ):
+        return False, url, f"hôte non autorisé ({host or 'vide'})"
+    if parsed.scheme == "http":
+        url = urllib.parse.urlunparse(parsed._replace(scheme="https"))
+    return True, url, ""
 
 
 from ..types import LogFn, ProgressFn, CancelFn
@@ -112,96 +156,85 @@ def _default_cancel() -> bool:
     return False
 
 
-def _get_qgis_proxy_settings() -> Optional[Dict[str, str]]:
+def _get_qgis_proxy_settings(log: LogFn = _default_log) -> Optional[Dict[str, str]]:
     """Récupère les paramètres proxy depuis les settings QGIS.
-    
+
     Retourne:
     - Dict avec proxy si configuré dans QGIS: {'http': 'http://host:port', 'https': 'http://host:port'}
     - None si pas de proxy QGIS (utiliser le proxy système)
     """
     if not HAS_QGIS:
         return None
-    
+
     try:
         settings = QSettings()
         proxy_enabled = settings.value("proxy/proxyEnabled", False, type=bool)
         if not proxy_enabled:
             return None
-        
+
         proxy_host = settings.value("proxy/proxyHost", "", type=str)
         proxy_port = settings.value("proxy/proxyPort", "", type=str)
         proxy_user = settings.value("proxy/proxyUser", "", type=str)
         proxy_password = settings.value("proxy/proxyPassword", "", type=str)
-        
+
         if not proxy_host:
             return None
-        
-        # Construire l'URL du proxy
-        if proxy_user and proxy_password:
-            proxy_url = f"http://{proxy_user}:{proxy_password}@{proxy_host}"
-        elif proxy_user:
-            proxy_url = f"http://{proxy_user}@{proxy_host}"
-        else:
-            proxy_url = f"http://{proxy_host}"
-        
-        if proxy_port:
-            proxy_url = f"{proxy_url}:{proxy_port}"
-        
+
+        # URL d'auto-configuration (PAC/WPAD) : ce n'est PAS un proxy direct
+        # utilisable par requests (le chemin ``/xxx.pac`` est ignoré). On
+        # l'ignore explicitement avec un message actionnable au lieu de
+        # fabriquer une URL cassée — c'était la cause du bug
+        # ``http://http://host/proxy.pac`` → ``Failed to resolve 'http'``.
+        if is_pac_like(proxy_host):
+            log(
+                f"⚠️ Proxy QGIS ignoré : « {proxy_host} » est une URL "
+                "d'auto-configuration (PAC), non prise en charge en "
+                "téléchargement direct. Définissez un proxy hôte:port explicite "
+                "(QGIS → Préférences → Réseau) ou les variables "
+                "HTTP_PROXY / HTTPS_PROXY. Repli sur le proxy système…"
+            )
+            return None
+
+        # ``build_proxy_url`` retire tout schéma déjà présent avant de préfixer
+        # ``http://`` (sinon double ``http://`` sur un host déjà schémé).
+        proxy_url = build_proxy_url(proxy_host, proxy_port, proxy_user, proxy_password)
         return {"http": proxy_url, "https": proxy_url}
     except Exception:
         return None
 
 
-def _is_proxy_reachable(proxy_url: str, timeout: float = 2.0) -> bool:
-    """Vérifie si le proxy est accessible (résolution DNS + connexion TCP)."""
-    import socket
-    try:
-        # Extraire host:port de l'URL proxy
-        # Format: http://[user:pass@]host:port
-        parsed = urllib.parse.urlparse(proxy_url)
-        host = parsed.hostname
-        port = parsed.port or 8080
-        if not host:
-            return False
-        # Test de connexion TCP rapide
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.settimeout(timeout)
-        sock.connect((host, port))
-        sock.close()
-        return True
-    except Exception:
-        return False
-
-
 def _get_proxy_config(log: LogFn = _default_log) -> Dict[str, str]:
     """Récupère la configuration proxy (QGIS ou système).
-    
-    Priorité: proxy QGIS (si accessible) > proxy système > pas de proxy
+
+    Priorité : proxy QGIS (Préférences → Réseau) > proxy système (variables
+    d'environnement ``HTTP_PROXY`` / ``HTTPS_PROXY``…) > connexion directe.
+
+    On NE teste PAS l'accessibilité du proxy avant de l'utiliser : un court
+    test TCP (timeout 2 s) échouait à tort sur certains proxys d'entreprise
+    (réponse lente, ou refus des connexions brutes), ce qui faisait
+    silencieusement retomber le plugin en accès *direct* — lequel expire
+    ensuite sur ``data.geopf.fr`` quand le réseau sortant est filtré. Si
+    l'utilisateur a configuré un proxy dans QGIS, on l'utilise et on laisse
+    ``requests`` gérer les échecs éventuels (avec les retries du download).
     """
-    qgis_proxy = _get_qgis_proxy_settings()
+    qgis_proxy = _get_qgis_proxy_settings(log=log)
     if qgis_proxy:
         proxy_url = qgis_proxy.get("http", "")
         # Masquer le mot de passe dans les logs
         if "@" in proxy_url:
-            import re
             masked = re.sub(r"://([^:]+):([^@]+)@", r"://\1:****@", proxy_url)
         else:
             masked = proxy_url
-        
-        # Vérifier si le proxy est accessible
-        if _is_proxy_reachable(proxy_url):
-            log(f"⚙️ Proxy QGIS configuré et accessible: {masked}")
-            return qgis_proxy
-        else:
-            log(f"⚙️ Proxy QGIS configuré mais non accessible: {masked} (connexion directe)")
-    
-    # Fallback: proxy système
+        log(f"⚙️ Proxy QGIS: {masked}")
+        return qgis_proxy
+
+    # Fallback : proxy système (variables d'environnement HTTP(S)_PROXY, etc.)
     system_proxy = urllib.request.getproxies()
     if system_proxy:
-        log(f"⚙️ Proxy système: {system_proxy}")
+        log(f"⚙️ Proxy système (variables d'environnement): {system_proxy}")
         return system_proxy
-    
-    log("⚙️ Connexion directe (aucun proxy)")
+
+    log("⚙️ Connexion directe (aucun proxy configuré dans QGIS)")
     return {}
 
 
@@ -324,10 +357,47 @@ def download_one(
             return False, False
         return True, False
 
+    # Liste blanche d'hôtes + https imposé (AUDIT NET-02) — coupe AVANT toute
+    # requête sortante une URL piégée déballée d'un mail.
+    ok_url, url, refuse_reason = validate_download_url(_extract_real_url(url))
+    if not ok_url:
+        log(
+            f"❌ URL refusée pour {filename}: {refuse_reason} — seuls les "
+            f"domaines IGN connus sont autorisés ({', '.join(ALLOWED_DOWNLOAD_HOST_SUFFIXES[:2])}…)"
+        )
+        return False, False
+
     log(f"📥 Téléchargement de {filename}...")
 
     if proxies is None:
         proxies = {}
+
+    max_bytes = int(MAX_DOWNLOAD_SIZE_MB * 1024 * 1024)
+
+    def _declared_too_big(headers) -> bool:
+        try:
+            declared = int(headers.get("Content-Length") or 0)
+        except (TypeError, ValueError):
+            declared = 0
+        if declared > max_bytes:
+            log(
+                f"❌ {filename}: taille annoncée {declared / 1e6:.0f} Mo > cap "
+                f"de {MAX_DOWNLOAD_SIZE_MB} Mo — abandonné (AUDIT NET-01)"
+            )
+            return True
+        return False
+
+    def _over_cap(written: int, f) -> bool:
+        if written <= max_bytes:
+            return False
+        f.close()
+        if dest.exists():
+            dest.unlink()
+        log(
+            f"❌ {filename}: dépasse le cap de {MAX_DOWNLOAD_SIZE_MB} Mo en "
+            "cours de téléchargement — abandonné (anti-saturation disque)"
+        )
+        return True
 
     last_err: Optional[Exception] = None
     for attempt in range(1, max_retries + 1):
@@ -345,6 +415,9 @@ def download_one(
                     stream=True,
                 )
                 resp.raise_for_status()
+                if _declared_too_big(resp.headers):
+                    return False, False  # définitif : pas de retry
+                written = 0
                 with open(dest, "wb") as f:
                     for chunk in resp.iter_content(chunk_size=chunk_size):
                         if cancel():
@@ -353,6 +426,9 @@ def download_one(
                                 dest.unlink()
                             return False, False
                         if chunk:
+                            written += len(chunk)
+                            if _over_cap(written, f):
+                                return False, False  # définitif : pas de retry
                             f.write(chunk)
             else:
                 # Fallback urllib (peut ne pas fonctionner avec proxy HTTPS)
@@ -360,6 +436,9 @@ def download_one(
                 proxy_handler = urllib.request.ProxyHandler(proxies if proxies else None)
                 opener = urllib.request.build_opener(proxy_handler)
                 with opener.open(req, timeout=timeout_s) as r:
+                    if _declared_too_big(getattr(r, "headers", {})):
+                        return False, False  # définitif : pas de retry
+                    written = 0
                     with open(dest, "wb") as f:
                         while True:
                             if cancel():
@@ -370,6 +449,9 @@ def download_one(
                             chunk = r.read(chunk_size)
                             if not chunk:
                                 break
+                            written += len(chunk)
+                            if _over_cap(written, f):
+                                return False, False  # définitif : pas de retry
                             f.write(chunk)
 
             log(f"🔍 Validation PDAL rapide de {filename}...")
@@ -437,12 +519,12 @@ def download_ign_dalles(
     stage: StageFn = _default_stage,
     cancel: CancelFn = _default_cancel,
     max_workers: Optional[int] = None,
-    on_tile_done: Optional[Callable[[int, int, str], None]] = None,
+    on_tile_done: Optional[Callable[[int, int, str, bool], None]] = None,
 ) -> IgnDownloadResult:
     """Télécharge les dalles IGN listées dans ``input_file``.
 
     ``on_tile_done`` (optionnel) est invoqué après chaque dalle traitée
-    avec ``(completed_index_1based, total, filename)`` — le caller s'en
+    avec ``(completed_index_1based, total, filename, success)`` — le caller s'en
     sert pour remonter une sous-progression à l'utilisateur (ligne
     réécrite dans le journal). Les téléchargements parallèles ne
     garantissent pas l'ordre des appels (``completed_index`` reflète
@@ -500,7 +582,7 @@ def download_ign_dalles(
             current = completed_count[0]
         if on_tile_done is not None:
             try:
-                on_tile_done(current, total, result.filename)
+                on_tile_done(current, total, result.filename, result.success)
             except Exception:
                 pass
 
@@ -543,13 +625,32 @@ def download_ign_dalles(
                     current = completed_count[0]
                 if on_tile_done is not None:
                     try:
-                        on_tile_done(current, total, task.filename)
+                        on_tile_done(current, total, task.filename, False)
                     except Exception:
                         pass
 
     # Log des fichiers échoués (mais on continue)
     if failed[0] > 0:
         log(f"⚠️ {failed[0]} fichier(s) ignoré(s) (téléchargement échoué ou invalide)")
+
+    # Annulation pendant le téléchargement : sortie PROPRE via l'exception
+    # canonique. Sans cela, le tri/fallback ci-dessous (court-circuité par
+    # cancel) renvoie une liste vide → ValueError « Impossible de déterminer
+    # les coordonnées des dalles », traceback trompeur pour l'utilisateur
+    # qui vient juste de cliquer Annuler (AUDIT v2 ROB-17).
+    if cancel():
+        raise PipelineCancelled()
+
+    # Aucune dalle aboutie (réseau coupé / proxy invalide) : on s'arrête ICI avec
+    # un message actionnable, au lieu de laisser l'échec remonter en aval sous une
+    # forme opaque — soit « Impossible de déterminer les coordonnées des dalles »
+    # (tri sur liste vide), soit « fichier central introuvable » au stade fusion.
+    if downloaded[0] == 0 and skipped[0] == 0:
+        raise RuntimeError(
+            f"Aucune dalle téléchargée ({failed[0]}/{total} en échec). "
+            "Vérifiez votre connexion réseau et la configuration du proxy "
+            "(QGIS → Préférences → Réseau)."
+        )
 
     # Tri final + fallback coords (Option B): si coords absentes, on infère via PDAL et on renomme le fichier.
     stage("Tri des fichiers (post-téléchargement)")

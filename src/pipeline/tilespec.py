@@ -23,6 +23,13 @@ from typing import Optional, Set, Tuple
 GeoTransform = Tuple[float, float, float, float, float, float]
 Bounds = Tuple[float, float, float, float]  # xmin, ymin, xmax, ymax
 
+# Seuils de détection des dalles « dégénérées » (placeholder 1×1 px / posées à
+# l'origine du CRS). Incluses dans un ``gdalbuildvrt``, elles étirent l'emprise de
+# la mosaïque jusqu'à (0,0) → couches QGIS quasi vides, données réelles invisibles.
+DEGENERATE_MIN_PX = 2          # une vraie dalle fait des centaines/milliers de px
+DEGENERATE_ORIGIN_RADIUS_M = 10.0  # coin NO à < 10 m de (0,0) = placeholder (la donnée
+#                                    réelle est à des centaines de km de l'origine)
+
 
 def _sanitize_token(stem: str) -> str:
     """Réduit un stem à un token alphanumérique sûr pour GDAL/QGIS et les noms de fichiers."""
@@ -72,16 +79,83 @@ def crs_is_projected(crs: Optional[str]) -> Optional[bool]:
     Renvoie ``True`` (projeté/mètres), ``False`` (géographique/degrés), ou ``None``
     si le CRS est absent, illisible, ou local/engineering (``LOCAL_CS``).
     Utilisé par l'ingest planning pour exiger un CRS projeté (décision 2).
+
+    Double backend rasterio → ``osgeo.osr`` (même stratégie que :meth:`TileSpec.from_raster`
+    et :func:`assign_crs_if_missing`) : rasterio est souvent absent dans QGIS alors
+    qu'``osgeo`` y est toujours présent. Sans ce repli, ``EPSG:2154`` — pourtant projeté —
+    était classé ``None`` côté QGIS (ImportError avalé) → faux « CRS non projeté ».
+    Ne renvoie ``None`` que si **aucun** backend ne sait interpréter le CRS.
     """
     if not crs:
         return None
+    # 1) rasterio (présent en test ; souvent absent dans QGIS)
     try:
         from rasterio.crs import CRS  # type: ignore
 
         c = CRS.from_user_input(crs)
-        if not (c.is_geographic or c.is_projected):
-            return None  # local / engineering
-        return bool(c.is_projected)
+        if c.is_geographic:
+            return False
+        if c.is_projected:
+            return True
+        # ni géographique ni projeté (local) → tenter GDAL avant d'abandonner
+    except Exception:
+        pass
+    # 2) osgeo.osr (toujours présent côté QGIS)
+    try:
+        from osgeo import osr
+
+        srs = osr.SpatialReference()
+        if srs.SetFromUserInput(str(crs)) == 0 and not srs.IsLocal():  # 0 = OGRERR_NONE
+            if srs.IsGeographic():
+                return False
+            if srs.IsProjected():
+                return True
+    except Exception:
+        pass
+    return None
+
+
+def same_crs_geometry(
+    a: Optional[str],
+    b: Optional[str],
+    *,
+    ref_lonlat: Tuple[float, float] = (2.5, 47.0),
+    tol_m: float = 1.0,
+) -> Optional[bool]:
+    """``True``/``False`` si ``a`` et ``b`` placent un même point lon/lat au même
+    endroit projeté, ``None`` si indéterminable (entrée vide, CRS non projeté, ou
+    aucun backend ``osgeo``).
+
+    Mesure le **placement** (ce qui cause un mauvais géoréférencement), pas
+    l'identité stricte du datum : un Lambert-93 *custom* (WKT sans code EPSG, datum
+    « unnamed » sur GRS80) est ainsi reconnu équivalent à ``EPSG:2154`` (RGF93 ≈
+    WGS84), tandis qu'un autre CRS projeté (UTM, Lambert-II…) est distingué.
+    ``ref_lonlat`` par défaut au centre de la France métropolitaine.
+    """
+    if not a or not b:
+        return None
+    try:
+        from osgeo import osr
+    except Exception:
+        return None
+    try:
+        sa = osr.SpatialReference()
+        sb = osr.SpatialReference()
+        if sa.SetFromUserInput(str(a)) != 0 or sb.SetFromUserInput(str(b)) != 0:
+            return None
+        if not (sa.IsProjected() and sb.IsProjected()):
+            return None
+        wgs = osr.SpatialReference()
+        wgs.SetWellKnownGeogCS("WGS84")
+        for s in (sa, sb, wgs):
+            try:
+                s.SetAxisMappingStrategy(osr.OAMS_TRADITIONAL_GIS_ORDER)
+            except Exception:
+                pass
+        lon, lat = ref_lonlat
+        xa, ya, *_ = osr.CoordinateTransformation(wgs, sa).TransformPoint(lon, lat)
+        xb, yb, *_ = osr.CoordinateTransformation(wgs, sb).TransformPoint(lon, lat)
+        return (abs(xa - xb) <= tol_m) and (abs(ya - yb) <= tol_m)
     except Exception:
         return None
 
@@ -330,3 +404,42 @@ def assign_crs_if_missing(path, fallback_authid: str = "EPSG:2154") -> Optional[
         return fallback_authid
     except Exception:
         return None
+
+
+def is_degenerate_tile(
+    spec: "TileSpec",
+    *,
+    min_px: int = DEGENERATE_MIN_PX,
+    origin_radius_m: float = DEGENERATE_ORIGIN_RADIUS_M,
+) -> bool:
+    """Vrai si ``spec`` est une dalle « placeholder » à exclure de la mosaïque.
+
+    Deux signaux indépendants (OU) :
+
+    - **(A) taille triviale** : ``width_px < min_px`` ou ``height_px < min_px`` —
+      attrape les dalles 1×1 px (et toute dimension 0/corrompue).
+    - **(B) origine au point (0,0)** : le coin nord-ouest ``(xmin, ymax)`` est à
+      moins de ``origin_radius_m`` de l'origine du CRS — une dalle sans
+      géoréférencement réel (géotransformée ≈ identité) atterrit là.
+
+    Conçu pur (aucune I/O) et donc testable directement.
+    """
+    if spec.width_px < min_px or spec.height_px < min_px:
+        return True
+    xmin, _ymin, _xmax, ymax = spec.bounds
+    if abs(xmin) <= origin_radius_m and abs(ymax) <= origin_radius_m:
+        return True
+    return False
+
+
+def partition_degenerate(specs):
+    """Sépare ``specs`` en ``(kept, degenerate)`` en préservant l'ordre.
+
+    ``kept`` = dalles exploitables, ``degenerate`` = placeholders détectés par
+    :func:`is_degenerate_tile`.
+    """
+    kept = []
+    degenerate = []
+    for spec in specs:
+        (degenerate if is_degenerate_tile(spec) else kept).append(spec)
+    return kept, degenerate

@@ -25,6 +25,7 @@ Nouvelle arborescence (v2) :
 """
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import Any, Dict
 
@@ -67,6 +68,17 @@ def indice_jpg_dir(output_dir: Path, product_name: str) -> Path:
 def indice_base_dir(output_dir: Path, product_name: str) -> Path:
     """Dossier de base d'un indice : ``<output>/indices/<PRODUCT>/``."""
     return indices_dir(output_dir) / product_name
+
+
+def index_vrt_filename(product_name: str) -> str:
+    """Nom du VRT d'index d'un produit : ``index_<PRODUCT>.vrt``.
+
+    Reproduit le **nom de couche** affecté à l'ouverture dans QGIS (``ui/layer_loader``
+    → ``index_<rvt_type>``, ``rvt_type`` = nom du dossier produit) pour que le fichier
+    soit identifiable sur disque et au chargement manuel — là où tous les ``index.vrt``
+    génériques étaient indistinguables. ``product_name`` vide → repli ``index.vrt``.
+    """
+    return f"index_{product_name}.vrt" if product_name else "index.vrt"
 
 
 # ------------------------------------------------------------------ #
@@ -162,6 +174,10 @@ def build_entity_class_targets(output_dir: Path, entities: Any):
     for ent in (entities or []):
         ent = ent or {}
         slug = str(ent.get("slug") or ent.get("id") or "").strip()
+        # Défense en profondeur (AUDIT PARSE-05) : le repli ``id`` n'est pas
+        # garanti slugifié — il entre dans un Path, on neutralise tout
+        # caractère de chemin/interdit Windows avant usage.
+        slug = re.sub(r"[^a-z0-9_-]+", "_", slug.lower()).strip("_")
         if not slug:
             continue
         gpkg = str(detection_entity_dir(output_dir, slug) / f"{slug}.gpkg")

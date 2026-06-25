@@ -182,6 +182,8 @@ class TestProductsConfigBehavior:
         assert ProductsConfig(MNT=False, SVF=True).needs_mnt() is True
         assert ProductsConfig(MNT=False, M_HS=True).needs_mnt() is True
         assert ProductsConfig(MNT=False, HS=True).needs_mnt() is True
+        # SLRM est un indice de visualisation dérivé du MNT — il l'exige aussi.
+        assert ProductsConfig(MNT=False, SLRM=True).needs_mnt() is True
 
     def test_needs_mnt_false_when_density_only(self):
         # Densité ne dépend pas du MNT.
@@ -193,7 +195,10 @@ class TestProductsConfigBehavior:
         assert d["MNT"] is True
         assert d["SVF"] is True
         assert d["M_HS"] is False
-        assert set(d.keys()) == {"MNT", "DENSITE", "HS", "M_HS", "SVF", "SLO", "LD", "SLRM", "VAT"}
+        assert set(d.keys()) == {
+            "MNT", "DENSITE", "COUVERTURE", "HS", "M_HS", "SVF", "SLO", "LD", "SLRM", "VAT",
+            "MSTP", "CVAT",
+        }
 
 
 class TestFilesConfigBehavior:
@@ -382,6 +387,16 @@ class TestValidateProductsRule:
 
     def test_existing_mnt_svf_ok(self, tmp_path: Path):
         ctx = self._ctx("existing_mnt", ProductsConfig(SVF=True), tmp_path)
+        assert validate_run_context(ctx) == ([], [])
+
+    def test_existing_mnt_hs_ok(self, tmp_path: Path):
+        # HS (ombrage simple) est un indice de visualisation à part entière :
+        # le cocher seul doit suffire, comme les autres indices.
+        ctx = self._ctx("existing_mnt", ProductsConfig(HS=True), tmp_path)
+        assert validate_run_context(ctx) == ([], [])
+
+    def test_existing_mnt_slrm_ok(self, tmp_path: Path):
+        ctx = self._ctx("existing_mnt", ProductsConfig(SLRM=True), tmp_path)
         assert validate_run_context(ctx) == ([], [])
 
     def test_existing_rvt_no_product_required(self, tmp_path: Path):
@@ -625,3 +640,65 @@ class TestValidateWarnings:
         errors, warnings = validate_run_context(ctx)
         assert errors == []
         assert len(warnings) >= 2
+
+
+class TestCouvertureProduct:
+    def test_couverture_default_false(self):
+        assert ProductsConfig().COUVERTURE is False
+
+    def test_couverture_parsed_from_config(self):
+        config = {
+            "app": {"files": {"data_mode": "ign_laz"}},
+            "processing": {"products": {"COUVERTURE": True}},
+        }
+        ctx = build_run_context(config)
+        assert ctx.processing.products.COUVERTURE is True
+        assert "COUVERTURE" in ctx.processing.products.active()
+
+    def test_couverture_neutralisee_hors_modes_laz(self):
+        # Un MNT livré est déjà interpolé : la couverture est impossible.
+        for mode in ("existing_mnt", "existing_rvt"):
+            config = {
+                "app": {"files": {"data_mode": mode}},
+                "processing": {"products": {"COUVERTURE": True}},
+            }
+            ctx = build_run_context(config)
+            assert ctx.processing.products.COUVERTURE is False, mode
+
+    def test_couverture_conservee_en_mode_laz(self):
+        for mode in ("ign_laz", "local_laz"):
+            config = {
+                "app": {"files": {"data_mode": mode}},
+                "processing": {"products": {"COUVERTURE": True}},
+            }
+            assert build_run_context(config).processing.products.COUVERTURE is True, mode
+
+
+class TestCoverageThreshold:
+    def test_default(self):
+        assert ProcessingConfig().coverage_threshold_percent == 30.0
+
+    def test_parsed(self):
+        config = {"processing": {"coverage_threshold_percent": 45}}
+        assert build_run_context(config).processing.coverage_threshold_percent == 45.0
+
+    def test_clamp(self):
+        for raw, expected in ((120, 95.0), (1, 5.0), ("abc", 30.0), (None, 30.0)):
+            config = {"processing": {"coverage_threshold_percent": raw}}
+            assert build_run_context(config).processing.coverage_threshold_percent == expected, raw
+
+
+class TestNeedsTileProcessing:
+    def test_false_si_aucun_produit(self):
+        p = ProductsConfig(MNT=False)
+        assert p.needs_tile_processing() is False
+
+    def test_true_si_mnt_ou_indice(self):
+        assert ProductsConfig(MNT=True).needs_tile_processing() is True
+        assert ProductsConfig(MNT=False, SVF=True).needs_tile_processing() is True
+
+    def test_true_si_densite_ou_couverture_seule(self):
+        # Quirk préexistant corrigé : DENSITE/COUVERTURE seule ne doit plus
+        # sauter silencieusement la boucle dalles.
+        assert ProductsConfig(MNT=False, DENSITE=True).needs_tile_processing() is True
+        assert ProductsConfig(MNT=False, COUVERTURE=True).needs_tile_processing() is True

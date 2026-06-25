@@ -43,31 +43,27 @@ Cette grille indique, pour chaque vague livrée, **quelles sections de tests son
   - Ouvrir QGIS
   - Vérifier qu'aucune erreur n'apparaît dans la console Python
   - Vérifier que le plugin apparaît dans le menu Extensions
-- [ ] **1.2 Ouverture du plugin**
+- [ ] **1.2 Ouverture du plugin (assistant 4 étapes)**
   - Cliquer sur le menu/icône du plugin
-  - Vérifier que `NewMainDialog` s'ouvre sans erreur
-  - Vérifier le titre « Archéolog'IA »
-  - Vérifier la présence : combo Mode (Simple/Expert), sections config, zone de logs, boutons Lancer / Annuler / Nettoyer logs
-  - Vérifier le message « Pipeline prêt à être utilisé » dans les logs
+  - Vérifier que l'assistant (`WizardDialog`) s'ouvre sans erreur
+  - Vérifier le titre « Archéolog'IA » + numéro de version
+  - Vérifier la présence : rail latéral 4 étapes, boutons Précédent / Suivant, en-tête avec « Charger une config » / « Enregistrer la config »
 - [ ] **1.3 Fermeture et réouverture**
   - Fermer puis rouvrir le plugin
-  - Vérifier que la configuration précédente est conservée (`config.json`)
+  - Vérifier que la configuration précédente est conservée (`last_ui_config.json`, dossier de profil QGIS)
 
 ---
 
-## 2. Mode Simple / Expert
+## 2. Navigation de l'assistant
 
-- [ ] **2.1 Mode Simple (par défaut)**
-  - Vérifier que les sections suivantes sont **masquées** : Paramètres MNT, Paramètres RVT détaillés, Performance
-- [ ] **2.2 Basculer en mode Expert**
-  - Sélectionner « Expert » dans le combo Mode
-  - Vérifier que les sections MNT, RVT, Performance deviennent visibles
-  - Vérifier que les colonnes « Indice cible » et « Aire min » sont visibles
-  - Vérifier que les seuils détection expert sont visibles (si détection activée)
-- [ ] **2.3 Bascule Expert → Simple → Expert**
-  - Modifier des paramètres expert (ex. résolution MNT = 1.0)
-  - Passer en Simple puis revenir en Expert
-  - Vérifier que les valeurs modifiées sont conservées
+- [ ] **2.1 Rail latéral**
+  - Vérifier que l'étape courante est mise en évidence dans le rail
+  - Vérifier que les sous-libellés du rail reflètent les choix (mode, produits, entités)
+- [ ] **2.2 Précédent / Suivant**
+  - Parcourir les 4 étapes dans les deux sens
+  - Vérifier que les saisies sont conservées en revenant en arrière
+- [ ] **2.3 Erreurs bloquantes**
+  - Laisser un champ obligatoire vide → le rail signale l'étape en erreur et le bouton Lancer (étape 4) est désactivé avec une explication
 
 ---
 
@@ -100,33 +96,28 @@ Cette grille indique, pour chaque vague livrée, **quelles sections de tests son
 ## 4. Produits de visualisation
 
 - [ ] **4.1 Cocher / décocher chaque produit**
-  - MNT, DENSITÉ, M-HS, SVF, SLO, LD, SLRM, VAT
+  - MNT, DENSITÉ, HS, M-HS, SVF, SLO, LD, SLRM, VAT
   - Vérifier que le bouton Lancer est désactivé si aucun produit coché (hors mode « Indices existants »)
+  - Vérifier que HS est sélectionnable **seul** comme indice de visualisation
 
 ---
 
-## 5. Détection par IA (multi-modèles)
+## 5. Détection par IA (étape 3 — sélection par entités)
 
-- [ ] **5.1 Activer / désactiver la détection**
-  - Cocher « Activer la détection par intelligence artificielle »
-  - Vérifier que le contenu détection apparaît (table, classes)
-  - Vérifier le hint « La détection ne sera pas exécutée » quand désactivé
-  - En mode Expert : vérifier que la section seuils apparaît aussi
-- [ ] **5.2 Ajouter un modèle**
-  - Cliquer « + Ajouter un modèle »
-  - Vérifier qu'une ligne apparaît avec le combo des modèles disponibles
-  - Vérifier la présence des boutons ℹ et × sur chaque ligne
-- [ ] **5.3 Multi-modèles**
-  - Ajouter 2 modèles différents
-  - Vérifier que les classes sont affichées groupées par modèle (en-tête en gras `── modèle_name ──`)
-  - Sélectionner / désélectionner des classes individuelles
-  - Vérifier « Tout sélectionner » / « Tout désélectionner »
-- [ ] **5.4 Actualiser les modèles**
-  - Cliquer « Actualiser »
-  - Vérifier que les combos modèle sont mis à jour
-- [ ] **5.5 Supprimer un modèle**
-  - Cliquer × sur une ligne → la ligne disparaît
-  - Vérifier que les classes sont mises à jour
+- [ ] **5.1 Cocher une entité**
+  - À l'étape 3, cocher une entité (carte) dans son panneau morphologique
+  - Vérifier qu'un run apparaît dans « Runs IA programmés » (modèle, indice cible)
+- [ ] **5.2 Info modèle**
+  - Cliquer le bouton ⓘ d'un run programmé
+  - Vérifier que le dialogue d'information du modèle s'ouvre (classes, indice, paramètres)
+- [ ] **5.3 Multi-entités**
+  - Cocher plusieurs entités couvertes par des modèles/indices différents
+  - Vérifier que les runs sont regroupés par couple (modèle, indice cible)
+- [ ] **5.4 Seuil par entité**
+  - Ouvrir les réglages avancés d'une entité et modifier son seuil de confiance
+  - Vérifier que le seuil modifié est rappelé à la réouverture
+- [ ] **5.5 Décocher une entité**
+  - Décocher l'entité → le run correspondant disparaît de « Runs IA programmés »
 - [ ] **5.6 Info modèle (bouton ℹ)**
   - Cliquer ℹ sur un modèle
   - Vérifier la boîte de dialogue avec les paramètres d'entraînement
@@ -276,19 +267,20 @@ Cette grille indique, pour chaque vague livrée, **quelles sections de tests son
   - Vérifier que les zones cluster sont chargées dans QGIS
   - Vérifier le style hachures croisées sur les couches cluster
   - **V2.2** : vérifier que `min_confidence`, `eps_m`, `min_cluster_size` du `args.yaml` sont bien appliqués
-- [ ] **13.2 Cible dérivée « Zones d'extraction de matériaux »** (UI étape 3, sélection par entités)
-  - À l'étape 3, cocher l'entité **« Zones d'extraction de matériaux »**
+- [ ] **13.2 Cible dérivée « Regroupement de cratères »** (UI étape 3, sélection par entités)
+  - À l'étape 3, cocher l'entité **« Regroupement de cratères »**
   - Vérifier qu'un badge **« ↳ regroupement automatique en zones »** s'affiche (et **non** une case « Regrouper en clusters »)
-  - Panneau « Runs IA programmés » : **1 run** `Cratères circulaires (Verdun)` · `🔗 LD` · classes `cratere_obus, zone_crateres`
+  - Panneau « Runs IA programmés » : **1 run** `Modèle Cratères d'obus` · `🔗 LD` · classes `cratere, zone_crateres`
   - Via « Changer ▾ », basculer sur `verdun_3_classes_1` → le run passe sur `🔗 SVF`
-  - Lancer sur un RVT LD existant → GeoPackage avec polygones `zone_crateres` (zones) **ET** points/masques `cratere_obus` (dépressions individuelles)
-  - Cocher en plus « Trous d'obus » (même modèle par défaut) → toujours **un seul run** (fusion, pas de double inférence)
+  - Lancer sur un RVT LD existant → GeoPackage avec polygones `zone_crateres` (zones) **ET** points/masques `cratere` (dépressions individuelles)
+  - Cocher en plus « Cratères » (même modèle par défaut) → toujours **un seul run** (fusion, pas de double inférence)
 
 ---
 
 ## 14. Finalisation
 
-- [ ] **14.1** VRT générés pour `tif/`, `jpg/`, `annotated_images/`
+- [ ] **14.1** VRT générés dans chaque `indices/<PRODUIT>/tif/`
+  - [ ] **14.1.a Nom distinctif** : le fichier s'appelle `index_<PRODUIT>.vrt` (ex. `index_MNT.vrt`, `index_CVAT.vrt`, `index_SLO_U0_V1.vrt`) — **pas** le générique `index.vrt` — et correspond au nom de la couche dans QGIS (`index_<PRODUIT>`). Au chargement manuel d'un `.vrt` depuis l'explorateur, le nom de couche est donc immédiatement identifiable.
 - [ ] **14.2 Shapefiles collectés et chargés dans QGIS**
   - Vérifier le style par confiance (couleurs par bin)
 - [ ] **14.3 Zoom automatique sur l'étendue des résultats**
@@ -297,7 +289,7 @@ Cette grille indique, pour chaque vague livrée, **quelles sections de tests son
   - [ ] **14.3.c** Re-run avec la **même** sortie (couches déjà présentes dans le projet) : les logs indiquent « Couche … déjà présente », et le zoom doit **quand même** se déclencher sur l'étendue cumulée.
 - [ ] **14.4** Logs de fin de pipeline (`StructuredLogger.end_pipeline`)
 - [ ] **14.5 CRS des sorties = EPSG:2154 (pas de « unnamed »)**
-  - Après un run `local_laz`/`ign_laz` sur dalle(s) LiDAR HD : `gdalsrsinfo -o epsg <output>/indices/MNT/tif/index.vrt` → **EPSG:2154** (et non `EPSG:-1`)
+  - Après un run `local_laz`/`ign_laz` sur dalle(s) LiDAR HD : `gdalsrsinfo -o epsg <output>/indices/MNT/tif/index_MNT.vrt` → **EPSG:2154** (et non `EPSG:-1`)
   - Vérifier qu'aucun message **« Pas de transformation disponible entre unnamed et EPSG:2154 / Point outside of projection domain »** n'apparaît au chargement/zoom
   - Cas où le MNT sortait en CRS local : log attendu `CRS absent/local sur le MNT → affecté EPSG:2154` (côté pipeline) ou `CRS absent/local sur « … » → affecté EPSG:2154` (garde-fou chargement)
   - Les couches chargées s'affichent bien en Lambert-93 et le zoom se centre sur la zone (cf. §14.3)
@@ -355,6 +347,18 @@ Cette grille indique, pour chaque vague livrée, **quelles sections de tests son
 
 ---
 
+## 19. Consultation lecture-seule pendant un run ⭐ P0
+
+- [ ] **19.1** Lancer un run ; pendant l'exécution, cliquer **étape 1** dans le rail → page Source affichée, bandeau « 🔒 Lecture seule — run en cours » visible ; chemins, boutons « Parcourir… »/« Couche QGIS » et frise de mode **inactifs** mais valeurs lisibles
+- [ ] **19.2** **Étape 2** → « Réglages avancés… » fonctionne, bascule entre les onglets RVT fonctionne ; tous les spinbox/checkbox/combos grisés-inactifs ; « ↺ Réinitialiser » inactif ; valeurs lancées affichées
+- [ ] **19.3** **Étape 3** → interrupteur, cartes d'entités, combos « Changer ▾ », case « Regrouper », case « Générer images annotées » **inactifs** ; chips de filtre morphologique + scroll **utilisables** ; cocher « Réglages avancés » révèle les seuils par entité (en lecture seule)
+- [ ] **19.4** Cliquer **étape 4** dans le rail (1 clic) → retour au **RunView en direct** (pas le récap), la progression continue ; bandeau lecture-seule disparu
+- [ ] **19.5** Enchaîner « Suivant » de l'étape 1 jusqu'à l'étape 4 pendant le run → autorisé ; sur l'étape 4 le bouton « ▶ Lancer le pipeline » reste **désactivé** (pas de relance)
+- [ ] **19.6** Fin / annulation du run → les 3 étapes redeviennent **éditables**, bandeau disparu, autosave + validation refonctionnent, l'étape 4 réaffiche le récap
+- [ ] **19.7** Mode `existing_rvt` : étape 2 « sans objet » (sections masquées) reste masquée en lecture-seule ; détection désactivée → empty-state non activable pendant le run
+
+---
+
 ## Résumé
 
 - **Total tests** : 60+
@@ -368,3 +372,83 @@ Cette grille indique, pour chaque vague livrée, **quelles sections de tests son
 | Version QGIS | __________________ |
 | Version plugin | __________________ |
 | Branche / commit | __________________ |
+
+---
+
+## 20. Produit Couverture (QA points sol)
+
+- [ ] **20.1 Étape 2 — carte et réglage**
+  - Mode IGN/LAZ local : carte « Couverture · QA points sol » visible à côté de « Densité », décochée par défaut
+  - Mode MNT existant : la carte « Modèle de base » (et donc Couverture) reste masquée
+  - Réglages avancés > onglet MNT : « Seuil zones mal couvertes (%) » (défaut 30, bornes 5–95), persisté entre sessions
+- [ ] **20.2 Run avec Couverture seule (sans Densité)**
+  - La passe densité tourne quand même (sert de source au calcul)
+  - `indices/COUVERTURE/tif/*.tif` créés, **pas** de dossier `indices/DENSITE/`
+- [ ] **20.3 Run avec Couverture + Densité**
+  - La passe densité ne tourne qu'**une** fois par dalle (vérifier le journal)
+  - Les deux dossiers `indices/DENSITE/` et `indices/COUVERTURE/` existent
+- [ ] **20.4 Polygones et couches QGIS**
+  - `indices/COUVERTURE/zones_mal_couvertes.gpkg` créé s'il existe des zones sous le seuil
+  - Couche « Zones mal couvertes (<30 %) » hachurée rouge **tout en haut** de l'arbre
+  - Raster `index_COUVERTURE` en pseudo-couleur : 0 % rouge → seuil orange → 100 % transparent
+- [ ] **20.5 Projet de validation**
+  - Rouvrir `detections/detections_validation.qgs` : mêmes couches, mêmes styles (vecteur QA + raster COUVERTURE)
+- [ ] **20.6 Mode MNT existant avec config résiduelle**
+  - Éditer `last_ui_config.json` pour forcer `COUVERTURE: true` puis lancer en mode MNT existant
+  - Warning « Produit Couverture indisponible… » dans le journal, pas d'erreur
+- [ ] **20.7 Cohérence terrain**
+  - Sur une zone partiellement boisée : les polygones correspondent aux masses boisées/plans d'eau (recouper visuellement avec `index_DENSITE`)
+
+---
+
+## 21. Sélection des dalles IGN sur la carte (mode `ign_laz`) ⭐ P0
+
+> **Pré-requis** : `data/quadrillage_france/TA_diff_pkk_lidarhd_classe.shp` + `.qix`
+> (générer le `.qix` via `python dev/build_quadrillage_index.py`). Avoir un fond de
+> carte chargé dans QGIS et être zoomé sur une zone couverte par le LiDAR HD.
+
+- [ ] **21.1 Visibilité du bouton** : « Sélectionner les dalles » visible **uniquement** en mode `ign_laz` (masqué dans les autres modes).
+- [ ] **21.2 Activation** : clic → la couche « Quadrillage IGN LiDAR HD » apparaît (contour seul, intérieur transparent) dans un groupe « Quadrillage IGN » ; **seul le dialogue du plugin se minimise** (la fenêtre QGIS reste affichée, le canevas visible) ; une barre de message QGIS « Valider (0 dalle) / Tout effacer / Annuler » s'affiche.
+- [ ] **21.3 Orientation + garde (U1)** : depuis une vue monde/ailleurs, le clic sur le bouton **zoome automatiquement à une échelle où la grille rend**, centré sur la zone visée (bornée à la France) ; tant que la vue est trop dézoomée (grille masquée), un clic/encadré **ne sélectionne rien** et affiche « Zoomez davantage… » ; après zoom, la sélection fonctionne. Dézoomé sur toute la France, la grille n'est pas dessinée (pas de figeage) ; en zoomant elle apparaît et reste fluide (index `.qix`).
+- [ ] **21.4 Clic toggle + estimation (U2)** : cliquer une dalle → surlignée ; recliquer → désélectionnée ; le bouton affiche « Valider (N dalles ≈ X–Y Go/Mo) ».
+- [ ] **21.5 Glisser-boîte (ajout)** : tracer un rectangle → toutes les dalles intersectées s'ajoutent ; rectangle **orange** ; compteur à jour.
+- [ ] **21.5 bis Glisser-boîte + Ctrl (retrait)** : **Ctrl** enfoncé → rectangle **gris** ; encadrer des dalles sélectionnées → elles sont **retirées** ; compteur à jour.
+- [ ] **21.5 ter Tout effacer** : le bouton « Tout effacer » remet la sélection à 0 (compteur « Valider (0 dalle) »).
+- [ ] **21.6 CRS** : projet en EPSG:3857 (fond OSM/Google) → les clics tombent bien sur la dalle visée (transformation canevas→couche OK).
+- [ ] **21.7 Échap / Annuler** : la sélection est abandonnée, la couche + le groupe retirés, la barre de message disparaît, l'outil-carte précédent est restauré, le champ source **inchangé**, le dialogue revient au premier plan.
+- [ ] **21.8 Valider sans sélection** → message « Aucune dalle », on reste en mode sélection.
+- [ ] **21.9 Valider 2–3 dalles** → `data/temp_zones/dalles_selection.txt` créé (lignes `nom_pkk,url_telech`, en-tête `#`) ; message vert « N dalle(s) enregistrée(s) » ; le champ source pointe ce fichier (bordure « ok ») ; couche retirée ; barre de message disparue ; dialogue ramené au premier plan.
+- [ ] **21.9 bis Grosse sélection (U2)** : sélectionner > 50 dalles puis Valider → boîte de confirmation « Téléchargement volumineux… » ; « Non » garde la sélection ; « Oui » écrit le fichier.
+- [ ] **21.10 Bout-en-bout** : renseigner le dossier de sortie puis lancer → le téléchargement démarre **directement** (pas d'étape « résolution des dalles » : `IgnDownloadStrategy` voit un `.txt`).
+- [ ] **21.11 Réutilisation** : relancer la sélection sans fermer → pas de double-chargement de la couche.
+- [ ] **21.12 Lecture seule pendant un run** : lancer un run, revenir à l'étape 1 → bouton désactivé ; si une sélection était active au lancement, elle est refermée proprement.
+- [ ] **21.13 Fermeture / rechargement pendant la sélection** : fermer le dialogue (croix) ou recharger le plugin pendant une sélection active → pas de crash, pas d'outil-carte ni de couche orphelins.
+- [ ] **21.14 Quadrillage absent** : renommer le `.shp` → clic sur le bouton affiche un message clair, l'outil ne s'active pas.
+- [ ] **21.15 Persistance de la liste (reprise après interruption)** : lancer un run `ign_laz` à partir d'une **sélection sur carte**. Dès le début du téléchargement, `<output_dir>/dalles_urls.txt` est créé (lignes `nom,url`, en-tête `#`) et le journal indique « Liste des dalles enregistrée: dalles_urls.txt ». **Interrompre** le run après quelques dalles → le fichier est toujours présent et complet (toutes les dalles sélectionnées, pas seulement celles téléchargées).
+- [ ] **21.16 Reprise** : relancer en mode `ign_laz` avec ce `dalles_urls.txt` comme source et le **même** `output_dir` → les dalles déjà présentes dans `sources/dalles/` sont **sautées** (« déjà téléchargé »), seules les manquantes sont récupérées.
+
+> **Consolidation affichage (anti-« grille absente, réparée par redémarrage »)** — ⭐ P0
+
+- [ ] **21.17 Rendu fiable à l'activation (régression bug principal)** : zoomé sur une ville (échelle ≤ 1:1 500 000), cliquer « Sélectionner les dalles » → le quadrillage orange **apparaît immédiatement** (pas besoin de déplacer/zoomer). Répéter activer → Annuler **5 fois de suite** → la grille s'affiche **à chaque fois** (plus d'intermittence). Le journal Python QGIS montre `Quadrillage : chargement frais …` ou `… → reuse/readd`.
+- [ ] **21.18 Réutilisation avec nœud retiré de l'arbre** : pendant une sélection active, supprimer **manuellement** la couche « Quadrillage IGN LiDAR HD » depuis le panneau Couches, puis relancer la sélection → la grille **réapparaît** (ré-ajoutée au groupe, journal `… in_tree=False → readd`), pas de couche orpheline invisible.
+- [ ] **21.19 Recadrage métropole (remplace l'ancien U1)** : depuis une vue trop dézoomée (monde / hors France), cliquer le bouton → la vue **se recadre sur la France métropolitaine** (Brest→Strasbourg, Lille→Perpignan). À cette échelle la grille reste masquée (le bandeau 21.20 invite à zoomer). **Si la vue est déjà zoomée** sur une zone (grille visible), cliquer le bouton **ne change pas la vue** (on ne perturbe pas une vue de travail).
+- [ ] **21.20 Bandeau persistant + suivi d'échelle** : trop dézoomé → un bandeau **persistant** « Zoomez pour afficher les dalles — échelle 1:N (requise ≤ 1:1 500 000) » reste affiché et **le N se met à jour** en zoomant ; il **disparaît** dès que la grille devient visible ; il **réapparaît** en dézoomant à nouveau ; il est **absent** après Annuler/Valider (pas de signal `scaleChanged` fuité — vérifier qu'aucun bandeau ne ré-apparaît en zoomant après la fin de la sélection).
+- [ ] **21.21 Échec d'enregistrement (robustesse ré-entrée)** : rendre `data/temp_zones` non inscriptible (ou la verrouiller), sélectionner des dalles puis Valider → message « Échec de l'enregistrement », la **sélection est conservée**, « Annuler » fonctionne, et **après**, « Sélectionner les dalles » est de nouveau **cliquable** (le bouton ne reste jamais grisé bloqué).
+- [ ] **21.22 Auto-réparation d'état périmé** : changer l'outil-carte QGIS (p. ex. « Identifier les entités ») **pendant** une sélection active, puis recliquer « Sélectionner les dalles » → l'état périmé est nettoyé (journal `… état périmé … → nettoyage`) puis la sélection se ré-active proprement, **sans double barre de message**.
+
+---
+
+## 22. Re-run dans le même dossier de sortie (ajout de dalle, VRT régénéré) ⭐ P0
+
+> **Contexte** : un re-run dans le **même** `output_dir` régénérait bien les `index_<PRODUIT>.vrt`
+> sur disque, mais comme les couches du run précédent restaient chargées, QGIS
+> réécrivait sa version périmée par-dessus → les dalles ajoutées étaient invisibles.
+> Parade : purge des couches du dossier au **lancement** du run (thread principal,
+> avant la régénération) + relecture défensive d'une couche réutilisée.
+
+- [ ] **22.1 Premier run** : lancer un run `ign_laz`/`local_laz` sur ≥ 2 dalles contiguës dans un `output_dir` neuf → couches `index_*` chargées, mosaïque complète. **Ne pas fermer QGIS.**
+- [ ] **22.2 Re-run avec dalle ajoutée** : relancer dans **le même** `output_dir` en ajoutant 1 dalle (distante de préférence). Au lancement, le journal indique « N couche(s) périmée(s) … retirée(s) avant régénération ». À la fin, les couches `index_*` affichent **toutes** les dalles (ancienne(s) + nouvelle).
+- [ ] **22.3 Vérif disque** : dans `indices/<PRODUIT>/tif/index_<PRODUIT>.vrt`, le nombre de `<SourceFilename>` = nombre de TIF présents (toutes dalles incluses), **sans** balise `<OverviewList resampling="nearest">` ni bloc `STATISTICS_*` parasite (signature d'une réécriture QGIS périmée).
+- [ ] **22.4 Persistance** : sauvegarder le projet QGIS puis le rouvrir → toujours toutes les dalles visibles.
+- [ ] **22.5 Dossier différent (non-régression)** : relancer dans un `output_dir` **différent** → aucune couche du premier run n'est retirée ; fonds de carte, polygone d'emprise (étape 1) et couche quadrillage restent **intacts** (jamais purgés).
+- [ ] **22.6 Détections** : si des détections existent, le re-run rafraîchit aussi les couches `detections/<entité>/*.gpkg` (pas de doublon, données à jour).

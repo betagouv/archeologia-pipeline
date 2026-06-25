@@ -10,11 +10,9 @@ un runner ONNX léger.
 """
 
 from dataclasses import dataclass
-from pathlib import Path
 from typing import List, Optional, Tuple
 
 import numpy as np
-from PIL import Image
 
 
 # =============================================================================
@@ -44,9 +42,16 @@ def get_slice_bboxes(
         Liste de bboxes [x_min, y_min, x_max, y_max] pour chaque slice
     """
     slice_bboxes = []
-    
-    y_overlap = int(overlap_height_ratio * slice_height)
-    x_overlap = int(overlap_width_ratio * slice_width)
+
+    # Garde-fous (AUDIT v2 PARSE-12) : des paramètres aberrants (overlap ≥ 1,
+    # slice ≤ 0 — ex. faute d'échelle « overlap_ratio: 20 » dans args.yaml)
+    # rendaient le pas d'avancement nul ou négatif → boucle infinie non
+    # annulable dans le thread worker, mémoire croissante. Le pas
+    # (slice − overlap) est garanti ≥ 1.
+    slice_height = max(1, int(slice_height))
+    slice_width = max(1, int(slice_width))
+    y_overlap = min(max(0, int(overlap_height_ratio * slice_height)), slice_height - 1)
+    x_overlap = min(max(0, int(overlap_width_ratio * slice_width)), slice_width - 1)
     
     y_min = 0
     while y_min < image_height:

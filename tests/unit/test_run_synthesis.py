@@ -42,6 +42,18 @@ ENCLOS_CFG = {
     "min_area_m2": 50.0, "max_area_m2": 60000.0,
     "min_closure": 0.6, "max_elongation": 3.0, "min_confidence": 0.0,
 }
+ALIGN_CFG = {
+    "type": "alignment", "target_classes": ["parcellaire"],
+    "output_class_name": "axe_lineaire", "band_width_m": 40.0,
+    "angle_tolerance_deg": 20.0, "min_length_m": 500.0, "max_gap_m": 200.0,
+    "min_coverage": 0.25, "min_sources": 5, "min_confidence": 0.0,
+}
+
+
+def _strand_frags():
+    return [{"geometry": _band(a, 600.0, b, 600.0), "confidence": 0.5,
+             "model_pred": "parcellaire", "model_name": "m"}
+            for a, b in ((0, 120), (180, 300), (360, 480), (540, 660), (700, 800))]
 
 
 def _data():
@@ -74,6 +86,14 @@ class TestRunSynthesis:
         out, updated = run_synthesis(data, [])
         assert out == {}
         assert set(updated) == set(data)
+
+    def test_three_types_produce_three_outputs(self):
+        data = _data()
+        data["parcellaire"] = data["parcellaire"] + _strand_frags()
+        out, updated = run_synthesis(data, [DBSCAN_CFG, ENCLOS_CFG, ALIGN_CFG])
+        assert set(out) == {"zone_crateres", "enclos", "axe_lineaire"}
+        assert any("axe_id" in d for d in updated["parcellaire"])
+        assert any("enclos_id" in d for d in updated["parcellaire"])
 
     def test_type_absent_defaults_to_dbscan(self):
         cfg = {k: v for k, v in DBSCAN_CFG.items() if k != "type"}

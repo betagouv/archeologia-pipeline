@@ -1522,7 +1522,7 @@ def create_shapefile_from_detections(
                     pass
 
                 # 4) Normalisation des colonnes attributaires (évite types mixtes)
-                text_cols = ["validation", "corr_pred", "model_pred", "model_name", "conf_bin", "conf_color", "cluster_id", "enclos_id", "forme"]
+                text_cols = ["validation", "corr_pred", "model_pred", "model_name", "conf_bin", "conf_color", "cluster_id", "enclos_id", "forme", "axe_id"]
                 for col in text_cols:
                     if col in gdf.columns:
                         gdf[col] = gdf[col].fillna("").astype(str)
@@ -1534,10 +1534,13 @@ def create_shapefile_from_detections(
                     except Exception:
                         gdf["confidence"] = gdf["confidence"].astype(str)
 
-                # Colonnes numériques des briques de synthèse (clustering, enclos)
+                # Colonnes numériques des briques de synthèse (clustering, enclos, axes)
                 for ncol in ("nb_detect", "area_m2", "density", "surface_m2",
                              "closure_ratio", "isolement", "rectangularite",
-                             "compacite", "elongation", "nb_sources"):
+                             "compacite", "elongation", "nb_sources",
+                             "longueur_m", "couverture", "largeur_m", "azimut_deg",
+                             "nb_brins", "espacement_brins_m", "parallelisme",
+                             "connecteurs_perp", "discordance_deg"):
                     if ncol in gdf.columns:
                         gdf[ncol] = gdf[ncol].fillna(0)
                         try:

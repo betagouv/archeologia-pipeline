@@ -442,6 +442,7 @@ def run_synthesis(
 
     ``dbscan`` (défaut, rétro-compat) → :func:`run_clustering` ;
     ``enclosure`` → :func:`pipeline.cv.enclosure.run_enclosure` ;
+    ``alignment`` → :func:`pipeline.cv.alignment.run_alignment` ;
     type inconnu → warning + règle ignorée. Les sorties (nouvelles classes
     synthétiques) des moteurs sont fusionnées dans un seul dict.
     """
@@ -449,9 +450,10 @@ def run_synthesis(
     updated = data_by_class_name
     dbscan_cfgs = [c for c in configs if str(c.get("type", "dbscan")) == "dbscan"]
     enclosure_cfgs = [c for c in configs if str(c.get("type", "")) == "enclosure"]
+    alignment_cfgs = [c for c in configs if str(c.get("type", "")) == "alignment"]
     for cfg in configs:
         ctype = str(cfg.get("type", "dbscan"))
-        if ctype not in ("dbscan", "enclosure"):
+        if ctype not in ("dbscan", "enclosure", "alignment"):
             logger.warning(
                 f"Synthèse: type de règle inconnu {ctype!r} "
                 f"(sortie {cfg.get('output_class_name')!r}) — règle ignorée"
@@ -468,4 +470,11 @@ def run_synthesis(
             updated, enclosure_cfgs, cancel_check=cancel_check
         )
         synth_by_class.update(enclos)
+    if alignment_cfgs:
+        from .alignment import run_alignment
+
+        axes, updated = run_alignment(
+            updated, alignment_cfgs, cancel_check=cancel_check
+        )
+        synth_by_class.update(axes)
     return synth_by_class, updated

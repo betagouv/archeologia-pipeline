@@ -471,3 +471,20 @@ Cette grille indique, pour chaque vague livrée, **quelles sections de tests son
 - [ ] **23.6 Itération sans réinférence** : relancer le même run en changeant seulement « Pontage des interruptions » (ex. 10 → 16 m) → le journal indique la réutilisation du cache (`détections en cache`), pas de nouvelle inférence, et le nombre d'enclos change de façon plausible (plus de trous pontés).
 - [ ] **23.7 Enclos emboîtés** : sur un double enclos connu (ou fixture), les deux circuits sortent comme deux polygones distincts (pas de fusion/suppression).
 - [ ] **23.8 Non-régression regroupement cratères** : un run « Regroupement de cratères » (DBSCAN) donne le même résultat qu'avant (mêmes zones, mêmes paramètres éditables, libellés désormais « Nb min de détections »).
+
+## 24. Brique axe linéaire (entité dérivée « Axes linéaires ») ⭐ P0
+
+> **Contexte** : troisième brique de synthèse (`type: alignment`). Détecte les
+> bandes directionnelles à brins multiples — le signal « spaghettis alignés »
+> d'une voie ancienne : plusieurs lignes parallèles de détections parcellaires
+> co-orientées (fossés bordiers, agger, tronçons décalés) dans un couloir
+> ≤ 40 m, continu sur ≥ 500 m. Zone de référence : la voie romaine repérée
+> par le collègue archéologue.
+
+- [ ] **24.1 Entité cochable** : étape 3, groupe « zone » → carte « Axes linéaires » avec badge « regroupement automatique ». En réglages avancés : Largeur max de la bande (m), Tolérance d'orientation (°), Longueur min (m), Interruption max (m), Couverture min, Nb min de fragments — et pas les paramètres enclos/DBSCAN.
+- [ ] **24.2 Run sur la zone de référence** : cocher « Axes linéaires » et lancer sur la zone de la voie romaine connue. Journal : `Synthèse: … règle(s)` puis `Alignment [1/1]: … bande=40.0m` et `… axe(s) 'axe_lineaire' publiés`. **La voie connue doit sortir comme UN axe** (pas 3–4 axes parallèles concurrents).
+- [ ] **24.3 Sorties QGIS** : groupe « Axes linéaires » avec couche corridor (rectangles orientés) + couche « Fragments sources » (`axe_id` rempli pour les contributeurs).
+- [ ] **24.4 Attributs sur la voie connue** : `longueur_m` ≥ 500, `azimut_deg` cohérent avec le tracé, `nb_brins` ≥ 2 attendu (fossés + agger), `couverture` ≥ 0,25, `parallelisme` faible (≈ 0–1), `discordance_deg` élevée si la voie traverse le parcellaire local.
+- [ ] **24.5 Anti-faux-positifs** : sur une zone à parcellaire coaxial dense, les corridors sortent avec `parallelisme` ≥ 2 et/ou `connecteurs_perp` élevés → filtrables par expression QGIS.
+- [ ] **24.6 Itération sans réinférence** : relancer en passant Longueur min de 500 → 300 m ou la bande de 40 → 60 m → cache réutilisé, nombre d'axes change de façon plausible.
+- [ ] **24.7 Cohabitation des briques** : cocher « Enclos » + « Axes linéaires » ensemble → un seul run du modèle, les deux groupes de couches sortent, aucun conflit (les fragments parcellaire portent enclos_id ET axe_id le cas échéant).

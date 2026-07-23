@@ -70,6 +70,13 @@
       "description": "Regroupe en zones les cratères proches détectés (clustering DBSCAN). Peut indiquer des zones d'extraction de matériaux. Détection issue d'un modèle de cratères.",
       "display_order": 95,
       "morphology": "zone"
+    },
+    {
+      "id": "enclos",
+      "label": "Enclos",
+      "description": "Enclos fossoyés (curvilignes ou quadrangulaires) reconstruits par fermeture des détections parcellaires et talus/fossés. Scores de fermeture, d'isolement et de forme en attributs.",
+      "display_order": 97,
+      "morphology": "zone"
     }
   ]
 }

@@ -55,6 +55,21 @@ _CLUSTER_PARAM_SPECS = (
      "Part minimale du contour couverte par de vraies détections (0,6 ≈ 3 côtés sur 4)."),
     ("max_elongation", "Élongation max", 1.0, 20.0, 0.5, 1, False,
      "Rapport longueur/largeur maximal (écarte couloirs et lanières)."),
+    # — Axes linéaires (bandes directionnelles) —
+    ("band_width_m", "Largeur max de la bande (m)", 5.0, 200.0, 5.0, 0, True,
+     "Étalement latéral maximal des brins parallèles d'un même axe "
+     "(fossés bordiers + agger + tronçons décalés)."),
+    ("angle_tolerance_deg", "Tolérance d'orientation (°)", 5.0, 45.0, 1.0, 0, True,
+     "Écart d'azimut maximal entre un fragment et la direction de l'axe."),
+    ("min_length_m", "Longueur min (m)", 50.0, 50_000.0, 50.0, 0, True,
+     "Longueur minimale d'un axe publié — la rectitude kilométrique est la "
+     "signature des voies anciennes."),
+    ("max_gap_m", "Interruption max (m)", 10.0, 5000.0, 10.0, 0, True,
+     "Au-delà de ce trou le long de l'axe, l'enfilade est coupée en deux axes."),
+    ("min_coverage", "Couverture min (0–1)", 0.0, 1.0, 0.05, 2, False,
+     "Part minimale de l'axe réellement couverte par des détections."),
+    ("min_sources", "Nb min de fragments", 2.0, 1000.0, 1.0, 0, True,
+     "Nombre minimal de détections constitutives d'un axe."),
 )
 
 

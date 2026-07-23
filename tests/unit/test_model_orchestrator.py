@@ -792,3 +792,74 @@ class TestEnclosureEntity:
         assert run["clustering_overrides"] == {"enclos": {"gap_tolerance_m": 12.0}}
         ent = next(e for e in run["entities"] if e["id"] == "enclos")
         assert ent["is_derived"] is True
+
+
+# ----------------------------------------------------------------------
+# Brique alignment : entité dérivée « axe_lineaire » + défauts exposables UI
+# ----------------------------------------------------------------------
+FORMES_AXE_ARGS = """
+clustering:
+  - type: enclosure
+    target_classes: ["parcellaire", "talus_fosse"]
+    output_class_name: "enclos"
+    gap_tolerance_m: 10
+    min_area_m2: 50
+  - type: alignment
+    target_classes: ["parcellaire"]
+    output_class_name: "axe_lineaire"
+    band_width_m: 40
+    angle_tolerance_deg: 20
+    min_length_m: 500
+    max_gap_m: 200
+    min_coverage: 0.25
+    min_sources: 5
+"""
+
+FORMES_AXE = FORMES + """derived_targets:
+  - output_class: axe_lineaire
+    entity: axe_lineaire
+    include_source: true
+    output_label: "Axes linéaires"
+    source_label: "Fragments sources"
+"""
+
+
+class TestAlignmentEntity:
+    def _installed(self, tmp_path):
+        _write_model(tmp_path, "formes", FORMES_AXE, args_yaml=FORMES_AXE_ARGS)
+        return discover_installed_models(tmp_path)
+
+    def _cat(self):
+        return _catalog() + [
+            EntityDef(id="axe_lineaire", label="Axes linéaires",
+                      display_order=98, morphology="zone")
+        ]
+
+    def test_alignment_defaults_exposed_for_ui(self, tmp_path):
+        m = self._installed(tmp_path)[0]
+        assert m.cluster_defaults["axe_lineaire"] == {
+            "band_width_m": 40.0,
+            "angle_tolerance_deg": 20.0,
+            "min_length_m": 500.0,
+            "max_gap_m": 200.0,
+            "min_coverage": 0.25,
+            "min_sources": 5,
+        }
+
+    def test_axe_entity_derived_with_sources(self, tmp_path):
+        m = self._installed(tmp_path)[0]
+        assert "axe_lineaire" in m.derived_entities
+        assert m.coverage["axe_lineaire"] == ("axe_lineaire", "parcellaire")
+
+    def test_resolve_run_with_overrides(self, tmp_path):
+        installed = self._installed(tmp_path)
+        runs = resolve_runs_from_entities(
+            ["axe_lineaire"], {}, installed, self._cat(),
+            entity_cluster_params={"axe_lineaire": {"band_width_m": 60.0,
+                                                    "min_sources": 8}},
+        )
+        assert len(runs) == 1
+        run = runs[0]
+        assert "axe_lineaire" in run["selected_classes"]
+        assert run["clustering_overrides"] == {
+            "axe_lineaire": {"band_width_m": 60.0, "min_sources": 8}}

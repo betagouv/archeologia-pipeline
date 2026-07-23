@@ -49,7 +49,7 @@ class SahiConfig:
 
 @dataclass(frozen=True)
 class ClusteringRule:
-    """Une règle de clustering DBSCAN spatial post-détection."""
+    """Une règle de clustering DBSCAN spatial post-détection (type: dbscan)."""
     target_classes: Tuple[str, ...]
     min_confidence: float
     min_confidence_extend: float
@@ -62,9 +62,11 @@ class ClusteringRule:
     min_area_m2: float
     concave_ratio: float
     confidence_weight: float
+    type: str = "dbscan"
 
     def to_dict(self) -> Dict[str, Any]:
         return {
+            "type": self.type,
             "target_classes": list(self.target_classes),
             "min_confidence": self.min_confidence,
             "min_confidence_extend": self.min_confidence_extend,
@@ -77,6 +79,38 @@ class ClusteringRule:
             "min_area_m2": self.min_area_m2,
             "concave_ratio": self.concave_ratio,
             "confidence_weight": self.confidence_weight,
+        }
+
+
+@dataclass(frozen=True)
+class EnclosureRule:
+    """Règle « enclosure » : fermeture vectorielle (buffer±T/2) + scoring.
+
+    Détecte des enclos (circuits fermés/quasi fermés) à partir des détections
+    des ``target_classes`` — voir ``pipeline.cv.enclosure``. Distances en
+    mètres (Lambert-93 métrique).
+    """
+    target_classes: Tuple[str, ...]
+    output_class_name: str
+    gap_tolerance_m: float
+    min_area_m2: float
+    max_area_m2: float
+    min_closure: float
+    max_elongation: float
+    min_confidence: float
+    type: str = "enclosure"
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "type": self.type,
+            "target_classes": list(self.target_classes),
+            "output_class_name": self.output_class_name,
+            "gap_tolerance_m": self.gap_tolerance_m,
+            "min_area_m2": self.min_area_m2,
+            "max_area_m2": self.max_area_m2,
+            "min_closure": self.min_closure,
+            "max_elongation": self.max_elongation,
+            "min_confidence": self.min_confidence,
         }
 
 
@@ -309,7 +343,8 @@ def _parse_sahi(args_yaml: Dict[str, Any]) -> SahiConfig:
         return SahiConfig()
 
 
-def _parse_clustering(args_yaml: Dict[str, Any]) -> Tuple[ClusteringRule, ...]:
+def _parse_clustering(args_yaml: Dict[str, Any]) -> Tuple[Any, ...]:
+    """Règles de synthèse typées : ClusteringRule (dbscan) ou EnclosureRule."""
     raw = args_yaml.get("clustering")
     if not raw:
         return tuple()
@@ -318,7 +353,7 @@ def _parse_clustering(args_yaml: Dict[str, Any]) -> Tuple[ClusteringRule, ...]:
     if not isinstance(raw, list):
         return tuple()
 
-    rules: List[ClusteringRule] = []
+    rules: List[Any] = []
     for cfg in raw:
         if not isinstance(cfg, dict):
             continue
@@ -327,6 +362,37 @@ def _parse_clustering(args_yaml: Dict[str, Any]) -> Tuple[ClusteringRule, ...]:
             target = [target]
         if not isinstance(target, list) or not target:
             logger.warning("Clustering rule ignorée : target_classes manquant/invalide")
+            continue
+        rule_type = str(cfg.get("type", "dbscan")).strip().lower() or "dbscan"
+        if rule_type == "enclosure":
+            try:
+                from .clustering_bounds import sanitize_clustering_rule
+
+                sane = sanitize_clustering_rule(
+                    {
+                        "gap_tolerance_m": float(cfg.get("gap_tolerance_m", 10.0)),
+                        "min_area_m2": float(cfg.get("min_area_m2", 50.0)),
+                        "max_area_m2": float(cfg.get("max_area_m2", 60000.0)),
+                        "min_closure": float(cfg.get("min_closure", 0.6)),
+                        "max_elongation": float(cfg.get("max_elongation", 3.0)),
+                        "min_confidence": float(cfg.get("min_confidence", 0.0)),
+                    },
+                    warn=logger.warning,
+                    rule_type="enclosure",
+                )
+                if sane["max_area_m2"] < sane["min_area_m2"]:
+                    sane["max_area_m2"] = sane["min_area_m2"]
+                output_class = str(cfg.get("output_class_name", "")) or f"enclos_{'_'.join(target)}"
+                rules.append(EnclosureRule(
+                    target_classes=tuple(str(t) for t in target),
+                    output_class_name=output_class,
+                    **sane,
+                ))
+            except (TypeError, ValueError) as e:
+                logger.warning(f"Règle enclosure ignorée : {e}")
+            continue
+        if rule_type != "dbscan":
+            logger.warning(f"Règle de synthèse ignorée : type inconnu {rule_type!r}")
             continue
         try:
             from .clustering_bounds import sanitize_clustering_rule

@@ -215,6 +215,18 @@ def load_clustering_config_from_model(model_path: Union[str, Path]) -> Optional[
             if not isinstance(target, list) or not target:
                 logger.warning("Clustering config ignorée: target_classes manquant ou invalide")
                 continue
+            rule_type = str(cfg.get("type", "dbscan")).strip().lower() or "dbscan"
+            if rule_type != "dbscan":
+                # Règle non-dbscan (ex. enclosure) : dict minimal type + classes
+                # + sortie. Pas de min_confidence → _peek_clustering_min_confidence
+                # (run_context) ignore naturellement ces règles.
+                configs.append({
+                    "type": rule_type,
+                    "target_classes": target,
+                    "output_class_name": str(cfg.get("output_class_name", ""))
+                    or f"enclos_{'_'.join(target)}",
+                })
+                continue
             # Isolation PAR RÈGLE (AUDIT PARSE-07) : une valeur non castable
             # ne jette plus toutes les règles du modèle, seulement celle-ci.
             try:
@@ -226,6 +238,7 @@ def load_clustering_config_from_model(model_path: Union[str, Path]) -> Optional[
                     cfg.get("min_confidence_extend", min_confidence_val)
                 )
                 parsed = {
+                    "type": "dbscan",
                     "target_classes": target,
                     "min_confidence": min_confidence_val,
                     "min_confidence_extend": min_confidence_extend_val,

@@ -27,21 +27,34 @@ from qgis.PyQt.QtWidgets import (
 from .no_wheel import NoWheelDoubleSpinBox
 
 
-# Paramètres de regroupement (DBSCAN) éditables, avec explications (tooltips).
+# Paramètres des briques de synthèse éditables, avec explications (tooltips).
+# Seuls ceux présents dans les défauts du modèle (règle args.yaml) sont
+# affichés : les clés DBSCAN et enclosure ne se croisent donc jamais.
 # (clé, libellé, min, max, pas, décimales, est_entier, tooltip)
 _CLUSTER_PARAM_SPECS = (
+    # — Regroupement (DBSCAN) —
     ("eps_m", "Distance max (m)", 0.0, 1000.0, 5.0, 0, True,
-     "Deux cratères plus proches que cette distance sont regroupés."),
-    ("min_cluster_size", "Nb min de cratères", 1.0, 10000.0, 1.0, 0, True,
+     "Deux détections plus proches que cette distance sont regroupées."),
+    ("min_cluster_size", "Nb min de détections", 1.0, 10000.0, 1.0, 0, True,
      "Taille minimale d'un groupe pour créer une zone."),
     ("min_confidence", "Confiance min", 0.0, 1.0, 0.05, 2, False,
-     "Ignore les cratères sous ce seuil POUR le regroupement (≠ seuil de détection)."),
+     "Ignore les détections sous ce seuil POUR le regroupement (≠ seuil de détection)."),
     ("min_area_m2", "Aire min zone (m²)", 0.0, 1_000_000.0, 50.0, 0, True,
      "Supprime les zones de surface inférieure."),
     ("buffer_m", "Tampon (m)", 0.0, 200.0, 1.0, 0, True,
      "Dilate l'enveloppe de chaque groupe."),
     ("min_samples", "Densité (avancé)", 1.0, 100.0, 1.0, 0, True,
      "min_samples DBSCAN : nb de voisins pour qu'un point soit « cœur » de cluster."),
+    # — Enclos (fermeture vectorielle) —
+    ("gap_tolerance_m", "Pontage des interruptions (m)", 0.5, 50.0, 0.5, 1, False,
+     "Ponte les interruptions du tracé jusqu'à cette largeur. ⚠ Un enclos plus "
+     "étroit que cette valeur est rempli par la fermeture (taille min détectable ≈ T)."),
+    ("max_area_m2", "Surface max (m²)", 1.0, 1_000_000.0, 500.0, 0, True,
+     "Écarte les surfaces encloses plus grandes (limite les mailles de parcellaire)."),
+    ("min_closure", "Fermeture min (0–1)", 0.0, 1.0, 0.05, 2, False,
+     "Part minimale du contour couverte par de vraies détections (0,6 ≈ 3 côtés sur 4)."),
+    ("max_elongation", "Élongation max", 1.0, 20.0, 0.5, 1, False,
+     "Rapport longueur/largeur maximal (écarte couloirs et lanières)."),
 )
 
 

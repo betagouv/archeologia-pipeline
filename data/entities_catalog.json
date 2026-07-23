@@ -77,6 +77,13 @@
       "description": "Enclos fossoyés (curvilignes ou quadrangulaires) reconstruits par fermeture des détections parcellaires et talus/fossés. Scores de fermeture, d'isolement et de forme en attributs.",
       "display_order": 97,
       "morphology": "zone"
+    },
+    {
+      "id": "axe_lineaire",
+      "label": "Axes linéaires",
+      "description": "Bandes directionnelles reconstruites depuis les détections parcellaires alignées (voies anciennes, limites majeures, levées). Longueur, couverture, nombre de brins, parallélisme et discordance en attributs.",
+      "display_order": 98,
+      "morphology": "zone"
     }
   ]
 }

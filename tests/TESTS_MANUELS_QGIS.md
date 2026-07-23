@@ -452,3 +452,22 @@ Cette grille indique, pour chaque vague livrée, **quelles sections de tests son
 - [ ] **22.4 Persistance** : sauvegarder le projet QGIS puis le rouvrir → toujours toutes les dalles visibles.
 - [ ] **22.5 Dossier différent (non-régression)** : relancer dans un `output_dir` **différent** → aucune couche du premier run n'est retirée ; fonds de carte, polygone d'emprise (étape 1) et couche quadrillage restent **intacts** (jamais purgés).
 - [ ] **22.6 Détections** : si des détections existent, le re-run rafraîchit aussi les couches `detections/<entité>/*.gpkg` (pas de doublon, données à jour).
+
+## 23. Brique enclos (entité dérivée « Enclos ») ⭐ P0
+
+> **Contexte** : première brique de synthèse non-DBSCAN (`type: enclosure` dans
+> `args.yaml:clustering` du modèle formes linéaires). Fermeture vectorielle des
+> détections `parcellaire`/`talus_fosse` (dilatation T/2 + ré-extension des
+> trous) puis scoring : `closure_ratio`, `isolement`, `rectangularite`,
+> `compacite`, `elongation`, `forme`, `nb_sources`, `enclos_id`. Publication =
+> seuils durs aire/élongation/fermeture uniquement, l'archéologue trie par
+> attributs.
+
+- [ ] **23.1 Entité cochable** : étape 3, groupe « zone » → carte « Enclos » avec badge « ↳ regroupement automatique en zones » (pas de case « Regrouper en clusters »). En réglages avancés, la boîte de paramètres montre : Pontage des interruptions (m), Surface min/max (m²), Fermeture min, Élongation max — et **pas** les paramètres DBSCAN (Distance max, Densité…).
+- [ ] **23.2 Run sur zone de validation** : cocher « Enclos » seul et lancer sur une zone à enclos connus. Le journal montre `Synthèse: 1 règle(s) à traiter` puis `Enclosure [1/1]: … T=10m` et `… enclos 'enclos' publiés`.
+- [ ] **23.3 Sorties QGIS** : groupe « Enclos » avec couche `Enclos` (polygones des cours intérieures) + couche `Linéaments sources` (fragments, avec `enclos_id` rempli pour les contributeurs). Couleur stable, distincte des autres entités.
+- [ ] **23.4 Attributs** : table de la couche Enclos → colonnes `surface_m2`, `closure_ratio` (≥ 0,6), `isolement`, `rectangularite`, `compacite`, `elongation`, `forme` (quadrangulaire/curviligne/irregulier), `nb_sources`, `enclos_id`, `confidence` (moyenne des fragments). Filtrer `"isolement" < 0.2` doit écarter les mailles de parcellaire mitoyennes.
+- [ ] **23.5 Petits enclos préservés** : un enclos < 500 m² (seuil global du modèle) reste présent dans le GPKG — l'exemption du filtre d'aire fonctionne (journal : « couche synthétique 'Enclos' épargnée »).
+- [ ] **23.6 Itération sans réinférence** : relancer le même run en changeant seulement « Pontage des interruptions » (ex. 10 → 16 m) → le journal indique la réutilisation du cache (`détections en cache`), pas de nouvelle inférence, et le nombre d'enclos change de façon plausible (plus de trous pontés).
+- [ ] **23.7 Enclos emboîtés** : sur un double enclos connu (ou fixture), les deux circuits sortent comme deux polygones distincts (pas de fusion/suppression).
+- [ ] **23.8 Non-régression regroupement cratères** : un run « Regroupement de cratères » (DBSCAN) donne le même résultat qu'avant (mêmes zones, mêmes paramètres éditables, libellés désormais « Nb min de détections »).

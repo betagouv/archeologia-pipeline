@@ -1391,26 +1391,26 @@ def create_shapefile_from_detections(
                 cidx = det.get("__color_idx", rank_for_class(class_name))
                 det["conf_bin"], det["conf_color"] = _confidence_bucket(conf, cidx, min_confidence)
         
-        # ── Clustering spatial (optionnel) ──
-        _cluster_class_names = set()
+        # ── Briques de synthèse (clustering, enclos…) ──
+        _synthetic_class_names = set()
         if clustering_configs:
             try:
-                from .clustering import run_clustering
-                logger.info(f"Clustering: {len(clustering_configs)} config(s) à traiter")
-                cluster_dets_by_class, data_by_class_name = run_clustering(
+                from .clustering import run_synthesis
+                logger.info(f"Synthèse: {len(clustering_configs)} règle(s) à traiter")
+                synth_dets_by_class, data_by_class_name = run_synthesis(
                     data_by_class_name, clustering_configs, cancel_check=cancel_check
                 )
-                # Ajouter les clusters comme nouvelles classes
-                for cluster_class, cluster_dets in cluster_dets_by_class.items():
-                    data_by_class_name[cluster_class] = cluster_dets
-                    _cluster_class_names.add(cluster_class)
-                    logger.info(f"Clustering: {len(cluster_dets)} polygone(s) ajouté(s) pour '{cluster_class}'")
+                # Ajouter les sorties de synthèse comme nouvelles classes
+                for synth_class, synth_dets in synth_dets_by_class.items():
+                    data_by_class_name[synth_class] = synth_dets
+                    _synthetic_class_names.add(synth_class)
+                    logger.info(f"Synthèse: {len(synth_dets)} polygone(s) ajouté(s) pour '{synth_class}'")
             except PipelineCancelled:
                 raise
             except ImportError as e:
-                logger.warning(f"Clustering ignoré (dépendance manquante): {e}")
+                logger.warning(f"Synthèse ignorée (dépendance manquante): {e}")
             except Exception as e:
-                logger.warning(f"Clustering ignoré (erreur): {e}")
+                logger.warning(f"Synthèse ignorée (erreur): {e}")
 
         # ── Filtrage final des détections sous le seuil du run ──
         # APRÈS le clustering uniquement : l'hystérésis (min_confidence_extend) a
@@ -1422,7 +1422,7 @@ def create_shapefile_from_detections(
             from .class_utils import filter_detections_below_confidence
             _before = sum(len(v) for v in data_by_class_name.values())
             data_by_class_name = filter_detections_below_confidence(
-                data_by_class_name, min_confidence, exempt_classes=_cluster_class_names
+                data_by_class_name, min_confidence, exempt_classes=_synthetic_class_names
             )
             _after = sum(len(v) for v in data_by_class_name.values())
             if _after != _before:
@@ -1438,9 +1438,9 @@ def create_shapefile_from_detections(
         for class_name, detections in data_by_class_name.items():
             check_cancelled(cancel_check)
             # Filtrer par classes sélectionnées si spécifié
-            # None = toutes les classes ; [] = aucune classe (les classes cluster passent toujours)
+            # None = toutes les classes ; [] = aucune classe (les classes synthétiques passent toujours)
             if selected_classes is not None:
-                if class_name not in selected_classes and class_name not in _cluster_class_names:
+                if class_name not in selected_classes and class_name not in _synthetic_class_names:
                     logger.info(f"Classe '{class_name}' ignorée (non sélectionnée)")
                     continue
 
@@ -1514,7 +1514,7 @@ def create_shapefile_from_detections(
                     pass
 
                 # 4) Normalisation des colonnes attributaires (évite types mixtes)
-                text_cols = ["validation", "corr_pred", "model_pred", "model_name", "conf_bin", "conf_color", "cluster_id"]
+                text_cols = ["validation", "corr_pred", "model_pred", "model_name", "conf_bin", "conf_color", "cluster_id", "enclos_id", "forme"]
                 for col in text_cols:
                     if col in gdf.columns:
                         gdf[col] = gdf[col].fillna("").astype(str)
@@ -1526,8 +1526,10 @@ def create_shapefile_from_detections(
                     except Exception:
                         gdf["confidence"] = gdf["confidence"].astype(str)
 
-                # Colonnes numériques de clustering
-                for ncol in ("nb_detect", "area_m2", "density"):
+                # Colonnes numériques des briques de synthèse (clustering, enclos)
+                for ncol in ("nb_detect", "area_m2", "density", "surface_m2",
+                             "closure_ratio", "isolement", "rectangularite",
+                             "compacite", "elongation", "nb_sources"):
                     if ncol in gdf.columns:
                         gdf[ncol] = gdf[ncol].fillna(0)
                         try:

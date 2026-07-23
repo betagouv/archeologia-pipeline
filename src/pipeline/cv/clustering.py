@@ -426,3 +426,46 @@ def run_clustering(
     logger.info(f"Clustering terminé: {total_clusters} cluster(s) total en {elapsed:.2f}s")
     
     return cluster_detections_by_class, updated_data
+
+
+# ------------------------------------------------------------------ #
+#  Dispatch des règles de synthèse typées                              #
+# ------------------------------------------------------------------ #
+
+def run_synthesis(
+    data_by_class_name: Dict[str, List[Dict]],
+    configs: List[Dict],
+    *,
+    cancel_check: Optional[CancelCheckFn] = None,
+) -> Tuple[Dict[str, List[Dict]], Dict[str, List[Dict]]]:
+    """Route chaque règle de synthèse vers son moteur selon son ``type``.
+
+    ``dbscan`` (défaut, rétro-compat) → :func:`run_clustering` ;
+    ``enclosure`` → :func:`pipeline.cv.enclosure.run_enclosure` ;
+    type inconnu → warning + règle ignorée. Les sorties (nouvelles classes
+    synthétiques) des moteurs sont fusionnées dans un seul dict.
+    """
+    synth_by_class: Dict[str, List[Dict]] = {}
+    updated = data_by_class_name
+    dbscan_cfgs = [c for c in configs if str(c.get("type", "dbscan")) == "dbscan"]
+    enclosure_cfgs = [c for c in configs if str(c.get("type", "")) == "enclosure"]
+    for cfg in configs:
+        ctype = str(cfg.get("type", "dbscan"))
+        if ctype not in ("dbscan", "enclosure"):
+            logger.warning(
+                f"Synthèse: type de règle inconnu {ctype!r} "
+                f"(sortie {cfg.get('output_class_name')!r}) — règle ignorée"
+            )
+    if dbscan_cfgs:
+        clusters, updated = run_clustering(
+            updated, dbscan_cfgs, cancel_check=cancel_check
+        )
+        synth_by_class.update(clusters)
+    if enclosure_cfgs:
+        from .enclosure import run_enclosure
+
+        enclos, updated = run_enclosure(
+            updated, enclosure_cfgs, cancel_check=cancel_check
+        )
+        synth_by_class.update(enclos)
+    return synth_by_class, updated

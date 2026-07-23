@@ -83,8 +83,10 @@ def deduplicate_cv_shapefiles_final(
             if isinstance(ov, dict) and ov:
                 # Clés CONNUES uniquement, castées et bornées (AUDIT PARSE-03) :
                 # la config modèle est validée au chargement, les surcharges UI
-                # doivent l'être aussi avant la fusion.
-                cc.update(sanitize_clustering_overrides(ov, warn=log))
+                # doivent l'être aussi avant la fusion. Bornes selon le TYPE de
+                # la règle (dbscan/enclosure).
+                cc.update(sanitize_clustering_overrides(
+                    ov, warn=log, rule_type=str(cc.get("type", "dbscan"))))
         log(f"Computer Vision: surcharges de clustering appliquées ({len(_cluster_overrides)} sortie(s))")
 
     # shp_dir n'est PLUS créé d'office : la sortie est routée par entité vers

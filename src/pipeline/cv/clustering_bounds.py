@@ -45,10 +45,22 @@ ENCLOSURE_BOUNDS: Dict[str, tuple] = {
     "min_confidence": (0.0, 1.0, False),
 }
 
+# Bornes des règles « alignment » (bandes directionnelles multi-brins).
+ALIGNMENT_BOUNDS: Dict[str, tuple] = {
+    "band_width_m": (5.0, 200.0, False),
+    "angle_tolerance_deg": (5.0, 45.0, False),
+    "min_length_m": (50.0, None, False),
+    "max_gap_m": (10.0, None, False),
+    "min_coverage": (0.0, 1.0, False),
+    "min_sources": (2, None, True),
+    "min_confidence": (0.0, 1.0, False),
+}
+
 # Registre par type de règle de synthèse (args.yaml:clustering → champ ``type``).
 BOUNDS_BY_TYPE: Dict[str, Dict[str, tuple]] = {
     "dbscan": NUMERIC_BOUNDS,
     "enclosure": ENCLOSURE_BOUNDS,
+    "alignment": ALIGNMENT_BOUNDS,
 }
 
 

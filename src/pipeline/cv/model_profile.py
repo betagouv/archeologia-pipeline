@@ -115,6 +115,40 @@ class EnclosureRule:
 
 
 @dataclass(frozen=True)
+class AlignmentRule:
+    """Règle « alignment » : bandes directionnelles à brins multiples.
+
+    Détecte les axes linéaires (voies anciennes…) — enfilades de détections
+    co-orientées dans une bande étroite — voir ``pipeline.cv.alignment``.
+    Distances en mètres, angles en degrés (azimut modulo 180°).
+    """
+    target_classes: Tuple[str, ...]
+    output_class_name: str
+    band_width_m: float
+    angle_tolerance_deg: float
+    min_length_m: float
+    max_gap_m: float
+    min_coverage: float
+    min_sources: int
+    min_confidence: float
+    type: str = "alignment"
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "type": self.type,
+            "target_classes": list(self.target_classes),
+            "output_class_name": self.output_class_name,
+            "band_width_m": self.band_width_m,
+            "angle_tolerance_deg": self.angle_tolerance_deg,
+            "min_length_m": self.min_length_m,
+            "max_gap_m": self.max_gap_m,
+            "min_coverage": self.min_coverage,
+            "min_sources": self.min_sources,
+            "min_confidence": self.min_confidence,
+        }
+
+
+@dataclass(frozen=True)
 class PostprocessConfig:
     """Activation des étapes de post-traitement géométrique.
 
@@ -390,6 +424,32 @@ def _parse_clustering(args_yaml: Dict[str, Any]) -> Tuple[Any, ...]:
                 ))
             except (TypeError, ValueError) as e:
                 logger.warning(f"Règle enclosure ignorée : {e}")
+            continue
+        if rule_type == "alignment":
+            try:
+                from .clustering_bounds import sanitize_clustering_rule
+
+                sane = sanitize_clustering_rule(
+                    {
+                        "band_width_m": float(cfg.get("band_width_m", 40.0)),
+                        "angle_tolerance_deg": float(cfg.get("angle_tolerance_deg", 20.0)),
+                        "min_length_m": float(cfg.get("min_length_m", 500.0)),
+                        "max_gap_m": float(cfg.get("max_gap_m", 200.0)),
+                        "min_coverage": float(cfg.get("min_coverage", 0.25)),
+                        "min_sources": int(cfg.get("min_sources", 5)),
+                        "min_confidence": float(cfg.get("min_confidence", 0.0)),
+                    },
+                    warn=logger.warning,
+                    rule_type="alignment",
+                )
+                output_class = str(cfg.get("output_class_name", "")) or f"axe_{'_'.join(target)}"
+                rules.append(AlignmentRule(
+                    target_classes=tuple(str(t) for t in target),
+                    output_class_name=output_class,
+                    **sane,
+                ))
+            except (TypeError, ValueError) as e:
+                logger.warning(f"Règle alignment ignorée : {e}")
             continue
         if rule_type != "dbscan":
             logger.warning(f"Règle de synthèse ignorée : type inconnu {rule_type!r}")

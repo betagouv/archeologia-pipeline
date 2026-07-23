@@ -11,18 +11,26 @@ import pytest
 pytest.importorskip("shapely")
 
 from pipeline.cv.clustering_bounds import (
+    ALIGNMENT_BOUNDS,
     BOUNDS_BY_TYPE,
     ENCLOSURE_BOUNDS,
     sanitize_clustering_overrides,
 )
 from pipeline.cv.model_config import load_clustering_config_from_model
-from pipeline.cv.model_profile import ClusteringRule, EnclosureRule, _parse_clustering
+from pipeline.cv.model_profile import (
+    AlignmentRule,
+    ClusteringRule,
+    EnclosureRule,
+    _parse_clustering,
+)
 
 
 DBSCAN_CFG = {"target_classes": ["cratere"], "output_class_name": "zone_crateres",
               "min_confidence": 0.4}
 ENCLOS_CFG = {"type": "enclosure", "target_classes": ["parcellaire", "talus_fosse"],
               "output_class_name": "enclos"}
+ALIGN_CFG = {"type": "alignment", "target_classes": ["parcellaire"],
+             "output_class_name": "axe_lineaire"}
 
 
 class TestParseTyped:
@@ -93,9 +101,65 @@ class TestOverridesByType:
         assert sanitize_clustering_overrides(
             {"output_geometry": "concave_hull"}, rule_type="enclosure") == {}
 
-    def test_bounds_registry_exposes_both_types(self):
-        assert set(BOUNDS_BY_TYPE) == {"dbscan", "enclosure"}
+    def test_bounds_registry_exposes_all_types(self):
+        assert set(BOUNDS_BY_TYPE) == {"dbscan", "enclosure", "alignment"}
         assert "gap_tolerance_m" in ENCLOSURE_BOUNDS
+        assert "band_width_m" in ALIGNMENT_BOUNDS
+
+
+class TestAlignmentRuleParsing:
+    def test_alignment_rule_defaults(self):
+        (rule,) = _parse_clustering({"clustering": [ALIGN_CFG]})
+        assert isinstance(rule, AlignmentRule)
+        assert rule.type == "alignment"
+        assert rule.target_classes == ("parcellaire",)
+        assert rule.output_class_name == "axe_lineaire"
+        assert rule.band_width_m == 40.0
+        assert rule.angle_tolerance_deg == 20.0
+        assert rule.min_length_m == 500.0
+        assert rule.max_gap_m == 200.0
+        assert rule.min_coverage == 0.25
+        assert rule.min_sources == 5
+        assert rule.min_confidence == 0.0
+        assert rule.to_dict()["type"] == "alignment"
+
+    def test_alignment_bounds_clamped(self):
+        cfg = dict(ALIGN_CFG, band_width_m=500, min_sources=1)
+        (rule,) = _parse_clustering({"clustering": [cfg]})
+        assert rule.band_width_m == 200.0
+        assert rule.min_sources == 2
+
+    def test_alignment_default_output_name(self):
+        cfg = {"type": "alignment", "target_classes": ["parcellaire"]}
+        (rule,) = _parse_clustering({"clustering": [cfg]})
+        assert rule.output_class_name == "axe_parcellaire"
+
+    def test_three_types_parsed_in_order(self):
+        rules = _parse_clustering({"clustering": [DBSCAN_CFG, ENCLOS_CFG, ALIGN_CFG]})
+        assert [r.type for r in rules] == ["dbscan", "enclosure", "alignment"]
+
+    def test_alignment_overrides_by_type(self):
+        assert sanitize_clustering_overrides(
+            {"band_width_m": 60}, rule_type="alignment") == {"band_width_m": 60.0}
+        assert sanitize_clustering_overrides(
+            {"band_width_m": 60}, rule_type="dbscan") == {}
+        assert sanitize_clustering_overrides(
+            {"eps_m": 40}, rule_type="alignment") == {}
+
+    def test_legacy_loader_tags_alignment(self, tmp_path):
+        d = tmp_path / "model" / "weights"
+        d.mkdir(parents=True)
+        (d / "best.onnx").write_bytes(b"")
+        (tmp_path / "model" / "args.yaml").write_text(
+            "clustering:\n"
+            "  - type: alignment\n"
+            "    target_classes: [parcellaire]\n"
+            "    output_class_name: axe_lineaire\n",
+            encoding="utf-8",
+        )
+        configs = load_clustering_config_from_model(d / "best.onnx")
+        assert configs[0]["type"] == "alignment"
+        assert "min_confidence" not in configs[0]
 
 
 class TestLegacyLoader:

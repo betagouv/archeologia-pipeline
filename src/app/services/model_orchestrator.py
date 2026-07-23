@@ -399,7 +399,13 @@ def _load_args_clustering(model_dir: Path) -> List[Tuple[FrozenSet[str], str]]:
 
 
 _CLUSTER_PARAM_INT = ("min_cluster_size", "min_samples")
-_CLUSTER_PARAM_FLOAT = ("eps_m", "min_confidence", "min_area_m2", "buffer_m")
+# Paramètres float exposables : DBSCAN + brique enclosure (gap_tolerance_m…).
+# Seuls ceux présents dans la règle args.yaml du modèle sont retenus, donc les
+# clés d'un type n'apparaissent jamais sur une règle de l'autre type.
+_CLUSTER_PARAM_FLOAT = (
+    "eps_m", "min_confidence", "min_area_m2", "buffer_m",
+    "gap_tolerance_m", "max_area_m2", "min_closure", "max_elongation",
+)
 
 
 def _load_cluster_defaults(model_dir: Path) -> Dict[str, Dict[str, float]]:

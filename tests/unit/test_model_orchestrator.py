@@ -728,3 +728,67 @@ class TestImportIsolation:
         )
         assert result.returncode == 0, f"stdout={result.stdout!r} stderr={result.stderr!r}"
         assert "OK" in result.stdout
+
+
+# ----------------------------------------------------------------------
+# Brique enclosure : entité dérivée « enclos » + défauts exposables UI
+# ----------------------------------------------------------------------
+FORMES_ENCLOS_ARGS = """
+clustering:
+  - type: enclosure
+    target_classes: ["parcellaire", "talus_fosse"]
+    output_class_name: "enclos"
+    gap_tolerance_m: 10
+    min_area_m2: 50
+    max_area_m2: 60000
+    min_closure: 0.6
+    max_elongation: 3
+"""
+
+FORMES_ENCLOS = FORMES + """derived_targets:
+  - output_class: enclos
+    entity: enclos
+    include_source: true
+    output_label: Enclos
+    source_label: Linéaments sources
+"""
+
+
+class TestEnclosureEntity:
+    def _installed(self, tmp_path):
+        _write_model(tmp_path, "formes", FORMES_ENCLOS, args_yaml=FORMES_ENCLOS_ARGS)
+        return discover_installed_models(tmp_path)
+
+    def _cat(self):
+        return _catalog() + [
+            EntityDef(id="enclos", label="Enclos", display_order=97, morphology="zone")
+        ]
+
+    def test_enclosure_defaults_exposed_for_ui(self, tmp_path):
+        m = self._installed(tmp_path)[0]
+        assert m.cluster_defaults["enclos"] == {
+            "gap_tolerance_m": 10.0,
+            "min_area_m2": 50.0,
+            "max_area_m2": 60000.0,
+            "min_closure": 0.6,
+            "max_elongation": 3.0,
+        }
+
+    def test_enclos_entity_is_derived_with_sources(self, tmp_path):
+        m = self._installed(tmp_path)[0]
+        assert "enclos" in m.derived_entities
+        assert m.coverage["enclos"] == ("enclos", "parcellaire", "talus_fosse")
+
+    def test_resolve_run_selects_output_and_overrides(self, tmp_path):
+        installed = self._installed(tmp_path)
+        runs = resolve_runs_from_entities(
+            ["enclos"], {}, installed, self._cat(),
+            entity_cluster_params={"enclos": {"gap_tolerance_m": 12.0}},
+        )
+        assert len(runs) == 1
+        run = runs[0]
+        assert "enclos" in run["selected_classes"]
+        assert "parcellaire" in run["selected_classes"]
+        assert run["clustering_overrides"] == {"enclos": {"gap_tolerance_m": 12.0}}
+        ent = next(e for e in run["entities"] if e["id"] == "enclos")
+        assert ent["is_derived"] is True

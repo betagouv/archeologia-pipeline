@@ -180,11 +180,24 @@ def deduplicate_cv_shapefiles_final(
         else:
             gpkg_paths = [str(p) for p in shp_dir.glob("*.gpkg")]
         if gpkg_paths:
+            # Couches issues des briques de synthèse (clusters, enclos) : elles
+            # portent leur propre min_area_m2 par règle — le seuil global du
+            # modèle ne doit pas les raboter (un enclos funéraire de 80 m²
+            # serait effacé après écriture). Nom de couche = output_class,
+            # éventuellement renommé par le routage entité (output_label).
+            _exempt_layers = set()
+            for cc in (clustering_configs or []):
+                oc = str(cc.get("output_class_name") or "").strip()
+                if not oc:
+                    continue
+                for _gp, layer in (class_targets or {}).get(oc) or [(None, oc)]:
+                    _exempt_layers.add(layer)
             try:
                 _filter_gpkg_by_min_area(
                     gpkg_paths=gpkg_paths,
                     min_area_m2=min_area_m2,
                     crs=str(crs),
+                    exempt_layers=frozenset(_exempt_layers),
                 )
             except Exception as e:
                 log(f"Computer Vision: filtrage par aire ignoré (erreur): {e}")

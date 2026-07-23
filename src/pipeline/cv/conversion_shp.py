@@ -677,6 +677,7 @@ def _filter_gpkg_by_min_area(
     gpkg_paths: List[str],
     min_area_m2: float = 50.0,
     crs: str = "EPSG:2154",
+    exempt_layers: frozenset = frozenset(),
 ) -> None:
     """
     Filtre les détections trop petites dans un ou plusieurs GeoPackages.
@@ -686,6 +687,9 @@ def _filter_gpkg_by_min_area(
         gpkg_paths: Liste des chemins vers les GeoPackages à filtrer
         min_area_m2: Aire minimale requise en m²
         crs: Système de coordonnées
+        exempt_layers: Noms de couches épargnés — les sorties des briques de
+            synthèse (enclos, zones de clusters) portent leur propre seuil
+            d'aire par règle ; le seuil global du modèle ne doit pas les raboter.
     """
     logger.info(f"Filtrage GPKG par aire: suppression des détections < {min_area_m2} m²")
 
@@ -701,6 +705,10 @@ def _filter_gpkg_by_min_area(
         total_remaining = 0
         had_error = False
         for layer in layers:
+            if layer in exempt_layers:
+                logger.info(f"Filtrage GPKG: couche synthétique '{layer}' épargnée")
+                total_remaining += 1  # couche conservée → GPKG jamais supprimé
+                continue
             try:
                 gdf = _safe_read_file(str(p), layer=layer)
                 if gdf.empty:

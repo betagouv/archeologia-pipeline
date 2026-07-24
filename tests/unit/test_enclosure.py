@@ -223,3 +223,19 @@ class TestScores:
                 + [_det(frags[-1], conf=0.05)]}
         out, _ = run_enclosure(data, [_cfg(min_confidence=0.3)])
         assert out == {}
+
+
+class TestDiagnostics:
+    def test_rejection_counts_logged_per_filter(self, caplog):
+        import logging
+        # cour inter-lanières : rejetée par l'ancrage → le log doit dire par
+        # QUEL filtre les candidats meurent (diagnostic Bretagne : « 69
+        # surfaces, 0 candidat » sans explication).
+        frags = [
+            _side(-500, 0, 500, 0), _side(-500, 30, 500, 30),
+            _side(0, 0, 0, 30), _side(40, 0, 40, 30),
+        ]
+        with caplog.at_level(logging.INFO, logger="pipeline.cv.enclosure"):
+            out, _ = _run(frags)
+        assert out == {}
+        assert any("rejets" in m and "ancrage 1" in m for m in caplog.messages), caplog.messages

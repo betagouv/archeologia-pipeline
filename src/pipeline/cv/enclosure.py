@@ -162,9 +162,12 @@ def run_enclosure(
         polys = list(getattr(dilated, "geoms", [dilated]))
         cover = union.buffer(COVER_EPS_M)
 
-        # Candidats = anneaux intérieurs ré-étendus, filtres durs.
-        candidates = []  # (polygon, surface, elongation, closure)
+        # Candidats = anneaux intérieurs ré-étendus, filtres durs. Les rejets
+        # sont comptés PAR filtre : « N surfaces, 0 candidat » sans explication
+        # rendait le diagnostic impossible (cf. calibration Bretagne).
+        candidates = []  # (polygon, surface, elongation, closure, ancrage, contrib_idx)
         n_rings = 0
+        rejects = {"aire": 0, "elongation": 0, "closure": 0, "ancrage": 0}
         for poly in polys:
             check_cancelled(cancel_check)
             if poly.is_empty or not isinstance(poly, Polygon):
@@ -178,15 +181,18 @@ def run_enclosure(
                     continue
                 area = cand.area
                 if area < min_area or area > max_area:
+                    rejects["aire"] += 1
                     continue
                 long_side, short_side = _mrr_sides(cand)
                 elongation = (long_side / short_side) if short_side > 0 else float("inf")
                 if elongation > max_elongation:
+                    rejects["elongation"] += 1
                     continue
                 ring_line = cand.exterior
                 covered = ring_line.intersection(cover)
                 closure = (covered.length / ring_line.length) if ring_line.length > 0 else 0.0
                 if closure < min_closure:
+                    rejects["closure"] += 1
                     continue
                 # Ancrage : part de l'aire des fragments contributeurs qui reste
                 # au voisinage de l'anneau. Un vrai enclos EST sa détection
@@ -208,11 +214,14 @@ def run_enclosure(
                 else:
                     ancrage = 0.0
                 if ancrage < min_ancrage:
+                    rejects["ancrage"] += 1
                     continue
                 candidates.append((cand, area, elongation, closure, ancrage, contrib_idx))
         logger.info(
             f"Enclosure: {n_rings} surface(s) enclose(s), "
-            f"{len(candidates)} candidat(s) après filtres durs"
+            f"{len(candidates)} candidat(s) après filtres durs "
+            f"(rejets: aire {rejects['aire']}, élongation {rejects['elongation']}, "
+            f"closure {rejects['closure']}, ancrage {rejects['ancrage']})"
         )
 
         # Isolement : part du périmètre à ≤ COVER_EPS_M du contour des AUTRES

@@ -51,8 +51,15 @@ class TestParseTyped:
         assert rule.max_area_m2 == 60000.0
         assert rule.min_closure == 0.6
         assert rule.max_elongation == 3.0
+        assert rule.min_ancrage == 0.5
         assert rule.min_confidence == 0.0
         assert rule.to_dict()["type"] == "enclosure"
+
+    def test_enclosure_min_ancrage_clamped(self):
+        (rule,) = _parse_clustering({"clustering": [dict(ENCLOS_CFG, min_ancrage=2.0)]})
+        assert rule.min_ancrage == 1.0
+        out = sanitize_clustering_overrides({"min_ancrage": 0.6}, rule_type="enclosure")
+        assert out == {"min_ancrage": 0.6}
 
     def test_enclosure_bounds_clamped(self):
         cfg = dict(ENCLOS_CFG, gap_tolerance_m=500, min_closure=2.0)

@@ -97,6 +97,7 @@ class EnclosureRule:
     max_area_m2: float
     min_closure: float
     max_elongation: float
+    min_ancrage: float
     min_confidence: float
     type: str = "enclosure"
 
@@ -110,6 +111,7 @@ class EnclosureRule:
             "max_area_m2": self.max_area_m2,
             "min_closure": self.min_closure,
             "max_elongation": self.max_elongation,
+            "min_ancrage": self.min_ancrage,
             "min_confidence": self.min_confidence,
         }
 
@@ -409,6 +411,7 @@ def _parse_clustering(args_yaml: Dict[str, Any]) -> Tuple[Any, ...]:
                         "max_area_m2": float(cfg.get("max_area_m2", 60000.0)),
                         "min_closure": float(cfg.get("min_closure", 0.6)),
                         "max_elongation": float(cfg.get("max_elongation", 3.0)),
+                        "min_ancrage": float(cfg.get("min_ancrage", 0.5)),
                         "min_confidence": float(cfg.get("min_confidence", 0.0)),
                     },
                     warn=logger.warning,

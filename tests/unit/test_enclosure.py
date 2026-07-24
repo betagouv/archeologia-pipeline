@@ -36,7 +36,8 @@ def _cfg(**over):
     cfg = {"type": "enclosure", "target_classes": ["parcellaire"],
            "output_class_name": "enclos", "gap_tolerance_m": 8.0,
            "min_area_m2": 50.0, "max_area_m2": 60000.0,
-           "min_closure": 0.6, "max_elongation": 3.0, "min_confidence": 0.0}
+           "min_closure": 0.6, "max_elongation": 3.0, "min_ancrage": 0.5,
+           "min_confidence": 0.0}
     cfg.update(over)
     return cfg
 
@@ -136,6 +137,31 @@ class TestHardFilters:
         out_max, _ = _run(frags, _cfg(max_area_m2=1000.0))
         assert out_max == {}
 
+    def test_inter_strip_courtyard_rejected_by_ancrage(self):
+        # Le faux positif structurel constaté en Bretagne : une « cour »
+        # incidente scellée ENTRE deux lanières de parcellaire très longues
+        # (+ deux bouchons courts). Les sources débordent loin de l'anneau
+        # → ancrage ≪ 0,5 → rejeté. Un vrai enclos (l'anneau EST la
+        # détection) garde un ancrage ≈ 1.
+        frags = [
+            _side(-500, 0, 500, 0),      # lanière sud (1 km)
+            _side(-500, 30, 500, 30),    # lanière nord
+            _side(0, 0, 0, 30),          # bouchon ouest
+            _side(40, 0, 40, 30),        # bouchon est → cour ~40×30
+        ]
+        out, _ = _run(frags)
+        assert out == {}
+        # sans le filtre d'ancrage, la cour serait publiée (contrôle)
+        out_off, _ = _run(frags, _cfg(min_ancrage=0.0))
+        assert len(out_off.get("enclos", [])) == 1
+        assert out_off["enclos"][0]["ancrage"] < 0.3
+
+    def test_true_ring_has_high_ancrage(self):
+        frags = _rect_fragments(0, 0, 40, 40, gaps=[(0, 18, 4)])
+        out, _ = _run(frags)
+        assert len(out.get("enclos", [])) == 1
+        assert out["enclos"][0]["ancrage"] > 0.8
+
 
 # ----------------------------------------------------------------------
 # Scores et cas archéologiques
@@ -152,7 +178,9 @@ class TestScores:
         grid = _rect_fragments(0, 0, 80, 80) + [
             _side(-40, 0, 40, 0), _side(0, -40, 0, 40)]  # croix centrale → 4 mailles
         lone = _rect_fragments(300, 0, 40, 40)
-        out, _ = _run(grid + lone)
+        # min_ancrage=0 : on teste ici le score d'ISOLEMENT — les mailles de
+        # grille ont un ancrage limite (~0,5) par construction de la fixture.
+        out, _ = _run(grid + lone, _cfg(min_ancrage=0.0))
         dets = out.get("enclos", [])
         assert len(dets) == 5
         lone_dets = [d for d in dets if d["geometry"].centroid.x > 200]

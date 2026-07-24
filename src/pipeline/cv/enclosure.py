@@ -124,12 +124,13 @@ def run_enclosure(
         max_area = float(cfg["max_area_m2"])
         min_closure = float(cfg["min_closure"])
         max_elongation = float(cfg["max_elongation"])
+        min_ancrage = float(cfg.get("min_ancrage", 0.5))
         min_confidence = float(cfg.get("min_confidence", 0.0))
         output_class = cfg["output_class_name"]
         logger.info(
             f"Enclosure [{cfg_idx + 1}/{len(enclosure_configs)}]: "
             f"classes={target_classes}, T={gap_m}m, aire=[{min_area:.0f};{max_area:.0f}]m², "
-            f"closure>={min_closure}, elongation<={max_elongation}"
+            f"closure>={min_closure}, elongation<={max_elongation}, ancrage>={min_ancrage}"
         )
 
         # Collecte des sources (conf >= min_confidence ; None = conservée).
@@ -187,7 +188,28 @@ def run_enclosure(
                 closure = (covered.length / ring_line.length) if ring_line.length > 0 else 0.0
                 if closure < min_closure:
                     continue
-                candidates.append((cand, area, elongation, closure))
+                # Ancrage : part de l'aire des fragments contributeurs qui reste
+                # au voisinage de l'anneau. Un vrai enclos EST sa détection
+                # (ancrage ≈ 1) ; une cour incidente entre des lanières de
+                # parcellaire qui continuent au loin a un ancrage faible — LE
+                # discriminant des faux positifs inter-lanières (test Bretagne :
+                # vrais 0,68/0,96, faux ≤ 0,59, médiane 0,11).
+                contrib_idx = [
+                    j for j, s in enumerate(sources)
+                    if s[2].distance(ring_line) <= COVER_EPS_M
+                ]
+                a_tot = sum(sources[j][2].area for j in contrib_idx)
+                if a_tot > 0:
+                    ring_zone = ring_line.buffer(2 * COVER_EPS_M)
+                    a_in = sum(
+                        sources[j][2].intersection(ring_zone).area for j in contrib_idx
+                    )
+                    ancrage = a_in / a_tot
+                else:
+                    ancrage = 0.0
+                if ancrage < min_ancrage:
+                    continue
+                candidates.append((cand, area, elongation, closure, ancrage, contrib_idx))
         logger.info(
             f"Enclosure: {n_rings} surface(s) enclose(s), "
             f"{len(candidates)} candidat(s) après filtres durs"
@@ -199,7 +221,7 @@ def run_enclosure(
         # un chantier réel dépasse le millier de candidats.
         neighborhoods = [c[0].exterior.buffer(COVER_EPS_M) for c in candidates]
         dets: List[Dict] = []
-        for i, (cand, area, elongation, closure) in enumerate(candidates):
+        for i, (cand, area, elongation, closure, ancrage, contrib_idx) in enumerate(candidates):
             check_cancelled(cancel_check)
             ring_line = cand.exterior
             others = [
@@ -216,20 +238,19 @@ def run_enclosure(
             rectangularite = (area / mrr.area) if mrr.area > 0 else 0.0
             forme, compacite = _classify_shape(cand, rectangularite)
 
-            # Fragments contributeurs : à ≤ COVER_EPS_M du contour → confiance
-            # moyenne + traçabilité enclos_id sur les sources.
+            # Fragments contributeurs (déjà résolus au filtrage d'ancrage) :
+            # confiance moyenne + traçabilité enclos_id sur les sources.
             enclos_id = f"{output_class}_{i}"
             confs: List[float] = []
-            nb_sources = 0
             model_name = ""
-            for class_name, det_idx, geom, conf in sources:
-                if geom.distance(ring_line) <= COVER_EPS_M:
-                    nb_sources += 1
-                    updated[class_name][det_idx]["enclos_id"] = enclos_id
-                    if not model_name:
-                        model_name = updated[class_name][det_idx].get("model_name", "")
-                    if conf is not None and conf > 0:
-                        confs.append(conf)
+            for j in contrib_idx:
+                class_name, det_idx, _geom, conf = sources[j]
+                updated[class_name][det_idx]["enclos_id"] = enclos_id
+                if not model_name:
+                    model_name = updated[class_name][det_idx].get("model_name", "")
+                if conf is not None and conf > 0:
+                    confs.append(conf)
+            nb_sources = len(contrib_idx)
             mean_confidence = (sum(confs) / len(confs)) if confs else 0.0
 
             dets.append({
@@ -241,6 +262,7 @@ def run_enclosure(
                 "confidence": mean_confidence,
                 "surface_m2": round(area, 1),
                 "closure_ratio": round(closure, 3),
+                "ancrage": round(ancrage, 3),
                 "isolement": round(isolement, 3),
                 "rectangularite": round(rectangularite, 3),
                 "compacite": round(compacite, 3),

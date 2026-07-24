@@ -720,7 +720,15 @@ def _filter_gpkg_by_min_area(
                         pass
                 gdf['__area'] = gdf.geometry.area
                 n_before = len(gdf)
-                gdf = gdf[gdf['__area'] >= min_area_m2].drop(columns=['__area'], errors='ignore')
+                keep = gdf['__area'] >= min_area_m2
+                # Traçabilité membre→synthèse : un fragment tagué par une brique
+                # (cluster_id/enclos_id/axe_id) survit au filtre d'aire global —
+                # sinon les contours sources d'un enclos/axe disparaissent du
+                # GPKG (bug Bretagne : 434/493 fragments effacés).
+                for tag in ("cluster_id", "enclos_id", "axe_id"):
+                    if tag in gdf.columns:
+                        keep = keep | (gdf[tag].fillna("").astype(str).str.len() > 0)
+                gdf = gdf[keep].drop(columns=['__area'], errors='ignore')
                 n_removed = n_before - len(gdf)
                 if n_removed > 0:
                     logger.info(f"Filtrage GPKG: {n_removed} détection(s) supprimée(s) dans '{layer}' (<{min_area_m2} m²)")
@@ -1536,7 +1544,7 @@ def create_shapefile_from_detections(
 
                 # Colonnes numériques des briques de synthèse (clustering, enclos, axes)
                 for ncol in ("nb_detect", "area_m2", "density", "surface_m2",
-                             "closure_ratio", "isolement", "rectangularite",
+                             "closure_ratio", "ancrage", "isolement", "rectangularite",
                              "compacite", "elongation", "nb_sources",
                              "longueur_m", "couverture", "largeur_m", "azimut_deg",
                              "nb_brins", "espacement_brins_m", "parallelisme",

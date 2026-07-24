@@ -55,6 +55,10 @@ _CLUSTER_PARAM_SPECS = (
      "Part minimale du contour couverte par de vraies détections (0,6 ≈ 3 côtés sur 4)."),
     ("max_elongation", "Élongation max", 1.0, 20.0, 0.5, 1, False,
      "Rapport longueur/largeur maximal (écarte couloirs et lanières)."),
+    ("min_ancrage", "Ancrage des sources min (0–1)", 0.0, 1.0, 0.05, 2, False,
+     "Part de l'aire des fragments contributeurs qui reste au voisinage du "
+     "contour. Bas = cour incidente entre des lanières qui continuent au loin "
+     "(faux positif de parcellaire) ; un vrai enclos est proche de 1."),
     # — Axes linéaires (bandes directionnelles) —
     ("band_width_m", "Largeur max de la bande (m)", 5.0, 200.0, 5.0, 0, True,
      "Étalement latéral maximal des brins parallèles d'un même axe "

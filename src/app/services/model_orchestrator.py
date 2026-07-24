@@ -405,6 +405,7 @@ _CLUSTER_PARAM_INT = ("min_cluster_size", "min_samples", "min_sources")
 _CLUSTER_PARAM_FLOAT = (
     "eps_m", "min_confidence", "min_area_m2", "buffer_m",
     "gap_tolerance_m", "max_area_m2", "min_closure", "max_elongation",
+    "min_ancrage",
     "band_width_m", "angle_tolerance_deg", "min_length_m", "max_gap_m",
     "min_coverage",
 )

@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>*{box-sizing:border-box}</style>
+<title>Paramètres des briques enclos & axes — référence illustrée</title>
+<style>
+  :root {
+    --paper: #F7F5F0; --panel: #FFFFFF; --panel-2: #F0EDE5; --ink: #23272B;
+    --muted: #6E746C; --line: #E0DCD1; --accent: #3E7458; --accent-soft: #E3EDE7;
+    --earth: #A2682D; --earth-soft: #F3E9DA; --crit: #A8433A; --crit-soft: #F5E4E1;
+    --code-bg: #EFECE4;
+    --shadow: 0 1px 2px rgba(35,39,43,.06), 0 4px 16px rgba(35,39,43,.05);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --paper: #14181A; --panel: #1C2124; --panel-2: #21272A; --ink: #E4E2DA;
+      --muted: #99A097; --line: #2C3335; --accent: #74B191; --accent-soft: #22332B;
+      --earth: #CE9A55; --earth-soft: #322818; --crit: #D07A6E; --crit-soft: #3A2320;
+      --code-bg: #22282B; --shadow: 0 1px 2px rgba(0,0,0,.3), 0 4px 16px rgba(0,0,0,.25);
+    }
+  }
+  :root[data-theme="dark"] {
+    --paper: #14181A; --panel: #1C2124; --panel-2: #21272A; --ink: #E4E2DA;
+    --muted: #99A097; --line: #2C3335; --accent: #74B191; --accent-soft: #22332B;
+    --earth: #CE9A55; --earth-soft: #322818; --crit: #D07A6E; --crit-soft: #3A2320;
+    --code-bg: #22282B; --shadow: 0 1px 2px rgba(0,0,0,.3), 0 4px 16px rgba(0,0,0,.25);
+  }
+  :root[data-theme="light"] {
+    --paper: #F7F5F0; --panel: #FFFFFF; --panel-2: #F0EDE5; --ink: #23272B;
+    --muted: #6E746C; --line: #E0DCD1; --accent: #3E7458; --accent-soft: #E3EDE7;
+    --earth: #A2682D; --earth-soft: #F3E9DA; --crit: #A8433A; --crit-soft: #F5E4E1;
+    --code-bg: #EFECE4; --shadow: 0 1px 2px rgba(35,39,43,.06), 0 4px 16px rgba(35,39,43,.05);
+  }
+
+  html { scroll-behavior: smooth; }
+  @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+  body {
+    background: var(--paper); color: var(--ink);
+    font-family: "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, sans-serif;
+    line-height: 1.6; font-size: 16px; margin: 0;
+  }
+  .wrap { max-width: 900px; margin: 0 auto; padding: 0 24px 96px; }
+  a { color: var(--accent); }
+  code { font-family: "Cascadia Code", Consolas, ui-monospace, monospace; font-size: .86em; background: var(--code-bg); padding: .1em .35em; border-radius: 4px; }
+
+  header { padding: 56px 0 8px; }
+  .kicker { text-transform: uppercase; letter-spacing: .1em; font-size: .74rem; font-weight: 600; color: var(--accent); margin: 0 0 10px; }
+  h1 { font-family: "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif; font-size: clamp(1.6rem, 4vw, 2.2rem); font-weight: 650; letter-spacing: -0.02em; line-height: 1.15; margin: 0 0 12px; text-wrap: balance; }
+  .standfirst { color: var(--muted); max-width: 60ch; margin: 0; }
+
+  section { margin-top: 56px; }
+  .sec-head { display: flex; align-items: baseline; gap: 14px; border-bottom: 2px solid var(--line); padding-bottom: 10px; margin-bottom: 8px; }
+  .sec-num { font-family: "Cascadia Code", Consolas, monospace; color: var(--earth); font-size: .95rem; font-weight: 600; }
+  h2 { font-family: "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif; font-size: 1.4rem; font-weight: 650; margin: 0; }
+  .sec-sub { color: var(--muted); font-size: .9rem; margin: 6px 0 20px; max-width: 70ch; }
+
+  .param {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+    box-shadow: var(--shadow); padding: 18px 22px; margin: 18px 0;
+  }
+  .param-head { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; margin-bottom: 6px; }
+  .param-head code { font-size: .95rem; font-weight: 600; background: none; padding: 0; }
+  .value {
+    font-family: "Cascadia Code", Consolas, monospace; font-weight: 600; font-size: .9rem;
+    background: var(--earth-soft); color: var(--earth); border-radius: 99px; padding: 2px 12px;
+    font-variant-numeric: tabular-nums;
+  }
+  .ui-label { font-size: .8rem; color: var(--muted); font-style: italic; }
+  .param p { margin: 8px 0; max-width: 74ch; }
+  .small { font-size: .85rem; }
+  .muted { color: var(--muted); }
+
+  .panels { display: flex; flex-wrap: wrap; gap: 18px; justify-content: center; margin: 14px 0 4px; }
+  .panel { text-align: center; }
+  .panel svg { display: block; margin: 0 auto; }
+  .verdict { font-size: .78rem; font-weight: 700; margin-top: 6px; letter-spacing: .02em; }
+  .ok { color: var(--accent); }
+  .ko { color: var(--crit); }
+  .panel .why { font-size: .74rem; color: var(--muted); max-width: 24ch; margin: 2px auto 0; }
+
+  .constat {
+    border-left: 3px solid var(--earth); background: var(--earth-soft);
+    border-radius: 0 6px 6px 0; padding: 8px 14px; margin-top: 12px; font-size: .85rem;
+  }
+  .constat b { color: var(--earth); }
+
+  footer { margin-top: 72px; padding-top: 20px; border-top: 1px solid var(--line); font-size: .8rem; color: var(--muted); }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+<header>
+  <p class="kicker">ArcheologIA · référence des paramètres — configuration actuelle du modèle formes linéaires</p>
+  <h1>Les paramètres des briques enclos & axes, illustrés</h1>
+  <p class="standfirst">Chaque paramètre avec sa valeur actuelle, ce qu'elle laisse passer (vert) et ce qu'elle rejette (rouge), et les constats de ta zone de test bretonne. Tous sont éditables par entité dans les réglages avancés de l'étape 3.</p>
+</header>
+
+<!-- ═══════════════ ENCLOS ═══════════════ -->
+<section id="enclos">
+  <div class="sec-head"><span class="sec-num">A</span><h2>Brique enclos (<code>type: enclosure</code>)</h2></div>
+  <p class="sec-sub">Sources : <code>parcellaire</code> uniquement (talus_fosse retiré le 23/07 — ne créait que des faux positifs sur la zone bretonne). Principe : dilatation de T/2 qui soude les interruptions, puis chaque cour intérieure devient un candidat, filtré par les 4 paramètres suivants.</p>
+
+  <div class="param">
+    <div class="param-head"><code>gap_tolerance_m</code><span class="value">10 m</span><span class="ui-label">« Pontage des interruptions (m) »</span></div>
+    <p>La dilatation avance de T/2 = 5 m de chaque côté de chaque fragment : deux tronçons séparés d'au plus <strong>10 m</strong> se soudent. C'est le paramètre central — il fixe à la fois ce qui se ferme <em>et</em> la taille minimale détectable (une cour plus étroite que ~10 m est entièrement recouverte par la dilatation).</p>
+    <div class="panels">
+      <div class="panel">
+        <svg width="150" height="110" viewBox="0 0 150 110">
+          <rect x="38" y="28" width="74" height="54" fill="var(--accent)" opacity=".18"/>
+          <g stroke="var(--earth)" stroke-width="5" stroke-linecap="round" fill="none">
+            <path d="M30 20 H72"/><path d="M80 20 H120"/>
+            <path d="M120 20 V90 H86"/><path d="M70 90 H30 V48"/><path d="M30 34 V20"/>
+          </g>
+          <text x="76" y="14" font-size="9" fill="var(--muted)" text-anchor="middle">4 m</text>
+          <text x="78" y="103" font-size="9" fill="var(--muted)" text-anchor="middle">8 m</text>
+        </svg>
+        <div class="verdict ok">✓ fermé</div><div class="why">trous de 4 et 8 m soudés, cour détectée</div>
+      </div>
+      <div class="panel">
+        <svg width="150" height="110" viewBox="0 0 150 110">
+          <g stroke="var(--earth)" stroke-width="5" stroke-linecap="round" fill="none">
+            <path d="M30 20 H60"/><path d="M92 20 H120 V90 H30 V20"/>
+          </g>
+          <text x="76" y="14" font-size="9" fill="var(--crit)" text-anchor="middle">14 m</text>
+        </svg>
+        <div class="verdict ko">✗ reste ouvert</div><div class="why">interruption &gt; 10 m : pas de cour fermée (le cas de ton « C »)</div>
+      </div>
+      <div class="panel">
+        <svg width="150" height="110" viewBox="0 0 150 110">
+          <rect x="52" y="34" width="46" height="42" rx="4" fill="var(--earth)" opacity=".55"/>
+          <text x="75" y="98" font-size="9" fill="var(--muted)" text-anchor="middle">cour ~8 m de large</text>
+        </svg>
+        <div class="verdict ko">✗ rempli</div><div class="why">cour &lt; T : la dilatation la comble — enclos raté</div>
+      </div>
+    </div>
+    <div class="constat"><b>Constat Bretagne :</b> ton enclos en C à large ouverture n'est pas détecté — attendu à T=10. Monter à 15–20 m le capturerait, au prix d'une taille min détectable qui monte d'autant.</div>
+  </div>
+
+  <div class="param">
+    <div class="param-head"><code>min_area_m2</code><span class="value">50 m²</span><span class="ui-label">« Surface min (m²) »</span></div>
+    <p>Surface minimale de la <em>cour intérieure</em> (pas de l'emprise du fossé). 50 m² ≈ un cercle de 8 m de diamètre — pensé pour les micro-enclos funéraires.</p>
+    <div class="panels">
+      <div class="panel">
+        <svg width="130" height="100" viewBox="0 0 130 100">
+          <circle cx="65" cy="46" r="14" fill="var(--crit)" opacity=".2" stroke="var(--crit)" stroke-width="2"/>
+          <text x="65" y="86" font-size="9" fill="var(--muted)" text-anchor="middle">Ø 6 m ≈ 28 m²</text>
+        </svg>
+        <div class="verdict ko">✗ rejeté</div><div class="why">sous 50 m²</div>
+      </div>
+      <div class="panel">
+        <svg width="130" height="100" viewBox="0 0 130 100">
+          <circle cx="65" cy="46" r="22" fill="var(--accent)" opacity=".2" stroke="var(--accent)" stroke-width="2"/>
+          <text x="65" y="86" font-size="9" fill="var(--muted)" text-anchor="middle">Ø 9 m ≈ 64 m²</text>
+        </svg>
+        <div class="verdict ok">✓ publié</div><div class="why">funéraire circulaire typique</div>
+      </div>
+    </div>
+    <div class="constat"><b>Constat Bretagne :</b> trop permissif en pratique — la majorité de tes 60 candidats font 85–135 m² (interstices entre fragments soudés par la dilatation, pas de vrais enclos). Recommandation : <b>200–300 m²</b> sur ta zone ; dis-moi si j'en fais le nouveau défaut.</div>
+  </div>
+
+  <div class="param">
+    <div class="param-head"><code>max_area_m2</code><span class="value">60 000 m² (6 ha)</span><span class="ui-label">« Surface max (m²) »</span></div>
+    <p>Borne haute de la gamme « large unique » décidée : du funéraire à la résidence aristocratique / banjo enclosure. Écarte les très grandes mailles de parcellaire et les plateaux entiers cernés de linéaments.</p>
+    <div class="panels">
+      <div class="panel">
+        <svg width="200" height="100" viewBox="0 0 200 100">
+          <rect x="10" y="60" width="14" height="14" fill="var(--accent)" opacity=".25" stroke="var(--accent)"/>
+          <rect x="40" y="44" width="34" height="30" fill="var(--accent)" opacity=".25" stroke="var(--accent)"/>
+          <rect x="92" y="24" width="56" height="50" fill="var(--accent)" opacity=".25" stroke="var(--accent)"/>
+          <text x="17" y="88" font-size="8" fill="var(--muted)" text-anchor="middle">300 m²</text>
+          <text x="57" y="88" font-size="8" fill="var(--muted)" text-anchor="middle">1 ha</text>
+          <text x="120" y="88" font-size="8" fill="var(--muted)" text-anchor="middle">5 ha</text>
+        </svg>
+        <div class="verdict ok">✓ publiés</div><div class="why">toute la gamme archéologique</div>
+      </div>
+      <div class="panel">
+        <svg width="120" height="100" viewBox="0 0 120 100">
+          <rect x="14" y="14" width="92" height="62" fill="var(--crit)" opacity=".15" stroke="var(--crit)" stroke-dasharray="4 3"/>
+          <text x="60" y="88" font-size="8" fill="var(--muted)" text-anchor="middle">8 ha</text>
+        </svg>
+        <div class="verdict ko">✗ rejeté</div><div class="why">au-delà de 6 ha</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="param">
+    <div class="param-head"><code>min_closure</code><span class="value">0,6</span><span class="ui-label">« Fermeture min (0–1) »</span></div>
+    <p>Part du contour du candidat située à moins de 3 m d'une <em>vraie</em> détection — le reste a été fabriqué par le pontage. C'est l'anti-hallucination : 0,6 traduit le critère publié « au moins 3 côtés perçus, un côté entier peut manquer ». C'est le <strong>seul seuil dur de qualité</strong> — tout le reste (isolement, forme…) est livré en attribut.</p>
+    <div class="panels">
+      <div class="panel">
+        <svg width="130" height="100" viewBox="0 0 130 100">
+          <circle cx="65" cy="46" r="28" fill="none" stroke="var(--earth)" stroke-width="5"
+                  stroke-dasharray="150 26" stroke-linecap="round"/>
+          <text x="65" y="50" font-size="11" font-weight="650" fill="var(--ink)" text-anchor="middle">0,85</text>
+        </svg>
+        <div class="verdict ok">✓ publié</div><div class="why">85 % du contour détecté</div>
+      </div>
+      <div class="panel">
+        <svg width="130" height="100" viewBox="0 0 130 100">
+          <circle cx="65" cy="46" r="28" fill="none" stroke="var(--muted)" stroke-width="4" stroke-dasharray="4 6" opacity=".6"/>
+          <path d="M 65 18 A 28 28 0 0 1 91 58" fill="none" stroke="var(--earth)" stroke-width="5" stroke-linecap="round"/>
+          <text x="65" y="50" font-size="11" font-weight="650" fill="var(--crit)" text-anchor="middle">0,45</text>
+        </svg>
+        <div class="verdict ko">✗ rejeté</div><div class="why">plus de la moitié du contour est du pont fabriqué</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="param">
+    <div class="param-head"><code>max_elongation</code><span class="value">3</span><span class="ui-label">« Élongation max »</span></div>
+    <p>Rapport longueur/largeur du rectangle orienté englobant. Un enclos dépasse rarement 3:1 ; les couloirs de sur-fermeture (deux linéaments parallèles pontés) et les lanières de parcellaire, souvent.</p>
+    <div class="panels">
+      <div class="panel">
+        <svg width="150" height="90" viewBox="0 0 150 90">
+          <rect x="30" y="22" width="90" height="44" rx="3" fill="var(--accent)" opacity=".2" stroke="var(--accent)" stroke-width="2"/>
+          <text x="75" y="80" font-size="9" fill="var(--muted)" text-anchor="middle">2:1</text>
+        </svg>
+        <div class="verdict ok">✓ publié</div><div class="why">proportions d'enclos</div>
+      </div>
+      <div class="panel">
+        <svg width="180" height="90" viewBox="0 0 180 90">
+          <rect x="10" y="34" width="160" height="22" rx="3" fill="var(--crit)" opacity=".15" stroke="var(--crit)" stroke-width="2" stroke-dasharray="4 3"/>
+          <text x="90" y="76" font-size="9" fill="var(--muted)" text-anchor="middle">7:1</text>
+        </svg>
+        <div class="verdict ko">✗ rejeté</div><div class="why">couloir / lanière</div>
+      </div>
+    </div>
+  </div>
+
+  <p class="small muted">Paramètre implicite : <code>min_confidence = 0</code> — tous les fragments au-dessus du seuil du run (0,2) participent à la fermeture. La confiance du polygone enclos publié = moyenne de ses fragments.</p>
+</section>
+
+<!-- ═══════════════ AXES ═══════════════ -->
+<section id="axes">
+  <div class="sec-head"><span class="sec-num">B</span><h2>Brique axes linéaires (<code>type: alignment</code>)</h2></div>
+  <p class="sec-sub">Sources : <code>parcellaire</code>. Principe : les fragments sont groupés par orientation, agrégés latéralement en brins puis en bandes, chaînés le long de l'axe — une bande = un axe candidat.</p>
+
+  <div class="param">
+    <div class="param-head"><code>band_width_m</code><span class="value">40 m</span><span class="ui-label">« Largeur max de la bande (m) »</span></div>
+    <p>Étalement latéral maximal des brins parallèles d'un même axe : fossés bordiers + agger + tronçons décalés (la bande de Corre–Escles fait ~40 m). En interne, deux brins voisins sont liés s'ils sont à moins de ~20 m ; au-delà de 40 m d'étalement total, une seconde bande commence.</p>
+    <div class="panels">
+      <div class="panel">
+        <svg width="190" height="100" viewBox="0 0 190 100">
+          <rect x="5" y="26" width="180" height="48" fill="var(--accent)" opacity=".14"/>
+          <g stroke="var(--earth)" stroke-width="4" stroke-linecap="round">
+            <path d="M15 36 H70"/><path d="M85 36 H140"/><path d="M155 36 H180"/>
+            <path d="M10 52 H55"/><path d="M70 52 H150"/>
+            <path d="M30 66 H90"/><path d="M110 66 H170"/>
+          </g>
+          <text x="95" y="92" font-size="9" fill="var(--muted)" text-anchor="middle">3 brins étalés sur 30 m</text>
+        </svg>
+        <div class="verdict ok">✓ une seule bande</div><div class="why">ton schéma : un axe, nb_brins = 3</div>
+      </div>
+      <div class="panel">
+        <svg width="190" height="100" viewBox="0 0 190 100">
+          <rect x="5" y="14" width="180" height="18" fill="var(--accent)" opacity=".14"/>
+          <rect x="5" y="72" width="180" height="18" fill="var(--accent)" opacity=".14"/>
+          <g stroke="var(--earth)" stroke-width="4" stroke-linecap="round">
+            <path d="M15 23 H80"/><path d="M100 23 H170"/>
+            <path d="M25 81 H95"/><path d="M115 81 H180"/>
+          </g>
+          <text x="95" y="58" font-size="9" fill="var(--muted)" text-anchor="middle">écart 58 m</text>
+        </svg>
+        <div class="verdict ko">✂ deux bandes</div><div class="why">au-delà de la liaison : deux axes distincts (→ parallelisme)</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="param">
+    <div class="param-head"><code>angle_tolerance_deg</code><span class="value">20°</span><span class="ui-label">« Tolérance d'orientation (°) »</span></div>
+    <p>Écart d'azimut maximal entre le grand axe d'un fragment et la direction de la bande. C'est ce qui distingue un <em>alignement</em> d'une simple rangée de taches — et ce qui sépare deux tronçons en virage (2 familles → 2 axes).</p>
+    <div class="panels">
+      <div class="panel">
+        <svg width="190" height="90" viewBox="0 0 190 90">
+          <path d="M5 45 H185" stroke="var(--accent)" stroke-width="1.5" stroke-dasharray="5 4"/>
+          <g stroke="var(--earth)" stroke-width="4" stroke-linecap="round">
+            <path d="M15 47 L60 41"/><path d="M75 43 L120 46"/><path d="M135 48 L180 40"/>
+          </g>
+          <text x="95" y="80" font-size="9" fill="var(--muted)" text-anchor="middle">écarts de 4 à 10°</text>
+        </svg>
+        <div class="verdict ok">✓ inclus</div><div class="why">co-orientés avec l'axe</div>
+      </div>
+      <div class="panel">
+        <svg width="190" height="90" viewBox="0 0 190 90">
+          <path d="M5 45 H185" stroke="var(--accent)" stroke-width="1.5" stroke-dasharray="5 4"/>
+          <g stroke="var(--earth)" stroke-width="4" stroke-linecap="round" opacity=".9">
+            <path d="M15 47 L60 41"/><path d="M135 48 L180 40"/>
+          </g>
+          <path d="M80 68 L118 22" stroke="var(--crit)" stroke-width="4" stroke-linecap="round"/>
+          <text x="95" y="84" font-size="9" fill="var(--muted)" text-anchor="middle">fragment à 50°</text>
+        </svg>
+        <div class="verdict ko">✗ exclu</div><div class="why">autre famille d'orientation (compté en connecteur ⊥ si ~90°)</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="param">
+    <div class="param-head"><code>min_length_m</code><span class="value">500 m</span><span class="ui-label">« Longueur min (m) »</span></div>
+    <p>Longueur minimale de l'axe publié. 500 m dépasse la plus grande maille de parcellaire — c'est là que l'alignement devient significatif (à 2–3 km, il devient diagnostique d'une voie). Décision actée : « on va tester » — c'est le premier bouton à bouger selon tes résultats.</p>
+    <div class="panels">
+      <div class="panel">
+        <svg width="210" height="80" viewBox="0 0 210 80">
+          <path d="M120 12 V68" stroke="var(--line)" stroke-width="2"/>
+          <text x="120" y="10" font-size="8" fill="var(--muted)" text-anchor="middle">seuil 500 m</text>
+          <g stroke="var(--earth)" stroke-width="5" stroke-linecap="round">
+            <path d="M10 30 H60"/><path d="M72 30 H130"/><path d="M142 30 H185"/>
+          </g>
+          <text x="97" y="50" font-size="9" fill="var(--accent)" text-anchor="middle">750 m</text>
+        </svg>
+        <div class="verdict ok">✓ publié</div>
+      </div>
+      <div class="panel">
+        <svg width="210" height="80" viewBox="0 0 210 80">
+          <path d="M120 12 V68" stroke="var(--line)" stroke-width="2"/>
+          <g stroke="var(--earth)" stroke-width="5" stroke-linecap="round" opacity=".8">
+            <path d="M10 30 H45"/><path d="M58 30 H85"/>
+          </g>
+          <text x="48" y="50" font-size="9" fill="var(--crit)" text-anchor="middle">310 m</text>
+        </svg>
+        <div class="verdict ko">✗ rejeté</div><div class="why">échelle d'une maille, alignement fortuit probable</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="param">
+    <div class="param-head"><code>max_gap_m</code><span class="value">200 m</span><span class="ui-label">« Interruption max (m) »</span></div>
+    <p>Trou maximal <em>le long de l'axe</em> entre deux fragments (ou groupes) consécutifs. Au-delà, l'enfilade est coupée en deux axes — deux groupes alignés par hasard à 2 km l'un de l'autre ne font pas une voie. Chaque tronçon est ensuite re-testé contre la longueur min.</p>
+    <div class="panels">
+      <div class="panel">
+        <svg width="210" height="70" viewBox="0 0 210 70">
+          <g stroke="var(--earth)" stroke-width="5" stroke-linecap="round">
+            <path d="M10 30 H55"/><path d="M85 30 H130"/><path d="M160 30 H200"/>
+          </g>
+          <text x="70" y="52" font-size="8" fill="var(--muted)" text-anchor="middle">120 m</text>
+          <text x="145" y="52" font-size="8" fill="var(--muted)" text-anchor="middle">140 m</text>
+        </svg>
+        <div class="verdict ok">✓ chaîné</div><div class="why">trous &lt; 200 m enjambés</div>
+      </div>
+      <div class="panel">
+        <svg width="210" height="70" viewBox="0 0 210 70">
+          <g stroke="var(--earth)" stroke-width="5" stroke-linecap="round">
+            <path d="M10 30 H70"/><path d="M150 30 H200"/>
+          </g>
+          <text x="110" y="52" font-size="8" fill="var(--crit)" text-anchor="middle">✂ 350 m</text>
+        </svg>
+        <div class="verdict ko">✂ coupé</div><div class="why">deux axes distincts, re-testés séparément</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="param">
+    <div class="param-head"><code>min_coverage</code><span class="value">0,25</span><span class="ui-label">« Couverture min (0–1) »</span></div>
+    <p>Part de la longueur de l'axe réellement couverte par des fragments (en union — les brins superposés ne comptent pas double). L'analogue du <code>closure_ratio</code> de l'enclos : bas (0,25) car les voies arasées sont très lacunaires, et l'attribut permet de trier plus sévèrement après coup.</p>
+    <div class="panels">
+      <div class="panel">
+        <svg width="210" height="60" viewBox="0 0 210 60">
+          <path d="M10 30 H200" stroke="var(--line)" stroke-width="8" stroke-linecap="round"/>
+          <g stroke="var(--earth)" stroke-width="8" stroke-linecap="round">
+            <path d="M10 30 H60"/><path d="M85 30 H125"/><path d="M155 30 H190"/>
+          </g>
+          <text x="105" y="52" font-size="9" fill="var(--accent)" text-anchor="middle">couverture ≈ 0,62</text>
+        </svg>
+        <div class="verdict ok">✓ publié</div>
+      </div>
+      <div class="panel">
+        <svg width="210" height="60" viewBox="0 0 210 60">
+          <path d="M10 30 H200" stroke="var(--line)" stroke-width="8" stroke-linecap="round"/>
+          <g stroke="var(--earth)" stroke-width="8" stroke-linecap="round">
+            <path d="M10 30 H28"/><path d="M120 30 H136"/>
+          </g>
+          <text x="105" y="52" font-size="9" fill="var(--crit)" text-anchor="middle">couverture ≈ 0,17</text>
+        </svg>
+        <div class="verdict ko">✗ rejeté</div><div class="why">l'axe est surtout de l'interpolation</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="param">
+    <div class="param-head"><code>min_sources</code><span class="value">5</span><span class="ui-label">« Nb min de fragments »</span></div>
+    <p>Nombre minimal de détections constitutives d'un axe. En dessous, un alignement fortuit (deux ou trois fragments par hasard sur une même droite) est trop probable.</p>
+    <div class="panels">
+      <div class="panel">
+        <svg width="190" height="55" viewBox="0 0 190 55">
+          <g stroke="var(--earth)" stroke-width="5" stroke-linecap="round">
+            <path d="M10 28 H32"/><path d="M42 28 H68"/><path d="M78 28 H100"/><path d="M112 28 H140"/><path d="M150 28 H178"/>
+          </g>
+        </svg>
+        <div class="verdict ok">✓ 5 fragments</div>
+      </div>
+      <div class="panel">
+        <svg width="190" height="55" viewBox="0 0 190 55">
+          <g stroke="var(--earth)" stroke-width="5" stroke-linecap="round" opacity=".8">
+            <path d="M20 28 H55"/><path d="M105 28 H145"/>
+          </g>
+        </svg>
+        <div class="verdict ko">✗ 2 fragments</div><div class="why">alignement fortuit probable</div>
+      </div>
+    </div>
+  </div>
+
+  <p class="small muted">Paramètre implicite : <code>min_confidence = 0</code> — même sémantique que l'enclos. Les seuils durs sont longueur + couverture + nb de fragments ; <code>nb_brins</code>, <code>parallelisme</code>, <code>connecteurs_perp</code> et <code>discordance_deg</code> sont livrés en attributs pour le tri.</p>
+</section>
+
+<footer>
+  <p>Référence générée le 23 juillet 2026 depuis l'<code>args.yaml</code> actuel du modèle formes linéaires · complète la <a href="https://claude.ai/code/artifact/7a6351c0-7dee-4b1b-976f-d8f3190d848f">conception enclos</a>, son <a href="https://claude.ai/code/artifact/167651bf-0f83-47a1-8725-5194776467b2">explication technique</a> et la <a href="https://claude.ai/code/artifact/d9bafb1d-8e20-4b92-a14a-2d2851f6ed19">conception axes linéaires</a>. Tous les paramètres sont surchargeables par entité dans l'UI (réglages avancés, étape 3).</p>
+</footer>
+</div>
+</body>
+</html>

@@ -53,6 +53,7 @@
   section { margin-top: 56px; }
   .sec-head { display: flex; align-items: baseline; gap: 14px; border-bottom: 2px solid var(--line); padding-bottom: 10px; margin-bottom: 8px; }
   .sec-num { font-family: "Cascadia Code", Consolas, monospace; color: var(--earth); font-size: .95rem; font-weight: 600; }
+  .value .rev { font-size: .72rem; font-style: normal; font-weight: 600; color: var(--accent); margin-left: 6px; }
   h2 { font-family: "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif; font-size: 1.4rem; font-weight: 650; margin: 0; }
   .sec-sub { color: var(--muted); font-size: .9rem; margin: 6px 0 20px; max-width: 70ch; }
 
@@ -101,11 +102,13 @@
 <!-- ═══════════════ ENCLOS ═══════════════ -->
 <section id="enclos">
   <div class="sec-head"><span class="sec-num">A</span><h2>Brique enclos (<code>type: enclosure</code>)</h2></div>
-  <p class="sec-sub">Sources : <code>parcellaire</code> uniquement (talus_fosse retiré le 23/07 — ne créait que des faux positifs sur la zone bretonne). Principe : dilatation de T/2 qui soude les interruptions, puis chaque cour intérieure devient un candidat, filtré par les 4 paramètres suivants.</p>
+  <p class="sec-sub">Sources : <code>parcellaire</code> uniquement (talus_fosse retiré le 23/07 — ne créait que des faux positifs sur la zone bretonne). Principe : dilatation de T/2 qui soude les interruptions, puis chaque cour intérieure devient un candidat, filtré par les 5 paramètres suivants.</p>
+
+  <div class="constat" style="margin-bottom:28px"><b>⚠ Défauts vs surcharges UI :</b> cette fiche documente les <em>défauts</em> de l'<code>args.yaml</code>. Toute valeur modifiée dans les réglages avancés de l'étape 3 devient une <b>surcharge persistante</b> qui écrase le défaut à chaque run, session après session — éditer le YAML ne suffit alors plus. La vérité d'un run est la ligne <code>Enclosure [1/1]: … T=…, closure&gt;=…, ancrage&gt;=…</code> de son journal, suivie du décompte <code>(rejets: aire …, élongation …, closure …, ancrage …)</code>.</div>
 
   <div class="param">
-    <div class="param-head"><code>gap_tolerance_m</code><span class="value">10 m</span><span class="ui-label">« Pontage des interruptions (m) »</span></div>
-    <p>La dilatation avance de T/2 = 5 m de chaque côté de chaque fragment : deux tronçons séparés d'au plus <strong>10 m</strong> se soudent. C'est le paramètre central — il fixe à la fois ce qui se ferme <em>et</em> la taille minimale détectable (une cour plus étroite que ~10 m est entièrement recouverte par la dilatation).</p>
+    <div class="param-head"><code>gap_tolerance_m</code><span class="value">15 m <em class="rev">(10 → 15 le 24/07)</em></span><span class="ui-label">« Pontage des interruptions (m) »</span></div>
+    <p>La dilatation avance de T/2 = 7,5 m de chaque côté de chaque fragment : deux tronçons séparés d'au plus <strong>15 m</strong> se soudent. C'est le paramètre central — il fixe à la fois ce qui se ferme <em>et</em> la taille minimale détectable (une cour plus étroite que ~15 m est entièrement recouverte par la dilatation).</p>
     <div class="panels">
       <div class="panel">
         <svg width="150" height="110" viewBox="0 0 150 110">
@@ -122,21 +125,21 @@
       <div class="panel">
         <svg width="150" height="110" viewBox="0 0 150 110">
           <g stroke="var(--earth)" stroke-width="5" stroke-linecap="round" fill="none">
-            <path d="M30 20 H60"/><path d="M92 20 H120 V90 H30 V20"/>
+            <path d="M30 20 H55"/><path d="M97 20 H120 V90 H30 V20"/>
           </g>
-          <text x="76" y="14" font-size="9" fill="var(--crit)" text-anchor="middle">14 m</text>
+          <text x="76" y="14" font-size="9" fill="var(--crit)" text-anchor="middle">19 m</text>
         </svg>
-        <div class="verdict ko">✗ reste ouvert</div><div class="why">interruption &gt; 10 m : pas de cour fermée (le cas de ton « C »)</div>
+        <div class="verdict ko">✗ reste ouvert</div><div class="why">interruption &gt; 15 m : pas de cour fermée</div>
       </div>
       <div class="panel">
         <svg width="150" height="110" viewBox="0 0 150 110">
           <rect x="52" y="34" width="46" height="42" rx="4" fill="var(--earth)" opacity=".55"/>
-          <text x="75" y="98" font-size="9" fill="var(--muted)" text-anchor="middle">cour ~8 m de large</text>
+          <text x="75" y="98" font-size="9" fill="var(--muted)" text-anchor="middle">cour ~12 m de large</text>
         </svg>
         <div class="verdict ko">✗ rempli</div><div class="why">cour &lt; T : la dilatation la comble — enclos raté</div>
       </div>
     </div>
-    <div class="constat"><b>Constat Bretagne :</b> ton enclos en C à large ouverture n'est pas détecté — attendu à T=10. Monter à 15–20 m le capturerait, au prix d'une taille min détectable qui monte d'autant.</div>
+    <div class="constat"><b>Calibré le 24/07 (Bretagne) :</b> à T=10, un enclos réel à interruption de 10–15 m restait invisible ; à T=15 il sort (894 m², closure 0,91, ancrage 0,55) et le total passe de 3 à 11 publiés — l'ancrage contient le bruit supplémentaire. Contrepartie : taille min détectable ~15–18 m de côté, les micro-enclos funéraires (4–10 m) sont hors de portée de ce réglage.</div>
   </div>
 
   <div class="param">
@@ -158,7 +161,7 @@
         <div class="verdict ok">✓ publié</div><div class="why">funéraire circulaire typique</div>
       </div>
     </div>
-    <div class="constat"><b>Constat Bretagne :</b> trop permissif en pratique — la majorité de tes 60 candidats font 85–135 m² (interstices entre fragments soudés par la dilatation, pas de vrais enclos). Recommandation : <b>200–300 m²</b> sur ta zone ; dis-moi si j'en fais le nouveau défaut.</div>
+    <div class="constat"><b>Constat Bretagne :</b> les micro-candidats de 85–135 m² (interstices entre fragments) qui envahissaient les premiers runs sont désormais éliminés par l'<b>ancrage</b>, pas par la surface — 50 m² reste donc tenable. À durcir (200–300 m²) seulement si une zone produit encore trop de petits candidats bien ancrés.</div>
   </div>
 
   <div class="param">
@@ -187,8 +190,8 @@
   </div>
 
   <div class="param">
-    <div class="param-head"><code>min_closure</code><span class="value">0,6</span><span class="ui-label">« Fermeture min (0–1) »</span></div>
-    <p>Part du contour du candidat située à moins de 3 m d'une <em>vraie</em> détection — le reste a été fabriqué par le pontage. C'est l'anti-hallucination : 0,6 traduit le critère publié « au moins 3 côtés perçus, un côté entier peut manquer ». C'est le <strong>seul seuil dur de qualité</strong> — tout le reste (isolement, forme…) est livré en attribut.</p>
+    <div class="param-head"><code>min_closure</code><span class="value">0,4 <em class="rev">(défaut conseillé : 0,6)</em></span><span class="ui-label">« Fermeture min (0–1) »</span></div>
+    <p>Part du contour du candidat située à moins de 3 m d'une <em>vraie</em> détection — le reste a été fabriqué par le pontage. C'est l'anti-hallucination : 0,6 traduit le critère publié « au moins 3 côtés perçus, un côté entier peut manquer ». Abaissé à 0,4 pendant la calibration bretonne : depuis l'arrivée de l'<b>ancrage</b>, qui assume le tri principal, cette tolérance n'a pas réintroduit de faux positifs.</p>
     <div class="panels">
       <div class="panel">
         <svg width="130" height="100" viewBox="0 0 130 100">
@@ -230,7 +233,36 @@
     </div>
   </div>
 
-  <p class="small muted">Paramètre implicite : <code>min_confidence = 0</code> — tous les fragments au-dessus du seuil du run (0,2) participent à la fermeture. La confiance du polygone enclos publié = moyenne de ses fragments.</p>
+  <div class="param">
+    <div class="param-head"><code>min_ancrage</code><span class="value">0,5 <em class="rev">(nouveau, 24/07)</em></span><span class="ui-label">« Ancrage des sources min (0–1) »</span></div>
+    <p>Part de l'<em>aire</em> des fragments contributeurs qui reste au voisinage du contour du candidat (± 6 m). Un vrai enclos <strong>est</strong> sa détection — l'anneau entier — donc son ancrage frôle 1. Une cour incidente scellée <em>entre</em> des lanières de parcellaire qui continuent au loin a un ancrage faible : c'est <b>LE</b> discriminant des faux positifs inter-lanières, découvert en calibrant sur ta vérité terrain.</p>
+    <div class="panels">
+      <div class="panel">
+        <svg width="170" height="110" viewBox="0 0 170 110">
+          <rect x="48" y="28" width="74" height="54" fill="var(--accent)" opacity=".18"/>
+          <g stroke="var(--earth)" stroke-width="5" stroke-linecap="round" fill="none">
+            <path d="M40 20 H130 V90 H40 Z"/>
+          </g>
+          <text x="85" y="60" font-size="11" font-weight="650" fill="var(--ink)" text-anchor="middle">0,92</text>
+        </svg>
+        <div class="verdict ok">✓ publié</div><div class="why">les fragments = l'anneau, rien ne déborde</div>
+      </div>
+      <div class="panel">
+        <svg width="200" height="110" viewBox="0 0 200 110">
+          <rect x="82" y="38" width="40" height="30" fill="var(--crit)" opacity=".15"/>
+          <g stroke="var(--earth)" stroke-width="5" stroke-linecap="round" fill="none">
+            <path d="M5 36 H195"/><path d="M5 70 H195"/>
+            <path d="M82 36 V70"/><path d="M122 36 V70"/>
+          </g>
+          <text x="102" y="58" font-size="11" font-weight="650" fill="var(--crit)" text-anchor="middle">0,11</text>
+        </svg>
+        <div class="verdict ko">✗ rejeté</div><div class="why">cour incidente : les lanières filent au loin</div>
+      </div>
+    </div>
+    <div class="constat"><b>Calibré le 24/07 (Bretagne, 2 vrais / 45 faux identifiés par l'archéologue) :</b> vrais à 0,68–0,96, faux ≤ 0,59 (médiane 0,11) → 47 candidats réduits à 3, les 2 vrais conservés. <b>Ne pas monter à 0,6</b> : les vrais cas limites (interruptions larges pontées à T=15) sortent vers 0,55. Sensible au régime SAHI : à 1024 le modèle fusionne les masques et l'ancrage s'effondre pour tout le monde — <b>rester à SAHI 512</b> pour la brique enclos.</div>
+  </div>
+
+  <p class="small muted">Paramètre implicite : <code>min_confidence = 0</code> — tous les fragments au-dessus du seuil du run (0,15 actuellement, surcharge UI) participent à la fermeture. La confiance du polygone enclos publié = moyenne de ses fragments.</p>
 </section>
 
 <!-- ═══════════════ AXES ═══════════════ -->

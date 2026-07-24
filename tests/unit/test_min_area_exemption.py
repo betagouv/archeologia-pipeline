@@ -42,3 +42,24 @@ def test_non_exempt_layer_filtered_and_empty_gpkg_removed(tmp_path):
     _write_layer(p, "parcellaire", 80.0)
     _filter_gpkg_by_min_area([str(p)], min_area_m2=500.0)
     assert not p.exists()  # couche vidée → GeoPackage supprimé (existant)
+
+
+def test_tagged_source_features_survive_min_area(tmp_path):
+    # Les fragments sources TAGUÉS par une brique (enclos_id/axe_id/cluster_id)
+    # survivent au filtre d'aire global : la traçabilité membre→synthèse prime.
+    # (Bug Bretagne : 434/493 fragments sources < 500 m² effacés → enclos
+    # détectés sans aucun contour source visible.)
+    p = tmp_path / "enclos.gpkg"
+    side = 80 ** 0.5
+    gdf = gpd.GeoDataFrame(
+        {"model_pred": ["parcellaire", "parcellaire"],
+         "enclos_id": ["enclos_0", ""]},
+        geometry=[box(0.0, 0.0, side, side),
+                  box(100.0, 100.0, 100.0 + side, 100.0 + side)],
+        crs="EPSG:2154",
+    )
+    gdf.to_file(str(p), layer="Linéaments sources", driver="GPKG")
+    _filter_gpkg_by_min_area([str(p)], min_area_m2=500.0)
+    out = gpd.read_file(str(p), layer="Linéaments sources")
+    assert len(out) == 1
+    assert out.iloc[0]["enclos_id"] == "enclos_0"

@@ -1,12 +1,11 @@
 """Prédicat partagé : une couche de détection est-elle une SORTIE de brique
 de synthèse (zone de clusters, enclos, axe linéaire) ?
 
-Les sorties de synthèse n'ont pas de ``conf_bin`` exploitable (les tranches
-sont calculées AVANT les briques) — un rendu catégorisé par confiance ne
-matcherait aucune entité et la couche serait invisible (bug constaté sur la
-couche « Enclos »). Elles portent en revanche un champ de comptage qui
-n'existe QUE sur elles : ``nb_detect`` (dbscan) ou ``nb_sources``
-(enclosure, alignment).
+Les zones de clusters DBSCAN (champ ``nb_detect``) gardent le style hachuré
+historique. Les sorties enclos/axes (``nb_sources``) portent depuis la
+confiance composite un ``conf_bin`` cohérent avec les tranches du run →
+elles sont rendues en catégories de confiance, comme les détections
+(« même granularité que les parcellaires »).
 
 ⚠ Ne PAS clef sur ``cluster_id``/``enclos_id``/``axe_id`` : les couches
 SOURCES les portent aussi (traçabilité membre → synthèse).
@@ -18,10 +17,10 @@ from __future__ import annotations
 
 from typing import Iterable
 
-_SYNTHESIS_COUNT_FIELDS = ("nb_detect", "nb_sources")
+_SYNTHESIS_COUNT_FIELDS = ("nb_detect",)
 
 
 def is_synthesis_layer(field_names: Iterable[str]) -> bool:
-    """True si la couche est une sortie de brique de synthèse (style zone)."""
+    """True si la couche doit recevoir le style zone hachuré (clusters DBSCAN)."""
     names = set(field_names)
     return any(f in names for f in _SYNTHESIS_COUNT_FIELDS)

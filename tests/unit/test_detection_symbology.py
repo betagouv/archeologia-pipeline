@@ -15,14 +15,18 @@ def test_cluster_layer_detected():
     assert is_synthesis_layer(["fid", "model_pred", "nb_detect", "area_m2"])
 
 
-def test_enclosure_and_alignment_layers_detected():
-    assert is_synthesis_layer(["model_pred", "nb_sources", "enclos_id"])
-    assert is_synthesis_layer(["model_pred", "nb_sources", "axe_id"])
+def test_enclosure_and_alignment_layers_use_confidence_categories():
+    # Depuis la confiance composite, les enclos/axes portent un conf_bin
+    # cohérent → rendu catégorisé par confiance comme les détections
+    # (« même granularité que les parcellaires »). Seules les zones DBSCAN
+    # (nb_detect) gardent le style hachuré.
+    assert not is_synthesis_layer(["model_pred", "nb_sources", "enclos_id", "conf_bin"])
+    assert not is_synthesis_layer(["model_pred", "nb_sources", "axe_id", "conf_bin"])
 
 
 def test_source_layer_with_tag_columns_not_synthesis():
     # Les couches SOURCES portent cluster_id/enclos_id/axe_id (traçabilité
-    # membre→synthèse) mais PAS les champs de comptage → symbologie confiance.
+    # membre→synthèse) mais PAS nb_detect → symbologie confiance.
     assert not is_synthesis_layer(
         ["model_pred", "confidence", "conf_bin", "cluster_id", "enclos_id", "axe_id"]
     )

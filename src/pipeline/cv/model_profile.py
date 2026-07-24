@@ -99,6 +99,7 @@ class EnclosureRule:
     max_elongation: float
     min_ancrage: float
     min_confidence: float
+    mode_calibration: bool = False
     type: str = "enclosure"
 
     def to_dict(self) -> Dict[str, Any]:
@@ -113,6 +114,7 @@ class EnclosureRule:
             "max_elongation": self.max_elongation,
             "min_ancrage": self.min_ancrage,
             "min_confidence": self.min_confidence,
+            "mode_calibration": self.mode_calibration,
         }
 
 
@@ -423,6 +425,7 @@ def _parse_clustering(args_yaml: Dict[str, Any]) -> Tuple[Any, ...]:
                 rules.append(EnclosureRule(
                     target_classes=tuple(str(t) for t in target),
                     output_class_name=output_class,
+                    mode_calibration=bool(cfg.get("mode_calibration", False)),
                     **sane,
                 ))
             except (TypeError, ValueError) as e:

@@ -126,6 +126,10 @@ def run_enclosure(
         max_elongation = float(cfg["max_elongation"])
         min_ancrage = float(cfg.get("min_ancrage", 0.5))
         min_confidence = float(cfg.get("min_confidence", 0.0))
+        # Mode calibration (campagnes ground-truth) : les candidats REJETÉS
+        # sont aussi publiés, avec ``statut`` = premier filtre qui rejette —
+        # analysables dans QGIS sans rejouer le pipeline en labo.
+        mode_calibration = bool(cfg.get("mode_calibration", False))
         output_class = cfg["output_class_name"]
         logger.info(
             f"Enclosure [{cfg_idx + 1}/{len(enclosure_configs)}]: "
@@ -166,6 +170,7 @@ def run_enclosure(
         # sont comptés PAR filtre : « N surfaces, 0 candidat » sans explication
         # rendait le diagnostic impossible (cf. calibration Bretagne).
         candidates = []  # (polygon, surface, elongation, closure, ancrage, contrib_idx)
+        rejected_dets: List[Dict] = []  # mode calibration uniquement
         n_rings = 0
         rejects = {"aire": 0, "elongation": 0, "closure": 0, "ancrage": 0}
         for poly in polys:
@@ -179,21 +184,15 @@ def run_enclosure(
                     cand = cand.buffer(0)
                 if cand.is_empty or not isinstance(cand, Polygon):
                     continue
+                # Les quatre métriques de filtre sont TOUTES calculées (le mode
+                # calibration a besoin des scores même pour les rejetés) ; le
+                # statut = premier filtre qui rejette, dans l'ordre.
                 area = cand.area
-                if area < min_area or area > max_area:
-                    rejects["aire"] += 1
-                    continue
                 long_side, short_side = _mrr_sides(cand)
                 elongation = (long_side / short_side) if short_side > 0 else float("inf")
-                if elongation > max_elongation:
-                    rejects["elongation"] += 1
-                    continue
                 ring_line = cand.exterior
                 covered = ring_line.intersection(cover)
                 closure = (covered.length / ring_line.length) if ring_line.length > 0 else 0.0
-                if closure < min_closure:
-                    rejects["closure"] += 1
-                    continue
                 # Ancrage : part de l'aire des fragments contributeurs qui reste
                 # au voisinage de l'anneau. Un vrai enclos EST sa détection
                 # (ancrage ≈ 1) ; une cour incidente entre des lanières de
@@ -213,8 +212,39 @@ def run_enclosure(
                     ancrage = a_in / a_tot
                 else:
                     ancrage = 0.0
-                if ancrage < min_ancrage:
-                    rejects["ancrage"] += 1
+
+                if area < min_area or area > max_area:
+                    statut = "rejete_aire"
+                elif elongation > max_elongation:
+                    statut = "rejete_elongation"
+                elif closure < min_closure:
+                    statut = "rejete_closure"
+                elif ancrage < min_ancrage:
+                    statut = "rejete_ancrage"
+                else:
+                    statut = "publie"
+
+                if statut != "publie":
+                    rejects[statut.removeprefix("rejete_")] += 1
+                    if mode_calibration:
+                        confs_r = [
+                            sources[j][3] for j in contrib_idx
+                            if sources[j][3] is not None and sources[j][3] > 0
+                        ]
+                        cf = (sum(confs_r) / len(confs_r)) if confs_r else 0.0
+                        rejected_dets.append({
+                            "validation": "", "corr_pred": None,
+                            "model_pred": output_class, "model_name": "",
+                            "geometry": cand,
+                            "confidence": (cf * closure * ancrage) ** (1.0 / 3.0) if cf > 0 else 0.0,
+                            "conf_fragments": round(cf, 3),
+                            "surface_m2": round(area, 1),
+                            "closure_ratio": round(closure, 3),
+                            "ancrage": round(ancrage, 3),
+                            "elongation": round(elongation, 2),
+                            "nb_sources": len(contrib_idx),
+                            "enclos_id": "", "statut": statut,
+                        })
                     continue
                 candidates.append((cand, area, elongation, closure, ancrage, contrib_idx))
         logger.info(
@@ -260,7 +290,14 @@ def run_enclosure(
                 if conf is not None and conf > 0:
                     confs.append(conf)
             nb_sources = len(contrib_idx)
-            mean_confidence = (sum(confs) / len(confs)) if confs else 0.0
+            conf_fragments = (sum(confs) / len(confs)) if confs else 0.0
+            # Confiance composite : moyenne géométrique des trois axes de
+            # qualité (modèle, fermeture, appartenance) — aucun ne peut être
+            # masqué par les autres. Binnable en conf_bin comme une détection.
+            mean_confidence = (
+                (conf_fragments * closure * ancrage) ** (1.0 / 3.0)
+                if conf_fragments > 0 else 0.0
+            )
 
             dets.append({
                 "validation": "",
@@ -269,6 +306,7 @@ def run_enclosure(
                 "model_name": model_name,
                 "geometry": cand,
                 "confidence": mean_confidence,
+                "conf_fragments": round(conf_fragments, 3),
                 "surface_m2": round(area, 1),
                 "closure_ratio": round(closure, 3),
                 "ancrage": round(ancrage, 3),
@@ -279,8 +317,15 @@ def run_enclosure(
                 "forme": forme,
                 "nb_sources": nb_sources,
                 "enclos_id": enclos_id,
+                "statut": "publie",
             })
 
+        if mode_calibration and rejected_dets:
+            logger.info(
+                f"Enclosure: mode calibration — {len(rejected_dets)} candidat(s) "
+                f"rejeté(s) publié(s) avec leur statut"
+            )
+            dets.extend(rejected_dets)
         if dets:
             out_by_class[output_class] = dets
             logger.info(f"Enclosure: {len(dets)} enclos '{output_class}' publiés")

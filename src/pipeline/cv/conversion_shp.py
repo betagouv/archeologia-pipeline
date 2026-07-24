@@ -1416,10 +1416,20 @@ def create_shapefile_from_detections(
                 synth_dets_by_class, data_by_class_name = run_synthesis(
                     data_by_class_name, clustering_configs, cancel_check=cancel_check
                 )
-                # Ajouter les sorties de synthèse comme nouvelles classes
+                # Ajouter les sorties de synthèse comme nouvelles classes.
+                # conf_bin/conf_color posés ICI (le recalcul général tourne
+                # AVANT la synthèse) : mêmes tranches que les détections
+                # (même min_confidence) → rendu catégorisé par confiance
+                # possible pour les enclos/axes, au rang couleur de la classe.
                 for synth_class, synth_dets in synth_dets_by_class.items():
                     data_by_class_name[synth_class] = synth_dets
                     _synthetic_class_names.add(synth_class)
+                    _cidx = rank_for_class(synth_class)
+                    for det in synth_dets:
+                        conf = det.get("confidence")
+                        if conf is None:
+                            continue
+                        det["conf_bin"], det["conf_color"] = _confidence_bucket(conf, _cidx, min_confidence)
                     logger.info(f"Synthèse: {len(synth_dets)} polygone(s) ajouté(s) pour '{synth_class}'")
             except PipelineCancelled:
                 raise
@@ -1530,7 +1540,7 @@ def create_shapefile_from_detections(
                     pass
 
                 # 4) Normalisation des colonnes attributaires (évite types mixtes)
-                text_cols = ["validation", "corr_pred", "model_pred", "model_name", "conf_bin", "conf_color", "cluster_id", "enclos_id", "forme", "axe_id"]
+                text_cols = ["validation", "corr_pred", "model_pred", "model_name", "conf_bin", "conf_color", "cluster_id", "enclos_id", "forme", "axe_id", "statut"]
                 for col in text_cols:
                     if col in gdf.columns:
                         gdf[col] = gdf[col].fillna("").astype(str)
@@ -1544,6 +1554,7 @@ def create_shapefile_from_detections(
 
                 # Colonnes numériques des briques de synthèse (clustering, enclos, axes)
                 for ncol in ("nb_detect", "area_m2", "density", "surface_m2",
+                             "conf_fragments",
                              "closure_ratio", "ancrage", "isolement", "rectangularite",
                              "compacite", "elongation", "nb_sources",
                              "longueur_m", "couverture", "largeur_m", "azimut_deg",

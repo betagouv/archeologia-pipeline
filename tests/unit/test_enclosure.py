@@ -198,13 +198,18 @@ class TestScores:
         assert d["rectangularite"] < 0.9
         assert 900 < d["surface_m2"] < 1300  # r≈19 → ~1134 m²
 
-    def test_confidence_is_mean_of_sources(self):
+    def test_confidence_composite_geometric_mean(self):
+        # confiance = ∛(conf_fragments × closure × ancrage) — les trois axes
+        # de qualité, aucun ne pouvant être masqué par les autres. La moyenne
+        # brute des fragments reste dans conf_fragments.
         frags = _rect_fragments(0, 0, 40, 40)
         data = {"parcellaire": [_det(g, conf=0.2 if i % 2 else 0.6)
                                 for i, g in enumerate(frags)]}
         out, _ = run_enclosure(data, [_cfg()])
         d = out["enclos"][0]
-        assert 0.2 < d["confidence"] < 0.6
+        assert 0.2 < d["conf_fragments"] < 0.6
+        attendu = (d["conf_fragments"] * d["closure_ratio"] * d["ancrage"]) ** (1 / 3)
+        assert d["confidence"] == pytest.approx(attendu, abs=0.02)
 
     def test_far_fragment_not_tagged(self):
         frags = _rect_fragments(0, 0, 40, 40)
@@ -239,3 +244,29 @@ class TestDiagnostics:
             out, _ = _run(frags)
         assert out == {}
         assert any("rejets" in m and "ancrage 1" in m for m in caplog.messages), caplog.messages
+
+
+class TestModeCalibration:
+    def test_rejected_candidates_published_with_statut(self):
+        # cour inter-lanières (rejetée par ancrage) + vrai anneau : en mode
+        # calibration les DEUX sortent, avec la colonne statut — pour analyser
+        # les détections manquées d'une campagne ground-truth sans rejouer
+        # le pipeline en labo.
+        frags = [
+            _side(-500, 200, 500, 200), _side(-500, 230, 500, 230),
+            _side(0, 200, 0, 230), _side(40, 200, 40, 230),
+        ] + _rect_fragments(0, 0, 40, 40, gaps=[(0, 18, 4)])
+        out, _ = _run(frags, _cfg(mode_calibration=True))
+        dets = out.get("enclos", [])
+        statuts = sorted(d["statut"] for d in dets)
+        assert statuts == ["publie", "rejete_ancrage"]
+        publie = next(d for d in dets if d["statut"] == "publie")
+        assert publie["ancrage"] > 0.8 and publie["enclos_id"]
+        rejete = next(d for d in dets if d["statut"] == "rejete_ancrage")
+        assert rejete["ancrage"] < 0.3
+        assert rejete["closure_ratio"] > 0.0  # scores de filtres renseignés
+
+    def test_default_mode_only_published_with_statut_publie(self):
+        frags = _rect_fragments(0, 0, 40, 40, gaps=[(0, 18, 4)])
+        out, _ = _run(frags)
+        assert [d["statut"] for d in out["enclos"]] == ["publie"]

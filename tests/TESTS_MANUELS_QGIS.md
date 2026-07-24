@@ -457,7 +457,8 @@ Cette grille indique, pour chaque vague livrée, **quelles sections de tests son
 
 > **Contexte** : première brique de synthèse non-DBSCAN (`type: enclosure` dans
 > `args.yaml:clustering` du modèle formes linéaires). Fermeture vectorielle des
-> détections `parcellaire`/`talus_fosse` (dilatation T/2 + ré-extension des
+> détections `parcellaire` (talus_fosse retiré après test Bretagne : ne créait
+> que des faux positifs — dilatation T/2 + ré-extension des
 > trous) puis scoring : `closure_ratio`, `isolement`, `rectangularite`,
 > `compacite`, `elongation`, `forme`, `nb_sources`, `enclos_id`. Publication =
 > seuils durs aire/élongation/fermeture uniquement, l'archéologue trie par

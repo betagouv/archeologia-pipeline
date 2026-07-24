@@ -111,13 +111,18 @@ def build_detection_vector_layer(
     """Construit un ``QgsVectorLayer`` de détection valide, CRS fixé + symbologie appliquée.
 
     ``base_color`` : couleur de base RGB de la classe (résolue via le registre par
-    l'appelant). Symbologie : cluster (hachures) si le champ ``nb_detect`` est
-    présent, sinon catégorisée par tranche de confiance. **N'ajoute la couche à
-    AUCUN projet** — l'appelant en est propriétaire. Source unique de vérité
-    partagée par le chargement live (:func:`load_result_layers`) ET l'écriture du
-    projet ``.qgs`` (``ui/qgs_writer.py``). ``None`` si la couche est invalide.
+    l'appelant). Symbologie : zone de synthèse (hachures) si un champ de comptage
+    de brique est présent (``nb_detect``/``nb_sources`` — cf.
+    ``app.services.detection_symbology``, les sorties de synthèse n'ont pas de
+    ``conf_bin`` exploitable), sinon catégorisée par tranche de confiance.
+    **N'ajoute la couche à AUCUN projet** — l'appelant en est propriétaire.
+    Source unique de vérité partagée par le chargement live
+    (:func:`load_result_layers`) ET l'écriture du projet ``.qgs``
+    (``ui/qgs_writer.py``). ``None`` si la couche est invalide.
     """
     from qgis.core import QgsVectorLayer
+
+    from ..app.services.detection_symbology import is_synthesis_layer
 
     layer = QgsVectorLayer(ogr_source, layer_name, "ogr")
     if not layer.isValid():
@@ -129,7 +134,7 @@ def build_detection_vector_layer(
         logger.info(f"Couche détection vide ignorée: {layer_name}")
         return None
     _ensure_layer_crs(layer, logger)
-    if layer.fields().indexFromName("nb_detect") >= 0:
+    if is_synthesis_layer(f.name() for f in layer.fields()):
         _apply_cluster_style(layer, logger)
     else:
         _apply_confidence_style(layer, base_color, confidence_threshold, logger)

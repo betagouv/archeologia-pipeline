@@ -46,12 +46,13 @@ class TestParseTyped:
         assert rule.type == "enclosure"
         assert rule.target_classes == ("parcellaire", "talus_fosse")
         assert rule.output_class_name == "enclos"
-        assert rule.gap_tolerance_m == 10.0
-        assert rule.min_area_m2 == 50.0
+        # défauts calibrés sur la campagne Bretagne (F1 0,235, vs 0,16 en V1)
+        assert rule.gap_tolerance_m == 15.0
+        assert rule.min_area_m2 == 300.0
         assert rule.max_area_m2 == 60000.0
-        assert rule.min_closure == 0.6
+        assert rule.min_closure == 0.55
         assert rule.max_elongation == 3.0
-        assert rule.min_ancrage == 0.5
+        assert rule.min_ancrage == 0.0
         assert rule.min_confidence == 0.0
         assert rule.to_dict()["type"] == "enclosure"
 
@@ -198,7 +199,7 @@ class TestEnclosureV2Params:
         (rule,) = _parse_clustering({"clustering": [ENCLOS_CFG]})
         assert rule.generator == "hull"          # V2 par défaut (campagne Bretagne)
         assert rule.max_isolement == 0.3
-        assert rule.min_rectangularite == 0.0    # neutre tant que non calibré par zone
+        assert rule.min_rectangularite == 0.65   # calibré campagne Bretagne
         d = rule.to_dict()
         assert d["generator"] == "hull"
         assert d["max_isolement"] == 0.3

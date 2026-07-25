@@ -100,7 +100,7 @@ class EnclosureRule:
     min_ancrage: float
     min_confidence: float
     max_isolement: float = 0.3
-    min_rectangularite: float = 0.0
+    min_rectangularite: float = 0.65
     generator: str = "hull"
     mode_calibration: bool = False
     type: str = "enclosure"
@@ -412,16 +412,19 @@ def _parse_clustering(args_yaml: Dict[str, Any]) -> Tuple[Any, ...]:
             try:
                 from .clustering_bounds import sanitize_clustering_rule
 
+                # Défauts calibrés sur la campagne Bretagne (211 enclos GT,
+                # générateur hull) : F1 0,235 vs 0,16 en V1. min_ancrage 0 :
+                # son information est portée par la confiance composite.
                 sane = sanitize_clustering_rule(
                     {
-                        "gap_tolerance_m": float(cfg.get("gap_tolerance_m", 10.0)),
-                        "min_area_m2": float(cfg.get("min_area_m2", 50.0)),
+                        "gap_tolerance_m": float(cfg.get("gap_tolerance_m", 15.0)),
+                        "min_area_m2": float(cfg.get("min_area_m2", 300.0)),
                         "max_area_m2": float(cfg.get("max_area_m2", 60000.0)),
-                        "min_closure": float(cfg.get("min_closure", 0.6)),
+                        "min_closure": float(cfg.get("min_closure", 0.55)),
                         "max_elongation": float(cfg.get("max_elongation", 3.0)),
-                        "min_ancrage": float(cfg.get("min_ancrage", 0.5)),
+                        "min_ancrage": float(cfg.get("min_ancrage", 0.0)),
                         "max_isolement": float(cfg.get("max_isolement", 0.3)),
-                        "min_rectangularite": float(cfg.get("min_rectangularite", 0.0)),
+                        "min_rectangularite": float(cfg.get("min_rectangularite", 0.65)),
                         "min_confidence": float(cfg.get("min_confidence", 0.0)),
                     },
                     warn=logger.warning,

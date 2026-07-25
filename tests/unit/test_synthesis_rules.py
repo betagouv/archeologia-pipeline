@@ -191,3 +191,34 @@ class TestLegacyLoader:
         # (run_context) ignore naturellement les règles non-dbscan.
         assert "min_confidence" not in enclos
         assert "eps_m" not in enclos
+
+
+class TestEnclosureV2Params:
+    def test_generator_default_hull_and_new_filters(self):
+        (rule,) = _parse_clustering({"clustering": [ENCLOS_CFG]})
+        assert rule.generator == "hull"          # V2 par défaut (campagne Bretagne)
+        assert rule.max_isolement == 0.3
+        assert rule.min_rectangularite == 0.0    # neutre tant que non calibré par zone
+        d = rule.to_dict()
+        assert d["generator"] == "hull"
+        assert d["max_isolement"] == 0.3
+
+    def test_generator_dilation_preserved(self):
+        cfg = dict(ENCLOS_CFG, generator="dilation")
+        (rule,) = _parse_clustering({"clustering": [cfg]})
+        assert rule.generator == "dilation"
+
+    def test_generator_unknown_falls_back_to_hull(self):
+        cfg = dict(ENCLOS_CFG, generator="banane")
+        (rule,) = _parse_clustering({"clustering": [cfg]})
+        assert rule.generator == "hull"
+
+    def test_new_filter_bounds_and_overrides(self):
+        cfg = dict(ENCLOS_CFG, max_isolement=7.0, min_rectangularite=-2)
+        (rule,) = _parse_clustering({"clustering": [cfg]})
+        assert rule.max_isolement == 1.0
+        assert rule.min_rectangularite == 0.0
+        out = sanitize_clustering_overrides(
+            {"max_isolement": 0.2, "min_rectangularite": 0.7}, rule_type="enclosure")
+        assert out == {"max_isolement": 0.2, "min_rectangularite": 0.7}
+        assert sanitize_clustering_overrides({"max_isolement": 0.2}, rule_type="dbscan") == {}

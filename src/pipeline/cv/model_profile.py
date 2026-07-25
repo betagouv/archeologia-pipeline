@@ -99,6 +99,9 @@ class EnclosureRule:
     max_elongation: float
     min_ancrage: float
     min_confidence: float
+    max_isolement: float = 0.3
+    min_rectangularite: float = 0.0
+    generator: str = "hull"
     mode_calibration: bool = False
     type: str = "enclosure"
 
@@ -107,12 +110,15 @@ class EnclosureRule:
             "type": self.type,
             "target_classes": list(self.target_classes),
             "output_class_name": self.output_class_name,
+            "generator": self.generator,
             "gap_tolerance_m": self.gap_tolerance_m,
             "min_area_m2": self.min_area_m2,
             "max_area_m2": self.max_area_m2,
             "min_closure": self.min_closure,
             "max_elongation": self.max_elongation,
             "min_ancrage": self.min_ancrage,
+            "max_isolement": self.max_isolement,
+            "min_rectangularite": self.min_rectangularite,
             "min_confidence": self.min_confidence,
             "mode_calibration": self.mode_calibration,
         }
@@ -414,6 +420,8 @@ def _parse_clustering(args_yaml: Dict[str, Any]) -> Tuple[Any, ...]:
                         "min_closure": float(cfg.get("min_closure", 0.6)),
                         "max_elongation": float(cfg.get("max_elongation", 3.0)),
                         "min_ancrage": float(cfg.get("min_ancrage", 0.5)),
+                        "max_isolement": float(cfg.get("max_isolement", 0.3)),
+                        "min_rectangularite": float(cfg.get("min_rectangularite", 0.0)),
                         "min_confidence": float(cfg.get("min_confidence", 0.0)),
                     },
                     warn=logger.warning,
@@ -421,10 +429,17 @@ def _parse_clustering(args_yaml: Dict[str, Any]) -> Tuple[Any, ...]:
                 )
                 if sane["max_area_m2"] < sane["min_area_m2"]:
                     sane["max_area_m2"] = sane["min_area_m2"]
+                # Générateur de candidats : "hull" (enveloppe convexe, V2 —
+                # calibré campagne Bretagne) ou "dilation" (fermeture V1).
+                gen = str(cfg.get("generator", "hull")).strip().lower()
+                if gen not in ("hull", "dilation"):
+                    logger.warning(f"Enclosure: generator {gen!r} inconnu — hull utilisé")
+                    gen = "hull"
                 output_class = str(cfg.get("output_class_name", "")) or f"enclos_{'_'.join(target)}"
                 rules.append(EnclosureRule(
                     target_classes=tuple(str(t) for t in target),
                     output_class_name=output_class,
+                    generator=gen,
                     mode_calibration=bool(cfg.get("mode_calibration", False)),
                     **sane,
                 ))

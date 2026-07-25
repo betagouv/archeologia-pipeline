@@ -43,6 +43,8 @@ ENCLOSURE_BOUNDS: Dict[str, tuple] = {
     "min_closure": (0.0, 1.0, False),
     "max_elongation": (1.0, None, False),
     "min_ancrage": (0.0, 1.0, False),
+    "max_isolement": (0.0, 1.0, False),
+    "min_rectangularite": (0.0, 1.0, False),
     "min_confidence": (0.0, 1.0, False),
 }
 

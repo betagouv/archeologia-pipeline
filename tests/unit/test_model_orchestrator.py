@@ -743,6 +743,8 @@ clustering:
     max_area_m2: 60000
     min_closure: 0.6
     max_elongation: 3
+    max_isolement: 0.3
+    min_rectangularite: 0.5
 """
 
 FORMES_ENCLOS = FORMES + """derived_targets:
@@ -772,6 +774,8 @@ class TestEnclosureEntity:
             "max_area_m2": 60000.0,
             "min_closure": 0.6,
             "max_elongation": 3.0,
+            "max_isolement": 0.3,
+            "min_rectangularite": 0.5,
         }
 
     def test_enclos_entity_is_derived_with_sources(self, tmp_path):

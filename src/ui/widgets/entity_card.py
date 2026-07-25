@@ -59,6 +59,11 @@ _CLUSTER_PARAM_SPECS = (
      "Part de l'aire des fragments contributeurs qui reste au voisinage du "
      "contour. Bas = cour incidente entre des lanières qui continuent au loin "
      "(faux positif de parcellaire) ; un vrai enclos est proche de 1."),
+    ("max_isolement", "Isolement max (0–1)", 0.0, 1.0, 0.05, 2, False,
+     "Part max du contour partagée avec d'autres candidats — écarte les "
+     "mailles de trame parcellaire (un enclos isolé ≈ 0)."),
+    ("min_rectangularite", "Rectangularité min (0–1)", 0.0, 1.0, 0.05, 2, False,
+     "Régularité min de la forme (0 = tout accepter ; un cercle vaut ~0,79)."),
     # — Axes linéaires (bandes directionnelles) —
     ("band_width_m", "Largeur max de la bande (m)", 5.0, 200.0, 5.0, 0, True,
      "Étalement latéral maximal des brins parallèles d'un même axe "

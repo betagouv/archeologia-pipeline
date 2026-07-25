@@ -106,6 +106,8 @@
 
   <div class="constat" style="margin-bottom:28px"><b>⚠ Défauts vs surcharges UI :</b> cette fiche documente les <em>défauts</em> de l'<code>args.yaml</code>. Toute valeur modifiée dans les réglages avancés de l'étape 3 devient une <b>surcharge persistante</b> qui écrase le défaut à chaque run, session après session — éditer le YAML ne suffit alors plus. La vérité d'un run est la ligne <code>Enclosure [1/1]: … T=…, closure&gt;=…, ancrage&gt;=…</code> de son journal, suivie du décompte <code>(rejets: aire …, élongation …, closure …, ancrage …)</code>.</div>
 
+  <div class="constat" style="margin-bottom:28px;border-left-color:var(--accent)"><b style="color:var(--accent)">V2 (25/07, calibrée sur 211 enclos GT bretons) :</b> le générateur par défaut est désormais <code>generator: hull</code> — la cour candidate = <b>enveloppe convexe − détection</b>, par composante liée à T/2 ; l'ouverture d'un enclos en C devient une mesure (<code>closure_ratio</code>) au lieu d'un obstacle à ponter (la dilatation V1 plafonnait à R 0,31 : 90/131 enclos vus mais jamais fermés). Défauts calibrés : <code>T 15 · aire 300–60 000 m² · closure 0,55 · élongation 3 · ancrage 0 · isolement ≤ 0,3 · rectangularité ≥ 0,65</code> → F1 0,235 vs 0,16 (P 0,21 · R 0,28). Deux nouveaux filtres : <b>isolement</b> (part du contour partagée avec d'autres candidats — écarte les mailles de trame) et <b>rectangularité</b> (régularité minimale). L'<b>ancrage</b> passe à 0 par défaut : son information est portée par la confiance composite. <code>generator: dilation</code> (V1) reste disponible dans l'args.yaml.</div>
+
   <div class="param">
     <div class="param-head"><code>gap_tolerance_m</code><span class="value">15 m <em class="rev">(10 → 15 le 24/07)</em></span><span class="ui-label">« Pontage des interruptions (m) »</span></div>
     <p>La dilatation avance de T/2 = 7,5 m de chaque côté de chaque fragment : deux tronçons séparés d'au plus <strong>15 m</strong> se soudent. C'est le paramètre central — il fixe à la fois ce qui se ferme <em>et</em> la taille minimale détectable (une cour plus étroite que ~15 m est entièrement recouverte par la dilatation).</p>
@@ -143,7 +145,7 @@
   </div>
 
   <div class="param">
-    <div class="param-head"><code>min_area_m2</code><span class="value">50 m²</span><span class="ui-label">« Surface min (m²) »</span></div>
+    <div class="param-head"><code>min_area_m2</code><span class="value">300 m² <em class="rev">(50 → 300, calibration V2)</em></span><span class="ui-label">« Surface min (m²) »</span></div>
     <p>Surface minimale de la <em>cour intérieure</em> (pas de l'emprise du fossé). 50 m² ≈ un cercle de 8 m de diamètre — pensé pour les micro-enclos funéraires.</p>
     <div class="panels">
       <div class="panel">
@@ -190,7 +192,7 @@
   </div>
 
   <div class="param">
-    <div class="param-head"><code>min_closure</code><span class="value">0,4 <em class="rev">(défaut conseillé : 0,6)</em></span><span class="ui-label">« Fermeture min (0–1) »</span></div>
+    <div class="param-head"><code>min_closure</code><span class="value">0,55 <em class="rev">(calibration V2)</em></span><span class="ui-label">« Fermeture min (0–1) »</span></div>
     <p>Part du contour du candidat située à moins de 3 m d'une <em>vraie</em> détection — le reste a été fabriqué par le pontage. C'est l'anti-hallucination : 0,6 traduit le critère publié « au moins 3 côtés perçus, un côté entier peut manquer ». Abaissé à 0,4 pendant la calibration bretonne : depuis l'arrivée de l'<b>ancrage</b>, qui assume le tri principal, cette tolérance n'a pas réintroduit de faux positifs.</p>
     <div class="panels">
       <div class="panel">
@@ -234,7 +236,7 @@
   </div>
 
   <div class="param">
-    <div class="param-head"><code>min_ancrage</code><span class="value">0,5 <em class="rev">(nouveau, 24/07)</em></span><span class="ui-label">« Ancrage des sources min (0–1) »</span></div>
+    <div class="param-head"><code>min_ancrage</code><span class="value">0 <em class="rev">(V2 : porté par la confiance composite)</em></span><span class="ui-label">« Ancrage des sources min (0–1) »</span></div>
     <p>Part de l'<em>aire</em> des fragments contributeurs qui reste au voisinage du contour du candidat (± 6 m). Un vrai enclos <strong>est</strong> sa détection — l'anneau entier — donc son ancrage frôle 1. Une cour incidente scellée <em>entre</em> des lanières de parcellaire qui continuent au loin a un ancrage faible : c'est <b>LE</b> discriminant des faux positifs inter-lanières, découvert en calibrant sur ta vérité terrain.</p>
     <div class="panels">
       <div class="panel">

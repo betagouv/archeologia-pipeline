@@ -204,7 +204,6 @@ def run_enclosure(
             continue
 
         union = unary_union([s[2] for s in sources])
-        cover = union.buffer(COVER_EPS_M)
         stree = STRtree([s[2] for s in sources])
         half = gap_m / 2.0
 
@@ -226,15 +225,26 @@ def run_enclosure(
             elongation = (long_side / short_side) if short_side > 0 else float("inf")
             rectangularite = (area / mrr.area) if (mrr is not None and mrr.area > 0) else 0.0
             ring_line = cand.exterior
-            covered = ring_line.intersection(cover)
-            closure = (covered.length / ring_line.length) if ring_line.length > 0 else 0.0
-            # Ancrage : part de l'aire des fragments contributeurs qui reste au
-            # voisinage du contour. Un vrai enclos EST sa détection (≈ 1) ; une
-            # cour incidente entre des lanières qui filent au loin est faible.
+            # Contributeurs d'abord (STRtree) : seules les sources à
+            # ≤ COVER_EPS_M du contour peuvent le couvrir — le closure_ratio se
+            # calcule donc contre leur union LOCALE, jamais contre l'union
+            # globale (l'intersection contre ~16 000 polygones par candidat
+            # coûtait ~3 h sur une campagne de 201 dalles, pour un résultat
+            # strictement identique).
             contrib_idx = [
                 int(j) for j in stree.query(ring_line.buffer(COVER_EPS_M))
                 if sources[int(j)][2].distance(ring_line) <= COVER_EPS_M
             ]
+            if contrib_idx and ring_line.length > 0:
+                local_cover = unary_union(
+                    [sources[j][2] for j in contrib_idx]
+                ).buffer(COVER_EPS_M)
+                closure = ring_line.intersection(local_cover).length / ring_line.length
+            else:
+                closure = 0.0
+            # Ancrage : part de l'aire des fragments contributeurs qui reste au
+            # voisinage du contour. Un vrai enclos EST sa détection (≈ 1) ; une
+            # cour incidente entre des lanières qui filent au loin est faible.
             a_tot = sum(sources[j][2].area for j in contrib_idx)
             if a_tot > 0:
                 ring_zone = ring_line.buffer(2 * COVER_EPS_M)

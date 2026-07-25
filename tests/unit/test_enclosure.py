@@ -33,11 +33,14 @@ def _det(geom, conf=0.5):
 
 
 def _cfg(**over):
+    # generator "dilation" épinglé : cette batterie historique teste la
+    # fermeture V1 ; le générateur enveloppe (V2, défaut) a sa propre classe.
     cfg = {"type": "enclosure", "target_classes": ["parcellaire"],
            "output_class_name": "enclos", "gap_tolerance_m": 8.0,
            "min_area_m2": 50.0, "max_area_m2": 60000.0,
            "min_closure": 0.6, "max_elongation": 3.0, "min_ancrage": 0.5,
-           "min_confidence": 0.0}
+           "max_isolement": 1.0, "min_rectangularite": 0.0,
+           "generator": "dilation", "min_confidence": 0.0}
     cfg.update(over)
     return cfg
 
@@ -270,3 +273,87 @@ class TestModeCalibration:
         frags = _rect_fragments(0, 0, 40, 40, gaps=[(0, 18, 4)])
         out, _ = _run(frags)
         assert [d["statut"] for d in out["enclos"]] == ["publie"]
+
+
+# ----------------------------------------------------------------------
+# Générateur V2 « hull » (enveloppe convexe) — campagne Bretagne
+# ----------------------------------------------------------------------
+def _hcfg(**over):
+    cfg = _cfg(generator="hull", gap_tolerance_m=15.0, max_isolement=0.3)
+    cfg.update(over)
+    return cfg
+
+
+class TestHullGenerator:
+    def test_open_c_detected_without_bridging(self):
+        # U : 3 côtés d'un carré de 40 m, bouche de 40 m ≫ T — le cas
+        # majoritaire de la campagne (90/131 jamais fermés par dilatation).
+        frags = _rect_fragments(0, 0, 40, 40, gaps=[(0, 0, 40)])
+        out_dil, _ = _run(frags, _cfg())          # contrôle V1 : rien
+        assert out_dil == {}
+        out, _ = _run(frags, _hcfg())
+        assert len(out.get("enclos", [])) == 1
+        d = out["enclos"][0]
+        assert 0.55 <= d["closure_ratio"] <= 0.9   # ~3 côtés sur 4 couverts
+        assert d["ancrage"] > 0.5
+        assert d["statut"] == "publie"
+
+    def test_full_square_still_detected(self):
+        out, _ = _run(_rect_fragments(0, 0, 40, 40), _hcfg())
+        assert len(out.get("enclos", [])) == 1
+        assert out["enclos"][0]["closure_ratio"] > 0.9
+
+    def test_linking_uses_gap_tolerance(self):
+        # C coupé en deux arcs par une brèche de 10 m : lié à T=15 (une seule
+        # composante → une cour), pas lié à T=2 (deux arcs séparés → rien).
+        frags = _rect_fragments(0, 0, 40, 40, gaps=[(0, 0, 40), (2, 15, 10)])
+        out15, _ = _run(frags, _hcfg())
+        assert len(out15.get("enclos", [])) == 1
+        out2, _ = _run(frags, _hcfg(gap_tolerance_m=2.0, min_closure=0.3))
+        # sans liaison, les deux arcs séparés ne peuvent produire que des
+        # poches d'angle — jamais la cour complète (~1 400 m²)
+        assert all(d["surface_m2"] < 800 for d in out2.get("enclos", []))
+
+    def test_network_span_guard(self):
+        # deux lanières kilométriques reliées : composante > 400 m → aucune
+        # cour candidate (garde anti-réseau).
+        frags = [_side(-500, 0, 500, 0), _side(-500, 30, 500, 30),
+                 _side(0, 0, 0, 30), _side(40, 0, 40, 30)]
+        out, _ = _run(frags, _hcfg(min_closure=0.0, min_ancrage=0.0))
+        assert out == {}
+
+    def test_isolement_is_a_hard_filter(self):
+        # grille 2×2 : l'enveloppe de la composante produit 4 cours mitoyennes
+        # → isolement haut → rejetées à max_isolement 0,3, publiées à 1,0.
+        grid = _rect_fragments(0, 0, 80, 80) + [
+            _side(-40, 0, 40, 0), _side(0, -40, 0, 40)]
+        out_strict, _ = _run(grid, _hcfg(min_ancrage=0.0, min_closure=0.3))
+        assert len(out_strict.get("enclos", [])) == 0
+        out_loose, _ = _run(grid, _hcfg(min_ancrage=0.0, min_closure=0.3,
+                                        max_isolement=1.0))
+        assert len(out_loose.get("enclos", [])) == 4
+
+    def test_rejete_isolement_statut_in_calibration(self):
+        grid = _rect_fragments(0, 0, 80, 80) + [
+            _side(-40, 0, 40, 0), _side(0, -40, 0, 40)]
+        out, _ = _run(grid, _hcfg(min_ancrage=0.0, min_closure=0.3,
+                                  mode_calibration=True))
+        statuts = {d["statut"] for d in out.get("enclos", [])}
+        assert "rejete_isolement" in statuts
+
+    def test_min_rectangularite_filter(self):
+        band = Point(0, 0).buffer(20.0).exterior.buffer(1.0)  # cercle : rect ≈ 0,785
+        out_ok, _ = _run([band], _hcfg())
+        assert len(out_ok.get("enclos", [])) == 1
+        out_ko, _ = _run([band], _hcfg(min_rectangularite=0.9))
+        assert out_ko == {}
+
+    def test_rejected_carry_full_scores_in_calibration(self):
+        # plomberie ② du rapport : en mode calibration, les rejetés portent
+        # AUSSI isolement/rectangularite/compacite/forme.
+        band = Point(0, 0).buffer(20.0).exterior.buffer(1.0)
+        out, _ = _run([band], _hcfg(min_rectangularite=0.9, mode_calibration=True))
+        d = out["enclos"][0]
+        assert d["statut"] == "rejete_rectangularite"
+        assert d["rectangularite"] > 0.5
+        assert d["forme"] == "curviligne"

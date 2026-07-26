@@ -1,15 +1,18 @@
 """Brique de synthèse « enclosure » : détection d'enclos.
 
-Deux générateurs de candidats (``generator`` de la règle) :
+Trois générateurs de candidats (``generator`` de la règle) :
 
-- ``hull`` (défaut, V2 — calibré campagne Bretagne) : les tronçons sont liés
-  par une dilatation de T/2 (chaînage), puis pour chaque composante la « cour »
-  candidate est l'**enveloppe convexe moins la détection**. L'ouverture d'un
-  enclos en C devient une *mesure* (``closure_ratio`` = part du contour de la
-  cour couverte par la détection) au lieu d'un obstacle à ponter — la
-  dilatation V1 plafonnait à R=0,31 sur la vérité terrain bretonne (90/131
-  enclos vus mais jamais fermés : fenêtre « trou < T < largeur » vide pour des
-  enclos petits et très ouverts).
+- ``auto`` (défaut, V3) : union de trois familles, dédoublonnée par IoU —
+  les **anneaux pontés** (dilation), les **cours d'enveloppe** (hull) et les
+  **blobs compacts** (la détection elle-même quand le modèle sort l'enclos en
+  masse pleine — cas fréquent constaté en Bretagne, invisible aux deux autres
+  générateurs). Priorité au dédoublonnage : anneau > cour > blob.
+- ``hull`` (V2, corrigé) : pour chaque composante **brute** de l'union des
+  détections, la « cour » candidate est l'enveloppe convexe moins la
+  détection. L'ouverture d'un enclos en C est une *mesure* (``closure_ratio``)
+  au lieu d'un obstacle à ponter. La liaison T/2 initiale a été retirée :
+  sur le terrain elle soudait des lanières sans rapport et produisait des
+  enveloppes géantes de plusieurs hectares (verdict campagne Bretagne).
 - ``dilation`` (V1, conservé) : fermeture par dilatation T/2 + ré-extension
   des anneaux intérieurs — exige des circuits quasi complets.
 
@@ -48,11 +51,24 @@ _SIMPLIFY_PERIMETER_RATIO = 0.03
 # join_style=2 : mitre — préserve les angles droits des enclos quadrangulaires.
 _MITRE = 2
 
-# Garde anti-réseau du générateur hull : une composante liée plus étendue
+# Garde anti-réseau des générateurs hull/blob : une composante plus étendue
 # qu'un grand enclos est une trame parcellaire, pas un enclos (Bretagne :
 # enveloppe GT max ~720 000 m² mais étendue < 400 m hors réseaux).
 SPAN_MIN_M = 10.0
 SPAN_MAX_M = 400.0
+
+# Plancher anti-slivers : les poches < 20 m² sont du bruit géométrique des
+# enveloppes (Bretagne : 35 000+ slivers scorés pour rien) — éliminées AVANT
+# scoring, jamais publiées, même en mode calibration.
+SLIVER_MIN_M2 = 20.0
+
+# Un blob n'est candidat que s'il est massif (aire / enveloppe convexe) :
+# une bande fine ou une lanière n'est pas une « masse pleine ».
+_BLOB_MIN_SOLIDITY = 0.6
+
+# Deux candidats de générateurs différents qui se recouvrent à > 0,7 IoU
+# sont le même enclos → on garde le plus prioritaire (anneau > cour > blob).
+_DEDUP_IOU = 0.7
 
 _REJECT_ORDER = ("aire", "elongation", "closure", "ancrage", "isolement", "rectangularite")
 
@@ -125,31 +141,69 @@ def _generate_dilation(union, half: float) -> List[Polygon]:
     return cands
 
 
-def _generate_hull(union, half: float) -> List[Polygon]:
-    """V2 : composantes liées par T/2, cour = enveloppe convexe − détection."""
-    linked = union.buffer(half, join_style=_MITRE)
-    parts = list(getattr(union, "geoms", [union]))
-    ptree = STRtree(parts)
+def _spanned_parts(union):
+    """Composantes BRUTES de l'union, filtrées par la garde d'étendue.
+
+    Aucune liaison préalable : la liaison T/2 de la V2 soudait des lanières
+    sans rapport (enveloppes géantes — leçon Bretagne).
+    """
+    for part in getattr(union, "geoms", [union]):
+        if part.is_empty or part.geom_type != "Polygon":
+            continue
+        minx, miny, maxx, maxy = part.bounds
+        if SPAN_MIN_M <= max(maxx - minx, maxy - miny) <= SPAN_MAX_M:
+            yield part
+
+
+def _generate_hull(union) -> List[Polygon]:
+    """V2 corrigé : cour = enveloppe convexe − détection, par composante brute."""
     cands: List[Polygon] = []
-    for comp in getattr(linked, "geoms", [linked]):
-        if comp.is_empty or comp.geom_type != "Polygon":
-            continue
-        member_idx = [
-            int(i) for i in ptree.query(comp)
-            if parts[int(i)].representative_point().within(comp)
-        ]
-        if not member_idx:
-            continue
-        gunion = unary_union([parts[i] for i in member_idx])
-        minx, miny, maxx, maxy = gunion.bounds
-        span = max(maxx - minx, maxy - miny)
-        if not (SPAN_MIN_M <= span <= SPAN_MAX_M):
-            continue
-        pockets = gunion.convex_hull.difference(gunion)
+    for part in _spanned_parts(union):
+        pockets = part.convex_hull.difference(part)
         for pk in getattr(pockets, "geoms", [pockets]):
             if not pk.is_empty and pk.geom_type == "Polygon":
                 cands.append(pk)
     return cands
+
+
+def _generate_blobs(union) -> List[Polygon]:
+    """V3 : la détection elle-même quand c'est une masse pleine compacte.
+
+    Cas Bretagne : le modèle détecte souvent l'enclos en masse (aucune cour
+    dans la détection) — anneaux et enveloppes sont structurellement aveugles.
+    """
+    cands: List[Polygon] = []
+    for part in _spanned_parts(union):
+        hull_area = part.convex_hull.area
+        if hull_area > 0 and part.area / hull_area >= _BLOB_MIN_SOLIDITY:
+            cands.append(Polygon(part.exterior))  # trous résiduels comblés
+    return cands
+
+
+def _dedup_candidates(cands: List[Polygon]) -> List[Polygon]:
+    """Garde le premier de chaque groupe IoU > seuil (liste déjà en ordre
+    de priorité anneau > cour > blob)."""
+    if len(cands) < 2:
+        return cands
+    tree = STRtree(cands)
+    kept_flags = [False] * len(cands)
+    kept: List[Polygon] = []
+    for i, cand in enumerate(cands):
+        dup = False
+        for j in tree.query(cand):
+            j = int(j)
+            if j == i or not kept_flags[j]:
+                continue
+            other = cands[j]
+            inter = cand.intersection(other).area
+            denom = cand.area + other.area - inter
+            if denom > 0 and inter / denom > _DEDUP_IOU:
+                dup = True
+                break
+        if not dup:
+            kept_flags[i] = True
+            kept.append(cand)
+    return kept
 
 
 def run_enclosure(
@@ -178,7 +232,7 @@ def run_enclosure(
         min_rect = float(cfg.get("min_rectangularite", 0.0))
         min_confidence = float(cfg.get("min_confidence", 0.0))
         mode_calibration = bool(cfg.get("mode_calibration", False))
-        generator = str(cfg.get("generator", "hull")).strip().lower()
+        generator = str(cfg.get("generator", "auto")).strip().lower()
         output_class = cfg["output_class_name"]
         logger.info(
             f"Enclosure [{cfg_idx + 1}/{len(enclosure_configs)}]: "
@@ -207,7 +261,16 @@ def run_enclosure(
         stree = STRtree([s[2] for s in sources])
         half = gap_m / 2.0
 
-        raw_cands = (_generate_dilation if generator == "dilation" else _generate_hull)(union, half)
+        if generator == "dilation":
+            raw = _generate_dilation(union, half)
+        elif generator == "hull":
+            raw = _generate_hull(union)
+        else:  # auto — concaténation en ordre de priorité pour le dédoublonnage
+            raw = (_generate_dilation(union, half) + _generate_hull(union)
+                   + _generate_blobs(union))
+        raw_cands = [c for c in raw if c.area >= SLIVER_MIN_M2]
+        if generator not in ("dilation", "hull"):
+            raw_cands = _dedup_candidates(raw_cands)
         n_rings = len(raw_cands)
         check_cancelled(cancel_check)
 
@@ -242,13 +305,14 @@ def run_enclosure(
                 closure = ring_line.intersection(local_cover).length / ring_line.length
             else:
                 closure = 0.0
-            # Ancrage : part de l'aire des fragments contributeurs qui reste au
-            # voisinage du contour. Un vrai enclos EST sa détection (≈ 1) ; une
-            # cour incidente entre des lanières qui filent au loin est faible.
+            # Ancrage : part de l'aire des fragments contributeurs qui reste
+            # dans le candidat (+ tolérance). Zone UNIFIÉE entre générateurs :
+            # un blob isolé (la détection EST l'enclos) ≈ 1, une cour incidente
+            # entre lanières qui filent au loin reste faible.
             a_tot = sum(sources[j][2].area for j in contrib_idx)
             if a_tot > 0:
-                ring_zone = ring_line.buffer(2 * COVER_EPS_M)
-                a_in = sum(sources[j][2].intersection(ring_zone).area for j in contrib_idx)
+                cand_zone = cand.buffer(COVER_EPS_M)
+                a_in = sum(sources[j][2].intersection(cand_zone).area for j in contrib_idx)
                 ancrage = a_in / a_tot
             else:
                 ancrage = 0.0

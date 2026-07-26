@@ -46,13 +46,13 @@ class TestParseTyped:
         assert rule.type == "enclosure"
         assert rule.target_classes == ("parcellaire", "talus_fosse")
         assert rule.output_class_name == "enclos"
-        # défauts calibrés sur la campagne Bretagne (F1 0,235, vs 0,16 en V1)
+        # défauts V3 calibrés campagne Bretagne (F1 0,264, sentinelles publiées)
         assert rule.gap_tolerance_m == 15.0
-        assert rule.min_area_m2 == 300.0
-        assert rule.max_area_m2 == 60000.0
-        assert rule.min_closure == 0.55
-        assert rule.max_elongation == 3.0
-        assert rule.min_ancrage == 0.0
+        assert rule.min_area_m2 == 200.0
+        assert rule.max_area_m2 == 10000.0
+        assert rule.min_closure == 0.5
+        assert rule.max_elongation == 2.0
+        assert rule.min_ancrage == 0.2
         assert rule.min_confidence == 0.0
         assert rule.to_dict()["type"] == "enclosure"
 
@@ -195,24 +195,25 @@ class TestLegacyLoader:
 
 
 class TestEnclosureV2Params:
-    def test_generator_default_hull_and_new_filters(self):
+    def test_generator_default_auto_and_new_filters(self):
         (rule,) = _parse_clustering({"clustering": [ENCLOS_CFG]})
-        assert rule.generator == "hull"          # V2 par défaut (campagne Bretagne)
-        assert rule.max_isolement == 0.3
-        assert rule.min_rectangularite == 0.65   # calibré campagne Bretagne
+        assert rule.generator == "auto"          # V3 par défaut (verdict Bretagne)
+        assert rule.max_isolement == 0.5
+        assert rule.min_rectangularite == 0.0    # rect 0,5 tuerait fid34 (0,494)
         d = rule.to_dict()
-        assert d["generator"] == "hull"
-        assert d["max_isolement"] == 0.3
+        assert d["generator"] == "auto"
+        assert d["max_isolement"] == 0.5
 
-    def test_generator_dilation_preserved(self):
-        cfg = dict(ENCLOS_CFG, generator="dilation")
+    @pytest.mark.parametrize("gen", ["dilation", "hull"])
+    def test_generator_explicit_preserved(self, gen):
+        cfg = dict(ENCLOS_CFG, generator=gen)
         (rule,) = _parse_clustering({"clustering": [cfg]})
-        assert rule.generator == "dilation"
+        assert rule.generator == gen
 
-    def test_generator_unknown_falls_back_to_hull(self):
+    def test_generator_unknown_falls_back_to_auto(self):
         cfg = dict(ENCLOS_CFG, generator="banane")
         (rule,) = _parse_clustering({"clustering": [cfg]})
-        assert rule.generator == "hull"
+        assert rule.generator == "auto"
 
     def test_new_filter_bounds_and_overrides(self):
         cfg = dict(ENCLOS_CFG, max_isolement=7.0, min_rectangularite=-2)

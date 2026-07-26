@@ -303,16 +303,13 @@ class TestHullGenerator:
         assert len(out.get("enclos", [])) == 1
         assert out["enclos"][0]["closure_ratio"] > 0.9
 
-    def test_linking_uses_gap_tolerance(self):
-        # C coupé en deux arcs par une brèche de 10 m : lié à T=15 (une seule
-        # composante → une cour), pas lié à T=2 (deux arcs séparés → rien).
+    def test_hull_does_not_link_components(self):
+        # Leçon Bretagne : la liaison T/2 soudait des lanières sans rapport et
+        # produisait des hulls géants. hull opère désormais par composante
+        # BRUTE : un C coupé en deux arcs ne redonne jamais la cour complète.
         frags = _rect_fragments(0, 0, 40, 40, gaps=[(0, 0, 40), (2, 15, 10)])
-        out15, _ = _run(frags, _hcfg())
-        assert len(out15.get("enclos", [])) == 1
-        out2, _ = _run(frags, _hcfg(gap_tolerance_m=2.0, min_closure=0.3))
-        # sans liaison, les deux arcs séparés ne peuvent produire que des
-        # poches d'angle — jamais la cour complète (~1 400 m²)
-        assert all(d["surface_m2"] < 800 for d in out2.get("enclos", []))
+        out, _ = _run(frags, _hcfg(min_closure=0.3))
+        assert all(d["surface_m2"] < 800 for d in out.get("enclos", []))
 
     def test_network_span_guard(self):
         # deux lanières kilométriques reliées : composante > 400 m → aucune
@@ -357,3 +354,63 @@ class TestHullGenerator:
         assert d["statut"] == "rejete_rectangularite"
         assert d["rectangularite"] > 0.5
         assert d["forme"] == "curviligne"
+
+
+# ----------------------------------------------------------------------
+# Générateur V3 « auto » : blobs ∪ anneaux pontés ∪ cours d'enveloppe
+# ----------------------------------------------------------------------
+def _acfg(**over):
+    cfg = _cfg(generator="auto", gap_tolerance_m=15.0, min_ancrage=0.5,
+               max_isolement=1.0, min_rectangularite=0.0)
+    cfg.update(over)
+    return cfg
+
+
+class TestAutoGenerator:
+    def test_compact_blob_is_a_candidate(self):
+        # Le cas fid30 : le modèle détecte l'enclos en MASSE PLEINE (disque).
+        # La détection elle-même est le candidat — closure 1 par définition,
+        # ancrage haut car rien ne déborde.
+        blob = Point(0, 0).buffer(25.0)  # disque plein ~1 960 m²
+        out, _ = _run([blob], _acfg())
+        assert len(out.get("enclos", [])) == 1
+        d = out["enclos"][0]
+        assert d["closure_ratio"] > 0.95
+        assert d["ancrage"] > 0.9
+        assert d["statut"] == "publie"
+
+    def test_blob_welded_to_lane_rejected_by_ancrage(self):
+        # disque soudé à une lanière kilométrique : le contributeur déborde
+        # loin → ancrage bas → rejeté (l'anti-parcelle-moderne).
+        from shapely.ops import unary_union as _uu
+        welded = _uu([Point(0, 0).buffer(25.0), _side(0, 0, 900, 0)])
+        out, _ = _run([welded], _acfg())
+        assert out == {}
+
+    def test_annular_blob_yields_courtyard_not_duplicate(self):
+        # une détection annulaire (avec trou) donne SA COUR comme candidat,
+        # pas la bande en doublon.
+        band = Point(0, 0).buffer(22.0).difference(Point(0, 0).buffer(18.0))
+        out, _ = _run([band], _acfg())
+        dets = out.get("enclos", [])
+        assert len(dets) == 1
+        assert dets[0]["surface_m2"] < 1300  # la cour (~1 020 m²), pas la bande
+
+    def test_closed_square_published_once(self):
+        # anneau détecté en fragments : ring (dilation), pocket (hull) et
+        # bande peuvent coïncider → dédoublonnage, un seul publié.
+        frags = _rect_fragments(0, 0, 40, 40, gaps=[(0, 18, 4)])
+        out, _ = _run(frags, _acfg())
+        assert len(out.get("enclos", [])) == 1
+
+    def test_open_c_still_detected_via_hull(self):
+        frags = _rect_fragments(0, 0, 40, 40, gaps=[(0, 0, 40)])
+        out, _ = _run(frags, _acfg(min_closure=0.5, min_ancrage=0.4))
+        assert len(out.get("enclos", [])) == 1
+
+    def test_no_giant_sliver_candidates(self):
+        # les poches < 20 m² (bruit géométrique des hulls) ne deviennent
+        # jamais des candidats, même en mode calibration.
+        blob = Point(0, 0).buffer(25.0)
+        out, _ = _run([blob], _acfg(mode_calibration=True))
+        assert all(d["surface_m2"] >= 20 for d in out.get("enclos", []))

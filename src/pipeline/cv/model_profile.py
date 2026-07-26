@@ -99,9 +99,9 @@ class EnclosureRule:
     max_elongation: float
     min_ancrage: float
     min_confidence: float
-    max_isolement: float = 0.3
-    min_rectangularite: float = 0.65
-    generator: str = "hull"
+    max_isolement: float = 0.5
+    min_rectangularite: float = 0.0
+    generator: str = "auto"
     mode_calibration: bool = False
     type: str = "enclosure"
 
@@ -412,19 +412,20 @@ def _parse_clustering(args_yaml: Dict[str, Any]) -> Tuple[Any, ...]:
             try:
                 from .clustering_bounds import sanitize_clustering_rule
 
-                # Défauts calibrés sur la campagne Bretagne (211 enclos GT,
-                # générateur hull) : F1 0,235 vs 0,16 en V1. min_ancrage 0 :
-                # son information est portée par la confiance composite.
+                # Défauts V3 calibrés campagne Bretagne (131 GT à parcellaire,
+                # générateur auto) : F1 0,264, R 0,39, sentinelles fid30/fid34
+                # publiées, plafond 1 ha (95 % des GT < 1,2 ha — les géants
+                # sont des parcelles modernes, verdict terrain V2).
                 sane = sanitize_clustering_rule(
                     {
                         "gap_tolerance_m": float(cfg.get("gap_tolerance_m", 15.0)),
-                        "min_area_m2": float(cfg.get("min_area_m2", 300.0)),
-                        "max_area_m2": float(cfg.get("max_area_m2", 60000.0)),
-                        "min_closure": float(cfg.get("min_closure", 0.55)),
-                        "max_elongation": float(cfg.get("max_elongation", 3.0)),
-                        "min_ancrage": float(cfg.get("min_ancrage", 0.0)),
-                        "max_isolement": float(cfg.get("max_isolement", 0.3)),
-                        "min_rectangularite": float(cfg.get("min_rectangularite", 0.65)),
+                        "min_area_m2": float(cfg.get("min_area_m2", 200.0)),
+                        "max_area_m2": float(cfg.get("max_area_m2", 10000.0)),
+                        "min_closure": float(cfg.get("min_closure", 0.5)),
+                        "max_elongation": float(cfg.get("max_elongation", 2.0)),
+                        "min_ancrage": float(cfg.get("min_ancrage", 0.2)),
+                        "max_isolement": float(cfg.get("max_isolement", 0.5)),
+                        "min_rectangularite": float(cfg.get("min_rectangularite", 0.0)),
                         "min_confidence": float(cfg.get("min_confidence", 0.0)),
                     },
                     warn=logger.warning,
@@ -432,12 +433,13 @@ def _parse_clustering(args_yaml: Dict[str, Any]) -> Tuple[Any, ...]:
                 )
                 if sane["max_area_m2"] < sane["min_area_m2"]:
                     sane["max_area_m2"] = sane["min_area_m2"]
-                # Générateur de candidats : "hull" (enveloppe convexe, V2 —
-                # calibré campagne Bretagne) ou "dilation" (fermeture V1).
-                gen = str(cfg.get("generator", "hull")).strip().lower()
-                if gen not in ("hull", "dilation"):
-                    logger.warning(f"Enclosure: generator {gen!r} inconnu — hull utilisé")
-                    gen = "hull"
+                # Générateur de candidats : "auto" (V3 — anneaux ∪ cours ∪
+                # blobs, dédoublonné), "hull" (enveloppe seule) ou "dilation"
+                # (fermeture V1 seule).
+                gen = str(cfg.get("generator", "auto")).strip().lower()
+                if gen not in ("auto", "hull", "dilation"):
+                    logger.warning(f"Enclosure: generator {gen!r} inconnu — auto utilisé")
+                    gen = "auto"
                 output_class = str(cfg.get("output_class_name", "")) or f"enclos_{'_'.join(target)}"
                 rules.append(EnclosureRule(
                     target_classes=tuple(str(t) for t in target),

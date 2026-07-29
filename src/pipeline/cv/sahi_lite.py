@@ -72,10 +72,26 @@ def get_slice_bboxes(
                 slice_bboxes.append([x_min, y_min, x_max, y_max])
             
             x_min = x_max - x_overlap
-        
+
         y_min = y_max - y_overlap
-    
-    return slice_bboxes
+
+    # Quand la dernière fenêtre déborde, elle est ramenée en arrière ci-dessus — et peut
+    # alors reproduire à l'identique une fenêtre déjà émise. Sur une image 648 avec
+    # slice=648 et overlap=0,2 (pas de 519), la boucle relance en x=519 puis en y=519 :
+    # QUATRE fenêtres strictement identiques, donc quatre passes du modèle sur la même
+    # entrée. Ce n'est pas qu'un gaspillage : chaque passe en double refait la recherche
+    # de clé d'instance en aval et fusionne des instances qu'une passe unique garde
+    # séparées (mesuré : 18 détections avec les 4 passes contre 19 avec une seule).
+    # Dédupliquer ne touche pas au recouvrement utile sur un grand raster : cela n'enlève
+    # que le calcul refait à l'identique.
+    vus = set()
+    uniques = []
+    for bbox in slice_bboxes:
+        cle = tuple(bbox)
+        if cle not in vus:
+            vus.add(cle)
+            uniques.append(bbox)
+    return uniques
 
 
 @dataclass

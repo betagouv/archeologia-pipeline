@@ -52,13 +52,22 @@ def _load_onnx_model(model_path: str):
         raise ImportError(f"onnxruntime n'est pas installé: {e}")
     
     # Configurer les providers (GPU si disponible, sinon CPU)
-    providers = ['CUDAExecutionProvider', 'CPUExecutionProvider']
     available_providers = ort.get_available_providers()
-    providers = [p for p in providers if p in available_providers]
-    
-    if not providers:
-        providers = ['CPUExecutionProvider']
-    
+    noms = [p for p in ('CUDAExecutionProvider', 'CPUExecutionProvider')
+            if p in available_providers] or ['CPUExecutionProvider']
+
+    # TF32 est actif par défaut sur les GPU Ampere et au-delà : les convolutions et
+    # matmuls tournent alors avec 10 bits de mantisse, et les sorties divergent du
+    # chemin CPU — le seul validé, puisque le runner livré est un build CPU.
+    # Mesuré sur lineaires_seg_v2_1, même entrée, RTX 4060 :
+    #   écart CPU/GPU  logits de masque 1,40e+02 · logits de classe 2,40e+00
+    #   erreur relative médiane 2 à 5 % · 65 détections en CPU contre 57 en GPU
+    #   avec use_tf32=0 : 1,73e-02, soit de l'arrondi float32 ordinaire
+    # CPU et GPU sont chacun parfaitement déterministes en rejeu (0,00e+00) : c'est bien
+    # un choix de précision, pas du bruit.
+    providers = [(p, {'use_tf32': '0'}) if p == 'CUDAExecutionProvider' else p
+                 for p in noms]
+
     logger.info(f"ONNX: providers disponibles: {available_providers}")
     logger.info(f"ONNX: utilisation de: {providers}")
     
@@ -323,6 +332,7 @@ def _run_rfdetr_seg_with_sahi(
     confidence_threshold: float,
     class_offset: int = 1,
     cancel_check: Optional[CancelCheckFn] = None,
+    n_classes: Optional[int] = None,
 ) -> List[Dict]:
     """
     Exécute RF-DETR Seg avec SAHI slicing en accumulant les masques de probabilité
@@ -430,7 +440,12 @@ def _run_rfdetr_seg_with_sahi(
 
         n_cls = logits_out.shape[1]
         if n_real is None:
-            n_real = max(1, n_cls - class_offset)
+            # Le modèle sort une colonne de logits de plus qu'il n'y a de classes
+            # (6 pour 5 sur lineaires_seg_v2_1). Sans borne explicite, une colonne
+            # gagnante hors taxonomie passerait en `classe_N` fantôme en aval.
+            # Sur ce modèle la colonne surnuméraire ne gagne jamais (sigmoïde max
+            # 0,0048) : défaut latent, mais il deviendrait actif sur un réexport.
+            n_real = n_classes if n_classes else max(1, n_cls - class_offset)
 
         end_x = min(start_x + slice_w, orig_width)
         end_y = min(start_y + slice_h, orig_height)
@@ -439,7 +454,22 @@ def _run_rfdetr_seg_with_sahi(
 
         scale_x = slice_w / model_width
         scale_y = slice_h / model_height
-        boxes_normalized = boxes_out.max() <= 1.0
+
+        # RF-DETR sort TOUJOURS du cxcywh normalisé : dans cette fonction, qui lui est
+        # propre, il n'y a rien à deviner. L'ancien test `boxes_out.max() <= 1.0` basculait
+        # dès qu'une boîte mordait hors de l'image — mesuré sur 600 tuiles du split valid :
+        # 50,7 % des tuiles concernées, dépassement médian 0,0157. Le plugin lisait alors
+        # les boîtes comme des pixels absolus, gcx = int(0,98) = 0, et TOUTES les clés
+        # d'instance s'écrasaient sur (classe, 0, 0, 0, 0).
+        # Conséquences mesurées sur la tuile la plus dense (134 annotations), conf 0,05 :
+        #   avant : 123 instances en 50,26 s   après : 245 instances en 4,43 s
+        # Les instances n'étaient pas séparées, et la recherche de suffixe ci-dessous
+        # devenait quadratique faute de clés distinctes.
+        boxes_normalized = True
+        if boxes_out.size and boxes_out.max() > 1.5:
+            logger.warning(
+                "RF-DETR Seg: boîtes hors [0,1] (max=%.3f) — export inattendu, "
+                "les boîtes sont pourtant lues comme normalisées", float(boxes_out.max()))
 
         for i in range(len(max_scores)):
             confidence = float(max_scores[i])
@@ -1313,6 +1343,7 @@ def run_onnx_inference(
                 confidence_threshold=confidence_threshold,
                 class_offset=class_offset,
                 cancel_check=cancel_check,
+                n_classes=len(class_names) if class_names else None,
             )
             orig_width, orig_height = pil_image.size
             logger.info(f"RF-DETR Seg: {len(all_detections)} instances après fusion globale")

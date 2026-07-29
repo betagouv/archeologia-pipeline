@@ -64,6 +64,7 @@ class DetectionPage(QWidget):
         self._entity_cluster_params: dict = {}  # eid -> {eps_m, min_cluster_size, …}
         self._active_rvts: set = set()
         self._loading = False
+        self._readonly = False
         self._cards: dict = {}
         self._filter = "all"            # filtre morphologique courant (affichage only)
         self._filter_buttons: dict = {}
@@ -142,6 +143,21 @@ class DetectionPage(QWidget):
         self._sel_count = ent_card.counter  # « X sur Y sélectionnées » dans l'en-tête
         adv_row = QHBoxLayout()
         adv_row.addStretch(1)
+        # Les surcharges par entité sont persistées d'une session à l'autre et priment
+        # sur les seuils du modèle : sans ce bouton, un réglage ancien reste appliqué
+        # en silence, y compris après la mise à jour d'un modèle. Le piège est réel —
+        # les seuils d'un run sont ramenés à leur MINIMUM (model_orchestrator l. 747),
+        # donc une seule entité oubliée à une valeur basse tire tout le run avec elle.
+        self._reset_btn = QPushButton("Valeurs par défaut du modèle")
+        self._reset_btn.setObjectName("EntityChangeBtn")
+        self._reset_btn.setToolTip(
+            "Efface toutes les surcharges par entité (confiance, aire minimale et "
+            "paramètres de regroupement) et revient aux valeurs recommandées par le "
+            "modèle sélectionné."
+        )
+        self._reset_btn.clicked.connect(self._on_reset_defaults)
+        self._reset_btn.setVisible(False)
+        adv_row.addWidget(self._reset_btn)
         self._adv_check = QCheckBox("Réglages avancés (seuils par entité)")
         self._adv_check.setObjectName("WizardPageSub")
         self._adv_check.toggled.connect(self._on_advanced_toggled)
@@ -328,6 +344,24 @@ class DetectionPage(QWidget):
         if not self._loading:
             self.changed.emit()
 
+    def _on_reset_defaults(self) -> None:
+        """Efface les surcharges : les cartes retombent sur les défauts du modèle.
+
+        On vide les dictionnaires plutôt que d'y réécrire les valeurs du modèle. C'est
+        la seule façon de rester juste quand on change de modèle ensuite : une valeur
+        recopiée redeviendrait une surcharge, figée sur l'ancien modèle.
+        """
+        if not (self._entity_thresholds or self._entity_cluster_params):
+            return
+        self._entity_thresholds.clear()
+        self._entity_cluster_params.clear()
+        # Pas besoin de geler les signaux ici : EntityCard.update_state met déjà son
+        # propre `_loading` autour de ses setValue, et n'émet donc pas pendant qu'on
+        # repeuple les spinbox avec les défauts du modèle.
+        self._refresh()
+        if not self._loading:
+            self.changed.emit()
+
     # ------------------------------------------------------------------
     # Rafraîchissement
     # ------------------------------------------------------------------
@@ -378,6 +412,13 @@ class DetectionPage(QWidget):
                 cluster_default_params=cluster_default_params,
                 cluster_params_override=self._entity_cluster_params.get(eid),
             )
+        # Le bouton n'existe que là où il sert : en mode avancé, et seulement s'il y a
+        # effectivement quelque chose à effacer. Sinon il promettrait une action sans effet.
+        self._reset_btn.setVisible(self._advanced)
+        self._reset_btn.setEnabled(
+            not self._readonly
+            and bool(self._entity_thresholds or self._entity_cluster_params)
+        )
         self._update_selection_count()
         self._rebuild_runs()
         self._apply_filter()
@@ -497,9 +538,16 @@ class DetectionPage(QWidget):
         (navigation) et la case « Réglages avancés » (révèle les seuils en
         lecture seule). N'agit que sur ``setEnabled`` → aucun ``changed``/autosave.
         """
+        self._readonly = bool(ro)
         self._enable_check.setEnabled(not ro)
         self._annot_check.setEnabled(not ro)
         self._es_btn.setEnabled(not ro)
+        # Sans ça le bouton resterait cliquable pendant un run : les cartes sont
+        # désactivées mais lui vit dans la barre des réglages avancés, qui reste
+        # active pour la consultation.
+        self._reset_btn.setEnabled(
+            not ro and bool(self._entity_thresholds or self._entity_cluster_params)
+        )
         for card in self._cards.values():
             card.setEnabled(not ro)
 

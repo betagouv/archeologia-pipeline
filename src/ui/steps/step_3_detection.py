@@ -35,6 +35,7 @@ from ...app.services.model_orchestrator import (
 )
 from ..widgets.card import build_card
 from ..widgets.entity_card import EntityCard
+from ..widgets.toast import show_toast
 from ..widgets.toggle_switch import ToggleSwitch
 
 
@@ -148,8 +149,11 @@ class DetectionPage(QWidget):
         # en silence, y compris après la mise à jour d'un modèle. Le piège est réel —
         # les seuils d'un run sont ramenés à leur MINIMUM (model_orchestrator l. 747),
         # donc une seule entité oubliée à une valeur basse tire tout le run avec elle.
-        self._reset_btn = QPushButton("Valeurs par défaut du modèle")
-        self._reset_btn.setObjectName("EntityChangeBtn")
+        # Aligné sur la réinitialisation des réglages avancés de l'étape 2 : même préfixe
+        # « ↺ », même style GhostButton, même curseur, même confirmation par Toast.
+        self._reset_btn = QPushButton("↺  Réinit. val. défaut du modèle")
+        self._reset_btn.setObjectName("GhostButton")
+        self._reset_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self._reset_btn.setToolTip(
             "Efface toutes les surcharges par entité (confiance, aire minimale et "
             "paramètres de regroupement) et revient aux valeurs recommandées par le "
@@ -353,12 +357,25 @@ class DetectionPage(QWidget):
         """
         if not (self._entity_thresholds or self._entity_cluster_params):
             return
+        # Compté AVANT d'effacer : la confirmation dit ce qui a été fait, pas un
+        # « c'est fait » générique qui laisserait douter que quelque chose ait bougé.
+        n_seuils = len(self._entity_thresholds)
+        n_cluster = len(self._entity_cluster_params)
         self._entity_thresholds.clear()
         self._entity_cluster_params.clear()
         # Pas besoin de geler les signaux ici : EntityCard.update_state met déjà son
         # propre `_loading` autour de ses setValue, et n'émet donc pas pendant qu'on
         # repeuple les spinbox avec les défauts du modèle.
         self._refresh()
+
+        parties = []
+        if n_seuils:
+            parties.append(f"{n_seuils} seuil{'s' if n_seuils > 1 else ''} par entité")
+        if n_cluster:
+            parties.append(f"{n_cluster} jeu{'x' if n_cluster > 1 else ''} de paramètres "
+                           f"de regroupement")
+        show_toast(self, "↺  " + " et ".join(parties)
+                   + " effacé(s) — valeurs du modèle rétablies")
         if not self._loading:
             self.changed.emit()
 

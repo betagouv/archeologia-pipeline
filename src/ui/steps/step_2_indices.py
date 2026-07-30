@@ -339,8 +339,13 @@ class IndicesPage(QWidget):
         subtitle.setWordWrap(True)
         titles.addWidget(title)
         titles.addWidget(subtitle)
-        self._reset_btn = QPushButton("↺  Réinitialiser")
+        self._reset_btn = QPushButton("↺  Réinit. val. par défaut")
         self._reset_btn.setObjectName("GhostButton")
+        self._reset_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._reset_btn.setToolTip(
+            "Rétablit tous les paramètres techniques avancés à leurs valeurs RVT-py "
+            "officielles."
+        )
         self._reset_btn.clicked.connect(self._reset_advanced)
         header.addWidget(self._adv_back_btn)
         header.addSpacing(10)
@@ -918,11 +923,21 @@ class IndicesPage(QWidget):
     def _reset_advanced(self) -> None:
         prev = self._loading
         self._loading = True
+        modifies = 0
         try:
             for _section, _key, widget, kind, default in self._adv_fields:
+                avant = self._read_field(widget, kind)
                 self._apply_field(widget, kind, default, default)
+                if self._read_field(widget, kind) != avant:
+                    modifies += 1
         finally:
             self._loading = prev
+        # Confirmation explicite, alignée sur la réinitialisation de l'étape 3 : dire ce
+        # qui a bougé plutôt que laisser douter qu'il se soit passé quelque chose.
+        show_toast(self, f"↺  {modifies} paramètre{'s' if modifies > 1 else ''} rétabli"
+                         f"{'s' if modifies > 1 else ''} aux valeurs par défaut"
+                   if modifies else "↺  Tous les paramètres étaient déjà aux valeurs "
+                                    "par défaut")
         if not self._loading:
             self.changed.emit()
 

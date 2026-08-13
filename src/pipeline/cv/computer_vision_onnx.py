@@ -330,6 +330,7 @@ def _run_rfdetr_seg_with_sahi(
     slice_height: int,
     overlap_ratio: float,
     confidence_threshold: float,
+    confidence_per_class: Optional[Dict[int, float]] = None,
     class_offset: int = 1,
     cancel_check: Optional[CancelCheckFn] = None,
     n_classes: Optional[int] = None,
@@ -337,6 +338,12 @@ def _run_rfdetr_seg_with_sahi(
     """
     Exécute RF-DETR Seg avec SAHI slicing en accumulant les masques de probabilité
     par instance dans l'espace image global, puis extrait les polygones par instance.
+
+    ``confidence_per_class`` ({class_id APRÈS offset: seuil}) surcharge le seuil
+    global classe par classe — même convention que ``confidence_par_classe`` du banc
+    (tools/bench/decode.py, parité). Motivation mesurée : les optima par classe de
+    lineaires_seg_v2_1 s'étalent de 0,10 à 0,30 (F1 longueur, niveau B) ; un seuil
+    unique sacrifie les classes rares, sous-confiantes par construction (loss IA-BCE).
 
     Accumulation par instance (pas par classe) : chaque détection individuelle conserve
     son propre masque global. Cela évite le remplissage de la zone centrale quand
@@ -472,12 +479,16 @@ def _run_rfdetr_seg_with_sahi(
                 "les boîtes sont pourtant lues comme normalisées", float(boxes_out.max()))
 
         for i in range(len(max_scores)):
-            confidence = float(max_scores[i])
-            if confidence < confidence_threshold:
-                continue
-
+            # La classe d'abord : le seuil peut en dépendre. Réordonner les deux
+            # filtres ne change pas l'ensemble retenu (deux `continue` commutent).
             class_id = int(class_ids[i]) - class_offset
             if class_id < 0 or class_id >= n_real:
+                continue
+
+            confidence = float(max_scores[i])
+            seuil = (confidence_per_class.get(class_id, confidence_threshold)
+                     if confidence_per_class else confidence_threshold)
+            if confidence < seuil:
                 continue
 
             # Coordonnées de la boîte en espace global (centre + taille)
@@ -1169,6 +1180,7 @@ def run_onnx_inference(
     model_path: str,
     output_path: str,
     confidence_threshold: float = 0.5,
+    confidence_per_class: Optional[Dict[int, float]] = None,
     iou_threshold: float = 0.5,
     slice_height: int = 640,
     slice_width: int = 640,
@@ -1341,6 +1353,7 @@ def run_onnx_inference(
                 slice_height=slice_height,
                 overlap_ratio=overlap_ratio,
                 confidence_threshold=confidence_threshold,
+                confidence_per_class=confidence_per_class,
                 class_offset=class_offset,
                 cancel_check=cancel_check,
                 n_classes=len(class_names) if class_names else None,

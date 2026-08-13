@@ -418,6 +418,19 @@ def resolve_cv_runs(cv_config: Dict) -> List[Dict]:
         # Seuils par modèle (orchestrateur V2) : confiance + IoU propres au run.
         _safe_float("confidence_threshold")
         _safe_float("iou_threshold")
+        # Seuils par classe ({nom: seuil}) : mêmes règles de tolérance, entrée
+        # par entrée — une valeur pourrie n'invalide pas les autres classes.
+        if isinstance(run.get("confidence_per_class"), dict):
+            _pc = {}
+            for _k, _v in run["confidence_per_class"].items():
+                try:
+                    _pc[str(_k)] = float(_v)
+                except (TypeError, ValueError):
+                    logger.warning(
+                        f"Run {model}: confidence_per_class[{_k!r}]={_v!r} "
+                        "non numérique — classe repliée sur le seuil global")
+            if _pc:
+                run_cfg["confidence_per_class"] = _pc
         # Charger la config SAHI depuis le dossier du modèle
         model_path = _resolve_model_path_for_sahi(model, cv_config)
         if model_path:

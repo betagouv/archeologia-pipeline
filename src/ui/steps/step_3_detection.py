@@ -382,6 +382,22 @@ class DetectionPage(QWidget):
     # ------------------------------------------------------------------
     # Rafraîchissement
     # ------------------------------------------------------------------
+    @staticmethod
+    def _default_conf_entite(model, eid: str) -> float:
+        """Défaut de confiance affiché pour UNE entité.
+
+        Si le model_card porte des seuils par classe (mesurés au banc), l'entité
+        hérite du seuil de SES classes — c'est aussi la valeur vers laquelle le
+        bouton « Réinit. val. défaut du modèle » la ramène. ``min`` si l'entité
+        couvre plusieurs classes aux seuils différents (cohérent avec le plancher
+        de décodage). Sinon, défaut global du modèle, comme avant.
+        """
+        if model is None:
+            return 0.2
+        pc = getattr(model, "default_confidence_per_class", None) or {}
+        vals = [pc[c] for c in model.coverage.get(eid, ()) if c in pc]
+        return float(min(vals)) if vals else float(model.default_confidence)
+
     def _refresh(self) -> None:
         self._enable_check.setChecked(self._enabled)
         # Le bandeau ne doit dire « actif » (bleu) que si la détection l'est :
@@ -421,7 +437,7 @@ class DetectionPage(QWidget):
                 rvt_active=(rvt in self._active_rvts) if model else True,
                 cluster_outputs=cluster_outputs,
                 cluster_on=eid in self._cluster,
-                default_confidence=model.default_confidence if model else 0.2,
+                default_confidence=self._default_conf_entite(model, eid),
                 default_min_area=model.default_min_area if model else 0.0,
                 conf_override=ov.get("confidence_threshold"),
                 area_override=ov.get("min_area_m2"),

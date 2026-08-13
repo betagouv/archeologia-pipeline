@@ -34,6 +34,8 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+from .services import rvt_kernel_context
+
 
 # ----------------------------------------------------------------------
 # Sous-configurations typées
@@ -363,6 +365,13 @@ def _normalize_cv_run(run_dict: Dict[str, Any]) -> Dict[str, Any]:
     out = dict(run_dict)
     if "confidence_threshold" in out:
         out["confidence_threshold"] = _coerce_unit_interval(out["confidence_threshold"], 0.3)
+    if isinstance(out.get("confidence_per_class"), dict):
+        # Même coercition que le seuil global, valeur par valeur. Clé normalisée
+        # en str (config partagée éditée à la main) plutôt que fatale.
+        out["confidence_per_class"] = {
+            str(k): _coerce_unit_interval(v, 0.3)
+            for k, v in out["confidence_per_class"].items()
+        }
     if "iou_threshold" in out:
         out["iou_threshold"] = _coerce_unit_interval(out["iou_threshold"], 0.5)
     if "min_area_m2" in out:
@@ -438,6 +447,14 @@ def validate_run_context(ctx: RunContext) -> Tuple[List[str], List[str]]:
             errors.append("Mode IGN sélectionné mais aucun fichier de zone/liste n'est configuré")
         elif not ctx.files.input_file.exists():
             errors.append(f"Fichier IGN introuvable : {ctx.files.input_file}")
+        elif (
+            ctx.files.input_file.suffix.lower() == ".dbf"
+            and not ctx.files.input_file.with_suffix(".shp").exists()
+        ):
+            errors.append(
+                "Fichier .dbf sans .shp associé (la géométrie du polygone est "
+                f"dans le .shp) : {ctx.files.input_file}"
+            )
 
     elif ctx.mode == "local_laz":
         if ctx.files.local_laz_dir is None:
@@ -509,6 +526,26 @@ def validate_run_context(ctx: RunContext) -> Tuple[List[str], List[str]]:
                     f"({runtime_conf:.2f}) > min_confidence clustering ({cluster_min:.2f}) — "
                     "le clustering ne verra aucune détection."
                 )
+
+    # Contexte spatial des noyaux RVT. Un noyau plus large que la marge entre
+    # dalles fait fabriquer le voisinage manquant par RVT (repli symétrique) :
+    # les dalles ne se raccordent plus. Seuls les modes qui fusionnent des
+    # dalles sont concernés ici ; en existing_mnt l'emprise réelle n'est
+    # connue qu'à l'ouverture du raster (contrôle dans run_existing_mnt).
+    products_dict = ctx.processing.products.as_dict()
+    if ctx.mode in ("ign_laz", "local_laz"):
+        warnings.extend(
+            rvt_kernel_context.tiled_context_warnings(
+                products_dict,
+                ctx.rvt_params,
+                tile_overlap_percent=ctx.processing.tile_overlap,
+                mnt_resolution=ctx.processing.mnt_resolution,
+            )
+        )
+
+    # Réglages d'échelle que rvt.vis.mstp refuse : bloquant, sinon la faute
+    # n'apparaît qu'au calcul de la première dalle — après le téléchargement.
+    errors.extend(rvt_kernel_context.mstp_scale_errors(products_dict, ctx.rvt_params))
 
     return errors, warnings
 

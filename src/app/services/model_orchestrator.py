@@ -107,6 +107,11 @@ class InstalledModel:
     default_confidence: float = 0.2
     default_min_area: float = 0.0
     default_iou: float = 0.5
+    # Seuils de confiance PAR CLASSE (model_card:thresholds.confidence_per_class,
+    # {nom de classe: seuil}). Mesure au banc : les optima par classe s'étalent de
+    # 0,10 à 0,30 sur lineaires_seg_v2_1, un seuil unique sacrifie les classes
+    # rares. Une classe absente du dict retombe sur ``default_confidence``.
+    default_confidence_per_class: Dict[str, float] = field(default_factory=dict)
     # Dossier du modèle sur disque (``data/models/<name>/``). Utile côté UI pour
     # ouvrir le dossier dans l'explorateur ou (re)lire ``model_card.yaml`` /
     # ``args.yaml`` à la demande sans relancer ``discover_installed_models``.
@@ -222,7 +227,7 @@ def discover_installed_models(models_dir: Any) -> List[InstalledModel]:
         if not class_names:
             logger.warning("Modèle '%s' sans classe exploitable, ignoré", sub.name)
             continue
-        conf, area, iou = _extract_thresholds(card)
+        conf, conf_pc, area, iou = _extract_thresholds(card)
         clustering_rules = _load_args_clustering(sub)
         # cluster_options construites AVANT le merge des cibles dérivées : sinon
         # une cible déjà agrégée se verrait proposer une case « cluster » redondante.
@@ -249,6 +254,7 @@ def discover_installed_models(models_dir: Any) -> List[InstalledModel]:
                 derived_source_labels={k: v[1] for k, v in derived_meta.items() if v[1]},
                 derived_output_labels={k: v[2] for k, v in derived_meta.items() if v[2]},
                 default_confidence=conf,
+                default_confidence_per_class=conf_pc,
                 default_min_area=area,
                 default_iou=iou,
                 model_dir=sub,
@@ -296,19 +302,32 @@ def _extract_target_rvt(card: Dict[str, Any]) -> str:
     return "LD"
 
 
-def _extract_thresholds(card: Dict[str, Any]) -> Tuple[float, float, float]:
-    """``(confidence_default, min_area_m2, iou)`` depuis ``model_card:thresholds``.
+def _extract_thresholds(card: Dict[str, Any]) -> Tuple[float, Dict[str, float], float, float]:
+    """``(confidence_default, confidence_per_class, min_area_m2, iou)`` depuis
+    ``model_card:thresholds``.
 
     Défauts : confiance 0.2, aire min 0, IoU 0.5. L'IoU peut être déclaré sous
     ``iou`` ou ``iou_threshold`` (jamais exposé dans l'UI, seulement le pipeline).
+    ``confidence_per_class`` est optionnel : ``{nom de classe: seuil}``. Une entrée
+    non castable est ignorée, pas fatale (model_card édité à la main).
     """
     conf, area, iou = 0.2, 0.0, 0.5
+    conf_pc: Dict[str, float] = {}
     th = card.get("thresholds")
     if isinstance(th, dict):
         try:
             conf = float(th.get("confidence_default", conf))
         except (TypeError, ValueError):
             pass
+        pc = th.get("confidence_per_class")
+        if isinstance(pc, dict):
+            for nom, val in pc.items():
+                try:
+                    conf_pc[str(nom)] = float(val)
+                except (TypeError, ValueError):
+                    logger.warning(
+                        "thresholds.confidence_per_class[%r]=%r non numérique, ignoré",
+                        nom, val)
         try:
             area = float(th.get("min_area_m2", area))
         except (TypeError, ValueError):
@@ -320,7 +339,7 @@ def _extract_thresholds(card: Dict[str, Any]) -> Tuple[float, float, float]:
                     break
                 except (TypeError, ValueError):
                     pass
-    return conf, area, iou
+    return conf, conf_pc, area, iou
 
 
 def _extract_coverage(
@@ -701,13 +720,28 @@ def resolve_runs_from_entities(
         model_name, rvt = key
         model = models_by_name[model_name]
         group = groups[key]
-        # Seuils : surcharge par entité si fournie (min = plus permissif si
-        # plusieurs entités d'un même run divergent), sinon défaut du modèle.
-        conf_over = [
-            entity_thresholds[e]["confidence_threshold"]
-            for e in group["entities"]
-            if e in entity_thresholds and "confidence_threshold" in entity_thresholds[e]
-        ]
+        # Seuils de confiance PAR CLASSE : défauts du model_card, puis surcharge
+        # par entité (UI) appliquée aux classes de CETTE entité seulement.
+        # L'ancien comportement — min() de toutes les surcharges imposé au run
+        # entier — donnait le seuil le plus bas à TOUTES les classes du run : une
+        # entité non surchargée héritait du seuil d'une autre. Le scalaire
+        # ``confidence_threshold`` reste émis comme PLANCHER de décodage (min des
+        # seuils applicables) pour les consommateurs qui ne connaissent pas le
+        # dict (log, garde-fou clustering) ; le filtre fin par classe est fait au
+        # décodage ONNX via ``confidence_per_class``.
+        conf_par_classe: Dict[str, float] = {
+            c: v for c, v in model.default_confidence_per_class.items()
+            if c in group["classes"]
+        }
+        for e in group["entities"]:
+            ov_e = entity_thresholds.get(e, {})
+            if "confidence_threshold" in ov_e:
+                for c in group["entity_classes"][e]:
+                    conf_par_classe[c] = float(ov_e["confidence_threshold"])
+        plancher_conf = min(
+            [conf_par_classe.get(c, model.default_confidence) for c in group["classes"]]
+            or [model.default_confidence]
+        )
         area_over = [
             entity_thresholds[e]["min_area_m2"]
             for e in group["entities"]
@@ -744,7 +778,8 @@ def resolve_runs_from_entities(
                     }
                     for eid in sorted(group["entities"])
                 ],
-                "confidence_threshold": float(min(conf_over) if conf_over else model.default_confidence),
+                "confidence_threshold": float(plancher_conf),
+                "confidence_per_class": {c: float(v) for c, v in sorted(conf_par_classe.items())},
                 "iou_threshold": float(model.default_iou),
                 "min_area_m2": float(min(area_over) if area_over else model.default_min_area),
             }

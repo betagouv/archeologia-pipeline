@@ -439,6 +439,25 @@ class TestNewNarratorEvents:
         msg, _group = reporter.user_info_transient.call_args[0]
         assert "…" in msg
 
+    def test_cv_run_tile_progress_appends_to_image_line(self):
+        """Progression par tuile SAHI : réécrit la MÊME ligne transiente que
+        ``cv_run_image_progress`` (image + « analyse X/Y ») — c'est ce qui
+        comble les minutes de silence sur une grande dalle."""
+        narrator, reporter = self._make()
+        narrator.cv_run_image_progress("m", 1, 3, "img1.png")
+        narrator.cv_run_tile_progress(10, 144)
+        msg, group = reporter.user_info_transient.call_args[0]
+        assert "img1.png" in msg
+        assert "10/144" in msg
+        assert group == "cv_image_progress"
+
+    def test_cv_run_tile_progress_without_prior_image_does_not_raise(self):
+        narrator, reporter = self._make()
+        narrator.cv_run_tile_progress(5, 25)
+        msg, group = reporter.user_info_transient.call_args[0]
+        assert "5/25" in msg
+        assert group == "cv_image_progress"
+
     def test_transient_fallback_when_reporter_has_no_transient_channel(self):
         """Reporters legacy sans ``user_info_transient`` → fallback sur
         ``user_info`` (la ligne s'empile au lieu d'être réécrite, mais

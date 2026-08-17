@@ -55,7 +55,7 @@ class TestExistingMntRunnerFinalize:
             _ctx(config_with_output_dir, tmp_path),
             monkeypatch,
             finalized,
-            lambda **kw: SimpleNamespace(total=3),
+            lambda **kw: SimpleNamespace(total=3, candidates=3),
         )
         assert len(finalized) == 1
         assert finalized[0]["outcome"] == "success"

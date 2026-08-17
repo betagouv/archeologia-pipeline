@@ -11,10 +11,13 @@ if TYPE_CHECKING:
 
 
 class ModeRunner(Protocol):
+    # Renvoie le verdict de la finalisation : True = succès, False = terminé en
+    # erreur (ex. 0/N dalle produite), None = annulation ou runner legacy sans
+    # verdict. Propagé par PipelineController jusqu'au bandeau de fin de l'UI.
     def run(
         self,
         ctx: RunContext,
         reporter: ProgressReporter,
         cancel: CancelToken,
         slog: Optional["StructuredLogger"] = None,
-    ) -> None: ...
+    ) -> Optional[bool]: ...

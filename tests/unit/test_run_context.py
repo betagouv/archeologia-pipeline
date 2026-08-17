@@ -301,6 +301,21 @@ class TestValidateRunContext:
         errors, _ = validate_run_context(ctx)
         assert errors == []
 
+    def test_ign_laz_dbf_without_sibling_shp_errors(self, tmp_path: Path):
+        dbf = tmp_path / "zone.dbf"
+        dbf.write_text("x")
+        ctx = self._ctx(files={"data_mode": "ign_laz", "input_file": dbf})
+        errors, _ = validate_run_context(ctx)
+        assert any(".shp" in e for e in errors)
+
+    def test_ign_laz_dbf_with_sibling_shp_ok(self, tmp_path: Path):
+        (tmp_path / "zone.shp").write_text("x")
+        dbf = tmp_path / "zone.dbf"
+        dbf.write_text("x")
+        ctx = self._ctx(files={"data_mode": "ign_laz", "input_file": dbf})
+        errors, _ = validate_run_context(ctx)
+        assert errors == []
+
     def test_local_laz_missing_dir(self):
         ctx = self._ctx(files={"data_mode": "local_laz", "local_laz_dir": None})
         errors, _ = validate_run_context(ctx)
@@ -581,7 +596,7 @@ class TestValidateWarnings:
             mode=mode, output_dir=tmp_path, files=files,
             processing=overrides.get("processing", ProcessingConfig(products=ProductsConfig(MNT=True))),
             cv=overrides.get("cv", CvConfig()),
-            rvt_params={}, ui_config={},
+            rvt_params=overrides.get("rvt_params", {}), ui_config={},
         )
 
     def test_tile_overlap_zero_warns_for_ign_laz(self, tmp_path: Path):
@@ -640,6 +655,56 @@ class TestValidateWarnings:
         errors, warnings = validate_run_context(ctx)
         assert errors == []
         assert len(warnings) >= 2
+
+
+# ----------------------------------------------------------------------
+# Contexte des noyaux RVT (cf. app.services.rvt_kernel_context)
+# ----------------------------------------------------------------------
+class TestValidateRvtKernelContext:
+    """Un noyau plus large que la marge entre dalles produit des coutures."""
+
+    # Réglage large valide pour RVT (max - min >= pas) qui tient dans 400 px.
+    _FITS = {"mstp": {"broad_scale_min": 100, "broad_scale_max": 400, "broad_scale_step": 150}}
+
+    def _mstp_ctx(self, mode: str, tmp_path: Path, rvt_params: dict, overlap: float = 20.0):
+        proc = ProcessingConfig(
+            products=ProductsConfig(MSTP=True),
+            tile_overlap=overlap,
+            mnt_resolution=0.5,
+        )
+        return TestValidateWarnings()._ctx_for(
+            mode, tmp_path, processing=proc, rvt_params=rvt_params
+        )
+
+    def test_default_mstp_kernel_exceeds_the_tile_margin(self, tmp_path: Path):
+        ctx = self._mstp_ctx("ign_laz", tmp_path, {})
+        errors, warnings = validate_run_context(ctx)
+        assert errors == []
+        assert any("MSTP" in w and "coutures" in w for w in warnings)
+
+    def test_no_warning_once_the_kernel_fits_the_margin(self, tmp_path: Path):
+        ctx = self._mstp_ctx("ign_laz", tmp_path, self._FITS)
+        _errors, warnings = validate_run_context(ctx)
+        assert not any("MSTP" in w for w in warnings)
+
+    def test_local_laz_is_checked_too(self, tmp_path: Path):
+        ctx = self._mstp_ctx("local_laz", tmp_path, {})
+        _errors, warnings = validate_run_context(ctx)
+        assert any("MSTP" in w for w in warnings)
+
+    def test_existing_mnt_is_not_tile_based_so_not_checked_here(self, tmp_path: Path):
+        # L'emprise réelle du raster n'est connue qu'à l'ouverture : le contrôle
+        # se fait dans run_existing_mnt, pas sur la config.
+        ctx = self._mstp_ctx("existing_mnt", tmp_path, {})
+        _errors, warnings = validate_run_context(ctx)
+        assert not any("coutures" in w for w in warnings)
+
+    def test_scale_combination_rejected_by_rvt_is_a_blocking_error(self, tmp_path: Path):
+        # 400 - 223 = 177 < 180 (pas par défaut) → rvt.vis.mstp lève, la dalle
+        # planterait après le téléchargement. On refuse avant de démarrer.
+        ctx = self._mstp_ctx("ign_laz", tmp_path, {"mstp": {"broad_scale_max": 400}})
+        errors, _warnings = validate_run_context(ctx)
+        assert any("MSTP" in e and "pas" in e for e in errors)
 
 
 class TestCouvertureProduct:

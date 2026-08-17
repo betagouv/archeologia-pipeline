@@ -216,7 +216,7 @@ Cette grille indique, pour chaque vague livrée, **quelles sections de tests son
 >
 > **V1** : tester les 3 régimes (idem §10).
 
-- [ ] **11.1** RVT valide → copie TIF, conversion JPG+JGW, nettoyage orphelins
+- [ ] **11.1** RVT valide → copie TIF, nettoyage orphelins. ⚠️ La conversion PNG+PGW n'a lieu **que si une détection est cochée** (les PNG ne servent qu'à l'inférence) : sans CV, aucun `indices/RVT/png/` ne doit apparaître.
 - [ ] **11.2 Avec détection activée** → inférence ONNX sur les JPG, shapefiles
   - Régime large : SAHI doit slicer en mémoire (pas de pré-découpage)
 
@@ -349,7 +349,7 @@ Cette grille indique, pour chaque vague livrée, **quelles sections de tests son
 
 ## 19. Consultation lecture-seule pendant un run ⭐ P0
 
-- [ ] **19.1** Lancer un run ; pendant l'exécution, cliquer **étape 1** dans le rail → page Source affichée, bandeau « 🔒 Lecture seule — run en cours » visible ; chemins, boutons « Parcourir… »/« Couche QGIS » et frise de mode **inactifs** mais valeurs lisibles
+- [ ] **19.1** Lancer un run ; pendant l'exécution, cliquer **étape 1** dans le rail → page Source affichée, bandeau « 🔒 Lecture seule — run en cours » visible ; chemins, boutons « Parcourir… »/« Couche / groupe QGIS » et frise de mode **inactifs** mais valeurs lisibles
 - [ ] **19.2** **Étape 2** → « Réglages avancés… » fonctionne, bascule entre les onglets RVT fonctionne ; tous les spinbox/checkbox/combos grisés-inactifs ; « ↺ Réinitialiser » inactif ; valeurs lancées affichées
 - [ ] **19.3** **Étape 3** → interrupteur, cartes d'entités, combos « Changer ▾ », case « Regrouper », case « Générer images annotées » **inactifs** ; chips de filtre morphologique + scroll **utilisables** ; cocher « Réglages avancés » révèle les seuils par entité (en lecture seule)
 - [ ] **19.4** Cliquer **étape 4** dans le rail (1 clic) → retour au **RunView en direct** (pas le récap), la progression continue ; bandeau lecture-seule disparu
@@ -448,7 +448,7 @@ Cette grille indique, pour chaque vague livrée, **quelles sections de tests son
 
 - [ ] **22.1 Premier run** : lancer un run `ign_laz`/`local_laz` sur ≥ 2 dalles contiguës dans un `output_dir` neuf → couches `index_*` chargées, mosaïque complète. **Ne pas fermer QGIS.**
 - [ ] **22.2 Re-run avec dalle ajoutée** : relancer dans **le même** `output_dir` en ajoutant 1 dalle (distante de préférence). Au lancement, le journal indique « N couche(s) périmée(s) … retirée(s) avant régénération ». À la fin, les couches `index_*` affichent **toutes** les dalles (ancienne(s) + nouvelle).
-- [ ] **22.3 Vérif disque** : dans `indices/<PRODUIT>/tif/index_<PRODUIT>.vrt`, le nombre de `<SourceFilename>` = nombre de TIF présents (toutes dalles incluses), **sans** balise `<OverviewList resampling="nearest">` ni bloc `STATISTICS_*` parasite (signature d'une réécriture QGIS périmée).
+- [ ] **22.3 Vérif disque** : dans `indices/<PRODUIT>/tif/index_<PRODUIT>.vrt`, le nombre de `<SourceFilename>` = nombre de TIF présents (toutes dalles incluses), **sans** bloc `STATISTICS_*` parasite (signature d'une réécriture QGIS périmée). ⚠️ Une balise `<OverviewList>` seule est **normale** : `gdalbuildvrt` (GDAL ≥ 3.11) la dérive des pyramides `.ovr` des sources — seul `STATISTICS_` discrimine.
 - [ ] **22.4 Persistance** : sauvegarder le projet QGIS puis le rouvrir → toujours toutes les dalles visibles.
 - [ ] **22.5 Dossier différent (non-régression)** : relancer dans un `output_dir` **différent** → aucune couche du premier run n'est retirée ; fonds de carte, polygone d'emprise (étape 1) et couche quadrillage restent **intacts** (jamais purgés).
 - [ ] **22.6 Détections** : si des détections existent, le re-run rafraîchit aussi les couches `detections/<entité>/*.gpkg` (pas de doublon, données à jour).
@@ -489,3 +489,22 @@ Cette grille indique, pour chaque vague livrée, **quelles sections de tests son
 - [ ] **24.5 Anti-faux-positifs** : sur une zone à parcellaire coaxial dense, les corridors sortent avec `parallelisme` ≥ 2 et/ou `connecteurs_perp` élevés → filtrables par expression QGIS.
 - [ ] **24.6 Itération sans réinférence** : relancer en passant Longueur min de 500 → 300 m ou la bande de 40 → 60 m → cache réutilisé, nombre d'axes change de façon plausible.
 - [ ] **24.7 Cohabitation des briques** : cocher « Enclos » + « Axes linéaires » ensemble → un seul run du modèle, les deux groupes de couches sortent, aucun conflit (les fragments parcellaire portent enclos_id ET axe_id le cas échéant).
+
+---
+
+## 25. Zone d'étude = groupe de couches QGIS (mode `ign_laz`) ⭐ P0
+
+> **Contexte** : le bouton « Couche / groupe QGIS » accepte aussi un **groupe** du
+> panneau Couches. Les couches du groupe sont empaquetées dans un seul
+> `data/temp_zones/zone_<groupe>.gpkg` multi-couches, et
+> `resolve_tiles_from_polygon` unionne **toutes** les couches du fichier en
+> reprojetant **chacune** depuis son propre CRS.
+
+- [ ] **25.1 Listing** : créer dans le panneau Couches un groupe « Zones » avec 2 couches vecteur (p. ex. un polygone en EPSG:2154 et des points en EPSG:4326). Mode `ign_laz` → « Couche / groupe QGIS » → la liste affiche `📁 Zones  (2 couches)` **en tête**, puis les couches individuelles.
+- [ ] **25.2 Sélection du groupe** : choisir `📁 Zones` → le champ source pointe `data/temp_zones/zone_Zones.gpkg` (bordure « ok ») ; le fichier contient bien **2 couches** (vérifier dans le navigateur QGIS).
+- [ ] **25.3 Union + CRS mixtes** : lancer → le journal indique « 2 couches dans le fichier — union de toutes les entités » puis « Reprojection de « … » vers Lambert 93 » pour la couche en 4326. Le nombre de dalles = **union** des dalles des deux zones (ni l'une seule, ni des dalles aberrantes hors zone).
+- [ ] **25.4 Re-sélection (pas d'empilement)** : retirer une couche du groupe, re-sélectionner le groupe → le `.gpkg` est **remplacé** (1 seule couche dedans, pas 3).
+- [ ] **25.5 Fichier verrouillé** : charger `zone_Zones.gpkg` dans QGIS puis re-sélectionner le groupe → message « Fichier verrouillé » explicite (pas de trace Python), le champ source reste inchangé.
+- [ ] **25.6 Groupe imbriqué** : mettre le groupe « Zones » dans un groupe parent « Terrain » → les **deux** apparaissent dans la liste ; choisir « Terrain » donne les mêmes couches (descendants inclus).
+- [ ] **25.7 Non-régression couche seule** : choisir une couche **fichier** (shp/gpkg) → le champ pointe directement le fichier d'origine (**pas** de copie dans `temp_zones`). Choisir une couche **mémoire/temporaire** → export en `zone_<nom>.gpkg` et le run aboutit.
+- [ ] **25.8 Groupe sans vecteur** : un groupe ne contenant que des rasters n'apparaît **pas** dans la liste.

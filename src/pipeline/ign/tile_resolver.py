@@ -48,8 +48,10 @@ def resolve_tiles_from_polygon(
     """
     Résout les dalles IGN LiDAR HD intersectant un polygone.
 
-    Charge le polygone utilisateur, le reprojette en Lambert 93 si besoin,
-    puis effectue une intersection spatiale avec le quadrillage France.
+    Charge **toutes les couches** du fichier (un GeoPackage peut en contenir
+    plusieurs, p. ex. exporté depuis un groupe de couches QGIS), unionne leurs
+    géométries en les reprojetant en Lambert 93 si besoin, puis effectue une
+    intersection spatiale avec le quadrillage France.
     Écrit le résultat dans ``output_file`` au format ``filename,url`` par ligne,
     compatible avec ``parse_ign_input_file()`` / ``download_ign_dalles()``.
 
@@ -92,46 +94,54 @@ def resolve_tiles_from_polygon(
     if not polygon_path.exists():
         raise FileNotFoundError(f"Polygone de zone d'étude introuvable : {polygon_path}")
 
-    log(f"Chargement du polygone : {polygon_path.name}")
+    log(f"Chargement de la zone d'étude : {polygon_path.name}")
     user_ds = ogr.Open(str(polygon_path), 0)
     if user_ds is None:
         raise RuntimeError(f"Impossible d'ouvrir le fichier : {polygon_path}")
-    user_layer = user_ds.GetLayer(0)
-    if user_layer is None:
+    n_layers = user_ds.GetLayerCount()
+    if n_layers == 0:
         raise RuntimeError(f"Aucune couche trouvée dans : {polygon_path}")
+    if n_layers > 1:
+        log(f"{n_layers} couches dans le fichier — union de toutes les entités")
 
-    # ── Construction de la géométrie d'union du polygone utilisateur ──
-    user_srs = user_layer.GetSpatialRef()
-    union_geom = None
-    for feat in user_layer:
-        if cancel():
-            log("Annulation demandée")
-            return 0
-        geom = feat.GetGeometryRef()
-        if geom is None:
-            continue
-        if union_geom is None:
-            union_geom = geom.Clone()
-        else:
-            union_geom = union_geom.Union(geom)
-    user_layer.ResetReading()
-
-    if union_geom is None:
-        raise RuntimeError(f"Aucune géométrie valide dans : {polygon_path}")
-
-    # ── Reprojection vers Lambert 93 (EPSG:2154) si nécessaire ──
     target_srs = osr.SpatialReference()
     target_srs.ImportFromEPSG(2154)
     target_srs.SetAxisMappingStrategy(osr.OAMS_TRADITIONAL_GIS_ORDER)
 
-    if user_srs is not None:
-        user_srs.SetAxisMappingStrategy(osr.OAMS_TRADITIONAL_GIS_ORDER)
-        if not user_srs.IsSame(target_srs):
-            log("Reprojection du polygone vers Lambert 93 (EPSG:2154)")
-            transform = osr.CoordinateTransformation(user_srs, target_srs)
-            union_geom.Transform(transform)
-    else:
-        log("⚠️ CRS du polygone non défini — on suppose Lambert 93 (EPSG:2154)")
+    # ── Union des géométries de TOUTES les couches, reprojetées en Lambert 93 ──
+    # La reprojection est faite par couche (et non sur l'union finale) : un
+    # GeoPackage issu d'un groupe de couches QGIS peut mélanger les CRS.
+    union_geom = None
+    for i in range(n_layers):
+        user_layer = user_ds.GetLayer(i)
+        if user_layer is None:
+            continue
+
+        user_srs = user_layer.GetSpatialRef()
+        transform = None
+        if user_srs is not None:
+            user_srs.SetAxisMappingStrategy(osr.OAMS_TRADITIONAL_GIS_ORDER)
+            if not user_srs.IsSame(target_srs):
+                log(f"Reprojection de « {user_layer.GetName()} » vers Lambert 93 (EPSG:2154)")
+                transform = osr.CoordinateTransformation(user_srs, target_srs)
+        else:
+            log(f"⚠️ CRS de « {user_layer.GetName()} » non défini — on suppose Lambert 93")
+
+        for feat in user_layer:
+            if cancel():
+                log("Annulation demandée")
+                return 0
+            geom = feat.GetGeometryRef()
+            if geom is None:
+                continue
+            geom = geom.Clone()
+            if transform is not None:
+                geom.Transform(transform)
+            union_geom = geom if union_geom is None else union_geom.Union(geom)
+        user_layer.ResetReading()
+
+    if union_geom is None:
+        raise RuntimeError(f"Aucune géométrie valide dans : {polygon_path}")
 
     # ── Ouverture du quadrillage et filtre spatial ──
     log(f"Chargement du quadrillage : {quadrillage_path.name}")

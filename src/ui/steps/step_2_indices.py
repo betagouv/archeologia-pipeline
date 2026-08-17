@@ -32,6 +32,11 @@ from qgis.PyQt.QtWidgets import (
     QWidget,
 )
 
+from ...app.services.rvt_kernel_context import (
+    mstp_scale_errors,
+    tile_margin_px,
+    tiled_context_warnings,
+)
 from ...app.services.indices_model import (
     all_products,
     count_selected,
@@ -514,9 +519,12 @@ class IndicesPage(QWidget):
         mstp_mmin = self._mk_spin(1, 100000, 23)
         mstp_mmax = self._mk_spin(1, 100000, 203)
         mstp_mstep = self._mk_spin(1, 100000, 18)
-        mstp_bmin = self._mk_spin(1, 100000, 223)
-        mstp_bmax = self._mk_spin(1, 100000, 2023)
-        mstp_bstep = self._mk_spin(1, 100000, 180)
+        # Échelle large : défauts du plugin (100/400/60), pas ceux de RVT
+        # (223/2023/180) — un rayon de 2023 px dépasse largement le contexte que
+        # la marge de tuilage fournit. Cf. app.services.rvt_kernel_context.
+        mstp_bmin = self._mk_spin(1, 100000, 100)
+        mstp_bmax = self._mk_spin(1, 100000, 400)
+        mstp_bstep = self._mk_spin(1, 100000, 60)
         mstp_light = self._mk_dspin(0.1, 5.0, 1.2)
         mstp_ve = self._mk_spin(1, 100, 1)
         mstp_8 = self._mk_check()
@@ -526,9 +534,9 @@ class IndicesPage(QWidget):
         self._reg(("rvt_params", "mstp"), "meso_scale_min", mstp_mmin, "int", 23)
         self._reg(("rvt_params", "mstp"), "meso_scale_max", mstp_mmax, "int", 203)
         self._reg(("rvt_params", "mstp"), "meso_scale_step", mstp_mstep, "int", 18)
-        self._reg(("rvt_params", "mstp"), "broad_scale_min", mstp_bmin, "int", 223)
-        self._reg(("rvt_params", "mstp"), "broad_scale_max", mstp_bmax, "int", 2023)
-        self._reg(("rvt_params", "mstp"), "broad_scale_step", mstp_bstep, "int", 180)
+        self._reg(("rvt_params", "mstp"), "broad_scale_min", mstp_bmin, "int", 100)
+        self._reg(("rvt_params", "mstp"), "broad_scale_max", mstp_bmax, "int", 400)
+        self._reg(("rvt_params", "mstp"), "broad_scale_step", mstp_bstep, "int", 60)
         self._reg(("rvt_params", "mstp"), "lightness", mstp_light, "float", 1.2)
         self._reg(("rvt_params", "mstp"), "ve_factor", mstp_ve, "int", 1)
         self._reg(("rvt_params", "mstp"), "save_as_8bit", mstp_8, "bool", True)
@@ -579,8 +587,15 @@ class IndicesPage(QWidget):
         )
         ov_hint.setObjectName("MntHint")
         ov_hint.setWordWrap(True)
+        # Diagnostic live : la marge fournit-elle assez de contexte aux noyaux
+        # RVT demandés ? C'est ici que la marge, la résolution et les rayons se
+        # règlent, donc c'est ici que la réponse doit s'afficher.
+        self._ctx_hint = QLabel("")
+        self._ctx_hint.setObjectName("MntHint")
+        self._ctx_hint.setWordWrap(True)
         ovv.addLayout(ov_row)
         ovv.addWidget(ov_hint)
+        ovv.addWidget(self._ctx_hint)
         root.addWidget(ov_card)
 
         root.addStretch(1)
@@ -742,8 +757,41 @@ class IndicesPage(QWidget):
         self._stack.setCurrentWidget(self._overview_page)
 
     def _on_changed(self, *_args) -> None:
+        self._update_context_hint()
         if not self._loading:
             self.changed.emit()
+
+    def _update_context_hint(self) -> None:
+        """Rafraîchit le diagnostic « contexte disponible vs noyaux RVT demandés ».
+
+        Le calcul est délégué à ``app.services.rvt_kernel_context`` (pur, testé) ;
+        les paramètres courants sont relus via le sérialiseur existant plutôt que
+        de redupliquer la lecture des widgets.
+        """
+        scratch: dict = {}
+        self._collect_advanced(scratch)
+        rvt_params = scratch.get("rvt_params", {})
+
+        if self._mode not in ("ign_laz", "local_laz"):
+            self._ctx_hint.setText(
+                "Aucune dalle n'est fusionnée dans ce mode : le contexte disponible "
+                "dépend de la taille de chaque raster fourni, vérifiée au lancement."
+            )
+            return
+
+        overlap = self._overlap_spin.value()
+        resolution = self._res_spin.value()
+        messages = tiled_context_warnings(
+            self._products, rvt_params,
+            tile_overlap_percent=overlap, mnt_resolution=resolution,
+        ) + mstp_scale_errors(self._products, rvt_params)
+        if messages:
+            self._ctx_hint.setText("⚠  " + "\n⚠  ".join(messages))
+        else:
+            self._ctx_hint.setText(
+                f"✓  Contexte fourni aux noyaux RVT : {tile_margin_px(overlap, resolution)} px "
+                "de chaque côté de la dalle — suffisant pour les indices cochés."
+            )
 
     def _refresh(self) -> None:
         self._mnt_chip.set_checked(self._products.get("MNT", False))
@@ -778,6 +826,7 @@ class IndicesPage(QWidget):
             if self._mode not in ("existing_mnt", "existing_rvt")
             else "Données déjà fournies en entrée — sélectionnez les indices RVT à calculer."
         )
+        self._update_context_hint()
 
     # ------------------------------------------------------------------
     # Mode (neutralisation des sections fournies)

@@ -8,6 +8,7 @@ validation de chemin) vient du module pur :mod:`app.services.source_modes`.
 from __future__ import annotations
 
 import logging
+import re
 from pathlib import Path
 
 from qgis.PyQt.QtCore import QPoint, Qt, QTimer, pyqtSignal
@@ -25,6 +26,7 @@ from qgis.PyQt.QtWidgets import (
 
 from ...app.services.source_modes import (
     mode_info,
+    normalize_vector_input,
     ordered_modes,
     path_state,
     pipeline_stages,
@@ -121,9 +123,12 @@ class SourcePage(QWidget):
         self._source_edit.textChanged.connect(self._on_source_text_changed)
         self._browse_btn = QPushButton("Parcourir…")
         self._browse_btn.clicked.connect(self._browse_source)
-        self._qgis_btn = QPushButton("Couche QGIS")
+        self._qgis_btn = QPushButton("Couche / groupe QGIS")
         self._qgis_btn.setObjectName("GhostButton")
-        self._qgis_btn.setToolTip("Sélectionner une couche polygone du projet QGIS")
+        self._qgis_btn.setToolTip(
+            "Sélectionner une couche ou un groupe de couches du projet QGIS "
+            "(points, lignes ou polygones)"
+        )
         self._qgis_btn.clicked.connect(self._pick_qgis_layer)
         self._dalles_btn = QPushButton("Sélectionner les dalles")
         self._dalles_btn.setObjectName("GhostButton")
@@ -274,9 +279,9 @@ class SourcePage(QWidget):
         if info.is_file:
             path, _ = QFileDialog.getOpenFileName(
                 self,
-                "Sélectionner le polygone de la zone d'étude",
+                "Sélectionner la zone d'étude (polygone ou points)",
                 "",
-                "Vecteurs (*.shp *.geojson *.json *.gpkg *.txt);;Tous (*.*)",
+                "Vecteurs (*.shp *.dbf *.geojson *.json *.gpkg *.txt);;Tous (*.*)",
             )
         else:
             path = QFileDialog.getExistingDirectory(self, "Sélectionner un dossier")
@@ -297,49 +302,97 @@ class SourcePage(QWidget):
             return
 
         project = QgsProject.instance()
-        layers = [
-            lyr
-            for lyr in project.mapLayers().values()
-            if hasattr(lyr, "geometryType") and lyr.geometryType() == QgsWkbTypes.GeometryType.PolygonGeometry
-        ]
-        if not layers:
+        # La résolution des dalles (union + filtre spatial) accepte toute
+        # géométrie : points/lignes/polygones. Seules les tables sans
+        # géométrie (ex. .dbf chargé seul) sont exclues.
+        geom_types = (
+            QgsWkbTypes.GeometryType.PointGeometry,
+            QgsWkbTypes.GeometryType.LineGeometry,
+            QgsWkbTypes.GeometryType.PolygonGeometry,
+        )
+
+        def _usable(lyr) -> bool:
+            return lyr is not None and hasattr(lyr, "geometryType") and lyr.geometryType() in geom_types
+
+        # Entrées proposées : (libellé, nom de base, couches). Les groupes du
+        # panneau Couches d'abord (leurs couches seront unionnées), puis les
+        # couches individuelles.
+        entries = []
+        for grp in project.layerTreeRoot().findGroups(True):
+            grp_layers = [tl.layer() for tl in grp.findLayers() if _usable(tl.layer())]
+            if grp_layers:
+                entries.append(
+                    (f"📁 {grp.name()}  ({len(grp_layers)} couches)", grp.name(), grp_layers)
+                )
+        for lyr in project.mapLayers().values():
+            if _usable(lyr):
+                entries.append((f"{lyr.name()}  ({lyr.featureCount()} entités)", lyr.name(), [lyr]))
+
+        if not entries:
             QMessageBox.information(
                 self,
-                "Aucune couche polygone",
-                "Aucune couche polygone n'est chargée dans le projet QGIS.",
+                "Aucune couche vecteur",
+                "Aucune couche vecteur avec géométrie n'est chargée dans le projet QGIS.",
             )
             return
-        names = [f"{lyr.name()}  ({lyr.featureCount()} entités)" for lyr in layers]
-        chosen, ok = QInputDialog.getItem(self, "Couche polygone", "Couche :", names, 0, False)
+        names = [label for label, _, _ in entries]
+        chosen, ok = QInputDialog.getItem(
+            self, "Couche ou groupe", "Zone d'étude :", names, 0, False
+        )
         if not ok:
             return
-        layer = layers[names.index(chosen)]
+        _, base_name, layers = entries[names.index(chosen)]
 
-        source = layer.source().split("|")[0].strip()
-        p = Path(source)
-        if p.suffix.lower() == ".dbf" and p.with_suffix(".shp").exists():
-            source = str(p.with_suffix(".shp"))
-            p = Path(source)
-        if p.exists() and p.suffix.lower() in (".shp", ".geojson", ".json", ".gpkg"):
-            self._source_edit.setText(source)
-            return
+        # Couche unique déjà sur disque : on la pointe directement, pas de copie.
+        if len(layers) == 1:
+            p = normalize_vector_input(Path(layers[0].source().split("|")[0].strip()))
+            if p.exists() and p.suffix.lower() in (".shp", ".geojson", ".json", ".gpkg"):
+                self._source_edit.setText(str(p))
+                return
 
-        export_dir = Path(__file__).resolve().parents[3] / "data" / "temp_zones"
+        # Sinon (groupe, couche mémoire, couche distante) : export dans un seul
+        # GeoPackage multi-couches — resolve_tiles_from_polygon unionne toutes
+        # les couches du fichier, chacune avec son propre CRS.
+        export_dir = self._plugin_root() / "data" / "temp_zones"
         export_dir.mkdir(parents=True, exist_ok=True)
-        tmp_shp = export_dir / f"{layer.name().replace(' ', '_')}.shp"
-        save_options = QgsVectorFileWriter.SaveVectorOptions()
-        save_options.driverName = "ESRI Shapefile"
-        error = QgsVectorFileWriter.writeAsVectorFormatV3(
-            layer, str(tmp_shp), project.transformContext(), save_options
-        )
-        if error[0] != QgsVectorFileWriter.WriterError.NoError:
+        out = export_dir / f"zone_{re.sub(r'[^A-Za-z0-9_-]', '_', base_name)}.gpkg"
+        try:
+            out.unlink(missing_ok=True)  # sinon les anciennes couches s'empilent
+        except OSError as e:
             QMessageBox.warning(
                 self,
-                "Erreur d'export",
-                f"Impossible d'exporter la couche « {layer.name()} ».\n{error[1]}",
+                "Fichier verrouillé",
+                f"Impossible de remplacer {out.name} : {e}\n"
+                "Déchargez cette couche du projet QGIS puis réessayez.",
             )
             return
-        self._source_edit.setText(str(tmp_shp))
+
+        used_names = set()
+        for i, lyr in enumerate(layers):
+            # Deux couches homonymes dans le groupe s'écraseraient dans le GPKG.
+            layer_name = lyr.name()
+            while layer_name in used_names:
+                layer_name = f"{lyr.name()}_{len(used_names)}"
+            used_names.add(layer_name)
+
+            save_options = QgsVectorFileWriter.SaveVectorOptions()
+            save_options.driverName = "GPKG"
+            save_options.layerName = layer_name
+            if i:
+                save_options.actionOnExistingFile = (
+                    QgsVectorFileWriter.ActionOnExistingFile.CreateOrOverwriteLayer
+                )
+            error = QgsVectorFileWriter.writeAsVectorFormatV3(
+                lyr, str(out), project.transformContext(), save_options
+            )
+            if error[0] != QgsVectorFileWriter.WriterError.NoError:
+                QMessageBox.warning(
+                    self,
+                    "Erreur d'export",
+                    f"Impossible d'exporter la couche « {lyr.name()} ».\n{error[1]}",
+                )
+                return
+        self._source_edit.setText(str(out))
 
     # ------------------------------------------------------------------
     # Sélection des dalles IGN directement sur le canevas (mode ign_laz)

@@ -84,7 +84,10 @@ def build_min_confidence_by_slug(
         else:
             fn = model_slug_fn
             if fn is None:
-                from ...pipeline.cv.runner_cache import get_model_slug as fn  # import différé
+                try:  # fallback standalone (tests : src/ sur le path)
+                    from ...pipeline.cv.runner_cache import get_model_slug as fn
+                except ImportError:  # pragma: no cover
+                    from pipeline.cv.runner_cache import get_model_slug as fn
             _put(fn(run), conf)
 
     return result
@@ -309,7 +312,7 @@ def finalize_pipeline(
     coverage_threshold_percent: float = 30.0,
     ui_config: Optional[Dict[str, Any]] = None,
     outcome: str = "success",
-) -> None:
+) -> bool:
     """
     Finalisation commune à tous les runners :
     1. Création des index VRT (tif/)
@@ -324,6 +327,10 @@ def finalize_pipeline(
     quand une exception fatale était en vol (AUDIT v2 ROB-14).
     ``tiles_total`` permet un décompte honnête (réussies/total) quand des
     éléments ont échoué ; défaut = ``tiles_processed``.
+
+    Renvoie le verdict final (``True`` = succès annoncé ✅), remonté par les
+    runners jusqu'au bandeau de fin de l'UI — sans quoi un run conclu « ❌ »
+    dans le journal s'affichait « ✓ Pipeline terminé » à l'écran.
     """
     import time
 
@@ -415,7 +422,9 @@ def finalize_pipeline(
             ],
             "structure": {
                 "indices": str(idx_dir),
-                "detections": str(det_dir),
+                # detections/ n'est créé que si la CV a produit un livrable :
+                # ne pas enregistrer de chemin fantôme quand la CV est inactive.
+                **({"detections": str(det_dir)} if Path(det_dir).is_dir() else {}),
             },
             "ui_config": ui_config or {},
         }
@@ -430,6 +439,13 @@ def finalize_pipeline(
     products_list = active_products or []
     total = tiles_total if tiles_total is not None else tiles_processed
     success = outcome == "success"
+    # 0/N : un lot dont AUCUNE dalle n'a produit de sortie n'est pas un succès
+    # — aucun livrable n'existe. L'échec partiel (p > 0) reste un ✅ avec ⚠️,
+    # et les modes sans compteur (total == 0, ex. existing_rvt sans CV) ne sont
+    # pas concernés.
+    all_tiles_failed = bool(total) and tiles_processed == 0
+    if success and all_tiles_failed:
+        success = False
 
     if slog:
         slog.end_pipeline(
@@ -442,7 +458,9 @@ def finalize_pipeline(
     # « ⏹ Traitement annulé » est émis par le runner après la finalisation —
     # rien à annoncer ici dans le cas cancelled.
     if outcome == "failed":
-        narrator.pipeline_failed("erreur inattendue pendant le traitement")
+        narrator.pipeline_failed("erreur inattendue pendant le traitement", start_time=start_time)
+    elif outcome == "success" and all_tiles_failed:
+        narrator.pipeline_failed("aucune dalle n'a produit de sortie", start_time=start_time)
     elif success:
         narrator.pipeline_complete(
             tiles_processed=tiles_processed,
@@ -495,3 +513,5 @@ def finalize_pipeline(
         reporter.stage("Annulé")
     else:
         reporter.stage("Interrompu par une erreur")
+
+    return success

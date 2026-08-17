@@ -72,10 +72,16 @@ def run_cv_post_loop(
     sa politique (le pattern actuel est de logger via ``reporter.error``
     et de continuer vers la finalisation).
     """
-    from ...pipeline.batch import process_items_isolated
-    from ...pipeline.cv.class_utils import resolve_cv_runs
-    from ...pipeline.modes.existing_rvt import run_existing_rvt
-    from ...pipeline.output_paths import resolve_rvt_tif_dir
+    try:  # fallback standalone (tests : src/ sur le path)
+        from ...pipeline.batch import process_items_isolated
+        from ...pipeline.cv.class_utils import resolve_cv_runs
+        from ...pipeline.modes.existing_rvt import run_existing_rvt
+        from ...pipeline.output_paths import resolve_rvt_tif_dir
+    except ImportError:  # pragma: no cover
+        from pipeline.batch import process_items_isolated
+        from pipeline.cv.class_utils import resolve_cv_runs
+        from pipeline.modes.existing_rvt import run_existing_rvt
+        from pipeline.output_paths import resolve_rvt_tif_dir
 
     cv_cfg = ctx.cv.raw
     cv_runs = resolve_cv_runs(cv_cfg)
@@ -95,6 +101,10 @@ def run_cv_post_loop(
 
     narrator = create_user_narrator(reporter)
     narrator.cv_start(len(cv_runs))
+
+    # total_detections par run (résumé du runner) — None exclus : si aucun
+    # run n'a de résumé (fallback, vieux binaire), pas d'annonce de total.
+    detection_counts: list = []
 
     def _process_run(run_idx: int, run_cfg: Dict[str, Any]) -> None:
         run_model = run_cfg.get("selected_model", "?")
@@ -130,7 +140,7 @@ def run_cv_post_loop(
             narrator.cv_run_image_progress(_model, idx, total, image_name)
             reporter.progress(cv_pct(_ri, _n, idx, total, cv_band))
 
-        run_existing_rvt(
+        res = run_existing_rvt(
             existing_rvt_dir=generated_rvt_tif_dir,
             output_dir=ctx.output_dir,
             cv_config=run_cfg,
@@ -140,8 +150,11 @@ def run_cv_post_loop(
             rvt_params=rvt_params,
             global_color_map=global_color_map,
             image_progress=_on_image_progress,
+            tile_progress=narrator.cv_run_tile_progress,
             on_busy=lambda active: report_busy(reporter, active),
         )
+        if res.total_detections is not None:
+            detection_counts.append(res.total_detections)
 
     def _on_run_failure(run_idx: int, run_cfg: Dict[str, Any], exc: Exception) -> None:
         model_display = _model_display_name(run_cfg.get("selected_model", "?"))
@@ -164,3 +177,5 @@ def run_cv_post_loop(
             f"⚠️ Computer Vision: {len(failed)} run(s) sur {len(cv_runs)} en échec "
             "— voir le journal."
         )
+    if detection_counts:
+        narrator.cv_complete(sum(detection_counts))

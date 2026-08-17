@@ -817,8 +817,13 @@ def create_shapefile_from_detections(
         # Si class_names n'est pas fourni via le dossier du modèle, on bascule sur des libellés numériques.
         # Parcourir tous les fichiers .txt dans le répertoire
         for label_file in labels_path.glob("*.txt"):
+            # classes.txt (vocabulaire du modèle) vit dans le même dossier que
+            # les labels — ce n'est pas une dalle : sans ce filtre, il déclenche
+            # une fausse ERROR « géoréférencement indisponible pour classes ».
+            if label_file.name == "classes.txt":
+                continue
             base_name = label_file.stem
-            
+
             # Récupérer les données de transformation du TIF correspondant
             pixel_width = pixel_height = x_origin = y_origin = None
             tif_file = None  # Référence au TIF source (si trouvé dans Temp)

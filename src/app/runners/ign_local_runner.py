@@ -51,14 +51,22 @@ class IgnOrLocalRunner:
         total_tiles: int,
         active_products: list,
     ) -> None:
-        from ...pipeline.ign.products.coverage import create_coverage_map
-        from ...pipeline.ign.products.crop import crop_final_products
-        from ...pipeline.ign.products.density import create_density_map
-        from ...pipeline.ign.products.indices import create_visualization_products
-        from ...pipeline.ign.products.mnt import create_terrain_model
-        from ...pipeline.ign.products.results import copy_final_products_to_results
-
-        from ...pipeline.output_paths import intermediaires_dir
+        try:  # fallback standalone (tests : src/ sur le path)
+            from ...pipeline.ign.products.coverage import create_coverage_map
+            from ...pipeline.ign.products.crop import crop_final_products
+            from ...pipeline.ign.products.density import create_density_map
+            from ...pipeline.ign.products.indices import create_visualization_products
+            from ...pipeline.ign.products.mnt import create_terrain_model
+            from ...pipeline.ign.products.results import copy_final_products_to_results
+            from ...pipeline.output_paths import intermediaires_dir
+        except ImportError:  # pragma: no cover
+            from pipeline.ign.products.coverage import create_coverage_map
+            from pipeline.ign.products.crop import crop_final_products
+            from pipeline.ign.products.density import create_density_map
+            from pipeline.ign.products.indices import create_visualization_products
+            from pipeline.ign.products.mnt import create_terrain_model
+            from pipeline.ign.products.results import copy_final_products_to_results
+            from pipeline.output_paths import intermediaires_dir
 
         tile_name = merged_path.name.replace(".copc.laz", "").replace(".laz", "")
         temp_dir = intermediaires_dir(output_dir)
@@ -159,7 +167,7 @@ class IgnOrLocalRunner:
         reporter: ProgressReporter,
         cancel: CancelToken,
         slog: Optional["StructuredLogger"] = None,
-    ) -> None:
+    ) -> Optional[bool]:
         # Vider le cache de validation PDAL au début de chaque run
         try:  # fallback standalone (tests : src/ sur le path), cf. imports module
             from ...pipeline.ign.pdal_validation import clear_validation_cache
@@ -209,6 +217,7 @@ class IgnOrLocalRunner:
         # La FUSION est DANS le try/finally (AUDIT v2 ROB-12) : un échec de
         # fusion ne saute plus la finalisation des produits déjà sur disque.
         cancelled = False
+        final_ok: Optional[bool] = None
         fatal = False
         try:
             log_section("FUSION DES TUILES", "process", slog=slog, reporter=reporter)
@@ -338,7 +347,7 @@ class IgnOrLocalRunner:
                 outcome = "failed"
             else:
                 outcome = "success"
-            finalize_pipeline(
+            final_ok = finalize_pipeline(
                 output_dir=ctx.output_dir,
                 cv_cfg=ctx.cv.raw,
                 rvt_params=ctx.rvt_params,
@@ -356,3 +365,5 @@ class IgnOrLocalRunner:
 
         if cancelled or cancel.is_cancelled():
             narrator.pipeline_cancelled()
+            return None
+        return final_ok

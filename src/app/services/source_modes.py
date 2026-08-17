@@ -48,13 +48,13 @@ DATA_MODES: Dict[str, ModeInfo] = {
         entry_stage=1,
         config_key="input_file",
         is_file=True,
-        source_label="Zone d'étude (polygone)",
-        placeholder="fichier.shp ou liste de dalles .txt",
+        source_label="Zone d'étude (polygone ou points)",
+        placeholder="fichier.shp/.gpkg (polygone ou points) ou liste de dalles .txt",
         banner_label="Téléchargement IGN",
-        banner_sub="à partir d'un polygone",
+        banner_sub="à partir d'un polygone ou de points",
         description="Le plugin télécharge les dalles LiDAR HD de l'IGN puis exécute "
         "le pipeline complet.",
-        valid_exts=(".shp", ".geojson", ".json", ".gpkg", ".txt"),
+        valid_exts=(".shp", ".dbf", ".geojson", ".json", ".gpkg", ".txt"),
     ),
     "local_laz": ModeInfo(
         mode="local_laz",
@@ -151,6 +151,19 @@ def path_state(
     if valid_exts and p.suffix.lower() not in valid_exts:
         return "warn"
     return "ok"
+
+
+def normalize_vector_input(path: Path) -> Path:
+    """Un ``.dbf`` désigné à la place du shapefile → le ``.shp`` voisin.
+
+    Le ``.dbf`` seul ne porte pas la géométrie ; sans ``.shp`` voisin le
+    chemin est rendu tel quel (``validate_run_context`` signale l'erreur).
+    """
+    if path.suffix.lower() == ".dbf":
+        shp = path.with_suffix(".shp")
+        if shp.exists():
+            return shp
+    return path
 
 
 def path_is_valid(text: str, *, expect_dir: bool, allow_create: bool = False) -> bool:

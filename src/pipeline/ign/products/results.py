@@ -13,7 +13,7 @@ from ...coords import get_raster_bounds
 from ...geo_utils import extract_tif_transform_data
 from ...output_paths import indices_dir, indice_tif_dir, indice_base_dir
 from ...subprocess_utils import run_subprocess_cancellable, subprocess_kwargs_no_window
-from ...tilespec import TileSpec, assign_crs_if_missing, is_degenerate_tile
+from ...tilespec import TileSpec, assign_crs_if_missing, is_degenerate_tile, tag_byte_nodata
 from .rvt_naming import PRODUCT_ORDER, get_rvt_source_and_dest_filenames, get_rvt_folder_name
 from ...types import CancelCheckFn, LogFn
 
@@ -96,9 +96,14 @@ def build_vrt_index(
         # rvt-qgis/pdal émettent parfois un TIF sans CRS (ENGCRS « unnamed ») —
         # on le ré-étiquette EPSG:2154 (assignation, sans reprojection). No-op si
         # un vrai CRS est déjà présent ; le VRT hérite alors d'un CRS valide.
+        # Idem pour le NoData des rendus 8 bits : rvt-qgis code le sans-donnée à
+        # 255 mais étiquette la bande « nan » (invalide sur du Byte) → sans-donnée
+        # opaque blanc, trous de mosaïque noirs (cf. tag_byte_nodata). On pose
+        # l'étiquette AVANT gdalbuildvrt pour que le VRT l'hérite en VRTNODATA.
         for src in files:
             try:
                 assign_crs_if_missing(src)
+                tag_byte_nodata(src)
             except Exception:
                 pass  # best-effort : un TIF illisible ne doit pas avorter le VRT
 

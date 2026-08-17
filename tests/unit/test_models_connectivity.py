@@ -124,7 +124,12 @@ def test_rfdetr_class_offset_consistent(model_dir: Path) -> None:
     if not is_rfdetr_model(model_dir):
         pytest.skip("Modèle non RF-DETR")
     offset = profile.metadata.get("class_offset")
-    assert offset == 1, (
-        f"RF-DETR attendu avec class_offset=1, trouvé {offset!r} "
+    # 1 = anciens exports (background en colonne 0 des logits) ;
+    # 0 = rfdetr >= 1.8 (classes remappées 0..n-1, no-object en FIN de logits).
+    # Le sidecar seul ne permet pas de distinguer les deux conventions : l'offset
+    # est fixé par export_to_onnx.py d'après le checkpoint (class_names présents
+    # sur l'objet modèle rfdetr >= 1.8) et vérifié empiriquement à l'export.
+    assert offset in (0, 1), (
+        f"RF-DETR attendu avec class_offset 0 ou 1, trouvé {offset!r} "
         f"dans weights/best.json"
     )

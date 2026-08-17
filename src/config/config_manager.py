@@ -144,9 +144,17 @@ class ConfigManager:
                     "meso_scale_min": 23,
                     "meso_scale_max": 203,
                     "meso_scale_step": 18,
-                    "broad_scale_min": 223,
-                    "broad_scale_max": 2023,
-                    "broad_scale_step": 180,
+                    # Échelle large calibrée sur le tuilage du plugin, PAS sur le
+                    # défaut RVT (223/2023/180). Un rayon de 2023 px demande
+                    # 2023 px de contexte de chaque côté ; la marge par défaut
+                    # (tile_overlap 20 % à 0,5 m) n'en fournit que 400 → RVT
+                    # fabriquerait le voisinage manquant par symétrie et les
+                    # dalles ne se raccorderaient plus. Cf.
+                    # app.services.rvt_kernel_context, qui vérifie la relation
+                    # à chaque run et signale les autres géométries.
+                    "broad_scale_min": 100,
+                    "broad_scale_max": 400,
+                    "broad_scale_step": 60,
                     "lightness": 1.2,
                     "ve_factor": 1,
                     "save_as_8bit": True,

@@ -15,7 +15,10 @@ from pipeline.tilespec import (
     is_degenerate_tile,
     make_uid,
     partition_degenerate,
+    reclass_rvt_byte,
+    reclass_rvt_nodata,
     same_crs_geometry,
+    tag_byte_nodata,
 )
 
 
@@ -240,6 +243,144 @@ def _write_tif(rasterio, path, *, crs, width=20, height=10,
         profile["crs"] = crs
     with rasterio.open(str(path), "w", **profile) as ds:
         ds.write(np.zeros((1, height, width), dtype="float32"))
+
+
+class TestTagByteNodata:
+    """Étiquette NoData=255 sur les rendus 8 bits RVT (bande émise avec un
+    NoData ``nan``, invalide sur du Byte → sans-donnée opaque, mosaïque noire)."""
+
+    def _write_byte_tif(self, rasterio, path, *, nodata="unset", dtype="uint8"):
+        import numpy as np
+        from rasterio.transform import from_origin
+
+        profile = dict(
+            driver="GTiff", width=4, height=4, count=1, dtype=dtype,
+            crs="EPSG:2154", transform=from_origin(700000.0, 6600000.0, 1.0, 1.0),
+        )
+        if nodata != "unset":
+            profile["nodata"] = nodata
+        with rasterio.open(str(path), "w", **profile) as ds:
+            ds.write(np.zeros((1, 4, 4), dtype=dtype))
+
+    def test_tags_255_when_nodata_unusable(self, _rasterio, tmp_path):
+        # Couvre les deux cas réels : CVAT (aucune étiquette) et rendus 8 bits
+        # rvt-qgis (étiquette ``nan``, que rasterio lit None/nan — inutilisable
+        # dans les deux cas ; infabricable en standalone, rasterio refuse
+        # d'écrire nan sur du Byte).
+        p = tmp_path / "byte_none.tif"
+        self._write_byte_tif(_rasterio, p)
+        assert tag_byte_nodata(p) is True
+        with _rasterio.open(str(p)) as ds:
+            assert ds.nodata == 255
+
+    def test_noop_when_valid_nodata_present(self, _rasterio, tmp_path):
+        p = tmp_path / "byte_nd0.tif"
+        self._write_byte_tif(_rasterio, p, nodata=0)
+        assert tag_byte_nodata(p) is False
+        with _rasterio.open(str(p)) as ds:
+            assert ds.nodata == 0  # pas écrasé
+
+    def test_noop_on_float_raster(self, _rasterio, tmp_path):
+        p = tmp_path / "float.tif"
+        self._write_byte_tif(_rasterio, p, dtype="float32")  # MNT : ne pas toucher
+        assert tag_byte_nodata(p) is False
+        with _rasterio.open(str(p)) as ds:
+            assert ds.nodata is None
+
+
+class TestReclassRvtByte:
+    """Séparation exacte des deux classes que byte_scale écrit toutes deux à 255 :
+    NoData réel du MNT (→255) et valides saturés en haut de plage (→254)."""
+
+    def _np(self):
+        import numpy as np
+        return np
+
+    def test_2d_separates_saturated_from_nodata(self):
+        np = self._np()
+        byte = np.array([[255, 255], [100, 0]], dtype=np.uint8)
+        invalid = np.array([[True, False], [False, False]])
+        out = reclass_rvt_byte(byte, invalid)
+        assert out.tolist() == [[255, 254], [100, 0]]  # NoData / saturé / intacts
+
+    def test_2d_forces_nodata_even_if_value_differs(self):
+        np = self._np()
+        # svf traite le nan comme « ciel ouvert » : un pixel sur MNT invalide
+        # peut porter une valeur ≠255 — le masque MNT fait foi.
+        byte = np.array([[42]], dtype=np.uint8)
+        out = reclass_rvt_byte(byte, np.array([[True]]))
+        assert out.tolist() == [[255]]
+
+    def test_3d_multiband_shares_spatial_mask(self):
+        np = self._np()
+        byte = np.full((3, 2, 2), 255, dtype=np.uint8)
+        byte[1, 1, 1] = 7
+        invalid = np.array([[True, False], [False, False]])
+        out = reclass_rvt_byte(byte, invalid)
+        assert (out[:, 0, 0] == 255).all()      # NoData sur toutes les bandes
+        assert (out[:, 0, 1] == 254).all()      # saturé sur toutes les bandes
+        assert out[1, 1, 1] == 7                # intact
+
+    def test_idempotent(self):
+        np = self._np()
+        byte = np.array([[255, 255], [200, 3]], dtype=np.uint8)
+        invalid = np.array([[True, False], [False, False]])
+        once = reclass_rvt_byte(byte, invalid)
+        twice = reclass_rvt_byte(once, invalid)
+        assert (once == twice).all()
+
+    def test_input_not_mutated(self):
+        np = self._np()
+        byte = np.array([[255]], dtype=np.uint8)
+        reclass_rvt_byte(byte, np.array([[False]]))
+        assert byte[0, 0] == 255
+
+
+class TestReclassRvtNodataFile:
+    """Wrapper fichier : reclasse un rendu 8 bits d'après le MNT et étiquette 255."""
+
+    def _write_pair(self, rasterio, tmp_path):
+        import numpy as np
+        from rasterio.transform import from_origin
+
+        profile = dict(
+            driver="GTiff", width=2, height=2, count=1, crs="EPSG:2154",
+            transform=from_origin(700000.0, 6600000.0, 1.0, 1.0),
+        )
+        dem = tmp_path / "dem.tif"
+        with rasterio.open(str(dem), "w", dtype="float32", nodata=-99999.0, **profile) as ds:
+            ds.write(np.array([[[-99999.0, 10.0], [11.0, 12.0]]], dtype="float32"))
+        rvt = tmp_path / "rvt.tif"
+        with rasterio.open(str(rvt), "w", dtype="uint8", **profile) as ds:
+            ds.write(np.array([[[255, 255], [100, 0]]], dtype="uint8"))
+        return dem, rvt
+
+    def test_reclassifies_and_tags(self, _rasterio, tmp_path):
+        dem, rvt = self._write_pair(_rasterio, tmp_path)
+        assert reclass_rvt_nodata(rvt, dem) is True
+        with _rasterio.open(str(rvt)) as ds:
+            assert ds.nodata == 255
+            assert ds.read(1).tolist() == [[255, 254], [100, 0]]
+
+    def test_noop_on_float_product(self, _rasterio, tmp_path):
+        dem, _ = self._write_pair(_rasterio, tmp_path)
+        assert reclass_rvt_nodata(dem, dem) is False  # produit float : intact
+
+    def test_noop_on_grid_mismatch(self, _rasterio, tmp_path):
+        import numpy as np
+        from rasterio.transform import from_origin
+
+        dem, rvt = self._write_pair(_rasterio, tmp_path)
+        other = tmp_path / "other.tif"
+        with _rasterio.open(
+            str(other), "w", driver="GTiff", width=3, height=3, count=1,
+            dtype="float32", crs="EPSG:2154",
+            transform=from_origin(0.0, 0.0, 1.0, 1.0),
+        ) as ds:
+            ds.write(np.zeros((1, 3, 3), dtype="float32"))
+        assert reclass_rvt_nodata(rvt, other) is False
+        with _rasterio.open(str(rvt)) as ds:
+            assert ds.read(1).tolist() == [[255, 255], [100, 0]]  # intact
 
 
 class TestAssignCrsIfMissing:

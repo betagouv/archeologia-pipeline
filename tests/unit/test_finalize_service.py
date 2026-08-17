@@ -365,3 +365,171 @@ class TestBuildCoveragePolygons:
         )
         assert len(polygons) == 2
         assert any("dalle par dalle" in m for m in logs)
+
+
+class _RecordingReporter:
+    """Reporter minimal du Protocol, qui enregistre tous les messages."""
+
+    def __init__(self):
+        self.infos: list[str] = []
+        self.users: list[str] = []
+
+    def info(self, msg):
+        self.infos.append(str(msg))
+
+    def error(self, msg):
+        self.infos.append(str(msg))
+
+    def user_info(self, msg):
+        self.users.append(str(msg))
+
+    def user_warning(self, msg):
+        self.users.append(str(msg))
+
+    def user_success(self, msg):
+        self.users.append(str(msg))
+
+    def user_info_transient(self, msg, group):
+        self.users.append(str(msg))
+
+    def stage(self, msg):
+        pass
+
+    def progress(self, pct):
+        pass
+
+    def load_layers(self, vrt_paths, shapefile_paths, class_colors=None, qa_paths=None):
+        pass
+
+    def metric(self, current, total, label):
+        pass
+
+    def stage_id(self, stage):
+        pass
+
+    def busy(self, active):
+        pass
+
+
+def _finalize(tmp_path, monkeypatch, **kw):
+    """finalize_pipeline minimal : collecteurs neutralisés (pas de gdalbuildvrt)."""
+    import time as _time
+
+    monkeypatch.setattr(finalize_service, "_collect_vrt_paths_and_build", lambda *a, **k: [])
+    monkeypatch.setattr(finalize_service, "_build_coverage_polygons", lambda *a, **k: None)
+    reporter = _RecordingReporter()
+    args = dict(
+        output_dir=tmp_path,
+        cv_cfg={},
+        rvt_params={},
+        reporter=reporter,
+        slog=None,
+        start_time=_time.time(),
+        active_products=["MNT"],
+        ui_config={},
+        outcome="success",
+    )
+    args.update(kw)
+    finalize_service.finalize_pipeline(**args)
+    return reporter
+
+
+class TestFinalizeOutcomeZeroSurN:
+    """0/N : un lot dont AUCUNE dalle n'a produit de sortie n'est pas un succès."""
+
+    def test_zero_sur_n_termine_en_erreur(self, tmp_path, monkeypatch):
+        r = _finalize(tmp_path, monkeypatch, tiles_processed=0, tiles_total=2)
+        assert any("❌ PIPELINE TERMINÉ AVEC ERREURS" in m for m in r.infos)
+        assert not any("✅ PIPELINE TERMINÉ AVEC SUCCÈS" in m for m in r.infos)
+
+    def test_echec_partiel_reste_un_succes(self, tmp_path, monkeypatch):
+        r = _finalize(tmp_path, monkeypatch, tiles_processed=1, tiles_total=2)
+        assert any("✅ PIPELINE TERMINÉ AVEC SUCCÈS" in m for m in r.infos)
+
+    def test_sans_compteur_reste_un_succes(self, tmp_path, monkeypatch):
+        # existing_rvt sans CV : tiles_processed=0 sans total → pas concerné.
+        r = _finalize(tmp_path, monkeypatch, tiles_processed=0)
+        assert any("✅ PIPELINE TERMINÉ AVEC SUCCÈS" in m for m in r.infos)
+
+    def test_annulation_reste_annulation(self, tmp_path, monkeypatch):
+        r = _finalize(tmp_path, monkeypatch, tiles_processed=0, tiles_total=2,
+                      outcome="cancelled")
+        assert any("⏹ PIPELINE ANNULÉ" in m for m in r.infos)
+        assert not any("❌" in m for m in r.infos)
+
+
+class TestMetadataStructureDetections:
+    """structure.detections n'est enregistré que si le dossier existe (CV active)."""
+
+    def _read_meta(self, tmp_path):
+        import json
+
+        return json.loads((tmp_path / "metadata.json").read_text(encoding="utf-8"))
+
+    def test_omise_quand_le_dossier_n_existe_pas(self, tmp_path, monkeypatch):
+        _finalize(tmp_path, monkeypatch, tiles_processed=1)
+        meta = self._read_meta(tmp_path)
+        assert "indices" in meta["structure"]
+        assert "detections" not in meta["structure"]
+
+    def test_presente_quand_le_dossier_existe(self, tmp_path, monkeypatch):
+        (tmp_path / "detections").mkdir()
+        _finalize(tmp_path, monkeypatch, tiles_processed=1)
+        meta = self._read_meta(tmp_path)
+        assert meta["structure"]["detections"].endswith("detections")
+
+
+class TestFinalizeReturnsVerdict:
+    """finalize_pipeline renvoie le verdict, remonté jusqu'au bandeau UI."""
+
+    def test_succes_renvoie_true(self, tmp_path, monkeypatch):
+        import time as _time
+
+        monkeypatch.setattr(finalize_service, "_collect_vrt_paths_and_build", lambda *a, **k: [])
+        monkeypatch.setattr(finalize_service, "_build_coverage_polygons", lambda *a, **k: None)
+        ok = finalize_service.finalize_pipeline(
+            output_dir=tmp_path, cv_cfg={}, rvt_params={},
+            reporter=_RecordingReporter(), slog=None, start_time=_time.time(),
+            tiles_processed=2, tiles_total=2, active_products=["MNT"],
+            ui_config={}, outcome="success",
+        )
+        assert ok is True
+
+    def test_zero_sur_n_renvoie_false(self, tmp_path, monkeypatch):
+        import time as _time
+
+        monkeypatch.setattr(finalize_service, "_collect_vrt_paths_and_build", lambda *a, **k: [])
+        monkeypatch.setattr(finalize_service, "_build_coverage_polygons", lambda *a, **k: None)
+        ok = finalize_service.finalize_pipeline(
+            output_dir=tmp_path, cv_cfg={}, rvt_params={},
+            reporter=_RecordingReporter(), slog=None, start_time=_time.time(),
+            tiles_processed=0, tiles_total=3, active_products=["MNT"],
+            ui_config={}, outcome="success",
+        )
+        assert ok is False
+
+    def test_narrateur_duree_reelle_pas_0s(self, tmp_path, monkeypatch):
+        import time as _time
+
+        monkeypatch.setattr(finalize_service, "_collect_vrt_paths_and_build", lambda *a, **k: [])
+        monkeypatch.setattr(finalize_service, "_build_coverage_polygons", lambda *a, **k: None)
+        r = _RecordingReporter()
+        finalize_service.finalize_pipeline(
+            output_dir=tmp_path, cv_cfg={}, rvt_params={},
+            reporter=r, slog=None, start_time=_time.time() - 90,
+            tiles_processed=0, tiles_total=2, active_products=["MNT"],
+            ui_config={}, outcome="success",
+        )
+        failed = [m for m in r.users if "interrompu" in m]
+        assert failed and "après 0s" not in failed[0]
+        assert "1min 30s" in failed[0]  # 90 s écoulées, durée réelle affichée
+
+
+class TestExistingMntResultCandidates:
+    """candidates transporte le total honnête (0/N) jusqu'au runner."""
+
+    def test_default_zero_compat(self):
+        from pipeline.modes.existing_mnt import ExistingMntResult
+
+        assert ExistingMntResult(total=3).candidates == 0
+        assert ExistingMntResult(total=0, candidates=2).candidates == 2

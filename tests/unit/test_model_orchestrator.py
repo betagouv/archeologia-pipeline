@@ -650,9 +650,9 @@ class TestMorphology:
         by_morph: dict = {}
         for e in cat:
             by_morph.setdefault(e.morphology, []).append(e.id)
-        assert len(by_morph.get("circulaire", [])) == 5
-        assert len(by_morph.get("lineaire", [])) == 4
-        assert by_morph.get("zone", []) == ["regroupement_crateres", "enclos", "axe_lineaire"]
+        assert len(by_morph.get("circulaire", [])) == 7
+        assert len(by_morph.get("lineaire", [])) == 6
+        assert by_morph.get("zone", []) == ["regroupement_crateres", "axe_lineaire"]
 
 
 # args.yaml avec les paramètres DBSCAN complets (défauts exposables dans l'UI)

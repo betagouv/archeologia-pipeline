@@ -22,7 +22,12 @@ from typing import Any, Dict, Optional, Tuple
 
 from ..cancellation import PipelineCancelled
 from ..types import LogFn, CancelCheckFn
-from .external_runner import ImageProgressFn, find_external_cv_runner, run_external_cv_runner
+from .external_runner import (
+    ImageProgressFn,
+    TileProgressFn,
+    find_external_cv_runner,
+    run_external_cv_runner,
+)
 from .runner_cache import (
     get_model_slug,
     has_cached_detection,
@@ -70,7 +75,10 @@ def run_cv_on_folder(
     log: LogFn = lambda _: None,
     cancel_check: Optional[CancelCheckFn] = None,
     image_progress: Optional[ImageProgressFn] = None,
-) -> None:
+    tile_progress: Optional[TileProgressFn] = None,
+) -> Optional[int]:
+    # Retour : total_detections du run (résumé du runner externe), None si
+    # inconnu (fallback in-process, court-circuit, ancien binaire).
     # ``models_dir`` → absolu : indispensable pour que le runner externe
     # (subprocess) ET le fallback trouvent le .onnx quel que soit le CWD.
     cv_config = _absolutize_models_dir(cv_config)
@@ -232,7 +240,7 @@ def run_cv_on_folder(
             # Le runner externe ne gère que l'inférence (pas les shapefiles).
             # La génération shapefile + post-processing global est faite côté
             # plugin Python (shapely disponible) après le retour du runner.
-            run_external_cv_runner(
+            total_detections = run_external_cv_runner(
                 ext=ext,
                 jpg_dir=jpg_dir,
                 target_rvt=target_rvt,
@@ -247,6 +255,7 @@ def run_cv_on_folder(
                 log=log,
                 cancel_check=cancel_check,
                 image_progress=image_progress,
+                tile_progress=tile_progress,
             )
             # Générer les shapefiles côté plugin (avec shapely + post-processing)
             if run_shapefile_dedup:
@@ -264,7 +273,7 @@ def run_cv_on_folder(
                     log=log,
                     cancel_check=cancel_check,
                 )
-            return
+            return total_detections
         except PipelineCancelled:
             # Annulation utilisateur : propager sans tenter le fallback.
             raise
@@ -280,8 +289,10 @@ def run_cv_on_folder(
 
     enabled = bool((cv_config or {}).get("enabled", False))
     if not enabled:
-        return
+        return None
 
+    # ponytail: le fallback in-process ne remonte ni tuiles ni total — chemin
+    # rare (binaire absent), à câbler si l'usage sans binaire se généralise.
     run_fallback_inference(
         jpg_dir=jpg_dir,
         raw_dir=effective_raw_dir,

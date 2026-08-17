@@ -120,7 +120,10 @@ class IgnDownloadStrategy:
         slog: Optional["StructuredLogger"],
         processing: "ProcessingConfig",
     ) -> Optional[AcquireResult]:
-        from ...pipeline.ign.downloader import download_ign_dalles
+        try:  # fallback standalone (tests : src/ sur le path)
+            from ...pipeline.ign.downloader import download_ign_dalles
+        except ImportError:  # pragma: no cover
+            from pipeline.ign.downloader import download_ign_dalles
 
         narrator = create_user_narrator(reporter)
 
@@ -130,10 +133,17 @@ class IgnDownloadStrategy:
         assert input_path is not None
         assert ctx.output_dir is not None
 
-        # Détection du type d'entrée : shapefile/geojson → résolution des dalles
+        # Détection du type d'entrée : shapefile/geojson → résolution des dalles.
+        # Un .dbf pointé à la place du .shp voisin est remplacé par celui-ci.
+        from ..services.source_modes import normalize_vector_input
+
+        input_path = normalize_vector_input(input_path)
         is_vector = input_path.suffix.lower() in (".shp", ".geojson", ".json", ".gpkg")
         if is_vector:
-            from ...pipeline.ign.tile_resolver import resolve_tiles_from_polygon
+            try:  # fallback standalone (tests : src/ sur le path)
+                from ...pipeline.ign.tile_resolver import resolve_tiles_from_polygon
+            except ImportError:  # pragma: no cover
+                from pipeline.ign.tile_resolver import resolve_tiles_from_polygon
 
             log_section("RÉSOLUTION DES DALLES IGN", "download", slog=slog, reporter=reporter)
             report_stage_id(reporter, Stage.DOWNLOAD)
@@ -228,7 +238,10 @@ class LocalLazStrategy:
         slog: Optional["StructuredLogger"],
         processing: "ProcessingConfig",
     ) -> Optional[AcquireResult]:
-        from ...pipeline.modes.local_laz import run_local_laz
+        try:  # fallback standalone (tests : src/ sur le path)
+            from ...pipeline.modes.local_laz import run_local_laz
+        except ImportError:  # pragma: no cover
+            from pipeline.modes.local_laz import run_local_laz
 
         narrator = create_user_narrator(reporter)
         # Pré-conditions garanties par validate_run_context (V3.3).

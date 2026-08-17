@@ -406,6 +406,162 @@ def assign_crs_if_missing(path, fallback_authid: str = "EPSG:2154") -> Optional[
         return None
 
 
+def tag_byte_nodata(path, value: int = 255) -> bool:
+    """Déclare ``value`` comme NoData sur un raster 8 bits qui n'en a pas d'exploitable.
+
+    rvt-qgis écrit **255** dans les cellules sans donnée de ses rendus 8 bits
+    (``rvt/vis.py:byte_scale`` — « change no_data to 255 ») mais étiquette la
+    bande avec ``nan``, ce qui n'a aucun sens sur du Byte : ni GDAL ni QGIS ne
+    peuvent masquer. Conséquences observées sur un MNT à large NoData (dalle
+    étrangère reprojetée) : les zones sans donnée sortent en **blanc opaque**
+    dans la dalle, et en **noir** dans les trous de la mosaïque (gdalbuildvrt
+    hérite du ``nan``, initialise le tampon Byte à 0). ``compute_cvat`` ne pose
+    aucune étiquette : même symptôme, même correctif.
+
+    *Assignation d'étiquette uniquement* (aucun pixel n'est réécrit). ⚠️ 255
+    contient AUSSI les pixels valides écrêtés en haut de plage par ``byte_scale``
+    (tout x ≥ ~99,6 % de la plage → 255) : c'est :func:`reclass_rvt_nodata`,
+    appelée à la génération quand le MNT source est encore sous la main, qui
+    sépare les deux classes (saturés → 254). Ce tag reste le filet de sécurité
+    pour les rasters orphelins (mode ``existing_rvt``, sorties antérieures).
+
+    No-op si le raster n'est pas 8 bits ou porte déjà un NoData exploitable.
+    Renvoie True si l'étiquette a été écrite. Essaie rasterio puis ``osgeo.gdal``
+    (même stratégie que :func:`assign_crs_if_missing`).
+    """
+    def _unusable(nd) -> bool:
+        return nd is None or nd != nd  # None ou NaN
+
+    try:  # rasterio (présent en test ; parfois dans QGIS)
+        import rasterio
+
+        with rasterio.open(str(path), "r+") as ds:
+            if set(ds.dtypes) != {"uint8"} or not _unusable(ds.nodata):
+                return False
+            ds.nodata = value
+        return True
+    except ImportError:
+        pass
+    except Exception:
+        return False
+
+    try:  # osgeo.gdal (toujours présent côté QGIS)
+        from osgeo import gdal
+
+        ds = gdal.Open(str(path), gdal.GA_Update)
+        if ds is None:
+            return False
+        bands = [ds.GetRasterBand(i + 1) for i in range(ds.RasterCount)]
+        if not bands or any(b.DataType != gdal.GDT_Byte for b in bands):
+            return False
+        if any(not _unusable(b.GetNoDataValue()) for b in bands):
+            return False
+        for b in bands:
+            b.SetNoDataValue(value)
+        ds = None  # flush sur disque
+        return True
+    except Exception:
+        return False
+
+
+#: Convention des rendus RVT 8 bits reclassés : 255 = NoData réel, 254 = valide saturé.
+RVT_BYTE_NODATA = 255
+RVT_BYTE_SATURATED = 254
+
+
+def reclass_rvt_byte(byte_arr, dem_invalid):
+    """Reclasse (copie) un rendu RVT 8 bits d'après le masque NoData de son MNT.
+
+    ``byte_scale`` (rvt-qgis) écrit 255 pour DEUX classes indiscernables après
+    coup : les nan (emprise NoData du MNT — vérifié dans rvt/vis.py : slrm,
+    local_dominance, hillshade et svf sont nan-aware, le nan ne se propage PAS
+    aux voisins, le masque du produit = exactement celui du MNT) et les valeurs
+    valides écrêtées en haut de plage. Séparation exacte, sans dilatation :
+
+    - MNT invalide → 255 (NoData) ;
+    - 255 sur MNT valide → 254 (saturé, visuellement quasi identique).
+
+    ``byte_arr`` : uint8 ``(H, W)`` ou ``(bandes, H, W)`` ; ``dem_invalid`` :
+    bool ``(H, W)``. Pure numpy, idempotente.
+    """
+    import numpy as np
+
+    out = np.array(byte_arr, copy=True)
+    dem_valid = ~np.asarray(dem_invalid, dtype=bool)
+    if out.ndim == 2:
+        out[(out == RVT_BYTE_NODATA) & dem_valid] = RVT_BYTE_SATURATED
+        out[~dem_valid] = RVT_BYTE_NODATA
+    else:
+        out[(out == RVT_BYTE_NODATA) & dem_valid[None, :, :]] = RVT_BYTE_SATURATED
+        out[:, ~dem_valid] = RVT_BYTE_NODATA
+    return out
+
+
+def reclass_rvt_nodata(rvt_path, dem_path) -> bool:
+    """Applique :func:`reclass_rvt_byte` à un fichier RVT 8 bits, d'après son MNT.
+
+    À appeler **à la génération**, tant que le MNT source est sous la main —
+    après coup les deux classes de 255 sont indiscernables. Pose aussi
+    l'étiquette NoData=255. Idempotent. Renvoie False (no-op) si le raster
+    n'est pas 8 bits ou si les grilles diffèrent. Essaie rasterio puis
+    ``osgeo.gdal`` (même stratégie que :func:`tag_byte_nodata`).
+    """
+    import numpy as np
+
+    def _dem_invalid(arr, nd):
+        invalid = np.isnan(arr)
+        if nd is not None and not (nd != nd):  # nodata défini et pas nan
+            invalid |= arr == nd
+        return invalid
+
+    try:  # rasterio (présent en test ; parfois dans QGIS)
+        import rasterio
+
+        with rasterio.open(str(dem_path)) as dem:
+            dem_arr = dem.read(1)
+            invalid = _dem_invalid(dem_arr, dem.nodata)
+        with rasterio.open(str(rvt_path), "r+") as ds:
+            if set(ds.dtypes) != {"uint8"} or (ds.height, ds.width) != invalid.shape:
+                return False
+            ds.write(reclass_rvt_byte(ds.read(), invalid))
+            ds.nodata = RVT_BYTE_NODATA
+        return True
+    except ImportError:
+        pass
+    except Exception:
+        return False
+
+    try:  # osgeo.gdal (toujours présent côté QGIS)
+        from osgeo import gdal
+
+        dem_ds = gdal.Open(str(dem_path))
+        if dem_ds is None:
+            return False
+        dem_band = dem_ds.GetRasterBand(1)
+        invalid = _dem_invalid(
+            dem_band.ReadAsArray().astype(np.float64), dem_band.GetNoDataValue()
+        )
+        dem_ds = None
+
+        ds = gdal.Open(str(rvt_path), gdal.GA_Update)
+        if ds is None:
+            return False
+        bands = [ds.GetRasterBand(i + 1) for i in range(ds.RasterCount)]
+        if any(b.DataType != gdal.GDT_Byte for b in bands) or (
+            ds.RasterYSize, ds.RasterXSize
+        ) != invalid.shape:
+            return False
+        arr = ds.ReadAsArray()  # (H, W) mono-bande, (bandes, H, W) sinon
+        out = reclass_rvt_byte(arr, invalid)
+        for i, b in enumerate(bands):
+            b.WriteArray(out if out.ndim == 2 else out[i])
+            b.SetNoDataValue(RVT_BYTE_NODATA)
+        ds = None  # flush sur disque
+        return True
+    except Exception:
+        return False
+
+
 def is_degenerate_tile(
     spec: "TileSpec",
     *,

@@ -6,6 +6,11 @@ from pathlib import Path
 from typing import Any, Callable, Dict, Optional, Tuple
 
 from ..coords import extract_xy_from_filename, get_raster_bounds, infer_xy_from_file
+
+try:  # fallback standalone (tests : src/ sur le path)
+    from ...app.services.rvt_kernel_context import raster_context_warnings
+except ImportError:  # pragma: no cover
+    from app.services.rvt_kernel_context import raster_context_warnings
 from ..subprocess_utils import run_subprocess_cancellable
 from ..ign.products.crop import copy_products_without_crop, crop_final_products
 from ..ign.products.indices import create_visualization_products
@@ -23,7 +28,9 @@ _ALIGN_TOLERANCE_M = 50
 
 @dataclass(frozen=True)
 class ExistingMntResult:
-    total: int
+    total: int          # dalles ayant produit une sortie (« processed »)
+    candidates: int = 0  # dalles candidates entrées dans la boucle — permet au
+    #                     runner de passer un tiles_total honnête (0/N → ❌)
 
 
 def _infer_tile_coords_from_mnt(mnt_path: Path, log: LogFn) -> Tuple[Optional[str], Optional[str], Optional[str]]:
@@ -291,6 +298,9 @@ def run_existing_mnt(
     # Filet anti-collision : garantit l'unicité des uid (donc des noms de sortie)
     # pour les dalles sub-km / hors-grille traitées par-dalle.
     seen_uids: set[str] = set()
+    # Avertissements « noyau RVT trop large pour ce raster » déjà émis (un lot de
+    # rasters de même géométrie produirait sinon la même ligne pour chacun).
+    warned_context: set[str] = set()
     from ..batch import process_items_isolated
 
     def _process_one_mnt(idx: int, mnt_path: Path) -> None:
@@ -328,6 +338,21 @@ def run_existing_mnt(
         else:
             layout = "standard"
             log(f"MNT {mnt_path.name}: emprise inconnue → layout par défaut 'standard'")
+
+        # 1 bis) Le raster est-il assez large pour les noyaux RVT demandés ?
+        #    Ici il n'y a pas de dalle voisine : au-delà du bord, RVT replie
+        #    l'emprise sur elle-même. Sur un petit MNT face à un grand noyau, le
+        #    produit est majoritairement fabriqué — et comme il n'y a qu'un seul
+        #    raster, AUCUNE couture ne le signale (échec silencieux, cf.
+        #    app.services.rvt_kernel_context). Dédoublonné : un lot de rasters de
+        #    même taille ne doit pas répéter 100 fois la même ligne.
+        if spec is not None:
+            for msg in raster_context_warnings(
+                products, rvt_params, width_px=spec.width_px, height_px=spec.height_px
+            ):
+                if msg not in warned_context:
+                    warned_context.add(msg)
+                    err(f"⚠️ {mnt_path.name} : {msg}")
 
         # 2) Cas LARGE: PAS de pré-découpage. On calcule les indices RVT sur
         #    le raster complet, puis le CV (SAHI) ira découper à l'inférence
@@ -444,4 +469,4 @@ def run_existing_mnt(
             f"(annulation ou erreur) — vérifiez le journal."
         )
 
-    return ExistingMntResult(total=processed)
+    return ExistingMntResult(total=processed, candidates=total)

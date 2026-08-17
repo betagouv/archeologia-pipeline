@@ -1424,6 +1424,10 @@ def run_onnx_inference(
             total_raw_detections += len(dets)
             if len(dets) > 0:
                 logger.info(f"ONNX: slice {idx+1}/{len(sliced_images)} -> {len(dets)} détections")
+            # Progression régulière (même cadence que RF-DETR Seg/SegFormer) :
+            # remontée à l'UI via _TILE_PROGRESS_RE (« SAHI: X/Y tuiles »).
+            if (idx + 1) % 10 == 0:
+                logger.info(f"ONNX SAHI: {idx + 1}/{len(sliced_images)} tuiles traitées")
             
             # Convertir en objets sahi_lite.Detection (pour merge_sliced_detections)
             slice_detections = [

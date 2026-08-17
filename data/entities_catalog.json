@@ -44,6 +44,20 @@
       "morphology": "lineaire"
     },
     {
+      "id": "talus",
+      "label": "Talus",
+      "description": "Talus seuls (relief linéaire positif, sans fossé associé visible).",
+      "display_order": 62,
+      "morphology": "lineaire"
+    },
+    {
+      "id": "fosse",
+      "label": "Fossés",
+      "description": "Fossés seuls (relief linéaire négatif, sans talus associé visible).",
+      "display_order": 64,
+      "morphology": "lineaire"
+    },
+    {
       "id": "charbonniere",
       "label": "Charbonnières",
       "description": "Plateformes de charbonnage (production de charbon de bois).",
@@ -74,9 +88,16 @@
     {
       "id": "enclos",
       "label": "Enclos",
-      "description": "Enclos fossoyés (curvilignes ou quadrangulaires) reconstruits par fermeture des détections parcellaires et talus/fossés. Scores de fermeture, d'isolement et de forme en attributs.",
+      "description": "Enclos à talus/fossé français (circulaires, curvilignes ou quadrangulaires) — modèle par transfert affiné sur le corpus français (Bretagne + IdF), LD 1 m.",
+      "display_order": 96,
+      "morphology": "circulaire"
+    },
+    {
+      "id": "enclos_circulaire",
+      "label": "Enclos circulaires",
+      "description": "Enclos à morphologie circulaire (ringforts, enclosures) — modèle entraîné sur le corpus irlandais, LD 1 m. Adapté à la prospection de formes circulaires.",
       "display_order": 97,
-      "morphology": "zone"
+      "morphology": "circulaire"
     },
     {
       "id": "axe_lineaire",

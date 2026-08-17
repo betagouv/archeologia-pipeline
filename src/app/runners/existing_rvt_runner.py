@@ -31,7 +31,7 @@ class ExistingRvtRunner:
         reporter: ProgressReporter,
         cancel: CancelToken,
         slog: Optional["StructuredLogger"] = None,
-    ) -> None:
+    ) -> Optional[bool]:
         try:
             from ...pipeline.modes.existing_rvt import run_existing_rvt
         except ImportError:
@@ -88,6 +88,10 @@ class ExistingRvtRunner:
             # image par image via cv_pct dans _on_image_progress.
             reporter.progress(plan.cv[0])
 
+        # total_detections par run (résumé du runner) — None exclus : si aucun
+        # run n'a de résumé (fallback, vieux binaire), pas d'annonce de total.
+        detection_counts: list = []
+
         def _process_run(run_idx: int, run_cfg: dict) -> None:
             nonlocal total_images
             run_model = run_cfg.get("selected_model", "?")
@@ -116,9 +120,12 @@ class ExistingRvtRunner:
                 global_color_map=global_color_map,
                 indices_folder_name="RVT",
                 image_progress=_on_image_progress if cv_runs else None,
+                tile_progress=narrator.cv_run_tile_progress if cv_runs else None,
                 on_busy=lambda active: report_busy(reporter, active),
             )
             total_images = max(total_images, res.total_images)
+            if res.total_detections is not None:
+                detection_counts.append(res.total_detections)
 
         def _on_run_failure(run_idx: int, run_cfg: dict, exc: Exception) -> None:
             model_display = _model_display_name(run_cfg.get("selected_model", "?"))
@@ -134,6 +141,7 @@ class ExistingRvtRunner:
         # runner avait été oublié par le correctif ROB-02/03/04).
         cancelled = False
         fatal = False
+        final_ok: Optional[bool] = None
         try:
             _ok, failed = process_items_isolated(
                 run_configs,
@@ -146,6 +154,8 @@ class ExistingRvtRunner:
                     f"⚠️ Computer Vision: {len(failed)} run(s) sur "
                     f"{len(run_configs)} en échec — voir le journal."
                 )
+            if detection_counts:
+                narrator.cv_complete(sum(detection_counts))
         except PipelineCancelled:
             cancelled = True
             reporter.info("Annulation demandée — finalisation des résultats partiels…")
@@ -164,7 +174,7 @@ class ExistingRvtRunner:
                 outcome = "failed"
             else:
                 outcome = "success"
-            finalize_pipeline(
+            final_ok = finalize_pipeline(
                 output_dir=ctx.output_dir,
                 cv_cfg=cv_config,
                 rvt_params=ctx.rvt_params,
@@ -180,3 +190,5 @@ class ExistingRvtRunner:
 
         if cancelled or cancel.is_cancelled():
             narrator.pipeline_cancelled()
+            return None
+        return final_ok

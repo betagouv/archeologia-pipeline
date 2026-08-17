@@ -913,13 +913,21 @@ def export_rfdetr_to_onnx(
             except Exception:
                 pass
         
+        # rfdetr >= 1.8 remappe les catégories COCO en 0..n-1 (class_names portés
+        # par le checkpoint, colonne no-object en FIN des logits) -> offset 0.
+        # Anciens checkpoints (sans class_names) : background en colonne 0 -> offset 1.
+        ckpt_class_names = getattr(rfdetr_model, "class_names", None)
+        class_offset = 0 if ckpt_class_names else 1
+        print(f"[INFO] class_offset={class_offset} "
+              f"({'class_names du checkpoint (0-indexé)' if ckpt_class_names else 'legacy, background en colonne 0'})")
+
         # Sauvegarder les infos du modèle
         meta_path = output_path.with_suffix('.json')
         meta = {
             "model_type": "rfdetr",
             "task": task,
             "resolution": resolution,
-            "class_offset": 1,  # RF-DETR utilise des class IDs 1-indexés
+            "class_offset": class_offset,
             "source": _relative_source(model_path, output_path),
         }
         if num_classes:

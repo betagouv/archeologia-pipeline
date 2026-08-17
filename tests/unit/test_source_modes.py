@@ -1,9 +1,12 @@
 """Tests pour la logique pure des modes de données (frise étape 1)."""
 from __future__ import annotations
 
+from pathlib import Path
+
 from app.services.source_modes import (
     DATA_MODES,
     mode_info,
+    normalize_vector_input,
     ordered_modes,
     path_is_valid,
     path_state,
@@ -48,6 +51,7 @@ class TestModeInfo:
 
     def test_ign_has_vector_exts(self):
         assert ".shp" in mode_info("ign_laz").valid_exts
+        assert ".dbf" in mode_info("ign_laz").valid_exts
 
     def test_dir_modes_have_no_exts(self):
         assert mode_info("local_laz").valid_exts == ()
@@ -110,6 +114,29 @@ class TestPathState:
         f = tmp_path / "x.shp"
         f.write_text("x", encoding="utf-8")
         assert path_state(str(f), expect_dir=False, valid_exts=(".shp", ".gpkg")) == "ok"
+
+
+class TestNormalizeVectorInput:
+    def test_dbf_with_sibling_shp_becomes_shp(self, tmp_path):
+        (tmp_path / "zone.shp").write_text("x", encoding="utf-8")
+        dbf = tmp_path / "zone.dbf"
+        dbf.write_text("x", encoding="utf-8")
+        assert normalize_vector_input(dbf) == tmp_path / "zone.shp"
+
+    def test_dbf_without_sibling_shp_unchanged(self, tmp_path):
+        dbf = tmp_path / "zone.dbf"
+        dbf.write_text("x", encoding="utf-8")
+        assert normalize_vector_input(dbf) == dbf
+
+    def test_dbf_uppercase_suffix_normalized(self, tmp_path):
+        (tmp_path / "zone.shp").write_text("x", encoding="utf-8")
+        dbf = tmp_path / "zone.DBF"
+        dbf.write_text("x", encoding="utf-8")
+        assert normalize_vector_input(dbf) == tmp_path / "zone.shp"
+
+    def test_non_dbf_untouched(self):
+        assert normalize_vector_input(Path("/x/zone.shp")) == Path("/x/zone.shp")
+        assert normalize_vector_input(Path("/x/dalles.txt")) == Path("/x/dalles.txt")
 
 
 class TestPathIsValid:

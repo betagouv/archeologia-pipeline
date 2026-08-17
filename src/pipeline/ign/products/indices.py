@@ -8,6 +8,7 @@ from typing import Any, Dict, Optional
 from .cvat import compute_cvat
 from .qgis_processing import run_qgis_algorithm
 from .rvt_naming import get_rvt_temp_filename
+from ...tilespec import reclass_rvt_nodata
 from ...types import LogFn, format_params_line
 
 
@@ -306,6 +307,11 @@ def create_visualization_products(
         meso_scale_min = _as_int(mstp.get("meso_scale_min", 23), 23)
         meso_scale_max = _as_int(mstp.get("meso_scale_max", 203), 203)
         meso_scale_step = _as_int(mstp.get("meso_scale_step", 18), 18)
+        # Ces repli 223/2023/180 sont les défauts de RVT (clé absente), PAS les
+        # défauts du plugin (100/400/60, écrits par config_manager et l'UI). Ne
+        # pas les « aligner » : rvt_naming.py replie sur les mêmes valeurs, et
+        # les faire diverger ferait nommer le dossier autrement qu'il n'est
+        # calculé (cf. l'invariant « même rvt_params des deux côtés »).
         broad_scale_min = _as_int(mstp.get("broad_scale_min", 223), 223)
         broad_scale_max = _as_int(mstp.get("broad_scale_max", 2023), 2023)
         broad_scale_step = _as_int(mstp.get("broad_scale_step", 180), 180)
@@ -365,5 +371,17 @@ def create_visualization_products(
             outputs["CVAT"] = out
         else:
             log(f"CVAT non créé: {out.name}")
+
+    # Rendus 8 bits : séparer NoData réel (→255, étiqueté) et valides saturés
+    # (→254) tant que le MNT est sous la main — après coup les deux classes de
+    # 255 sont indiscernables (cf. tilespec.reclass_rvt_nodata). Sans cela, un
+    # MNT à large NoData (dalle étrangère reprojetée) rend le sans-donnée en
+    # blanc opaque, et masquer 255 en aval troue les zones saturées (talus).
+    # Idempotent, best-effort, no-op sur un produit float.
+    for key, out_path in outputs.items():
+        try:
+            reclass_rvt_nodata(out_path, input_path)
+        except Exception as exc:
+            log(f"Reclass NoData {key} ignoré ({exc!r})")
 
     return IndicesResult(outputs=outputs)

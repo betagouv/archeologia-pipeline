@@ -508,3 +508,18 @@ Cette grille indique, pour chaque vague livrée, **quelles sections de tests son
 - [ ] **25.6 Groupe imbriqué** : mettre le groupe « Zones » dans un groupe parent « Terrain » → les **deux** apparaissent dans la liste ; choisir « Terrain » donne les mêmes couches (descendants inclus).
 - [ ] **25.7 Non-régression couche seule** : choisir une couche **fichier** (shp/gpkg) → le champ pointe directement le fichier d'origine (**pas** de copie dans `temp_zones`). Choisir une couche **mémoire/temporaire** → export en `zone_<nom>.gpkg` et le run aboutit.
 - [ ] **25.8 Groupe sans vecteur** : un groupe ne contenant que des rasters n'apparaît **pas** dans la liste.
+
+## 26. Halo inter-dalles : détections non coupées aux frontières (mode `ign_laz`) ⭐ P0
+
+> **Contexte** : l'inférence CV tourne sur les TIF **non rognés** d'`intermediaires/`
+> (dalle + marge `tile_overlap`). Un objet à cheval sur la frontière entre deux
+> dalles du run doit sortir **entier et une seule fois** dans le `.gpkg` ; le halo
+> extérieur au périmètre (NoData) ne doit produire aucune détection.
+
+- [ ] **26.1 Source non rognée** : run `ign_laz` ≥ 2 dalles adjacentes + CV active → le journal montre `Conversion TIF->PNG (existing_rvt): LHD_FXX_…_PTS_C_LAMB93_IGN69_<RVT>….tif -> …` (nom **source non rogné**, pas le nom `…_A_LAMB93`).
+- [ ] **26.2 PNG à marge** : dans `indices/<RVT…>/png/`, les PNG font ~2800×2800 px (marge 20 % @ 0,5 m) et s'alignent sur le VRT quand on les charge via leur `.pgw`.
+- [ ] **26.3 Objet à cheval** : une structure traversant la frontière entre deux dalles ressort **continue** (pas de coupure rectiligne à x/y multiple de 1000 m) et **sans doublon** superposé dans la bande de recouvrement.
+- [ ] **26.4 Pas de bruit hors périmètre** : aucune détection au-delà de l'union des dalles commandées (halo extérieur clippé).
+- [ ] **26.5 Cache invalidé** : relancer dans un `output_dir` d'un run antérieur → journal `cache(s) de détection plus ancien(s) que leur PNG — purgé(s), ré-inférence` au premier passage ; résultats stables au second.
+- [ ] **26.6 VRT intact** : `indices/<X>/tif/` ne contient que des TIF 1 km rognés ; le VRT `index_<X>` s'affiche sans recouvrements ni doublons.
+- [ ] **26.7 Non-régression autres modes** : un run `existing_rvt` / `existing_mnt` reste identique (PNG aux dimensions du TIF fourni, pas de halo, pas de clip).

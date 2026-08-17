@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from ..cancellation import PipelineCancelled
 from ..types import LogFn, CancelCheckFn
@@ -33,6 +33,7 @@ from .runner_cache import (
     has_cached_detection,
     list_candidate_pngs,
     prepare_model_workdir,
+    purge_stale_cached_detections,
 )
 from .runner_inference import run_fallback_inference
 from .runner_shapefiles import deduplicate_cv_shapefiles_final
@@ -69,6 +70,7 @@ def run_cv_on_folder(
     rvt_base_dir: Optional[Path] = None,
     output_dir: Optional[Path] = None,
     tif_transform_data: Optional[Dict[str, Tuple[float, float, float, float]]] = None,
+    valid_region_bounds: Optional[List[Tuple[float, float, float, float]]] = None,
     single_jpg: Optional[Path] = None,
     run_shapefile_dedup: bool = True,
     global_color_map: Optional[Dict[str, int]] = None,
@@ -201,6 +203,15 @@ def run_cv_on_folder(
     candidate_pngs = list_candidate_pngs(
         jpg_dir=jpg_dir, cv_config=cv_config, single_jpg=single_jpg,
     )
+    # Un cache plus ancien que son PNG a été calculé sur une autre géométrie
+    # (ex. bascule rogné → à marge) : purgé pour forcer la ré-inférence — le
+    # binaire externe saute par simple existence des fichiers, sans les dates.
+    stale = purge_stale_cached_detections(effective_raw_dir, candidate_pngs)
+    if stale:
+        log(
+            f"Computer Vision [{model_slug}]: {stale} cache(s) de détection "
+            "plus ancien(s) que leur PNG — purgé(s), ré-inférence"
+        )
     if not force_reprocess and candidate_pngs:
         missing = [p for p in candidate_pngs if not has_cached_detection(effective_raw_dir, p.stem)]
         if not missing:
@@ -218,6 +229,7 @@ def run_cv_on_folder(
                     output_dir=output_dir,
                     cv_config=cv_config,
                     tif_transform_data=tif_transform_data,
+                    valid_region_bounds=valid_region_bounds,
                     crs="EPSG:2154",
                     global_color_map=global_color_map,
                     log=log,
@@ -268,6 +280,7 @@ def run_cv_on_folder(
                     output_dir=output_dir,
                     cv_config=cv_config,
                     tif_transform_data=tif_transform_data,
+                    valid_region_bounds=valid_region_bounds,
                     crs="EPSG:2154",
                     global_color_map=global_color_map,
                     log=log,
@@ -302,6 +315,7 @@ def run_cv_on_folder(
         output_dir=output_dir,
         effective_detection_dir=effective_detection_dir,
         tif_transform_data=tif_transform_data,
+        valid_region_bounds=valid_region_bounds,
         single_jpg=single_jpg,
         run_shapefile_dedup=run_shapefile_dedup,
         global_color_map=global_color_map,

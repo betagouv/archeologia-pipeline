@@ -8,7 +8,7 @@ disponible, ce module exécute l'inférence directement via
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from ..cancellation import PipelineCancelled
 from ..geo_utils import write_world_file as write_world_file_from_transform
@@ -27,6 +27,7 @@ def run_fallback_inference(
     output_dir: Optional[Path] = None,
     effective_detection_dir: Optional[Path] = None,
     tif_transform_data: Optional[Dict[str, Tuple[float, float, float, float]]] = None,
+    valid_region_bounds: Optional[List[Tuple[float, float, float, float]]] = None,
     single_jpg: Optional[Path] = None,
     run_shapefile_dedup: bool = True,
     global_color_map: Optional[Dict[str, int]] = None,
@@ -206,6 +207,7 @@ def run_fallback_inference(
             output_dir=output_dir,
             cv_config=cv_config,
             tif_transform_data=tif_transform_data,
+            valid_region_bounds=valid_region_bounds,
             crs="EPSG:2154",
             global_color_map=global_color_map,
             log=log,

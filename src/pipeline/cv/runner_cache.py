@@ -59,6 +59,41 @@ def has_cached_detection(raw_dir: Path, png_stem: str) -> bool:
     return (raw_dir / f"{png_stem}.txt").exists() or (raw_dir / f"{png_stem}.json").exists()
 
 
+def purge_stale_cached_detections(raw_dir: Path, candidate_pngs: List[Path]) -> int:
+    """Supprime les détections en cache plus anciennes que leur PNG d'inférence.
+
+    Le cache (``{stem}.txt``/``{stem}.json``) est indexé par stem : régénérer
+    un PNG sous le même nom (ex. bascule vers l'image à marge de l'option B,
+    ou changement de paramètres RVT) laisserait le binaire externe comme le
+    fallback réutiliser des coordonnées normalisées calculées sur l'ancienne
+    géométrie → détections décalées. Un couple est périmé si le PLUS RÉCENT
+    de ses deux fichiers date d'avant le PNG ; il est alors supprimé pour
+    forcer la ré-inférence (le binaire saute par simple existence).
+
+    Renvoie le nombre d'images dont le cache a été purgé.
+    """
+    if not raw_dir.is_dir():
+        return 0
+    purged = 0
+    for png in candidate_pngs:
+        try:
+            png_mtime = png.stat().st_mtime
+        except OSError:
+            continue
+        cached = [p for p in (raw_dir / f"{png.stem}.txt", raw_dir / f"{png.stem}.json") if p.exists()]
+        if not cached:
+            continue
+        if max(p.stat().st_mtime for p in cached) >= png_mtime:
+            continue
+        for p in cached:
+            try:
+                p.unlink()
+            except OSError:
+                pass
+        purged += 1
+    return purged
+
+
 def list_candidate_pngs(
     *,
     jpg_dir: Path,

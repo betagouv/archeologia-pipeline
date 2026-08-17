@@ -24,6 +24,7 @@ def deduplicate_cv_shapefiles_final(
     output_dir: Optional[Path] = None,
     cv_config: Optional[Dict[str, Any]] = None,
     tif_transform_data: Optional[Dict[str, Tuple[float, float, float, float]]] = None,
+    valid_region_bounds: Optional[list] = None,
     global_color_map: Optional[Dict[str, int]] = None,
     temp_dir: Optional[Path] = None,
     crs: str = "EPSG:2154",
@@ -144,6 +145,7 @@ def deduplicate_cv_shapefiles_final(
             postprocess_config=postprocess_config,
             min_confidence=float((cv_config or {}).get("confidence_threshold", 0.0) or 0.0),
             class_targets=class_targets,
+            valid_region_bounds=valid_region_bounds,
             cancel_check=cancel_check,
         ))
         qgs_root = shp_dir.parent if shp_dir.name.lower() in {"shapefiles", "shp"} else shp_dir

@@ -772,6 +772,7 @@ def create_shapefile_from_detections(
     postprocess_config: dict = None,
     min_confidence: float = 0.0,
     class_targets: dict = None,
+    valid_region_bounds: list = None,
     cancel_check: Optional[CancelCheckFn] = None,
 ) -> bool:
     """
@@ -1311,7 +1312,17 @@ def create_shapefile_from_detections(
             data_by_class_name[class_name].extend(detections)
         
         logger.info(f"Classes regroupées par nom: {list(data_by_class_name.keys())}")
-        
+
+        # ── Clip au périmètre du run (option B, halo inter-dalles) ──
+        # AVANT fusion/superpositions/clustering : le bruit du halo extérieur
+        # (donnée fabriquée hors du périmètre commandé) ne doit ni fusionner
+        # avec des détections réelles ni compter dans les clusters.
+        if valid_region_bounds:
+            from .postprocessing import clip_detections_to_valid_region
+            data_by_class_name = clip_detections_to_valid_region(
+                data_by_class_name, valid_region_bounds
+            )
+
         # ── Post-traitement global : fusion intra-classe + suppression superpositions ──
         # Deux étapes pilotées par ``postprocess_config`` (le dict produit par
         # :class:`model_profile.PostprocessConfig`.to_dict() — merge_adjacent,

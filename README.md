@@ -429,6 +429,19 @@ Le format historique mono-modèle est conservé pour rétrocompatibilité (sans 
 
 `selected_model` peut aussi être un nom de dossier modèle relatif à `models_dir` ; le runner cherchera alors automatiquement `weights/best.onnx`.
 
+### Inférence avec halo inter-dalles (modes `ign_laz` / `local_laz`)
+
+En modes IGN / LAZ local, l'inférence CV ne tourne plus sur le TIF rogné à 1 km mais sur le **TIF non rogné** d'`intermediaires/` (dalle + marge `processing.tile_overlap`, 200 m par défaut — de la vraie donnée voisine fusionnée par `prepare_merged_tiles`). Un objet à cheval sur une frontière de dalles est ainsi vu **en entier** par au moins une des deux dalles (halo ≥ taille/2) ; les détections en double dans la bande de recouvrement se superposent exactement en Lambert-93 et sont fusionnées par le post-traitement géo global (`merge_adjacent` / `remove_overlaps`). En pratique :
+
+- le PNG d'inférence garde le **nom** du TIF rogné mais des dimensions plus grandes (ex. 2800×2800 px à 20 % / 0,5 m) ; la garde GEO-03 (PNG ≡ raster source), le géotransform et le world file sont tous référencés sur le TIF non rogné — jamais de panachage ;
+- les détections sont **clippées à l'union des emprises rognées du run** : la marge extérieure au périmètre commandé (sans voisin → aplat NoData, noyaux RVT repliés en miroir) ne produit pas de bruit ;
+- un cache `raw_detections/` plus ancien que son PNG est **purgé automatiquement** (des coordonnées normalisées calculées sur l'ancienne géométrie seraient décalées de la marge) — le premier re-run dans un `output_dir` antérieur ré-infère donc toutes les images ;
+- coût : surface d'inférence ≈ ×2 à marge 20 % (le halo utile plancher est ~50 m pour un enclos de 90 m — réduire `tile_overlap` réduit le halo *et* le contexte des noyaux RVT, cf. avertissements de l'étape 2) ; temps MNT/RVT inchangé (la marge était déjà calculée) ;
+- les JPG annotés montrent l'image élargie : un objet frontière apparaît sur les JPG des deux dalles voisines (cosmétique, assumé) ;
+- si le TIF non rogné est introuvable (`intermediaires/` purgé, re-run CV seul), repli silencieux sur le TIF rogné — comportement historique, détections à nouveau coupées aux frontières.
+
+Les modes `existing_mnt` / `existing_rvt` ne sont **pas** concernés : sans fusion de voisins, il n'existe pas de halo à exploiter (limite documentée).
+
 ## MNT / RVT non-IGN : traitement des grandes emprises
 
 Les modes `existing_mnt` et `existing_rvt` ne se limitent pas aux dalles IGN LiDAR HD 1 km. Le pipeline inspecte les **bornes géographiques** de chaque raster d'entrée (Lambert-93) puis choisit un flux adapté :

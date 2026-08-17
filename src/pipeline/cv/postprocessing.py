@@ -1131,3 +1131,68 @@ def postprocess_geo_detections(
     logger.info(f"Post-traitement géo terminé en {t3 - t_start:.1f}s")
 
     return result_by_class
+
+
+def clip_detections_to_valid_region(
+    data_by_class_name: Dict[str, List[Dict[str, Any]]],
+    valid_region_bounds: Optional[List[tuple]],
+) -> Dict[str, List[Dict[str, Any]]]:
+    """Restreint les détections à l'union d'emprises ``(xmin, ymin, xmax, ymax)``.
+
+    Option B (halo inter-dalles) : l'image d'inférence déborde de la dalle.
+    Vers une dalle voisine du même run, le halo est de la vraie donnée (les
+    doublons se fusionnent en aval) ; vers l'EXTÉRIEUR du périmètre commandé,
+    la marge est fabriquée (MNT sans points → aplat NoData, noyaux RVT repliés
+    en miroir) — toute détection y est du bruit. On ne conserve que
+    l'intersection avec l'union des emprises des TIF rognés du run : une
+    détection entièrement dehors est supprimée, une détection débordante est
+    rognée au périmètre (comme elle l'était de fait avant l'option B).
+
+    ``valid_region_bounds`` vide ou ``None`` → données renvoyées telles
+    quelles (modes sans halo). Conservateur : une géométrie que Shapely ne
+    sait pas clipper est conservée intacte.
+    """
+    if not valid_region_bounds:
+        return data_by_class_name
+
+    from shapely.geometry import MultiPolygon, Polygon, box
+    from shapely.ops import unary_union
+
+    region = unary_union([box(*b) for b in valid_region_bounds])
+    result: Dict[str, List[Dict[str, Any]]] = {}
+    dropped = 0
+    clipped = 0
+    for class_name, detections in data_by_class_name.items():
+        kept: List[Dict[str, Any]] = []
+        for det in detections:
+            geom = det.get("geometry")
+            try:
+                if geom is None or geom.is_empty:
+                    kept.append(det)
+                    continue
+                if region.contains(geom):
+                    kept.append(det)
+                    continue
+                inter = geom.intersection(region)
+                if inter.is_empty:
+                    dropped += 1
+                    continue
+                if isinstance(inter, MultiPolygon):
+                    # Le rognage d'un polygone par une union de rectangles peut
+                    # le morceler : on garde le plus grand morceau (même choix
+                    # que la stratégie « difference » de remove_overlaps).
+                    inter = max(inter.geoms, key=lambda g: g.area)
+                if not isinstance(inter, Polygon):
+                    kept.append(det)
+                    continue
+                clipped += 1
+                kept.append(dict(det, geometry=inter))
+            except Exception:
+                kept.append(det)
+        result[class_name] = kept
+    if dropped or clipped:
+        logger.info(
+            f"Clip au périmètre du run: {dropped} détection(s) hors emprise supprimée(s), "
+            f"{clipped} rognée(s)"
+        )
+    return result

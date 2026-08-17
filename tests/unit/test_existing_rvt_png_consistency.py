@@ -9,7 +9,7 @@ import pytest
 
 pytest.importorskip("shapely")  # pipeline.cv.__init__
 
-from pipeline.modes.existing_rvt import _png_consistent_with_tif
+from pipeline.modes.existing_rvt import _png_consistent_with_tif, _tif_size
 
 
 class TestPngConsistentWithTif:
@@ -38,3 +38,22 @@ class TestPngConsistentWithTif:
             tif_size_fn=lambda _: (2000, 2000),
         )
         assert ok is True
+
+
+class TestTifSizeGdalFallback:
+    def test_repli_gdal_sans_rasterio(self, monkeypatch):
+        # Sans rasterio (QGIS n'en garantit pas la présence), la garde GEO-03
+        # doit encore lire les dimensions du TIF via osgeo.gdal — sinon elle
+        # devient silencieusement inopérante.
+        import sys
+        from types import SimpleNamespace
+
+        monkeypatch.setitem(sys.modules, "rasterio", None)  # import -> ImportError
+
+        fake_ds = SimpleNamespace(RasterXSize=2800, RasterYSize=2800)
+        fake_gdal = SimpleNamespace(Open=lambda path: fake_ds)
+        fake_osgeo = SimpleNamespace(gdal=fake_gdal)
+        monkeypatch.setitem(sys.modules, "osgeo", fake_osgeo)
+        monkeypatch.setitem(sys.modules, "osgeo.gdal", fake_gdal)
+
+        assert _tif_size("x.tif") == (2800, 2800)

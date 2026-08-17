@@ -314,6 +314,10 @@ class IgnOrLocalRunner:
                 # Computer Vision globale (post-boucle)
                 if ctx.cv.enabled and not cancel.is_cancelled():
                     from ..services.cv_post_service import run_cv_post_loop
+                    try:  # fallback standalone (tests : src/ sur le path)
+                        from ...pipeline.output_paths import intermediaires_dir
+                    except ImportError:  # pragma: no cover
+                        from pipeline.output_paths import intermediaires_dir
                     try:
                         run_cv_post_loop(
                             ctx=ctx,
@@ -323,6 +327,9 @@ class IgnOrLocalRunner:
                             cancel=cancel,
                             slog=slog,
                             cv_band=plan.cv,
+                            # Option B (halo inter-dalles) : les TIF non rognés
+                            # d'intermediaires/ servent de source d'inférence.
+                            halo_source_dir=intermediaires_dir(ctx.output_dir),
                         )
                     except PipelineCancelled:
                         raise

@@ -15,7 +15,7 @@ pipeline, et a donc une logique différente.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Dict, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Tuple
 
 from ..progress_reporter import report_busy, report_stage_id
 from ..progress_stages import Stage
@@ -42,6 +42,58 @@ if TYPE_CHECKING:
     from ..structured_logger import StructuredLogger
 
 
+#: Tolérance (m) sur l'inclusion de la cellule 1 km dans l'emprise candidate.
+_CELL_TOLERANCE_M = 1.0
+
+
+def resolve_uncropped_tif(
+    cropped_tif: Path,
+    temp_dir: Optional[Path],
+    target_rvt: str,
+    rvt_params: Optional[Dict[str, Any]] = None,
+    *,
+    bounds_fn: Optional[Callable[[Path], Optional[Tuple[float, float, float, float]]]] = None,
+) -> Optional[Path]:
+    """TIF source non rogné (avec marge) correspondant à un TIF rogné 1 km.
+
+    Option B (halo inter-dalles) : le RVT est calculé sur l'emprise étendue
+    (dalle + ``tile_overlap``) puis rogné à la cellule 1 km exacte. Le TIF
+    étendu survit dans ``intermediaires/`` — l'inférence CV peut donc tourner
+    dessus pour voir les objets à cheval sur les frontières de dalles en
+    entier. Appariement : même produit + mêmes paramètres RVT (queue de nom
+    de :func:`get_rvt_temp_filename`) et emprise couvrant la cellule 1 km
+    déduite du nom rogné (``LHD_FXX_{x}_{y}_…``, ``y`` = bord nord).
+
+    Renvoie ``None`` faute de correspondance sûre — l'appelant retombe alors
+    sur le TIF rogné (comportement historique, détections coupées).
+    """
+    if temp_dir is None or not Path(temp_dir).is_dir():
+        return None
+    try:  # fallback standalone (tests : src/ sur le path)
+        from ...pipeline.coords import extract_xy_from_filename, get_raster_bounds
+        from ...pipeline.ign.products.rvt_naming import get_rvt_temp_filename
+    except ImportError:  # pragma: no cover
+        from pipeline.coords import extract_xy_from_filename, get_raster_bounds
+        from pipeline.ign.products.rvt_naming import get_rvt_temp_filename
+
+    xy = extract_xy_from_filename(Path(cropped_tif).name)
+    if xy is None:
+        return None
+    cx0, cx1 = xy.x_km * 1000.0, (xy.x_km + 1) * 1000.0
+    cy0, cy1 = (xy.y_km - 1) * 1000.0, xy.y_km * 1000.0
+
+    read_bounds = bounds_fn or get_raster_bounds
+    tail = get_rvt_temp_filename(target_rvt, "", rvt_params or {})
+    tol = _CELL_TOLERANCE_M
+    for cand in sorted(Path(temp_dir).glob(f"*{tail}")):
+        b = read_bounds(cand)
+        if b is None:
+            continue
+        if b[0] <= cx0 + tol and b[1] <= cy0 + tol and b[2] >= cx1 - tol and b[3] >= cy1 - tol:
+            return cand
+    return None
+
+
 def run_cv_post_loop(
     *,
     ctx: "RunContext",
@@ -51,6 +103,7 @@ def run_cv_post_loop(
     cancel: "CancelToken",
     slog: Optional["StructuredLogger"],
     cv_band: Tuple[int, int] = (90, 95),
+    halo_source_dir: Optional[Path] = None,
 ) -> None:
     """Lance la Computer Vision sur les RVT générés par le pipeline.
 
@@ -67,6 +120,12 @@ def run_cv_post_loop(
             démarre à ``lo`` et progresse jusqu'à ``hi`` au fil des images
             (réparties équitablement entre les runs via :func:`cv_pct`) — plus
             de recul de la barre au démarrage de la CV.
+        halo_source_dir: Dossier des TIF non rognés (``intermediaires/``).
+            Fourni par les modes à marge inter-dalles (ign_laz/local_laz) :
+            l'inférence tourne alors sur l'image AVEC halo via
+            :func:`resolve_uncropped_tif` (option B — détections non coupées
+            aux frontières de dalles). ``None`` (existing_mnt) = comportement
+            historique sur TIF rognés.
 
     Cette fonction n'attrape pas les exceptions : l'appelant décide de
     sa politique (le pattern actuel est de logger via ``reporter.error``
@@ -140,6 +199,15 @@ def run_cv_post_loop(
             narrator.cv_run_image_progress(_model, idx, total, image_name)
             reporter.progress(cv_pct(_ri, _n, idx, total, cv_band))
 
+        # Option B (halo inter-dalles) : chaque TIF rogné est ré-associé à son
+        # TIF non rogné (marge = donnée voisine réelle) pour l'inférence.
+        inference_tif_resolver = None
+        if halo_source_dir is not None:
+            def inference_tif_resolver(
+                cropped, _rvt=run_rvt, _src=halo_source_dir,
+            ):
+                return resolve_uncropped_tif(cropped, _src, _rvt, rvt_params)
+
         res = run_existing_rvt(
             existing_rvt_dir=generated_rvt_tif_dir,
             output_dir=ctx.output_dir,
@@ -152,6 +220,7 @@ def run_cv_post_loop(
             image_progress=_on_image_progress,
             tile_progress=narrator.cv_run_tile_progress,
             on_busy=lambda active: report_busy(reporter, active),
+            inference_tif_resolver=inference_tif_resolver,
         )
         if res.total_detections is not None:
             detection_counts.append(res.total_detections)

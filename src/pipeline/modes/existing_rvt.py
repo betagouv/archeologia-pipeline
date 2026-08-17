@@ -33,6 +33,18 @@ def _tif_size(path):
         with rasterio.open(str(path)) as ds:
             return (ds.width, ds.height)
     except Exception:
+        pass
+    # rasterio n'est pas garanti dans le Python de QGIS : sans ce repli GDAL,
+    # la garde GEO-03 devenait silencieusement inopérante (PNG jamais comparé).
+    try:
+        from osgeo import gdal
+        ds = gdal.Open(str(path))
+        if ds is None:
+            return None
+        size = (ds.RasterXSize, ds.RasterYSize)
+        ds = None
+        return size
+    except Exception:
         return None
 
 
@@ -162,6 +174,7 @@ def run_existing_rvt(
     image_progress: Optional[ImageProgressFn] = None,
     tile_progress: Optional[TileProgressFn] = None,
     on_busy: Optional[Callable[[bool], None]] = None,
+    inference_tif_resolver: Optional[Callable[[Path], Optional[Path]]] = None,
 ) -> ExistingRvtResult:
     if not existing_rvt_dir.exists() or not existing_rvt_dir.is_dir():
         raise FileNotFoundError(f"Dossier RVT inexistant ou invalide: {existing_rvt_dir}")
@@ -205,6 +218,15 @@ def run_existing_rvt(
     tif_transform_data: Dict[str, Any] = {}
     kept_tif_names: set[str] = set()
     kept_jpg_names: set[str] = set()
+
+    # Option B : en mode halo, le clip aval a besoin du périmètre réellement
+    # commandé = union des emprises des TIF ROGNÉS (les détections du halo
+    # extérieur — donnée fabriquée — sont supprimées). Région incomplète
+    # (une emprise illisible) → None : clipper partiellement couperait des
+    # détections légitimes, on préfère ne pas clipper du tout.
+    valid_region_bounds: Optional[List[Tuple[float, float, float, float]]] = (
+        [] if inference_tif_resolver is not None else None
+    )
 
     # ── Inspection des rasters RVT (pas de pré-découpage pour les grands) ──
     # Les rasters RVT larges (> 1 km) sont traités tels quels : on laisse
@@ -253,23 +275,47 @@ def run_existing_rvt(
             kept_tif_names.add(tif_path.name)
 
         if cv_enabled:
+            # Option B (halo inter-dalles) : l'appelant peut résoudre une source
+            # d'inférence alternative — le TIF non rogné d'intermediaires/, dont
+            # la marge est de la vraie donnée voisine. Les objets à cheval sur
+            # une frontière de dalle sont alors vus en entier ; les doublons de
+            # la zone de recouvrement sont fusionnés en aval (espace géo).
+            inference_src = effective_tif_path
+            if inference_tif_resolver is not None:
+                try:
+                    resolved = inference_tif_resolver(effective_tif_path)
+                except Exception:
+                    resolved = None
+                if resolved is not None and Path(resolved).exists():
+                    inference_src = Path(resolved)
+
+            if valid_region_bounds is not None:
+                cell_bounds = get_raster_bounds(effective_tif_path)
+                if cell_bounds is None:
+                    valid_region_bounds = None
+                else:
+                    valid_region_bounds.append(cell_bounds)
+
+            # Le NOM du PNG reste celui du TIF rogné (stems stables : cache,
+            # couches, images annotées) — seul le CONTENU vient de la source.
             jpg_path = jpg_output_dir / (effective_tif_path.stem + ".png")
-            # GEO-03 : le PNG d'inférence DOIT venir du même raster que le transform
-            # (effective_tif_path, rogné). Un PNG préexistant aux mauvaises dimensions
-            # (export d'indices non rogné) est régénéré, sinon décalage de la marge.
-            if jpg_path.exists() and not _png_consistent_with_tif(jpg_path, effective_tif_path):
+            # GEO-03 : le PNG d'inférence DOIT venir du même raster que le
+            # transform (inference_src). Un PNG préexistant aux mauvaises
+            # dimensions (ex. PNG rogné d'un run antérieur vs source à marge)
+            # est régénéré, sinon décalage de la marge.
+            if jpg_path.exists() and not _png_consistent_with_tif(jpg_path, inference_src):
                 log(f"PNG incohérent avec le TIF (dimensions ≠), régénération: {jpg_path.name}")
                 try:
                     jpg_path.unlink()
                 except OSError:
                     pass
             if not jpg_path.exists():
-                log(f"Conversion TIF->PNG (existing_rvt): {effective_tif_path.name} -> {jpg_path.name}")
-                _convert_tif_to_png_with_world(effective_tif_path, jpg_path)
+                log(f"Conversion TIF->PNG (existing_rvt): {inference_src.name} -> {jpg_path.name}")
+                _convert_tif_to_png_with_world(inference_src, jpg_path)
             jpg_files.append(jpg_path)
             kept_jpg_names.add(jpg_path.name)
 
-            pixel_width, pixel_height, x_origin, y_origin = extract_tif_transform_data(effective_tif_path)
+            pixel_width, pixel_height, x_origin, y_origin = extract_tif_transform_data(inference_src)
             if all(v is not None for v in (pixel_width, pixel_height, x_origin, y_origin)):
                 tif_transform_data[jpg_path.stem] = (float(pixel_width), float(pixel_height), float(x_origin), float(y_origin))
 
@@ -306,6 +352,7 @@ def run_existing_rvt(
                 rvt_base_dir=rvt_output_dir,
                 output_dir=output_dir,
                 tif_transform_data=tif_transform_data,
+                valid_region_bounds=valid_region_bounds or None,
                 run_shapefile_dedup=True,
                 global_color_map=global_color_map,
                 log=log,

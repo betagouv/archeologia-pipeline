@@ -141,4 +141,10 @@ fileignoreconfig:
   checksum: 21ce80cc23dcc089bc20bdcfcaa9a3d94bb30cce19853174b2cf6691d35627ea
 - filename: tests/unit/test_ingest_plan.py
   checksum: 539fa2bae75150a11780074cce7a05d834544024de91a6b0babc14dd436453e2
+- filename: data/third_party/cv_runner_onnx/windows/build_info.json
+  ignore_detectors: [filecontent]
+- filename: .githooks/pre-push
+  checksum: 3e0054d596fa9ad14e83aeec8764373b5698fc3c558fdb336d227225622b9096
+- filename: src/app/services/rvt_kernel_context.py
+  checksum: 460fc06e5dccd5b229f6330a11a3b10e8fc0a8849814fabbec6226fbd2eed9ab
 version: '1.0'

@@ -394,6 +394,27 @@ class TestResolveRuns:
         )
         assert _summ(runs) == [("verdun_3_classes_1", "SVF", ["cratere"])]
 
+    def test_stale_override_falls_back_to_default_model(self, tmp_path):
+        # Surcharge périmée (model_card modifié entre deux sessions) : le modèle
+        # surchargé est installé mais ne couvre plus l'entité → retour au défaut,
+        # l'entité ne doit PAS disparaître silencieusement du run.
+        _write_model(tmp_path, "cratere_circulaire_2", CRATERE)  # ne couvre pas parcellaire
+        _write_model(tmp_path, "formes", FORMES)                 # défaut parcellaire
+        installed = discover_installed_models(tmp_path)
+        runs = resolve_runs_from_entities(
+            ["parcellaire"], {"parcellaire": "cratere_circulaire_2"}, installed, _catalog()
+        )
+        assert _summ(runs) == [("formes", "LD", ["parcellaire"])]
+
+    def test_stale_override_to_uninstalled_model_falls_back(self, tmp_path):
+        # Surcharge vers un modèle désinstallé → même auto-réparation.
+        _write_model(tmp_path, "formes", FORMES)
+        installed = discover_installed_models(tmp_path)
+        runs = resolve_runs_from_entities(
+            ["parcellaire"], {"parcellaire": "modele_disparu"}, installed, _catalog()
+        )
+        assert _summ(runs) == [("formes", "LD", ["parcellaire"])]
+
     def test_entity_without_model_skipped(self, tmp_path):
         _write_model(tmp_path, "formes", FORMES)
         installed = discover_installed_models(tmp_path)

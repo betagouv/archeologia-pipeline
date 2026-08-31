@@ -29,6 +29,7 @@ from qgis.PyQt.QtWidgets import (
 from ...app.services.model_orchestrator import (
     build_entity_coverage,
     discover_installed_models,
+    effective_model_name,
     group_entities_by_morphology,
     load_entities_catalog,
     resolve_runs_from_entities,
@@ -411,7 +412,7 @@ class DetectionPage(QWidget):
 
         for eid, card in self._cards.items():
             ec = self._coverage.get(eid)
-            model_name = self._overrides.get(eid) or (ec.default_model if ec else None)
+            model_name = effective_model_name(ec, self._overrides) if ec else None
             model = self._models.get(model_name) if model_name else None
             rvt = model.target_rvt if model else "—"
             cluster_outputs = model.cluster_options.get(eid, ()) if model else ()

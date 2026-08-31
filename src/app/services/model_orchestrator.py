@@ -657,6 +657,29 @@ def _compute_layer_names(
 # ----------------------------------------------------------------------
 # Résolution des runs
 # ----------------------------------------------------------------------
+def effective_model_name(
+    ec: EntityCoverage, overrides: Optional[Dict[str, str]]
+) -> Optional[str]:
+    """Modèle effectif d'une entité : la surcharge UI si elle est encore valide
+    (modèle installé ET couvrant l'entité), sinon le modèle par défaut.
+
+    Une surcharge périmée — model_card modifié entre deux sessions, modèle
+    désinstallé — persiste dans ``last_ui_config.json`` ; sans cette garde elle
+    faisait disparaître l'entité du run silencieusement (simple logger.warning).
+    Partagé par ``resolve_runs_from_entities`` et l'affichage des cartes (étape 3)
+    pour que l'UI et le pipeline restent cohérents.
+    """
+    name = (overrides or {}).get(ec.entity.id)
+    if name in ec.candidate_models:
+        return name
+    if name:
+        logger.warning(
+            "Surcharge périmée pour '%s' : modèle '%s' invalide, retour au défaut '%s'",
+            ec.entity.id, name, ec.default_model,
+        )
+    return ec.default_model
+
+
 def resolve_runs_from_entities(
     selected_entity_ids: Sequence[str],
     overrides: Optional[Dict[str, str]],
@@ -692,7 +715,7 @@ def resolve_runs_from_entities(
         if ec is None:
             logger.warning("Entité hors catalogue ignorée: %s", eid)
             continue
-        model_name = overrides.get(eid) or ec.default_model
+        model_name = effective_model_name(ec, overrides)
         if not model_name:
             logger.warning("Entité '%s' sans modèle disponible, ignorée", eid)
             continue

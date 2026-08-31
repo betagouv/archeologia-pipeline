@@ -13,6 +13,19 @@ from typing import Dict, List, Optional, Union
 
 logger = logging.getLogger(__name__)
 
+# ---------------------------------------------------------------------------
+# Défauts UNIFIÉS de la chaîne CV (audit 2026-08-31). Avant : trois valeurs de
+# confiance coexistaient (0.2 orchestrateur/config_manager, 0.3 runners, 0.5
+# signature onnx) et le binaire externe slicait à 750 quand tout le reste
+# disait 640 — le chemin d'entrée décidait du seuil. Les modules hors de ce
+# paquet (orchestrateur, config_manager) gardent des littéraux ALIGNÉS, gardés
+# par tests/unit/test_defauts_cv_unifies.py.
+# ---------------------------------------------------------------------------
+DEFAULT_CONFIDENCE = 0.3
+DEFAULT_SAHI_SLICE = 640
+DEFAULT_SAHI_OVERLAP = 0.2
+DEFAULT_IOU = 0.5
+
 
 def _resolve_model_dir(model_path: Union[str, Path]) -> Path:
     """
@@ -93,7 +106,8 @@ def load_sahi_config_from_model(model_path: Union[str, Path]) -> Dict:
         Dict avec slice_height, slice_width, overlap_ratio.
         Valeurs par défaut (640, 640, 0.2) si non trouvé.
     """
-    defaults = {"slice_height": 640, "slice_width": 640, "overlap_ratio": 0.2}
+    defaults = {"slice_height": DEFAULT_SAHI_SLICE, "slice_width": DEFAULT_SAHI_SLICE,
+                "overlap_ratio": DEFAULT_SAHI_OVERLAP}
     model_dir = _resolve_model_dir(model_path)
     args_file = model_dir / "args.yaml"
     if not args_file.exists():

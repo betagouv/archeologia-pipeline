@@ -52,8 +52,9 @@ def run_fallback_inference(
     if not selected_model:
         raise ValueError("Computer Vision activée mais aucun modèle sélectionné")
 
-    confidence_threshold = float(cv_config.get("confidence_threshold", 0.3))
-    iou_threshold = float(cv_config.get("iou_threshold", 0.5))
+    from .model_config import DEFAULT_CONFIDENCE, DEFAULT_IOU
+    confidence_threshold = float(cv_config.get("confidence_threshold", DEFAULT_CONFIDENCE))
+    iou_threshold = float(cv_config.get("iou_threshold", DEFAULT_IOU))
     generate_annotated_images = bool(cv_config.get("generate_annotated_images", False))
     generate_shapefiles = bool(cv_config.get("generate_shapefiles", False))
 

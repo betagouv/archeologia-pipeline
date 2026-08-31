@@ -261,9 +261,10 @@ def export_segformer_to_onnx(
             except Exception as e:
                 print(f"[WARN] Vérification ONNX échouée: {e}")
         
-        # Validation post-export
-        validate_onnx_export("segformer", model, output_path, imgsz)
-        
+        # Validation post-export — PORTE : une divergence PT/ONNX fait échouer l'export
+        if not validate_onnx_export("segformer", model, output_path, imgsz):
+            return False
+
         return True
         
     except Exception as e:
@@ -517,9 +518,10 @@ def export_smp_to_onnx(
         # Copier les métadonnées existantes
         _copy_metadata(model_path, output_path)
         
-        # Validation post-export
-        validate_onnx_export("smp", model, output_path, imgsz)
-        
+        # Validation post-export — PORTE : une divergence PT/ONNX fait échouer l'export
+        if not validate_onnx_export("smp", model, output_path, imgsz):
+            return False
+
         return True
         
     except Exception as e:
@@ -629,9 +631,10 @@ def export_yolo_to_onnx(
         meta_path.write_text(json.dumps(meta, indent=2), encoding="utf-8")
         print(f"[INFO] Métadonnées sauvegardées: {meta_path}")
         
-        # Validation post-export
-        validate_onnx_export("yolo", model, output_path, imgsz)
-        
+        # Validation post-export — PORTE : une divergence PT/ONNX fait échouer l'export
+        if not validate_onnx_export("yolo", model, output_path, imgsz):
+            return False
+
         return True
         
     except Exception as e:
@@ -938,9 +941,10 @@ def export_rfdetr_to_onnx(
         meta_path.write_text(json.dumps(meta, indent=2), encoding="utf-8")
         print(f"[INFO] Métadonnées sauvegardées: {meta_path}")
         
-        # Validation post-export
-        validate_onnx_export("rfdetr", rfdetr_model, output_path, resolution)
-        
+        # Validation post-export — PORTE : une divergence PT/ONNX fait échouer l'export
+        if not validate_onnx_export("rfdetr", rfdetr_model, output_path, resolution):
+            return False
+
         return True
         
     except Exception as e:
@@ -1213,7 +1217,20 @@ def _validate_single_image(
             close = np.allclose(p, o, atol=1e-4, rtol=1e-3)
             max_diff = np.abs(p - o).max()
             mean_diff = np.abs(p - o).mean()
-            print(f"  Sortie[{i}] shape={p.shape}: allclose={close}, max_diff={max_diff:.6f}, mean_diff={mean_diff:.6f}")
+            note = ""
+            if not close and p.ndim >= 3:
+                # Sorties SPATIALES (logits de masque) : l'atol diverge en bf16
+                # (max_diff ~0,06 — faux positif historique, cf. skill
+                # /installer-modele-plugin) alors que la DÉCISION est identique.
+                # La porte exige l'égalité stricte binarisée (rfdetr : signe du
+                # logit = masque binaire, IoU 1,0) ou de l'argmax (seg sémantique).
+                if model_type == "rfdetr":
+                    close = bool(np.array_equal(p > 0, o > 0))
+                    note = f" | masques binarisés identiques: {close}"
+                else:
+                    close = bool(np.array_equal(p.argmax(axis=0), o.argmax(axis=0)))
+                    note = f" | argmax identique: {close}"
+            print(f"  Sortie[{i}] shape={p.shape}: allclose={np.allclose(p, o, atol=1e-4, rtol=1e-3)}, max_diff={max_diff:.6f}, mean_diff={mean_diff:.6f}{note}")
             if not close:
                 all_close = False
 
@@ -1287,9 +1304,13 @@ def _validate_single_image(
             class_mismatches = 0
 
         # ── 3. Verdict pour cette image ────────────────────────────
+        # Durci 2026-08-31 : un export qui perd des détections ou change des
+        # classes n'est PAS valide (avant : WARN hors verdict).
         ok_tensors = all_close
         ok_scores = max_score_diff < 5 if n_compare > 0 else True
-        passed = ok_tensors and ok_scores
+        ok_counts = n_pt == n_onnx
+        ok_classes = class_mismatches == 0
+        passed = ok_tensors and ok_scores and ok_counts and ok_classes
 
         if passed:
             print(f"  → ✓ OK ({img_source})")

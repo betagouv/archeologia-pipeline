@@ -87,7 +87,7 @@ class ConfigManager:
                 "entity_cluster_params": {},
                 "selected_model": "",
                 "target_rvt": "LD",
-                "confidence_threshold": 0.2,
+                "confidence_threshold": 0.3,  # = pipeline.cv.model_config.DEFAULT_CONFIDENCE (unifié 2026-08-31)
                 "iou_threshold": 0.5,
                 "generate_annotated_images": False,
                 "generate_shapefiles": False,

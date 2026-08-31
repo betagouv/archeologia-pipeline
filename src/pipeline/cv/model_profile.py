@@ -38,13 +38,15 @@ _SEGMENTATION_TASKS = frozenset(
     {"instance_segmentation", "semantic_segmentation", "segment"}
 )
 
+from .model_config import DEFAULT_SAHI_OVERLAP, DEFAULT_SAHI_SLICE  # noqa: E402
+
 
 @dataclass(frozen=True)
 class SahiConfig:
-    """Paramètres SAHI (slicing à l'inférence)."""
-    slice_height: int = 640
-    slice_width: int = 640
-    overlap_ratio: float = 0.2
+    """Paramètres SAHI (slicing à l'inférence). Défauts = model_config.DEFAULT_SAHI_*."""
+    slice_height: int = DEFAULT_SAHI_SLICE
+    slice_width: int = DEFAULT_SAHI_SLICE
+    overlap_ratio: float = DEFAULT_SAHI_OVERLAP
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -379,9 +381,9 @@ def _parse_sahi(args_yaml: Dict[str, Any]) -> SahiConfig:
     if not isinstance(sahi, dict):
         return SahiConfig()
     try:
-        raw_h = int(sahi.get("slice_height", 640))
-        raw_w = int(sahi.get("slice_width", 640))
-        raw_ov = float(sahi.get("overlap_ratio", 0.2))
+        raw_h = int(sahi.get("slice_height", DEFAULT_SAHI_SLICE))
+        raw_w = int(sahi.get("slice_width", DEFAULT_SAHI_SLICE))
+        raw_ov = float(sahi.get("overlap_ratio", DEFAULT_SAHI_OVERLAP))
         # Bornes (AUDIT v2 PARSE-12) : slice ≥ 32, overlap ∈ [0, 0.9] — un
         # overlap ≥ 1 ou un slice ≤ 0 gèle l'inférence en boucle infinie.
         cfg = SahiConfig(

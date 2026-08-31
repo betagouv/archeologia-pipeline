@@ -508,7 +508,7 @@ class TestThresholds:
     def test_discover_threshold_defaults_when_absent(self, tmp_path):
         _write_model(tmp_path, "formes", FORMES)
         m = discover_installed_models(tmp_path)[0]
-        assert m.default_confidence == 0.2  # défaut de base (model_card sans seuil)
+        assert m.default_confidence == 0.3  # défaut UNIFIÉ 2026-08-31 (model_card sans seuil)
         assert m.default_min_area == 0.0
         assert m.default_iou == 0.5
 

@@ -155,7 +155,8 @@ def run_cv_on_folder(
     # Trace post-hoc des paramètres effectifs CV (resolution post
     # ModelProfile pour confidence_threshold).
     from ..types import format_params_line
-    _runtime_conf = float(cv_config.get("confidence_threshold", 0.3) or 0.3)
+    from .model_config import DEFAULT_CONFIDENCE
+    _runtime_conf = float(cv_config.get("confidence_threshold", DEFAULT_CONFIDENCE) or DEFAULT_CONFIDENCE)
     _effective_conf = _runtime_conf
     _conf_source = "runtime"
     try:

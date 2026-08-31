@@ -24,6 +24,12 @@ except Exception:
 
 from ..cancellation import check_cancelled
 from ..types import CancelCheckFn
+from .model_config import (
+    DEFAULT_CONFIDENCE,
+    DEFAULT_IOU,
+    DEFAULT_SAHI_OVERLAP,
+    DEFAULT_SAHI_SLICE,
+)
 from .cv_output import (
     save_empty_outputs,
     save_detections_to_files,
@@ -78,16 +84,38 @@ def _load_onnx_model(model_path: str):
     input_name = input_info.name
     input_shape = input_info.shape  # [batch, channels, height, width]
     
-    # Charger les métadonnées si disponibles
+    # Charger les métadonnées si disponibles.
+    # Sidecar PRÉSENT mais illisible = erreur EXPLICITE (durci 2026-08-31) : un
+    # `except: pass` silencieux faisait retomber class_offset/task/model_type sur
+    # leurs défauts — toutes les classes décalées d'un cran, sans aucun log.
     model_meta = {}
     meta_path = Path(model_path).with_suffix('.json')
     if meta_path.exists():
         try:
             model_meta = json.loads(meta_path.read_text())
-        except Exception:
-            pass
-    
+        except Exception as e:
+            raise RuntimeError(
+                f"Sidecar illisible : {meta_path} ({e}). Corriger ou régénérer "
+                f"weights/best.json (export_to_onnx.py) — ne PAS le supprimer : "
+                f"sans lui, class_offset/task retombent sur des défauts dangereux."
+            ) from e
+
     return session, input_name, input_shape, model_meta
+
+
+def _require_class_offset(model_meta: Dict) -> int:
+    """``class_offset`` du sidecar best.json — OBLIGATOIRE pour un modèle RF-DETR.
+
+    Le défaut historique (1) décalait silencieusement toutes les classes d'un
+    modèle rfdetr >= 1.8 (offset réel 0) quand le sidecar manquait : classe 0
+    perdue, taxonomie décalée, zéro log. Durci 2026-08-31.
+    """
+    if "class_offset" not in model_meta:
+        raise RuntimeError(
+            "Sidecar weights/best.json sans class_offset — un offset deviné est "
+            "dangereux (classes décalées d'un cran). Régénérer via export_to_onnx.py."
+        )
+    return int(model_meta["class_offset"])
 
 
 def _preprocess_image(pil_image, target_size: Tuple[int, int], model_type: str = "yolo") -> np.ndarray:
@@ -1179,12 +1207,12 @@ def run_onnx_inference(
     image_path: str,
     model_path: str,
     output_path: str,
-    confidence_threshold: float = 0.5,
+    confidence_threshold: float = DEFAULT_CONFIDENCE,
     confidence_per_class: Optional[Dict[int, float]] = None,
-    iou_threshold: float = 0.5,
-    slice_height: int = 640,
-    slice_width: int = 640,
-    overlap_ratio: float = 0.2,
+    iou_threshold: float = DEFAULT_IOU,
+    slice_height: int = DEFAULT_SAHI_SLICE,
+    slice_width: int = DEFAULT_SAHI_SLICE,
+    overlap_ratio: float = DEFAULT_SAHI_OVERLAP,
     generate_annotated_images: bool = False,
     annotated_output_dir: Optional[str] = None,
     jpg_folder_path: Optional[str] = None,
@@ -1240,9 +1268,16 @@ def run_onnx_inference(
         else:
             model_height = model_width = 640
         
-        # Détecter le type de modèle
-        model_type = model_meta.get("model_type", "yolo")
-        task = model_meta.get("task", "detect")
+        # Détecter le type de modèle — SANS repli (durci 2026-08-31) : les défauts
+        # historiques (yolo/detect) faisaient post-traiter un RF-DETR en mode YOLO
+        # sans erreur (0 détection ou géométries absurdes).
+        model_type = model_meta.get("model_type")
+        task = model_meta.get("task")
+        if not model_type or not task:
+            raise RuntimeError(
+                "Sidecar weights/best.json absent ou incomplet (model_type et task "
+                "requis) — régénérer via export_to_onnx.py."
+            )
         logger.info(f"ONNX: modèle {model_type}, taille {model_width}x{model_height}, task={task}")
         
         # =====================================================================
@@ -1339,7 +1374,7 @@ def run_onnx_inference(
         # =====================================================================
         if model_type == "rfdetr" and task == "instance_segmentation":
             logger.info("ONNX: mode instance segmentation RF-DETR Seg")
-            class_offset = model_meta.get("class_offset", 1)
+            class_offset = _require_class_offset(model_meta)
 
             # Accumulation des masques de probabilité par classe dans l'espace global
             # → polygones extraits une seule fois, pas de doublons ni d'offsets
@@ -1416,7 +1451,7 @@ def run_onnx_inference(
             
             # Post-traiter selon le type de modèle
             if model_type == "rfdetr":
-                class_offset = model_meta.get("class_offset", 1)  # défaut: 1 pour compatibilité
+                class_offset = _require_class_offset(model_meta)
                 dets = _postprocess_rfdetr(outputs, slice_w, slice_h, model_width, model_height, confidence_threshold, class_offset)
             else:
                 dets = _postprocess_yolo(outputs, slice_w, slice_h, model_width, model_height, confidence_threshold)

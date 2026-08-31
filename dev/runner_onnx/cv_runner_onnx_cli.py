@@ -248,13 +248,18 @@ def main() -> int:
         except Exception as e:
             _print(f"WARN: impossible de créer la légende: {e}")
 
-    confidence_threshold = float(cv_config.get("confidence_threshold", 0.3))
-    iou_threshold = float(cv_config.get("iou_threshold", 0.5))
+    # Défauts UNIFIÉS (audit 2026-08-31) : le binaire slicait à 750 quand tout le
+    # reste de la chaîne disait 640, et chaque chemin d'entrée avait son seuil.
+    from pipeline.cv.model_config import (
+        DEFAULT_CONFIDENCE, DEFAULT_IOU, DEFAULT_SAHI_OVERLAP, DEFAULT_SAHI_SLICE,
+    )
+    confidence_threshold = float(cv_config.get("confidence_threshold", DEFAULT_CONFIDENCE))
+    iou_threshold = float(cv_config.get("iou_threshold", DEFAULT_IOU))
 
     sahi_cfg = cv_config.get("sahi", {}) if isinstance(cv_config.get("sahi", {}), dict) else {}
-    slice_height = int(sahi_cfg.get("slice_height", 750))
-    slice_width = int(sahi_cfg.get("slice_width", 750))
-    overlap_ratio = float(sahi_cfg.get("overlap_ratio", 0.2))
+    slice_height = int(sahi_cfg.get("slice_height", DEFAULT_SAHI_SLICE))
+    slice_width = int(sahi_cfg.get("slice_width", DEFAULT_SAHI_SLICE))
+    overlap_ratio = float(sahi_cfg.get("overlap_ratio", DEFAULT_SAHI_OVERLAP))
 
     # Charger les métadonnées du modèle pour les paramètres de segmentation
     model_meta = {}

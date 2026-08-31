@@ -123,13 +123,19 @@ def test_rfdetr_class_offset_consistent(model_dir: Path) -> None:
     profile = ModelProfile.load(weights)
     if not is_rfdetr_model(model_dir):
         pytest.skip("Modèle non RF-DETR")
-    offset = profile.metadata.get("class_offset")
     # 1 = anciens exports (background en colonne 0 des logits) ;
     # 0 = rfdetr >= 1.8 (classes remappées 0..n-1, no-object en FIN de logits).
     # Le sidecar seul ne permet pas de distinguer les deux conventions : l'offset
-    # est fixé par export_to_onnx.py d'après le checkpoint (class_names présents
-    # sur l'objet modèle rfdetr >= 1.8) et vérifié empiriquement à l'export.
-    assert offset in (0, 1), (
-        f"RF-DETR attendu avec class_offset 0 ou 1, trouvé {offset!r} "
+    # est fixé par export_to_onnx.py d'après le checkpoint. Depuis 2026-08-31 le
+    # runtime EXIGE la clé (plus de défaut deviné) : le test vérifie sa PRÉSENCE
+    # et son type — la clé absente était l'angle mort (défaut 1 appliqué à un
+    # modèle offset 0 = toutes les classes décalées).
+    assert "class_offset" in profile.metadata, (
+        "weights/best.json sans class_offset — le runtime refuse désormais de "
+        "deviner (cf. _require_class_offset) ; régénérer via export_to_onnx.py"
+    )
+    offset = profile.metadata["class_offset"]
+    assert isinstance(offset, int) and offset in (0, 1), (
+        f"class_offset doit être l'entier 0 ou 1, trouvé {offset!r} "
         f"dans weights/best.json"
     )

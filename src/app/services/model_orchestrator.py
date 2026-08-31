@@ -104,7 +104,9 @@ class InstalledModel:
     derived_output_labels: Dict[str, str] = field(default_factory=dict)
     # Seuils par défaut (model_card:thresholds) — injectés par run, surchargeables
     # par entité côté UI (confiance + aire min). IoU jamais exposé dans l'UI.
-    default_confidence: float = 0.2
+    # 0.3 = défaut UNIFIÉ de la chaîne CV (= pipeline.cv.model_config.DEFAULT_CONFIDENCE,
+    # littéral ici pour ne pas coupler app→pipeline ; gardé par test_defauts_cv_unifies).
+    default_confidence: float = 0.3
     default_min_area: float = 0.0
     default_iou: float = 0.5
     # Seuils de confiance PAR CLASSE (model_card:thresholds.confidence_per_class,
@@ -306,12 +308,14 @@ def _extract_thresholds(card: Dict[str, Any]) -> Tuple[float, Dict[str, float], 
     """``(confidence_default, confidence_per_class, min_area_m2, iou)`` depuis
     ``model_card:thresholds``.
 
-    Défauts : confiance 0.2, aire min 0, IoU 0.5. L'IoU peut être déclaré sous
-    ``iou`` ou ``iou_threshold`` (jamais exposé dans l'UI, seulement le pipeline).
-    ``confidence_per_class`` est optionnel : ``{nom de classe: seuil}``. Une entrée
-    non castable est ignorée, pas fatale (model_card édité à la main).
+    Défauts : confiance 0.3 (défaut UNIFIÉ de la chaîne CV, cf.
+    pipeline.cv.model_config.DEFAULT_CONFIDENCE), aire min 0, IoU 0.5. L'IoU peut
+    être déclaré sous ``iou`` ou ``iou_threshold`` (jamais exposé dans l'UI,
+    seulement le pipeline). ``confidence_per_class`` est optionnel :
+    ``{nom de classe: seuil}``. Une entrée non castable est ignorée, pas fatale
+    (model_card édité à la main).
     """
-    conf, area, iou = 0.2, 0.0, 0.5
+    conf, area, iou = 0.3, 0.0, 0.5
     conf_pc: Dict[str, float] = {}
     th = card.get("thresholds")
     if isinstance(th, dict):

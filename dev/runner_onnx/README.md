@@ -21,6 +21,24 @@ runner_onnx/
 └── cv_runner_onnx.spec         # Spec PyInstaller
 ```
 
+## Politique de recompilation (règle 2026-08-31)
+
+L'exe PyInstaller **fige un instantané de `src/`** (`cv_runner_onnx.spec` :
+`datas=[(src, 'src')]`) : tout commit touchant `src/pipeline/cv/**` ou
+`cv_runner_onnx_cli.py` rend le binaire livré périmé — c'est arrivé 2 mois et
+demi sans signal (binaire du 16/06, 4 commits CV morts, audit 2026-08-31).
+
+- **Quand recompiler** : dès que `tests/unit/test_runner_binary_fresh.py` est
+  rouge (il compare le sha256 des sources au `build_info.json` posé à côté de
+  l'exe par `build.py`).
+- **Comment** : `python dev/runner_onnx/build.py` (crée/réutilise `.venv_onnx`,
+  installe `dev/requirements/build.txt`, PyInstaller via le spec, copie l'exe +
+  `build_info.json` vers `data/third_party/cv_runner_onnx/windows/`).
+- **Vérifier** : test de fraîcheur vert + smoke run de l'exe sur une image de
+  `dev/image_test/` avec un modèle installé.
+- Le gel des versions du venv de build vit dans `dev/requirements/build.lock`
+  (régénéré par `pip freeze` après toute évolution de build.txt).
+
 ## Export des modèles
 
 Avant d'utiliser le runner, vous devez exporter vos modèles au format ONNX.

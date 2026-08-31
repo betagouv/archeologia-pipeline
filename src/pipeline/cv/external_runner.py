@@ -76,6 +76,18 @@ def find_external_cv_runner(log: Optional[LogFn] = None) -> Optional[Path]:
 
     try:
         if candidate.exists() and candidate.is_file():
+            if log:
+                # Traçabilité du binaire (audit 2026-08-31) : sans stamp, un exe
+                # périmé a tourné 2 mois et demi sans que rien ne le dise.
+                info_path = candidate.parent / "build_info.json"
+                try:
+                    import json as _json
+                    _info = _json.loads(info_path.read_text(encoding="utf-8"))
+                    log(f"Computer Vision: runner ONNX build {_info.get('date', '?')} "
+                        f"(commit {_info.get('commit', '?')})")
+                except Exception:
+                    log("Computer Vision: runner ONNX SANS build_info.json — âge "
+                        "inconnu, recompiler via dev/runner_onnx/build.py")
             return candidate
         elif log:
             log(f"Computer Vision: runner ONNX non trouvé à {candidate}")

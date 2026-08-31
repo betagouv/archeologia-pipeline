@@ -20,6 +20,30 @@ data/models/<model_name>/
 
 Fichiers tolérés mais hors contrat runtime : `metrics.csv`, `events.out.tfevents.*`, `hparams.yaml`. Si `weights/classes.txt` existe, il doit être **byte-identique** à `classes.txt` racine.
 
+### `entrainement/` — traçabilité (2026-08, jamais lue au runtime, EXCLUE du ZIP)
+
+```
+entrainement/
+├── evaluation/                  # éval CANONIQUE du modèle déployé (tools/courbes_eval.py, repo training-models)
+│   ├── metriques_eval.json      # SOURCE DE VÉRITÉ des seuils du model_card (seuil_f1max global + par classe)
+│   ├── appariements.json        # cache d'appariements (re-rendu sans ré-inférence)
+│   └── *.png                    # planches P/R/F1/PR
+├── comparaison_<vs>/            # superpositions multi-modèles (courbes_eval)
+├── metrics.csv (+ historiques + NOTE-metriques.md), hparams.yaml, tfevents, visualizations/
+```
+
+`thresholds.confidence_default` et `confidence_per_class` du model_card proviennent de
+`entrainement/evaluation/metriques_eval.json` (validateur : |Δ| ≤ 0,05 avec le
+`seuil_f1max` mesuré, sinon `thresholds.seuils_provenance` obligatoire pour justifier
+l'écart). `dev/package_plugin.py` exclut `entrainement/` du ZIP de distribution.
+
+### Statut honnête des fichiers jamais lus au runtime
+
+`config.json`, `training_params.json` et `evaluation_results.json` ne sont lus QUE par
+le validateur (cohérences) — aucun code de `src/` ne les ouvre. `evaluation_results.json`
+est l'artefact legacy du notebook (appariement par IoU à seuil fixe 0,3, incomparable au
+balayage de `metriques_eval.json`) : documentaire, jamais source de seuils, jamais réécrit.
+
 ## Doublons dans `classes.txt` — sous-classes RF-DETR
 
 Les doublons sont **explicitement autorisés**. Le pipeline les fusionne par nom de classe (string equality) au moment de la génération des shapefiles ([conversion_shp.py:1276-1294](../src/pipeline/cv/conversion_shp.py)). Exemple : un modèle RF-DETR entraîné à distinguer 3 sous-types de `charbonniere` aura :
@@ -70,16 +94,38 @@ classes:
     label_fr: "Cratère d'obus"  # accentué — affichage utilisateur
     color_index: 0              # index dans args.yaml.class_colors
     description: "Cratère d'obus circulaire de Première Guerre mondiale."
+    # entity: cratere           # OPTIONNEL — id d'entité du catalogue si != name
+                                # (la couverture UI repli sur name == entity.id ;
+                                #  une entité hors entities_catalog.json = modèle
+                                #  installé mais INVISIBLE — vérifié par le validateur)
 
 thresholds:
-  confidence_default: 0.3
+  confidence_default: 0.3       # = seuil_f1max de entrainement/evaluation/metriques_eval.json
   min_area_m2: 0
+  # confidence_per_class:       # OPTIONNEL — seuils F1-max PAR CLASSE (mesurés) ;
+  #   chemin_creux: 0.15        # clés ⊆ classes.txt (validé) ; consommés par le
+  #   talus_fosse: 0.30         # fallback Python ET le binaire externe (T1, 2026-08-31)
+  # iou: 0.5                    # OPTIONNEL (alias iou_threshold) — jamais exposé UI
+  # seuils_provenance: "..."    # traçabilité de la mesure (chemin + date) ; REQUIS
+                                # si confidence_default s'écarte >0,05 de la mesure
 
-# Documente les divergences imgsz / SAHI vs training. Optionnel mais REQUIS si divergence.
+# Cibles DÉRIVÉES : une sortie de clustering présentée comme entité cochable.
+# Chaque output_class DOIT avoir sa règle args.yaml.clustering.output_class_name
+# (sinon le plugin l'ignore en silence — validé depuis 2026-08-31).
+# derived_targets:
+#   - output_class: zone_crateres      # == une clustering.output_class_name
+#     entity: regroupement_crateres    # id du catalogue
+#     include_source: true             # sortie = zones + détections sources
+#     output_label: Regroupements      # nom de la couche cluster (optionnel)
+#     source_label: Cratères           # nom de la couche source (optionnel)
+
+# Documente les divergences imgsz / SAHI vs training. Optionnel mais REQUIS si
+# divergence. Depuis 2026-08-31 le validateur vérifie que `value` == la valeur
+# RÉELLE d'args.yaml (une carte qui documente 350 pour un args.yaml à 140 = ERR).
 inference_choices:
   - field: sahi.slice_width
-    value: 350
-    reason: "SAHI < imgsz (504) pour mémoire/throughput sur grandes emprises."
+    value: 140
+    reason: "SAHI << imgsz (504) : objets ~5 px, densité > num_queries par grande fenêtre."
 
 recommended_use: "RVT LD 0.5 m sur emprises Verdun ou contexte WWI."
 known_limitations:

@@ -10,6 +10,15 @@ else
   echo "[ruff] WARNING: 'ruff' introuvable dans le PATH - lint ignoré."
 fi
 
+# Validateur des modèles installés (audit 2026-08-31) : data/models est
+# gitignoré mais les métadonnées mensongères se propagent aux ZIP livrés —
+# les ERR bloquent le push (les WARN legacy passent ; --strict = à la main).
+if [ -d "data/models" ] && ls data/models/*/weights >/dev/null 2>&1; then
+  echo "[modeles] validate_models_metadata ..."
+  if command -v python >/dev/null 2>&1; then PY=python; else PY=python3; fi
+  "$PY" scripts/validate_models_metadata.py
+fi
+
 # Talisman pre-push hook.
 # Requires 'talisman' to be available in PATH.
 

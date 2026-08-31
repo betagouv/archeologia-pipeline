@@ -11,10 +11,13 @@ Usage:
 """
 
 import argparse
+import hashlib
+import json
 import platform
 import shutil
 import subprocess
 import sys
+from datetime import datetime
 from pathlib import Path
 
 
@@ -22,6 +25,45 @@ RUNNER_DIR = Path(__file__).resolve().parent
 DEV_DIR = RUNNER_DIR.parent
 PLUGIN_ROOT = DEV_DIR.parent
 REQUIREMENTS_BUILD = DEV_DIR / "requirements" / "build.txt"
+
+
+def hash_cv_sources(plugin_root: Path = PLUGIN_ROOT) -> str:
+    """SHA256 des sources opérantes embarquées dans l'exe (src/pipeline/cv/**.py + CLI).
+
+    L'exe PyInstaller fige un instantané de src/ : tout commit touchant
+    src/pipeline/cv/ ou le CLI rend le binaire livré PÉRIMÉ (T2 de l'audit
+    2026-08-31 : binaire du 16/06, 4 commits CV morts pendant 2 mois et demi).
+    Ce hash, écrit dans build_info.json à côté de l'exe, est recomparé par
+    tests/unit/test_runner_binary_fresh.py — rouge tant qu'on n'a pas relancé
+    ``python dev/runner_onnx/build.py``.
+    """
+    h = hashlib.sha256()
+    fichiers = sorted((plugin_root / "src" / "pipeline" / "cv").rglob("*.py"))
+    fichiers.append(plugin_root / "dev" / "runner_onnx" / "cv_runner_onnx_cli.py")
+    for f in fichiers:
+        h.update(f.name.encode("utf-8"))
+        h.update(f.read_bytes())
+    return h.hexdigest()
+
+
+def write_build_info(dest_dir: Path) -> None:
+    """build_info.json (commit, date, sha256 des sources) à côté de l'exe."""
+    try:
+        commit = subprocess.run(
+            ["git", "rev-parse", "--short", "HEAD"], cwd=PLUGIN_ROOT,
+            capture_output=True, text=True,
+        ).stdout.strip() or "?"
+    except Exception:
+        commit = "?"
+    info = {
+        "commit": commit,
+        "date": datetime.now().isoformat(timespec="seconds"),
+        "sources_sha256": hash_cv_sources(),
+    }
+    (dest_dir / "build_info.json").write_text(
+        json.dumps(info, indent=2) + "\n", encoding="utf-8"
+    )
+    print(f"[INFO] build_info.json écrit (commit {commit}, sources {info['sources_sha256'][:12]}…)")
 
 
 def _read_deps(use_gpu: bool = False) -> list:
@@ -154,7 +196,8 @@ def build_onnx_runner(use_gpu: bool = False) -> bool:
         return False
     
     copy_to_third_party(binary, dest_dir)
-    
+    write_build_info(dest_dir)
+
     print("\n[SUCCESS] Runner ONNX compilé avec succès!")
     return True
 

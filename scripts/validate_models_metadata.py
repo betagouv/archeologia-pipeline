@@ -11,6 +11,21 @@ décrit dans ``docs/model_contract.md`` :
 - ``weights/best.json.source`` relatif (pas de chemin absolu local).
 - Divergences ``imgsz`` / SAHI documentées dans ``model_card.inference_choices``.
 
+Vérifications v2 (audit 2026-08-31) :
+
+- ``inference_choices[].value`` == la valeur RÉELLE dans args.yaml (le cas
+  cratere_circulaire_2 déclarait sahi 350 pour un args.yaml à 140 — l'UI relayait
+  le mensonge en vert).
+- ``thresholds`` bornés ; ``confidence_per_class`` ⊆ classes.txt.
+- ``confidence_default`` adossé à ``entrainement/evaluation/metriques_eval.json``
+  (|Δ| ≤ 0,05 avec le seuil_f1max mesuré, sinon ``seuils_provenance`` obligatoire).
+- entités (classes[].entity/name, derived_targets[].entity) ⊆ entities_catalog.json
+  (une entité hors catalogue = modèle installé mais INVISIBLE dans l'UI).
+- ``weights/best.json.source`` pointe un fichier existant.
+- ``derived_targets[].output_class`` a sa règle ``clustering.output_class_name``.
+- ``best.json.confidence_threshold`` divergent du model_card = ERR (il ÉCRASE le
+  seuil UI côté binaire en segmentation).
+
 Utilisation:
     python scripts/validate_models_metadata.py
     python scripts/validate_models_metadata.py data/models/cratere_circulaire_2
@@ -361,6 +376,164 @@ def validate_model_dir(model_dir: Path, strict: bool = False) -> ValidationRepor
                     report.infos.append(msg + " — documenté dans model_card.inference_choices")
                 else:
                     report.warnings.append(msg + " — non documenté dans model_card.inference_choices")
+
+    # ================= Vérifications v2 (audit 2026-08-31) =================
+
+    # ----- inference_choices : les VALEURS doivent correspondre à args.yaml -----
+    def _resoudre(chemin: str) -> Any:
+        obj: Any = args_yaml
+        for part in str(chemin).split("."):
+            if not isinstance(obj, dict) or part not in obj:
+                return None
+            obj = obj[part]
+        return obj
+
+    for i, ic in enumerate(mc_inference_choices):
+        if not isinstance(ic, dict) or "field" not in ic or "value" not in ic:
+            continue
+        reel = _resoudre(ic["field"])
+        if reel is not None and reel != ic["value"]:
+            report.errors.append(
+                f"model_card.inference_choices[{i}] : {ic['field']}={ic['value']!r} "
+                f"documenté mais args.yaml porte {reel!r} — le model_card MENT "
+                "(et l'UI relaie la valeur documentée)"
+            )
+
+    # ----- thresholds : bornes + per_class ⊆ classes -----
+    mc_thresholds = model_card.get("thresholds") or {}
+    conf_default = mc_thresholds.get("confidence_default")
+    if conf_default is not None and not (
+        isinstance(conf_default, (int, float)) and 0 < float(conf_default) <= 1
+    ):
+        report.errors.append(
+            f"thresholds.confidence_default={conf_default!r} hors (0, 1]"
+        )
+    min_area = mc_thresholds.get("min_area_m2")
+    if min_area is not None and (
+        not isinstance(min_area, (int, float)) or float(min_area) < 0
+    ):
+        report.errors.append(f"thresholds.min_area_m2={min_area!r} invalide (>= 0 requis)")
+    pc = mc_thresholds.get("confidence_per_class")
+    if pc is not None:
+        if not isinstance(pc, dict):
+            report.errors.append("thresholds.confidence_per_class doit être un mapping")
+        else:
+            for cname, val in pc.items():
+                if class_set and cname not in class_set:
+                    report.errors.append(
+                        f"thresholds.confidence_per_class : '{cname}' absent de "
+                        "classes.txt (seuil silencieusement ignoré au runtime)"
+                    )
+                if not (isinstance(val, (int, float)) and 0 < float(val) <= 1):
+                    report.errors.append(
+                        f"thresholds.confidence_per_class['{cname}']={val!r} hors (0, 1]"
+                    )
+
+    # ----- confidence_default adossé à la mesure canonique -----
+    metriques_path = model_dir / "entrainement" / "evaluation" / "metriques_eval.json"
+    if metriques_path.is_file():
+        try:
+            metriques = json.loads(metriques_path.read_text(encoding="utf-8-sig"))
+            seuils = [
+                m.get("global", {}).get("seuil_f1max")
+                for m in (metriques.get("modeles") or {}).values()
+            ]
+            seuils = [s for s in seuils if isinstance(s, (int, float))]
+            if seuils and isinstance(conf_default, (int, float)):
+                ecart = min(abs(float(conf_default) - float(s)) for s in seuils)
+                if ecart > 0.05 and not str(
+                    mc_thresholds.get("seuils_provenance") or ""
+                ).strip():
+                    report.errors.append(
+                        f"thresholds.confidence_default={conf_default} s'écarte de "
+                        f"{ecart:.3f} du seuil_f1max mesuré "
+                        f"(entrainement/evaluation/metriques_eval.json) sans "
+                        "thresholds.seuils_provenance pour le justifier"
+                    )
+        except (ValueError, AttributeError) as exc:
+            report.warnings.append(f"metriques_eval.json illisible : {exc}")
+    else:
+        report.warnings.append(
+            "seuils non adossés à une mesure : entrainement/evaluation/"
+            "metriques_eval.json absent (cf. tools/courbes_eval.py du repo training-models)"
+        )
+
+    # ----- entités ⊆ catalogue (hors catalogue = modèle INVISIBLE dans l'UI) -----
+    catalog_path = REPO_ROOT / "data" / "entities_catalog.json"
+    try:
+        catalog = json.loads(catalog_path.read_text(encoding="utf-8-sig"))
+        catalog_ids = {
+            e.get("id") for e in catalog.get("entities", []) if isinstance(e, dict)
+        }
+    except (OSError, ValueError):
+        catalog_ids = set()
+        report.warnings.append("entities_catalog.json illisible — contrôle catalogue sauté")
+    mc_derived = model_card.get("derived_targets") or []
+    if catalog_ids:
+        for c in mc_classes:
+            if not isinstance(c, dict):
+                continue
+            entite = c.get("entity") or c.get("name")
+            if entite and entite not in catalog_ids:
+                report.errors.append(
+                    f"model_card.classes : entité '{entite}' absente du catalogue "
+                    "entities_catalog.json — l'entité n'apparaîtra PAS dans l'UI"
+                )
+        for i, dt in enumerate(mc_derived):
+            if isinstance(dt, dict) and dt.get("entity") and dt["entity"] not in catalog_ids:
+                report.errors.append(
+                    f"model_card.derived_targets[{i}] : entité '{dt['entity']}' "
+                    "absente du catalogue entities_catalog.json"
+                )
+
+    # ----- derived_targets ↔ clustering -----
+    cluster_outputs = {
+        str(r.get("output_class_name") or "").strip()
+        for r in args_clustering
+        if isinstance(r, dict)
+    }
+    for i, dt in enumerate(mc_derived):
+        if not isinstance(dt, dict):
+            continue
+        out = str(dt.get("output_class") or "").strip()
+        if out and out not in cluster_outputs:
+            report.errors.append(
+                f"model_card.derived_targets[{i}] : output_class '{out}' sans règle "
+                "args.yaml.clustering correspondante — le plugin l'ignorera en silence"
+            )
+
+    # ----- best.json.source pointe un fichier existant -----
+    if isinstance(bj_source, str) and bj_source and not ABS_PATH_RE.match(bj_source):
+        if not (model_dir / bj_source).is_file():
+            report.warnings.append(
+                f"weights/best.json.source='{bj_source}' : fichier ABSENT "
+                "(modèle non réexportable/réévaluable)"
+            )
+
+    # ----- best.json.confidence_threshold écrase le seuil UI (binaire, seg) -----
+    bj_conf = best_json.get("confidence_threshold")
+    if (
+        isinstance(bj_conf, (int, float))
+        and isinstance(conf_default, (int, float))
+        and abs(float(bj_conf) - float(conf_default)) > 1e-9
+    ):
+        report.errors.append(
+            f"weights/best.json.confidence_threshold={bj_conf} != "
+            f"model_card.thresholds.confidence_default={conf_default} — côté binaire "
+            "en segmentation, le sidecar ÉCRASE silencieusement le seuil de l'UI"
+        )
+
+    # ----- architecture croisée (indicatif) -----
+    mc_arch = str(model_card.get("architecture") or "")
+    bj_model_type = str(best_json.get("model_type") or "")
+    if mc_arch and bj_model_type:
+        attendu = {"rfdetr": "RF-DETR", "yolo": "YOLO", "segformer": "SegFormer", "smp": "SMP"}
+        prefixe = attendu.get(bj_model_type.lower())
+        if prefixe and not mc_arch.upper().startswith(prefixe.upper()):
+            report.warnings.append(
+                f"model_card.architecture='{mc_arch}' vs weights/best.json.model_type="
+                f"'{bj_model_type}' : familles divergentes"
+            )
 
     # ----- Mode strict : warnings → errors -----
     if strict and report.warnings:

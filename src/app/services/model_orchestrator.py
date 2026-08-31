@@ -109,6 +109,8 @@ class InstalledModel:
     default_confidence: float = 0.3
     default_min_area: float = 0.0
     default_iou: float = 0.5
+    # preferred_rvt.params canonisés (tuple trié) — cf. _extract_rvt_params.
+    rvt_params: Tuple[Tuple[str, Any], ...] = ()
     # Seuils de confiance PAR CLASSE (model_card:thresholds.confidence_per_class,
     # {nom de classe: seuil}). Mesure au banc : les optima par classe s'étalent de
     # 0,10 à 0,30 sur lineaires_seg_v2_1, un seuil unique sacrifie les classes
@@ -246,6 +248,7 @@ def discover_installed_models(models_dir: Any) -> List[InstalledModel]:
                 display_name=str(card.get("display_name") or sub.name),
                 weights_path=_find_weights(sub),
                 target_rvt=_extract_target_rvt(card),
+                rvt_params=_extract_rvt_params(card),
                 status=str(card.get("status") or "").strip(),
                 coverage=coverage,
                 class_names=class_names,
@@ -302,6 +305,18 @@ def _extract_target_rvt(card: Dict[str, Any]) -> str:
         if rvt:
             return rvt
     return "LD"
+
+
+def _extract_rvt_params(card: Dict[str, Any]) -> Tuple[Tuple[str, Any], ...]:
+    """``preferred_rvt.params`` canonisés (tuple trié) — sert à détecter deux
+    modèles au même TYPE de RVT mais aux paramètres divergents (ex. enclos LD
+    Rmin5/Rmax10 vs cratères LD Rmin10/Rmax20) : le regroupement des runs par
+    type seul leur ferait partager UN raster aux paramètres de l'un des deux
+    (audit 2026-08-31, §RVT)."""
+    pref = card.get("preferred_rvt")
+    if isinstance(pref, dict) and isinstance(pref.get("params"), dict):
+        return tuple(sorted((str(k), v) for k, v in pref["params"].items()))
+    return ()
 
 
 def _extract_thresholds(card: Dict[str, Any]) -> Tuple[float, Dict[str, float], float, float]:
@@ -612,13 +627,21 @@ def build_entity_coverage(
 
 
 def _pick_default_model(candidates: Sequence[InstalledModel]) -> Optional[str]:
-    """Défaut = modèle ``production`` le plus spécialisé (moins de classes),
+    """Défaut = ``production`` d'abord, puis — à statut égal — le modèle porteur de
+    seuils par classe MESURÉS (audit 2026-08-31 : sans ce critère, un modèle beta
+    dont les seuils F1-max ont été mesurés perdait systématiquement contre un
+    production jamais calibré), puis le plus spécialisé (moins de classes),
     départage alphabétique."""
     if not candidates:
         return None
     ranked = sorted(
         candidates,
-        key=lambda m: (0 if m.status == "production" else 1, len(m.class_names), m.name),
+        key=lambda m: (
+            0 if m.status == "production" else 1,
+            0 if m.default_confidence_per_class else 1,
+            len(m.class_names),
+            m.name,
+        ),
     )
     return ranked[0].name
 
@@ -741,6 +764,24 @@ def resolve_runs_from_entities(
         group["classes"].update(ec_classes)
         group["entities"].append(eid)
         group["entity_classes"][eid] = ec_classes
+
+    # Garde conservatoire (audit 2026-08-31, §RVT) : deux modèles au même TYPE de
+    # RVT mais aux preferred_rvt.params divergents partagent aujourd'hui UN seul
+    # raster (déduplication par type en aval) — les params de l'un des deux
+    # s'imposent à l'autre. Tant que la déduplication par (type, params) n'est
+    # pas implémentée, on le SIGNALE au lieu de le taire.
+    _params_par_type: Dict[str, Dict[Tuple, str]] = {}
+    for model_name, rvt in groups:
+        m = models_by_name[model_name]
+        _params_par_type.setdefault(rvt, {})[m.rvt_params] = model_name
+    for rvt, variantes in _params_par_type.items():
+        if len(variantes) > 1:
+            logger.warning(
+                "RVT %s partagé par des modèles aux paramètres DIVERGENTS (%s) : "
+                "un seul raster sera calculé, avec les paramètres d'un seul modèle "
+                "— vérifier preferred_rvt.params des model_cards",
+                rvt, ", ".join(sorted(variantes.values())),
+            )
 
     runs: List[Dict[str, Any]] = []
     for key in sorted(groups):

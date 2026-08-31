@@ -73,23 +73,10 @@ def run_fallback_inference(
     log(f"Computer Vision: {len(class_names or [])} classes, couleurs={'oui' if class_colors else 'non'}")
     log(f"SAHI: slice={slice_height}×{slice_width}, overlap={overlap_ratio}")
 
-    # Seuils par classe : le run les porte en {NOM: seuil} (orchestrateur / model_card),
-    # le décodage ONNX les consomme en {id: seuil} — la conversion se fait ici, seul
-    # endroit qui connaît l'ordre des classes du modèle. Un nom sans correspondance est
-    # SIGNALÉ : un seuil silencieusement ignoré est un piège de diagnostic.
-    confidence_per_class: Optional[Dict[int, float]] = None
-    _pc_noms = cv_config.get("confidence_per_class")
-    if isinstance(_pc_noms, dict) and _pc_noms and class_names:
-        confidence_per_class = {
-            i: float(_pc_noms[n]) for i, n in enumerate(class_names) if n in _pc_noms
-        } or None
-        _inconnues = set(map(str, _pc_noms)) - set(class_names)
-        if _inconnues:
-            log("Computer Vision: seuils par classe IGNORÉS (classes inconnues du "
-                f"modèle): {sorted(_inconnues)}")
-        if confidence_per_class:
-            log("Computer Vision: seuils par classe -> " + ", ".join(
-                f"{class_names[i]}={v:g}" for i, v in sorted(confidence_per_class.items())))
+    # Seuils par classe : {NOM: seuil} (orchestrateur / model_card) -> {id: seuil}
+    # via le helper PARTAGÉ avec le CLI du binaire externe (T1 audit 2026-08-31).
+    from .class_utils import confidence_per_class_ids
+    confidence_per_class = confidence_per_class_ids(cv_config, class_names, log)
 
     # Charger la session ONNX une seule fois pour toutes les images
     onnx_session = cv_mod._load_onnx_model(str(weights_path))

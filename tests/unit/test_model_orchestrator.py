@@ -344,6 +344,17 @@ class TestBuildEntityCoverage:
         # production prime sur le nombre de classes
         assert cov["cratere"].default_model == "prod_model"
 
+    def test_measured_thresholds_break_status_tie(self, tmp_path):
+        # Audit 2026-08-31 : à statut ÉGAL, le modèle aux seuils par classe
+        # MESURÉS (thresholds.confidence_per_class) gagne l'élection — même s'il
+        # a plus de classes et un nom alphabétiquement perdant.
+        mesure = VERDUN + "thresholds:\n  confidence_per_class:\n    cratere: 0.35\n"
+        _write_model(tmp_path, "aaa_sans_mesure", CRATERE)  # 1 classe, gagnant historique
+        _write_model(tmp_path, "zzz_mesure", mesure)        # 3 classes, seuils mesurés
+        installed = discover_installed_models(tmp_path)
+        cov = {ec.entity.id: ec for ec in build_entity_coverage(_catalog(), installed)}
+        assert cov["cratere"].default_model == "zzz_mesure"
+
 
 # ----------------------------------------------------------------------
 # resolve_runs_from_entities

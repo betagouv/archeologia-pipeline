@@ -383,3 +383,35 @@ def get_confidence_color_name(base_color_index: int, confidence: float) -> str:
         bucket = "low"
     
     return f"color{base_color_index}_{bucket}"
+
+
+def confidence_per_class_ids(
+    cv_config: Dict,
+    class_names: Optional[List[str]],
+    log=None,
+) -> Optional[Dict[int, float]]:
+    """Convertit ``cv_config["confidence_per_class"]`` ({NOM: seuil}) en {id: seuil}.
+
+    Seul endroit qui connaît l'ordre des classes du modèle. Partagé par le
+    fallback Python (runner_inference) ET le CLI du binaire externe — avant
+    2026-08-31 le binaire ignorait silencieusement ces seuils (T1 de l'audit) :
+    le chemin d'exécution décidait si les seuils mesurés s'appliquaient.
+
+    Un nom sans correspondance est SIGNALÉ via ``log`` : un seuil silencieusement
+    ignoré est un piège de diagnostic. Retourne None si rien d'applicable.
+    """
+    _log = log or (lambda m: logger.info(m))
+    pc_noms = cv_config.get("confidence_per_class")
+    if not (isinstance(pc_noms, dict) and pc_noms and class_names):
+        return None
+    par_id = {
+        i: float(pc_noms[n]) for i, n in enumerate(class_names) if n in pc_noms
+    } or None
+    inconnues = set(map(str, pc_noms)) - set(class_names)
+    if inconnues:
+        _log("Computer Vision: seuils par classe IGNORÉS (classes inconnues du "
+             f"modèle): {sorted(inconnues)}")
+    if par_id:
+        _log("Computer Vision: seuils par classe -> " + ", ".join(
+            f"{class_names[i]}={v:g}" for i, v in sorted(par_id.items())))
+    return par_id

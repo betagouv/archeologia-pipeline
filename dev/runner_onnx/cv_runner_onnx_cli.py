@@ -230,14 +230,30 @@ def main() -> int:
     class_names = None
     class_colors = None
     try:
-        from pipeline.cv.class_utils import load_class_names_from_model, load_class_colors_from_model
-        class_names = load_class_names_from_model(model_path)
-        class_colors = load_class_colors_from_model(model_path)
+        # 2026-08-31 : l'ancien import visait load_class_colors_from_model, qui
+        # n'a JAMAIS existé — l'import échouait en bloc, class_names restait None
+        # (pas de légende, pas de mapping des seuils par classe). ModelProfile est
+        # la source réelle (args.yaml.class_colors + classes.txt), comme le
+        # fallback Python (runner_inference).
+        from pipeline.cv.model_profile import ModelProfile
+        _profile = ModelProfile.load(model_path)
+        class_names = list(_profile.class_names) if _profile.class_names else None
+        class_colors = list(_profile.class_colors) if _profile.class_colors else None
         if class_names:
             _print(f"class_names={class_names}")
         _print(f"class_colors_loaded={class_colors}")  # Toujours afficher, même si None
     except Exception as e:
         _print(f"WARN: impossible de charger les noms/couleurs de classes: {e}")
+
+    # Seuils par classe (T1 audit 2026-08-31) : le payload les porte déjà dans
+    # cv_config, mais le binaire ne les appliquait PAS — les seuils F1-max mesurés
+    # ne valaient que sur le fallback Python. Même helper que runner_inference.
+    confidence_per_class = None
+    try:
+        from pipeline.cv.class_utils import confidence_per_class_ids
+        confidence_per_class = confidence_per_class_ids(cv_config, class_names, _print)
+    except Exception as e:
+        _print(f"WARN: seuils par classe non résolus: {e}")
     
     # Créer le fichier légende dans annotated_images
     if generate_annotated_images and class_names and annotated_output_dir:
@@ -321,6 +337,7 @@ def main() -> int:
                 model_path=str(model_path),
                 output_path=str(detection_output_path),
                 confidence_threshold=confidence_threshold,
+                confidence_per_class=confidence_per_class,
                 iou_threshold=iou_threshold,
                 slice_height=slice_height,
                 slice_width=slice_width,

@@ -31,6 +31,13 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 
 logger = logging.getLogger(__name__)
 
+# Tâches « segmentation » du sidecar ``task`` — même vocabulaire que le gate
+# de ``conversion_shp.create_shapefile_from_detections`` (une tâche connue hors
+# de cet ensemble est un modèle bbox / object detection).
+_SEGMENTATION_TASKS = frozenset(
+    {"instance_segmentation", "semantic_segmentation", "segment"}
+)
+
 
 @dataclass(frozen=True)
 class SahiConfig:
@@ -169,10 +176,13 @@ class PostprocessConfig:
     ``overlap_strategy`` pilote l'étape de suppression des superpositions
     (``remove_overlaps``) :
 
-    - ``"difference"`` (défaut, historique) : découpe le polygone le moins
-      confiant le long du contour de l'autre (``geom.difference``). Pour un
-      modèle mono-classe (cratères) ce découpage FABRIQUE des artefacts —
-      anneau troué (petit imbriqué) ou arête droite partagée (accolés).
+    - ``"difference"`` (défaut segmentation, historique) : découpe le polygone
+      le moins confiant le long du contour de l'autre (``geom.difference``).
+      Pour un modèle mono-classe (cratères) ce découpage FABRIQUE des
+      artefacts — anneau troué (petit imbriqué) ou arête droite partagée
+      (accolés). Il ne supprime JAMAIS un doublon, d'où le défaut
+      ``"relation"`` pour les modèles bbox (cf. :func:`_parse_postprocess`) :
+      le halo inter-dalles fait détecter le même objet par plusieurs dalles.
     - ``"relation"`` : pour les détections de MÊME classe, on raisonne en
       confinement (IoS = aire intersection / aire du plus petit) — si
       IoS ≥ ``overlap_ios_threshold`` on FUSIONNE par union (l'union absorbe le
@@ -262,7 +272,10 @@ class ModelProfile:
 
         sahi = _parse_sahi(args_yaml)
         clustering = _parse_clustering(args_yaml)
-        postprocess = _parse_postprocess(args_yaml)
+        _task = metadata.get("task")
+        postprocess = _parse_postprocess(
+            args_yaml, task=str(_task) if _task is not None else None
+        )
         class_colors = _parse_class_colors(args_yaml)
         is_rfdetr = _parse_is_rfdetr(args_yaml)
         class_names = _load_class_names(model_dir)
@@ -523,10 +536,22 @@ def _parse_clustering(args_yaml: Dict[str, Any]) -> Tuple[Any, ...]:
     return tuple(rules)
 
 
-def _parse_postprocess(args_yaml: Dict[str, Any]) -> PostprocessConfig:
+def _parse_postprocess(
+    args_yaml: Dict[str, Any], task: Optional[str] = None
+) -> PostprocessConfig:
+    # Défaut de stratégie de superposition selon la tâche : pour un modèle bbox
+    # (object detection), « difference » ne supprime jamais un doublon (elle
+    # rogne le perdant) — or le halo inter-dalles fait détecter le même objet
+    # par 2–4 dalles voisines. Seule « relation » (IoS) déduplique réellement,
+    # donc c'est le défaut bbox ; args.yaml peut toujours surcharger.
+    default_strategy = (
+        "relation"
+        if task is not None and str(task) not in _SEGMENTATION_TASKS
+        else "difference"
+    )
     pp = args_yaml.get("postprocess")
     if not isinstance(pp, dict):
-        return PostprocessConfig()
+        return PostprocessConfig(overlap_strategy=default_strategy)
     try:
         buffer_m = float(pp.get("merge_buffer_m", 0.5))
     except (TypeError, ValueError):
@@ -534,9 +559,9 @@ def _parse_postprocess(args_yaml: Dict[str, Any]) -> PostprocessConfig:
     if not (0 < buffer_m < float("inf")):  # ≤ 0, NaN ou inf → défaut
         buffer_m = 0.5
 
-    strategy = str(pp.get("overlap_strategy", "difference")).strip().lower()
+    strategy = str(pp.get("overlap_strategy", default_strategy)).strip().lower()
     if strategy not in ("difference", "relation"):
-        strategy = "difference"
+        strategy = default_strategy
 
     try:
         ios = float(pp.get("overlap_ios_threshold", 0.5))

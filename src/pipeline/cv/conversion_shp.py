@@ -1338,9 +1338,11 @@ def create_shapefile_from_detections(
         #    désactiver pour les modèles mono-classe.
         #
         # Les modèles de détection bbox (``object_detection``) produisent par
-        # nature des boîtes indépendantes qui ne doivent jamais être fusionnées,
-        # donc on force les deux flags à False dans ce cas (sauf override
-        # explicite par l'utilisateur).
+        # nature des boîtes indépendantes : ``merge_adjacent`` est forcé à False
+        # (pas de soudure de boîtes voisines). En revanche ``remove_overlaps``
+        # reste actif : le halo inter-dalles fait détecter le même objet par
+        # 2-4 dalles voisines, doublons dédupliqués par la stratégie "relation"
+        # (défaut bbox via ModelProfile) en gardant la boîte la plus confiante.
         _segmentation_tasks = {"instance_segmentation", "semantic_segmentation", "segment"}
         _is_segmentation = model_task in _segmentation_tasks if model_task else True
         if isinstance(postprocess_config, dict):
@@ -1388,11 +1390,16 @@ def create_shapefile_from_detections(
                             _overlap_min_area_ratio = _ratio
                     except (TypeError, ValueError):
                         pass
+                # Modèle bbox : une composante de doublons (halo inter-dalles)
+                # est réduite à la boîte la plus confiante — l'union de
+                # rectangles décalés fabriquerait un polygone en L.
+                _keep_best = not _is_segmentation
                 logger.info(
                     f"Post-traitement géo: {total_raw} détections brutes sur {processed_files} dalles "
                     f"(task={model_task}, merge={_do_merge}, remove_overlaps={_do_remove_overlaps}, "
                     f"merge_buffer_m={_merge_buffer_m}, overlap_strategy={_overlap_strategy}, "
-                    f"overlap_ios={_overlap_ios}, overlap_min_area_ratio={_overlap_min_area_ratio})"
+                    f"overlap_ios={_overlap_ios}, overlap_min_area_ratio={_overlap_min_area_ratio}, "
+                    f"keep_best_geometry={_keep_best})"
                 )
                 data_by_class_name = postprocess_geo_detections(
                     data_by_class_name,
@@ -1402,6 +1409,7 @@ def create_shapefile_from_detections(
                     overlap_strategy=_overlap_strategy,
                     overlap_ios_threshold=_overlap_ios,
                     overlap_min_area_ratio=_overlap_min_area_ratio,
+                    overlap_keep_best_geometry=_keep_best,
                 )
                 total_pp = sum(len(v) for v in data_by_class_name.values())
                 logger.info(f"Post-traitement géo terminé: {total_raw} -> {total_pp} détections")

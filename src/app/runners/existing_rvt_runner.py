@@ -7,7 +7,7 @@ from ..cancel_token import CancelToken
 from ..progress_reporter import ProgressReporter, report_busy, report_stage_id
 from ..progress_stages import Stage
 from ..run_context import RunContext
-from ..services.cv_post_service import _model_display_name
+from ..services.cv_post_service import _model_display_name, resolve_uncropped_tif
 from ..services.finalize_service import finalize_pipeline
 from ..structured_logger import log_section
 from ..user_narrator import create_user_narrator
@@ -16,9 +16,11 @@ from .progress_plan import build_progress_plan, cv_pct
 try:  # cross-package import : OK en QGIS, fallback en tests standalone (src/ sur le path)
     from ...pipeline.cancellation import PipelineCancelled
     from ...pipeline.batch import process_items_isolated
+    from ...pipeline.output_paths import intermediaires_dir
 except ImportError:  # pragma: no cover
     from pipeline.cancellation import PipelineCancelled
     from pipeline.batch import process_items_isolated
+    from pipeline.output_paths import intermediaires_dir
 
 if TYPE_CHECKING:
     from ..structured_logger import StructuredLogger
@@ -109,6 +111,21 @@ class ExistingRvtRunner:
                 narrator.cv_run_image_progress(_model, idx, total, image_name)
                 reporter.progress(cv_pct(_ri, _n, idx, total, plan.cv))
 
+            # Option B (halo inter-dalles) étendue à existing_rvt : si le dossier
+            # de sortie contient les TIF non rognés d'un run complet antérieur
+            # (intermediaires/, modes ign_laz/local_laz), l'inférence tourne
+            # dessus — les objets à cheval sur une frontière de dalle sont vus
+            # en entier. Sans correspondance (dalle absente, paramètres RVT
+            # différents des noms d'intermediaires), resolve_uncropped_tif
+            # renvoie None et le TIF rogné est utilisé (comportement historique).
+            inference_tif_resolver = None
+            halo_dir = intermediaires_dir(ctx.output_dir)
+            if halo_dir.is_dir():
+                def inference_tif_resolver(
+                    cropped, _rvt=run_rvt, _src=halo_dir,
+                ):
+                    return resolve_uncropped_tif(cropped, _src, _rvt, ctx.rvt_params)
+
             res = run_existing_rvt(
                 existing_rvt_dir=existing_rvt_dir,
                 output_dir=ctx.output_dir,
@@ -122,6 +139,7 @@ class ExistingRvtRunner:
                 image_progress=_on_image_progress if cv_runs else None,
                 tile_progress=narrator.cv_run_tile_progress if cv_runs else None,
                 on_busy=lambda active: report_busy(reporter, active),
+                inference_tif_resolver=inference_tif_resolver,
             )
             total_images = max(total_images, res.total_images)
             if res.total_detections is not None:

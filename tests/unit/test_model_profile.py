@@ -256,6 +256,59 @@ postprocess:
     def test_overlap_min_area_ratio_defaults_to_zero(self):
         assert PostprocessConfig().overlap_min_area_ratio == 0.0
 
+    # -- Doublons halo inter-dalles (2026-08-31) : défaut « relation » pour bbox --
+    def test_bbox_task_defaults_to_relation(self, tmp_path):
+        # Modèle object detection sans overlap_strategy dans args.yaml : la
+        # dédup cross-dalles exige « relation » (« difference » garde les deux).
+        weights = _make_model(
+            tmp_path,
+            args_yaml="postprocess:\n  merge_adjacent: false\n  remove_overlaps: true\n",
+            sidecar_json={"task": "object_detection"},
+        )
+        profile = ModelProfile.load(weights)
+        assert profile.postprocess.overlap_strategy == "relation"
+        assert profile.postprocess.overlap_ios_threshold == 0.5
+
+    def test_bbox_task_without_postprocess_block_defaults_to_relation(self, tmp_path):
+        weights = _make_model(tmp_path, sidecar_json={"task": "object_detection"})
+        profile = ModelProfile.load(weights)
+        assert profile.postprocess.overlap_strategy == "relation"
+
+    def test_bbox_explicit_difference_respected(self, tmp_path):
+        weights = _make_model(
+            tmp_path,
+            args_yaml="postprocess:\n  overlap_strategy: difference\n",
+            sidecar_json={"task": "object_detection"},
+        )
+        profile = ModelProfile.load(weights)
+        assert profile.postprocess.overlap_strategy == "difference"
+
+    def test_bbox_unknown_strategy_falls_back_to_relation(self, tmp_path):
+        weights = _make_model(
+            tmp_path,
+            args_yaml="postprocess:\n  overlap_strategy: bogus\n",
+            sidecar_json={"task": "object_detection"},
+        )
+        profile = ModelProfile.load(weights)
+        assert profile.postprocess.overlap_strategy == "relation"
+
+    def test_segmentation_task_still_defaults_to_difference(self, tmp_path):
+        weights = _make_model(
+            tmp_path,
+            args_yaml="postprocess:\n  remove_overlaps: true\n",
+            sidecar_json={"task": "instance_segmentation"},
+        )
+        profile = ModelProfile.load(weights)
+        assert profile.postprocess.overlap_strategy == "difference"
+
+    def test_no_task_still_defaults_to_difference(self, tmp_path):
+        weights = _make_model(
+            tmp_path,
+            args_yaml="postprocess:\n  remove_overlaps: true\n",
+        )
+        profile = ModelProfile.load(weights)
+        assert profile.postprocess.overlap_strategy == "difference"
+
     def test_overlap_min_area_ratio_parsed(self, tmp_path):
         weights = _make_model(
             tmp_path,

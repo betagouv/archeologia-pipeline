@@ -699,6 +699,7 @@ def _resolve_same_class_overlaps(
     unary_union_fn,
     STRtree,
     min_area_ratio: float = 0.0,
+    keep_best_geometry: bool = False,
 ) -> List[Dict]:
     """Résout les superpositions entre détections d'UNE même classe par union.
 
@@ -718,11 +719,16 @@ def _resolve_same_class_overlaps(
     détections de taille proche d'un même cratère) sans fusionner un petit
     cratère distinct posé sur le bord d'un grand.
 
+    ``keep_best_geometry`` (modèles bbox) : au lieu de l'union — qui, sur des
+    rectangles décalés (doublons cross-dalles du halo), produit un polygone en
+    L/croix — chaque composante est réduite à la détection la plus confiante,
+    géométrie ET attributs intacts (une bbox reste une bbox).
+
     Implémentation : graphe de chevauchement (arête = IoS ≥ seuil, garde-fou
     respecté) via STRtree (fallback O(N²) si ``STRtree is None``), composantes
     connexes par union-find, puis ``unary_union`` par composante. Le gabarit
     (attributs) de chaque composante est la détection la plus confiante, avec la
-    géométrie unionnée.
+    géométrie unionnée (ou sa propre géométrie si ``keep_best_geometry``).
     """
     items = [
         d for d in dets
@@ -800,6 +806,9 @@ def _resolve_same_class_overlaps(
             out.append(items[members[0]])
             continue
         best = max(members, key=lambda k: items[k].get("confidence", 0.0))
+        if keep_best_geometry:
+            out.append(items[best])
+            continue
         try:
             merged = unary_union_fn([geoms[k] for k in members])
         except Exception:
@@ -879,6 +888,7 @@ def postprocess_geo_detections(
     overlap_strategy: str = "difference",
     overlap_ios_threshold: float = 0.5,
     overlap_min_area_ratio: float = 0.0,
+    overlap_keep_best_geometry: bool = False,
 ) -> Dict[str, List[Dict]]:
     """
     Post-traitement global des détections en coordonnées géographiques,
@@ -925,6 +935,10 @@ def postprocess_geo_detections(
             désactivé) appliqué en stratégie ``"relation"`` — sur la bande de
             chevauchement modéré, ne fusionne que des polygones de taille proche
             (ratio min_aire/max_aire ≥ ce seuil), sauf confinement quasi-total.
+        overlap_keep_best_geometry: en stratégie ``"relation"``, remplace
+            l'union par la détection la plus confiante de chaque composante
+            (géométrie intacte). Pour les modèles bbox : l'union de rectangles
+            décalés (doublons cross-dalles du halo) ferait un polygone en L.
 
     Returns:
         Nouveau ``{class_name: [det_dict, ...]}`` post-traité. Si les deux
@@ -1010,6 +1024,7 @@ def postprocess_geo_detections(
             resolved_by_class[class_name] = _resolve_same_class_overlaps(
                 dets, overlap_ios_threshold, unary_union, STRtree,
                 min_area_ratio=overlap_min_area_ratio,
+                keep_best_geometry=overlap_keep_best_geometry,
             )
         result_by_class = _remove_cross_class_overlaps(
             resolved_by_class, unary_union, min_area_m2

@@ -1,4 +1,12 @@
 fileignoreconfig:
+- filename: tests/unit/test_merge_inputs_freshness.py
+  checksum: f22da81d19eb8211793400d91f6a4b8e18a31a21a3953ad17b70b9fde37680ce
+- filename: tests/unit/test_cache_guard.py
+  checksum: 42fa6e522d5c85b15f8ec32ceb5da02cc09f364476435a442f6b1970612d34c5
+- filename: tests/unit/test_indices_freshness.py
+  checksum: 6c3c4589bedfd1f34a4f0b5cabe9b26a15af76f2366887301e0da134d3627b4c
+- filename: tests/unit/test_results_freshness.py
+  checksum: 33f0a0af2f68048f2bac69148d382e52fe30ccd2aad0fcc81a9d6acfa5a94998
 - filename: .githooks/pre-push
   checksum: b0e75a8b481a83c7a519218d19fa137bfe34752ee3b1f5fbf3fafd19b1d15b03
 - filename: CLAUDE.md

@@ -432,7 +432,9 @@ Le format historique mono-modèle est conservé pour rétrocompatibilité (sans 
 
 `selected_model` peut aussi être un nom de dossier modèle relatif à `models_dir` ; le runner cherchera alors automatiquement `weights/best.onnx`.
 
-### Inférence avec halo inter-dalles (modes `ign_laz` / `local_laz`)
+### Inférence avec halo inter-dalles
+
+**Modes `ign_laz` / `local_laz` (TIF non rognés d'`intermediaires/`).**
 
 En modes IGN / LAZ local, l'inférence CV ne tourne plus sur le TIF rogné à 1 km mais sur le **TIF non rogné** d'`intermediaires/` (dalle + marge `processing.tile_overlap`, 200 m par défaut — de la vraie donnée voisine fusionnée par `prepare_merged_tiles`). Un objet à cheval sur une frontière de dalles est ainsi vu **en entier** par au moins une des deux dalles (halo ≥ taille/2) ; les détections en double dans la bande de recouvrement se superposent exactement en Lambert-93 et sont fusionnées par le post-traitement géo global (`merge_adjacent` / `remove_overlaps`). Pour les modèles **bbox** (object detection), la déduplication passe par `overlap_strategy: relation` — **défaut automatique** pour ces modèles (la stratégie historique `difference` rogne le perdant sans jamais le supprimer) — et chaque groupe de doublons est réduit à la **boîte la plus confiante** (pas d'union en L de rectangles décalés). En pratique :
 
@@ -441,9 +443,9 @@ En modes IGN / LAZ local, l'inférence CV ne tourne plus sur le TIF rogné à 1 
 - un cache `raw_detections/` plus ancien que son PNG est **purgé automatiquement** (des coordonnées normalisées calculées sur l'ancienne géométrie seraient décalées de la marge) — le premier re-run dans un `output_dir` antérieur ré-infère donc toutes les images ;
 - coût : surface d'inférence ≈ ×2 à marge 20 % (le halo utile plancher est ~50 m pour un enclos de 90 m — réduire `tile_overlap` réduit le halo *et* le contexte des noyaux RVT, cf. avertissements de l'étape 2) ; temps MNT/RVT inchangé (la marge était déjà calculée) ;
 - les JPG annotés montrent l'image élargie : un objet frontière apparaît sur les JPG des deux dalles voisines (cosmétique, assumé) ;
-- si le TIF non rogné est introuvable (`intermediaires/` purgé, re-run CV seul), repli silencieux sur le TIF rogné — comportement historique, détections à nouveau coupées aux frontières.
+- si le TIF non rogné est introuvable (`intermediaires/` purgé, re-run CV seul), repli sur le **halo fabriqué depuis les voisins** (ci-dessous), puis sur le TIF rogné.
 
-Les modes `existing_mnt` / `existing_rvt` ne sont **pas** concernés : sans fusion de voisins, il n'existe pas de halo à exploiter (limite documentée).
+**Modes `existing_rvt` / `existing_mnt` (halo fabriqué depuis les voisins).** Sans `intermediaires/`, chaque dalle 1 km était inférée seule : un objet à cheval sur une frontière sortait **coupé au bord** (ou pas du tout quand la moitié visible ne passait plus le seuil de confiance). `run_existing_rvt` découpe désormais **dalle + 50 m** dans la mosaïque des dalles *fournies* (`pipeline/modes/neighbor_halo.py`, VRT GDAL → `intermediaires/halo/<indice>/`) : vraie donnée là où un voisin existe, aplat 0 ailleurs (clippé comme ci-dessus). 50 m suffit à voir entier un objet de 100 m et ne coûte **aucune tuile SAHI** (2 000 + 2 × 100 px = 2 200 px < 2 202 px, la grille 4×4 des modèles 648/672 px est conservée — à 200 m on passerait à 6×6, × 2,25). Fraîcheur comme le LAZ fusionné : un halo est réutilisé tant que son jeu de voisins (sidecar `.inputs.json`) et leurs mtimes sont inchangés ; sinon il est re-découpé et son mtime frais régénère le PNG puis purge le cache CV de la dalle. Raster « large » (> 1 km) ou dalle sans voisin → pas de halo. Le résolveur explicite (`intermediaires/`) reste prioritaire, le halo voisin est le repli, valable dans tous les modes.
 
 ## MNT / RVT non-IGN : traitement des grandes emprises
 

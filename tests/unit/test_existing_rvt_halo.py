@@ -225,3 +225,96 @@ class TestRunCvPostLoopHalo:
 
         assert loop_env["captured"], "run_existing_rvt non appelé"
         assert loop_env["captured"].get("inference_tif_resolver") is None
+
+
+_A = "LHD_FXX_0872_6904_LD_A_LAMB93.tif"
+_B = "LHD_FXX_0873_6904_LD_A_LAMB93.tif"
+_CELL_A = (872000.0, 6903000.0, 873000.0, 6904000.0)
+_CELL_B = (873000.0, 6903000.0, 874000.0, 6904000.0)
+_TRANSFORM_HALO = (0.5, -0.5, 871950.0, 6904050.0)
+
+
+class TestNeighborHaloFallback:
+    """Sans intermediaires/ (existing_rvt / existing_mnt), le halo est fabriqué
+    depuis les dalles voisines du run — repli après le résolveur explicite."""
+
+    @pytest.fixture
+    def env2(self, tmp_path, monkeypatch):
+        import pipeline.modes.neighbor_halo as nh
+
+        tif_dir = tmp_path / "indices" / "LD_TEST" / "tif"
+        tif_dir.mkdir(parents=True)
+        (tif_dir / _A).write_bytes(b"tif")
+        (tif_dir / _B).write_bytes(b"tif")
+        calls = {"convert": [], "cv": [], "extract": []}
+
+        def fake_convert(src, dst):
+            Path(dst).parent.mkdir(parents=True, exist_ok=True)
+            Path(dst).write_bytes(b"png")
+            calls["convert"].append((Path(src), Path(dst)))
+
+        def fake_transform(path):
+            return _TRANSFORM_HALO if "halo" in Path(path).parts else _TRANSFORM_CROPPED
+
+        def fake_bounds(path):
+            return _CELL_A if Path(path).name == _A else _CELL_B
+
+        def fake_extract(inputs, window, dst):
+            calls["extract"].append((list(inputs), window, Path(dst)))
+            Path(dst).write_bytes(b"halo")
+
+        monkeypatch.setattr(er, "_convert_tif_to_png_with_world", fake_convert)
+        monkeypatch.setattr(er, "extract_tif_transform_data", fake_transform)
+        monkeypatch.setattr(er, "get_raster_bounds", fake_bounds)
+        monkeypatch.setattr(nh, "_gdal_extract", fake_extract)
+        monkeypatch.setattr(cv_runner, "run_cv_on_folder", lambda **kw: calls["cv"].append(kw))
+        return {"output_dir": tmp_path, "tif_dir": tif_dir, "calls": calls}
+
+    def _run(self, env2, **kwargs):
+        return er.run_existing_rvt(
+            existing_rvt_dir=env2["tif_dir"], output_dir=env2["output_dir"],
+            cv_config={"enabled": True}, output_structure={}, indices_folder_name="LD_TEST",
+            **kwargs,
+        )
+
+    def test_sans_resolveur_inference_sur_le_halo_voisin(self, env2):
+        self._run(env2)
+
+        srcs = [s for s, _d in env2["calls"]["convert"]]
+        halo_dir = env2["output_dir"] / "intermediaires" / "halo" / "LD_TEST"
+        assert srcs == [halo_dir / _A, halo_dir / _B]
+        # Les stems des PNG restent ceux des dalles (cache, couches).
+        assert [d.stem for _s, d in env2["calls"]["convert"]] == [Path(_A).stem, Path(_B).stem]
+        cv = env2["calls"]["cv"][0]
+        assert cv["tif_transform_data"][Path(_A).stem] == _TRANSFORM_HALO
+        assert cv["valid_region_bounds"] == [_CELL_A, _CELL_B]
+
+    def test_resolveur_explicite_prioritaire(self, env2, tmp_path):
+        uncropped = tmp_path / "intermediaires" / _UNCROPPED
+        uncropped.parent.mkdir(parents=True)
+        uncropped.write_bytes(b"tif")
+
+        self._run(env2, inference_tif_resolver=lambda cropped: uncropped)
+
+        assert all(s == uncropped for s, _d in env2["calls"]["convert"])
+        assert env2["calls"]["extract"] == []
+
+    def test_resolveur_none_repli_sur_le_halo_voisin(self, env2):
+        self._run(env2, inference_tif_resolver=lambda cropped: None)
+
+        assert len(env2["calls"]["extract"]) == 2
+
+    def test_marge_zero_comportement_historique(self, env2):
+        self._run(env2, halo_margin_m=0)
+
+        assert env2["calls"]["extract"] == []
+        assert [s.name for s, _d in env2["calls"]["convert"]] == [_A, _B]
+        assert env2["calls"]["cv"][0]["valid_region_bounds"] is None
+
+    def test_raster_large_pas_de_halo(self, env2, monkeypatch):
+        big = (872000.0, 6900000.0, 875000.0, 6904000.0)
+        monkeypatch.setattr(er, "get_raster_bounds", lambda p: big)
+
+        self._run(env2)
+
+        assert env2["calls"]["extract"] == []

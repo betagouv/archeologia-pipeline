@@ -522,7 +522,7 @@ Cette grille indique, pour chaque vague livrée, **quelles sections de tests son
 - [ ] **26.4 Pas de bruit hors périmètre** : aucune détection au-delà de l'union des dalles commandées (halo extérieur clippé).
 - [ ] **26.5 Cache invalidé** : relancer dans un `output_dir` d'un run antérieur → journal `cache(s) de détection plus ancien(s) que leur PNG — purgé(s), ré-inférence` au premier passage ; résultats stables au second.
 - [ ] **26.6 VRT intact** : `indices/<X>/tif/` ne contient que des TIF 1 km rognés ; le VRT `index_<X>` s'affiche sans recouvrements ni doublons.
-- [ ] **26.7 Non-régression autres modes** : un run `existing_rvt` / `existing_mnt` reste identique (PNG aux dimensions du TIF fourni, pas de halo, pas de clip).
+- [ ] **26.7 Autres modes** : un run `existing_rvt` / `existing_mnt` fabrique son halo depuis les dalles voisines — voir §29.
 
 ## 27. Comparaison A/B : deux modèles pour une même entité ⭐ P0
 
@@ -562,3 +562,18 @@ Cette grille indique, pour chaque vague livrée, **quelles sections de tests son
 - [ ] **28.6 Multi-zones (livrables préservés)** : run 1 zone A (dalle A) à 0,5 m, puis run 2 zone B (dalle B, autre liste) à 2 m dans le **même** `output_dir` → après le run 2, `indices/MNT/tif/` contient **encore** le TIF de la dalle A (à 0,5 m, non recalculée — anciens paramètres, c'est documenté) **et** celui de la dalle B (2 m) ; le VRT `index_MNT.vrt` mosaïque les deux. Aucun livrable détruit.
 - [ ] **28.7 Purge verrouillée (Windows)** : après un run, charger dans QGIS un TIF de `intermediaires/` (cf. §26), changer la résolution MNT et relancer → le run s'arrête avec un message actionnable « … est verrouillé — fermez les couches QGIS chargées depuis ce dossier… » (pas de traceback WinError brut) ; retirer la couche et relancer → la purge passe.
 - [ ] **28.8 Extension de zone (halo re-fusionné)** : run 1 sur la dalle A seule (CV active), puis run 2 même `output_dir`, mêmes paramètres, sélection élargie {A, B} (B contiguë) → le fichier de log montre « Jeu de voisins modifié → re-fusion : A…_merged.laz » ; A est **recalculée** (MNT/RVT/PNG régénérés, ré-inférence de A) — sa marge vers B est désormais de la vraie donnée ; aucune détection « fantôme » de A (bruit de l'ancienne marge fabriquée) n'apparaît dans la cellule de B ; `intermediaires/A…_merged.inputs.json` liste le voisin. Run 3 identique → « LAZ fusionné réutilisé » (pas de re-fusion).
+
+## 29. Halo inter-dalles fabriqué depuis les voisins (modes `existing_rvt` / `existing_mnt`) ⭐ P0
+
+> **Contexte** : sans `intermediaires/`, l'inférence découpe **dalle + 50 m** dans la
+> mosaïque des dalles fournies (`intermediaires/halo/<indice>/`). Un objet à cheval sur
+> deux dalles du run doit sortir **entier et une seule fois** ; la bande noire du halo
+> extérieur au périmètre ne doit produire aucune détection.
+
+- [ ] **29.1 Halo fabriqué** : run `existing_rvt` sur ≥ 2 dalles 1 km adjacentes + CV → journal `Halo inter-dalles depuis les voisins (marge 50 m) : N fabriqué(s), 0 réutilisé(s), K dalle(s) sans voisin` ; `intermediaires/halo/RVT/` contient un `.tif` + `.inputs.json` par dalle ayant un voisin.
+- [ ] **29.2 PNG à marge** : `indices/RVT/png/*.png` font 2200×2200 px (dalles 2000 px @ 0,5 m) et s'alignent sur les TIF via leur `.pgw` (origine décalée de 50 m).
+- [ ] **29.3 Objet à cheval** : Fénétrange (`tif_test`, 43 dalles LD), dépression GT `train:12785` (48.838776, 6.920619) à cheval sur y = 6 867 000 → **un seul** polygone entier (IoU ≥ 0,7 avec le masque SAM), plus de coupure rectiligne à y = 6 867 000 ; charbonnière à 48.883707, 6.922291 → boîte non tronquée à y = 6 872 000.
+- [ ] **29.4 Pas de bruit hors périmètre** : aucune détection au-delà de l'union des dalles ; pas de polygones le long des bords extérieurs.
+- [ ] **29.5 Reprise** : relancer dans le même `output_dir` → `N réutilisé(s)`, PNG non régénérés, cache CV conservé (pas de ré-inférence). Ajouter une dalle voisine → seuls les halos des dalles touchées sont re-fabriqués et ré-inférés.
+- [ ] **29.6 Dalle seule / raster large** : 1 seule dalle ou raster > 1 km → pas de ligne « Halo inter-dalles », comportement historique.
+- [ ] **29.7 `existing_mnt`** : même comportement via `run_cv_post_loop` (halo sous `intermediaires/halo/<LD_…>/`).

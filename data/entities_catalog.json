@@ -72,9 +72,9 @@
       "morphology": "circulaire"
     },
     {
-      "id": "circular_depression",
-      "label": "Dépressions circulaires",
-      "description": "Dépressions circulaires d'origine indéterminée.",
+      "id": "depression_circulaire_grande",
+      "label": "Dépressions circulaires grandes",
+      "description": "Grandes dépressions circulaires en cuvette (mardelles, dolines, cuvettes >= 14 m de diamètre), segmentation d instances sur LD 0,5 m. Les petites dépressions (< 14 m) ne sont pas ciblées.",
       "display_order": 90,
       "morphology": "circulaire"
     },

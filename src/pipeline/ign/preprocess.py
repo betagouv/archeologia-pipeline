@@ -207,6 +207,34 @@ def crop_neighbor_tile(
             pass
 
 
+def merged_inputs_sidecar(output_path: Path) -> Path:
+    """Sidecar du jeu de voisins fusionnés : ``<tile>_merged.inputs.json``."""
+    return output_path.with_suffix(".inputs.json")
+
+
+def merged_inputs_match(output_path: Path, neighbor_paths: List[Path]):
+    """Compare le jeu de voisins courant à celui enregistré à la fusion.
+
+    ``None`` = sidecar absent (fusionné legacy, provenance inconnue) ;
+    ``True``/``False`` sinon (sidecar illisible → ``False``, on refusionne).
+    """
+    sidecar = merged_inputs_sidecar(output_path)
+    if not sidecar.exists():
+        return None
+    try:
+        recorded = json.loads(sidecar.read_text(encoding="utf-8"))
+        recorded = sorted(str(n) for n in recorded)
+    except Exception:
+        return False
+    return recorded == sorted(p.name for p in neighbor_paths)
+
+
+def write_merged_inputs_sidecar(output_path: Path, neighbor_paths: List[Path]) -> None:
+    merged_inputs_sidecar(output_path).write_text(
+        json.dumps(sorted(p.name for p in neighbor_paths)), encoding="utf-8"
+    )
+
+
 def merge_tiles(
     *,
     central_path: Path,
@@ -223,7 +251,23 @@ def merge_tiles(
     if output_path.exists():
         ok, _ = validate_las_or_laz_with_pdal(output_path)
         if ok:
-            return True
+            # Le cache n'est valable que pour le MÊME jeu de voisins : au
+            # re-run « extension de zone » ({A} puis {A,B}), la marge de A
+            # vers B était restée FABRIQUÉE et ses détections de marge
+            # ressortaient dans la cellule de B (clip élargi). Un jeu
+            # différent → re-fusion, dont le mtime frais ré-arme toute la
+            # chaîne de fraîcheur aval (MNT → RVT → PNG → cache CV).
+            match = merged_inputs_match(output_path, neighbor_paths)
+            if match is None:
+                # Fusionné legacy (pas de sidecar) : adoption du jeu courant
+                # comme référence, sans re-fusion forcée (cf. cache_guard).
+                write_merged_inputs_sidecar(output_path, neighbor_paths)
+                log(f"LAZ fusionné réutilisé (cache intermédiaire) : {output_path.name}")
+                return True
+            if match:
+                log(f"LAZ fusionné réutilisé (cache intermédiaire) : {output_path.name}")
+                return True
+            log(f"Jeu de voisins modifié → re-fusion : {output_path.name}")
         try:
             output_path.unlink()
         except Exception:
@@ -246,6 +290,7 @@ def merge_tiles(
 
     if len(valid_files) <= 1:
         shutil.copy2(str(central_path), str(output_path))
+        write_merged_inputs_sidecar(output_path, neighbor_paths)
         return True
 
     cmd = [_pdal_exe(), "merge"] + [str(p) for p in valid_files] + [str(output_path)]
@@ -267,6 +312,7 @@ def merge_tiles(
             log(f"PDAL: {msg_out}")
         return False
 
+    write_merged_inputs_sidecar(output_path, neighbor_paths)
     return True
 
 

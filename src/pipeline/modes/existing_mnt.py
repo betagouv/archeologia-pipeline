@@ -151,10 +151,14 @@ def _copy_source_mnt_to_temp(
     conversion .asc (le process est tué et le TIF partiel supprimé).
     """
     if temp_mnt_path.exists():
-        if temp_mnt_path.stat().st_size > 0:
+        # Fraîcheur, pas simple existence : copy2 préserve le mtime du MNT
+        # source — un fichier source REMPLACÉ (plus récent) est re-matérialisé.
+        from ..ign.products.results import needs_refresh
+
+        if temp_mnt_path.stat().st_size > 0 and not needs_refresh(source_path, temp_mnt_path):
             return
-        # Résidu 0 octet d'un crash antérieur : ne pas le prendre pour un
-        # « déjà converti » (AUDIT v2 ROB-16) — on rematérialise.
+        # Résidu 0 octet d'un crash antérieur (AUDIT v2 ROB-16) ou copie
+        # périmée : on rematérialise.
         temp_mnt_path.unlink(missing_ok=True)
     suffix = source_path.suffix.lower()
     if suffix in (".tif", ".tiff"):

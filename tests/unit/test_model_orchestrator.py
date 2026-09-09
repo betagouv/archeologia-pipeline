@@ -456,6 +456,123 @@ class TestResolveRuns:
 # ----------------------------------------------------------------------
 # Cibles dérivées : une sortie de clustering présentée comme une entité
 # ----------------------------------------------------------------------
+class TestMultiModelComparison:
+    """A/B : 2 modèles cochés pour la MÊME entité → 1 run par modèle, sorties
+    qualifiées par modèle (slug/label/couches) + group_label de comparaison.
+    La surcharge ``entity_model_overrides`` accepte une LISTE de modèles
+    (rétrocompat : une chaîne = comportement mono-modèle historique)."""
+
+    def _installed(self, tmp_path):
+        _write_model(tmp_path, "formes", FORMES)          # parcellaire (3 classes)
+        _write_model(tmp_path, "lineaires_v2", THRESH)    # parcellaire (1 classe)
+        return discover_installed_models(tmp_path)
+
+    def test_list_override_yields_one_run_per_model(self, tmp_path):
+        runs = resolve_runs_from_entities(
+            ["parcellaire"], {"parcellaire": ["formes", "lineaires_v2"]},
+            self._installed(tmp_path), _catalog(),
+        )
+        assert [r["model"] for r in runs] == ["formes", "lineaires_v2"]
+        for r in runs:
+            ent = r["entities"][0]
+            assert ent["id"] == "parcellaire"
+            assert ent["slug"] == f"parcellaire--{r['model']}"
+            assert ent["group_label"] == "Parcellaire (comparaison)"
+            assert ent["label"].startswith("Parcellaire — ")
+            # chaque classe reçoit un nom de couche qualifié par le modèle
+            assert ent["layer_names"]["parcellaire"].startswith("parcellaire — ")
+        assert runs[0]["entities"][0]["label"] != runs[1]["entities"][0]["label"]
+        assert (runs[0]["entities"][0]["layer_names"]["parcellaire"]
+                != runs[1]["entities"][0]["layer_names"]["parcellaire"])
+
+    def test_single_selection_unchanged(self, tmp_path):
+        # Pas de surcharge → défaut mono-modèle, sorties NON qualifiées.
+        runs = resolve_runs_from_entities(
+            ["parcellaire"], {}, self._installed(tmp_path), _catalog()
+        )
+        assert len(runs) == 1
+        ent = runs[0]["entities"][0]
+        assert ent["slug"] == "parcellaire"
+        assert ent["label"] == "Parcellaire"
+        assert "group_label" not in ent
+        assert ent["layer_names"] == {}
+
+    def test_legacy_str_override_unchanged(self, tmp_path):
+        runs = resolve_runs_from_entities(
+            ["parcellaire"], {"parcellaire": "formes"},
+            self._installed(tmp_path), _catalog(),
+        )
+        assert _summ(runs) == [("formes", "LD", ["parcellaire"])]
+        assert runs[0]["entities"][0]["slug"] == "parcellaire"
+
+    def test_stale_member_filtered_no_comparison(self, tmp_path):
+        # Un membre périmé dans la liste → filtré ; il reste 1 modèle valide
+        # → pas de mode comparaison, sorties non qualifiées.
+        runs = resolve_runs_from_entities(
+            ["parcellaire"], {"parcellaire": ["formes", "fantome"]},
+            self._installed(tmp_path), _catalog(),
+        )
+        assert _summ(runs) == [("formes", "LD", ["parcellaire"])]
+        assert runs[0]["entities"][0]["slug"] == "parcellaire"
+
+    def test_all_stale_falls_back_to_default(self, tmp_path):
+        runs = resolve_runs_from_entities(
+            ["parcellaire"], {"parcellaire": ["fantome1", "fantome2"]},
+            self._installed(tmp_path), _catalog(),
+        )
+        assert len(runs) == 1
+        assert runs[0]["entities"][0]["slug"] == "parcellaire"
+
+    def test_threshold_override_applies_to_both_variants(self, tmp_path):
+        # Comparaison à seuil ÉGAL : la surcharge de confiance par entité
+        # s'applique aux classes de l'entité dans CHAQUE run.
+        runs = resolve_runs_from_entities(
+            ["parcellaire"], {"parcellaire": ["formes", "lineaires_v2"]},
+            self._installed(tmp_path), _catalog(),
+            entity_thresholds={"parcellaire": {"confidence_threshold": 0.42}},
+        )
+        assert len(runs) == 2
+        for r in runs:
+            assert r["confidence_per_class"]["parcellaire"] == 0.42
+
+    def test_scalar_override_falls_back_without_crash(self, tmp_path):
+        # Config éditée à la main : valeur ni str ni liste → tolérée comme une
+        # surcharge périmée (warning + défaut), jamais de TypeError.
+        installed = self._installed(tmp_path)
+        for bogus in (42, 3.14, True, {"x": 1}):
+            runs = resolve_runs_from_entities(
+                ["parcellaire"], {"parcellaire": bogus}, installed, _catalog(),
+            )
+            assert len(runs) == 1
+            assert runs[0]["entities"][0]["slug"] == "parcellaire"
+
+    def test_qualifier_preserves_dashes_and_folds_accents(self):
+        from app.services.model_orchestrator import _model_slug_qualifier
+        # « formes-v2 » et « formes_v2 » doivent rester des qualificatifs
+        # DISTINCTS (slugify les aurait confondus) — sinon deux variantes
+        # routeraient vers le même dossier.
+        assert _model_slug_qualifier("formes-v2") == "formes-v2"
+        assert _model_slug_qualifier("formes_v2") == "formes_v2"
+        assert _model_slug_qualifier("Modèle É") == "modele_e"
+        assert _model_slug_qualifier("") == "modele"
+
+    def test_mixed_compared_and_plain_entity_in_same_run(self, tmp_path):
+        # chemin_creux n'est couvert que par formes → bloc NON qualifié dans le
+        # run formes, aux côtés du bloc parcellaire qualifié.
+        runs = resolve_runs_from_entities(
+            ["parcellaire", "chemin_creux"],
+            {"parcellaire": ["formes", "lineaires_v2"]},
+            self._installed(tmp_path), _catalog(),
+        )
+        by_model = {r["model"]: r for r in runs}
+        ents_formes = {e["id"]: e for e in by_model["formes"]["entities"]}
+        assert ents_formes["chemin_creux"]["slug"] == "chemins_creux"
+        assert "group_label" not in ents_formes["chemin_creux"]
+        assert ents_formes["parcellaire"]["slug"] == "parcellaire--formes"
+        assert (by_model["lineaires_v2"]["entities"][0]["slug"]
+                == "parcellaire--lineaires_v2")
+
+
 class TestDerivedTargets:
     def test_include_source_covers_source_and_output_classes(self, tmp_path):
         _write_model(tmp_path, "cratere_circulaire_2", CRATERE_DERIVED, args_yaml=CRATERE_ARGS)

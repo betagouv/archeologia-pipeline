@@ -520,10 +520,21 @@ def reclass_rvt_nodata(rvt_path, dem_path) -> bool:
         with rasterio.open(str(dem_path)) as dem:
             dem_arr = dem.read(1)
             invalid = _dem_invalid(dem_arr, dem.nodata)
-        with rasterio.open(str(rvt_path), "r+") as ds:
+        # Lecture seule d'abord : un produit déjà reclassé/étiqueté ne doit PAS
+        # être réécrit — la boucle finale d'indices.py repasse sur les sorties
+        # servies du cache, et « rajeunir » leur mtime ferait régénérer les PNG
+        # publiés puis purger le cache d'inférence CV à chaque re-run
+        # (needs_refresh/purge_stale_cached_detections comparent des mtimes).
+        with rasterio.open(str(rvt_path)) as ds:
             if set(ds.dtypes) != {"uint8"} or (ds.height, ds.width) != invalid.shape:
                 return False
-            ds.write(reclass_rvt_byte(ds.read(), invalid))
+            arr = ds.read()
+            already_tagged = ds.nodata == RVT_BYTE_NODATA
+        out = reclass_rvt_byte(arr, invalid)
+        if already_tagged and np.array_equal(out, arr):
+            return True
+        with rasterio.open(str(rvt_path), "r+") as ds:
+            ds.write(out)
             ds.nodata = RVT_BYTE_NODATA
         return True
     except ImportError:
@@ -543,7 +554,9 @@ def reclass_rvt_nodata(rvt_path, dem_path) -> bool:
         )
         dem_ds = None
 
-        ds = gdal.Open(str(rvt_path), gdal.GA_Update)
+        # Même logique lecture-d'abord que la branche rasterio : ne rouvrir en
+        # GA_Update (→ mtime « rajeuni ») que si une écriture est nécessaire.
+        ds = gdal.Open(str(rvt_path))
         if ds is None:
             return False
         bands = [ds.GetRasterBand(i + 1) for i in range(ds.RasterCount)]
@@ -552,7 +565,16 @@ def reclass_rvt_nodata(rvt_path, dem_path) -> bool:
         ) != invalid.shape:
             return False
         arr = ds.ReadAsArray()  # (H, W) mono-bande, (bandes, H, W) sinon
+        already_tagged = all(b.GetNoDataValue() == RVT_BYTE_NODATA for b in bands)
+        bands = None
+        ds = None
         out = reclass_rvt_byte(arr, invalid)
+        if already_tagged and np.array_equal(out, arr):
+            return True
+        ds = gdal.Open(str(rvt_path), gdal.GA_Update)
+        if ds is None:
+            return False
+        bands = [ds.GetRasterBand(i + 1) for i in range(ds.RasterCount)]
         for i, b in enumerate(bands):
             b.WriteArray(out if out.ndim == 2 else out[i])
             b.SetNoDataValue(RVT_BYTE_NODATA)

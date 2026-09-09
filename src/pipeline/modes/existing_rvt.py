@@ -9,6 +9,7 @@ from ..geo_utils import extract_tif_transform_data
 from ..coords import extract_xy_from_filename, get_raster_bounds, infer_xy_from_file
 from ..constants import IGN_TILE_SIZE_M
 from ..cv.external_runner import ImageProgressFn, TileProgressFn
+from ..ign.products.results import needs_refresh
 from ..output_paths import indice_base_dir, indice_tif_dir, indice_jpg_dir
 from ..types import LogFn, CancelCheckFn
 
@@ -65,6 +66,17 @@ def _png_consistent_with_tif(png_path, tif_path, *, png_size_fn=None, tif_size_f
         return tuple(ps) == tuple(ts)
     except Exception:
         return True
+
+
+def _png_stale(png_path, tif_path) -> bool:
+    """Vrai si la source d'inférence est plus récente que le PNG → régénérer.
+
+    Complément mtime de la garde GEO-03 (qui ne compare que les dimensions) :
+    une source RECALCULÉE aux mêmes dimensions (cache invalidé par cache_guard,
+    MNT remplacé) doit régénérer le PNG — sinon ``purge_stale_cached_detections``
+    garde le cache d'inférence et les détections périmées sont re-publiées.
+    """
+    return needs_refresh(Path(tif_path), Path(png_path))
 
 
 @dataclass(frozen=True)
@@ -258,11 +270,17 @@ def run_existing_rvt(
             break
 
         effective_tif_path = tif_path
+        # Couplage copie→PNG : si la copie dest a été rafraîchie (source
+        # remplacée, mtime de DONNÉES), le PNG doit suivre même quand son
+        # mtime de GÉNÉRATION (horloge du run précédent) est plus récent que
+        # la nouvelle source — sinon TIF publié neuf + détections anciennes.
+        dest_refreshed = False
         if tif_out_dir is not None and tif_out_dir.resolve() != existing_rvt_dir.resolve():
             try:
                 normalized_name = _normalized_rvt_name(tif_path=tif_path, target_rvt=target_rvt)
                 dest = tif_out_dir / normalized_name
-                if not dest.exists():
+                dest_refreshed = needs_refresh(tif_path, dest)
+                if dest_refreshed:
                     if dest.name != tif_path.name:
                         log(f"RVT: renommage (coords) {tif_path.name} -> {dest.name}")
                     shutil.copy2(str(tif_path), str(dest))
@@ -305,6 +323,14 @@ def run_existing_rvt(
             # est régénéré, sinon décalage de la marge.
             if jpg_path.exists() and not _png_consistent_with_tif(jpg_path, inference_src):
                 log(f"PNG incohérent avec le TIF (dimensions ≠), régénération: {jpg_path.name}")
+                try:
+                    jpg_path.unlink()
+                except OSError:
+                    pass
+            elif jpg_path.exists() and (dest_refreshed or _png_stale(jpg_path, inference_src)):
+                # Source recalculée (mtime plus récent) : régénérer le PNG
+                # ré-arme purge_stale_cached_detections puis la ré-inférence.
+                log(f"PNG plus ancien que sa source, régénération: {jpg_path.name}")
                 try:
                     jpg_path.unlink()
                 except OSError:

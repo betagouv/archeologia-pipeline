@@ -105,7 +105,13 @@ def create_coverage_map(
     Idempotent (ne refait pas un TIF existant), comme ``create_density_map``.
     """
     output_path = temp_dir / get_rvt_temp_filename("COUVERTURE", current_tile_name, {})
-    if output_path.exists():
+    # Fraîcheur vis-à-vis du raster densité (cf. mnt.py/density.py).
+    from .results import needs_refresh
+
+    if output_path.exists() and (
+        not density_path.exists() or not needs_refresh(density_path, output_path)
+    ):
+        log(f"COUVERTURE réutilisée (cache intermédiaire) : {output_path.name}")
         return CoverageResult(coverage_path=output_path)
     if not density_path.exists():
         raise FileNotFoundError(

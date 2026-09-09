@@ -773,6 +773,7 @@ def create_shapefile_from_detections(
     min_confidence: float = 0.0,
     class_targets: dict = None,
     valid_region_bounds: list = None,
+    model_name: str = None,
     cancel_check: Optional[CancelCheckFn] = None,
 ) -> bool:
     """
@@ -807,12 +808,16 @@ def create_shapefile_from_detections(
 
         jgw_logged_for_jpg = set()
         
-        # Nom du modèle utilisé pour les détections (stocké comme attribut non éditable)
-        model_name = load_model_name_from_config()
+        # Nom du modèle utilisé pour les détections (stocké comme attribut non
+        # éditable). Priorité au modèle DU RUN (passé par runner_shapefiles —
+        # indispensable en multi-runs A/B) ; repli legacy sur le selected_model
+        # top-level de config.json.
+        if not model_name:
+            model_name = load_model_name_from_config()
         if model_name:
-            logger.info(f"Nom du modèle chargé depuis config.json: {model_name}")
+            logger.info(f"Nom du modèle des détections: {model_name}")
         else:
-            logger.info("Aucun nom de modèle trouvé dans config.json (computer_vision.selected_model)")
+            logger.info("Aucun nom de modèle trouvé (run ni config.json)")
 
         # Liste des classes disponibles (pour ValueMap QGIS)
         # Si class_names n'est pas fourni via le dossier du modèle, on bascule sur des libellés numériques.

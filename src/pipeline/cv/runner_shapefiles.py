@@ -15,6 +15,18 @@ from ..cancellation import PipelineCancelled, check_cancelled
 from ..types import CancelCheckFn, LogFn
 
 
+def _run_model_slug(cv_config: Optional[Dict[str, Any]]) -> Optional[str]:
+    """Slug du modèle du run courant (``selected_model`` posé par
+    ``resolve_cv_runs``), ou ``None`` si indisponible."""
+    try:
+        from .runner_cache import get_model_slug
+        if isinstance(cv_config, dict) and cv_config.get("selected_model"):
+            return get_model_slug(cv_config)
+    except Exception:
+        pass
+    return None
+
+
 def deduplicate_cv_shapefiles_final(
     *,
     labels_dir: Path,
@@ -146,6 +158,10 @@ def deduplicate_cv_shapefiles_final(
             min_confidence=float((cv_config or {}).get("confidence_threshold", 0.0) or 0.0),
             class_targets=class_targets,
             valid_region_bounds=valid_region_bounds,
+            # Attribut model_name des détections : le modèle DU RUN (multi-runs
+            # A/B), pas le selected_model top-level de config.json (qui peut
+            # désigner un autre run).
+            model_name=_run_model_slug(cv_config),
             cancel_check=cancel_check,
         ))
         qgs_root = shp_dir.parent if shp_dir.name.lower() in {"shapefiles", "shp"} else shp_dir

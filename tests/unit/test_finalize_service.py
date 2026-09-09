@@ -41,6 +41,48 @@ class TestBuildEntityGrouping:
         labels, _ = finalize_service.build_entity_grouping(runs)
         assert labels == {"fours": "fours"}
 
+    def test_compared_variants_grouped_under_shared_group_label(self):
+        # A/B 2 modèles pour la même entité : chaque variante porte un slug
+        # qualifié + group_label commun → les deux couches tombent dans le
+        # MÊME groupe QGIS « Parcellaire (comparaison) ».
+        runs = [
+            {"model": "formes", "entities": [{
+                "slug": "parcellaire--formes", "label": "Parcellaire — Formes",
+                "is_derived": False, "group_label": "Parcellaire (comparaison)",
+            }]},
+            {"model": "lin2", "entities": [{
+                "slug": "parcellaire--lin2", "label": "Parcellaire — Lin2",
+                "is_derived": False, "group_label": "Parcellaire (comparaison)",
+            }]},
+        ]
+        labels, grouped = finalize_service.build_entity_grouping(runs)
+        assert grouped == {"parcellaire--formes", "parcellaire--lin2"}
+        assert labels["parcellaire--formes"] == "Parcellaire (comparaison)"
+        assert labels["parcellaire--lin2"] == "Parcellaire (comparaison)"
+
+    def test_derived_compared_variants_share_comparison_group(self):
+        # Entité DÉRIVÉE comparée : group_label prime sur is_derived — les deux
+        # variantes partagent le groupe commun, pas deux groupes qualifiés.
+        runs = [
+            {"entities": [{"slug": "regroupement--a", "label": "Regroupement — A",
+                           "is_derived": True,
+                           "group_label": "Regroupement de cratères (comparaison)"}]},
+            {"entities": [{"slug": "regroupement--b", "label": "Regroupement — B",
+                           "is_derived": True,
+                           "group_label": "Regroupement de cratères (comparaison)"}]},
+        ]
+        labels, grouped = finalize_service.build_entity_grouping(runs)
+        assert grouped == {"regroupement--a", "regroupement--b"}
+        assert (labels["regroupement--a"] == labels["regroupement--b"]
+                == "Regroupement de cratères (comparaison)")
+
+    def test_group_label_absent_keeps_flat_layer(self):
+        runs = [{"entities": [{"slug": "parcellaire", "label": "Parcellaire",
+                               "is_derived": False}]}]
+        labels, grouped = finalize_service.build_entity_grouping(runs)
+        assert grouped == set()
+        assert labels == {"parcellaire": "Parcellaire"}
+
 
 class TestCollectVrtPathsAndBuild:
     def test_builds_and_returns_vrt_for_tif_dirs_only(self, tmp_path: Path, monkeypatch):

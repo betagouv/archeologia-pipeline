@@ -152,6 +152,50 @@ def detection_technique_annotated_dir(output_dir: Path, model_slug: str) -> Path
     return detection_technique_dir(output_dir, model_slug) / "annotated_images"
 
 
+def select_stale_entity_variant_dirs(output_dir: Path, cv_runs: Any) -> list:
+    """Dossiers ``detections/<slug>/`` PÉRIMÉS pour les entités des runs courants.
+
+    Le basculement mono ↔ comparaison A/B change le slug d'une même entité
+    (``parcellaire`` ↔ ``parcellaire--<modèle>``). L'ancien dossier n'est plus
+    réécrit mais son GPKG serait re-collecté par le ``rglob`` de la finalisation
+    → couches dupliquées à l'écran, avec un seuil de symbologie de repli faux
+    (slug absent de ``min_conf_by_slug`` → invariant conf_bin/symbologie violé).
+
+    Périmé = dossier de la MÊME entité (même base avant ``--``) sous une autre
+    qualification que celles des runs courants. Les entités absentes des runs
+    courants ne sont jamais touchées (l'accumulation historique entre runs
+    successifs dans un même ``output_dir`` est conservée).
+    """
+    current: set = set()
+    for run in (cv_runs or []):
+        if not isinstance(run, dict):
+            continue
+        for ent in (run.get("entities") or []):
+            if not isinstance(ent, dict):
+                continue
+            slug = str(ent.get("slug") or ent.get("id") or "").strip()
+            slug = re.sub(r"[^a-z0-9_-]+", "_", slug.lower()).strip("_")
+            if slug:
+                current.add(slug)
+    if not current:
+        return []
+    # Base = tronc avant le séparateur « -- » (un slug de base, issu de
+    # slugify, ne contient jamais de tiret : « -- » est donc bien le nôtre).
+    bases = {s.split("--", 1)[0] for s in current}
+    det_dir = output_dir / "detections"
+    if not det_dir.is_dir():
+        return []
+    stale = []
+    for d in sorted(det_dir.iterdir()):
+        if not d.is_dir() or d.name == DIR_TECHNIQUE:
+            continue
+        if d.name in current:
+            continue
+        if d.name.split("--", 1)[0] in bases:
+            stale.append(d)
+    return stale
+
+
 def build_entity_class_targets(output_dir: Path, entities: Any):
     """Routage ``classe → [(gpkg, nom_de_couche)]`` pour la sortie entité-centrée.
 
@@ -182,20 +226,31 @@ def build_entity_class_targets(output_dir: Path, entities: Any):
             continue
         gpkg = str(detection_entity_dir(output_dir, slug) / f"{slug}.gpkg")
         layer_names = ent.get("layer_names") or {}
+        # Rôle « base » vs « copie dérivée » porté par is_derived quand le bloc
+        # le déclare (l'orchestrateur le pose toujours) : une entité de base
+        # COMPARÉE (A/B, toutes ses couches renommées « — <modèle> ») reste une
+        # base et cède sa classe à la copie du groupe dérivé, comme en
+        # mono-modèle. Bloc sans la clé (run écrit à la main) → None, résolu
+        # plus bas par l'heuristique historique (renommée = copie dérivée).
+        from_derived = bool(ent["is_derived"]) if "is_derived" in ent else None
         for cls in (ent.get("classes") or []):
             cls = str(cls)
             layer = str(layer_names.get(cls, cls))
-            targets.setdefault(cls, []).append((gpkg, layer))
+            targets.setdefault(cls, []).append((gpkg, layer, from_derived))
     deduped: Dict[str, list] = {}
     for cls, lst in targets.items():
-        has_canonical = any(layer == cls for _g, layer in lst)
-        has_renamed = any(layer != cls for _g, layer in lst)
-        if has_canonical and has_renamed:
-            # conflit base/dérivée → on ne garde que la couche du groupe (renommée)
-            deduped[cls] = [t for t in lst if t[1] != cls]
+        def _is_derived_role(t):
+            _g, layer, d = t
+            return (layer != cls) if d is None else d
+        has_base = any(not _is_derived_role(t) for t in lst)
+        has_derived_renamed = any(_is_derived_role(t) and t[1] != cls for t in lst)
+        if has_base and has_derived_renamed:
+            # conflit base/dérivée → on ne garde que les couches du groupe (dérivées)
+            kept = [t for t in lst if _is_derived_role(t)]
         else:
             # couche canonique (layer == classe) en tête : chemin d'écriture principal
-            deduped[cls] = sorted(lst, key=lambda t: 0 if t[1] == cls else 1)
+            kept = sorted(lst, key=lambda t: 0 if t[1] == cls else 1)
+        deduped[cls] = [(g, layer) for g, layer, _d in kept]
     return deduped
 
 

@@ -37,6 +37,8 @@ from __future__ import annotations
 
 import json
 import logging
+import re
+import unicodedata
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, FrozenSet, List, Optional, Sequence, Set, Tuple
@@ -684,32 +686,107 @@ def _compute_layer_names(
 # ----------------------------------------------------------------------
 # Résolution des runs
 # ----------------------------------------------------------------------
-def effective_model_name(
-    ec: EntityCoverage, overrides: Optional[Dict[str, str]]
-) -> Optional[str]:
-    """Modèle effectif d'une entité : la surcharge UI si elle est encore valide
-    (modèle installé ET couvrant l'entité), sinon le modèle par défaut.
+def _model_slug_qualifier(model_name: str) -> str:
+    """Qualificatif de slug pour une variante comparée.
 
-    Une surcharge périmée — model_card modifié entre deux sessions, modèle
-    désinstallé — persiste dans ``last_ui_config.json`` ; sans cette garde elle
-    faisait disparaître l'entité du run silencieusement (simple logger.warning).
-    Partagé par ``resolve_runs_from_entities`` et l'affichage des cartes (étape 3)
-    pour que l'UI et le pipeline restent cohérents.
+    Même classe de caractères que la re-sanitisation de
+    ``output_paths.build_entity_class_targets`` (``[a-z0-9_-]``) pour que le
+    slug qualifié traverse le routage sans altération, en PRÉSERVANT les
+    tirets : « formes-v2 » et « formes_v2 » restent des qualificatifs
+    distincts (``slugify`` les aurait confondus en ``formes_v2``).
     """
-    name = (overrides or {}).get(ec.entity.id)
-    if name in ec.candidate_models:
-        return name
-    if name:
-        logger.warning(
-            "Surcharge périmée pour '%s' : modèle '%s' invalide, retour au défaut '%s'",
-            ec.entity.id, name, ec.default_model,
-        )
-    return ec.default_model
+    folded = unicodedata.normalize("NFKD", model_name).encode("ascii", "ignore").decode("ascii")
+    out = re.sub(r"[^a-z0-9_-]+", "_", folded.lower()).strip("_")
+    return out or "modele"
+
+
+def _entity_block(
+    eid: str,
+    model: InstalledModel,
+    classes_sorted: List[str],
+    label_by_id: Dict[str, str],
+    *,
+    compared: bool,
+) -> Dict[str, Any]:
+    """Bloc ``entities[i]`` d'un run pour une entité.
+
+    ``compared=False`` (une entité = un modèle, historique) : slug/label/couches
+    inchangés. ``compared=True`` (entité portée par ≥ 2 modèles, comparaison
+    A/B) : les sorties sont **qualifiées par modèle** pour que chaque variante
+    ait son dossier (``detections/<slug>--<modèle>/``), ses noms de couche et —
+    via le registre indexé par nom de couche — sa couleur propres ; le
+    ``group_label`` commun regroupe les variantes sous un même groupe QGIS
+    (cf. ``finalize_service.build_entity_grouping``).
+    """
+    base_label = label_by_id.get(eid, eid)
+    base_slug = slugify(base_label) or eid
+    layer_names = _compute_layer_names(model, eid, classes_sorted)
+    block: Dict[str, Any] = {
+        "id": eid,
+        "label": base_label,
+        "slug": base_slug,
+        "classes": classes_sorted,
+        "is_derived": eid in model.derived_entities,
+        "layer_names": layer_names,
+    }
+    if compared:
+        block["slug"] = f"{base_slug}--{_model_slug_qualifier(model.name)}"
+        block["label"] = f"{base_label} — {model.display_name}"
+        block["group_label"] = f"{base_label} (comparaison)"
+        block["layer_names"] = {
+            c: f"{layer_names.get(c, c)} — {model.display_name}"
+            for c in classes_sorted
+        }
+    return block
+
+
+def effective_model_names(
+    ec: EntityCoverage, overrides: Optional[Dict[str, Any]]
+) -> List[str]:
+    """Modèles effectifs d'une entité (1..n) : la surcharge UI filtrée aux
+    candidats encore valides (installés ET couvrant l'entité), sinon le défaut.
+
+    La surcharge (``computer_vision.entity_model_overrides``) accepte une
+    **chaîne** (historique, un seul modèle) ou une **liste** de noms — plusieurs
+    modèles cochés = mode comparaison A/B (un run par modèle en aval). Un membre
+    périmé — model_card modifié entre deux sessions, modèle désinstallé — est
+    filtré avec un ``logger.warning`` ; liste vide après filtrage → retour au
+    modèle par défaut (l'entité ne disparaît jamais silencieusement, garde du
+    commit 21d3113). Partagé par ``resolve_runs_from_entities`` et l'affichage
+    des cartes (étape 3) pour que l'UI et le pipeline restent cohérents.
+    """
+    raw = (overrides or {}).get(ec.entity.id)
+    if raw is None:
+        names: List[str] = []
+    elif isinstance(raw, str):
+        names = [raw]
+    elif isinstance(raw, (list, tuple, set)):
+        names = [str(n) for n in raw]
+    else:
+        # Scalaire inattendu (int/bool… d'une config éditée à la main) : traité
+        # comme une surcharge périmée → warning + repli défaut, jamais de crash
+        # (même tolérance que la garde 21d3113 / AUDIT PARSE-04).
+        names = [str(raw)]
+    valid, seen = [], set()
+    for name in names:
+        if name in ec.candidate_models:
+            if name not in seen:
+                valid.append(name)
+                seen.add(name)
+        else:
+            logger.warning(
+                "Surcharge périmée pour '%s' : modèle '%s' invalide, ignoré "
+                "(défaut : '%s')",
+                ec.entity.id, name, ec.default_model,
+            )
+    if valid:
+        return valid
+    return [ec.default_model] if ec.default_model else []
 
 
 def resolve_runs_from_entities(
     selected_entity_ids: Sequence[str],
-    overrides: Optional[Dict[str, str]],
+    overrides: Optional[Dict[str, Any]],
     installed_models: Sequence[InstalledModel],
     catalog: Sequence[EntityDef],
     cluster_enabled: Optional[Set[str]] = None,
@@ -725,6 +802,10 @@ def resolve_runs_from_entities(
     clustering du modèle (ex. ``zone_crateres``). Ainsi le clustering ne se
     déclenche que si l'utilisateur l'a coché (cf. filtre de ``runner_shapefiles``
     sur ``output_class_name``). Entité hors catalogue / sans modèle → ignorée.
+
+    Une entité dont la surcharge liste **plusieurs** modèles (comparaison A/B)
+    tombe dans un run par modèle, avec des sorties qualifiées par modèle
+    (cf. :func:`_entity_block`).
     """
     overrides = overrides or {}
     cluster_enabled = cluster_enabled or set()
@@ -735,35 +816,41 @@ def resolve_runs_from_entities(
     label_by_id = {e.id: e.label for e in catalog}
 
     # (modèle, rvt) -> {classes: set, entities: [ids]} pour pouvoir agréger les
-    # seuils surchargés par entité au niveau du run.
+    # seuils surchargés par entité au niveau du run. Une entité peut porter
+    # PLUSIEURS modèles effectifs (comparaison A/B) → elle tombe alors dans un
+    # groupe par modèle ; models_per_eid trace les modèles ayant réellement
+    # retenu l'entité (pour qualifier ses sorties en aval).
     groups: Dict[Tuple[str, str], Dict[str, Any]] = {}
+    models_per_eid: Dict[str, List[str]] = {}
     for eid in selected_entity_ids:
         ec = coverage_by_id.get(eid)
         if ec is None:
             logger.warning("Entité hors catalogue ignorée: %s", eid)
             continue
-        model_name = effective_model_name(ec, overrides)
-        if not model_name:
+        model_names = effective_model_names(ec, overrides)
+        if not model_names:
             logger.warning("Entité '%s' sans modèle disponible, ignorée", eid)
             continue
-        model = models_by_name.get(model_name)
-        if model is None:
-            logger.warning("Modèle '%s' (pour '%s') introuvable, ignoré", model_name, eid)
-            continue
-        classes = model.coverage.get(eid)
-        if not classes:
-            logger.warning("Modèle '%s' ne couvre pas l'entité '%s', ignoré", model_name, eid)
-            continue
-        ec_classes = set(classes)
-        if eid in cluster_enabled:
-            ec_classes.update(model.cluster_options.get(eid, ()))
-        group = groups.setdefault(
-            (model.name, model.target_rvt),
-            {"classes": set(), "entities": [], "entity_classes": {}},
-        )
-        group["classes"].update(ec_classes)
-        group["entities"].append(eid)
-        group["entity_classes"][eid] = ec_classes
+        for model_name in model_names:
+            model = models_by_name.get(model_name)
+            if model is None:
+                logger.warning("Modèle '%s' (pour '%s') introuvable, ignoré", model_name, eid)
+                continue
+            classes = model.coverage.get(eid)
+            if not classes:
+                logger.warning("Modèle '%s' ne couvre pas l'entité '%s', ignoré", model_name, eid)
+                continue
+            ec_classes = set(classes)
+            if eid in cluster_enabled:
+                ec_classes.update(model.cluster_options.get(eid, ()))
+            group = groups.setdefault(
+                (model.name, model.target_rvt),
+                {"classes": set(), "entities": [], "entity_classes": {}},
+            )
+            group["classes"].update(ec_classes)
+            group["entities"].append(eid)
+            group["entity_classes"][eid] = ec_classes
+            models_per_eid.setdefault(eid, []).append(model.name)
 
     # Garde conservatoire (audit 2026-08-31, §RVT) : deux modèles au même TYPE de
     # RVT mais aux preferred_rvt.params divergents partagent aujourd'hui UN seul
@@ -834,16 +921,12 @@ def resolve_runs_from_entities(
                 "selected_classes": sorted(group["classes"]),
                 "clustering_overrides": clustering_overrides,
                 "entities": [
-                    {
-                        "id": eid,
-                        "label": label_by_id.get(eid, eid),
-                        "slug": slugify(label_by_id.get(eid, eid)) or eid,
-                        "classes": sorted(group["entity_classes"][eid]),
-                        "is_derived": eid in model.derived_entities,
-                        "layer_names": _compute_layer_names(
-                            model, eid, sorted(group["entity_classes"][eid])
-                        ),
-                    }
+                    _entity_block(
+                        eid, model,
+                        sorted(group["entity_classes"][eid]),
+                        label_by_id,
+                        compared=len(models_per_eid.get(eid, [])) > 1,
+                    )
                     for eid in sorted(group["entities"])
                 ],
                 "confidence_threshold": float(plancher_conf),

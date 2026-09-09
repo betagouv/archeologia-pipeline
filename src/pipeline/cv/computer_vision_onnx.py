@@ -42,6 +42,16 @@ from .sahi_lite import (
 )
 from .types import Detection
 
+
+def _tile_progress_due(done: int, total: int) -> bool:
+    """Faut-il logger « SAHI: done/total tuiles traitées » ?
+
+    Une tuile sur 10 pour ne pas spammer, **plus la dernière** : sans elle
+    un run à 25 tuiles s'affichait figé sur « analyse 20/25 » (la ligne
+    est relayée à l'UI par ``external_runner._TILE_PROGRESS_RE``).
+    """
+    return done % 10 == 0 or done == total
+
 logger = logging.getLogger(__name__)
 
 
@@ -598,7 +608,7 @@ def _run_rfdetr_seg_with_sahi(
             else:
                 _inst_merge(instance_maps[matched_key], start_y, start_x, end_y, end_x, new_vals, confidence)
 
-        if (slice_idx + 1) % 10 == 0:
+        if _tile_progress_due(slice_idx + 1, len(sliced_images)):
             logger.info(f"RF-DETR Seg SAHI: {slice_idx + 1}/{len(sliced_images)} tuiles traitées")
 
     if not instance_maps:
@@ -1009,7 +1019,7 @@ def _run_segformer_with_sahi(
         global_probs[:, start_y:end_y, start_x:end_x] += probs_resized[:, :actual_h, :actual_w]
         vote_count[start_y:end_y, start_x:end_x] += 1.0
         
-        if (idx + 1) % 10 == 0:
+        if _tile_progress_due(idx + 1, len(sliced_images)):
             logger.info(f"SegFormer SAHI: {idx + 1}/{len(sliced_images)} tuiles traitées")
     
     # Normaliser par le nombre de votes (moyenne des probabilités)
@@ -1461,7 +1471,7 @@ def run_onnx_inference(
                 logger.info(f"ONNX: slice {idx+1}/{len(sliced_images)} -> {len(dets)} détections")
             # Progression régulière (même cadence que RF-DETR Seg/SegFormer) :
             # remontée à l'UI via _TILE_PROGRESS_RE (« SAHI: X/Y tuiles »).
-            if (idx + 1) % 10 == 0:
+            if _tile_progress_due(idx + 1, len(sliced_images)):
                 logger.info(f"ONNX SAHI: {idx + 1}/{len(sliced_images)} tuiles traitées")
             
             # Convertir en objets sahi_lite.Detection (pour merge_sliced_detections)

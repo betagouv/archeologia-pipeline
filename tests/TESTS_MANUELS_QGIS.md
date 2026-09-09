@@ -523,3 +523,42 @@ Cette grille indique, pour chaque vague livrée, **quelles sections de tests son
 - [ ] **26.5 Cache invalidé** : relancer dans un `output_dir` d'un run antérieur → journal `cache(s) de détection plus ancien(s) que leur PNG — purgé(s), ré-inférence` au premier passage ; résultats stables au second.
 - [ ] **26.6 VRT intact** : `indices/<X>/tif/` ne contient que des TIF 1 km rognés ; le VRT `index_<X>` s'affiche sans recouvrements ni doublons.
 - [ ] **26.7 Non-régression autres modes** : un run `existing_rvt` / `existing_mnt` reste identique (PNG aux dimensions du TIF fourni, pas de halo, pas de clip).
+
+## 27. Comparaison A/B : deux modèles pour une même entité ⭐ P0
+
+> **Contexte** : le menu « Changer ▾ » d'une carte d'entité (étape 3) est à cases
+> non exclusives — cocher 2 modèles lance un run **par modèle**, avec des sorties
+> **qualifiées par modèle** (dossiers `detections/<slug>--<modèle>/`, couches
+> `<classe> — <modèle>`, groupe QGIS commun « <Entité> (comparaison) »).
+
+- [ ] **27.1 Menu multi-coche** : étape 3, cocher « Parcellaire », menu « Changer ▾ » → cocher les DEUX modèles → la carte affiche « 2 modèles (comparaison) » (tooltip : les deux noms) ; le récap montre 2 runs, chacun avec la pastille « Parcellaire — <modèle> ».
+- [ ] **27.2 Dossiers séparés** : après le run, `detections/` contient `parcellaire--<modele_A>/` **et** `parcellaire--<modele_B>/`, chacun avec son `.gpkg` propre ; aucun dossier `parcellaire/` nu ; nombre d'entités différent entre les deux (modèles différents).
+- [ ] **27.3 Groupe QGIS** : l'arbre de couches (live **et** `detections_validation.qgs`) montre un groupe « Parcellaire (comparaison) » contenant les 2 couches `parcellaire — <modèle>`, de **couleurs différentes**.
+- [ ] **27.4 model_name** : ouvrir la table d'attributs de chaque couche → `model_name` = le modèle de SA variante (pas le même sur les deux).
+- [ ] **27.5 Symbologie par variante** : avec des seuils par défaut différents entre les deux modèles, chaque couche affiche toutes ses tranches `conf_bin` (aucune tranche basse invisible).
+- [ ] **27.6 Retour au mono-modèle** : décocher l'un des deux dans le menu → la carte réaffiche un seul nom ; re-run → sorties dans `detections/parcellaire/` (non qualifié), comme avant.
+- [ ] **27.7 Persistance** : fermer/rouvrir l'assistant → la sélection 2 modèles est restaurée (`last_ui_config.json` : `entity_model_overrides` en liste).
+- [ ] **27.8 Non-régression** : une entité à un seul modèle coché (ex. Enclos) garde slug/dossier/couches/groupes identiques à avant.
+
+## 28. Préflight RVT réel + invalidation du cache paramètres ⭐ P0
+
+> **Contexte** (bugs SRA HDF 2026-08-31) : (a) le préflight supposait les algos
+> `rvt:*` disponibles (« expected available in QGIS ») — avec un rvt-qgis
+> absent/trop vieux (non chargé par QGIS 4), le run mourait au premier
+> `processing.run("rvt:...")` avec un « Algorithm not found » opaque ; (b) un
+> re-run dans le même `output_dir` après changement de résolution MNT/densité
+> réutilisait silencieusement les TIF du run 1 (« Terminé en 0.0s »). Parades :
+> vérification réelle du registre Processing (bloquante) ; sidecar
+> `intermediaires/run_params.json` + purge du seul cache `intermediaires/` ;
+> **publication par fraîcheur** dans `results.py` (un intermédiaire recalculé,
+> plus récent, écrase le TIF final de même nom — `indices/` n'est jamais
+> supprimé, c'est le livrable accumulé multi-zones, cf. §22).
+
+- [ ] **28.1 Préflight rvt-qgis absent** : désactiver (décocher) le plugin « Relief Visualization Toolbox » dans le gestionnaire d'extensions, cocher un indice RVT (ex. LD) à l'étape 2 → le panneau « État du système » de l'étape 4 affiche un ✗ **critique** « Algorithmes RVT (Processing) » mentionnant l'installation/mise à jour via Extensions ; **▶ Lancer** refuse de démarrer le pipeline (préflight KO **avant** tout téléchargement).
+- [ ] **28.2 Préflight rvt-qgis présent** : réactiver rvt-qgis, redémarrer QGIS → le même check passe au ✓ (« N algorithme(s) rvt:* disponibles ») et le run démarre normalement.
+- [ ] **28.3 Re-run, paramètre changé** : run 1 `ign_laz` (1 dalle suffit) avec résolution MNT 0,5 m ; puis étape 2 → résolution MNT 2 m et re-run dans le **même** `output_dir` → la **fenêtre du wizard** affiche « ⚠️ Paramètres de traitement modifiés → cache des intermédiaires invalidé » ; la dalle est **réellement recalculée** (durée non nulle, pas de « Terminé en 0.0s »), le fichier de log montre « TIF rogné copié » et le TIF de `indices/MNT/tif/` a la nouvelle résolution (propriétés de la couche : taille de pixel 2 m — le fichier existant a bien été **écrasé**). Si la CV est active : le PNG d'inférence est régénéré (« PNG plus ancien que sa source, régénération ») et l'inférence re-tourne (pas de « déjà traité »).
+- [ ] **28.4 Re-run, paramètres identiques (reprise)** : relancer une 3e fois **sans rien changer** → pas de purge, reprise rapide sur le cache — dans le **fichier de log** (`*.txt`, canal technique, pas la fenêtre), chercher « (cache intermédiaire) » : une ligne par produit (« MNT réutilisé… », « Densité réutilisée… », « LD réutilisé… », « LAZ fusionné réutilisé… » — accord au féminin pour Densité/COUVERTURE), pas de « TIF rogné copié », « PNG déjà présent » si PNG activés, et **aucune** ré-inférence CV (cache de détections conservé) — le comportement §22 (ajout de dalle) reste intact.
+- [ ] **28.5 Bornes de la purge** : après 28.3, vérifier que `sources/dalles/*.laz` (pas de re-téléchargement) et `detections/` (si présents) n'ont **pas** été supprimés ; `intermediaires/run_params.json` existe et reflète les derniers paramètres.
+- [ ] **28.6 Multi-zones (livrables préservés)** : run 1 zone A (dalle A) à 0,5 m, puis run 2 zone B (dalle B, autre liste) à 2 m dans le **même** `output_dir` → après le run 2, `indices/MNT/tif/` contient **encore** le TIF de la dalle A (à 0,5 m, non recalculée — anciens paramètres, c'est documenté) **et** celui de la dalle B (2 m) ; le VRT `index_MNT.vrt` mosaïque les deux. Aucun livrable détruit.
+- [ ] **28.7 Purge verrouillée (Windows)** : après un run, charger dans QGIS un TIF de `intermediaires/` (cf. §26), changer la résolution MNT et relancer → le run s'arrête avec un message actionnable « … est verrouillé — fermez les couches QGIS chargées depuis ce dossier… » (pas de traceback WinError brut) ; retirer la couche et relancer → la purge passe.
+- [ ] **28.8 Extension de zone (halo re-fusionné)** : run 1 sur la dalle A seule (CV active), puis run 2 même `output_dir`, mêmes paramètres, sélection élargie {A, B} (B contiguë) → le fichier de log montre « Jeu de voisins modifié → re-fusion : A…_merged.laz » ; A est **recalculée** (MNT/RVT/PNG régénérés, ré-inférence de A) — sa marge vers B est désormais de la vraie donnée ; aucune détection « fantôme » de A (bruit de l'ancienne marge fabriquée) n'apparaît dans la cellule de B ; `intermediaires/A…_merged.inputs.json` liste le voisin. Run 3 identique → « LAZ fusionné réutilisé » (pas de re-fusion).

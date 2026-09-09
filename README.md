@@ -121,6 +121,7 @@ Le plugin exécute un **préflight** (contrôle des dépendances) au lancement.
 
 - **Processing** : doit être disponible (dans QGIS : `Traitement` → `Boîte à outils`).
 - **Algorithmes RVT via Processing** : nécessaires si tu actives des produits RVT (HS/M-HS/SVF/SLO/LD/SLRM/VAT/MSTP). Fournis par le plugin QGIS **« Relief Visualization Toolbox » (rvt-qgis)**.
+  ⚠️ Le plugin rvt-qgis doit être **installé, activé et à jour** : sous QGIS 4, toute version ≤ 0.10.0 est refusée au chargement (marquée incompatible) et les algorithmes `rvt:*` deviennent introuvables — mettre à jour via *Extensions → Installer/Gérer les extensions* (version ≥ 1.0.1 recommandée). Le préflight de l'étape 4 signale ce cas par un ✗ critique **« Algorithmes RVT (Processing) »** et bloque le lancement.
 - **CVAT** (*Combined VAT*) : nécessite également le plugin **rvt-qgis** installé — il n'est pas exposé par *Processing*, le plugin réutilise donc directement son paquet Python `rvt`.
 
 Si un élément est manquant, le préflight affichera une erreur et empêchera le lancement.
@@ -372,7 +373,9 @@ Depuis la v0.3.0, l'utilisateur ne sélectionne plus des *modèles* puis filtre 
 - `data/entities_catalog.json` (versionné) fournit le **vocabulaire d'entités** présentable (id, libellé, description, ordre d'affichage) ;
 - le `model_card.yaml` de chaque modèle installé déclare sa **couverture** : son indice RVT (`preferred_rvt.type`) et ses `classes`, chacune pouvant pointer vers une entité du catalogue (`entity:` en alias, sinon le nom de classe fait foi). C'est une découverte **« drop-in »** : ajouter un modèle conforme suffit pour qu'il couvre ses entités.
 
-L'orchestrateur regroupe les entités cochées par couple `(modèle, target_rvt)` — chaque couple devient un *run* — et **peuple le tableau `computer_vision.runs`** ci-dessous. Ce format de configuration reste donc le **contrat sous-jacent** du pipeline (auto-rempli par l'UI). Pour un usage avancé : partir de `config.example.json` (schéma complet, verrouillé par test), éditer un profil `.json`, puis l'importer via le bouton **« Charger une config »** de l'assistant — le plugin ne lit **pas** de fichier `config.json` à la racine.
+L'orchestrateur regroupe les entités cochées par couple `(modèle, target_rvt)` — chaque couple devient un *run* — et **peuple le tableau `computer_vision.runs`** ci-dessous.
+
+**Comparaison A/B (plusieurs modèles pour une même entité).** Le menu « Changer ▾ » d'une carte d'entité est à cases **non exclusives** : cocher un 2ᵉ modèle lance un run **par modèle** pour cette entité. Les sorties de chaque variante sont alors **qualifiées par modèle** pour rester isolées et comparables : dossier `detections/<slug>--<modèle>/` (GPKG propre → pas d'écrasement, seuils de symbologie corrects par variante), couches nommées `<classe> — <modèle>` (couleur distincte via le registre), et les variantes sont regroupées dans QGIS sous un groupe commun `« <Entité> (comparaison) »`. Chaque détection porte l'attribut `model_name` du run qui l'a produite. Avec un seul modèle coché, rien ne change (`detections/<slug>/`). La surcharge persistée `computer_vision.entity_model_overrides` accepte une chaîne (historique) ou une **liste** de modèles. ⚠️ Les surcharges de seuils par entité s'appliquent identiquement aux deux variantes (comparaison à seuil égal), et si les deux modèles préfèrent le même type de RVT avec des paramètres divergents, un seul raster est calculé (avertissement dans le log). Ce format de configuration reste donc le **contrat sous-jacent** du pipeline (auto-rempli par l'UI). Pour un usage avancé : partir de `config.example.json` (schéma complet, verrouillé par test), éditer un profil `.json`, puis l'importer via le bouton **« Charger une config »** de l'assistant — le plugin ne lit **pas** de fichier `config.json` à la racine.
 
 **Cibles dérivées.** Une sortie de clustering peut aussi être présentée comme une **entité cochable à part entière** — une *cible dérivée*. Le modèle la déclare dans son `model_card.yaml` via une section `derived_targets` qui rattache l'`output_class` d'une règle de `args.yaml:clustering` à une entité du catalogue :
 
@@ -503,6 +506,24 @@ variantes coexistent. `MNT`/`DENSITE` (sans paramètres) gardent leur code brut,
 dossier hérité non suffixé (`indices/LD/`) n'est pas supprimé. Sur des `output_dir` très profonds,
 attention à la limite Windows MAX_PATH (260 caractères) avec ces noms plus longs.
 
+**Relance dans un même dossier de sortie et cache.** Les paramètres de **traitement** qui ne sont
+pas encodés dans les noms de fichiers (résolution MNT, résolution densité, marge inter-dalles,
+filtre de classification PDAL) sont suivis par un sidecar `intermediaires/run_params.json` : s'ils
+ont changé depuis le run précédent, le cache `intermediaires/` est **automatiquement invalidé**
+(message « cache des intermédiaires invalidé » au journal) — les dalles du run courant sont
+recalculées puis **re-publiées par-dessus** les TIF finaux de `indices/` (publication par
+fraîcheur : un intermédiaire recalculé, plus récent, écrase le fichier publié de même nom).
+`indices/` n'est **jamais supprimé** : les dalles d'autres zones accumulées dans le même dossier
+restent en place — attention, elles conservent leurs anciens paramètres tant qu'on ne les relance
+pas (leurs `.laz` sont conservés dans `sources/`). À paramètres identiques, les fichiers déjà
+produits sont réutilisés (reprise rapide après annulation — lignes « réutilisé (cache
+intermédiaire) » dans le fichier de log). Cas particulier du halo inter-dalles : **étendre la
+sélection** à une dalle voisine re-fusionne automatiquement les dalles dont la marge devient de la
+vraie donnée (sidecar `<dalle>_merged.inputs.json`, log « Jeu de voisins modifié → re-fusion ») et
+les recalcule en cascade. Un dossier de sortie créé avant cette version (pas de sidecar) adopte les paramètres
+courants comme référence à la première relance, sans recalcul forcé. Les dossiers `sources/`
+(dalles LiDAR téléchargées) et `detections/` (résultats CV) ne sont **jamais** purgés.
+
 En mode `existing_rvt`, le dossier d'indices est `indices/RVT/` (nom générique, paramètres inconnus).
 
 Chaque dossier `<PRODUIT>/tif/` contient une **mosaïque VRT** nommée `index_<PRODUIT>.vrt` (`index_MNT.vrt`, `index_SVF_R10_D16_V1_N0.vrt`, `index_COUVERTURE.vrt`…) — c'est le fichier à charger dans QGIS. Son nom reprend celui de la couche, donc reste identifiable lors d'un chargement manuel (et non un générique `index.vrt`).
@@ -540,7 +561,7 @@ Ensuite, un `git push` déclenchera automatiquement Talisman et pourra bloquer l
 
 - **Préflight KO** : vérifier que `pdal`, `gdalwarp`, `gdal_translate` sont accessibles dans le `PATH`.
 - **Pyramides absentes** : vérifier la présence de `gdaladdo` et que l’option pyramides est activée.
-- **RVT indisponible** : vérifier que les algorithmes RVT sont disponibles via QGIS Processing.
+- **RVT indisponible** (✗ « Algorithmes RVT (Processing) » au préflight, ou erreur « Algorithm rvt:… not found ») : vérifier dans *Extensions → Installer/Gérer les extensions* que **Relief Visualization Toolbox** est installé, **coché** (activé) et à jour — obligatoire en version ≥ 1.0.1 sous QGIS 4, les versions ≤ 0.10.0 n'y étant pas chargées.
 - **Computer vision** :
   - soit fournir le runner externe dans `third_party/cv_runner_onnx/...`
   - soit installer les dépendances Python (`onnxruntime`, `pillow`) dans l'environnement QGIS

@@ -18,6 +18,21 @@ class CheckResult:
     critical: bool
 
 
+# Produit → algorithme Processing du provider rvt-qgis. Garder en phase avec
+# les appels réels de ign/products/indices.py (CVAT absent : calculé
+# in-process via le paquet rvt, vérifié séparément).
+RVT_ALGO_BY_PRODUCT: Dict[str, str] = {
+    "HS": "rvt_hillshade",
+    "M_HS": "rvt_multi_hillshade",
+    "SVF": "rvt_svf",
+    "SLO": "rvt_slope",
+    "LD": "rvt_ld",
+    "SLRM": "rvt_slrm",
+    "VAT": "rvt_blender",
+    "MSTP": "rvt_mstp",
+}
+
+
 def _check_exe(name: str) -> Optional[str]:
     return shutil.which(name)
 
@@ -185,7 +200,6 @@ def collect_preflight_results(
     need_gdaladdo = mode in ("ign_laz", "local_laz", "existing_mnt", "existing_rvt")
 
     need_processing = mode in ("ign_laz", "local_laz", "existing_mnt")
-    _processing_ok: Optional[bool] = None  # cache pour éviter le double import
 
     if need_pdal_cli:
         p = _check_exe("pdal")
@@ -201,10 +215,8 @@ def collect_preflight_results(
     if need_processing:
         try:
             _check_import("processing")
-            _processing_ok = True
             results.append(CheckResult(name="QGIS processing", ok=True, details="import ok", critical=True))
         except Exception as e:
-            _processing_ok = False
             results.append(CheckResult(name="QGIS processing", ok=False, details=repr(e), critical=True))
 
     if need_gdalwarp:
@@ -240,18 +252,59 @@ def collect_preflight_results(
             )
         )
 
-    need_rvt = bool(products.get("HS", False) or products.get("M_HS", False) or products.get("SVF", False) or products.get("SLO", False) or products.get("LD", False) or products.get("SLRM", False) or products.get("VAT", False) or products.get("MSTP", False) or products.get("CVAT", False))
-    if need_rvt and mode in ("ign_laz", "local_laz", "existing_mnt"):
-        if _processing_ok is True:
-            results.append(CheckResult(name="RVT algos (via processing)", ok=True, details="expected available in QGIS", critical=False))
-        elif _processing_ok is False:
-            results.append(CheckResult(name="RVT algos (via processing)", ok=False, details="processing import failed (see above)", critical=False))
-        else:
-            try:
-                _check_import("processing")
-                results.append(CheckResult(name="RVT algos (via processing)", ok=True, details="expected available in QGIS", critical=False))
-            except Exception as e:
-                results.append(CheckResult(name="RVT algos (via processing)", ok=False, details=repr(e), critical=False))
+    # Vérification RÉELLE des algos rvt:* (bug SRA HDF 2026-08-31) : un
+    # rvt-qgis absent/désactivé/trop vieux (non chargé par QGIS 4) ne se
+    # voyait qu'au premier processing.run("rvt:...") — « Algorithm not
+    # found » opaque, après les téléchargements. On interroge le registre
+    # Processing par produit coché ; hors QGIS (standalone/tests), non
+    # vérifiable → non bloquant. CVAT est exclu (in-process, check dédié
+    # ci-dessous).
+    needed_algos = sorted(
+        {algo for prod, algo in RVT_ALGO_BY_PRODUCT.items() if products.get(prod, False)}
+    )
+    if needed_algos and mode in ("ign_laz", "local_laz", "existing_mnt"):
+        try:
+            from qgis.core import QgsApplication  # import différé (standalone → except)
+
+            registry = QgsApplication.processingRegistry()
+            missing = [a for a in needed_algos if registry.algorithmById(f"rvt:{a}") is None]
+            if not missing:
+                results.append(CheckResult(
+                    name="Algorithmes RVT (Processing)",
+                    ok=True,
+                    details=f"{len(needed_algos)} algorithme(s) rvt:* disponibles",
+                    critical=True,
+                ))
+            elif registry.providerById("rvt") is None:
+                results.append(CheckResult(
+                    name="Algorithmes RVT (Processing)",
+                    ok=False,
+                    details=(
+                        "plugin « Relief Visualization Toolbox » (rvt-qgis) absent, "
+                        "désactivé ou trop ancien pour cette version de QGIS — "
+                        "installez-le ou mettez-le à jour via Extensions → "
+                        "Installer/Gérer les extensions, puis relancez"
+                    ),
+                    critical=True,
+                ))
+            else:
+                results.append(CheckResult(
+                    name="Algorithmes RVT (Processing)",
+                    ok=False,
+                    details=(
+                        "rvt-qgis trop ancien : algorithme(s) introuvable(s) : "
+                        + ", ".join(missing)
+                        + " — mettez à jour le plugin Relief Visualization Toolbox"
+                    ),
+                    critical=True,
+                ))
+        except Exception as e:
+            results.append(CheckResult(
+                name="Algorithmes RVT (Processing)",
+                ok=True,
+                details=f"non vérifiable hors QGIS ({e.__class__.__name__})",
+                critical=False,
+            ))
 
     # CVAT n'utilise pas Processing : il est calculé in-process via le paquet
     # ``rvt`` fourni par le plugin rvt-qgis. On vérifie qu'il est localisable.

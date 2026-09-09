@@ -231,6 +231,33 @@ class IgnOrLocalRunner:
             def _on_tile_merged(i: int, n: int, tile_name: str) -> None:
                 narrator.merging_tile_progress(i, n, tile_name)
 
+            # Re-run dans le même output_dir : les caches « le fichier existe →
+            # on saute » (merged.laz, <dalle>_MNT.tif…) n'encodent pas ces
+            # paramètres dans leurs noms — sans purge, un nouveau réglage
+            # serait silencieusement ignoré (bug SRA HDF 2026-08-31). Placé
+            # APRÈS l'acquisition (une annulation du téléchargement ne purge
+            # rien) et juste avant le premier consommateur du cache ; seule
+            # intermediaires/ est touchée (indices/ = livrable accumulé,
+            # re-publié par fraîcheur dans results.needs_refresh).
+            try:  # fallback standalone (tests : src/ sur le path)
+                from ...pipeline.output_paths import intermediaires_dir as _inter_dir
+            except ImportError:  # pragma: no cover
+                from pipeline.output_paths import intermediaires_dir as _inter_dir
+            from ..services.cache_guard import build_signature, ensure_cache_matches
+            ensure_cache_matches(
+                signature=build_signature(
+                    mnt_resolution=processing.mnt_resolution,
+                    density_resolution=processing.density_resolution,
+                    tile_overlap=processing.tile_overlap,
+                    filter_expression=processing.filter_expression,
+                ),
+                intermediaires=_inter_dir(ctx.output_dir),
+                # user_warning : le ⚠️ de purge doit être VISIBLE dans la
+                # fenêtre (reporter.info = INFO=20, filtré par le seuil
+                # USER_INFO=25 du journal du wizard — pattern ROB-15).
+                log=lambda m: reporter.user_warning(m),
+            )
+
             merged_result = prepare_merged_tiles(
                 sorted_list_file=result.sorted_list_file,
                 dalles_dir=result.dalles_dir,

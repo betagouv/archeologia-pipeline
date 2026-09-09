@@ -29,7 +29,7 @@ from qgis.PyQt.QtWidgets import (
 from ...app.services.model_orchestrator import (
     build_entity_coverage,
     discover_installed_models,
-    effective_model_name,
+    effective_model_names,
     group_entities_by_morphology,
     load_entities_catalog,
     resolve_runs_from_entities,
@@ -277,7 +277,7 @@ class DetectionPage(QWidget):
         )
         card.set_candidates(candidates, has_cluster=has_cluster, is_derived=is_derived)
         card.toggled.connect(self._on_entity_toggled)
-        card.model_changed.connect(self._on_model_changed)
+        card.models_changed.connect(self._on_models_changed)
         card.cluster_toggled.connect(self._on_cluster_toggled)
         card.activate_rvt.connect(self.activate_rvt)
         card.thresholds_changed.connect(self._on_thresholds_changed)
@@ -311,8 +311,10 @@ class DetectionPage(QWidget):
         if not self._loading:
             self.changed.emit()
 
-    def _on_model_changed(self, entity_id: str, model_name: str) -> None:
-        self._overrides[entity_id] = model_name
+    def _on_models_changed(self, entity_id: str, model_names: list) -> None:
+        # 1..n modèles cochés dans le menu de la carte (≥2 = comparaison A/B).
+        # La surcharge persistée accepte str (legacy) ou liste — on stocke la liste.
+        self._overrides[entity_id] = [str(n) for n in model_names]
         self._refresh()
         if not self._loading:
             self.changed.emit()
@@ -412,9 +414,21 @@ class DetectionPage(QWidget):
 
         for eid, card in self._cards.items():
             ec = self._coverage.get(eid)
-            model_name = effective_model_name(ec, self._overrides) if ec else None
-            model = self._models.get(model_name) if model_name else None
-            rvt = model.target_rvt if model else "—"
+            model_names = effective_model_names(ec, self._overrides) if ec else []
+            # Modèle « primaire » (1ᵉʳ de la liste) : porte les défauts des
+            # spinbox. En comparaison A/B les surcharges de seuils s'appliquent
+            # identiquement aux deux runs (comparaison à seuil égal).
+            model = self._models.get(model_names[0]) if model_names else None
+            # Garde RVT sur TOUS les modèles cochés : sans elle, le run du
+            # modèle secondaire dont l'indice n'est pas activé à l'étape 2
+            # partirait sans avertissement et échouerait à l'exécution.
+            rvts: list = []
+            for _n in model_names:
+                _m = self._models.get(_n)
+                if _m and _m.target_rvt not in rvts:
+                    rvts.append(_m.target_rvt)
+            rvt = " + ".join(rvts) if rvts else "—"
+            missing_rvts = [r for r in rvts if r not in self._active_rvts]
             cluster_outputs = model.cluster_options.get(eid, ()) if model else ()
             is_derived = bool(model) and eid in model.derived_entities
             ov = self._entity_thresholds.get(eid, {})
@@ -433,9 +447,10 @@ class DetectionPage(QWidget):
                         break
             card.update_state(
                 selected=bool(self._selected.get(eid)),
-                current_model=model_name,
+                current_models=model_names,
                 rvt=rvt,
-                rvt_active=(rvt in self._active_rvts) if model else True,
+                rvt_active=(not missing_rvts) if model else True,
+                missing_rvt=missing_rvts[0] if missing_rvts else None,
                 cluster_outputs=cluster_outputs,
                 cluster_on=eid in self._cluster,
                 default_confidence=self._default_conf_entite(model, eid),

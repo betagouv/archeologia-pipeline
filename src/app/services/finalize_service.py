@@ -13,15 +13,22 @@ LogFn = Callable[[str], None]
 def build_entity_grouping(
     runs: Optional[List[Dict[str, Any]]],
 ) -> "tuple[Dict[str, str], set]":
-    """Depuis les runs, renvoie ``(entity_labels: slug→libellé, derived_slugs)``.
+    """Depuis les runs, renvoie ``(entity_labels: slug→libellé, grouped_slugs)``.
 
-    ``derived_slugs`` = slugs des entités **dérivées** (zone + constituants) : seules
-    elles forment un groupe de couches — dans le ``.qgs`` (``ui/qgs_writer``) **et** au
-    chargement live (``layer_loader.load_result_layers``). Helper partagé par les deux
-    chemins pour garantir le **même** regroupement.
+    ``grouped_slugs`` = slugs dont les couches forment un groupe QGIS — dans le
+    ``.qgs`` (``ui/qgs_writer``) **et** au chargement live
+    (``layer_loader.load_result_layers``). Helper partagé par les deux chemins
+    pour garantir le **même** regroupement. Deux cas :
+
+    - entités **dérivées** (zone + constituants) : groupe nommé par le label de
+      l'entité (historique) ;
+    - variantes d'une entité **comparée** (A/B multi-modèles, clé
+      ``group_label`` posée par l'orchestrateur) : les slugs qualifiés des
+      variantes partagent le même ``group_label`` → même groupe QGIS
+      (ex. « Parcellaire (comparaison) »).
     """
     entity_labels: Dict[str, str] = {}
-    derived_slugs: set = set()
+    grouped_slugs: set = set()
     for r in runs or []:
         if not isinstance(r, dict):
             continue
@@ -32,9 +39,16 @@ def build_entity_grouping(
             if not slug:
                 continue
             entity_labels[slug] = str(ent.get("label") or slug)
-            if ent.get("is_derived"):
-                derived_slugs.add(slug)
-    return entity_labels, derived_slugs
+            group_label = str(ent.get("group_label") or "").strip()
+            # group_label AVANT is_derived : une entité dérivée COMPARÉE porte
+            # les deux — ses variantes doivent partager le groupe commun
+            # « X (comparaison) », pas deux groupes qualifiés séparés.
+            if group_label:
+                grouped_slugs.add(slug)
+                entity_labels[slug] = group_label
+            elif ent.get("is_derived"):
+                grouped_slugs.add(slug)
+    return entity_labels, grouped_slugs
 
 
 def build_min_confidence_by_slug(
@@ -373,6 +387,22 @@ def finalize_pipeline(
     except ImportError:  # pragma: no cover
         from pipeline.cv.class_utils import resolve_cv_runs
     cv_runs = resolve_cv_runs(cv_cfg or {})
+    # Purge des variantes d'entité PÉRIMÉES (bascule mono ↔ comparaison A/B
+    # dans le même output_dir) AVANT la collecte : sinon leurs GPKG seraient
+    # re-collectés (couches dupliquées, seuil de symbologie de repli faux).
+    # Ne touche qu'aux entités des runs courants ; les couches QGIS pointant
+    # sur ces fichiers ont été retirées au lancement (purge_output_dir_layers).
+    try:
+        try:  # fallback standalone
+            from ...pipeline.output_paths import select_stale_entity_variant_dirs
+        except ImportError:  # pragma: no cover
+            from pipeline.output_paths import select_stale_entity_variant_dirs
+        import shutil
+        for _stale_dir in select_stale_entity_variant_dirs(output_dir, cv_runs):
+            shutil.rmtree(_stale_dir, ignore_errors=True)
+            log(f"Détections : variante périmée purgée -> {_stale_dir.name}/")
+    except Exception as _e:  # jamais bloquant pour la finalisation
+        log(f"Purge des variantes périmées ignorée ({_e})")
     shapefile_paths: List[str] = _collect_shapefiles(det_dir)
 
     # 3. Les couleurs ne sont plus pré-calculées ici : chaque classe dérive sa

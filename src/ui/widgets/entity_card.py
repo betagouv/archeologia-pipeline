@@ -27,6 +27,23 @@ from qgis.PyQt.QtWidgets import (
 from .no_wheel import NoWheelDoubleSpinBox
 
 
+class _StayOpenMenu(QMenu):
+    """QMenu qui reste ouvert quand on (dé)coche une action checkable.
+
+    Permet de cocher/décocher plusieurs modèles en UNE ouverture (comparaison
+    A/B) ; fermeture normale par clic hors menu ou Échap. Compatible Qt5/Qt6
+    (``event.position()`` PyQt6, repli ``event.pos()`` PyQt5).
+    """
+
+    def mouseReleaseEvent(self, event):  # noqa: N802 (signature Qt)
+        pos = event.position().toPoint() if hasattr(event, "position") else event.pos()
+        act = self.actionAt(pos)
+        if act is not None and act.isCheckable() and act.isEnabled():
+            act.setChecked(not act.isChecked())
+            return  # ne pas fermer le menu
+        super().mouseReleaseEvent(event)
+
+
 # Paramètres des briques de synthèse éditables, avec explications (tooltips).
 # Seuls ceux présents dans les défauts du modèle (règle args.yaml) sont
 # affichés : les clés DBSCAN et enclosure ne se croisent donc jamais.
@@ -84,7 +101,7 @@ _CLUSTER_PARAM_SPECS = (
 
 class EntityCard(QFrame):
     toggled = pyqtSignal(str, bool)        # entity_id, selected
-    model_changed = pyqtSignal(str, str)   # entity_id, model_name
+    models_changed = pyqtSignal(str, list)  # entity_id, [model_name, ...] (≥2 = comparaison A/B)
     cluster_toggled = pyqtSignal(str, bool)
     activate_rvt = pyqtSignal(str)         # rvt key
     thresholds_changed = pyqtSignal(str, float, float)  # entity_id, confiance, aire min
@@ -98,7 +115,7 @@ class EntityCard(QFrame):
         self._loading = False
         self._advanced = False
         self._candidates: Dict[str, str] = {}  # name -> display_name
-        self._current_model: Optional[str] = None
+        self._current_models: list = []  # modèles effectifs (1..n ; ≥2 = comparaison)
         self._active_cluster_keys: set = set()  # params de cluster effectivement édités
         self.setObjectName("EntityCard")
         self.setProperty("state", "off")
@@ -298,7 +315,7 @@ class EntityCard(QFrame):
         self,
         *,
         selected: bool,
-        current_model: Optional[str],
+        current_models: Sequence[str],
         rvt: str,
         rvt_active: bool,
         cluster_outputs: Sequence[str],
@@ -310,9 +327,13 @@ class EntityCard(QFrame):
         is_derived: bool = False,
         cluster_default_params: Optional[Dict[str, float]] = None,
         cluster_params_override: Optional[Dict[str, float]] = None,
+        missing_rvt: Optional[str] = None,
     ) -> None:
         self._selected = selected
-        self._rvt_key = rvt
+        # ``rvt`` est un AFFICHAGE (peut joindre plusieurs indices en
+        # comparaison, ex. « LD + SVF ») ; la clé d'activation du bouton
+        # « + Activer » est le premier indice MANQUANT, pas le libellé.
+        self._rvt_key = missing_rvt or rvt
         self._check.setText("✓" if selected else "")
 
         # Tag RVT (orange si l'indice n'est pas activé à l'étape 2)
@@ -336,15 +357,24 @@ class EntityCard(QFrame):
         show_rvt_warn = selected and self._has_model and not rvt_active
         self._rvt_row.setVisible(show_rvt_warn)
         if show_rvt_warn:
-            self._rvt_warn.setText(f"Indice {rvt} non activé à l'étape 2")
+            self._rvt_warn.setText(
+                f"Indice {missing_rvt or rvt} non activé à l'étape 2"
+            )
 
-        # Ligne modèle : nom du modèle + « Changer ▾ » discret (si plusieurs)
+        # Ligne modèle : nom du modèle + « Changer ▾ » discret (si plusieurs).
+        # Plusieurs modèles cochés (comparaison A/B) → « N modèles (comparaison) »
+        # avec la liste complète en tooltip.
         show_model = selected and self._has_model
         self._model_row.setVisible(show_model)
         if show_model:
-            self._current_model = current_model
-            disp = self._candidates.get(current_model, current_model or "")
-            short = disp if len(disp) <= 28 else disp[:27] + "…"
+            self._current_models = list(current_models or [])
+            disps = [self._candidates.get(n, n) for n in self._current_models]
+            if len(disps) > 1:
+                disp = " + ".join(disps)
+                short = f"{len(disps)} modèles (comparaison)"
+            else:
+                disp = disps[0] if disps else ""
+                short = disp if len(disp) <= 28 else disp[:27] + "…"
             self._model_name.setText(short)
             self._model_name.setToolTip(disp)
             multi = len(self._candidates) > 1
@@ -377,6 +407,15 @@ class EntityCard(QFrame):
                 )
                 self._area_spin.setValue(
                     float(area_override if area_override is not None else default_min_area)
+                )
+                # Comparaison A/B : la valeur affichée est le défaut du modèle
+                # primaire, mais tant qu'elle n'est pas modifiée chaque run
+                # applique le défaut de SON modèle — le tooltip le dit.
+                self._conf_spin.setToolTip(
+                    "Comparaison : sans modification, chaque modèle applique "
+                    "son propre seuil par défaut ; modifier la valeur impose "
+                    "le même seuil à toutes les variantes."
+                    if len(self._current_models) > 1 else ""
                 )
             finally:
                 self._loading = False
@@ -434,17 +473,33 @@ class EntityCard(QFrame):
 
     # ------------------------------------------------------------------
     def _on_change_clicked(self) -> None:
-        menu = QMenu(self)
+        # Cases NON exclusives : cocher un 2ᵉ modèle = mode comparaison A/B
+        # (un run et des sorties par modèle). Le menu RESTE OUVERT pendant les
+        # coches (remplacer A par B = cocher B puis décocher A en une seule
+        # ouverture) et on émet UNE fois à la fermeture — aucun état transitoire
+        # « comparaison » n'est persisté par l'autosave.
+        menu = _StayOpenMenu(self)
+        # Action désactivée plutôt que addSection : les styles à menus natifs
+        # (macOS) rendent une section comme un simple séparateur sans texte.
+        hint = menu.addAction("Cocher plusieurs modèles = comparaison")
+        hint.setEnabled(False)
+        menu.addSeparator()
         for name, disp in self._candidates.items():
             act = menu.addAction(disp)
             act.setData(name)
             act.setCheckable(True)
-            act.setChecked(name == self._current_model)
-        chosen = menu.exec(self._change_btn.mapToGlobal(self._change_btn.rect().bottomLeft()))
-        if chosen is not None:
-            name = chosen.data()
-            if name and name != self._current_model:
-                self.model_changed.emit(self._id, name)
+            act.setChecked(name in self._current_models)
+        menu.exec(self._change_btn.mapToGlobal(self._change_btn.rect().bottomLeft()))
+        checked = [a.data() for a in menu.actions() if a.isCheckable() and a.isChecked()]
+        if not checked:
+            return  # une entité garde au moins un modèle : sélection vide ignorée
+        # Ordre stable : les modèles déjà sélectionnés gardent leur rang (le
+        # « primaire » — RVT/défauts affichés — ne bascule pas quand on en
+        # ajoute un), les nouveaux s'ajoutent à la suite.
+        ordered = [n for n in self._current_models if n in checked]
+        ordered += [n for n in checked if n not in ordered]
+        if ordered != list(self._current_models):
+            self.models_changed.emit(self._id, ordered)
 
     def _on_cluster_toggled(self, checked: bool) -> None:
         if not self._loading:

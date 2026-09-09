@@ -275,6 +275,9 @@ def run_existing_rvt(
     valid_region_bounds: Optional[List[Tuple[float, float, float, float]]] = (
         [] if (inference_tif_resolver is not None or neighbor_halo is not None) else None
     )
+    # Règle du centroïde (conversion_shp / postprocessing.owned_by_cell) :
+    # cellule rognée de chaque image à halo, indexée par le stem du PNG.
+    cell_bounds_by_stem: Dict[str, Tuple[float, float, float, float]] = {}
 
     total_tif = len(tif_files)
     log(f"Traitement de {total_tif} fichiers TIF…")
@@ -331,6 +334,7 @@ def run_existing_rvt(
                     valid_region_bounds = None
                 else:
                     valid_region_bounds.append(cell_bounds)
+                    cell_bounds_by_stem[effective_tif_path.stem] = cell_bounds
 
             # Le NOM du PNG reste celui du TIF rogné (stems stables : cache,
             # couches, images annotées) — seul le CONTENU vient de la source.
@@ -404,6 +408,7 @@ def run_existing_rvt(
                 output_dir=output_dir,
                 tif_transform_data=tif_transform_data,
                 valid_region_bounds=valid_region_bounds or None,
+                cell_bounds_by_stem=cell_bounds_by_stem or None,
                 run_shapefile_dedup=True,
                 global_color_map=global_color_map,
                 log=log,

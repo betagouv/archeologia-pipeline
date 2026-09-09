@@ -577,3 +577,4 @@ Cette grille indique, pour chaque vague livrée, **quelles sections de tests son
 - [ ] **29.5 Reprise** : relancer dans le même `output_dir` → `N réutilisé(s)`, PNG non régénérés, cache CV conservé (pas de ré-inférence). Ajouter une dalle voisine → seuls les halos des dalles touchées sont re-fabriqués et ré-inférés.
 - [ ] **29.6 Dalle seule / raster large** : 1 seule dalle ou raster > 1 km → pas de ligne « Halo inter-dalles », comportement historique.
 - [ ] **29.7 `existing_mnt`** : même comportement via `run_cv_post_loop` (halo sous `intermediaires/halo/<LD_…>/`).
+- [ ] **29.8 Règle du centroïde** : journal `Halo inter-dalles : N détection(s) centrée(s) hors de la cellule de leur image écartée(s)` à la conversion ; aucune détection dont un bord tombe à ± 50 m d'une ligne de dalle (bord du halo) et aucun doublon superposé dans la bande de recouvrement — y compris en `ign_laz` (§26.3).

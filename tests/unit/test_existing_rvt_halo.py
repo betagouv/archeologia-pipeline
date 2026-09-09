@@ -288,6 +288,7 @@ class TestNeighborHaloFallback:
         cv = env2["calls"]["cv"][0]
         assert cv["tif_transform_data"][Path(_A).stem] == _TRANSFORM_HALO
         assert cv["valid_region_bounds"] == [_CELL_A, _CELL_B]
+        assert cv["cell_bounds_by_stem"] == {Path(_A).stem: _CELL_A, Path(_B).stem: _CELL_B}
 
     def test_resolveur_explicite_prioritaire(self, env2, tmp_path):
         uncropped = tmp_path / "intermediaires" / _UNCROPPED
@@ -310,6 +311,7 @@ class TestNeighborHaloFallback:
         assert env2["calls"]["extract"] == []
         assert [s.name for s, _d in env2["calls"]["convert"]] == [_A, _B]
         assert env2["calls"]["cv"][0]["valid_region_bounds"] is None
+        assert env2["calls"]["cv"][0]["cell_bounds_by_stem"] is None
 
     def test_raster_large_pas_de_halo(self, env2, monkeypatch):
         big = (872000.0, 6900000.0, 875000.0, 6904000.0)

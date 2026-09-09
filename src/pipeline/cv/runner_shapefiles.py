@@ -37,6 +37,7 @@ def deduplicate_cv_shapefiles_final(
     cv_config: Optional[Dict[str, Any]] = None,
     tif_transform_data: Optional[Dict[str, Tuple[float, float, float, float]]] = None,
     valid_region_bounds: Optional[list] = None,
+    cell_bounds_by_stem: Optional[Dict[str, Tuple[float, float, float, float]]] = None,
     global_color_map: Optional[Dict[str, int]] = None,
     temp_dir: Optional[Path] = None,
     crs: str = "EPSG:2154",
@@ -158,6 +159,7 @@ def deduplicate_cv_shapefiles_final(
             min_confidence=float((cv_config or {}).get("confidence_threshold", 0.0) or 0.0),
             class_targets=class_targets,
             valid_region_bounds=valid_region_bounds,
+            cell_bounds_by_stem=cell_bounds_by_stem,
             # Attribut model_name des détections : le modèle DU RUN (multi-runs
             # A/B), pas le selected_model top-level de config.json (qui peut
             # désigner un autre run).

@@ -775,6 +775,7 @@ def create_shapefile_from_detections(
     valid_region_bounds: list = None,
     model_name: str = None,
     cancel_check: Optional[CancelCheckFn] = None,
+    cell_bounds_by_stem: dict = None,
 ) -> bool:
     """
     Crée des shapefiles géoréférencés à partir des fichiers de détection YOLO
@@ -790,11 +791,17 @@ def create_shapefile_from_detections(
         temp_dir (str): Répertoire Temp contenant les TIF sources pour géoréférencement
         class_names (dict): Dictionnaire des noms de classes {class_id: "nom_classe"}
         selected_classes (list): Liste des noms de classes à inclure (None = toutes)
-    
+        cell_bounds_by_stem (dict): ``{stem PNG: (xmin, ymin, xmax, ymax)}`` de la
+            cellule ROGNÉE de chaque image à halo. Règle du centroïde : une
+            détection dont le centre est hors de la cellule de son image est
+            écartée (la dalle voisine la rapporte entière) — plus de doublons
+            cross-dalles ni de fragments coupés au bord du halo. None = pas de halo.
+
     Returns:
         bool: True si succès, False sinon
     """
     logger = logging.getLogger(__name__)
+    n_not_owned = 0
     
     try:
         labels_path = Path(labels_dir)
@@ -1183,6 +1190,16 @@ def create_shapefile_from_detections(
                                 (x_min, y_min)   # Fermer le polygone
                             ])
                         
+                        # Règle du centroïde (halo) : l'image déborde de sa
+                        # cellule ; seule la dalle qui contient le centre de
+                        # l'objet le rapporte (cf. postprocessing.owned_by_cell).
+                        _cell = (cell_bounds_by_stem or {}).get(base_name)
+                        if _cell is not None:
+                            from .postprocessing import owned_by_cell
+                            if not owned_by_cell(bbox_polygon, _cell):
+                                n_not_owned += 1
+                                continue
+
                         # Initialiser la structure pour cette classe si nécessaire
                         class_id_int = int(class_id)
                         if class_id_int not in data_by_class_and_tile:
@@ -1242,7 +1259,13 @@ def create_shapefile_from_detections(
                 continue
             
             processed_files += 1
-        
+
+        if n_not_owned:
+            logger.info(
+                f"Halo inter-dalles : {n_not_owned} détection(s) centrée(s) hors de la "
+                "cellule de leur image écartée(s) (rapportées par la dalle voisine)"
+            )
+
         if not data_by_class_and_tile:
             # 0 détection est un cas LÉGITIME (le modèle a tourné, rien trouvé),
             # PAS une panne → on renvoie True (succès, rien à écrire). L'appelant

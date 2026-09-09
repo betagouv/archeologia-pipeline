@@ -14,7 +14,7 @@ fileignoreconfig:
 - filename: CLAUDE.md
   checksum: 55c71809957df6d4b4822bcddedc0a2bc0d799e73d746aa0b61874f3b96a3985
 - filename: README.md
-  checksum: 4c7afd0cf70354e118c027a2e8791d9998fdad3b506d1fa5d25fc49462346302
+  checksum: 5df9c8db3e24a15d81fa16483906a893ad677ea3d02d3d0d02067f00f28c6ecd
 - filename: data/third_party/cv_runner_onnx/windows/build_info.json
   ignore_detectors:
   - filecontent

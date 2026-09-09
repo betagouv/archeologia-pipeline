@@ -1,4 +1,6 @@
 fileignoreconfig:
+- filename: tests/unit/test_neighbor_halo.py
+  checksum: f1cc2dac01c4ad78b8a38630fa00ddab9b644d354f1dcc9f9b314bc20e2f0201
 - filename: tests/unit/test_merge_inputs_freshness.py
   checksum: f22da81d19eb8211793400d91f6a4b8e18a31a21a3953ad17b70b9fde37680ce
 - filename: tests/unit/test_cache_guard.py
@@ -10,9 +12,9 @@ fileignoreconfig:
 - filename: .githooks/pre-push
   checksum: b0e75a8b481a83c7a519218d19fa137bfe34752ee3b1f5fbf3fafd19b1d15b03
 - filename: CLAUDE.md
-  checksum: 3b8f90c892b74df8ba9e2fb1cac24dc4c42f792e1f0f503ea1e11165008c4445
+  checksum: 55c71809957df6d4b4822bcddedc0a2bc0d799e73d746aa0b61874f3b96a3985
 - filename: README.md
-  checksum: bd7d294dcd6d054a560a612a0d5dfa7092c3ab06529f10298f208c0b2a5ede62
+  checksum: 4c7afd0cf70354e118c027a2e8791d9998fdad3b506d1fa5d25fc49462346302
 - filename: data/third_party/cv_runner_onnx/windows/build_info.json
   ignore_detectors:
   - filecontent
@@ -59,13 +61,13 @@ fileignoreconfig:
 - filename: src/pipeline/cv/computer_vision_rfdetr.py
   checksum: 3c3de1d9bab52f155e9cc9f5f54a60f43c2ea784d485f8959603bbdc5e07d768
 - filename: src/pipeline/cv/conversion_shp.py
-  checksum: 64e28fe035c7c1a83b8da50310feff1c702773344adb859ca412069093d59ab6
+  checksum: 8951ac6af0dc4af0d4bc9702b8e86e7f2e234302f9d662d167e12e3179d6bc3d
 - filename: src/pipeline/cv/model_config.py
   checksum: 18b50ac701c1d992f7addeb6e2c2218eed006928b6c49f337839b5f76a0ee518
 - filename: src/pipeline/cv/model_profile.py
   checksum: 0b5d85696b4d33123c1dd73dfae875645451a829a2a6b7a935a1b0f4c7b0c687
 - filename: src/pipeline/cv/postprocessing.py
-  checksum: 863d36b9324892697406b981f2357108ffe1431c11f2a03bcba78970db57dff5
+  checksum: 71a627e91499a5bf36f5ba5fde21305d4dd6efc22707afee60c695dc0c302677
 - filename: src/pipeline/ign/coords_fallback.py
   checksum: b1997408c2011b138fc5ffc525a10fa88a37848ffa763f355892b9d5dd0c1450
 - filename: src/pipeline/ign/downloader.py
@@ -109,7 +111,7 @@ fileignoreconfig:
 - filename: src/ui/wizard_dialog.py
   checksum: b71d144a28f055c17f6e4873c4f99e6d928ea4882c48d8d806e1248e3563ed9f
 - filename: tests/TESTS_MANUELS_QGIS.md
-  checksum: ba8736807acc811e3110774119cfe82beeb6e1a8cadecff369b3060c2106caba
+  checksum: 63265ac20e1f5d080e132e31114359e40380d5396403bf5664a27af42d59712e
 - filename: tests/integration/test_existing_mnt_runner_finalize.py
   checksum: 059625c9d9ebc7107abcbd0339c12957be8c7e56918dcd458ce45f61e1e5f973
 - filename: tests/integration/test_existing_rvt_runner_isolation.py
@@ -133,7 +135,7 @@ fileignoreconfig:
 - filename: tests/unit/test_existing_mnt_kernel_context.py
   checksum: e3cf8c5ff6455a0383ca417d6755c7fdddeb4fbb812e7ef5532d406e544ab4ee
 - filename: tests/unit/test_existing_rvt_halo.py
-  checksum: 30ec71a3360b3e02d4dcbffe663d4030ceb80f6eb5da9e158c96f58af7ebcf3a
+  checksum: e07286ce0f6c2a9a76634bc721dc6f9e33668c2f92e8cbaf6047952ee03210ad
 - filename: tests/unit/test_existing_rvt_png_consistency.py
   checksum: a1852cd7d16c6890c453bbe7944fb0894ce8f523f6cd3f2b8b615eaa79e3c373
 - filename: tests/unit/test_existing_rvt_runner.py

@@ -31,9 +31,12 @@ _ALIASES = {
     "conf_bin": "tranche_confiance",
     "conf_color": "couleur_confiance",
     "model_name": "modele_detection",
+    "fiabilite": "fiabilité",
+    "fiabilite_pct": "fiabilité mesurée au banc (%)",
 }
 # Champs en lecture seule dans le formulaire (les autres — validation, corr_pred — éditables).
-_READONLY = ("model_pred", "model_name", "confidence", "conf_bin", "conf_color")
+_READONLY = ("model_pred", "model_name", "confidence", "conf_bin", "conf_color",
+             "fiabilite", "fiabilite_pct")
 
 
 def _rvt_type_of(vrt) -> str:
@@ -141,7 +144,7 @@ def _apply_validation_form(layer, all_classes: List[str], logger: logging.Logger
                 pass
             corr_box.addChildElement(QgsAttributeEditorField("corr_pred", ci, corr_box))
             container.addChildElement(corr_box)
-        for name in ("confidence", "conf_bin", "conf_color"):
+        for name in ("fiabilite", "fiabilite_pct", "confidence", "conf_bin", "conf_color"):
             _add(name)
         root_c.addChildElement(container)
 

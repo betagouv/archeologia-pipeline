@@ -356,6 +356,57 @@ class TestBuildEntityCoverage:
         assert cov["cratere"].default_model == "zzz_mesure"
 
 
+# Fiabilité affichée (2026-09-09) : catégories par classe dans le model_card.
+CRATERE_FIAB = CRATERE + """thresholds:
+  confidence_default: 0.3
+  confidence_per_class: {cratere: 0.3}
+  fiabilite:
+    par_classe:
+      cratere:
+      - {categorie: douteux, seuil: 0.3, garanti: 0.0, mesure: 0.2, n: 100}
+      - {categorie: probable, seuil: 0.5, garanti: 0.6, mesure: 0.7, n: 80}
+    provenance: p
+"""
+
+
+class TestFiabiliteDansLesRuns:
+    def test_discovery_et_bloc_effectif(self, tmp_path):
+        _write_model(tmp_path, "cratere_circulaire_2", CRATERE_FIAB)
+        installed = discover_installed_models(tmp_path)
+        m = installed[0]
+        assert [c.categorie for c in m.fiabilite_per_class["cratere"]] == ["douteux", "probable"]
+        assert m.fiabilite_provenance == "p"
+        runs = resolve_runs_from_entities(["cratere"], {}, installed, _catalog())
+        bloc = runs[0]["fiabilite"]
+        assert bloc["modele"] == "Cratères circulaires" and bloc["provenance"] == "p"
+        assert [(c["categorie"], c["seuil"]) for c in bloc["par_classe"]["cratere"]] == [
+            ("douteux", 0.3), ("probable", 0.5)]
+        json.dumps(runs)  # config.json
+
+    def test_surcharge_ui_recale_les_categories(self, tmp_path):
+        _write_model(tmp_path, "cratere_circulaire_2", CRATERE_FIAB)
+        installed = discover_installed_models(tmp_path)
+        runs = resolve_runs_from_entities(
+            ["cratere"], {}, installed, _catalog(),
+            entity_thresholds={"cratere": {"confidence_threshold": 0.5}},
+        )
+        cats = runs[0]["fiabilite"]["par_classe"]["cratere"]
+        assert [(c["categorie"], c["seuil"]) for c in cats] == [("probable", 0.5)]
+        runs = resolve_runs_from_entities(
+            ["cratere"], {}, installed, _catalog(),
+            entity_thresholds={"cratere": {"confidence_threshold": 0.2}},
+        )
+        cats = runs[0]["fiabilite"]["par_classe"]["cratere"]
+        assert cats[0] == {"categorie": "douteux", "seuil": 0.2, "garanti": 0.0, "mesure": 0.2, "n": 100}
+
+    def test_sans_bloc_pas_de_cle(self, tmp_path):
+        _write_model(tmp_path, "cratere_circulaire_2", CRATERE)
+        installed = discover_installed_models(tmp_path)
+        assert installed[0].fiabilite_per_class == {}
+        runs = resolve_runs_from_entities(["cratere"], {}, installed, _catalog())
+        assert "fiabilite" not in runs[0]
+
+
 # ----------------------------------------------------------------------
 # resolve_runs_from_entities
 # ----------------------------------------------------------------------

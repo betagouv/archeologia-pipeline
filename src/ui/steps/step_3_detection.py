@@ -401,6 +401,28 @@ class DetectionPage(QWidget):
         vals = [pc[c] for c in model.coverage.get(eid, ()) if c in pc]
         return float(min(vals)) if vals else float(model.default_confidence)
 
+    @staticmethod
+    def _fiabilite_hint(model, eid: str, conf_override) -> str:
+        """Aide « Fiabilité affichée — douteux dès 0,29 · … » pour UNE entité : les
+        catégories EFFECTIVES de chacune de ses classes au seuil courant (surcharge
+        UI si posée, sinon seuil par classe du modèle) — même règle que le run."""
+        if model is None or not getattr(model, "fiabilite_per_class", None):
+            return ""
+        try:
+            from ...app.services.fiabilite import categories_effectives, hint_etape3
+        except ImportError:
+            from app.services.fiabilite import categories_effectives, hint_etape3  # type: ignore[no-redef]
+        pc = getattr(model, "default_confidence_per_class", None) or {}
+        par_classe = {}
+        for c in model.coverage.get(eid, ()):
+            cats = model.fiabilite_per_class.get(c)
+            if not cats:
+                continue
+            seuil = (float(conf_override) if conf_override is not None
+                     else float(pc.get(c, model.default_confidence)))
+            par_classe[c] = categories_effectives(cats, seuil)
+        return hint_etape3(par_classe)
+
     def _refresh(self) -> None:
         self._enable_check.setChecked(self._enabled)
         # Le bandeau ne doit dire « actif » (bleu) que si la détection l'est :
@@ -460,6 +482,7 @@ class DetectionPage(QWidget):
                 is_derived=is_derived,
                 cluster_default_params=cluster_default_params,
                 cluster_params_override=self._entity_cluster_params.get(eid),
+                fiabilite_hint=self._fiabilite_hint(model, eid, ov.get("confidence_threshold")),
             )
         # Le bouton n'existe que là où il sert : en mode avancé, et seulement s'il y a
         # effectivement quelque chose à effacer. Sinon il promettrait une action sans effet.

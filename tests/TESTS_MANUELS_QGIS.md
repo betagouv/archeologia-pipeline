@@ -563,6 +563,41 @@ Cette grille indique, pour chaque vague livrée, **quelles sections de tests son
 - [ ] **28.7 Purge verrouillée (Windows)** : après un run, charger dans QGIS un TIF de `intermediaires/` (cf. §26), changer la résolution MNT et relancer → le run s'arrête avec un message actionnable « … est verrouillé — fermez les couches QGIS chargées depuis ce dossier… » (pas de traceback WinError brut) ; retirer la couche et relancer → la purge passe.
 - [ ] **28.8 Extension de zone (halo re-fusionné)** : run 1 sur la dalle A seule (CV active), puis run 2 même `output_dir`, mêmes paramètres, sélection élargie {A, B} (B contiguë) → le fichier de log montre « Jeu de voisins modifié → re-fusion : A…_merged.laz » ; A est **recalculée** (MNT/RVT/PNG régénérés, ré-inférence de A) — sa marge vers B est désormais de la vraie donnée ; aucune détection « fantôme » de A (bruit de l'ancienne marge fabriquée) n'apparaît dans la cellule de B ; `intermediaires/A…_merged.inputs.json` liste le voisin. Run 3 identique → « LAZ fusionné réutilisé » (pas de re-fusion).
 
+## 30. Fiabilité affichée : catégories par classe (légende, infobulles, étape 3) ⭐ P0
+
+Recette de référence : zone test de Fénétrange (mode `existing_mnt` ou `ign_laz`), entité
+« Grandes dépressions » (modèle `depressions_grandes_seg_ld_v1`, seuil 0,29) et une entité
+ponctuelle (charbonnières / fours) pour vérifier les coupures par classe.
+
+- [ ] Étape 3, « Réglages avancés » coché : sous la case « Confiance » de l'entité, une ligne
+      « Fiabilité affichée — douteux dès 0.29 · possible dès 0.35 · probable dès 0.45 · très probable
+      dès 0.65 ». Relever le seuil à 0,50 → la ligne devient « probable dès 0.50 · très probable dès 0.65 »
+      (les catégories sous le seuil disparaissent, la première commence AU seuil).
+- [ ] « Voir les détails du modèle » : section FIABILITÉ DES DÉTECTIONS, une ligne par catégorie
+      « score ≥ 0.65 : ≥ 85 % de vrais objets sur le banc (mesuré : 95 % sur 1 045 détections) », et la
+      provenance. Charbonnières / fours : deux jeux de lignes, un par classe.
+- [ ] Journal du run : une ligne « Computer Vision: fiabilité <classe> : douteux dès … » par classe.
+- [ ] Sortie : `detections/<slug>/fiabilite.json` à côté du GeoPackage ; la table attributaire porte
+      `fiabilité` (Douteux / Possible / Probable / Très probable) et `fiabilité mesurée au banc (%)`
+      (NULL pour une catégorie sous 30 détections au banc, ex. enclos FR).
+- [ ] Légende (chargement live ET `detections_validation.qgs` rouvert) : quatre entrées, de « Quasi
+      certain · ≥ 85 % de vrais » à « Douteux · < 35 % de vrais », contour SANS remplissage (le relief
+      reste lisible à l'intérieur) dans la COULEUR de l'entité déclinée en luminosité : très probable
+      le plus sombre, douteux le plus clair — le même dégradé que les anciennes tranches. Une entité
+      garde sa couleur d'un run à l'autre ; deux entités superposées restent distinguables par leur teinte.
+- [ ] Panneau des couches : survoler la couche → infobulle avec le résumé (une ligne par catégorie avec
+      la valeur mesurée) ; Propriétés › Métadonnées › Résumé porte le même texte.
+- [ ] Vue › Afficher les infobulles, survoler une détection : « <classe> — fiabilité Probable / Sur le banc,
+      71 % des détections de cette tranche étaient de vrais objets (garantie ≥ 60 %) / Score brut 0,52 ·
+      <modèle> ».
+- [ ] Linéaires (parcellaire) : trois catégories seulement, « Possible » dès 0,26, « Probable » dès 0,30,
+      « Très probable » dès 0,50 — aucune « Douteux » (calibrage au critère couverture sur Haye + Blois) ;
+      les bonnes détections de Fénétrange doivent tomber en probable / très probable.
+- [ ] Modèle SANS bloc `fiabilite` (cratères Verdun) : légende historique par tranches de score, aucun
+      champ `fiabilite`, aucune erreur dans le journal.
+- [ ] Entité dérivée (regroupement) : la couche des zones garde son style hachuré ; seules les détections
+      individuelles portent la fiabilité.
+
 ## 29. Halo inter-dalles fabriqué depuis les voisins (modes `existing_rvt` / `existing_mnt`) ⭐ P0
 
 > **Contexte** : sans `intermediaires/`, l'inférence découpe **dalle + 50 m** dans la

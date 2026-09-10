@@ -79,6 +79,96 @@ def _apply_confidence_style(
         logger.warning(f"Impossible d'appliquer le style: {e}")
 
 
+def _fiabilite_symbol(base_color, spec):
+    """Symbole d'une catégorie de fiabilité = le rendu d'origine des tranches de
+    confiance : contour seul (aucun remplissage, la structure détectée reste
+    lisible), dans la couleur de la classe déclinée en luminosité par
+    ``apply_confidence`` (plus sombre = plus sûr). Même couleur de base pour une
+    classe quel que soit le run (registre), même déclinaison pour tous les modèles."""
+    from qgis.core import QgsFillSymbol
+
+    from ..pipeline.cv.color_palette import apply_confidence
+
+    r, g, b = apply_confidence(base_color, float(spec["repr"]))
+    return QgsFillSymbol.createSimple({
+        "color": "0,0,0,0",
+        "outline_color": f"{r},{g},{b},255",
+        "outline_width": str(spec["outline_width"]),
+        "outline_style": "solid",
+    })
+
+
+def _apply_fiabilite_style(layer, base_color, cats, logger: logging.Logger) -> None:
+    """Symbologie catégorisée sur ``fiabilite`` (2026-09-09) : contour seul dans la
+    couleur de la classe, déclinée en luminosité par catégorie — exactement le
+    rendu historique de ``_apply_confidence_style``, avec les catégories de
+    fiabilité à la place des tranches de score (``app.services.fiabilite.STYLE_SPEC``).
+    Libellés de légende = niveau garanti (« Probable · ≥ 60 % de vrais »),
+    catégorie la plus sûre en tête."""
+    try:
+        from qgis.core import QgsCategorizedSymbolRenderer, QgsRendererCategory
+
+        from ..app.services.fiabilite import CHAMP_LABEL, STYLE_SPEC, labels_legende
+
+        labels = labels_legende(cats)
+        categories = []
+        for c in sorted(cats, key=lambda x: x.seuil, reverse=True):
+            symbol = _fiabilite_symbol(base_color, STYLE_SPEC[c.categorie])
+            categories.append(QgsRendererCategory(c.label, symbol, labels.get(c.categorie, c.label)))
+        if not categories:
+            return
+        layer.setRenderer(QgsCategorizedSymbolRenderer(CHAMP_LABEL, categories))
+        layer.triggerRepaint()
+    except Exception as e:  # noqa: BLE001
+        logger.warning(f"Impossible d'appliquer le style fiabilité: {e}")
+
+
+def _apply_fiabilite_notices(layer, entree, cats, logger: logging.Logger) -> None:
+    """Résumé de couche (infobulle du panneau des couches + métadonnées) et
+    infobulle de détection (map tip) : là où la phrase « ≥ 85 % de vrais objets sur
+    le banc (mesuré : 95 % sur 1 013 détections) » a la place d'exister."""
+    from ..app.services.fiabilite import maptip_html, texte_resume
+
+    modele = str(entree.get("modele") or "")
+    resume = texte_resume(modele, str(entree.get("classe") or layer.name()), cats,
+                          str(entree.get("provenance") or ""))
+    try:
+        md = layer.metadata()
+        md.setAbstract(resume)
+        layer.setMetadata(md)
+    except Exception as e:  # noqa: BLE001
+        logger.debug(f"Métadonnées de couche non écrites: {e}")
+    try:
+        # QGIS ≥ 3.38 : serverProperties() ; avant : setAbstract() sur la couche.
+        sp = layer.serverProperties() if hasattr(layer, "serverProperties") else None
+        if sp is not None and hasattr(sp, "setAbstract"):
+            sp.setAbstract(resume)
+        elif hasattr(layer, "setAbstract"):
+            layer.setAbstract(resume)
+    except Exception as e:  # noqa: BLE001
+        logger.debug(f"Résumé de couche non écrit: {e}")
+    try:
+        layer.setMapTipTemplate(maptip_html(cats, modele))
+    except Exception as e:  # noqa: BLE001
+        logger.debug(f"Infobulle de détection non écrite: {e}")
+
+
+def _fiabilite_for_source(ogr_source: str, layer):
+    """``(entrée sidecar, catégories)`` si la couche porte le champ ``fiabilite`` ET
+    que ``fiabilite.json`` (à côté du GeoPackage) la décrit ; sinon ``(None, ())``."""
+    from ..app.services.fiabilite import CHAMP_LABEL, categories_sidecar, read_sidecar
+
+    try:
+        if layer.fields().indexFromName(CHAMP_LABEL) < 0:
+            return None, ()
+        gpkg, layer_name, _ = _parse_gpkg_source(str(ogr_source))
+        entree = read_sidecar(gpkg, layer_name)
+        cats = categories_sidecar(entree)
+        return (entree, cats) if cats else (None, ())
+    except Exception:  # noqa: BLE001
+        return None, ()
+
+
 def _parse_gpkg_source(shp_path_str: str):
     """``(gpkg_path, layer_name, class_name)`` depuis ``path.gpkg|layername=X`` ou ``path.shp``.
 
@@ -114,7 +204,9 @@ def build_detection_vector_layer(
     l'appelant). Symbologie : zone de synthèse (hachures) si un champ de comptage
     de brique est présent (``nb_detect``/``nb_sources`` — cf.
     ``app.services.detection_symbology``, les sorties de synthèse n'ont pas de
-    ``conf_bin`` exploitable), sinon catégorisée par tranche de confiance.
+    ``conf_bin`` exploitable) ; sinon catégorisée par **fiabilité** (champ
+    ``fiabilite`` + sidecar ``fiabilite.json``, style D dans la teinte de l'entité,
+    résumé de couche et infobulle de détection) ; sinon par tranche de confiance.
     **N'ajoute la couche à AUCUN projet** — l'appelant en est propriétaire.
     Source unique de vérité partagée par le chargement live
     (:func:`load_result_layers`) ET l'écriture du projet ``.qgs``
@@ -137,7 +229,14 @@ def build_detection_vector_layer(
     if is_synthesis_layer(f.name() for f in layer.fields()):
         _apply_cluster_style(layer, logger)
     else:
-        _apply_confidence_style(layer, base_color, confidence_threshold, logger)
+        # Fiabilité (catégories par classe, 2026-09-09) si la couche et son sidecar
+        # la portent ; sinon tranches de confiance historiques (conf_bin).
+        entree, cats = _fiabilite_for_source(ogr_source, layer)
+        if cats:
+            _apply_fiabilite_style(layer, base_color, cats, logger)
+            _apply_fiabilite_notices(layer, entree, cats, logger)
+        else:
+            _apply_confidence_style(layer, base_color, confidence_threshold, logger)
     return layer
 
 

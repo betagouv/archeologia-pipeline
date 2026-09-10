@@ -223,6 +223,13 @@ class EntityCard(QFrame):
         self._adv_row.addWidget(self._area_spin)
         self._adv_row.setVisible(False)
         layout.addWidget(self._adv_row)
+        # Aide fiabilité (mode avancé) : les coupures effectives des catégories
+        # douteux/possible/probable/très probable au seuil courant, par classe.
+        self._fiab_hint = QLabel("")
+        self._fiab_hint.setObjectName("EntityFiabHint")
+        self._fiab_hint.setWordWrap(True)
+        self._fiab_hint.setVisible(False)
+        layout.addWidget(self._fiab_hint)
 
         # Paramètres du regroupement (DBSCAN) : éditables en mode avancé pour une
         # entité dérivée / clusterisée. Place NON réservée (apparaît seulement pour
@@ -328,6 +335,7 @@ class EntityCard(QFrame):
         cluster_default_params: Optional[Dict[str, float]] = None,
         cluster_params_override: Optional[Dict[str, float]] = None,
         missing_rvt: Optional[str] = None,
+        fiabilite_hint: str = "",
     ) -> None:
         self._selected = selected
         # ``rvt`` est un AFFICHAGE (peut joindre plusieurs indices en
@@ -419,6 +427,8 @@ class EntityCard(QFrame):
                 )
             finally:
                 self._loading = False
+        self._fiab_hint.setText(fiabilite_hint or "")
+        self._fiab_hint.setVisible(bool(show_adv and fiabilite_hint))
 
         # Paramètres du regroupement (DBSCAN) — en mode avancé, pour une entité
         # dérivée ou clusterisée disposant de défauts. Pré-remplis (override sinon

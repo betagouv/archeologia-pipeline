@@ -679,14 +679,14 @@ QPushButton[role="micro"] {
 }
 #VisuPrimaryBtn:pressed { background: #1d5a96; }
 
-/* ---- Onglets du dialogue ---- */
+/* ---- Onglets du dialogue ----
+   Volontairement PAS de regle QTabBar::tab : styler l'onglet en QSS fait
+   calculer sa largeur avec une metrique et peindre avec une autre (le gras
+   de l'onglet actif suffit a decaler), et les libelles se retrouvent rognes
+   des deux cotes. Les onglets natifs sont dimensionnes correctement par Qt,
+   et collent a la palette QGIS que ce theme suit par ailleurs. Seul le cadre
+   du panneau est retire : il n'entre pas dans le calcul du texte. */
 QTabWidget::pane { border: none; background: #f0f0f0; }
-QTabBar::tab {
-    background: #e3e3e3; border: 1px solid #c4c4c4; border-bottom: none;
-    padding: 5px 16px; margin-right: 2px; color: #2c2c2c; font-size: 11px;
-}
-QTabBar::tab:hover { background: #e8e8e8; }
-QTabBar::tab:selected { background: #ffffff; color: #000000; font-weight: bold; }
 
 /* Styler le fond d'un QAbstractScrollArea en QSS bascule aussi ses ascenseurs
    sur le rendu QSS minimal (fond noir par défaut). Dès qu'on touche au fond du

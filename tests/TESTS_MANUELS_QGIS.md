@@ -580,8 +580,8 @@ ponctuelle (charbonnières / fours) pour vérifier les coupures par classe.
 - [ ] Sortie : `detections/<slug>/fiabilite.json` à côté du GeoPackage ; la table attributaire porte
       `fiabilité` (Douteux / Possible / Probable / Très probable) et `fiabilité mesurée au banc (%)`
       (NULL pour une catégorie sous 30 détections au banc, ex. enclos FR).
-- [ ] Légende (chargement live ET `detections_validation.qgs` rouvert) : quatre entrées, de « Quasi
-      certain · ≥ 85 % de vrais » à « Douteux · < 35 % de vrais », contour SANS remplissage (le relief
+- [ ] Légende (chargement live ET `detections_validation.qgs` rouvert) : quatre entrées, de « Très
+      probable · ≥ 85 % de vrais » à « Douteux · < 35 % de vrais », contour SANS remplissage (le relief
       reste lisible à l'intérieur) dans la COULEUR de l'entité déclinée en luminosité : très probable
       le plus sombre, douteux le plus clair — le même dégradé que les anciennes tranches. Une entité
       garde sa couleur d'un run à l'autre ; deux entités superposées restent distinguables par leur teinte.

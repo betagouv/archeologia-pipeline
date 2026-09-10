@@ -275,7 +275,7 @@ class _CorpsFiche(QWidget):
         for c in f.fiabilite:
             mesure = pct(c.mesure)
             suffixe = f" — {mesure} % de vrais objets mesurés sur {c.n}" if mesure is not None else ""
-            lignes.append(f"{c.categorie.replace('_', ' ')} : score ≥ {c.seuil:g}{suffixe}".replace(".", ","))
+            lignes.append(f"{c.label} : score ≥ {c.seuil:g}{suffixe}".replace(".", ","))
         return "\n".join(lignes)
 
     @staticmethod

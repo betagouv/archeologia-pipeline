@@ -33,35 +33,18 @@ class Section:
 # ----------------------------------------------------------------------
 # Humanisation (codes courts → libellés longs FR)
 # ----------------------------------------------------------------------
-_RVT_LONG_NAMES: Dict[str, str] = {
-    "LD": "Local Dominance (LD)",
-    "SVF": "Sky View Factor (SVF)",
-    "M_HS": "Hillshade multi-directionnel (M-HS)",
-    "HS": "Hillshade simple (HS)",
-    "SLO": "Pente (SLO)",
-    "SLRM": "Simple Local Relief Model (SLRM)",
-    "VAT": "Visualisation Archéologique Totale (VAT)",
-    "MSTP": "Multi-Scale Topographic Position (MSTP)",
-    "CVAT": "Combined VAT (CVAT)",
-}
-
-_TASK_LABELS: Dict[str, str] = {
-    "object_detection": "Détection d'objets",
-    "instance_segmentation": "Segmentation d'instances",
-    "semantic_segmentation": "Segmentation sémantique",
-}
-
-
-def pretty_rvt_name(code: str) -> str:
-    """Code court (``LD``, ``SVF``, …) → libellé long FR. Repli : code brut."""
-    raw = code or ""
-    return _RVT_LONG_NAMES.get(raw.upper(), raw)
-
-
-def pretty_task(code: str) -> str:
-    """Code de tâche (``object_detection``…) → libellé FR. Repli : valeur brute."""
-    raw = code or ""
-    return _TASK_LABELS.get(raw, raw)
+# Le vocabulaire vit dans ``app`` : la fiche de classe (``app/services/class_fiche``,
+# module pur importé par le pipeline) s'en sert aussi, et une dépendance app → ui
+# casserait l'import standalone. Ré-exporté ici pour les appelants historiques.
+#
+# Double forme d'import assumée : sous QGIS la racine du paquet est le dossier du
+# plugin (``archeologia/``) et la forme relative est la seule correcte ; sous pytest
+# la racine est ``src/`` (cf. conftest) et ce module est importé comme
+# ``ui.dialogs._model_info_data``, d'où un « relative import beyond top-level ».
+try:  # QGIS
+    from ...app.services.vocabulaire_modele import pretty_rvt_name, pretty_task
+except ImportError:  # pytest (racine = src/)
+    from app.services.vocabulaire_modele import pretty_rvt_name, pretty_task
 
 
 # ----------------------------------------------------------------------

@@ -297,6 +297,21 @@ QPushButton:disabled { color: #909090; border-color: #b0b0b0; }
     font-size: 10px; padding: 0 2px; min-height: 0;
 }
 #EntityChangeBtn:hover { color: #1d5a96; text-decoration: underline; }
+/* Vignette de la structure : cadre plein quand une illustration existe,
+   cadre d'attente en pointillés ocre tant que le model_card n'a pas de
+   bloc fiche.vignettes (l'absence se voit, elle ne se devine pas). */
+#EntityThumb {
+    background: #ffffff; border: 1px solid #c4c4c4; border-radius: 3px;
+    padding: 0; color: #b07a20; font-size: 15px;
+}
+#EntityThumb:hover { border-color: #2b79c2; }
+#EntityThumb[state="vide"] { border: 1px dashed #b07a20; background: #f6efdc; }
+#EntityThumb:disabled { border-color: #e3e3e3; background: #f0f0f0; color: transparent; }
+#EntityFicheBtn {
+    background: transparent; border: none; color: #2b79c2;
+    font-size: 10px; padding: 0 4px; min-height: 0;
+}
+#EntityFicheBtn:hover { color: #1d5a96; text-decoration: underline; }
 
 /* ---- Étape 3 : runs IA programmés ---- */
 #RunRow { background: #ffffff; border: 1px solid #c4c4c4; border-radius: 6px; }
@@ -532,3 +547,51 @@ QPushButton[role="micro"] {
 #ModelInfoFooter { background: #f0f0f0; border-top: 1px solid #c4c4c4; }
 #ModelInfoOpenDirButton { padding: 4px 12px; }
 #ModelInfoCloseButton { padding: 4px 18px; font-weight: bold; }
+
+/* ---- Fiche d'une structure détectable (class_info_dialog) ---- */
+#ClassInfoDialog { background: #f0f0f0; }
+#FicheScroll { background: #ffffff; }
+#FicheListe {
+    background: #f6f6f6; border: none; border-right: 1px solid #c4c4c4;
+    font-size: 11px; outline: none;
+}
+#FicheListe::item { padding: 7px 10px; border-bottom: 1px solid #e3e3e3; }
+#FicheListe::item:selected { background: #d6e6f4; color: #1d5a96; }
+#FicheTitre { font-size: 15px; font-weight: bold; color: #000000; }
+#FicheId {
+    color: #5a5a5a; font-size: 10px;
+    font-family: "Consolas", "Courier New", monospace;
+}
+#FicheResume { color: #2c2c2c; font-size: 12px; }
+#FicheBlocTitre {
+    color: #1d5a96; font-size: 10px; font-weight: bold; letter-spacing: 0.5px;
+}
+#FicheTexte { color: #2c2c2c; font-size: 11px; }
+#FicheHorsCible { color: #8a5e18; font-size: 11px; }
+#FicheManque {
+    color: #8a5e18; font-size: 11px; font-style: italic;
+    background: #f6efdc; border: 1px solid #b07a20; border-radius: 3px;
+    padding: 6px 9px;
+}
+#FicheSep { color: #e3e3e3; max-height: 1px; }
+#FicheLegende { color: #5a5a5a; font-size: 10px; }
+#FicheCompteur { color: #5a5a5a; font-size: 10px; padding: 0 4px; }
+/* Cadre de l'aperçu : plein = liseré neutre ; vide = attente ocre, même
+   langage que la vignette de carte. */
+#FicheImage {
+    background: #f6f6f6; border: 1px solid #c4c4c4; border-radius: 3px;
+    color: #5a5a5a; font-size: 11px;
+}
+#FicheImage[state="vide"] {
+    border: 1px dashed #b07a20; background: #f6efdc; color: #8a5e18;
+}
+#FicheToggle {
+    font-size: 10px; padding: 2px 10px; min-height: 18px;
+    border: 1px solid #888888; border-radius: 0; background: #f0f0f0;
+}
+#FicheToggle:checked { background: #2b79c2; border-color: #1d5a96; color: #ffffff; }
+#FicheToggle:disabled { color: #909090; border-color: #c4c4c4; }
+#FicheNav {
+    font-size: 12px; padding: 0; min-height: 18px;
+    border: 1px solid #888888; border-radius: 2px; background: #f0f0f0;
+}

@@ -10,6 +10,7 @@ l'étape 2 (avec un bouton « + Activer »).
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Optional
 
 from qgis.PyQt.QtCore import Qt, pyqtSignal
 from qgis.PyQt.QtWidgets import (
@@ -32,6 +33,7 @@ from ...app.services.model_orchestrator import (
     effective_model_names,
     group_entities_by_morphology,
     load_entities_catalog,
+    load_model_card,
     resolve_runs_from_entities,
 )
 from ..widgets.card import build_card
@@ -56,6 +58,7 @@ class DetectionPage(QWidget):
             for ec in build_entity_coverage(self._catalog, self._installed)
         }
         self._models = {m.name: m for m in self._installed}
+        self._model_cards: dict = {}  # nom de modèle -> model_card.yaml parsé (à la demande)
 
         self._enabled = False
         self._advanced = False
@@ -276,6 +279,8 @@ class DetectionPage(QWidget):
             entity.id in self._models[name].derived_entities for name in cand_names
         )
         card.set_candidates(candidates, has_cluster=has_cluster, is_derived=is_derived)
+        card.set_fiche(self._premiere_vignette(entity.id), disponible=bool(cand_names))
+        card.fiche_requested.connect(self._open_class_fiche)
         card.toggled.connect(self._on_entity_toggled)
         card.models_changed.connect(self._on_models_changed)
         card.cluster_toggled.connect(self._on_cluster_toggled)
@@ -581,6 +586,66 @@ class DetectionPage(QWidget):
             h.addWidget(rvt_tag)
             self._runs_layout.insertWidget(idx, row)  # au-dessus du stretch final
             self._run_rows.append(row)
+
+    # ------------------------------------------------------------------
+    # Fiche de structure (illustration + provenance des données d'entraînement)
+    # ------------------------------------------------------------------
+    def _model_card(self, model_name: str):
+        """``model_card.yaml`` parsé, mémorisé par modèle.
+
+        ``discover_installed_models`` lit déjà ces fichiers mais n'en garde que
+        l'extrait dont l'orchestrateur a besoin ; la fiche veut la carte
+        entière. Lecture à la demande, une fois par modèle et par session.
+        """
+        if model_name in self._model_cards:
+            return self._model_cards[model_name]
+        model = self._models.get(model_name)
+        card = None
+        if model is not None and model.model_dir is not None:
+            card = load_model_card(model.model_dir)
+        self._model_cards[model_name] = card
+        return card
+
+    def _fiches_for_entity(self, entity_id: str):
+        """Les fiches des classes qui portent ``entity_id``, tous modèles
+        effectifs confondus (une comparaison A/B en produit une par modèle)."""
+        from ...app.services.class_fiche import fiches_par_entite
+
+        out = []
+        ec = self._coverage.get(entity_id)
+        for name in (effective_model_names(ec, self._overrides) if ec else []):
+            card = self._model_card(name)
+            model = self._models.get(name)
+            if card is None or model is None:
+                continue
+            out.extend(fiches_par_entite(card, model.coverage.get(entity_id, ())))
+        return out
+
+    def _premiere_vignette(self, entity_id: str) -> Optional[str]:
+        """Chemin absolu de la vignette à poser sur la carte, ou ``None``."""
+        for fiche in self._fiches_for_entity(entity_id):
+            model = self._models.get(fiche.modele_id)
+            if model is None or model.model_dir is None:
+                continue
+            for v in fiche.vignettes:
+                p = Path(model.model_dir) / v.brut
+                if p.is_file():
+                    return str(p)
+        return None
+
+    def _open_class_fiche(self, entity_id: str) -> None:
+        """Ouvre la fiche de la structure. Import différé du dialog Qt."""
+        fiches = self._fiches_for_entity(entity_id)
+        if not fiches:
+            return
+        from ..dialogs.class_info_dialog import ouvrir_fiche_entite
+
+        dirs = {
+            m.name: m.model_dir for m in self._installed if m.model_dir is not None
+        }
+        couverture = self._coverage.get(entity_id)
+        titre = couverture.entity.label if couverture else entity_id
+        ouvrir_fiche_entite(fiches, dirs, titre, parent=self)
 
     # ------------------------------------------------------------------
     def _open_model_info(self, model) -> None:

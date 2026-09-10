@@ -52,6 +52,12 @@ python dev/fiches/reporter_sur_drive.py # reporte fiches + vignettes vers l'arch
 bundle dans l'archive, relatif à la racine `model-training`. Ajouter une ligne
 par nouveau modèle.
 
+⚠️ `reporter_sur_drive.py` ne synchronise que les blocs `fiche` et les
+`vignettes/`. Toute **autre** correction faite au `model_card.yaml` du plugin
+(un `known_limitations` rectifié, une clé `fiabilite.source` ajoutée…) reste à
+reporter à la main — `comparer_drive.py` la signale, en distinguant bien
+« seulement dans le plugin » de « seulement sur Drive ».
+
 ⚠️ L'archive est sur un disque Google Drive en streaming : le montage peut
 disparaître en cours de route (vu le 2026-09-10). `comparer_drive.py` le dit
 franchement (`Drive : ABSENT`) plutôt que de laisser croire à une divergence.

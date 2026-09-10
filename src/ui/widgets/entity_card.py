@@ -307,18 +307,31 @@ class EntityCard(QFrame):
         # qui en propose : chaque carte est « au plus juste » de son gabarit.
 
     # ------------------------------------------------------------------
-    def set_fiche(self, vignette_path: Optional[str], *, disponible: bool = True) -> None:
+    def set_fiche(
+        self,
+        vignette_path: Optional[str],
+        *,
+        disponible: bool = True,
+        cadrage: Optional[Tuple[float, float, float]] = None,
+    ) -> None:
         """Alimente la vignette et l'accès à la fiche de structure.
 
         ``vignette_path`` absent ou illisible → cadre d'attente (la classe
         n'a pas encore de bloc ``fiche.vignettes`` dans son ``model_card``).
         ``disponible=False`` (aucun modèle n'installe cette entité) → l'accès
         à la fiche disparaît : il n'y aurait rien à montrer.
+
+        ``cadrage`` = ``(x, y, côté)`` en fractions de l'image : la vignette
+        couvre 324 m de terrain, réduite à 44 px elle serait illisible, donc
+        l'icône n'en montre que la fenêtre qui porte la structure. Absent →
+        image entière (comportement d'origine).
         """
         self._fiche_btn.setVisible(disponible)
         self._thumb.setEnabled(disponible)
 
         pix = QPixmap(vignette_path) if vignette_path else QPixmap()
+        if not pix.isNull() and cadrage:
+            pix = self._decouper(pix, cadrage)
         if pix.isNull():
             self._thumb.setIcon(QIcon())
             self._thumb.setText("◌" if disponible else "")
@@ -331,6 +344,21 @@ class EntityCard(QFrame):
             self._thumb.setProperty("state", "plein")
         self._thumb.style().unpolish(self._thumb)
         self._thumb.style().polish(self._thumb)
+
+    @staticmethod
+    def _decouper(pix: QPixmap, cadrage: Tuple[float, float, float]) -> QPixmap:
+        """Découpe la fenêtre ``(x, y, côté)`` fractionnaire du pixmap.
+
+        Le cadrage est déjà borné à l'image par ``app.services.class_fiche`` ;
+        on reborne quand même ici (un pixmap non carré donnerait un rectangle
+        hors limites) et on rend l'image entière si le découpage est vide.
+        """
+        x, y, cote = cadrage
+        c = max(1, int(round(cote * pix.width())))
+        left = min(max(0, int(round(x * pix.width()))), max(0, pix.width() - c))
+        top = min(max(0, int(round(y * pix.height()))), max(0, pix.height() - c))
+        decoupe = pix.copy(left, top, c, c)
+        return pix if decoupe.isNull() else decoupe
 
     # ------------------------------------------------------------------
     def set_candidates(

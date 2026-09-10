@@ -163,3 +163,48 @@ def test_texte_non_scalaire_refuse(tmp_path, bloc):
     f[bloc] = ["une", "liste"]
     r = _run(_card(f), tmp_path)
     assert any(bloc in e for e in r.errors)
+
+
+class TestCadrageVignette:
+    """``vignettes[].cadrage`` — fenêtre de l'icône, en fractions de l'image."""
+
+    def _avec(self, tmp_path, cadrage):
+        f = _fiche_complete(tmp_path)
+        f["vignettes"][0]["cadrage"] = cadrage
+        return _run(_card(f), tmp_path)
+
+    def test_cadrage_valide(self, tmp_path):
+        r = self._avec(tmp_path, {"x": 0.25, "y": 0.3, "cote": 0.4})
+        assert r.errors == []
+
+    def test_absent_est_tolere(self, tmp_path):
+        assert _run(_card(_fiche_complete(tmp_path)), tmp_path).errors == []
+
+    def test_cle_manquante_refusee(self, tmp_path):
+        r = self._avec(tmp_path, {"x": 0.1, "cote": 0.4})
+        assert any("y" in e for e in r.errors)
+
+    def test_valeur_non_numerique_refusee(self, tmp_path):
+        r = self._avec(tmp_path, {"x": "gauche", "y": 0.1, "cote": 0.4})
+        assert any("nombre" in e for e in r.errors)
+
+    def test_cote_hors_bornes_refusee(self, tmp_path):
+        for cote in (0, 1.4, -0.2):
+            r = self._avec(tmp_path, {"x": 0.0, "y": 0.0, "cote": cote})
+            assert any("cote" in e for e in r.errors), cote
+
+    def test_origine_hors_bornes_refusee(self, tmp_path):
+        r = self._avec(tmp_path, {"x": -0.1, "y": 0.2, "cote": 0.3})
+        assert any("x" in e for e in r.errors)
+
+    def test_fenetre_debordante_refusee(self, tmp_path):
+        r = self._avec(tmp_path, {"x": 0.8, "y": 0.2, "cote": 0.5})
+        assert any("déborde" in e for e in r.errors)
+
+    def test_fenetre_pile_au_bord_acceptee(self, tmp_path):
+        r = self._avec(tmp_path, {"x": 0.6, "y": 0.6, "cote": 0.4})
+        assert r.errors == []
+
+    def test_cadrage_non_mapping_refuse(self, tmp_path):
+        r = self._avec(tmp_path, [0.1, 0.1, 0.4])
+        assert any("mapping" in e for e in r.errors)

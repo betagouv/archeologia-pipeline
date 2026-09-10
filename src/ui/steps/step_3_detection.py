@@ -10,7 +10,6 @@ l'étape 2 (avec un bouton « + Activer »).
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Optional
 
 from qgis.PyQt.QtCore import Qt, pyqtSignal
 from qgis.PyQt.QtWidgets import (
@@ -279,7 +278,8 @@ class DetectionPage(QWidget):
             entity.id in self._models[name].derived_entities for name in cand_names
         )
         card.set_candidates(candidates, has_cluster=has_cluster, is_derived=is_derived)
-        card.set_fiche(self._premiere_vignette(entity.id), disponible=bool(cand_names))
+        vignette, cadrage = self._premiere_vignette(entity.id)
+        card.set_fiche(vignette, disponible=bool(cand_names), cadrage=cadrage)
         card.fiche_requested.connect(self._open_class_fiche)
         card.toggled.connect(self._on_entity_toggled)
         card.models_changed.connect(self._on_models_changed)
@@ -621,8 +621,12 @@ class DetectionPage(QWidget):
             out.extend(fiches_par_entite(card, model.coverage.get(entity_id, ())))
         return out
 
-    def _premiere_vignette(self, entity_id: str) -> Optional[str]:
-        """Chemin absolu de la vignette à poser sur la carte, ou ``None``."""
+    def _premiere_vignette(self, entity_id: str):
+        """``(chemin absolu, cadrage)`` de la vignette d'icône, ou ``(None, None)``.
+
+        La première vignette du premier modèle qui existe réellement sur
+        disque ; son ``cadrage`` dit quelle fenêtre l'icône découpe.
+        """
         for fiche in self._fiches_for_entity(entity_id):
             model = self._models.get(fiche.modele_id)
             if model is None or model.model_dir is None:
@@ -630,8 +634,8 @@ class DetectionPage(QWidget):
             for v in fiche.vignettes:
                 p = Path(model.model_dir) / v.brut
                 if p.is_file():
-                    return str(p)
-        return None
+                    return str(p), v.cadrage
+        return None, None
 
     def _open_class_fiche(self, entity_id: str) -> None:
         """Ouvre la fiche de la structure. Import différé du dialog Qt."""

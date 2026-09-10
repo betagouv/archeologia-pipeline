@@ -63,11 +63,19 @@ _SPLITS_ORDRE = ("train", "valid", "test")
 @dataclass(frozen=True)
 class Vignette:
     """Un cadre illustratif. ``brut`` est le RVT seul, ``annote`` le même
-    cadre avec la vérité terrain dessinée (bascule dans l'UI)."""
+    cadre avec la vérité terrain dessinée (bascule dans l'UI).
+
+    ``cadrage`` = ``(x, y, côté)`` en FRACTIONS de l'image, la fenêtre carrée
+    que découpe l'**icône** de la carte d'entité. Une vignette couvre 324 m de
+    terrain : réduite à 44 px elle devient illisible, d'où le recadrage sur la
+    zone qui porte la structure. La fiche, elle, montre toujours le cadre
+    entier. ``None`` = pas de cadrage, l'icône prend l'image complète.
+    """
     brut: str
     annote: str = ""
     zone: str = ""
     legende: str = ""
+    cadrage: Optional[Tuple[float, float, float]] = None
 
 
 @dataclass(frozen=True)
@@ -185,6 +193,29 @@ def _dict(v: Any) -> Mapping[str, Any]:
 # ----------------------------------------------------------------------
 # Sous-blocs
 # ----------------------------------------------------------------------
+def _cadrage(raw: Any) -> Optional[Tuple[float, float, float]]:
+    """``{x, y, cote}`` → fenêtre carrée ramenée DANS l'image.
+
+    Une fenêtre qui déborde est recadrée plutôt qu'écartée : mieux vaut une
+    icône légèrement décalée qu'une icône silencieusement non recadrée. Un
+    côté nul ou une valeur non numérique, en revanche, ne veut rien dire :
+    ``None``, et l'icône prend l'image entière.
+    """
+    d = _dict(raw)
+    if not d:
+        return None
+    vals = [_nombre(d.get(k)) for k in ("x", "y", "cote")]
+    if any(v is None for v in vals):
+        return None
+    x, y, cote = vals
+    if cote <= 0:
+        return None
+    cote = min(cote, 1.0)
+    x = min(max(x, 0.0), 1.0 - cote)
+    y = min(max(y, 0.0), 1.0 - cote)
+    return (x, y, cote)
+
+
 def _vignettes(raw: Any) -> Tuple[Vignette, ...]:
     """Une entrée sans ``brut`` n'a rien à montrer : elle est écartée."""
     if not isinstance(raw, (list, tuple)):
@@ -200,6 +231,7 @@ def _vignettes(raw: Any) -> Tuple[Vignette, ...]:
             annote=_txt(d.get("annote")),
             zone=_txt(d.get("zone")),
             legende=_txt(d.get("legende")),
+            cadrage=_cadrage(d.get("cadrage")),
         ))
     return tuple(out)
 

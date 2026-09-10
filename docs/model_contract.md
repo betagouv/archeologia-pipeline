@@ -149,6 +149,12 @@ classes:
     #       annote: vignettes/cratere_obus_01_annote.jpg # même cadre + vérité terrain (optionnel)
     #       zone: "Verdun (55)"
     #       legende: "Semis de cratères sur un versant"
+    #       # Fenêtre carrée découpée par l'ICÔNE 44 px de la carte d'entité, en
+    #       # FRACTIONS de l'image (donc indépendante de sa résolution). Une vignette
+    #       # couvre 324 m : réduite à 44 px sans recadrage, elle est illisible. La
+    #       # fiche, elle, montre toujours le cadre entier. Absent = image complète.
+    #       # Contrôlé : 0 < cote <= 1, x et y dans [0 ; 1], x+cote et y+cote <= 1.
+    #       cadrage: {x: 0.39, y: 0.27, cote: 0.26}
     #   entrainement:                  # OÙ et EN QUELLE QUANTITÉ la classe a été apprise
     #     corpus: crateres_648_v1
     #     annotation: "boîtes revues à la main, masques SAM 2.1"

@@ -266,6 +266,43 @@ def _fiche_vignettes(
             elif not (model_dir / chemin).is_file():
                 report.errors.append(f"{où}.{clé} : fichier absent ({chemin})")
 
+        # Fenêtre découpée par l'icône de la carte d'entité : fractions de
+        # l'image, donc toujours dans [0 ; 1] et sans déborder.
+        cadrage = item.get("cadrage")
+        if cadrage is not None:
+            if not isinstance(cadrage, dict):
+                report.errors.append(f"{où}.cadrage doit être un mapping {{x, y, cote}}")
+                continue
+            manquantes = [k for k in ("x", "y", "cote") if k not in cadrage]
+            if manquantes:
+                report.errors.append(
+                    f"{où}.cadrage : clé(s) obligatoire(s) absente(s) : {', '.join(manquantes)}"
+                )
+                continue
+            vals = {}
+            for k in ("x", "y", "cote"):
+                v = cadrage[k]
+                if not isinstance(v, (int, float)) or isinstance(v, bool):
+                    report.errors.append(f"{où}.cadrage.{k} doit être un nombre (reçu {v!r})")
+                else:
+                    vals[k] = float(v)
+            if len(vals) < 3:
+                continue
+            if not 0 < vals["cote"] <= 1:
+                report.errors.append(
+                    f"{où}.cadrage.cote doit être dans ]0 ; 1] (fraction de l'image, reçu {vals['cote']})"
+                )
+            for k in ("x", "y"):
+                if not 0 <= vals[k] <= 1:
+                    report.errors.append(
+                        f"{où}.cadrage.{k} doit être dans [0 ; 1] (reçu {vals[k]})"
+                    )
+                elif vals[k] + vals["cote"] > 1.0001:
+                    report.errors.append(
+                        f"{où}.cadrage : la fenêtre déborde de l'image sur {k} "
+                        f"({vals[k]} + {vals['cote']} > 1)"
+                    )
+
 
 def _fiche_entrainement(
     raw: Any, classe: str, report: ValidationReport

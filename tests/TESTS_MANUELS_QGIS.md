@@ -632,3 +632,4 @@ ponctuelle (charbonnières / fours) pour vérifier les coupures par classe.
 - [ ] **31.8 Dégradé** : renommer temporairement `data/models/<modèle>/vignettes/` → la fiche s'ouvre quand même, cadre d'attente « Vignette introuvable », aucun plantage ; la carte affiche le cadre pointillé ocre.
 - [ ] **31.9 Chiffres justes** : les effectifs affichés (par zone et par split) correspondent au `corpus_manifest.yaml` du corpus concerné.
 - [ ] **31.10 Qt6** : rejouer 31.3 à 31.6 sous QGIS 4 (Qt6) — aucun `AttributeError` d'énuméré dans le journal Python.
+- [ ] **31.11 Cadrage de l'icône** : la vignette 44 px montre la fenêtre définie par `vignettes[].cadrage` (zoom sur la structure), pas la dalle entière — comparer avec le grand aperçu de la fiche, qui lui reste plein cadre. Retirer le `cadrage` d'une classe → l'icône reprend l'image complète, sans erreur.

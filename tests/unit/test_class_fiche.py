@@ -245,3 +245,62 @@ class TestBuildAll:
 
     def test_card_vide(self):
         assert build_all_fiches({}) == ()
+
+
+class TestCadrage:
+    """``vignettes[].cadrage`` — la fenêtre découpée pour l'icône de la carte.
+
+    La vignette entière couvre 324 m : réduite à 44 px elle devient illisible.
+    Le cadrage dit quelle portion carrée l'icône montre, en fractions de
+    l'image (indépendant de la résolution du fichier).
+    """
+
+    def _card(self, vignette):
+        return {"id": "m", "display_name": "M", "classes": [
+            {"name": "c", "label_fr": "C", "fiche": {"vignettes": [vignette]}},
+        ]}
+
+    def _v(self, card):
+        return build_class_fiche(card, "c").vignettes[0]
+
+    def test_cadrage_lu(self):
+        v = self._v(self._card({"brut": "a.jpg",
+                                "cadrage": {"x": 0.25, "y": 0.4, "cote": 0.3}}))
+        assert v.cadrage == (0.25, 0.4, 0.3)
+
+    def test_absent_vaut_none(self):
+        assert self._v(self._card({"brut": "a.jpg"})).cadrage is None
+
+    def test_fenetre_debordante_ramenee_dans_l_image(self):
+        v = self._v(self._card({"brut": "a.jpg",
+                                "cadrage": {"x": 0.9, "y": 0.9, "cote": 0.5}}))
+        assert v.cadrage == (0.5, 0.5, 0.5)
+
+    def test_cote_borne_a_l_image(self):
+        v = self._v(self._card({"brut": "a.jpg",
+                                "cadrage": {"x": 0, "y": 0, "cote": 3}}))
+        assert v.cadrage == (0.0, 0.0, 1.0)
+
+    def test_coordonnees_negatives_ramenees_a_zero(self):
+        v = self._v(self._card({"brut": "a.jpg",
+                                "cadrage": {"x": -0.2, "y": -1, "cote": 0.4}}))
+        assert v.cadrage == (0.0, 0.0, 0.4)
+
+    def test_cote_nulle_ou_negative_ignoree(self):
+        for cote in (0, -0.3):
+            v = self._v(self._card({"brut": "a.jpg",
+                                    "cadrage": {"x": 0.1, "y": 0.1, "cote": cote}}))
+            assert v.cadrage is None
+
+    def test_valeurs_non_numeriques_ignorees(self):
+        v = self._v(self._card({"brut": "a.jpg",
+                                "cadrage": {"x": "gauche", "y": 0.1, "cote": 0.4}}))
+        assert v.cadrage is None
+
+    def test_cadrage_non_dict_ignore(self):
+        v = self._v(self._card({"brut": "a.jpg", "cadrage": [0.1, 0.1, 0.4]}))
+        assert v.cadrage is None
+
+    def test_cadrage_incomplet_ignore(self):
+        v = self._v(self._card({"brut": "a.jpg", "cadrage": {"x": 0.1, "cote": 0.4}}))
+        assert v.cadrage is None

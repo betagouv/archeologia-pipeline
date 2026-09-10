@@ -384,18 +384,75 @@ python run_tests.py unit -k test_models_connectivity
 
 1. Entraîner avec `data/models/rfdetr_unified_pipeline.ipynb`.
 2. Le notebook produit `runs/training/<RUN_ID>/package/` avec les 5 fichiers texte du contrat + `weights/best.pth`.
-3. Copier `package/` → `data/models/<RUN_ID>/`.
+3. Copier `package/` → `data/models/<RUN_ID>/`, **plus** `runs/training/<RUN_ID>/evaluation/` (et `evaluation_couverture/` s'il existe) → `data/models/<RUN_ID>/entrainement/`. Sans ce sous-dossier, le validateur ne peut pas re-dériver les mesures de fiabilité et la fiche n'a aucune source de chiffres. (`entrainement/` est exclu du ZIP livré — cf. `dev/package_plugin.py` — il ne sert qu'au poste de dev.)
 4. Exporter l'ONNX :
    ```bash
    python dev/runner_onnx/export_to_onnx.py \
        --model data/models/<RUN_ID>/weights/best.pth \
        --output data/models/<RUN_ID>/weights/best.onnx
    ```
+   La **porte de parité** PyTorch ↔ ONNX qui suit l'export est bloquante : elle
+   doit afficher `✓ Export ONNX validé`. Si le simplificateur la fait échouer,
+   ré-exporter avec `--no-simplify` et consigner le motif dans un
+   `NOTE-export-onnx.md` à côté du run (précédent : `lineaires_seg_v3_1`).
 5. Vérifier la conformité :
    ```bash
    python scripts/validate_models_metadata.py data/models/<RUN_ID>
    python run_tests.py unit -k test_models
    ```
+   Sous Windows, préfixer par `PYTHONIOENCODING=utf-8` : le rapport contient des
+   caractères que cp1252 ne sait pas encoder (il plante à l'affichage, pas à la
+   validation).
+6. **Écrire la fiche de la classe** (`classes[].fiche`) — le validateur la réclame
+   par un warning tant qu'elle manque, et l'étape 3 affiche alors la classe sans
+   illustration ni provenance. Voir « Produire une fiche de classe » ci-dessous.
+
+### Produire une fiche de classe
+
+La fiche est ce que l'archéologue lit avant de cocher l'entité. Elle se fabrique
+en quatre temps, dans cet ordre — les scripts réutilisables sont dans
+`dev/fiches/` :
+
+1. **Candidats** — extraire six cadres du corpus d'entraînement (le brut et le
+   même cadre avec la vérité terrain dessinée), en variant zones et états de
+   conservation. Source : le corpus COCO, jamais les planches de
+   `entrainement/visualizations/` qui sont des montages à quatre panneaux.
+2. **Choix** — faire choisir deux ou trois cadres par un humain. Le premier
+   retenu devient l'icône de la carte d'entité, les suivants se feuillettent
+   dans la fiche.
+3. **Cadrage** — faire poser la fenêtre `vignettes[].cadrage` sur chaque cadre
+   retenu. Une vignette couvre 324 m : sans recadrage l'icône 44 px est
+   illisible. `dev/fiches/injecter_cadrages.py` écrit la clé et rend une planche
+   de contrôle des icônes à leur taille réelle.
+4. **Rédaction, puis vérification adverse** — rédiger `resume`, `reconnaitre`,
+   `usage`, `hors_cible` et `entrainement` **sur les sources primaires**
+   (les `_annotations.coco.json` recomptés, `metriques_eval.json`), puis faire
+   **rejouer chaque chiffre** par un second passage dont le mandat est de
+   prendre le texte en défaut. Ce n'est pas du zèle : sur la première campagne,
+   6 écarts bloquants sur 22 étaient des statistiques inventées puis
+   auto-attestées comme recomptées (`parcellaire` annonçait 4 361 tuiles
+   porteuses pour 6 068 réelles). Les effectifs de `zones` et `splits`, eux,
+   étaient exacts partout.
+
+Règles de contenu, apprises à l'usage :
+
+- pas de percentile dans `reconnaitre` : une fourchette simple et arrondie
+  (« une quinzaine à une soixantaine de mètres, le plus souvent autour de 25 »),
+  la précision statistique va dans `known_limitations` ;
+- `usage` cite le rendement **au seuil déployé**, par zone, et dit franchement
+  quand une classe est faible plutôt que de la vendre ;
+- `hors_cible` nomme les classes voisines du **même modèle** et les exclusions
+  volontaires du corpus — c'est la question la plus posée ;
+- une classe **linéaire** se juge au critère `couverture`, pas en IoU 1-1 : le
+  bloc `fiabilite` doit alors porter la clé `source:` pointant
+  `entrainement/evaluation_couverture/metriques_eval.json`. Sans elle le
+  validateur re-dérive du mauvais fichier et signale un écart fantôme
+  (constaté sur `tranchees_seg_ld_v1`).
+
+Enfin, `data/models/**` est **gitignoré** : une fiche écrite ici n'est pas
+versionnée et le prochain ré-export du modèle l'effacerait. La reporter dans
+`runs/training/<RUN_ID>/package/model_card.yaml` de l'archive
+(`dev/fiches/reporter_sur_drive.py`), qui est la copie dont repartira l'export.
 
 ## Code consommateur (référence)
 

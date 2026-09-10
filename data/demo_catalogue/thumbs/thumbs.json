@@ -1,0 +1,20 @@
+{
+  "source": "output_bretagne",
+  "tile": "0362_6800",
+  "window_m": [
+    800,
+    448
+  ],
+  "thumbs": {
+    "MNT": "MNT.png",
+    "HS": "HS.png",
+    "M_HS": "M_HS.png",
+    "SVF": "SVF.png",
+    "SLO": "SLO.png",
+    "LD": "LD.png",
+    "SLRM": "SLRM.png",
+    "VAT": "VAT.png",
+    "MSTP": "MSTP.png",
+    "CVAT": "CVAT.png"
+  }
+}

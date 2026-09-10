@@ -22,6 +22,7 @@ from qgis.PyQt.QtWidgets import (
     QProgressBar,
     QPushButton,
     QStackedWidget,
+    QTabWidget,
     QVBoxLayout,
     QWidget,
 )
@@ -35,6 +36,7 @@ from .steps.step_1_source import SourcePage
 from .steps.step_2_indices import IndicesPage
 from .steps.step_3_detection import DetectionPage
 from .steps.step_4_launch import LaunchPage, RecapSection
+from .visualisation_tab import VisualisationTab
 from .widgets.stepper_rail import StepperRail
 
 try:
@@ -73,8 +75,9 @@ class WizardDialog(QDialog):
         4: ("Lancer le pipeline", "Vérification & récapitulatif"),
     }
 
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, iface=None):
         super().__init__(parent)
+        self._iface = iface
         self._n_steps = len(self.RAIL_STEPS)
         self._current_step = 1
         self._review_mode = False  # consultation lecture seule pendant un run
@@ -99,15 +102,23 @@ class WizardDialog(QDialog):
         # Bouton « réduire » dans la barre de titre native (cf. main.py:run()
         # qui restaure via show() au reclic sur l'icône du plugin).
         self.setWindowFlags(self.windowFlags() | Qt.WindowType.WindowMinimizeButtonHint)
-        self.resize(980, 660)
+        # Plus large que le wizard seul : le mur visuel de l'onglet Visualisation
+        # tient 4 cartes de 200 px à côté du rail de 252 px.
+        self.resize(1120, 700)
 
         self._apply_theme()
 
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(0)
-        root.addWidget(self._build_title_bar())
-        root.addWidget(self._build_progress_liseret())
+
+        # Le wizard existant devient l'onglet 0, inchangé.
+        wizard_tab = QWidget()
+        wizard_layout = QVBoxLayout(wizard_tab)
+        wizard_layout.setContentsMargins(0, 0, 0, 0)
+        wizard_layout.setSpacing(0)
+        wizard_layout.addWidget(self._build_title_bar())
+        wizard_layout.addWidget(self._build_progress_liseret())
 
         body = QHBoxLayout()
         body.setContentsMargins(0, 0, 0, 0)
@@ -125,9 +136,16 @@ class WizardDialog(QDialog):
         self._stack.addWidget(self._launch_page)               # étape 4
         body.addWidget(self._rail)
         body.addWidget(self._stack, 1)
-        root.addLayout(body, 1)
+        wizard_layout.addLayout(body, 1)
+        wizard_layout.addWidget(self._build_action_bar())
 
-        root.addWidget(self._build_action_bar())
+        self._tabs = QTabWidget()
+        self._tabs.addTab(wizard_tab, "Nouveau traitement")
+        self._visu_tab = VisualisationTab(self._plugin_root, iface=self._iface)
+        self._visu_tab.layer_count_changed.connect(self._on_visu_layer_count)
+        self._tabs.addTab(self._visu_tab, "Visualisation")
+        self._tabs.setCurrentIndex(0)          # le wizard reste l'entrée principale
+        root.addWidget(self._tabs)
 
         # Restaurer la config, brancher l'autosave + le sous-libellé du rail.
         self._source_page.load_from(self._config)
@@ -545,11 +563,21 @@ class WizardDialog(QDialog):
             self._launch_page.request_cancel()
         return clicked is close_keep or clicked is close_cancel
 
+    def _on_visu_layer_count(self, count: int) -> None:
+        """Compteur sur l'onglet : « Visualisation (3) » quand des couches sont ouvertes."""
+        self._tabs.setTabText(1, "Visualisation" + (f" ({count})" if count else ""))
+
     def request_cancel_if_running(self) -> None:
         """Annulation propre demandée par l'hôte (unload du plugin) —
         sans dialogue de confirmation (AUDIT v2 THR-04)."""
         try:
             self._source_page.cancel_dalles_selection_if_active()
+        except Exception:
+            pass
+        # Le plugin est déchargé : l'onglet Visualisation oublie ses couches
+        # sans y toucher — elles appartiennent au projet de l'utilisateur.
+        try:
+            self._visu_tab.cleanup()
         except Exception:
             pass
         try:

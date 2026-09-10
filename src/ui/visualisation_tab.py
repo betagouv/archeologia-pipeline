@@ -109,6 +109,7 @@ class VisualisationTab(QWidget):
         self._plugin_root = Path(plugin_root)
         self._iface = iface
         self._catalogue: Catalogue = Catalogue()
+        self._erreur_catalogue: Optional[str] = None
         self._catalogue_dir: Path = self._plugin_root / DEFAULT_CATALOGUE.parent
         self._dept: Optional[Department] = None
         self._family: Optional[str] = None
@@ -291,13 +292,15 @@ class VisualisationTab(QWidget):
         try:
             self._catalogue = load_catalogue(path)
             self._catalogue_dir = path.parent
+            self._erreur_catalogue = None
             self._cat_stamp.setText(f"catalogue {self._catalogue.updated or '—'}")
         except Exception as exc:                       # noqa: BLE001 — jamais de grille muette
             self._catalogue = Catalogue()
+            # Mémorisé plutôt qu'affiché ici : _refresh_rail repasse derrière et
+            # écraserait le message. C'est lui qui décide quoi montrer.
+            self._erreur_catalogue = (
+                f"Catalogue injoignable — vérifiez son emplacement.\n{path}\n({exc})")
             self._cat_stamp.setText("catalogue indisponible")
-            self._show_empty(
-                "Catalogue injoignable — vérifiez la connexion ou l'emplacement du "
-                f"catalogue.\n({exc})")
         finally:
             self._refresh_btn.setEnabled(True)
             self._refresh_btn.setText("Actualiser le catalogue")
@@ -325,7 +328,19 @@ class VisualisationTab(QWidget):
             + ("" if len(shown) == len(covered) else f" · {len(shown)} affichés"))
 
         if not shown:
-            self._show_empty("Aucun résultat.")
+            # Distinguer « le filtre ne matche rien » de « il n'y a pas de
+            # catalogue » : sinon un catalogue illisible s'annonce « Aucun
+            # résultat. », et le message d'erreur qu'on venait de poser est
+            # écrasé par un libellé qui n'aide personne.
+            if covered:
+                message = "Aucun résultat."
+            elif self._erreur_catalogue:
+                message = self._erreur_catalogue
+            else:
+                message = ("Catalogue vide — aucun département consultable.")
+            self._show_empty(message)
+            self._dept = None
+            self._rebuild_wall()
             return
         # On garde le département courant s'il survit au filtre ; sinon on ouvre
         # sur celui que le catalogue met en avant (le mieux pourvu), pas sur le

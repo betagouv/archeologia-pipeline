@@ -145,6 +145,18 @@ def main() -> int:
           f"{len(tab._cards)} cartes")
     tab.grab().save(str(ROOT / "visu_smoke_filtre.png"))
 
+    # Chemin d'erreur : catalogue absent. Le brief interdit une grille vide
+    # sans explication, et c'est un cas qu'aucun autre test n'exerce.
+    sans_cat = VisualisationTab(ROOT / "_dossier_inexistant", iface=_StubIface())
+    sans_cat.resize(QSize(900, 500))
+    sans_cat.show()                    # isVisible() est faux tant que rien n'est affiché
+    app.processEvents()
+    message = sans_cat._empty.text()
+    explique = sans_cat._empty.isVisible() and "atalogue" in message
+    print(f"catalogue absent        : {'explique' if explique else 'MUET'} "
+          f"-> {message.splitlines()[0] if message else '(vide)'}")
+    ok_interaction = ok_interaction and explique
+
     app.exitQgis()
     print("RESULTAT :", "OK" if (not vides and ok_interaction) else "ECHEC")
     return 0 if (not vides and ok_interaction) else 1

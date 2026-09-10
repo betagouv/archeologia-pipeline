@@ -9,7 +9,7 @@ name=Archéolog'IA
 qgisMinimumVersion=3.34
 qgisMaximumVersion=4.99
 description=Détection de sites archéologiques par réseaux de neurones
-version=0.8.0
+version=0.9.0
 author=Valentin VIEUX
 email=valentin.vieux.pro@outlook.com
 about=Plugin pour automatiser la production d'indices de visualisation (à l'aide du plugin Relief Visualization Toolbox) à partir de données LiDAR ou de MNT et pour détecter des sites archéologiques à l'aide de réseaux de neurones (YOLO, RF-DETR détection ou segmentation)
@@ -21,7 +21,13 @@ repository=https://github.com/betagouv/archeologia-pipeline
 #
 
 hasProcessingProvider=no
-changelog=0.8.0 (2026-09-10)
+changelog=0.9.0 (2026-09-10)
+    * Fiche de structure : cocher une entité à l'étape 3 ne demande plus de deviner à quoi elle ressemble. Chaque classe détectable a désormais une fiche — illustration issue du corpus d'entraînement (bascule « relief seul » / « vérité terrain », plusieurs cadres navigables), où et en quelle quantité la structure a été apprise (zones nommées, tuiles et objets par zone), ce que le modèle ne détecte PAS, contexte de prospection, fiabilité mesurée et limites connues.
+    * Carte d'entité : une vignette cadrée sur la structure remplace la pastille de couleur — l'objet recherché est visible sans même ouvrir la fiche.
+    * Nouveau modèle « Tranchées et boyaux (LD) » : l'entité « Tranchées et boyaux », sans modèle depuis le retrait du modèle Verdun, est de nouveau couverte.
+    * Catalogue des entités : retrait de « talus », « fosse » et « abri », qu'aucun modèle installé ne détecte (talus et fosse ont fusionné en une seule classe au réentraînement des linéaires ; leur confusion systématique est ce qui a motivé ce réentraînement).
+    * Correctif : la catégorie de fiabilité la plus haute s'affiche « Très probable » partout — la fiche de classe montrait encore l'identifiant interne « quasi certain ».
+ 0.8.0 (2026-09-10)
     * Nouvelle entité « Enclos » : à partir des fragments de parcellaire détectés, le plugin reconstitue les contours fermés et publie les enclos candidats (fermeture vectorielle, filtres d'aire, d'élongation, d'ancrage et d'isolement, tous éditables à l'étape 3). Un mode calibration publie aussi les rejetés avec le motif du rejet
     * Nouvelle entité « Axes linéaires » : les détections parcellaires alignées sont regroupées en bandes directionnelles (voies anciennes, limites majeures, levées), avec longueur, couverture, nombre de brins et parallélisme en attributs
     * Comparaison A/B : une même entité peut être confiée à deux modèles à la fois — une couche par modèle, réunies dans un groupe QGIS « (comparaison) », pour trancher sur pièces

@@ -131,6 +131,33 @@ classes:
     label_fr: "Cratère d'obus"  # accentué — affichage utilisateur
     color_index: 0              # index dans args.yaml.class_colors
     description: "Cratère d'obus circulaire de Première Guerre mondiale."
+    # Bloc de PRÉSENTATION lu par l'étape 3 (fiche de la structure, 2026-09-10).
+    # Entièrement OPTIONNEL — sans lui la fiche se replie sur `description` et
+    # l'étape 3 affiche la classe sans illustration ni provenance. Mais dès qu'il
+    # est là, il est strictement validé : une vignette qui pointe un fichier
+    # absent donnerait une image cassée dans QGIS (ERR), de même qu'une zone sans
+    # nom ou un effectif non entier. Le validateur signale par un WARNING chaque
+    # classe qui n'a pas encore son bloc, et lesquels de ses champs manquent.
+    # fiche:
+    #   resume: "Cratère d'obus…"      # UNE phrase : ce que la structure EST
+    #   reconnaitre: "Cuvette sombre…" # la signature sur le RVT (forme, taille, contraste)
+    #   usage: "Champs de bataille…"   # dans quelle optique s'en servir, avec quel rendement
+    #   hors_cible:                    # ce que la classe n'est PAS (classes voisines comprises)
+    #     - "Dépressions naturelles (mardelles, dolines)"
+    #   vignettes:                     # cadres illustratifs, chemins RELATIFS au dossier modèle
+    #     - brut: vignettes/cratere_obus_01_brut.jpg     # le RVT seul (obligatoire)
+    #       annote: vignettes/cratere_obus_01_annote.jpg # même cadre + vérité terrain (optionnel)
+    #       zone: "Verdun (55)"
+    #       legende: "Semis de cratères sur un versant"
+    #   entrainement:                  # OÙ et EN QUELLE QUANTITÉ la classe a été apprise
+    #     corpus: crateres_648_v1
+    #     annotation: "boîtes revues à la main, masques SAM 2.1"
+    #     zones:                       # totaux train+valid+test PAR ZONE, cette classe
+    #       - {nom: "Verdun (55)", tuiles: 710, objets: 2096}
+    #     splits:                      # totaux PAR SPLIT, cette classe
+    #       train: {tuiles: 1285, objets: 3577}
+    #       valid: {tuiles: 330, objets: 948}
+    #       test:  {tuiles: 219, objets: 817}
     # entity: cratere           # OPTIONNEL — id d'entité du catalogue si != name
                                 # (la couverture UI repli sur name == entity.id ;
                                 #  une entité hors entities_catalog.json = modèle

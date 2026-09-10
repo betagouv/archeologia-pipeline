@@ -613,3 +613,22 @@ ponctuelle (charbonnières / fours) pour vérifier les coupures par classe.
 - [ ] **29.6 Dalle seule / raster large** : 1 seule dalle ou raster > 1 km → pas de ligne « Halo inter-dalles », comportement historique.
 - [ ] **29.7 `existing_mnt`** : même comportement via `run_cv_post_loop` (halo sous `intermediaires/halo/<LD_…>/`).
 - [ ] **29.8 Règle du centroïde** : journal `Halo inter-dalles : N détection(s) centrée(s) hors de la cellule de leur image écartée(s)` à la conversion ; aucune détection dont un bord tombe à ± 50 m d'une ligne de dalle (bord du halo) et aucun doublon superposé dans la bande de recouvrement — y compris en `ign_laz` (§26.3).
+
+## 31. Fiche d'une structure détectable (étape 3) ⭐ P0
+
+> **Contexte** : chaque classe porte un bloc `classes[].fiche` dans son `model_card.yaml`
+> (résumé, signature, hors-cible, contexte d'usage, vignettes, provenance des données
+> d'entraînement). Le bloc est **optionnel** : une classe sans bloc doit rester utilisable,
+> avec une fiche dégradée et un cadre d'attente à la place de l'image. Les 8 classes
+> installées ont leur bloc depuis le 2026-09-10.
+
+- [ ] **31.1 Vignette sur la carte** : étape 3, chaque entité couverte affiche une vignette 44 px à gauche de son libellé ; les libellés restent alignés d'une carte à l'autre. Une entité sans modèle (Cratères, Tranchées, Abris) n'affiche ni vignette utile ni bouton « Fiche ».
+- [ ] **31.2 Hauteur inchangée** : cocher / décocher une entité, activer les réglages avancés → la hauteur des cartes ne bouge pas (le gabarit verrouillé est préservé malgré la colonne de vignette).
+- [ ] **31.3 Ouverture** : cliquer la vignette OU le bouton « Fiche » ouvre le dialogue ; le clic **ne coche pas** l'entité.
+- [ ] **31.4 Contenu** : titre = libellé de classe, nom technique en monospace ; aperçu avec bascule « Relief seul » / « Vérité terrain » ; blocs « Ce que le modèle a appris » (corpus, zones nommées avec tuiles et objets, répartition train/valid/test, total), « Ne détecte pas », « Dans quelle optique l'utiliser », « Limites connues », « Fiabilité mesurée au banc » et « Contexte technique » (indice RVT, résolution, seuil déployé, modèle, statut).
+- [ ] **31.5 Vérité terrain** : le bouton « Vérité terrain » est actif quand la vignette a un cadre annoté et affiche bien l'annotation (contours ou boîtes jaunes) ; il est grisé sinon.
+- [ ] **31.6 Plusieurs cadres** : sur `enclos` (2 vignettes), les flèches ‹ › et le compteur « 1 / 2 » apparaissent et font défiler ; sur une classe à une seule vignette ils sont absents.
+- [ ] **31.7 Comparaison A/B** : une entité confiée à deux modèles ouvre une fiche par modèle, sélectionnables dans la liste de gauche (la liste est cachée quand il n'y en a qu'une).
+- [ ] **31.8 Dégradé** : renommer temporairement `data/models/<modèle>/vignettes/` → la fiche s'ouvre quand même, cadre d'attente « Vignette introuvable », aucun plantage ; la carte affiche le cadre pointillé ocre.
+- [ ] **31.9 Chiffres justes** : les effectifs affichés (par zone et par split) correspondent au `corpus_manifest.yaml` du corpus concerné.
+- [ ] **31.10 Qt6** : rejouer 31.3 à 31.6 sous QGIS 4 (Qt6) — aucun `AttributeError` d'énuméré dans le journal Python.

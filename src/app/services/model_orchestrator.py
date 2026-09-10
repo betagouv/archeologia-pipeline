@@ -38,6 +38,8 @@ from __future__ import annotations
 import json
 import logging
 import re
+
+from .fiabilite import parse_fiabilite, run_block
 import unicodedata
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -118,6 +120,12 @@ class InstalledModel:
     # 0,10 à 0,30 sur lineaires_seg_v2_1, un seuil unique sacrifie les classes
     # rares. Une classe absente du dict retombe sur ``default_confidence``.
     default_confidence_per_class: Dict[str, float] = field(default_factory=dict)
+    # Fiabilité affichée (model_card:thresholds.fiabilite, 2026-09-09) : catégories
+    # douteux/possible/probable/quasi_certain PAR CLASSE, définies par la part de
+    # vrais objets mesurée au banc (cf. app.services.fiabilite). Vide = tranches
+    # conf_bin historiques.
+    fiabilite_per_class: Dict[str, Tuple[Any, ...]] = field(default_factory=dict)
+    fiabilite_provenance: str = ""
     # Dossier du modèle sur disque (``data/models/<name>/``). Utile côté UI pour
     # ouvrir le dossier dans l'explorateur ou (re)lire ``model_card.yaml`` /
     # ``args.yaml`` à la demande sans relancer ``discover_installed_models``.
@@ -234,6 +242,7 @@ def discover_installed_models(models_dir: Any) -> List[InstalledModel]:
             logger.warning("Modèle '%s' sans classe exploitable, ignoré", sub.name)
             continue
         conf, conf_pc, area, iou = _extract_thresholds(card)
+        fiab_pc, fiab_prov = parse_fiabilite(card.get("thresholds"))
         clustering_rules = _load_args_clustering(sub)
         # cluster_options construites AVANT le merge des cibles dérivées : sinon
         # une cible déjà agrégée se verrait proposer une case « cluster » redondante.
@@ -262,6 +271,8 @@ def discover_installed_models(models_dir: Any) -> List[InstalledModel]:
                 derived_output_labels={k: v[2] for k, v in derived_meta.items() if v[2]},
                 default_confidence=conf,
                 default_confidence_per_class=conf_pc,
+                fiabilite_per_class=fiab_pc,
+                fiabilite_provenance=fiab_prov,
                 default_min_area=area,
                 default_iou=iou,
                 model_dir=sub,
@@ -914,12 +925,23 @@ def resolve_runs_from_entities(
             for oc in group["entity_classes"][e]:
                 if oc in model.cluster_defaults:
                     clustering_overrides[oc] = dict(params)
+        # Fiabilité affichée : catégories EFFECTIVES (au seuil de chaque classe dans
+        # ce run, surcharge UI comprise) — consommées à la conversion (champs
+        # fiabilite/fiabilite_pct + sidecar fiabilite.json) puis par la symbologie.
+        fiab_bloc = run_block(
+            model.fiabilite_per_class,
+            {c: conf_par_classe.get(c, model.default_confidence) for c in group["classes"]},
+            sorted(group["classes"]),
+            modele=model.display_name,
+            provenance=model.fiabilite_provenance,
+        )
         runs.append(
             {
                 "model": model_name,
                 "target_rvt": rvt,
                 "selected_classes": sorted(group["classes"]),
                 "clustering_overrides": clustering_overrides,
+                **({"fiabilite": fiab_bloc} if fiab_bloc else {}),
                 "entities": [
                     _entity_block(
                         eid, model,

@@ -775,6 +775,8 @@ def create_shapefile_from_detections(
     valid_region_bounds: list = None,
     model_name: str = None,
     cancel_check: Optional[CancelCheckFn] = None,
+    cell_bounds_by_stem: dict = None,
+    fiabilite: dict = None,
 ) -> bool:
     """
     Crée des shapefiles géoréférencés à partir des fichiers de détection YOLO
@@ -790,11 +792,23 @@ def create_shapefile_from_detections(
         temp_dir (str): Répertoire Temp contenant les TIF sources pour géoréférencement
         class_names (dict): Dictionnaire des noms de classes {class_id: "nom_classe"}
         selected_classes (list): Liste des noms de classes à inclure (None = toutes)
-    
+        cell_bounds_by_stem (dict): ``{stem PNG: (xmin, ymin, xmax, ymax)}`` de la
+            cellule ROGNÉE de chaque image à halo. Règle du centroïde : une
+            détection dont le centre est hors de la cellule de son image est
+            écartée (la dalle voisine la rapporte entière) — plus de doublons
+            cross-dalles ni de fragments coupés au bord du halo. None = pas de halo.
+        fiabilite (dict): bloc ``computer_vision.runs[].fiabilite`` (catégories
+            douteux/possible/probable/quasi_certain PAR CLASSE au seuil effectif du
+            run, cf. ``app.services.fiabilite``). Écrit les champs ``fiabilite``
+            (libellé) et ``fiabilite_pct`` (part de vrais objets mesurée au banc, %)
+            sur chaque détection, et le sidecar ``fiabilite.json`` à côté du
+            GeoPackage (lu par la symbologie). None = tranches conf_bin seules.
+
     Returns:
         bool: True si succès, False sinon
     """
     logger = logging.getLogger(__name__)
+    n_not_owned = 0
     
     try:
         labels_path = Path(labels_dir)
@@ -1183,6 +1197,16 @@ def create_shapefile_from_detections(
                                 (x_min, y_min)   # Fermer le polygone
                             ])
                         
+                        # Règle du centroïde (halo) : l'image déborde de sa
+                        # cellule ; seule la dalle qui contient le centre de
+                        # l'objet le rapporte (cf. postprocessing.owned_by_cell).
+                        _cell = (cell_bounds_by_stem or {}).get(base_name)
+                        if _cell is not None:
+                            from .postprocessing import owned_by_cell
+                            if not owned_by_cell(bbox_polygon, _cell):
+                                n_not_owned += 1
+                                continue
+
                         # Initialiser la structure pour cette classe si nécessaire
                         class_id_int = int(class_id)
                         if class_id_int not in data_by_class_and_tile:
@@ -1242,7 +1266,13 @@ def create_shapefile_from_detections(
                 continue
             
             processed_files += 1
-        
+
+        if n_not_owned:
+            logger.info(
+                f"Halo inter-dalles : {n_not_owned} détection(s) centrée(s) hors de la "
+                "cellule de leur image écartée(s) (rapportées par la dalle voisine)"
+            )
+
         if not data_by_class_and_tile:
             # 0 détection est un cas LÉGITIME (le modèle a tourné, rien trouvé),
             # PAS une panne → on renvoie True (succès, rien à écrire). L'appelant
@@ -1435,7 +1465,39 @@ def create_shapefile_from_detections(
                     continue
                 cidx = det.get("__color_idx", rank_for_class(class_name))
                 det["conf_bin"], det["conf_color"] = _confidence_bucket(conf, cidx, min_confidence)
-        
+
+        # ── Fiabilité affichée (catégories par classe, 2026-09-09) ──
+        # Posée sur les détections INDIVIDUELLES (les sorties de synthèse, non
+        # mesurées au banc, n'en ont pas). Les catégories effectives viennent du
+        # bloc du run (seuil de la classe déjà appliqué) ; la catégorie basse
+        # commence au seuil, comme la première tranche conf_bin.
+        try:
+            from ...app.services.fiabilite import (
+                CHAMP_LABEL as _FIAB_LABEL, CHAMP_PCT as _FIAB_PCT,
+                categories_du_run as _fiab_categories, categoriser as _fiab_categoriser,
+                pct as _fiab_pct, write_sidecar as _fiab_write_sidecar,
+            )
+        except ImportError:
+            from app.services.fiabilite import (  # type: ignore[no-redef]
+                CHAMP_LABEL as _FIAB_LABEL, CHAMP_PCT as _FIAB_PCT,
+                categories_du_run as _fiab_categories, categoriser as _fiab_categoriser,
+                pct as _fiab_pct, write_sidecar as _fiab_write_sidecar,
+            )
+        _fiab_cats = {}
+        if isinstance(fiabilite, dict):
+            _fiab_cats = {cn: _fiab_categories(fiabilite, cn) for cn in data_by_class_name}
+            _fiab_cats = {cn: cats for cn, cats in _fiab_cats.items() if cats}
+        for class_name, cats in _fiab_cats.items():
+            for det in data_by_class_name.get(class_name, []):
+                cat = _fiab_categoriser(det.get("confidence"), cats)
+                det[_FIAB_LABEL] = cat.label if cat else ""
+                det[_FIAB_PCT] = (float(_fiab_pct(cat.mesure))
+                                  if (cat is not None and cat.mesure is not None) else None)
+        if _fiab_cats:
+            logger.info("Fiabilité affichée : " + " ; ".join(
+                f"{cn} " + "/".join(f"{c.label} ≥ {c.seuil:.2f}" for c in cats)
+                for cn, cats in _fiab_cats.items()))
+
         # ── Briques de synthèse (clustering, enclos…) ──
         _synthetic_class_names = set()
         if clustering_configs:
@@ -1569,7 +1631,7 @@ def create_shapefile_from_detections(
                     pass
 
                 # 4) Normalisation des colonnes attributaires (évite types mixtes)
-                text_cols = ["validation", "corr_pred", "model_pred", "model_name", "conf_bin", "conf_color", "cluster_id", "enclos_id", "forme", "axe_id", "statut"]
+                text_cols = ["validation", "corr_pred", "model_pred", "model_name", "conf_bin", "conf_color", "cluster_id", "enclos_id", "forme", "axe_id", "statut", _FIAB_LABEL]
                 for col in text_cols:
                     if col in gdf.columns:
                         gdf[col] = gdf[col].fillna("").astype(str)
@@ -1580,6 +1642,11 @@ def create_shapefile_from_detections(
                         gdf["confidence"] = gdf["confidence"].astype(float)
                     except Exception:
                         gdf["confidence"] = gdf["confidence"].astype(str)
+                if _FIAB_PCT in gdf.columns:
+                    try:
+                        gdf[_FIAB_PCT] = gdf[_FIAB_PCT].astype(float)  # NaN -> NULL (non mesuré)
+                    except Exception:
+                        pass
 
                 # Colonnes numériques des briques de synthèse (clustering, enclos, axes)
                 for ncol in ("nb_detect", "area_m2", "density", "surface_m2",
@@ -1664,6 +1731,22 @@ def create_shapefile_from_detections(
             layer_ref = f"{gpkg_path}|layername={class_layer}"
             if layer_ref not in created_shapefiles:
                 created_shapefiles.append(layer_ref)
+
+            # Sidecar fiabilite.json à côté du GeoPackage (une entrée par couche) :
+            # la symbologie (chargement live ET .qgs) y lit les catégories, leur
+            # mesure au banc et la provenance — sans plomberie de signaux.
+            if class_name in _fiab_cats:
+                _entree = {
+                    "classe": class_name,
+                    "modele": str((fiabilite or {}).get("modele") or model_name or ""),
+                    "provenance": str((fiabilite or {}).get("provenance") or ""),
+                    "categories": [c.to_dict() for c in _fiab_cats[class_name]],
+                }
+                for _sc_gpkg, _sc_layer in class_write_targets:
+                    try:
+                        _fiab_write_sidecar(_sc_gpkg, _sc_layer, _entree)
+                    except Exception as _sc_e:  # noqa: BLE001
+                        logger.warning(f"Sidecar fiabilité non écrit pour '{_sc_layer}': {_sc_e}")
 
             # Copies supplémentaires (ex. source d'une entité dérivée, renommée) :
             # même GeoDataFrame écrit dans d'autres GeoPackage/couches (best-effort).

@@ -285,6 +285,7 @@ QPushButton:disabled { color: #909090; border-color: #b0b0b0; }
 #EntityCard[state="on"] #EntityRvtTag { background: #ffffff; }
 #EntityRvtTag[missing="true"] { background: #8a5e18; color: #ffffff; }
 #EntityDerivedBadge { color: #1d5a96; font-size: 10px; font-style: italic; }
+#EntityFiabHint { color: #5a5a5a; font-size: 10px; }
 #EntityNoModel { color: #8a5e18; font-size: 11px; font-style: italic; }
 #EntityRvtWarn { color: #8a5e18; font-size: 11px; }
 #EntityActivateBtn { padding: 1px 8px; min-height: 16px; font-size: 10px; }

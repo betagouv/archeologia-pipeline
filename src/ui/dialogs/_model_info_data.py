@@ -270,6 +270,29 @@ def _build_clustering(args: Optional[Mapping[str, Any]]) -> Optional[Section]:
     return Section(title="REGROUPEMENT (DBSCAN)", rows=tuple(rows), collapsed=True)
 
 
+def _build_fiabilite(card: Mapping[str, Any]) -> Optional[Section]:
+    """FIABILITÉ DES DÉTECTIONS : par classe, chaque catégorie avec sa coupure de
+    score, son niveau garanti et sa mesure au banc (« ≥ 85 % de vrais objets sur le
+    banc (mesuré : 95 % sur 1 013 détections) »), puis la provenance."""
+    try:
+        from ...app.services.fiabilite import parse_fiabilite, phrase_mesure
+    except ImportError:
+        from app.services.fiabilite import parse_fiabilite, phrase_mesure  # type: ignore[no-redef]
+    par_classe, provenance = parse_fiabilite(card.get("thresholds"))
+    if not par_classe:
+        return None
+    rows: List[Row] = []
+    for classe, cats in par_classe.items():
+        for c in sorted(cats, key=lambda x: x.seuil, reverse=True):
+            rows.append(Row(f"{classe} — {c.label}", f"score ≥ {c.seuil:.2f} : {phrase_mesure(c)}"))
+    rows.append(Row("Lecture", "Catégories définies par la part de vrais objets mesurée sur "
+                               "l'évaluation du modèle, pas par le score : « probable » veut dire "
+                               "la même chose pour tous les modèles, seules les coupures changent."))
+    if provenance:
+        rows.append(Row("Provenance", provenance))
+    return Section(title="FIABILITÉ DES DÉTECTIONS", rows=tuple(rows))
+
+
 def _build_notes(card: Mapping[str, Any]) -> Optional[Section]:
     rows: List[Row] = []
     rec = card.get("recommended_use")
@@ -308,6 +331,7 @@ def build_sections(
       1. ARCHITECTURE (architecture, tâche, taille d'image, classes)
       2. INDICE RVT D'ENTRAÎNEMENT — *<nom long>*
       3. MNT D'ENTRAÎNEMENT
+      3bis. FIABILITÉ DES DÉTECTIONS — si ``thresholds.fiabilite`` (catégories par classe)
 
     Sections secondaires (fermées par défaut, conditionnelles) :
       4. REGROUPEMENT (DBSCAN)  — si ``args["clustering"]`` n'est pas vide
@@ -317,7 +341,7 @@ def build_sections(
     if not isinstance(card, Mapping):
         return []
     sections: List[Section] = []
-    for builder in (_build_architecture, _build_rvt, _build_mnt):
+    for builder in (_build_architecture, _build_rvt, _build_mnt, _build_fiabilite):
         s = builder(card)
         if s is not None:
             sections.append(s)

@@ -10,7 +10,8 @@ from ..coords import extract_xy_from_filename, get_raster_bounds, infer_xy_from_
 from ..constants import IGN_TILE_SIZE_M
 from ..cv.external_runner import ImageProgressFn, TileProgressFn
 from ..ign.products.results import needs_refresh
-from ..output_paths import indice_base_dir, indice_tif_dir, indice_jpg_dir
+from ..output_paths import indice_base_dir, indice_tif_dir, indice_jpg_dir, intermediaires_dir
+from .neighbor_halo import DEFAULT_HALO_MARGIN_M, NeighborHalo
 from ..types import LogFn, CancelCheckFn
 
 
@@ -187,6 +188,7 @@ def run_existing_rvt(
     tile_progress: Optional[TileProgressFn] = None,
     on_busy: Optional[Callable[[bool], None]] = None,
     inference_tif_resolver: Optional[Callable[[Path], Optional[Path]]] = None,
+    halo_margin_m: float = DEFAULT_HALO_MARGIN_M,
 ) -> ExistingRvtResult:
     if not existing_rvt_dir.exists() or not existing_rvt_dir.is_dir():
         raise FileNotFoundError(f"Dossier RVT inexistant ou invalide: {existing_rvt_dir}")
@@ -231,15 +233,6 @@ def run_existing_rvt(
     kept_tif_names: set[str] = set()
     kept_jpg_names: set[str] = set()
 
-    # Option B : en mode halo, le clip aval a besoin du périmètre réellement
-    # commandé = union des emprises des TIF ROGNÉS (les détections du halo
-    # extérieur — donnée fabriquée — sont supprimées). Région incomplète
-    # (une emprise illisible) → None : clipper partiellement couperait des
-    # détections légitimes, on préfère ne pas clipper du tout.
-    valid_region_bounds: Optional[List[Tuple[float, float, float, float]]] = (
-        [] if inference_tif_resolver is not None else None
-    )
-
     # ── Inspection des rasters RVT (pas de pré-découpage pour les grands) ──
     # Les rasters RVT larges (> 1 km) sont traités tels quels : on laisse
     # SAHI faire son slicing 640×640 à l'inférence. Cela évite les sous-dalles
@@ -248,9 +241,12 @@ def run_existing_rvt(
     # ``convert_tif_to_png.py`` et ``computer_vision_onnx.py`` pour autoriser
     # les grandes emprises.
     has_large = False
+    tile_bounds: Dict[Path, Tuple[float, float, float, float]] = {}
     if cv_enabled:  # information d'inférence : sans CV, ni utile ni loggée
         for tif_path in tif_files:
             bounds = get_raster_bounds(tif_path)
+            if bounds is not None:
+                tile_bounds[tif_path] = bounds
             layout = _classify_rvt_layout(bounds) if bounds is not None else "standard"
             if layout == "large" and bounds is not None:
                 has_large = True
@@ -260,6 +256,28 @@ def run_existing_rvt(
                     f"RVT {tif_path.name}: emprise ≈ {width:.0f} x {height:.0f} m → "
                     f"SAHI assure le slicing à l'inférence (pas de pré-découpage)"
                 )
+
+    # Halo inter-dalles fabriqué depuis les voisins (modes sans intermediaires/,
+    # ou dalle sans correspondance non rognée) : repli après le résolveur
+    # explicite. Un raster large n'a pas de voisin ; une dalle seule non plus.
+    neighbor_halo: Optional[NeighborHalo] = None
+    if cv_enabled and halo_margin_m > 0 and not has_large and len(tile_bounds) >= 2:
+        neighbor_halo = NeighborHalo(
+            tile_bounds, intermediaires_dir(output_dir) / "halo" / folder_name,
+            halo_margin_m, log=log,
+        )
+
+    # Option B : en mode halo, le clip aval a besoin du périmètre réellement
+    # commandé = union des emprises des TIF ROGNÉS (les détections du halo
+    # extérieur — donnée fabriquée — sont supprimées). Région incomplète
+    # (une emprise illisible) → None : clipper partiellement couperait des
+    # détections légitimes, on préfère ne pas clipper du tout.
+    valid_region_bounds: Optional[List[Tuple[float, float, float, float]]] = (
+        [] if (inference_tif_resolver is not None or neighbor_halo is not None) else None
+    )
+    # Règle du centroïde (conversion_shp / postprocessing.owned_by_cell) :
+    # cellule rognée de chaque image à halo, indexée par le stem du PNG.
+    cell_bounds_by_stem: Dict[str, Tuple[float, float, float, float]] = {}
 
     total_tif = len(tif_files)
     log(f"Traitement de {total_tif} fichiers TIF…")
@@ -299,13 +317,16 @@ def run_existing_rvt(
             # une frontière de dalle sont alors vus en entier ; les doublons de
             # la zone de recouvrement sont fusionnés en aval (espace géo).
             inference_src = effective_tif_path
+            resolved = None
             if inference_tif_resolver is not None:
                 try:
                     resolved = inference_tif_resolver(effective_tif_path)
                 except Exception:
                     resolved = None
-                if resolved is not None and Path(resolved).exists():
-                    inference_src = Path(resolved)
+            if resolved is None and neighbor_halo is not None:
+                resolved = neighbor_halo.resolve(tif_path)
+            if resolved is not None and Path(resolved).exists():
+                inference_src = Path(resolved)
 
             if valid_region_bounds is not None:
                 cell_bounds = get_raster_bounds(effective_tif_path)
@@ -313,6 +334,7 @@ def run_existing_rvt(
                     valid_region_bounds = None
                 else:
                     valid_region_bounds.append(cell_bounds)
+                    cell_bounds_by_stem[effective_tif_path.stem] = cell_bounds
 
             # Le NOM du PNG reste celui du TIF rogné (stems stables : cache,
             # couches, images annotées) — seul le CONTENU vient de la source.
@@ -348,6 +370,13 @@ def run_existing_rvt(
         if total_tif > 100 and (idx + 1) % 500 == 0:
             log(f"  … {idx + 1}/{total_tif} TIF traités")
 
+    if neighbor_halo is not None and (neighbor_halo.built or neighbor_halo.reused):
+        log(
+            f"Halo inter-dalles depuis les voisins (marge {neighbor_halo.margin_m:g} m) : "
+            f"{neighbor_halo.built} fabriqué(s), {neighbor_halo.reused} réutilisé(s), "
+            f"{neighbor_halo.skipped} dalle(s) sans voisin"
+        )
+
     # Nettoyage des fichiers orphelins (vides ou numériques) non produits par cette exécution
     _cleanup_orphans(tif_out_dir, "*.tif", kept_tif_names)
     if cv_enabled:
@@ -379,6 +408,7 @@ def run_existing_rvt(
                 output_dir=output_dir,
                 tif_transform_data=tif_transform_data,
                 valid_region_bounds=valid_region_bounds or None,
+                cell_bounds_by_stem=cell_bounds_by_stem or None,
                 run_shapefile_dedup=True,
                 global_color_map=global_color_map,
                 log=log,

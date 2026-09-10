@@ -25,7 +25,7 @@ Fichiers tolérés mais hors contrat runtime : `metrics.csv`, `events.out.tfeven
 ```
 entrainement/
 ├── evaluation/                  # éval CANONIQUE du modèle déployé (tools/courbes_eval.py, repo training-models)
-│   ├── metriques_eval.json      # SOURCE DE VÉRITÉ des seuils du model_card (seuil_f1max global + par classe)
+│   ├── metriques_eval.json      # SOURCE DE VÉRITÉ des seuils du model_card (seuil_f1max + bloc etude_seuil, global + par classe)
 │   ├── appariements.json        # cache d'appariements (re-rendu sans ré-inférence)
 │   └── *.png                    # planches P/R/F1/PR
 ├── comparaison_<vs>/            # superpositions multi-modèles (courbes_eval)
@@ -33,9 +33,46 @@ entrainement/
 ```
 
 `thresholds.confidence_default` et `confidence_per_class` du model_card proviennent de
-`entrainement/evaluation/metriques_eval.json` (validateur : |Δ| ≤ 0,05 avec le
-`seuil_f1max` mesuré, sinon `thresholds.seuils_provenance` obligatoire pour justifier
-l'écart). `dev/package_plugin.py` exclut `entrainement/` du ZIP de distribution.
+`entrainement/evaluation/metriques_eval.json`, mais **pas du `seuil_f1max` tel quel**
+(règle 2026-09-09). Le F1-max pèse un oubli comme un faux positif ; en prospection
+l'oubli ne se rattrape pas alors qu'un faux positif se rejette en quelques secondes sur
+le RVT. Le seuil de production se choisit donc **sous le F1-max, par lecture du bloc
+`etude_seuil`** (F2-max, plateaux F1 ≥ 98 %/95 %, R_max, FP par image, précision
+marginale des détections ajoutées, tableau au pas 0,05), dans la fenêtre
+**[bas du plateau F1 ≥ 95 % ; F1-max]** — `seuil_propose` = max(F2-max, bas du plateau)
+n'est qu'un point de départ, jamais appliqué sans étude (plateau étroit ou FP/image
+déjà lourds → rester près du F1-max ; plateau large et FP/image faibles → descendre
+jusqu'au F2-max). Le choix et ses raisons vont dans `thresholds.seuils_provenance`
+(REQUIS dès que l'éval porte `etude_seuil` ; le validateur signale en WARN un seuil hors
+fenêtre ou posé au F1-max). Éval antérieure sans le bloc : tolérance |Δ| ≤ 0,05 au
+`seuil_f1max`, sinon `seuils_provenance` obligatoire. `dev/package_plugin.py` exclut
+`entrainement/` du ZIP de distribution.
+
+**Fiabilité affichée (`thresholds.fiabilite`, 2026-09-09).** Le score brut n'est pas une
+probabilité et son échelle change d'un modèle à l'autre. QGIS affiche donc des catégories
+« douteux / possible / probable / très probable » définies par la **part de vrais objets
+mesurée au banc** dans la tranche de score (garantie 35 / 60 / 85 %) : « probable » veut
+dire la même chose pour tous les modèles, seules les **coupures de score, par classe**,
+bougent. Le bloc est produit à l'évaluation (`courbes_eval.coupures_fiabilite` +
+`fiabilite_par_classe` sur `etude_seuil.bandes`, au seuil retenu ; catégories < 30
+détections ou sous leur niveau fusionnées vers le bas) et relu comme le seuil.
+**Classes linéaires** (parcellaire, talus/fossé, chemin creux) : l'IoU 1-1 ≥ 0,5 compte
+en faux positif une détection correcte mais fragmentée ou décalée de quelques mètres ; leur
+« vrai objet » se mesure au **critère couverture** (`courbes_eval --critere couverture` :
+≥ 50 % de la surface de la détection sur les masques annotés), dans une évaluation
+séparée (`entrainement/evaluation_couverture/`, déclarée par `fiabilite.source`), et sur
+les seules **zones à annotation exhaustive** (`fiabilite.zones`) — sur une zone où les
+structures ne sont pas toutes annotées, les bonnes détections sont comptées fausses et la
+fiabilité est sous-estimée (constat Fénétrange, 2026-09-09). Côté
+plugin (`app/services/fiabilite.py`) : l'orchestrateur pose dans chaque run les catégories
+*effectives* au seuil de la classe (surcharge UI comprise — la catégorie basse commence AU
+seuil) ; la conversion écrit les champs `fiabilite` (libellé) et `fiabilite_pct` (part
+mesurée, %) sur chaque détection individuelle et un sidecar `fiabilite.json` à côté du
+GeoPackage ; `layer_loader`/`qgs_writer` en font une symbologie catégorisée sur
+`fiabilite` (rendu d'origine des tranches : contour seul, sans remplissage, dans la
+couleur de la classe déclinée en luminosité par catégorie — plus sombre = plus sûr —,
+une classe gardant toujours sa couleur), un résumé de couche (infobulle du panneau + métadonnées) et une
+infobulle de détection. Sans bloc, le plugin retombe sur les tranches `conf_bin`.
 
 ### Statut honnête des fichiers jamais lus au runtime
 
@@ -100,14 +137,36 @@ classes:
                                 #  installé mais INVISIBLE — vérifié par le validateur)
 
 thresholds:
-  confidence_default: 0.3       # = seuil_f1max de entrainement/evaluation/metriques_eval.json
+  confidence_default: 0.29      # choisi dans [bas du plateau F1 >= 95 % ; F1-max] de
+                                # entrainement/evaluation/metriques_eval.json (etude_seuil)
   min_area_m2: 0
-  # confidence_per_class:       # OPTIONNEL — seuils F1-max PAR CLASSE (mesurés) ;
+  # confidence_per_class:       # OPTIONNEL — seuils PAR CLASSE, même règle de choix ;
   #   chemin_creux: 0.15        # clés ⊆ classes.txt (validé) ; consommés par le
-  #   talus_fosse: 0.30         # fallback Python ET le binaire externe (T1, 2026-08-31)
+  #   talus_fosse: 0.25         # fallback Python ET le binaire externe (T1, 2026-08-31)
   # iou: 0.5                    # OPTIONNEL (alias iou_threshold) — jamais exposé UI
-  # seuils_provenance: "..."    # traçabilité de la mesure (chemin + date) ; REQUIS
-                                # si confidence_default s'écarte >0,05 de la mesure
+  # seuils_provenance: "..."    # traçabilité de la mesure ET du choix (chemin + date,
+                                # F1-max, F2-max, plateau, FP/image, raison du seuil
+                                # retenu) ; REQUIS dès que l'éval porte etude_seuil
+  # fiabilite:                  # OPTIONNEL (2026-09-09) — fiabilité AFFICHÉE dans QGIS :
+  #   par_classe:               # catégories douteux/possible/probable/quasi_certain PAR
+  #     cratere_obus:           # CLASSE, définies par la part de VRAIS objets mesurée au
+  #     - {categorie: douteux,       seuil: 0.29, garanti: 0.0,  mesure: 0.22, n: 191}
+  #     - {categorie: possible,      seuil: 0.35, garanti: 0.35, mesure: 0.43, n: 272}
+  #     - {categorie: probable,      seuil: 0.45, garanti: 0.60, mesure: 0.71, n: 384}
+  #     - {categorie: quasi_certain, seuil: 0.65, garanti: 0.85, mesure: 0.95, n: 1045}
+  #   source: entrainement/evaluation_couverture/metriques_eval.json  # OPTIONNEL : éval qui a
+  #                             # calibré (défaut : entrainement/evaluation/) — les classes
+  #                             # LINÉAIRES se calibrent au critère « couverture »
+  #   zones: [grand_est/54_foret_de_haye]  # OPTIONNEL : zones à annotation EXHAUSTIVE
+  #                             # seules (par_zone_classe.bandes sommées) ; sans elles, une
+  #                             # zone mal annotée compte ses vraies détections en faux
+  #   provenance: "..."         # banc (bandes de metriques_eval.json) ; seuil = début de
+                                # la catégorie (la 1re = seuil de la classe), garanti = niveau
+                                # qui la définit, mesure = part mesurée (null si n < 30), n =
+                                # effectif du banc. Produit par la cellule 11bis du notebook
+                                # (courbes_eval.fiabilite_par_classe), validé (classes ⊆
+                                # classes.txt, ordre, 1re catégorie AU seuil, mesures
+                                # re-dérivées des bandes).
 
 # Cibles DÉRIVÉES : une sortie de clustering présentée comme entité cochable.
 # Chaque output_class DOIT avoir sa règle args.yaml.clustering.output_class_name

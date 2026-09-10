@@ -522,7 +522,7 @@ Cette grille indique, pour chaque vague livrée, **quelles sections de tests son
 - [ ] **26.4 Pas de bruit hors périmètre** : aucune détection au-delà de l'union des dalles commandées (halo extérieur clippé).
 - [ ] **26.5 Cache invalidé** : relancer dans un `output_dir` d'un run antérieur → journal `cache(s) de détection plus ancien(s) que leur PNG — purgé(s), ré-inférence` au premier passage ; résultats stables au second.
 - [ ] **26.6 VRT intact** : `indices/<X>/tif/` ne contient que des TIF 1 km rognés ; le VRT `index_<X>` s'affiche sans recouvrements ni doublons.
-- [ ] **26.7 Non-régression autres modes** : un run `existing_rvt` / `existing_mnt` reste identique (PNG aux dimensions du TIF fourni, pas de halo, pas de clip).
+- [ ] **26.7 Autres modes** : un run `existing_rvt` / `existing_mnt` fabrique son halo depuis les dalles voisines — voir §29.
 
 ## 27. Comparaison A/B : deux modèles pour une même entité ⭐ P0
 
@@ -562,3 +562,54 @@ Cette grille indique, pour chaque vague livrée, **quelles sections de tests son
 - [ ] **28.6 Multi-zones (livrables préservés)** : run 1 zone A (dalle A) à 0,5 m, puis run 2 zone B (dalle B, autre liste) à 2 m dans le **même** `output_dir` → après le run 2, `indices/MNT/tif/` contient **encore** le TIF de la dalle A (à 0,5 m, non recalculée — anciens paramètres, c'est documenté) **et** celui de la dalle B (2 m) ; le VRT `index_MNT.vrt` mosaïque les deux. Aucun livrable détruit.
 - [ ] **28.7 Purge verrouillée (Windows)** : après un run, charger dans QGIS un TIF de `intermediaires/` (cf. §26), changer la résolution MNT et relancer → le run s'arrête avec un message actionnable « … est verrouillé — fermez les couches QGIS chargées depuis ce dossier… » (pas de traceback WinError brut) ; retirer la couche et relancer → la purge passe.
 - [ ] **28.8 Extension de zone (halo re-fusionné)** : run 1 sur la dalle A seule (CV active), puis run 2 même `output_dir`, mêmes paramètres, sélection élargie {A, B} (B contiguë) → le fichier de log montre « Jeu de voisins modifié → re-fusion : A…_merged.laz » ; A est **recalculée** (MNT/RVT/PNG régénérés, ré-inférence de A) — sa marge vers B est désormais de la vraie donnée ; aucune détection « fantôme » de A (bruit de l'ancienne marge fabriquée) n'apparaît dans la cellule de B ; `intermediaires/A…_merged.inputs.json` liste le voisin. Run 3 identique → « LAZ fusionné réutilisé » (pas de re-fusion).
+
+## 30. Fiabilité affichée : catégories par classe (légende, infobulles, étape 3) ⭐ P0
+
+Recette de référence : zone test de Fénétrange (mode `existing_mnt` ou `ign_laz`), entité
+« Grandes dépressions » (modèle `depressions_grandes_seg_ld_v1`, seuil 0,29) et une entité
+ponctuelle (charbonnières / fours) pour vérifier les coupures par classe.
+
+- [ ] Étape 3, « Réglages avancés » coché : sous la case « Confiance » de l'entité, une ligne
+      « Fiabilité affichée — douteux dès 0.29 · possible dès 0.35 · probable dès 0.45 · très probable
+      dès 0.65 ». Relever le seuil à 0,50 → la ligne devient « probable dès 0.50 · très probable dès 0.65 »
+      (les catégories sous le seuil disparaissent, la première commence AU seuil).
+- [ ] « Voir les détails du modèle » : section FIABILITÉ DES DÉTECTIONS, une ligne par catégorie
+      « score ≥ 0.65 : ≥ 85 % de vrais objets sur le banc (mesuré : 95 % sur 1 045 détections) », et la
+      provenance. Charbonnières / fours : deux jeux de lignes, un par classe.
+- [ ] Journal du run : une ligne « Computer Vision: fiabilité <classe> : douteux dès … » par classe.
+- [ ] Sortie : `detections/<slug>/fiabilite.json` à côté du GeoPackage ; la table attributaire porte
+      `fiabilité` (Douteux / Possible / Probable / Très probable) et `fiabilité mesurée au banc (%)`
+      (NULL pour une catégorie sous 30 détections au banc, ex. enclos FR).
+- [ ] Légende (chargement live ET `detections_validation.qgs` rouvert) : quatre entrées, de « Quasi
+      certain · ≥ 85 % de vrais » à « Douteux · < 35 % de vrais », contour SANS remplissage (le relief
+      reste lisible à l'intérieur) dans la COULEUR de l'entité déclinée en luminosité : très probable
+      le plus sombre, douteux le plus clair — le même dégradé que les anciennes tranches. Une entité
+      garde sa couleur d'un run à l'autre ; deux entités superposées restent distinguables par leur teinte.
+- [ ] Panneau des couches : survoler la couche → infobulle avec le résumé (une ligne par catégorie avec
+      la valeur mesurée) ; Propriétés › Métadonnées › Résumé porte le même texte.
+- [ ] Vue › Afficher les infobulles, survoler une détection : « <classe> — fiabilité Probable / Sur le banc,
+      71 % des détections de cette tranche étaient de vrais objets (garantie ≥ 60 %) / Score brut 0,52 ·
+      <modèle> ».
+- [ ] Linéaires (parcellaire) : trois catégories seulement, « Possible » dès 0,26, « Probable » dès 0,30,
+      « Très probable » dès 0,50 — aucune « Douteux » (calibrage au critère couverture sur Haye + Blois) ;
+      les bonnes détections de Fénétrange doivent tomber en probable / très probable.
+- [ ] Modèle SANS bloc `fiabilite` (cratères Verdun) : légende historique par tranches de score, aucun
+      champ `fiabilite`, aucune erreur dans le journal.
+- [ ] Entité dérivée (regroupement) : la couche des zones garde son style hachuré ; seules les détections
+      individuelles portent la fiabilité.
+
+## 29. Halo inter-dalles fabriqué depuis les voisins (modes `existing_rvt` / `existing_mnt`) ⭐ P0
+
+> **Contexte** : sans `intermediaires/`, l'inférence découpe **dalle + 50 m** dans la
+> mosaïque des dalles fournies (`intermediaires/halo/<indice>/`). Un objet à cheval sur
+> deux dalles du run doit sortir **entier et une seule fois** ; la bande noire du halo
+> extérieur au périmètre ne doit produire aucune détection.
+
+- [ ] **29.1 Halo fabriqué** : run `existing_rvt` sur ≥ 2 dalles 1 km adjacentes + CV → journal `Halo inter-dalles depuis les voisins (marge 50 m) : N fabriqué(s), 0 réutilisé(s), K dalle(s) sans voisin` ; `intermediaires/halo/RVT/` contient un `.tif` + `.inputs.json` par dalle ayant un voisin.
+- [ ] **29.2 PNG à marge** : `indices/RVT/png/*.png` font 2200×2200 px (dalles 2000 px @ 0,5 m) et s'alignent sur les TIF via leur `.pgw` (origine décalée de 50 m).
+- [ ] **29.3 Objet à cheval** : Fénétrange (`tif_test`, 43 dalles LD), dépression GT `train:12785` (48.838776, 6.920619) à cheval sur y = 6 867 000 → **un seul** polygone entier (IoU ≥ 0,7 avec le masque SAM), plus de coupure rectiligne à y = 6 867 000 ; charbonnière à 48.883707, 6.922291 → boîte non tronquée à y = 6 872 000.
+- [ ] **29.4 Pas de bruit hors périmètre** : aucune détection au-delà de l'union des dalles ; pas de polygones le long des bords extérieurs.
+- [ ] **29.5 Reprise** : relancer dans le même `output_dir` → `N réutilisé(s)`, PNG non régénérés, cache CV conservé (pas de ré-inférence). Ajouter une dalle voisine → seuls les halos des dalles touchées sont re-fabriqués et ré-inférés.
+- [ ] **29.6 Dalle seule / raster large** : 1 seule dalle ou raster > 1 km → pas de ligne « Halo inter-dalles », comportement historique.
+- [ ] **29.7 `existing_mnt`** : même comportement via `run_cv_post_loop` (halo sous `intermediaires/halo/<LD_…>/`).
+- [ ] **29.8 Règle du centroïde** : journal `Halo inter-dalles : N détection(s) centrée(s) hors de la cellule de leur image écartée(s)` à la conversion ; aucune détection dont un bord tombe à ± 50 m d'une ligne de dalle (bord du halo) et aucun doublon superposé dans la bande de recouvrement — y compris en `ign_laz` (§26.3).

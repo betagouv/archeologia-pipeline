@@ -37,6 +37,7 @@ def deduplicate_cv_shapefiles_final(
     cv_config: Optional[Dict[str, Any]] = None,
     tif_transform_data: Optional[Dict[str, Tuple[float, float, float, float]]] = None,
     valid_region_bounds: Optional[list] = None,
+    cell_bounds_by_stem: Optional[Dict[str, Tuple[float, float, float, float]]] = None,
     global_color_map: Optional[Dict[str, int]] = None,
     temp_dir: Optional[Path] = None,
     crs: str = "EPSG:2154",
@@ -132,6 +133,17 @@ def deduplicate_cv_shapefiles_final(
         out_shp.parent.mkdir(parents=True, exist_ok=True)
         log(f"Computer Vision: run sans 'entities' — repli modèle-centré detections/{slug}/")
 
+    # Fiabilité affichée (bloc du run posé par l'orchestrateur : catégories
+    # douteux/possible/probable/quasi_certain au seuil effectif de chaque classe).
+    fiabilite = (cv_config or {}).get("fiabilite") if isinstance(cv_config, dict) else None
+    if isinstance(fiabilite, dict):
+        for _cl, _cats in (fiabilite.get("par_classe") or {}).items():
+            log("Computer Vision: fiabilité " + str(_cl) + " : " + " · ".join(
+                f"{c.get('categorie')} dès {c.get('seuil')}" for c in _cats if isinstance(c, dict)))
+    else:
+        fiabilite = None
+        log("Computer Vision: pas de table de fiabilité pour ce modèle — tranches de confiance historiques")
+
     # Générer les shapefiles par classe (le post-processing global
     # — fusion des polygones adjacents + suppression des superpositions —
     # est intégré directement dans create_shapefile_from_detections)
@@ -158,10 +170,12 @@ def deduplicate_cv_shapefiles_final(
             min_confidence=float((cv_config or {}).get("confidence_threshold", 0.0) or 0.0),
             class_targets=class_targets,
             valid_region_bounds=valid_region_bounds,
+            cell_bounds_by_stem=cell_bounds_by_stem,
             # Attribut model_name des détections : le modèle DU RUN (multi-runs
             # A/B), pas le selected_model top-level de config.json (qui peut
             # désigner un autre run).
             model_name=_run_model_slug(cv_config),
+            fiabilite=fiabilite,
             cancel_check=cancel_check,
         ))
         qgs_root = shp_dir.parent if shp_dir.name.lower() in {"shapefiles", "shp"} else shp_dir

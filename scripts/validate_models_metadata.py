@@ -17,8 +17,12 @@ Vérifications v2 (audit 2026-08-31) :
   cratere_circulaire_2 déclarait sahi 350 pour un args.yaml à 140 — l'UI relayait
   le mensonge en vert).
 - ``thresholds`` bornés ; ``confidence_per_class`` ⊆ classes.txt.
-- ``confidence_default`` adossé à ``entrainement/evaluation/metriques_eval.json``
-  (|Δ| ≤ 0,05 avec le seuil_f1max mesuré, sinon ``seuils_provenance`` obligatoire).
+- ``confidence_default`` / ``confidence_per_class`` adossés à
+  ``entrainement/evaluation/metriques_eval.json`` — règle 2026-09-09 : quand l'éval
+  porte le bloc ``etude_seuil``, ``seuils_provenance`` est REQUIS (le choix est une
+  étude, pas une formule) et un seuil hors de la fenêtre [bas du plateau F1 ≥ 95 % ;
+  F1-max], ou posé AU F1-max, est signalé (WARN) ; éval antérieure sans le bloc :
+  |Δ| ≤ 0,05 avec le seuil_f1max mesuré, sinon ``seuils_provenance`` obligatoire.
 - entités (classes[].entity/name, derived_targets[].entity) ⊆ entities_catalog.json
   (une entité hors catalogue = modèle installé mais INVISIBLE dans l'UI).
 - ``weights/best.json.source`` pointe un fichier existant.
@@ -46,6 +50,8 @@ import yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_MODELS_DIR = REPO_ROOT / "data" / "models"
+if str(REPO_ROOT / "src") not in sys.path:  # app.services.fiabilite (contrat des catégories)
+    sys.path.insert(0, str(REPO_ROOT / "src"))
 
 VALID_TASKS = {"object_detection", "instance_segmentation", "semantic_segmentation"}
 CLASS_NAME_RE = re.compile(r"^[a-z][a-z0-9_]*$")
@@ -82,6 +88,148 @@ def find_model_dirs(models_root: Path) -> list[Path]:
         if (child / "weights").is_dir():
             out.append(child)
     return out
+
+
+def _bandes_fiabilite(model_dir: Path, fiab_raw: dict, metriques_par_classe: dict,
+                      report: "ValidationReport") -> tuple[dict, dict]:
+    """``(bloc par_classe, bloc par_zone_classe)`` de l'évaluation qui a calibré la
+    fiabilité : ``fiabilite.source`` (chemin relatif, ex. ``entrainement/
+    evaluation_couverture/metriques_eval.json`` pour le critère couverture des
+    linéaires), sinon l'évaluation canonique déjà lue."""
+    source = str(fiab_raw.get("source") or "").strip()
+    if not source:
+        return metriques_par_classe, {}
+    path = model_dir / source
+    if not path.is_file():
+        report.errors.append(f"thresholds.fiabilite.source introuvable : {source}")
+        return {}, {}
+    try:
+        m = json.loads(path.read_text(encoding="utf-8-sig"))
+        modeles = m.get("modeles") or {}
+        bloc = modeles.get(model_dir.name) or (next(iter(modeles.values())) if modeles else {})
+        return (bloc.get("par_classe") or {}), (bloc.get("par_zone_classe") or {})
+    except (ValueError, AttributeError) as exc:
+        report.warnings.append(f"thresholds.fiabilite.source illisible : {exc}")
+        return {}, {}
+
+
+def _validate_fiabilite(
+    fiab_raw: Any,
+    mc_thresholds: dict,
+    class_set: set,
+    conf_default: Any,
+    pc: Any,
+    metriques_par_classe: dict,
+    report: "ValidationReport",
+    model_dir: Path | None = None,
+) -> None:
+    """``thresholds.fiabilite`` (2026-09-09) : classes ⊆ classes.txt, listes valides
+    (``app.services.fiabilite.parse_fiabilite``), première catégorie AU seuil de la
+    classe, provenance présente ; mesures/effectifs re-dérivés des ``bandes`` de
+    l'évaluation source (``fiabilite.source``, sinon la canonique), restreintes aux
+    ``fiabilite.zones`` (zones à annotation exhaustive) quand elles sont déclarées
+    (écart → WARN)."""
+    try:
+        from app.services.fiabilite import CATEGORIES, N_MIN_MESURE, parse_fiabilite
+    except ImportError:
+        report.warnings.append("app.services.fiabilite introuvable : thresholds.fiabilite non vérifié")
+        return
+    if not isinstance(fiab_raw, dict) or not isinstance(fiab_raw.get("par_classe"), dict):
+        report.errors.append(
+            "thresholds.fiabilite doit être un mapping {par_classe: {classe: [catégories]}, provenance}"
+        )
+        return
+    par_classe, provenance = parse_fiabilite(mc_thresholds)
+    if not provenance:
+        report.warnings.append(
+            "thresholds.fiabilite.provenance manquante (mesure + date + relecture des coupures)"
+        )
+    if model_dir is not None:
+        metriques_par_classe, par_zone_classe = _bandes_fiabilite(
+            model_dir, fiab_raw, metriques_par_classe, report)
+    else:
+        par_zone_classe = {}
+    zones_raw = fiab_raw.get("zones")  # liste (toutes classes) OU {classe: liste}
+    zones_par_classe: dict = {}
+    if isinstance(zones_raw, list) and all(isinstance(z, str) for z in zones_raw):
+        zones_par_classe = {c: list(zones_raw) for c in fiab_raw["par_classe"]}
+    elif isinstance(zones_raw, dict) and all(
+        isinstance(v, list) and all(isinstance(z, str) for z in v) for v in zones_raw.values()
+    ):
+        zones_par_classe = {str(c): list(v) for c, v in zones_raw.items()}
+    elif zones_raw is not None:
+        report.errors.append(
+            "thresholds.fiabilite.zones : liste d'ids de zone, ou mapping {classe: [zones]}"
+        )
+    zones = bool(zones_par_classe)
+    if zones and not par_zone_classe:
+        report.warnings.append(
+            "thresholds.fiabilite.zones déclarées mais l'évaluation source n'a pas de "
+            "par_zone_classe.bandes (completer_metriques_eval.py) — mesures non re-dérivées"
+        )
+    for classe, _liste in fiab_raw["par_classe"].items():
+        if class_set and classe not in class_set:
+            report.errors.append(
+                f"thresholds.fiabilite.par_classe : '{classe}' absent de classes.txt "
+                "(catégories silencieusement ignorées au runtime)"
+            )
+            continue
+        if classe not in par_classe:
+            report.errors.append(
+                f"thresholds.fiabilite.par_classe['{classe}'] invalide : catégories ∈ "
+                f"{list(CATEGORIES)} dans cet ordre, seuils strictement croissants dans [0,1], "
+                "garanti/mesure ∈ [0,1] (mesure null autorisée), n entier"
+            )
+            continue
+        cats = par_classe[classe]
+        seuil_classe = pc.get(classe) if isinstance(pc, dict) and classe in pc else conf_default
+        if isinstance(seuil_classe, (int, float)) and abs(cats[0].seuil - float(seuil_classe)) > 1e-6:
+            report.errors.append(
+                f"thresholds.fiabilite.par_classe['{classe}'] : première catégorie à "
+                f"{cats[0].seuil} ≠ seuil de la classe {seuil_classe} — la catégorie basse "
+                "commence AU seuil (invariant seuil = symbologie = filtrage)"
+            )
+        zones_classe = zones_par_classe.get(classe) if zones else None
+        if zones_classe and par_zone_classe:
+            # somme des tables de calibrage des zones déclarées (annotation exhaustive)
+            manquantes = [z for z in zones_classe if z not in par_zone_classe]
+            if manquantes:
+                report.errors.append(
+                    f"thresholds.fiabilite.zones['{classe}'] : zone(s) absente(s) de "
+                    f"l'évaluation source : {manquantes}"
+                )
+                continue
+            bandes = None
+            for z in zones_classe:
+                bz = ((par_zone_classe.get(z) or {}).get(classe) or {}).get("bandes")
+                if not isinstance(bz, list):
+                    bandes = None
+                    break
+                if bandes is None:
+                    bandes = [dict(b) for b in bz]
+                else:
+                    for acc, b in zip(bandes, bz):
+                        acc["tp"] += int(b.get("tp", 0))
+                        acc["fp"] += int(b.get("fp", 0))
+        else:
+            bandes = ((metriques_par_classe.get(classe) or {}).get("etude_seuil") or {}).get("bandes")
+        if not (isinstance(bandes, list) and bandes):
+            continue
+        for i, c in enumerate(cats):
+            fin = cats[i + 1].seuil if i + 1 < len(cats) else 1.01
+            dans = [b for b in bandes if c.seuil - 1e-9 <= float(b.get("lo", 0)) < fin - 1e-9]
+            tp = sum(int(b.get("tp", 0)) for b in dans)
+            fp = sum(int(b.get("fp", 0)) for b in dans)
+            n = tp + fp
+            mesure = round(tp / n, 3) if n >= N_MIN_MESURE else None
+            if n != c.n or (mesure is None) != (c.mesure is None) or (
+                mesure is not None and abs(mesure - float(c.mesure)) > 0.0051
+            ):
+                report.warnings.append(
+                    f"thresholds.fiabilite.par_classe['{classe}'][{c.categorie}] : mesure/n "
+                    f"{c.mesure}/{c.n} ≠ re-dérivés des bandes de metriques_eval.json "
+                    f"({mesure}/{n}) — recalculer (courbes_eval.fiabilite_par_classe)"
+                )
 
 
 def _read_json(path: Path) -> dict[str, Any] | None:
@@ -429,34 +577,86 @@ def validate_model_dir(model_dir: Path, strict: bool = False) -> ValidationRepor
                         f"thresholds.confidence_per_class['{cname}']={val!r} hors (0, 1]"
                     )
 
-    # ----- confidence_default adossé à la mesure canonique -----
+    # ----- seuils adossés à la mesure canonique -----
+    # Règle 2026-09-09 : le seuil de production se choisit SOUS le F1-max, par étude de la
+    # courbe (bloc etude_seuil de metriques_eval.json), dans la fenêtre
+    # [bas du plateau F1 >= 95 % ; F1-max] ; le choix est justifié dans seuils_provenance.
+    # Éval sans etude_seuil (antérieure) : tolérance historique |delta| <= 0,05 au F1-max.
     metriques_path = model_dir / "entrainement" / "evaluation" / "metriques_eval.json"
+    metriques_par_classe: dict = {}  # bloc par_classe du modèle évalué (pour la fiabilité)
     if metriques_path.is_file():
         try:
             metriques = json.loads(metriques_path.read_text(encoding="utf-8-sig"))
-            seuils = [
-                m.get("global", {}).get("seuil_f1max")
-                for m in (metriques.get("modeles") or {}).values()
+            provenance = str(mc_thresholds.get("seuils_provenance") or "").strip()
+            blocs = [
+                (nom, m.get("global") or {}, m.get("par_classe") or {})
+                for nom, m in (metriques.get("modeles") or {}).items()
+                if isinstance((m.get("global") or {}).get("seuil_f1max"), (int, float))
             ]
-            seuils = [s for s in seuils if isinstance(s, (int, float))]
-            if seuils and isinstance(conf_default, (int, float)):
-                ecart = min(abs(float(conf_default) - float(s)) for s in seuils)
-                if ecart > 0.05 and not str(
-                    mc_thresholds.get("seuils_provenance") or ""
-                ).strip():
-                    report.errors.append(
-                        f"thresholds.confidence_default={conf_default} s'écarte de "
-                        f"{ecart:.3f} du seuil_f1max mesuré "
-                        f"(entrainement/evaluation/metriques_eval.json) sans "
-                        "thresholds.seuils_provenance pour le justifier"
-                    )
-        except (ValueError, AttributeError) as exc:
+            # le modèle évalué = celui dont le nom est l'id du dossier, sinon le premier publié
+            bloc = next((b for b in blocs if b[0] == model_dir.name), blocs[0] if blocs else None)
+            if bloc is not None:
+                _, g, par_classe = bloc
+                metriques_par_classe = par_classe
+                a_verifier = [("confidence_default", conf_default, g)]
+                if isinstance(pc, dict):
+                    a_verifier += [
+                        (f"confidence_per_class['{c}']", v, par_classe.get(c) or {})
+                        for c, v in pc.items()
+                    ]
+                for champ, val, b in a_verifier:
+                    f1max = b.get("seuil_f1max")
+                    if not (isinstance(val, (int, float)) and isinstance(f1max, (int, float))):
+                        continue
+                    etude = b.get("etude_seuil")
+                    if not isinstance(etude, dict):
+                        ecart = abs(float(val) - float(f1max))
+                        if ecart > 0.05 and not provenance:
+                            report.errors.append(
+                                f"thresholds.{champ}={val} s'écarte de {ecart:.3f} du "
+                                "seuil_f1max mesuré (éval sans etude_seuil) sans "
+                                "thresholds.seuils_provenance pour le justifier"
+                            )
+                        continue
+                    lo = float(etude["plateau_f1_95"][0])
+                    if not provenance:
+                        report.errors.append(
+                            f"thresholds.{champ}={val} : l'éval porte une étude de seuil "
+                            "(etude_seuil) mais thresholds.seuils_provenance ne documente "
+                            "pas le choix (plateau, F2-max, FP/image) — requis"
+                        )
+                    if float(val) < lo - 1e-6 or float(val) > float(f1max) + 1e-6:
+                        report.warnings.append(
+                            f"thresholds.{champ}={val} hors de la fenêtre mesurée "
+                            f"[{lo:.3f} ; {float(f1max):.3f}] (bas du plateau F1 >= 95 % ; "
+                            f"F1-max ; proposé {etude.get('seuil_propose')}) — vérifier la "
+                            "justification dans seuils_provenance"
+                        )
+                    elif abs(float(val) - float(f1max)) < 1e-6:
+                        report.warnings.append(
+                            f"thresholds.{champ}={val} = F1-max, haut de la fenêtre "
+                            f"[{lo:.3f} ; {float(f1max):.3f}] : le rappel n'est pas "
+                            f"privilégié (proposé {etude.get('seuil_propose')}) — assumer "
+                            "dans seuils_provenance"
+                        )
+        except (ValueError, AttributeError, KeyError, TypeError) as exc:
             report.warnings.append(f"metriques_eval.json illisible : {exc}")
     else:
         report.warnings.append(
             "seuils non adossés à une mesure : entrainement/evaluation/"
             "metriques_eval.json absent (cf. tools/courbes_eval.py du repo training-models)"
         )
+
+    # ----- fiabilité affichée (thresholds.fiabilite, 2026-09-09) -----
+    # Catégories douteux/possible/probable/quasi_certain PAR CLASSE, définies par la
+    # part de vrais objets mesurée au banc. Contrat : classes ⊆ classes.txt, catégories
+    # ordonnées à seuils croissants (app.services.fiabilite.parse_fiabilite), première
+    # catégorie AU seuil de la classe (invariant seuil = symbologie = filtrage) ;
+    # mesures re-dérivées des bandes de metriques_eval.json quand elles existent.
+    fiab_raw = mc_thresholds.get("fiabilite")
+    if fiab_raw is not None:
+        _validate_fiabilite(fiab_raw, mc_thresholds, class_set, conf_default, pc,
+                            metriques_par_classe, report, model_dir=model_dir)
 
     # ----- entités ⊆ catalogue (hors catalogue = modèle INVISIBLE dans l'UI) -----
     catalog_path = REPO_ROOT / "data" / "entities_catalog.json"

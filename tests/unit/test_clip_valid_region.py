@@ -83,3 +83,32 @@ class TestClipDetectionsToValidRegion:
         out = clip_detections_to_valid_region(data, _CELLS)
 
         assert len(out["c"]) == 1
+
+
+class TestOwnedByCell:
+    """Règle du centroïde : chaque dalle ne rapporte que les objets dont le
+    centre est dans SA cellule. Avec le halo, un objet à cheval est vu entier
+    par les deux dalles (doublon) et un objet au bord du halo n'est vu qu'en
+    fragment (coupe rectiligne à ± marge) : une seule dalle le possède, celle
+    qui le voit entier."""
+
+    def test_centre_dans_la_cellule(self):
+        from pipeline.cv.postprocessing import owned_by_cell
+        assert owned_by_cell(_box(900, 100, 1050, 200), _CELLS[0]) is True   # centre x=975
+        assert owned_by_cell(_box(900, 100, 1050, 200), _CELLS[1]) is False
+
+    def test_fragment_au_bord_du_halo_non_possede(self):
+        from pipeline.cv.postprocessing import owned_by_cell
+        # Vu par la dalle 0 dans son halo (x 1000..1050), centre à x=1030 → dalle 1.
+        assert owned_by_cell(_box(1010, 100, 1050, 200), _CELLS[0]) is False
+
+    def test_centre_sur_la_frontiere_appartient_a_une_seule_cellule(self):
+        from pipeline.cv.postprocessing import owned_by_cell
+        geom = _box(950, 100, 1050, 200)  # centre exactement x=1000
+        owners = [owned_by_cell(geom, c) for c in _CELLS]
+        assert owners == [False, True]  # intervalle semi-ouvert [xmin, xmax[
+
+    def test_geometrie_vide_ou_invalide_conservee(self):
+        from pipeline.cv.postprocessing import owned_by_cell
+        assert owned_by_cell(None, _CELLS[0]) is True
+        assert owned_by_cell(Polygon(), _CELLS[0]) is True

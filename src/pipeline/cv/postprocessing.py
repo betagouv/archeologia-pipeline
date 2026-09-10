@@ -1148,6 +1148,28 @@ def postprocess_geo_detections(
     return result_by_class
 
 
+def owned_by_cell(geom, cell) -> bool:
+    """Vrai si le centroïde de ``geom`` est dans ``cell`` (xmin, ymin, xmax, ymax).
+
+    Règle du centroïde (halo inter-dalles) : chaque dalle ne rapporte que les
+    objets dont le centre est dans SA cellule 1 km. Un objet à cheval sur une
+    frontière est vu entier par les deux dalles à halo → une seule le possède
+    (plus de doublon cross-dalles à dédoublonner) ; un objet coupé au bord du
+    halo d'une dalle (fragment rectiligne à ± marge) a son centre dans la
+    cellule voisine, qui le voit entier → le fragment est écarté. Intervalle
+    semi-ouvert ``[min, max[`` : un centre exactement sur la ligne n'appartient
+    qu'à une cellule. Conservateur : géométrie vide/illisible → possédée.
+    """
+    try:
+        if geom is None or geom.is_empty:
+            return True
+        c = geom.centroid
+        xmin, ymin, xmax, ymax = cell
+        return xmin <= c.x < xmax and ymin <= c.y < ymax
+    except Exception:
+        return True
+
+
 def clip_detections_to_valid_region(
     data_by_class_name: Dict[str, List[Dict[str, Any]]],
     valid_region_bounds: Optional[List[tuple]],

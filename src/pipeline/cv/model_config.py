@@ -414,6 +414,11 @@ def resolve_cv_runs(cv_config: Dict) -> List[Dict]:
         # output_class_name) : consommées par runner_shapefiles avant DBSCAN.
         if "clustering_overrides" in run:
             run_cfg["clustering_overrides"] = run["clustering_overrides"]
+        # Fiabilité affichée (orchestrateur, 2026-09-09) : catégories par classe
+        # au seuil effectif du run — consommées à la conversion (champs + sidecar)
+        # puis par la symbologie. Oubliée ici = légende par tranches de score.
+        if isinstance(run.get("fiabilite"), dict):
+            run_cfg["fiabilite"] = run["fiabilite"]
         # Coercition TOLÉRANTE (AUDIT PARSE-04) : une valeur vide/non castable
         # dans un run brut (config partagée éditée à la main) ne doit pas
         # casser toute la phase CV — on retombe sur le seuil global/défaut.

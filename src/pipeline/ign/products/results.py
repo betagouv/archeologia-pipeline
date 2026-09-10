@@ -13,7 +13,7 @@ from ...coords import get_raster_bounds
 from ...geo_utils import extract_tif_transform_data
 from ...output_paths import indices_dir, indice_tif_dir, indice_base_dir
 from ...subprocess_utils import run_subprocess_cancellable, subprocess_kwargs_no_window
-from ...tilespec import TileSpec, assign_crs_if_missing, is_degenerate_tile
+from ...tilespec import TileSpec, assign_crs_if_missing, is_degenerate_tile, tag_byte_nodata
 from .rvt_naming import PRODUCT_ORDER, get_rvt_source_and_dest_filenames, get_rvt_folder_name
 from ...types import CancelCheckFn, LogFn
 
@@ -96,9 +96,14 @@ def build_vrt_index(
         # rvt-qgis/pdal émettent parfois un TIF sans CRS (ENGCRS « unnamed ») —
         # on le ré-étiquette EPSG:2154 (assignation, sans reprojection). No-op si
         # un vrai CRS est déjà présent ; le VRT hérite alors d'un CRS valide.
+        # Idem pour le NoData des rendus 8 bits : rvt-qgis code le sans-donnée à
+        # 255 mais étiquette la bande « nan » (invalide sur du Byte) → sans-donnée
+        # opaque blanc, trous de mosaïque noirs (cf. tag_byte_nodata). On pose
+        # l'étiquette AVANT gdalbuildvrt pour que le VRT l'hérite en VRTNODATA.
         for src in files:
             try:
                 assign_crs_if_missing(src)
+                tag_byte_nodata(src)
             except Exception:
                 pass  # best-effort : un TIF illisible ne doit pas avorter le VRT
 
@@ -219,6 +224,26 @@ def _convert_tif_to_png(
             return False
 
 
+def needs_refresh(source: Path, dest: Path) -> bool:
+    """Vrai si ``dest`` doit être (re)publié depuis ``source``.
+
+    Publication par fraîcheur : les noms des fichiers publiés n'encodent pas
+    les paramètres de traitement (résolution MNT…), donc « le fichier existe »
+    ne prouve pas qu'il est à jour. Un intermédiaire recalculé (cache invalidé
+    par ``cache_guard``, produit recoché plus tard, ``intermediaires/`` nettoyé
+    à la main…) est plus récent que le TIF publié → re-copie. ``shutil.copy2``
+    préservant les mtimes, une destination déjà publiée depuis cette source
+    reste « à jour » : un re-run à cache identique ne re-copie rien (reprise
+    §22/§28.4).
+    """
+    if not dest.exists():
+        return True
+    try:
+        return source.stat().st_mtime > dest.stat().st_mtime
+    except OSError:
+        return True
+
+
 def copy_mnt_to_results(
     *,
     temp_mnt_path: Path,
@@ -237,7 +262,7 @@ def copy_mnt_to_results(
     if not temp_mnt_path.exists():
         raise FileNotFoundError(f"MNT source introuvable: {temp_mnt_path}")
 
-    if not out_path.exists():
+    if needs_refresh(temp_mnt_path, out_path):
         shutil.copy2(str(temp_mnt_path), str(out_path))
         log(f"MNT copié: {out_path.relative_to(indices_dir(output_dir))}")
 
@@ -313,7 +338,10 @@ def copy_final_products_to_results(
             tif_dir = base_dir / "tif"
             tif_dir.mkdir(parents=True, exist_ok=True)
             tif_path = tif_dir / f"{output_base}.tif"
-            if input_path_cropped.exists() and not tif_path.exists():
+            # Fraîcheur, pas simple existence : un TIF publié par un run
+            # précédent (paramètres différents, noms identiques) est écrasé
+            # dès que l'intermédiaire a été recalculé (cf. needs_refresh).
+            if input_path_cropped.exists() and needs_refresh(input_path_cropped, tif_path):
                 shutil.copy2(str(input_path_cropped), str(tif_path))
                 log(f"TIF rogné copié: {tif_path.relative_to(idx_dir)}")
                 # Garantir un CRS exploitable avant toute consommation aval (CV,
@@ -323,6 +351,15 @@ def copy_final_products_to_results(
                 assign_crs_if_missing(tif_path)
                 if pyramids_enabled:
                     build_raster_pyramids(tif_path, levels=pyramids_levels, log=log, cancel_check=cancel_check)
+                # gdaladdo/assign_crs modifient le fichier publié en place →
+                # mtime « rajeuni », ce qui fausserait needs_refresh sur les
+                # chaînes copy2 (existing_mnt : mtimes hérités du fichier
+                # source). Re-tamponner depuis la source garde la chaîne
+                # source→rogné→publié comparable de bout en bout.
+                try:
+                    shutil.copystat(str(input_path_cropped), str(tif_path))
+                except OSError:
+                    pass
 
         should_jpg = bool(jpg_cfg.get(product_name, False))
         if should_jpg:
@@ -333,7 +370,7 @@ def copy_final_products_to_results(
                 log(
                     f"PNG demandé mais TIF source introuvable: {input_path_uncropped.relative_to(temp_dir)} (produit={product_name})"
                 )
-            elif jpg_path.exists():
+            elif not needs_refresh(input_path_uncropped, jpg_path):
                 log(f"PNG déjà présent: {jpg_path.relative_to(idx_dir)}")
                 created_jpgs.append(jpg_path)
                 created_jpgs_by_product.setdefault(product_name, []).append(jpg_path)

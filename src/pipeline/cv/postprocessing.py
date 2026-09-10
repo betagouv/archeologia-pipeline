@@ -699,6 +699,7 @@ def _resolve_same_class_overlaps(
     unary_union_fn,
     STRtree,
     min_area_ratio: float = 0.0,
+    keep_best_geometry: bool = False,
 ) -> List[Dict]:
     """Résout les superpositions entre détections d'UNE même classe par union.
 
@@ -718,11 +719,16 @@ def _resolve_same_class_overlaps(
     détections de taille proche d'un même cratère) sans fusionner un petit
     cratère distinct posé sur le bord d'un grand.
 
+    ``keep_best_geometry`` (modèles bbox) : au lieu de l'union — qui, sur des
+    rectangles décalés (doublons cross-dalles du halo), produit un polygone en
+    L/croix — chaque composante est réduite à la détection la plus confiante,
+    géométrie ET attributs intacts (une bbox reste une bbox).
+
     Implémentation : graphe de chevauchement (arête = IoS ≥ seuil, garde-fou
     respecté) via STRtree (fallback O(N²) si ``STRtree is None``), composantes
     connexes par union-find, puis ``unary_union`` par composante. Le gabarit
     (attributs) de chaque composante est la détection la plus confiante, avec la
-    géométrie unionnée.
+    géométrie unionnée (ou sa propre géométrie si ``keep_best_geometry``).
     """
     items = [
         d for d in dets
@@ -800,6 +806,9 @@ def _resolve_same_class_overlaps(
             out.append(items[members[0]])
             continue
         best = max(members, key=lambda k: items[k].get("confidence", 0.0))
+        if keep_best_geometry:
+            out.append(items[best])
+            continue
         try:
             merged = unary_union_fn([geoms[k] for k in members])
         except Exception:
@@ -879,6 +888,7 @@ def postprocess_geo_detections(
     overlap_strategy: str = "difference",
     overlap_ios_threshold: float = 0.5,
     overlap_min_area_ratio: float = 0.0,
+    overlap_keep_best_geometry: bool = False,
 ) -> Dict[str, List[Dict]]:
     """
     Post-traitement global des détections en coordonnées géographiques,
@@ -925,6 +935,10 @@ def postprocess_geo_detections(
             désactivé) appliqué en stratégie ``"relation"`` — sur la bande de
             chevauchement modéré, ne fusionne que des polygones de taille proche
             (ratio min_aire/max_aire ≥ ce seuil), sauf confinement quasi-total.
+        overlap_keep_best_geometry: en stratégie ``"relation"``, remplace
+            l'union par la détection la plus confiante de chaque composante
+            (géométrie intacte). Pour les modèles bbox : l'union de rectangles
+            décalés (doublons cross-dalles du halo) ferait un polygone en L.
 
     Returns:
         Nouveau ``{class_name: [det_dict, ...]}`` post-traité. Si les deux
@@ -1010,6 +1024,7 @@ def postprocess_geo_detections(
             resolved_by_class[class_name] = _resolve_same_class_overlaps(
                 dets, overlap_ios_threshold, unary_union, STRtree,
                 min_area_ratio=overlap_min_area_ratio,
+                keep_best_geometry=overlap_keep_best_geometry,
             )
         result_by_class = _remove_cross_class_overlaps(
             resolved_by_class, unary_union, min_area_m2
@@ -1131,3 +1146,90 @@ def postprocess_geo_detections(
     logger.info(f"Post-traitement géo terminé en {t3 - t_start:.1f}s")
 
     return result_by_class
+
+
+def owned_by_cell(geom, cell) -> bool:
+    """Vrai si le centroïde de ``geom`` est dans ``cell`` (xmin, ymin, xmax, ymax).
+
+    Règle du centroïde (halo inter-dalles) : chaque dalle ne rapporte que les
+    objets dont le centre est dans SA cellule 1 km. Un objet à cheval sur une
+    frontière est vu entier par les deux dalles à halo → une seule le possède
+    (plus de doublon cross-dalles à dédoublonner) ; un objet coupé au bord du
+    halo d'une dalle (fragment rectiligne à ± marge) a son centre dans la
+    cellule voisine, qui le voit entier → le fragment est écarté. Intervalle
+    semi-ouvert ``[min, max[`` : un centre exactement sur la ligne n'appartient
+    qu'à une cellule. Conservateur : géométrie vide/illisible → possédée.
+    """
+    try:
+        if geom is None or geom.is_empty:
+            return True
+        c = geom.centroid
+        xmin, ymin, xmax, ymax = cell
+        return xmin <= c.x < xmax and ymin <= c.y < ymax
+    except Exception:
+        return True
+
+
+def clip_detections_to_valid_region(
+    data_by_class_name: Dict[str, List[Dict[str, Any]]],
+    valid_region_bounds: Optional[List[tuple]],
+) -> Dict[str, List[Dict[str, Any]]]:
+    """Restreint les détections à l'union d'emprises ``(xmin, ymin, xmax, ymax)``.
+
+    Option B (halo inter-dalles) : l'image d'inférence déborde de la dalle.
+    Vers une dalle voisine du même run, le halo est de la vraie donnée (les
+    doublons se fusionnent en aval) ; vers l'EXTÉRIEUR du périmètre commandé,
+    la marge est fabriquée (MNT sans points → aplat NoData, noyaux RVT repliés
+    en miroir) — toute détection y est du bruit. On ne conserve que
+    l'intersection avec l'union des emprises des TIF rognés du run : une
+    détection entièrement dehors est supprimée, une détection débordante est
+    rognée au périmètre (comme elle l'était de fait avant l'option B).
+
+    ``valid_region_bounds`` vide ou ``None`` → données renvoyées telles
+    quelles (modes sans halo). Conservateur : une géométrie que Shapely ne
+    sait pas clipper est conservée intacte.
+    """
+    if not valid_region_bounds:
+        return data_by_class_name
+
+    from shapely.geometry import MultiPolygon, Polygon, box
+    from shapely.ops import unary_union
+
+    region = unary_union([box(*b) for b in valid_region_bounds])
+    result: Dict[str, List[Dict[str, Any]]] = {}
+    dropped = 0
+    clipped = 0
+    for class_name, detections in data_by_class_name.items():
+        kept: List[Dict[str, Any]] = []
+        for det in detections:
+            geom = det.get("geometry")
+            try:
+                if geom is None or geom.is_empty:
+                    kept.append(det)
+                    continue
+                if region.contains(geom):
+                    kept.append(det)
+                    continue
+                inter = geom.intersection(region)
+                if inter.is_empty:
+                    dropped += 1
+                    continue
+                if isinstance(inter, MultiPolygon):
+                    # Le rognage d'un polygone par une union de rectangles peut
+                    # le morceler : on garde le plus grand morceau (même choix
+                    # que la stratégie « difference » de remove_overlaps).
+                    inter = max(inter.geoms, key=lambda g: g.area)
+                if not isinstance(inter, Polygon):
+                    kept.append(det)
+                    continue
+                clipped += 1
+                kept.append(dict(det, geometry=inter))
+            except Exception:
+                kept.append(det)
+        result[class_name] = kept
+    if dropped or clipped:
+        logger.info(
+            f"Clip au périmètre du run: {dropped} détection(s) hors emprise supprimée(s), "
+            f"{clipped} rognée(s)"
+        )
+    return result

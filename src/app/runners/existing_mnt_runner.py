@@ -29,7 +29,7 @@ class ExistingMntRunner:
         reporter: ProgressReporter,
         cancel: CancelToken,
         slog: Optional["StructuredLogger"] = None,
-    ) -> None:
+    ) -> Optional[bool]:
         try:  # fallback standalone (tests : src/ sur le path)
             from ...pipeline.modes.existing_mnt import run_existing_mnt
         except ImportError:  # pragma: no cover
@@ -79,6 +79,8 @@ class ExistingMntRunner:
         cancelled = False
         fatal = False
         tiles_processed = 0
+        tiles_total = 0
+        final_ok: Optional[bool] = None
         try:
             res = run_existing_mnt(
                 existing_mnt_dir=existing_mnt_dir,
@@ -94,6 +96,7 @@ class ExistingMntRunner:
                 mnt_progress=_on_mnt_progress,
             )
             tiles_processed = res.total
+            tiles_total = res.candidates
             reporter.info(f"✅ {res.total} MNT traités")
 
             # Lancer la CV si activée
@@ -131,7 +134,7 @@ class ExistingMntRunner:
                 outcome = "failed"
             else:
                 outcome = "success"
-            finalize_pipeline(
+            final_ok = finalize_pipeline(
                 output_dir=ctx.output_dir,
                 cv_cfg=ctx.cv.raw,
                 rvt_params=rvt_params,
@@ -139,6 +142,9 @@ class ExistingMntRunner:
                 slog=slog,
                 start_time=start_time,
                 tiles_processed=tiles_processed,
+                # 0/N honnête : sans candidates (exception avant run_existing_mnt),
+                # None conserve l'ancien repli total=tiles_processed.
+                tiles_total=tiles_total or None,
                 active_products=active_products,
                 extra_label="MNT traités",
                 ui_config=ctx.ui_config,
@@ -147,3 +153,5 @@ class ExistingMntRunner:
 
         if cancelled or cancel.is_cancelled():
             narrator.pipeline_cancelled()
+            return None
+        return final_ok

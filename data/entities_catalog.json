@@ -44,6 +44,20 @@
       "morphology": "lineaire"
     },
     {
+      "id": "talus",
+      "label": "Talus",
+      "description": "Talus seuls (relief linéaire positif, sans fossé associé visible).",
+      "display_order": 62,
+      "morphology": "lineaire"
+    },
+    {
+      "id": "fosse",
+      "label": "Fossés",
+      "description": "Fossés seuls (relief linéaire négatif, sans talus associé visible).",
+      "display_order": 64,
+      "morphology": "lineaire"
+    },
+    {
       "id": "charbonniere",
       "label": "Charbonnières",
       "description": "Plateformes de charbonnage (production de charbon de bois).",
@@ -58,9 +72,9 @@
       "morphology": "circulaire"
     },
     {
-      "id": "circular_depression",
-      "label": "Dépressions circulaires",
-      "description": "Dépressions circulaires d'origine indéterminée.",
+      "id": "depression_circulaire_grande",
+      "label": "Dépressions circulaires grandes",
+      "description": "Grandes dépressions circulaires en cuvette (mardelles, dolines, cuvettes >= 14 m de diamètre), segmentation d instances sur LD 0,5 m. Les petites dépressions (< 14 m) ne sont pas ciblées.",
       "display_order": 90,
       "morphology": "circulaire"
     },
@@ -69,6 +83,27 @@
       "label": "Regroupement de cratères",
       "description": "Regroupe en zones les cratères proches détectés (clustering DBSCAN). Peut indiquer des zones d'extraction de matériaux. Détection issue d'un modèle de cratères.",
       "display_order": 95,
+      "morphology": "zone"
+    },
+    {
+      "id": "enclos",
+      "label": "Enclos",
+      "description": "Enclos à talus/fossé français (circulaires, curvilignes ou quadrangulaires) — modèle par transfert affiné sur le corpus français (Bretagne + IdF), LD 1 m.",
+      "display_order": 96,
+      "morphology": "circulaire"
+    },
+    {
+      "id": "enclos_circulaire",
+      "label": "Enclos circulaires",
+      "description": "Enclos à morphologie circulaire (ringforts, enclosures) — modèle entraîné sur le corpus irlandais, LD 1 m. Adapté à la prospection de formes circulaires.",
+      "display_order": 97,
+      "morphology": "circulaire"
+    },
+    {
+      "id": "axe_lineaire",
+      "label": "Axes linéaires",
+      "description": "Bandes directionnelles reconstruites depuis les détections parcellaires alignées (voies anciennes, limites majeures, levées). Longueur, couverture, nombre de brins, parallélisme et discordance en attributs.",
+      "display_order": 98,
       "morphology": "zone"
     }
   ]

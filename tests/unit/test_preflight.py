@@ -182,6 +182,101 @@ class TestCollectPreflightResults:
         assert "Go libres" in out[0].details
 
 
+class TestRvtAlgosCheck:
+    """« Algorithmes RVT (Processing) » : vérification RÉELLE du registre.
+
+    Bug SRA HDF 2026-08-31 : avec un rvt-qgis absent/trop vieux (non chargé
+    par QGIS 4), l'ancien check supposait la disponibilité (« expected
+    available in QGIS », critical=False) et le run mourait au premier
+    ``processing.run("rvt:...")`` avec un « Algorithm not found » opaque.
+    """
+
+    NAME = "Algorithmes RVT (Processing)"
+
+    @staticmethod
+    def _install_fake_qgis(monkeypatch, *, algos, has_provider=True):
+        import sys
+        import types
+
+        class _FakeRegistry:
+            def algorithmById(self, algo_id):
+                return object() if algo_id in algos else None
+
+            def providerById(self, provider_id):
+                return object() if (provider_id == "rvt" and has_provider) else None
+
+        class _FakeQgsApplication:
+            @staticmethod
+            def processingRegistry():
+                return _FakeRegistry()
+
+        core = types.ModuleType("qgis.core")
+        core.QgsApplication = _FakeQgsApplication
+        qgis = types.ModuleType("qgis")
+        qgis.core = core
+        monkeypatch.setitem(sys.modules, "qgis", qgis)
+        monkeypatch.setitem(sys.modules, "qgis.core", core)
+
+    def _collect(self, products):
+        return collect_preflight_results(
+            mode="ign_laz",
+            cv_config={"enabled": False},
+            products=products,
+            files_config={},
+            output_dir=None,
+        )
+
+    def _check(self, results):
+        found = [r for r in results if r.name == self.NAME]
+        assert len(found) == 1
+        return found[0]
+
+    def test_no_rvt_product_no_check(self):
+        results = self._collect({"MNT": True, "DENSITE": True})
+        assert not any(r.name == self.NAME for r in results)
+
+    def test_outside_qgis_is_non_blocking(self):
+        # Standalone (pas de module qgis) : non vérifiable → on ne bloque pas.
+        r = self._check(self._collect({"LD": True}))
+        assert r.ok is True
+        assert r.critical is False
+        assert "non vérifiable" in r.details
+
+    def test_all_algos_present_is_green_and_critical(self, monkeypatch):
+        self._install_fake_qgis(monkeypatch, algos={"rvt:rvt_ld", "rvt:rvt_svf"})
+        r = self._check(self._collect({"LD": True, "SVF": True}))
+        assert r.ok is True
+        assert r.critical is True
+
+    def test_provider_absent_is_critical_with_actionable_message(self, monkeypatch):
+        self._install_fake_qgis(monkeypatch, algos=set(), has_provider=False)
+        r = self._check(self._collect({"LD": True}))
+        assert r.ok is False
+        assert r.critical is True
+        assert "Relief Visualization Toolbox" in r.details
+        assert "Extensions" in r.details
+
+    def test_provider_too_old_names_missing_algos(self, monkeypatch):
+        # rvt-qgis chargé mais sans rvt_mstp (version trop ancienne)
+        self._install_fake_qgis(monkeypatch, algos={"rvt:rvt_ld"}, has_provider=True)
+        r = self._check(self._collect({"LD": True, "MSTP": True}))
+        assert r.ok is False
+        assert r.critical is True
+        assert "rvt_mstp" in r.details
+        assert "jour" in r.details  # « mettez à jour »
+
+    def test_existing_rvt_mode_skips_check(self, monkeypatch):
+        self._install_fake_qgis(monkeypatch, algos=set(), has_provider=False)
+        results = collect_preflight_results(
+            mode="existing_rvt",
+            cv_config={"enabled": False},
+            products={"LD": True},
+            files_config={},
+            output_dir=None,
+        )
+        assert not any(r.name == self.NAME for r in results)
+
+
 class TestCheckRasterCrs:
     """« CRS des rasters » : vérifié → vert bloquant ; invérifiable → ⚠ non bloquant."""
 

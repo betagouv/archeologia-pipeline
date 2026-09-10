@@ -3,7 +3,7 @@
 Plugin QGIS pour exécuter un pipeline de traitement LiDAR et produire des rasters de type MNT / densité / indices RVT, avec une étape optionnelle de détection / segmentation par *computer vision*.
 
 - Nom du plugin : **ArchéologIA**
-- Version : **0.7.4**
+- Version : **0.8.0**
 - QGIS : **3.34+ (Qt5) ou 4.x (Qt6)** — base de code unique
 
 ## Fonctionnalités
@@ -32,7 +32,7 @@ Le pipeline peut être lancé dans plusieurs modes (selon l’UI/config) :
 
 - `ign_laz` : téléchargement/consommation de tuiles LAZ depuis l'IGN. Trois façons de désigner les dalles à l'étape 1 :
   - **Sélection sur la carte** (bouton « Sélectionner les dalles ») : la grille IGN s'affiche sur le canevas QGIS et on **clique les dalles** (ou on les encadre) directement — WYSIWYG, sans fichier ni piège de CRS. La sélection est écrite dans un `dalles_selection.txt` consommé directement par le téléchargeur.
-  - **Polygone de zone** : un fichier vecteur (`.shp/.geojson/.gpkg`) intersecté avec la grille IGN par `tile_resolver.py`.
+  - **Zone d'étude vecteur** : un fichier (`.shp/.geojson/.gpkg`) intersecté avec la grille IGN par `tile_resolver.py`. Toute géométrie convient (polygones, lignes, points) et **toutes les couches** du fichier sont unionnées, chacune reprojetée depuis son propre CRS. Le bouton « Couche / groupe QGIS » permet de désigner une couche du projet **ou un groupe entier du panneau Couches** : les couches du groupe sont alors empaquetées dans un `data/temp_zones/zone_<groupe>.gpkg` multi-couches.
   - **Liste de dalles** : un `.txt` de `nom,url` (ou d'URLs) déjà préparé.
 - `local_laz` : consommation de tuiles LAZ/LAS déjà présentes localement.
 - `existing_mnt` : calcul d'indices RVT à partir d'un MNT existant. Supporte les MNT au format dalle IGN 1 km (ex. `LHD_FXX_xxxx_yyyy_*`), les MNT plus petits (< 1 km, emprise native conservée) **et les MNT de grande emprise** (plusieurs km²) qui sont traités **d'un seul bloc** : les indices RVT sont calculés sur le raster complet et SAHI assure le slicing 640 × 640 à l'inférence CV. Voir la section [MNT / RVT non-IGN](#mnt--rvt-non-ign--traitement-des-grandes-emprises). Formats acceptés : GeoTIFF (`.tif`/`.tiff`) ou grille ASCII ESRI (`.asc`).
@@ -121,6 +121,7 @@ Le plugin exécute un **préflight** (contrôle des dépendances) au lancement.
 
 - **Processing** : doit être disponible (dans QGIS : `Traitement` → `Boîte à outils`).
 - **Algorithmes RVT via Processing** : nécessaires si tu actives des produits RVT (HS/M-HS/SVF/SLO/LD/SLRM/VAT/MSTP). Fournis par le plugin QGIS **« Relief Visualization Toolbox » (rvt-qgis)**.
+  ⚠️ Le plugin rvt-qgis doit être **installé, activé et à jour** : sous QGIS 4, toute version ≤ 0.10.0 est refusée au chargement (marquée incompatible) et les algorithmes `rvt:*` deviennent introuvables — mettre à jour via *Extensions → Installer/Gérer les extensions* (version ≥ 1.0.1 recommandée). Le préflight de l'étape 4 signale ce cas par un ✗ critique **« Algorithmes RVT (Processing) »** et bloque le lancement.
 - **CVAT** (*Combined VAT*) : nécessite également le plugin **rvt-qgis** installé — il n'est pas exposé par *Processing*, le plugin réutilise donc directement son paquet Python `rvt`.
 
 Si un élément est manquant, le préflight affichera une erreur et empêchera le lancement.
@@ -140,7 +141,7 @@ Depuis la **v0.3.0**, le plugin s'utilise via un **assistant (wizard) en 4 étap
 
 1. **Source** — Choix du mode de données (`ign_laz`, `local_laz`, `existing_mnt`, `existing_rvt`) et des chemins d'entrée (zone/liste IGN, dossier LAZ, dossier MNT ou dossier RVT selon le mode).
 2. **Indices** — Sélection des produits : **MNT / Densité** (modèle de base) + indices **RVT** (**HS, M-HS, SVF, SLO, LD, SLRM, VAT, MSTP, CVAT**). Le bouton **« Réglages avancés… »** ouvre une vue à onglets pour régler finement chaque indice (paramètres RVT : azimut/élévation solaire, directions, rayons, échelles multi-niveaux, etc.) ainsi que le **filtre PDAL**, la **résolution de densité** et la **marge de tuilage**. *(HS = hillshade simple, mono-directionnel ; M-HS = multi-directionnel ; MSTP = position topographique multi-échelle, sortie RGB ; CVAT = VAT combiné general+flat, composition figée.)*
-3. **Détection IA** *(optionnelle)* — On coche les **entités archéologiques** à détecter (parcellaire, trous d'obus, talus/fossés…). L'orchestrateur choisit automatiquement le(s) modèle(s) ONNX adapté(s) et l'indice RVT cible. Les seuils de **confiance** et d'**aire minimale** sont réglables par entité. Le seuil de confiance est **filtrant** : les détections sous le seuil sont écartées du `.gpkg` de l'entité (après clustering, donc l'hystérésis de regroupement reste alimentée), et la **légende** du `.qgs` (tranches `conf_bin`) part du seuil propre à chaque entité — une entité dont rien ne dépasse son seuil donne une couche vide.
+3. **Détection IA** *(optionnelle)* — On coche les **entités archéologiques** à détecter (parcellaire, trous d'obus, talus/fossés…). L'orchestrateur choisit automatiquement le(s) modèle(s) ONNX adapté(s) et l'indice RVT cible. Les seuils de **confiance** et d'**aire minimale** sont réglables par entité. La valeur par défaut de chaque entité vient du `model_card.yaml` du modèle : elle est **choisie sous le seuil F1-max** mesuré au banc (le F1 pèse un oubli comme un faux positif, alors qu'en prospection un faux positif se rejette en quelques secondes), dans la fenêtre [bas du plateau F1 ≥ 95 % ; F1-max] — la lecture qui l'a fixée est consignée dans `seuils_provenance`. Le seuil de confiance est **filtrant** : les détections sous le seuil sont écartées du `.gpkg` de l'entité (après clustering, donc l'hystérésis de regroupement reste alimentée), et la **légende** du `.qgs` part du seuil propre à chaque entité — une entité dont rien ne dépasse son seuil donne une couche vide. Pour les modèles qui portent une table de fiabilité (`thresholds.fiabilite` du `model_card.yaml`), la légende ne montre plus des tranches de score mais quatre catégories **douteux / possible / probable / très probable**, définies par la part de vrais objets mesurée au banc (≥ 35 / 60 / 85 %) : les mots ont le même sens pour tous les modèles, seules les coupures de score changent, par classe. Le rendu reste celui des tranches d'origine : un contour sans remplissage dans la couleur de l'entité, déclinée en luminosité par catégorie (plus sombre = plus sûr), pour laisser lire le relief à l'intérieur ; le détail mesuré (« ≥ 85 % de vrais objets sur le banc, mesuré 95 % sur 1 013 détections ») est dans l'infobulle de la couche, l'infobulle de chaque détection et les champs `fiabilite` / `fiabilite_pct`. En mode avancé, l'étape 3 affiche les coupures effectives sous la case « Confiance ».
 4. **Lancer** — Un panneau **« État du système »** exécute le préflight en tâche de fond (outils CLI, Processing, runner ONNX, espace disque…) ; un **récapitulatif** résume les choix ; le nombre de **workers** parallèles est réglable dans les paramètres avancés repliables. Le bouton **▶ Lancer le pipeline** démarre le traitement : l'écran bascule alors sur la **vue d'exécution** (timeline 5 étapes + journal défilant avec auto-défilement / copier / effacer).
 
 ## Computer vision : runner ONNX + modèles
@@ -372,7 +373,9 @@ Depuis la v0.3.0, l'utilisateur ne sélectionne plus des *modèles* puis filtre 
 - `data/entities_catalog.json` (versionné) fournit le **vocabulaire d'entités** présentable (id, libellé, description, ordre d'affichage) ;
 - le `model_card.yaml` de chaque modèle installé déclare sa **couverture** : son indice RVT (`preferred_rvt.type`) et ses `classes`, chacune pouvant pointer vers une entité du catalogue (`entity:` en alias, sinon le nom de classe fait foi). C'est une découverte **« drop-in »** : ajouter un modèle conforme suffit pour qu'il couvre ses entités.
 
-L'orchestrateur regroupe les entités cochées par couple `(modèle, target_rvt)` — chaque couple devient un *run* — et **peuple le tableau `computer_vision.runs`** ci-dessous. Ce format de configuration reste donc le **contrat sous-jacent** du pipeline (auto-rempli par l'UI). Pour un usage avancé : partir de `config.example.json` (schéma complet, verrouillé par test), éditer un profil `.json`, puis l'importer via le bouton **« Charger une config »** de l'assistant — le plugin ne lit **pas** de fichier `config.json` à la racine.
+L'orchestrateur regroupe les entités cochées par couple `(modèle, target_rvt)` — chaque couple devient un *run* — et **peuple le tableau `computer_vision.runs`** ci-dessous.
+
+**Comparaison A/B (plusieurs modèles pour une même entité).** Le menu « Changer ▾ » d'une carte d'entité est à cases **non exclusives** : cocher un 2ᵉ modèle lance un run **par modèle** pour cette entité. Les sorties de chaque variante sont alors **qualifiées par modèle** pour rester isolées et comparables : dossier `detections/<slug>--<modèle>/` (GPKG propre → pas d'écrasement, seuils de symbologie corrects par variante), couches nommées `<classe> — <modèle>` (couleur distincte via le registre), et les variantes sont regroupées dans QGIS sous un groupe commun `« <Entité> (comparaison) »`. Chaque détection porte l'attribut `model_name` du run qui l'a produite. Avec un seul modèle coché, rien ne change (`detections/<slug>/`). La surcharge persistée `computer_vision.entity_model_overrides` accepte une chaîne (historique) ou une **liste** de modèles. ⚠️ Les surcharges de seuils par entité s'appliquent identiquement aux deux variantes (comparaison à seuil égal), et si les deux modèles préfèrent le même type de RVT avec des paramètres divergents, un seul raster est calculé (avertissement dans le log). Ce format de configuration reste donc le **contrat sous-jacent** du pipeline (auto-rempli par l'UI). Pour un usage avancé : partir de `config.example.json` (schéma complet, verrouillé par test), éditer un profil `.json`, puis l'importer via le bouton **« Charger une config »** de l'assistant — le plugin ne lit **pas** de fichier `config.json` à la racine.
 
 **Cibles dérivées.** Une sortie de clustering peut aussi être présentée comme une **entité cochable à part entière** — une *cible dérivée*. Le modèle la déclare dans son `model_card.yaml` via une section `derived_targets` qui rattache l'`output_class` d'une règle de `args.yaml:clustering` à une entité du catalogue :
 
@@ -428,6 +431,22 @@ Le format historique mono-modèle est conservé pour rétrocompatibilité (sans 
 ```
 
 `selected_model` peut aussi être un nom de dossier modèle relatif à `models_dir` ; le runner cherchera alors automatiquement `weights/best.onnx`.
+
+### Inférence avec halo inter-dalles
+
+**Modes `ign_laz` / `local_laz` (TIF non rognés d'`intermediaires/`).**
+
+En modes IGN / LAZ local, l'inférence CV ne tourne plus sur le TIF rogné à 1 km mais sur le **TIF non rogné** d'`intermediaires/` (dalle + marge `processing.tile_overlap`, 200 m par défaut — de la vraie donnée voisine fusionnée par `prepare_merged_tiles`). Un objet à cheval sur une frontière de dalles est ainsi vu **en entier** par au moins une des deux dalles (halo ≥ taille/2) ; les détections en double dans la bande de recouvrement se superposent exactement en Lambert-93 et sont fusionnées par le post-traitement géo global (`merge_adjacent` / `remove_overlaps`). Pour les modèles **bbox** (object detection), la déduplication passe par `overlap_strategy: relation` — **défaut automatique** pour ces modèles (la stratégie historique `difference` rogne le perdant sans jamais le supprimer) — et chaque groupe de doublons est réduit à la **boîte la plus confiante** (pas d'union en L de rectangles décalés). En pratique :
+
+- le PNG d'inférence garde le **nom** du TIF rogné mais des dimensions plus grandes (ex. 2800×2800 px à 20 % / 0,5 m) ; la garde GEO-03 (PNG ≡ raster source), le géotransform et le world file sont tous référencés sur le TIF non rogné — jamais de panachage ;
+- les détections sont **clippées à l'union des emprises rognées du run** : la marge extérieure au périmètre commandé (sans voisin → aplat NoData, noyaux RVT repliés en miroir) ne produit pas de bruit ;
+- **règle du centroïde** (`postprocessing.owned_by_cell`, appliquée à la lecture des labels par `conversion_shp` via `cell_bounds_by_stem`) : chaque dalle ne rapporte que les détections dont le **centre est dans sa cellule rognée**. Un objet à cheval sur une frontière est vu entier par les deux dalles → une seule le rapporte (plus de doublon cross-dalles à dédoublonner) ; un objet coupé au **bord du halo** d'une dalle (fragment rectiligne à ± marge) a son centre dans la cellule voisine, qui le voit entier → le fragment est écarté. Le journal compte les détections écartées (`Halo inter-dalles : N détection(s) centrée(s) hors de la cellule…`) ;
+- un cache `raw_detections/` plus ancien que son PNG est **purgé automatiquement** (des coordonnées normalisées calculées sur l'ancienne géométrie seraient décalées de la marge) — le premier re-run dans un `output_dir` antérieur ré-infère donc toutes les images ;
+- coût : surface d'inférence ≈ ×2 à marge 20 % (le halo utile plancher est ~50 m pour un enclos de 90 m — réduire `tile_overlap` réduit le halo *et* le contexte des noyaux RVT, cf. avertissements de l'étape 2) ; temps MNT/RVT inchangé (la marge était déjà calculée) ;
+- les JPG annotés montrent l'image élargie : un objet frontière apparaît sur les JPG des deux dalles voisines (cosmétique, assumé) ;
+- si le TIF non rogné est introuvable (`intermediaires/` purgé, re-run CV seul), repli sur le **halo fabriqué depuis les voisins** (ci-dessous), puis sur le TIF rogné.
+
+**Modes `existing_rvt` / `existing_mnt` (halo fabriqué depuis les voisins).** Sans `intermediaires/`, chaque dalle 1 km était inférée seule : un objet à cheval sur une frontière sortait **coupé au bord** (ou pas du tout quand la moitié visible ne passait plus le seuil de confiance). `run_existing_rvt` découpe désormais **dalle + 50 m** dans la mosaïque des dalles *fournies* (`pipeline/modes/neighbor_halo.py`, VRT GDAL → `intermediaires/halo/<indice>/`) : vraie donnée là où un voisin existe, aplat 0 ailleurs (clippé comme ci-dessus). 50 m suffit à voir entier un objet de 100 m et ne coûte **aucune tuile SAHI** (2 000 + 2 × 100 px = 2 200 px < 2 202 px, la grille 4×4 des modèles 648/672 px est conservée — à 200 m on passerait à 6×6, × 2,25). Fraîcheur comme le LAZ fusionné : un halo est réutilisé tant que son jeu de voisins (sidecar `.inputs.json`) et leurs mtimes sont inchangés ; sinon il est re-découpé et son mtime frais régénère le PNG puis purge le cache CV de la dalle. Raster « large » (> 1 km) ou dalle sans voisin → pas de halo. Le résolveur explicite (`intermediaires/`) reste prioritaire, le halo voisin est le repli, valable dans tous les modes. La règle du centroïde ci-dessus s'applique de la même façon (mesuré sur Fénétrange, 43 dalles LD : coupes sur lignes de dalles 13 → 2 pour les dépressions, 7 → 0 pour les charbonnières et 50 → 2 pour le parcellaire, IoU des entités à cheval 0,73 → 0,80, structures linéaires continues (41 → 97 polygones à cheval sur plusieurs dalles), sans tuile SAHI supplémentaire ; une marge de 200 m n'apporte rien de plus pour × 1,85 le temps).
 
 ## MNT / RVT non-IGN : traitement des grandes emprises
 
@@ -490,6 +509,24 @@ variantes coexistent. `MNT`/`DENSITE` (sans paramètres) gardent leur code brut,
 dossier hérité non suffixé (`indices/LD/`) n'est pas supprimé. Sur des `output_dir` très profonds,
 attention à la limite Windows MAX_PATH (260 caractères) avec ces noms plus longs.
 
+**Relance dans un même dossier de sortie et cache.** Les paramètres de **traitement** qui ne sont
+pas encodés dans les noms de fichiers (résolution MNT, résolution densité, marge inter-dalles,
+filtre de classification PDAL) sont suivis par un sidecar `intermediaires/run_params.json` : s'ils
+ont changé depuis le run précédent, le cache `intermediaires/` est **automatiquement invalidé**
+(message « cache des intermédiaires invalidé » au journal) — les dalles du run courant sont
+recalculées puis **re-publiées par-dessus** les TIF finaux de `indices/` (publication par
+fraîcheur : un intermédiaire recalculé, plus récent, écrase le fichier publié de même nom).
+`indices/` n'est **jamais supprimé** : les dalles d'autres zones accumulées dans le même dossier
+restent en place — attention, elles conservent leurs anciens paramètres tant qu'on ne les relance
+pas (leurs `.laz` sont conservés dans `sources/`). À paramètres identiques, les fichiers déjà
+produits sont réutilisés (reprise rapide après annulation — lignes « réutilisé (cache
+intermédiaire) » dans le fichier de log). Cas particulier du halo inter-dalles : **étendre la
+sélection** à une dalle voisine re-fusionne automatiquement les dalles dont la marge devient de la
+vraie donnée (sidecar `<dalle>_merged.inputs.json`, log « Jeu de voisins modifié → re-fusion ») et
+les recalcule en cascade. Un dossier de sortie créé avant cette version (pas de sidecar) adopte les paramètres
+courants comme référence à la première relance, sans recalcul forcé. Les dossiers `sources/`
+(dalles LiDAR téléchargées) et `detections/` (résultats CV) ne sont **jamais** purgés.
+
 En mode `existing_rvt`, le dossier d'indices est `indices/RVT/` (nom générique, paramètres inconnus).
 
 Chaque dossier `<PRODUIT>/tif/` contient une **mosaïque VRT** nommée `index_<PRODUIT>.vrt` (`index_MNT.vrt`, `index_SVF_R10_D16_V1_N0.vrt`, `index_COUVERTURE.vrt`…) — c'est le fichier à charger dans QGIS. Son nom reprend celui de la couche, donc reste identifiable lors d'un chargement manuel (et non un générique `index.vrt`).
@@ -527,7 +564,7 @@ Ensuite, un `git push` déclenchera automatiquement Talisman et pourra bloquer l
 
 - **Préflight KO** : vérifier que `pdal`, `gdalwarp`, `gdal_translate` sont accessibles dans le `PATH`.
 - **Pyramides absentes** : vérifier la présence de `gdaladdo` et que l’option pyramides est activée.
-- **RVT indisponible** : vérifier que les algorithmes RVT sont disponibles via QGIS Processing.
+- **RVT indisponible** (✗ « Algorithmes RVT (Processing) » au préflight, ou erreur « Algorithm rvt:… not found ») : vérifier dans *Extensions → Installer/Gérer les extensions* que **Relief Visualization Toolbox** est installé, **coché** (activé) et à jour — obligatoire en version ≥ 1.0.1 sous QGIS 4, les versions ≤ 0.10.0 n'y étant pas chargées.
 - **Computer vision** :
   - soit fournir le runner externe dans `third_party/cv_runner_onnx/...`
   - soit installer les dépendances Python (`onnxruntime`, `pillow`) dans l'environnement QGIS

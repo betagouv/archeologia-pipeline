@@ -261,9 +261,10 @@ def export_segformer_to_onnx(
             except Exception as e:
                 print(f"[WARN] Vérification ONNX échouée: {e}")
         
-        # Validation post-export
-        validate_onnx_export("segformer", model, output_path, imgsz)
-        
+        # Validation post-export — PORTE : une divergence PT/ONNX fait échouer l'export
+        if not validate_onnx_export("segformer", model, output_path, imgsz):
+            return False
+
         return True
         
     except Exception as e:
@@ -517,9 +518,10 @@ def export_smp_to_onnx(
         # Copier les métadonnées existantes
         _copy_metadata(model_path, output_path)
         
-        # Validation post-export
-        validate_onnx_export("smp", model, output_path, imgsz)
-        
+        # Validation post-export — PORTE : une divergence PT/ONNX fait échouer l'export
+        if not validate_onnx_export("smp", model, output_path, imgsz):
+            return False
+
         return True
         
     except Exception as e:
@@ -629,9 +631,10 @@ def export_yolo_to_onnx(
         meta_path.write_text(json.dumps(meta, indent=2), encoding="utf-8")
         print(f"[INFO] Métadonnées sauvegardées: {meta_path}")
         
-        # Validation post-export
-        validate_onnx_export("yolo", model, output_path, imgsz)
-        
+        # Validation post-export — PORTE : une divergence PT/ONNX fait échouer l'export
+        if not validate_onnx_export("yolo", model, output_path, imgsz):
+            return False
+
         return True
         
     except Exception as e:
@@ -913,13 +916,21 @@ def export_rfdetr_to_onnx(
             except Exception:
                 pass
         
+        # rfdetr >= 1.8 remappe les catégories COCO en 0..n-1 (class_names portés
+        # par le checkpoint, colonne no-object en FIN des logits) -> offset 0.
+        # Anciens checkpoints (sans class_names) : background en colonne 0 -> offset 1.
+        ckpt_class_names = getattr(rfdetr_model, "class_names", None)
+        class_offset = 0 if ckpt_class_names else 1
+        print(f"[INFO] class_offset={class_offset} "
+              f"({'class_names du checkpoint (0-indexé)' if ckpt_class_names else 'legacy, background en colonne 0'})")
+
         # Sauvegarder les infos du modèle
         meta_path = output_path.with_suffix('.json')
         meta = {
             "model_type": "rfdetr",
             "task": task,
             "resolution": resolution,
-            "class_offset": 1,  # RF-DETR utilise des class IDs 1-indexés
+            "class_offset": class_offset,
             "source": _relative_source(model_path, output_path),
         }
         if num_classes:
@@ -930,9 +941,10 @@ def export_rfdetr_to_onnx(
         meta_path.write_text(json.dumps(meta, indent=2), encoding="utf-8")
         print(f"[INFO] Métadonnées sauvegardées: {meta_path}")
         
-        # Validation post-export
-        validate_onnx_export("rfdetr", rfdetr_model, output_path, resolution)
-        
+        # Validation post-export — PORTE : une divergence PT/ONNX fait échouer l'export
+        if not validate_onnx_export("rfdetr", rfdetr_model, output_path, resolution):
+            return False
+
         return True
         
     except Exception as e:
@@ -1075,6 +1087,41 @@ def validate_onnx_export(
     return all_passed
 
 
+def _parite_decision_detection(pt_boxes, pt_logits, onnx_boxes, onnx_logits,
+                               plancher: float = 0.05, tol_boite: float = 1e-3,
+                               tol_score_pct: float = 5.0) -> bool:
+    """Parité de DÉCISION d'un modèle de détection rfdetr, indépendante de l'ordre des requêtes.
+
+    Vrai si les détections au-dessus du plancher sont en même nombre et s'apparient toutes
+    (même classe, boîte à ``tol_boite`` près en coordonnées normalisées, score à
+    ``tol_score_pct`` % près). Les requêtes sous le plancher ne participent à aucune décision.
+    """
+    import numpy as np
+
+    def dets(boxes, logits):
+        scores = 1 / (1 + np.exp(-logits))
+        idx = np.where(scores.max(axis=1) >= plancher)[0]
+        return [(int(scores[i].argmax()), float(scores[i].max()), boxes[i]) for i in idx]
+
+    a, b = dets(pt_boxes, pt_logits), dets(onnx_boxes, onnx_logits)
+    if len(a) != len(b):
+        return False
+    pris = [False] * len(b)
+    for c, s, box in a:
+        trouve = False
+        for j, (c2, s2, box2) in enumerate(b):
+            if pris[j] or c2 != c or np.abs(box - box2).max() > tol_boite:
+                continue
+            if abs(s - s2) / max(s, 1e-6) * 100 > tol_score_pct:
+                continue
+            pris[j] = True
+            trouve = True
+            break
+        if not trouve:
+            return False
+    return True
+
+
 def _validate_single_image(
     model_type: str,
     pytorch_model,
@@ -1205,7 +1252,30 @@ def _validate_single_image(
             close = np.allclose(p, o, atol=1e-4, rtol=1e-3)
             max_diff = np.abs(p - o).max()
             mean_diff = np.abs(p - o).mean()
-            print(f"  Sortie[{i}] shape={p.shape}: allclose={close}, max_diff={max_diff:.6f}, mean_diff={mean_diff:.6f}")
+            note = ""
+            if not close and p.ndim >= 3:
+                # Sorties SPATIALES (logits de masque) : l'atol diverge en bf16
+                # (max_diff ~0,06 — faux positif historique, cf. skill
+                # /installer-modele-plugin) alors que la DÉCISION est identique.
+                # La porte exige l'égalité stricte binarisée (rfdetr : signe du
+                # logit = masque binaire, IoU 1,0) ou de l'argmax (seg sémantique).
+                if model_type == "rfdetr":
+                    close = bool(np.array_equal(p > 0, o > 0))
+                    note = f" | masques binarisés identiques: {close}"
+                else:
+                    close = bool(np.array_equal(p.argmax(axis=0), o.argmax(axis=0)))
+                    note = f" | argmax identique: {close}"
+            elif not close and model_type == "rfdetr" and p.ndim == 2 and i <= 1 and len(pt_raw) >= 2:
+                # Sorties de DÉTECTION rfdetr (boîtes (Q,4) / logits (Q,C)) : l'ordre des
+                # Q requêtes peut différer entre PyTorch et ONNX (permutation, mesurée le
+                # 2026-09-08 sur ponctuelles_2cl_det_ld_v1 : 226/241 lignes divergentes
+                # avaient un jumeau exact ailleurs, les autres sous le plancher 0,05) —
+                # allclose ligne à ligne échoue alors que la DÉCISION est identique.
+                # La porte juge donc la décision : mêmes détections au plancher 0,05
+                # (classe + boîte à 1e-3 + score à 5 %), indépendamment de l'ordre.
+                close = _parite_decision_detection(pt_raw[0], pt_raw[1], onnx_raw[0], onnx_raw[1])
+                note = f" | décisions identiques au plancher 0,05 (ordre des requêtes ignoré): {close}"
+            print(f"  Sortie[{i}] shape={p.shape}: allclose={np.allclose(p, o, atol=1e-4, rtol=1e-3)}, max_diff={max_diff:.6f}, mean_diff={mean_diff:.6f}{note}")
             if not close:
                 all_close = False
 
@@ -1279,9 +1349,13 @@ def _validate_single_image(
             class_mismatches = 0
 
         # ── 3. Verdict pour cette image ────────────────────────────
+        # Durci 2026-08-31 : un export qui perd des détections ou change des
+        # classes n'est PAS valide (avant : WARN hors verdict).
         ok_tensors = all_close
         ok_scores = max_score_diff < 5 if n_compare > 0 else True
-        passed = ok_tensors and ok_scores
+        ok_counts = n_pt == n_onnx
+        ok_classes = class_mismatches == 0
+        passed = ok_tensors and ok_scores and ok_counts and ok_classes
 
         if passed:
             print(f"  → ✓ OK ({img_source})")

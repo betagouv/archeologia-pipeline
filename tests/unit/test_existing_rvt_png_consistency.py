@@ -9,7 +9,7 @@ import pytest
 
 pytest.importorskip("shapely")  # pipeline.cv.__init__
 
-from pipeline.modes.existing_rvt import _png_consistent_with_tif
+from pipeline.modes.existing_rvt import _png_consistent_with_tif, _png_stale, _tif_size
 
 
 class TestPngConsistentWithTif:
@@ -38,3 +38,54 @@ class TestPngConsistentWithTif:
             tif_size_fn=lambda _: (2000, 2000),
         )
         assert ok is True
+
+
+class TestPngStale:
+    """Fraîcheur mtime du PNG d'inférence (revue v2, 2026-09-02).
+
+    La garde GEO-03 ne compare que les dimensions : une source d'inférence
+    RECALCULÉE (cache invalidé par cache_guard, MNT remplacé) aux mêmes
+    dimensions laissait le PNG du run précédent en place → cache de détections
+    conservé → inférence sautée → détections périmées re-publiées.
+    """
+
+    def test_source_plus_recente_que_le_png(self, tmp_path):
+        import os
+
+        src = tmp_path / "src.tif"
+        png = tmp_path / "x.png"
+        png.write_bytes(b"png")
+        src.write_bytes(b"tif")
+        t = png.stat().st_mtime
+        os.utime(src, (t + 10, t + 10))
+        assert _png_stale(png, src) is True
+
+    def test_png_genere_apres_sa_source_est_a_jour(self, tmp_path):
+        import os
+
+        src = tmp_path / "src.tif"
+        png = tmp_path / "x.png"
+        src.write_bytes(b"tif")
+        png.write_bytes(b"png")
+        t = src.stat().st_mtime
+        os.utime(png, (t + 10, t + 10))
+        assert _png_stale(png, src) is False
+
+
+class TestTifSizeGdalFallback:
+    def test_repli_gdal_sans_rasterio(self, monkeypatch):
+        # Sans rasterio (QGIS n'en garantit pas la présence), la garde GEO-03
+        # doit encore lire les dimensions du TIF via osgeo.gdal — sinon elle
+        # devient silencieusement inopérante.
+        import sys
+        from types import SimpleNamespace
+
+        monkeypatch.setitem(sys.modules, "rasterio", None)  # import -> ImportError
+
+        fake_ds = SimpleNamespace(RasterXSize=2800, RasterYSize=2800)
+        fake_gdal = SimpleNamespace(Open=lambda path: fake_ds)
+        fake_osgeo = SimpleNamespace(gdal=fake_gdal)
+        monkeypatch.setitem(sys.modules, "osgeo", fake_osgeo)
+        monkeypatch.setitem(sys.modules, "osgeo.gdal", fake_gdal)
+
+        assert _tif_size("x.tif") == (2800, 2800)

@@ -288,6 +288,21 @@ class TestBuildSections:
         assert "forestières" in values
         assert "limitation A" in values
 
+    def test_fiabilite_section_when_thresholds_fiabilite(self):
+        # 2026-09-09 : catégories par classe (part de vrais objets mesurée au banc)
+        card = {"display_name": "x", "thresholds": {"fiabilite": {"par_classe": {"cratere": [
+            {"categorie": "douteux", "seuil": 0.3, "garanti": 0.0, "mesure": 0.2, "n": 100},
+            {"categorie": "quasi_certain", "seuil": 0.7, "garanti": 0.85, "mesure": 0.95, "n": 1013},
+        ]}, "provenance": "p"}}}
+        s = next(x for x in build_sections(card) if x.title == "FIABILITÉ DES DÉTECTIONS")
+        assert s.collapsed is False
+        assert s.rows[0].label == "cratere — Très probable"
+        assert s.rows[0].value == ("score ≥ 0.70 : ≥ 85 % de vrais objets sur le banc "
+                                   "(mesuré : 95 % sur 1" + " " + "013 détections)")  # espace simple
+        assert s.rows[1].label == "cratere — Douteux"
+        assert s.rows[-1] == Row("Provenance", "p")
+        assert not [x for x in build_sections({"display_name": "x"}) if x.title.startswith("FIABILITÉ")]
+
     def test_no_notes_section_when_nothing_to_show(self):
         sections = build_sections({"architecture": "X"}, args=None)
         assert [s for s in sections if "NOTES" in s.title] == []

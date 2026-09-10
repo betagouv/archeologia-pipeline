@@ -7,6 +7,7 @@ from typing import Any, Dict, Optional
 from ...cancellation import check_cancelled
 from ...coords import extract_xy_from_tile_name as _extract_xy_from_tile_name
 from ...subprocess_utils import run_subprocess_cancellable
+from .results import needs_refresh
 from .rvt_naming import PRODUCT_ORDER, get_rvt_source_and_dest_filenames
 from ...types import CancelCheckFn, LogFn
 
@@ -58,7 +59,12 @@ def crop_final_products(
         src_path = temp_dir / src_name
         dst_path = temp_dir / dst_name
 
-        if dst_path.exists():
+        # Fraîcheur, pas simple existence : un produit recalculé (MNT source
+        # re-matérialisé) est plus récent que son rogné → re-cropé et propagé.
+        # Source absente + rogné présent → rogné gardé (comportement historique).
+        if dst_path.exists() and (
+            not src_path.exists() or not needs_refresh(src_path, dst_path)
+        ):
             cropped[product_name] = dst_path
             continue
 
@@ -73,9 +79,14 @@ def crop_final_products(
 
         # Compression spécifique pour MNT: LERC_ZSTD avec tolérance 1cm
         # (précision LiDAR HD: 0-10cm absolu, 0-5cm relatif)
+        # -overwrite : avec des options de création (-co), gdalwarp REFUSE
+        # d'écraser un dataset existant (« Output dataset exists… Please
+        # delete existing dataset ») — cas atteint depuis la publication par
+        # fraîcheur (re-rognage d'un rogné périmé).
         if product_name == "MNT":
             cmd = [
                 gdalwarp,
+                "-overwrite",
                 "-te",
                 xmin_r,
                 ymin_r,
@@ -93,6 +104,7 @@ def crop_final_products(
         else:
             cmd = [
                 gdalwarp,
+                "-overwrite",
                 "-te",
                 xmin_r,
                 ymin_r,
@@ -156,12 +168,18 @@ def copy_products_without_crop(
         src_path = temp_dir / src_name
         dst_path = temp_dir / dst_name
 
-        if dst_path.exists():
-            copied[product_name] = dst_path
+        if not src_path.exists() or src_path.stat().st_size == 0:
+            if dst_path.exists():
+                copied[product_name] = dst_path
+                continue
+            log(f"Fichier source introuvable/vide pour {product_name}: {src_path.name}")
             continue
 
-        if not src_path.exists() or src_path.stat().st_size == 0:
-            log(f"Fichier source introuvable/vide pour {product_name}: {src_path.name}")
+        # Fraîcheur, pas simple existence : copy2 préserve les mtimes, donc une
+        # copie à jour n'est pas refaite ; une source re-matérialisée plus
+        # récente (cache invalidé, MNT remplacé) est re-propagée.
+        if not needs_refresh(src_path, dst_path):
+            copied[product_name] = dst_path
             continue
 
         shutil.copy2(str(src_path), str(dst_path))

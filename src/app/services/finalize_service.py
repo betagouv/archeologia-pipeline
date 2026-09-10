@@ -13,15 +13,22 @@ LogFn = Callable[[str], None]
 def build_entity_grouping(
     runs: Optional[List[Dict[str, Any]]],
 ) -> "tuple[Dict[str, str], set]":
-    """Depuis les runs, renvoie ``(entity_labels: slug→libellé, derived_slugs)``.
+    """Depuis les runs, renvoie ``(entity_labels: slug→libellé, grouped_slugs)``.
 
-    ``derived_slugs`` = slugs des entités **dérivées** (zone + constituants) : seules
-    elles forment un groupe de couches — dans le ``.qgs`` (``ui/qgs_writer``) **et** au
-    chargement live (``layer_loader.load_result_layers``). Helper partagé par les deux
-    chemins pour garantir le **même** regroupement.
+    ``grouped_slugs`` = slugs dont les couches forment un groupe QGIS — dans le
+    ``.qgs`` (``ui/qgs_writer``) **et** au chargement live
+    (``layer_loader.load_result_layers``). Helper partagé par les deux chemins
+    pour garantir le **même** regroupement. Deux cas :
+
+    - entités **dérivées** (zone + constituants) : groupe nommé par le label de
+      l'entité (historique) ;
+    - variantes d'une entité **comparée** (A/B multi-modèles, clé
+      ``group_label`` posée par l'orchestrateur) : les slugs qualifiés des
+      variantes partagent le même ``group_label`` → même groupe QGIS
+      (ex. « Parcellaire (comparaison) »).
     """
     entity_labels: Dict[str, str] = {}
-    derived_slugs: set = set()
+    grouped_slugs: set = set()
     for r in runs or []:
         if not isinstance(r, dict):
             continue
@@ -32,9 +39,16 @@ def build_entity_grouping(
             if not slug:
                 continue
             entity_labels[slug] = str(ent.get("label") or slug)
-            if ent.get("is_derived"):
-                derived_slugs.add(slug)
-    return entity_labels, derived_slugs
+            group_label = str(ent.get("group_label") or "").strip()
+            # group_label AVANT is_derived : une entité dérivée COMPARÉE porte
+            # les deux — ses variantes doivent partager le groupe commun
+            # « X (comparaison) », pas deux groupes qualifiés séparés.
+            if group_label:
+                grouped_slugs.add(slug)
+                entity_labels[slug] = group_label
+            elif ent.get("is_derived"):
+                grouped_slugs.add(slug)
+    return entity_labels, grouped_slugs
 
 
 def build_min_confidence_by_slug(
@@ -84,7 +98,10 @@ def build_min_confidence_by_slug(
         else:
             fn = model_slug_fn
             if fn is None:
-                from ...pipeline.cv.runner_cache import get_model_slug as fn  # import différé
+                try:  # fallback standalone (tests : src/ sur le path)
+                    from ...pipeline.cv.runner_cache import get_model_slug as fn
+                except ImportError:  # pragma: no cover
+                    from pipeline.cv.runner_cache import get_model_slug as fn
             _put(fn(run), conf)
 
     return result
@@ -309,7 +326,7 @@ def finalize_pipeline(
     coverage_threshold_percent: float = 30.0,
     ui_config: Optional[Dict[str, Any]] = None,
     outcome: str = "success",
-) -> None:
+) -> bool:
     """
     Finalisation commune à tous les runners :
     1. Création des index VRT (tif/)
@@ -324,6 +341,10 @@ def finalize_pipeline(
     quand une exception fatale était en vol (AUDIT v2 ROB-14).
     ``tiles_total`` permet un décompte honnête (réussies/total) quand des
     éléments ont échoué ; défaut = ``tiles_processed``.
+
+    Renvoie le verdict final (``True`` = succès annoncé ✅), remonté par les
+    runners jusqu'au bandeau de fin de l'UI — sans quoi un run conclu « ❌ »
+    dans le journal s'affichait « ✓ Pipeline terminé » à l'écran.
     """
     import time
 
@@ -366,6 +387,22 @@ def finalize_pipeline(
     except ImportError:  # pragma: no cover
         from pipeline.cv.class_utils import resolve_cv_runs
     cv_runs = resolve_cv_runs(cv_cfg or {})
+    # Purge des variantes d'entité PÉRIMÉES (bascule mono ↔ comparaison A/B
+    # dans le même output_dir) AVANT la collecte : sinon leurs GPKG seraient
+    # re-collectés (couches dupliquées, seuil de symbologie de repli faux).
+    # Ne touche qu'aux entités des runs courants ; les couches QGIS pointant
+    # sur ces fichiers ont été retirées au lancement (purge_output_dir_layers).
+    try:
+        try:  # fallback standalone
+            from ...pipeline.output_paths import select_stale_entity_variant_dirs
+        except ImportError:  # pragma: no cover
+            from pipeline.output_paths import select_stale_entity_variant_dirs
+        import shutil
+        for _stale_dir in select_stale_entity_variant_dirs(output_dir, cv_runs):
+            shutil.rmtree(_stale_dir, ignore_errors=True)
+            log(f"Détections : variante périmée purgée -> {_stale_dir.name}/")
+    except Exception as _e:  # jamais bloquant pour la finalisation
+        log(f"Purge des variantes périmées ignorée ({_e})")
     shapefile_paths: List[str] = _collect_shapefiles(det_dir)
 
     # 3. Les couleurs ne sont plus pré-calculées ici : chaque classe dérive sa
@@ -415,7 +452,9 @@ def finalize_pipeline(
             ],
             "structure": {
                 "indices": str(idx_dir),
-                "detections": str(det_dir),
+                # detections/ n'est créé que si la CV a produit un livrable :
+                # ne pas enregistrer de chemin fantôme quand la CV est inactive.
+                **({"detections": str(det_dir)} if Path(det_dir).is_dir() else {}),
             },
             "ui_config": ui_config or {},
         }
@@ -430,6 +469,13 @@ def finalize_pipeline(
     products_list = active_products or []
     total = tiles_total if tiles_total is not None else tiles_processed
     success = outcome == "success"
+    # 0/N : un lot dont AUCUNE dalle n'a produit de sortie n'est pas un succès
+    # — aucun livrable n'existe. L'échec partiel (p > 0) reste un ✅ avec ⚠️,
+    # et les modes sans compteur (total == 0, ex. existing_rvt sans CV) ne sont
+    # pas concernés.
+    all_tiles_failed = bool(total) and tiles_processed == 0
+    if success and all_tiles_failed:
+        success = False
 
     if slog:
         slog.end_pipeline(
@@ -442,7 +488,9 @@ def finalize_pipeline(
     # « ⏹ Traitement annulé » est émis par le runner après la finalisation —
     # rien à annoncer ici dans le cas cancelled.
     if outcome == "failed":
-        narrator.pipeline_failed("erreur inattendue pendant le traitement")
+        narrator.pipeline_failed("erreur inattendue pendant le traitement", start_time=start_time)
+    elif outcome == "success" and all_tiles_failed:
+        narrator.pipeline_failed("aucune dalle n'a produit de sortie", start_time=start_time)
     elif success:
         narrator.pipeline_complete(
             tiles_processed=tiles_processed,
@@ -495,3 +543,5 @@ def finalize_pipeline(
         reporter.stage("Annulé")
     else:
         reporter.stage("Interrompu par une erreur")
+
+    return success

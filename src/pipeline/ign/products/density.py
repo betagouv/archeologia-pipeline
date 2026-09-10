@@ -6,6 +6,7 @@ from typing import Any, Dict, Optional, Tuple
 
 from ..pdal_validation import get_laz_bounds, validate_las_or_laz_with_pdal
 from .qgis_processing import run_qgis_algorithm
+from .results import needs_refresh
 from ...coords import extract_xy_from_tile_name as _extract_xy_str
 from ...types import LogFn
 
@@ -35,7 +36,12 @@ def create_density_map(
     output_file = f"{current_tile_name}_densite.tif"
     output_path = temp_dir / output_file
 
-    if output_path.exists():
+    # Fraîcheur vis-à-vis du LAZ fusionné (cf. mnt.py) ; entrée absente +
+    # sortie présente → cache gardé (comportement historique).
+    if output_path.exists() and (
+        not input_laz_path.exists() or not needs_refresh(input_laz_path, output_path)
+    ):
+        log(f"Densité réutilisée (cache intermédiaire) : {output_file}")
         return DensityResult(density_path=output_path)
 
     if not input_laz_path.exists():

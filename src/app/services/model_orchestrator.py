@@ -37,6 +37,10 @@ from __future__ import annotations
 
 import json
 import logging
+import re
+
+from .fiabilite import parse_fiabilite, run_block
+import unicodedata
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, FrozenSet, List, Optional, Sequence, Set, Tuple
@@ -104,9 +108,24 @@ class InstalledModel:
     derived_output_labels: Dict[str, str] = field(default_factory=dict)
     # Seuils par défaut (model_card:thresholds) — injectés par run, surchargeables
     # par entité côté UI (confiance + aire min). IoU jamais exposé dans l'UI.
-    default_confidence: float = 0.2
+    # 0.3 = défaut UNIFIÉ de la chaîne CV (= pipeline.cv.model_config.DEFAULT_CONFIDENCE,
+    # littéral ici pour ne pas coupler app→pipeline ; gardé par test_defauts_cv_unifies).
+    default_confidence: float = 0.3
     default_min_area: float = 0.0
     default_iou: float = 0.5
+    # preferred_rvt.params canonisés (tuple trié) — cf. _extract_rvt_params.
+    rvt_params: Tuple[Tuple[str, Any], ...] = ()
+    # Seuils de confiance PAR CLASSE (model_card:thresholds.confidence_per_class,
+    # {nom de classe: seuil}). Mesure au banc : les optima par classe s'étalent de
+    # 0,10 à 0,30 sur lineaires_seg_v2_1, un seuil unique sacrifie les classes
+    # rares. Une classe absente du dict retombe sur ``default_confidence``.
+    default_confidence_per_class: Dict[str, float] = field(default_factory=dict)
+    # Fiabilité affichée (model_card:thresholds.fiabilite, 2026-09-09) : catégories
+    # douteux/possible/probable/quasi_certain PAR CLASSE, définies par la part de
+    # vrais objets mesurée au banc (cf. app.services.fiabilite). Vide = tranches
+    # conf_bin historiques.
+    fiabilite_per_class: Dict[str, Tuple[Any, ...]] = field(default_factory=dict)
+    fiabilite_provenance: str = ""
     # Dossier du modèle sur disque (``data/models/<name>/``). Utile côté UI pour
     # ouvrir le dossier dans l'explorateur ou (re)lire ``model_card.yaml`` /
     # ``args.yaml`` à la demande sans relancer ``discover_installed_models``.
@@ -222,7 +241,8 @@ def discover_installed_models(models_dir: Any) -> List[InstalledModel]:
         if not class_names:
             logger.warning("Modèle '%s' sans classe exploitable, ignoré", sub.name)
             continue
-        conf, area, iou = _extract_thresholds(card)
+        conf, conf_pc, area, iou = _extract_thresholds(card)
+        fiab_pc, fiab_prov = parse_fiabilite(card.get("thresholds"))
         clustering_rules = _load_args_clustering(sub)
         # cluster_options construites AVANT le merge des cibles dérivées : sinon
         # une cible déjà agrégée se verrait proposer une case « cluster » redondante.
@@ -239,6 +259,7 @@ def discover_installed_models(models_dir: Any) -> List[InstalledModel]:
                 display_name=str(card.get("display_name") or sub.name),
                 weights_path=_find_weights(sub),
                 target_rvt=_extract_target_rvt(card),
+                rvt_params=_extract_rvt_params(card),
                 status=str(card.get("status") or "").strip(),
                 coverage=coverage,
                 class_names=class_names,
@@ -249,6 +270,9 @@ def discover_installed_models(models_dir: Any) -> List[InstalledModel]:
                 derived_source_labels={k: v[1] for k, v in derived_meta.items() if v[1]},
                 derived_output_labels={k: v[2] for k, v in derived_meta.items() if v[2]},
                 default_confidence=conf,
+                default_confidence_per_class=conf_pc,
+                fiabilite_per_class=fiab_pc,
+                fiabilite_provenance=fiab_prov,
                 default_min_area=area,
                 default_iou=iou,
                 model_dir=sub,
@@ -296,19 +320,46 @@ def _extract_target_rvt(card: Dict[str, Any]) -> str:
     return "LD"
 
 
-def _extract_thresholds(card: Dict[str, Any]) -> Tuple[float, float, float]:
-    """``(confidence_default, min_area_m2, iou)`` depuis ``model_card:thresholds``.
+def _extract_rvt_params(card: Dict[str, Any]) -> Tuple[Tuple[str, Any], ...]:
+    """``preferred_rvt.params`` canonisés (tuple trié) — sert à détecter deux
+    modèles au même TYPE de RVT mais aux paramètres divergents (ex. enclos LD
+    Rmin5/Rmax10 vs cratères LD Rmin10/Rmax20) : le regroupement des runs par
+    type seul leur ferait partager UN raster aux paramètres de l'un des deux
+    (audit 2026-08-31, §RVT)."""
+    pref = card.get("preferred_rvt")
+    if isinstance(pref, dict) and isinstance(pref.get("params"), dict):
+        return tuple(sorted((str(k), v) for k, v in pref["params"].items()))
+    return ()
 
-    Défauts : confiance 0.2, aire min 0, IoU 0.5. L'IoU peut être déclaré sous
-    ``iou`` ou ``iou_threshold`` (jamais exposé dans l'UI, seulement le pipeline).
+
+def _extract_thresholds(card: Dict[str, Any]) -> Tuple[float, Dict[str, float], float, float]:
+    """``(confidence_default, confidence_per_class, min_area_m2, iou)`` depuis
+    ``model_card:thresholds``.
+
+    Défauts : confiance 0.3 (défaut UNIFIÉ de la chaîne CV, cf.
+    pipeline.cv.model_config.DEFAULT_CONFIDENCE), aire min 0, IoU 0.5. L'IoU peut
+    être déclaré sous ``iou`` ou ``iou_threshold`` (jamais exposé dans l'UI,
+    seulement le pipeline). ``confidence_per_class`` est optionnel :
+    ``{nom de classe: seuil}``. Une entrée non castable est ignorée, pas fatale
+    (model_card édité à la main).
     """
-    conf, area, iou = 0.2, 0.0, 0.5
+    conf, area, iou = 0.3, 0.0, 0.5
+    conf_pc: Dict[str, float] = {}
     th = card.get("thresholds")
     if isinstance(th, dict):
         try:
             conf = float(th.get("confidence_default", conf))
         except (TypeError, ValueError):
             pass
+        pc = th.get("confidence_per_class")
+        if isinstance(pc, dict):
+            for nom, val in pc.items():
+                try:
+                    conf_pc[str(nom)] = float(val)
+                except (TypeError, ValueError):
+                    logger.warning(
+                        "thresholds.confidence_per_class[%r]=%r non numérique, ignoré",
+                        nom, val)
         try:
             area = float(th.get("min_area_m2", area))
         except (TypeError, ValueError):
@@ -320,7 +371,7 @@ def _extract_thresholds(card: Dict[str, Any]) -> Tuple[float, float, float]:
                     break
                 except (TypeError, ValueError):
                     pass
-    return conf, area, iou
+    return conf, conf_pc, area, iou
 
 
 def _extract_coverage(
@@ -398,8 +449,17 @@ def _load_args_clustering(model_dir: Path) -> List[Tuple[FrozenSet[str], str]]:
     return rules
 
 
-_CLUSTER_PARAM_INT = ("min_cluster_size", "min_samples")
-_CLUSTER_PARAM_FLOAT = ("eps_m", "min_confidence", "min_area_m2", "buffer_m")
+_CLUSTER_PARAM_INT = ("min_cluster_size", "min_samples", "min_sources")
+# Paramètres exposables : DBSCAN + briques enclosure et alignment. Seuls ceux
+# présents dans la règle args.yaml du modèle sont retenus, donc les clés d'un
+# type n'apparaissent jamais sur une règle d'un autre type.
+_CLUSTER_PARAM_FLOAT = (
+    "eps_m", "min_confidence", "min_area_m2", "buffer_m",
+    "gap_tolerance_m", "max_area_m2", "min_closure", "max_elongation",
+    "min_ancrage", "max_isolement", "min_rectangularite",
+    "band_width_m", "angle_tolerance_deg", "min_length_m", "max_gap_m",
+    "min_coverage",
+)
 
 
 def _load_cluster_defaults(model_dir: Path) -> Dict[str, Dict[str, float]]:
@@ -580,13 +640,21 @@ def build_entity_coverage(
 
 
 def _pick_default_model(candidates: Sequence[InstalledModel]) -> Optional[str]:
-    """Défaut = modèle ``production`` le plus spécialisé (moins de classes),
+    """Défaut = ``production`` d'abord, puis — à statut égal — le modèle porteur de
+    seuils par classe MESURÉS (audit 2026-08-31 : sans ce critère, un modèle beta
+    dont les seuils F1-max ont été mesurés perdait systématiquement contre un
+    production jamais calibré), puis le plus spécialisé (moins de classes),
     départage alphabétique."""
     if not candidates:
         return None
     ranked = sorted(
         candidates,
-        key=lambda m: (0 if m.status == "production" else 1, len(m.class_names), m.name),
+        key=lambda m: (
+            0 if m.status == "production" else 1,
+            0 if m.default_confidence_per_class else 1,
+            len(m.class_names),
+            m.name,
+        ),
     )
     return ranked[0].name
 
@@ -629,9 +697,107 @@ def _compute_layer_names(
 # ----------------------------------------------------------------------
 # Résolution des runs
 # ----------------------------------------------------------------------
+def _model_slug_qualifier(model_name: str) -> str:
+    """Qualificatif de slug pour une variante comparée.
+
+    Même classe de caractères que la re-sanitisation de
+    ``output_paths.build_entity_class_targets`` (``[a-z0-9_-]``) pour que le
+    slug qualifié traverse le routage sans altération, en PRÉSERVANT les
+    tirets : « formes-v2 » et « formes_v2 » restent des qualificatifs
+    distincts (``slugify`` les aurait confondus en ``formes_v2``).
+    """
+    folded = unicodedata.normalize("NFKD", model_name).encode("ascii", "ignore").decode("ascii")
+    out = re.sub(r"[^a-z0-9_-]+", "_", folded.lower()).strip("_")
+    return out or "modele"
+
+
+def _entity_block(
+    eid: str,
+    model: InstalledModel,
+    classes_sorted: List[str],
+    label_by_id: Dict[str, str],
+    *,
+    compared: bool,
+) -> Dict[str, Any]:
+    """Bloc ``entities[i]`` d'un run pour une entité.
+
+    ``compared=False`` (une entité = un modèle, historique) : slug/label/couches
+    inchangés. ``compared=True`` (entité portée par ≥ 2 modèles, comparaison
+    A/B) : les sorties sont **qualifiées par modèle** pour que chaque variante
+    ait son dossier (``detections/<slug>--<modèle>/``), ses noms de couche et —
+    via le registre indexé par nom de couche — sa couleur propres ; le
+    ``group_label`` commun regroupe les variantes sous un même groupe QGIS
+    (cf. ``finalize_service.build_entity_grouping``).
+    """
+    base_label = label_by_id.get(eid, eid)
+    base_slug = slugify(base_label) or eid
+    layer_names = _compute_layer_names(model, eid, classes_sorted)
+    block: Dict[str, Any] = {
+        "id": eid,
+        "label": base_label,
+        "slug": base_slug,
+        "classes": classes_sorted,
+        "is_derived": eid in model.derived_entities,
+        "layer_names": layer_names,
+    }
+    if compared:
+        block["slug"] = f"{base_slug}--{_model_slug_qualifier(model.name)}"
+        block["label"] = f"{base_label} — {model.display_name}"
+        block["group_label"] = f"{base_label} (comparaison)"
+        block["layer_names"] = {
+            c: f"{layer_names.get(c, c)} — {model.display_name}"
+            for c in classes_sorted
+        }
+    return block
+
+
+def effective_model_names(
+    ec: EntityCoverage, overrides: Optional[Dict[str, Any]]
+) -> List[str]:
+    """Modèles effectifs d'une entité (1..n) : la surcharge UI filtrée aux
+    candidats encore valides (installés ET couvrant l'entité), sinon le défaut.
+
+    La surcharge (``computer_vision.entity_model_overrides``) accepte une
+    **chaîne** (historique, un seul modèle) ou une **liste** de noms — plusieurs
+    modèles cochés = mode comparaison A/B (un run par modèle en aval). Un membre
+    périmé — model_card modifié entre deux sessions, modèle désinstallé — est
+    filtré avec un ``logger.warning`` ; liste vide après filtrage → retour au
+    modèle par défaut (l'entité ne disparaît jamais silencieusement, garde du
+    commit 21d3113). Partagé par ``resolve_runs_from_entities`` et l'affichage
+    des cartes (étape 3) pour que l'UI et le pipeline restent cohérents.
+    """
+    raw = (overrides or {}).get(ec.entity.id)
+    if raw is None:
+        names: List[str] = []
+    elif isinstance(raw, str):
+        names = [raw]
+    elif isinstance(raw, (list, tuple, set)):
+        names = [str(n) for n in raw]
+    else:
+        # Scalaire inattendu (int/bool… d'une config éditée à la main) : traité
+        # comme une surcharge périmée → warning + repli défaut, jamais de crash
+        # (même tolérance que la garde 21d3113 / AUDIT PARSE-04).
+        names = [str(raw)]
+    valid, seen = [], set()
+    for name in names:
+        if name in ec.candidate_models:
+            if name not in seen:
+                valid.append(name)
+                seen.add(name)
+        else:
+            logger.warning(
+                "Surcharge périmée pour '%s' : modèle '%s' invalide, ignoré "
+                "(défaut : '%s')",
+                ec.entity.id, name, ec.default_model,
+            )
+    if valid:
+        return valid
+    return [ec.default_model] if ec.default_model else []
+
+
 def resolve_runs_from_entities(
     selected_entity_ids: Sequence[str],
-    overrides: Optional[Dict[str, str]],
+    overrides: Optional[Dict[str, Any]],
     installed_models: Sequence[InstalledModel],
     catalog: Sequence[EntityDef],
     cluster_enabled: Optional[Set[str]] = None,
@@ -647,6 +813,10 @@ def resolve_runs_from_entities(
     clustering du modèle (ex. ``zone_crateres``). Ainsi le clustering ne se
     déclenche que si l'utilisateur l'a coché (cf. filtre de ``runner_shapefiles``
     sur ``output_class_name``). Entité hors catalogue / sans modèle → ignorée.
+
+    Une entité dont la surcharge liste **plusieurs** modèles (comparaison A/B)
+    tombe dans un run par modèle, avec des sorties qualifiées par modèle
+    (cf. :func:`_entity_block`).
     """
     overrides = overrides or {}
     cluster_enabled = cluster_enabled or set()
@@ -657,48 +827,87 @@ def resolve_runs_from_entities(
     label_by_id = {e.id: e.label for e in catalog}
 
     # (modèle, rvt) -> {classes: set, entities: [ids]} pour pouvoir agréger les
-    # seuils surchargés par entité au niveau du run.
+    # seuils surchargés par entité au niveau du run. Une entité peut porter
+    # PLUSIEURS modèles effectifs (comparaison A/B) → elle tombe alors dans un
+    # groupe par modèle ; models_per_eid trace les modèles ayant réellement
+    # retenu l'entité (pour qualifier ses sorties en aval).
     groups: Dict[Tuple[str, str], Dict[str, Any]] = {}
+    models_per_eid: Dict[str, List[str]] = {}
     for eid in selected_entity_ids:
         ec = coverage_by_id.get(eid)
         if ec is None:
             logger.warning("Entité hors catalogue ignorée: %s", eid)
             continue
-        model_name = overrides.get(eid) or ec.default_model
-        if not model_name:
+        model_names = effective_model_names(ec, overrides)
+        if not model_names:
             logger.warning("Entité '%s' sans modèle disponible, ignorée", eid)
             continue
-        model = models_by_name.get(model_name)
-        if model is None:
-            logger.warning("Modèle '%s' (pour '%s') introuvable, ignoré", model_name, eid)
-            continue
-        classes = model.coverage.get(eid)
-        if not classes:
-            logger.warning("Modèle '%s' ne couvre pas l'entité '%s', ignoré", model_name, eid)
-            continue
-        ec_classes = set(classes)
-        if eid in cluster_enabled:
-            ec_classes.update(model.cluster_options.get(eid, ()))
-        group = groups.setdefault(
-            (model.name, model.target_rvt),
-            {"classes": set(), "entities": [], "entity_classes": {}},
-        )
-        group["classes"].update(ec_classes)
-        group["entities"].append(eid)
-        group["entity_classes"][eid] = ec_classes
+        for model_name in model_names:
+            model = models_by_name.get(model_name)
+            if model is None:
+                logger.warning("Modèle '%s' (pour '%s') introuvable, ignoré", model_name, eid)
+                continue
+            classes = model.coverage.get(eid)
+            if not classes:
+                logger.warning("Modèle '%s' ne couvre pas l'entité '%s', ignoré", model_name, eid)
+                continue
+            ec_classes = set(classes)
+            if eid in cluster_enabled:
+                ec_classes.update(model.cluster_options.get(eid, ()))
+            group = groups.setdefault(
+                (model.name, model.target_rvt),
+                {"classes": set(), "entities": [], "entity_classes": {}},
+            )
+            group["classes"].update(ec_classes)
+            group["entities"].append(eid)
+            group["entity_classes"][eid] = ec_classes
+            models_per_eid.setdefault(eid, []).append(model.name)
+
+    # Garde conservatoire (audit 2026-08-31, §RVT) : deux modèles au même TYPE de
+    # RVT mais aux preferred_rvt.params divergents partagent aujourd'hui UN seul
+    # raster (déduplication par type en aval) — les params de l'un des deux
+    # s'imposent à l'autre. Tant que la déduplication par (type, params) n'est
+    # pas implémentée, on le SIGNALE au lieu de le taire.
+    _params_par_type: Dict[str, Dict[Tuple, str]] = {}
+    for model_name, rvt in groups:
+        m = models_by_name[model_name]
+        _params_par_type.setdefault(rvt, {})[m.rvt_params] = model_name
+    for rvt, variantes in _params_par_type.items():
+        if len(variantes) > 1:
+            logger.warning(
+                "RVT %s partagé par des modèles aux paramètres DIVERGENTS (%s) : "
+                "un seul raster sera calculé, avec les paramètres d'un seul modèle "
+                "— vérifier preferred_rvt.params des model_cards",
+                rvt, ", ".join(sorted(variantes.values())),
+            )
 
     runs: List[Dict[str, Any]] = []
     for key in sorted(groups):
         model_name, rvt = key
         model = models_by_name[model_name]
         group = groups[key]
-        # Seuils : surcharge par entité si fournie (min = plus permissif si
-        # plusieurs entités d'un même run divergent), sinon défaut du modèle.
-        conf_over = [
-            entity_thresholds[e]["confidence_threshold"]
-            for e in group["entities"]
-            if e in entity_thresholds and "confidence_threshold" in entity_thresholds[e]
-        ]
+        # Seuils de confiance PAR CLASSE : défauts du model_card, puis surcharge
+        # par entité (UI) appliquée aux classes de CETTE entité seulement.
+        # L'ancien comportement — min() de toutes les surcharges imposé au run
+        # entier — donnait le seuil le plus bas à TOUTES les classes du run : une
+        # entité non surchargée héritait du seuil d'une autre. Le scalaire
+        # ``confidence_threshold`` reste émis comme PLANCHER de décodage (min des
+        # seuils applicables) pour les consommateurs qui ne connaissent pas le
+        # dict (log, garde-fou clustering) ; le filtre fin par classe est fait au
+        # décodage ONNX via ``confidence_per_class``.
+        conf_par_classe: Dict[str, float] = {
+            c: v for c, v in model.default_confidence_per_class.items()
+            if c in group["classes"]
+        }
+        for e in group["entities"]:
+            ov_e = entity_thresholds.get(e, {})
+            if "confidence_threshold" in ov_e:
+                for c in group["entity_classes"][e]:
+                    conf_par_classe[c] = float(ov_e["confidence_threshold"])
+        plancher_conf = min(
+            [conf_par_classe.get(c, model.default_confidence) for c in group["classes"]]
+            or [model.default_confidence]
+        )
         area_over = [
             entity_thresholds[e]["min_area_m2"]
             for e in group["entities"]
@@ -716,26 +925,34 @@ def resolve_runs_from_entities(
             for oc in group["entity_classes"][e]:
                 if oc in model.cluster_defaults:
                     clustering_overrides[oc] = dict(params)
+        # Fiabilité affichée : catégories EFFECTIVES (au seuil de chaque classe dans
+        # ce run, surcharge UI comprise) — consommées à la conversion (champs
+        # fiabilite/fiabilite_pct + sidecar fiabilite.json) puis par la symbologie.
+        fiab_bloc = run_block(
+            model.fiabilite_per_class,
+            {c: conf_par_classe.get(c, model.default_confidence) for c in group["classes"]},
+            sorted(group["classes"]),
+            modele=model.display_name,
+            provenance=model.fiabilite_provenance,
+        )
         runs.append(
             {
                 "model": model_name,
                 "target_rvt": rvt,
                 "selected_classes": sorted(group["classes"]),
                 "clustering_overrides": clustering_overrides,
+                **({"fiabilite": fiab_bloc} if fiab_bloc else {}),
                 "entities": [
-                    {
-                        "id": eid,
-                        "label": label_by_id.get(eid, eid),
-                        "slug": slugify(label_by_id.get(eid, eid)) or eid,
-                        "classes": sorted(group["entity_classes"][eid]),
-                        "is_derived": eid in model.derived_entities,
-                        "layer_names": _compute_layer_names(
-                            model, eid, sorted(group["entity_classes"][eid])
-                        ),
-                    }
+                    _entity_block(
+                        eid, model,
+                        sorted(group["entity_classes"][eid]),
+                        label_by_id,
+                        compared=len(models_per_eid.get(eid, [])) > 1,
+                    )
                     for eid in sorted(group["entities"])
                 ],
-                "confidence_threshold": float(min(conf_over) if conf_over else model.default_confidence),
+                "confidence_threshold": float(plancher_conf),
+                "confidence_per_class": {c: float(v) for c, v in sorted(conf_par_classe.items())},
                 "iou_threshold": float(model.default_iou),
                 "min_area_m2": float(min(area_over) if area_over else model.default_min_area),
             }

@@ -677,6 +677,7 @@ def _filter_gpkg_by_min_area(
     gpkg_paths: List[str],
     min_area_m2: float = 50.0,
     crs: str = "EPSG:2154",
+    exempt_layers: frozenset = frozenset(),
 ) -> None:
     """
     Filtre les détections trop petites dans un ou plusieurs GeoPackages.
@@ -686,6 +687,9 @@ def _filter_gpkg_by_min_area(
         gpkg_paths: Liste des chemins vers les GeoPackages à filtrer
         min_area_m2: Aire minimale requise en m²
         crs: Système de coordonnées
+        exempt_layers: Noms de couches épargnés — les sorties des briques de
+            synthèse (enclos, zones de clusters) portent leur propre seuil
+            d'aire par règle ; le seuil global du modèle ne doit pas les raboter.
     """
     logger.info(f"Filtrage GPKG par aire: suppression des détections < {min_area_m2} m²")
 
@@ -701,6 +705,10 @@ def _filter_gpkg_by_min_area(
         total_remaining = 0
         had_error = False
         for layer in layers:
+            if layer in exempt_layers:
+                logger.info(f"Filtrage GPKG: couche synthétique '{layer}' épargnée")
+                total_remaining += 1  # couche conservée → GPKG jamais supprimé
+                continue
             try:
                 gdf = _safe_read_file(str(p), layer=layer)
                 if gdf.empty:
@@ -712,7 +720,15 @@ def _filter_gpkg_by_min_area(
                         pass
                 gdf['__area'] = gdf.geometry.area
                 n_before = len(gdf)
-                gdf = gdf[gdf['__area'] >= min_area_m2].drop(columns=['__area'], errors='ignore')
+                keep = gdf['__area'] >= min_area_m2
+                # Traçabilité membre→synthèse : un fragment tagué par une brique
+                # (cluster_id/enclos_id/axe_id) survit au filtre d'aire global —
+                # sinon les contours sources d'un enclos/axe disparaissent du
+                # GPKG (bug Bretagne : 434/493 fragments effacés).
+                for tag in ("cluster_id", "enclos_id", "axe_id"):
+                    if tag in gdf.columns:
+                        keep = keep | (gdf[tag].fillna("").astype(str).str.len() > 0)
+                gdf = gdf[keep].drop(columns=['__area'], errors='ignore')
                 n_removed = n_before - len(gdf)
                 if n_removed > 0:
                     logger.info(f"Filtrage GPKG: {n_removed} détection(s) supprimée(s) dans '{layer}' (<{min_area_m2} m²)")
@@ -756,7 +772,11 @@ def create_shapefile_from_detections(
     postprocess_config: dict = None,
     min_confidence: float = 0.0,
     class_targets: dict = None,
+    valid_region_bounds: list = None,
+    model_name: str = None,
     cancel_check: Optional[CancelCheckFn] = None,
+    cell_bounds_by_stem: dict = None,
+    fiabilite: dict = None,
 ) -> bool:
     """
     Crée des shapefiles géoréférencés à partir des fichiers de détection YOLO
@@ -772,11 +792,23 @@ def create_shapefile_from_detections(
         temp_dir (str): Répertoire Temp contenant les TIF sources pour géoréférencement
         class_names (dict): Dictionnaire des noms de classes {class_id: "nom_classe"}
         selected_classes (list): Liste des noms de classes à inclure (None = toutes)
-    
+        cell_bounds_by_stem (dict): ``{stem PNG: (xmin, ymin, xmax, ymax)}`` de la
+            cellule ROGNÉE de chaque image à halo. Règle du centroïde : une
+            détection dont le centre est hors de la cellule de son image est
+            écartée (la dalle voisine la rapporte entière) — plus de doublons
+            cross-dalles ni de fragments coupés au bord du halo. None = pas de halo.
+        fiabilite (dict): bloc ``computer_vision.runs[].fiabilite`` (catégories
+            douteux/possible/probable/quasi_certain PAR CLASSE au seuil effectif du
+            run, cf. ``app.services.fiabilite``). Écrit les champs ``fiabilite``
+            (libellé) et ``fiabilite_pct`` (part de vrais objets mesurée au banc, %)
+            sur chaque détection, et le sidecar ``fiabilite.json`` à côté du
+            GeoPackage (lu par la symbologie). None = tranches conf_bin seules.
+
     Returns:
         bool: True si succès, False sinon
     """
     logger = logging.getLogger(__name__)
+    n_not_owned = 0
     
     try:
         labels_path = Path(labels_dir)
@@ -790,19 +822,28 @@ def create_shapefile_from_detections(
 
         jgw_logged_for_jpg = set()
         
-        # Nom du modèle utilisé pour les détections (stocké comme attribut non éditable)
-        model_name = load_model_name_from_config()
+        # Nom du modèle utilisé pour les détections (stocké comme attribut non
+        # éditable). Priorité au modèle DU RUN (passé par runner_shapefiles —
+        # indispensable en multi-runs A/B) ; repli legacy sur le selected_model
+        # top-level de config.json.
+        if not model_name:
+            model_name = load_model_name_from_config()
         if model_name:
-            logger.info(f"Nom du modèle chargé depuis config.json: {model_name}")
+            logger.info(f"Nom du modèle des détections: {model_name}")
         else:
-            logger.info("Aucun nom de modèle trouvé dans config.json (computer_vision.selected_model)")
+            logger.info("Aucun nom de modèle trouvé (run ni config.json)")
 
         # Liste des classes disponibles (pour ValueMap QGIS)
         # Si class_names n'est pas fourni via le dossier du modèle, on bascule sur des libellés numériques.
         # Parcourir tous les fichiers .txt dans le répertoire
         for label_file in labels_path.glob("*.txt"):
+            # classes.txt (vocabulaire du modèle) vit dans le même dossier que
+            # les labels — ce n'est pas une dalle : sans ce filtre, il déclenche
+            # une fausse ERROR « géoréférencement indisponible pour classes ».
+            if label_file.name == "classes.txt":
+                continue
             base_name = label_file.stem
-            
+
             # Récupérer les données de transformation du TIF correspondant
             pixel_width = pixel_height = x_origin = y_origin = None
             tif_file = None  # Référence au TIF source (si trouvé dans Temp)
@@ -1156,6 +1197,16 @@ def create_shapefile_from_detections(
                                 (x_min, y_min)   # Fermer le polygone
                             ])
                         
+                        # Règle du centroïde (halo) : l'image déborde de sa
+                        # cellule ; seule la dalle qui contient le centre de
+                        # l'objet le rapporte (cf. postprocessing.owned_by_cell).
+                        _cell = (cell_bounds_by_stem or {}).get(base_name)
+                        if _cell is not None:
+                            from .postprocessing import owned_by_cell
+                            if not owned_by_cell(bbox_polygon, _cell):
+                                n_not_owned += 1
+                                continue
+
                         # Initialiser la structure pour cette classe si nécessaire
                         class_id_int = int(class_id)
                         if class_id_int not in data_by_class_and_tile:
@@ -1215,7 +1266,13 @@ def create_shapefile_from_detections(
                 continue
             
             processed_files += 1
-        
+
+        if n_not_owned:
+            logger.info(
+                f"Halo inter-dalles : {n_not_owned} détection(s) centrée(s) hors de la "
+                "cellule de leur image écartée(s) (rapportées par la dalle voisine)"
+            )
+
         if not data_by_class_and_tile:
             # 0 détection est un cas LÉGITIME (le modèle a tourné, rien trouvé),
             # PAS une panne → on renvoie True (succès, rien à écrire). L'appelant
@@ -1290,7 +1347,17 @@ def create_shapefile_from_detections(
             data_by_class_name[class_name].extend(detections)
         
         logger.info(f"Classes regroupées par nom: {list(data_by_class_name.keys())}")
-        
+
+        # ── Clip au périmètre du run (option B, halo inter-dalles) ──
+        # AVANT fusion/superpositions/clustering : le bruit du halo extérieur
+        # (donnée fabriquée hors du périmètre commandé) ne doit ni fusionner
+        # avec des détections réelles ni compter dans les clusters.
+        if valid_region_bounds:
+            from .postprocessing import clip_detections_to_valid_region
+            data_by_class_name = clip_detections_to_valid_region(
+                data_by_class_name, valid_region_bounds
+            )
+
         # ── Post-traitement global : fusion intra-classe + suppression superpositions ──
         # Deux étapes pilotées par ``postprocess_config`` (le dict produit par
         # :class:`model_profile.PostprocessConfig`.to_dict() — merge_adjacent,
@@ -1306,9 +1373,11 @@ def create_shapefile_from_detections(
         #    désactiver pour les modèles mono-classe.
         #
         # Les modèles de détection bbox (``object_detection``) produisent par
-        # nature des boîtes indépendantes qui ne doivent jamais être fusionnées,
-        # donc on force les deux flags à False dans ce cas (sauf override
-        # explicite par l'utilisateur).
+        # nature des boîtes indépendantes : ``merge_adjacent`` est forcé à False
+        # (pas de soudure de boîtes voisines). En revanche ``remove_overlaps``
+        # reste actif : le halo inter-dalles fait détecter le même objet par
+        # 2-4 dalles voisines, doublons dédupliqués par la stratégie "relation"
+        # (défaut bbox via ModelProfile) en gardant la boîte la plus confiante.
         _segmentation_tasks = {"instance_segmentation", "semantic_segmentation", "segment"}
         _is_segmentation = model_task in _segmentation_tasks if model_task else True
         if isinstance(postprocess_config, dict):
@@ -1356,11 +1425,16 @@ def create_shapefile_from_detections(
                             _overlap_min_area_ratio = _ratio
                     except (TypeError, ValueError):
                         pass
+                # Modèle bbox : une composante de doublons (halo inter-dalles)
+                # est réduite à la boîte la plus confiante — l'union de
+                # rectangles décalés fabriquerait un polygone en L.
+                _keep_best = not _is_segmentation
                 logger.info(
                     f"Post-traitement géo: {total_raw} détections brutes sur {processed_files} dalles "
                     f"(task={model_task}, merge={_do_merge}, remove_overlaps={_do_remove_overlaps}, "
                     f"merge_buffer_m={_merge_buffer_m}, overlap_strategy={_overlap_strategy}, "
-                    f"overlap_ios={_overlap_ios}, overlap_min_area_ratio={_overlap_min_area_ratio})"
+                    f"overlap_ios={_overlap_ios}, overlap_min_area_ratio={_overlap_min_area_ratio}, "
+                    f"keep_best_geometry={_keep_best})"
                 )
                 data_by_class_name = postprocess_geo_detections(
                     data_by_class_name,
@@ -1370,6 +1444,7 @@ def create_shapefile_from_detections(
                     overlap_strategy=_overlap_strategy,
                     overlap_ios_threshold=_overlap_ios,
                     overlap_min_area_ratio=_overlap_min_area_ratio,
+                    overlap_keep_best_geometry=_keep_best,
                 )
                 total_pp = sum(len(v) for v in data_by_class_name.values())
                 logger.info(f"Post-traitement géo terminé: {total_raw} -> {total_pp} détections")
@@ -1390,27 +1465,69 @@ def create_shapefile_from_detections(
                     continue
                 cidx = det.get("__color_idx", rank_for_class(class_name))
                 det["conf_bin"], det["conf_color"] = _confidence_bucket(conf, cidx, min_confidence)
-        
-        # ── Clustering spatial (optionnel) ──
-        _cluster_class_names = set()
+
+        # ── Fiabilité affichée (catégories par classe, 2026-09-09) ──
+        # Posée sur les détections INDIVIDUELLES (les sorties de synthèse, non
+        # mesurées au banc, n'en ont pas). Les catégories effectives viennent du
+        # bloc du run (seuil de la classe déjà appliqué) ; la catégorie basse
+        # commence au seuil, comme la première tranche conf_bin.
+        try:
+            from ...app.services.fiabilite import (
+                CHAMP_LABEL as _FIAB_LABEL, CHAMP_PCT as _FIAB_PCT,
+                categories_du_run as _fiab_categories, categoriser as _fiab_categoriser,
+                pct as _fiab_pct, write_sidecar as _fiab_write_sidecar,
+            )
+        except ImportError:
+            from app.services.fiabilite import (  # type: ignore[no-redef]
+                CHAMP_LABEL as _FIAB_LABEL, CHAMP_PCT as _FIAB_PCT,
+                categories_du_run as _fiab_categories, categoriser as _fiab_categoriser,
+                pct as _fiab_pct, write_sidecar as _fiab_write_sidecar,
+            )
+        _fiab_cats = {}
+        if isinstance(fiabilite, dict):
+            _fiab_cats = {cn: _fiab_categories(fiabilite, cn) for cn in data_by_class_name}
+            _fiab_cats = {cn: cats for cn, cats in _fiab_cats.items() if cats}
+        for class_name, cats in _fiab_cats.items():
+            for det in data_by_class_name.get(class_name, []):
+                cat = _fiab_categoriser(det.get("confidence"), cats)
+                det[_FIAB_LABEL] = cat.label if cat else ""
+                det[_FIAB_PCT] = (float(_fiab_pct(cat.mesure))
+                                  if (cat is not None and cat.mesure is not None) else None)
+        if _fiab_cats:
+            logger.info("Fiabilité affichée : " + " ; ".join(
+                f"{cn} " + "/".join(f"{c.label} ≥ {c.seuil:.2f}" for c in cats)
+                for cn, cats in _fiab_cats.items()))
+
+        # ── Briques de synthèse (clustering, enclos…) ──
+        _synthetic_class_names = set()
         if clustering_configs:
             try:
-                from .clustering import run_clustering
-                logger.info(f"Clustering: {len(clustering_configs)} config(s) à traiter")
-                cluster_dets_by_class, data_by_class_name = run_clustering(
+                from .clustering import run_synthesis
+                logger.info(f"Synthèse: {len(clustering_configs)} règle(s) à traiter")
+                synth_dets_by_class, data_by_class_name = run_synthesis(
                     data_by_class_name, clustering_configs, cancel_check=cancel_check
                 )
-                # Ajouter les clusters comme nouvelles classes
-                for cluster_class, cluster_dets in cluster_dets_by_class.items():
-                    data_by_class_name[cluster_class] = cluster_dets
-                    _cluster_class_names.add(cluster_class)
-                    logger.info(f"Clustering: {len(cluster_dets)} polygone(s) ajouté(s) pour '{cluster_class}'")
+                # Ajouter les sorties de synthèse comme nouvelles classes.
+                # conf_bin/conf_color posés ICI (le recalcul général tourne
+                # AVANT la synthèse) : mêmes tranches que les détections
+                # (même min_confidence) → rendu catégorisé par confiance
+                # possible pour les enclos/axes, au rang couleur de la classe.
+                for synth_class, synth_dets in synth_dets_by_class.items():
+                    data_by_class_name[synth_class] = synth_dets
+                    _synthetic_class_names.add(synth_class)
+                    _cidx = rank_for_class(synth_class)
+                    for det in synth_dets:
+                        conf = det.get("confidence")
+                        if conf is None:
+                            continue
+                        det["conf_bin"], det["conf_color"] = _confidence_bucket(conf, _cidx, min_confidence)
+                    logger.info(f"Synthèse: {len(synth_dets)} polygone(s) ajouté(s) pour '{synth_class}'")
             except PipelineCancelled:
                 raise
             except ImportError as e:
-                logger.warning(f"Clustering ignoré (dépendance manquante): {e}")
+                logger.warning(f"Synthèse ignorée (dépendance manquante): {e}")
             except Exception as e:
-                logger.warning(f"Clustering ignoré (erreur): {e}")
+                logger.warning(f"Synthèse ignorée (erreur): {e}")
 
         # ── Filtrage final des détections sous le seuil du run ──
         # APRÈS le clustering uniquement : l'hystérésis (min_confidence_extend) a
@@ -1422,7 +1539,7 @@ def create_shapefile_from_detections(
             from .class_utils import filter_detections_below_confidence
             _before = sum(len(v) for v in data_by_class_name.values())
             data_by_class_name = filter_detections_below_confidence(
-                data_by_class_name, min_confidence, exempt_classes=_cluster_class_names
+                data_by_class_name, min_confidence, exempt_classes=_synthetic_class_names
             )
             _after = sum(len(v) for v in data_by_class_name.values())
             if _after != _before:
@@ -1438,9 +1555,9 @@ def create_shapefile_from_detections(
         for class_name, detections in data_by_class_name.items():
             check_cancelled(cancel_check)
             # Filtrer par classes sélectionnées si spécifié
-            # None = toutes les classes ; [] = aucune classe (les classes cluster passent toujours)
+            # None = toutes les classes ; [] = aucune classe (les classes synthétiques passent toujours)
             if selected_classes is not None:
-                if class_name not in selected_classes and class_name not in _cluster_class_names:
+                if class_name not in selected_classes and class_name not in _synthetic_class_names:
                     logger.info(f"Classe '{class_name}' ignorée (non sélectionnée)")
                     continue
 
@@ -1514,7 +1631,7 @@ def create_shapefile_from_detections(
                     pass
 
                 # 4) Normalisation des colonnes attributaires (évite types mixtes)
-                text_cols = ["validation", "corr_pred", "model_pred", "model_name", "conf_bin", "conf_color", "cluster_id"]
+                text_cols = ["validation", "corr_pred", "model_pred", "model_name", "conf_bin", "conf_color", "cluster_id", "enclos_id", "forme", "axe_id", "statut", _FIAB_LABEL]
                 for col in text_cols:
                     if col in gdf.columns:
                         gdf[col] = gdf[col].fillna("").astype(str)
@@ -1525,9 +1642,20 @@ def create_shapefile_from_detections(
                         gdf["confidence"] = gdf["confidence"].astype(float)
                     except Exception:
                         gdf["confidence"] = gdf["confidence"].astype(str)
+                if _FIAB_PCT in gdf.columns:
+                    try:
+                        gdf[_FIAB_PCT] = gdf[_FIAB_PCT].astype(float)  # NaN -> NULL (non mesuré)
+                    except Exception:
+                        pass
 
-                # Colonnes numériques de clustering
-                for ncol in ("nb_detect", "area_m2", "density"):
+                # Colonnes numériques des briques de synthèse (clustering, enclos, axes)
+                for ncol in ("nb_detect", "area_m2", "density", "surface_m2",
+                             "conf_fragments",
+                             "closure_ratio", "ancrage", "isolement", "rectangularite",
+                             "compacite", "elongation", "nb_sources",
+                             "longueur_m", "couverture", "largeur_m", "azimut_deg",
+                             "nb_brins", "espacement_brins_m", "parallelisme",
+                             "connecteurs_perp", "discordance_deg"):
                     if ncol in gdf.columns:
                         gdf[ncol] = gdf[ncol].fillna(0)
                         try:
@@ -1603,6 +1731,22 @@ def create_shapefile_from_detections(
             layer_ref = f"{gpkg_path}|layername={class_layer}"
             if layer_ref not in created_shapefiles:
                 created_shapefiles.append(layer_ref)
+
+            # Sidecar fiabilite.json à côté du GeoPackage (une entrée par couche) :
+            # la symbologie (chargement live ET .qgs) y lit les catégories, leur
+            # mesure au banc et la provenance — sans plomberie de signaux.
+            if class_name in _fiab_cats:
+                _entree = {
+                    "classe": class_name,
+                    "modele": str((fiabilite or {}).get("modele") or model_name or ""),
+                    "provenance": str((fiabilite or {}).get("provenance") or ""),
+                    "categories": [c.to_dict() for c in _fiab_cats[class_name]],
+                }
+                for _sc_gpkg, _sc_layer in class_write_targets:
+                    try:
+                        _fiab_write_sidecar(_sc_gpkg, _sc_layer, _entree)
+                    except Exception as _sc_e:  # noqa: BLE001
+                        logger.warning(f"Sidecar fiabilité non écrit pour '{_sc_layer}': {_sc_e}")
 
             # Copies supplémentaires (ex. source d'une entité dérivée, renommée) :
             # même GeoDataFrame écrit dans d'autres GeoPackage/couches (best-effort).

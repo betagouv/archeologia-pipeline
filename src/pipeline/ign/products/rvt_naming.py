@@ -119,6 +119,9 @@ def get_rvt_param_suffix(product_name: str, rvt_params: Dict[str, Any]) -> str:
         l_max = _as_int(mstp.get("local_scale_max", 21), 21)
         m_min = _as_int(mstp.get("meso_scale_min", 23), 23)
         m_max = _as_int(mstp.get("meso_scale_max", 203), 203)
+        # Repli = défauts RVT, identiques à ceux d'indices.py (voir le commentaire
+        # là-bas). Les défauts du plugin (100/400/60) sont écrits dans la config,
+        # pas ici : toucher l'un sans l'autre décorrèle nom de dossier et calcul.
         b_min = _as_int(mstp.get("broad_scale_min", 223), 223)
         b_max = _as_int(mstp.get("broad_scale_max", 2023), 2023)
         lightness = _as_float(mstp.get("lightness", 1.2), 1.2)

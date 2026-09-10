@@ -134,3 +134,71 @@ class TestEntityClassTargets:
     def test_no_entities_returns_empty(self):
         assert build_entity_class_targets(OUT, []) == {}
         assert build_entity_class_targets(OUT, None) == {}
+
+    def test_compared_base_still_cedes_class_to_derived_group(self):
+        # Entité de base COMPARÉE (A/B : toutes couches renommées « — <modèle> »,
+        # is_derived=False explicite) + entité dérivée partageant la classe : la
+        # base cède sa classe au groupe (décision C), comme en mono-modèle —
+        # les cratères individuels n'apparaissent qu'une fois.
+        entities = [
+            {"id": "cratere", "slug": "crateres--model_a", "classes": ["cratere"],
+             "is_derived": False, "group_label": "Cratères (comparaison)",
+             "layer_names": {"cratere": "cratere — Modèle A"}},
+            {"id": "regroupement_crateres", "slug": "regroupement_de_crateres",
+             "classes": ["cratere", "zone_crateres"], "is_derived": True,
+             "layer_names": {"cratere": "Cratères"}},
+        ]
+        t = build_entity_class_targets(OUT, entities)
+        assert t["cratere"] == [(_gpkg("regroupement_de_crateres"), "Cratères")]
+
+    def test_compared_base_alone_keeps_qualified_layer(self):
+        entities = [
+            {"id": "parcellaire", "slug": "parcellaire--formes",
+             "classes": ["parcellaire"], "is_derived": False,
+             "group_label": "Parcellaire (comparaison)",
+             "layer_names": {"parcellaire": "parcellaire — Formes"}},
+        ]
+        t = build_entity_class_targets(OUT, entities)
+        assert t["parcellaire"] == [(_gpkg("parcellaire--formes"), "parcellaire — Formes")]
+
+
+class TestSelectStaleEntityVariantDirs:
+    """Bascule mono ↔ A/B dans le même output_dir : les dossiers de la même
+    entité sous une autre qualification sont périmés (leur GPKG serait
+    re-collecté avec un seuil de symbologie de repli faux). Les entités
+    absentes des runs courants ne sont jamais touchées."""
+
+    def _mk(self, tmp_path, *slugs):
+        for s in slugs:
+            (tmp_path / "detections" / s).mkdir(parents=True)
+        return tmp_path
+
+    def _runs(self, *slugs):
+        return [{"entities": [{"slug": s} for s in slugs]}]
+
+    def test_mono_to_ab_purges_bare_dir(self, tmp_path):
+        from pipeline.output_paths import select_stale_entity_variant_dirs
+        out = self._mk(tmp_path, "parcellaire", "parcellaire--a", "parcellaire--b",
+                       "enclos", "_technique")
+        stale = select_stale_entity_variant_dirs(
+            out, self._runs("parcellaire--a", "parcellaire--b"))
+        assert [d.name for d in stale] == ["parcellaire"]
+
+    def test_ab_to_mono_purges_qualified_dirs(self, tmp_path):
+        from pipeline.output_paths import select_stale_entity_variant_dirs
+        out = self._mk(tmp_path, "parcellaire", "parcellaire--a", "parcellaire--b",
+                       "enclos")
+        stale = select_stale_entity_variant_dirs(out, self._runs("parcellaire"))
+        assert [d.name for d in stale] == ["parcellaire--a", "parcellaire--b"]
+
+    def test_unrelated_entities_untouched(self, tmp_path):
+        from pipeline.output_paths import select_stale_entity_variant_dirs
+        out = self._mk(tmp_path, "enclos", "charbonnieres")
+        assert select_stale_entity_variant_dirs(out, self._runs("parcellaire")) == []
+
+    def test_no_runs_or_no_detections_dir(self, tmp_path):
+        from pipeline.output_paths import select_stale_entity_variant_dirs
+        assert select_stale_entity_variant_dirs(tmp_path, []) == []
+        assert select_stale_entity_variant_dirs(tmp_path, None) == []
+        assert select_stale_entity_variant_dirs(
+            tmp_path, self._runs("parcellaire")) == []

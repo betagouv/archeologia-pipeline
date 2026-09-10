@@ -116,9 +116,9 @@
       "meso_scale_min": 23,
       "meso_scale_max": 203,
       "meso_scale_step": 18,
-      "broad_scale_min": 223,
-      "broad_scale_max": 2023,
-      "broad_scale_step": 180,
+      "broad_scale_min": 100,
+      "broad_scale_max": 400,
+      "broad_scale_step": 60,
       "lightness": 1.2,
       "ve_factor": 1,
       "save_as_8bit": true

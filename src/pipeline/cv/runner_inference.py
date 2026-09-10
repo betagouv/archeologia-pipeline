@@ -8,7 +8,7 @@ disponible, ce module exécute l'inférence directement via
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from ..cancellation import PipelineCancelled
 from ..geo_utils import write_world_file as write_world_file_from_transform
@@ -27,6 +27,8 @@ def run_fallback_inference(
     output_dir: Optional[Path] = None,
     effective_detection_dir: Optional[Path] = None,
     tif_transform_data: Optional[Dict[str, Tuple[float, float, float, float]]] = None,
+    valid_region_bounds: Optional[List[Tuple[float, float, float, float]]] = None,
+    cell_bounds_by_stem: Optional[Dict[str, Tuple[float, float, float, float]]] = None,
     single_jpg: Optional[Path] = None,
     run_shapefile_dedup: bool = True,
     global_color_map: Optional[Dict[str, int]] = None,
@@ -51,8 +53,9 @@ def run_fallback_inference(
     if not selected_model:
         raise ValueError("Computer Vision activée mais aucun modèle sélectionné")
 
-    confidence_threshold = float(cv_config.get("confidence_threshold", 0.3))
-    iou_threshold = float(cv_config.get("iou_threshold", 0.5))
+    from .model_config import DEFAULT_CONFIDENCE, DEFAULT_IOU
+    confidence_threshold = float(cv_config.get("confidence_threshold", DEFAULT_CONFIDENCE))
+    iou_threshold = float(cv_config.get("iou_threshold", DEFAULT_IOU))
     generate_annotated_images = bool(cv_config.get("generate_annotated_images", False))
     generate_shapefiles = bool(cv_config.get("generate_shapefiles", False))
 
@@ -70,6 +73,11 @@ def run_fallback_inference(
     class_colors = list(profile.class_colors) if profile.class_colors else None
     log(f"Computer Vision: {len(class_names or [])} classes, couleurs={'oui' if class_colors else 'non'}")
     log(f"SAHI: slice={slice_height}×{slice_width}, overlap={overlap_ratio}")
+
+    # Seuils par classe : {NOM: seuil} (orchestrateur / model_card) -> {id: seuil}
+    # via le helper PARTAGÉ avec le CLI du binaire externe (T1 audit 2026-08-31).
+    from .class_utils import confidence_per_class_ids
+    confidence_per_class = confidence_per_class_ids(cv_config, class_names, log)
 
     # Charger la session ONNX une seule fois pour toutes les images
     onnx_session = cv_mod._load_onnx_model(str(weights_path))
@@ -150,6 +158,7 @@ def run_fallback_inference(
             model_path=str(weights_path),
             output_path=detection_output_path,
             confidence_threshold=confidence_threshold,
+            confidence_per_class=confidence_per_class,
             slice_height=slice_height,
             slice_width=slice_width,
             overlap_ratio=overlap_ratio,
@@ -187,6 +196,8 @@ def run_fallback_inference(
             output_dir=output_dir,
             cv_config=cv_config,
             tif_transform_data=tif_transform_data,
+            valid_region_bounds=valid_region_bounds,
+            cell_bounds_by_stem=cell_bounds_by_stem,
             crs="EPSG:2154",
             global_color_map=global_color_map,
             log=log,

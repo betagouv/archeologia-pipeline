@@ -27,27 +27,81 @@ from qgis.PyQt.QtWidgets import (
 from .no_wheel import NoWheelDoubleSpinBox
 
 
-# Paramètres de regroupement (DBSCAN) éditables, avec explications (tooltips).
+class _StayOpenMenu(QMenu):
+    """QMenu qui reste ouvert quand on (dé)coche une action checkable.
+
+    Permet de cocher/décocher plusieurs modèles en UNE ouverture (comparaison
+    A/B) ; fermeture normale par clic hors menu ou Échap. Compatible Qt5/Qt6
+    (``event.position()`` PyQt6, repli ``event.pos()`` PyQt5).
+    """
+
+    def mouseReleaseEvent(self, event):  # noqa: N802 (signature Qt)
+        pos = event.position().toPoint() if hasattr(event, "position") else event.pos()
+        act = self.actionAt(pos)
+        if act is not None and act.isCheckable() and act.isEnabled():
+            act.setChecked(not act.isChecked())
+            return  # ne pas fermer le menu
+        super().mouseReleaseEvent(event)
+
+
+# Paramètres des briques de synthèse éditables, avec explications (tooltips).
+# Seuls ceux présents dans les défauts du modèle (règle args.yaml) sont
+# affichés : les clés DBSCAN et enclosure ne se croisent donc jamais.
 # (clé, libellé, min, max, pas, décimales, est_entier, tooltip)
 _CLUSTER_PARAM_SPECS = (
+    # — Regroupement (DBSCAN) —
     ("eps_m", "Distance max (m)", 0.0, 1000.0, 5.0, 0, True,
-     "Deux cratères plus proches que cette distance sont regroupés."),
-    ("min_cluster_size", "Nb min de cratères", 1.0, 10000.0, 1.0, 0, True,
+     "Deux détections plus proches que cette distance sont regroupées."),
+    ("min_cluster_size", "Nb min de détections", 1.0, 10000.0, 1.0, 0, True,
      "Taille minimale d'un groupe pour créer une zone."),
     ("min_confidence", "Confiance min", 0.0, 1.0, 0.05, 2, False,
-     "Ignore les cratères sous ce seuil POUR le regroupement (≠ seuil de détection)."),
+     "Ignore les détections sous ce seuil POUR le regroupement (≠ seuil de détection)."),
     ("min_area_m2", "Aire min zone (m²)", 0.0, 1_000_000.0, 50.0, 0, True,
      "Supprime les zones de surface inférieure."),
     ("buffer_m", "Tampon (m)", 0.0, 200.0, 1.0, 0, True,
      "Dilate l'enveloppe de chaque groupe."),
     ("min_samples", "Densité (avancé)", 1.0, 100.0, 1.0, 0, True,
      "min_samples DBSCAN : nb de voisins pour qu'un point soit « cœur » de cluster."),
+    # — Enclos (fermeture vectorielle) —
+    ("gap_tolerance_m", "Pontage des interruptions (m)", 0.5, 50.0, 0.5, 1, False,
+     "Ponte les interruptions du tracé jusqu'à cette largeur. ⚠ Un enclos plus "
+     "étroit que cette valeur est rempli par la fermeture (taille min détectable ≈ T)."),
+    ("max_area_m2", "Surface max (m²)", 1.0, 1_000_000.0, 500.0, 0, True,
+     "Écarte les surfaces encloses plus grandes (limite les mailles de parcellaire)."),
+    ("min_closure", "Fermeture min (0–1)", 0.0, 1.0, 0.05, 2, False,
+     "Part minimale du contour couverte par de vraies détections (0,6 ≈ 3 côtés sur 4)."),
+    ("max_elongation", "Élongation max", 1.0, 20.0, 0.5, 1, False,
+     "Rapport longueur/largeur maximal (écarte couloirs et lanières)."),
+    ("min_ancrage", "Ancrage des sources min (0–1)", 0.0, 1.0, 0.05, 2, False,
+     "Part de l'aire des fragments contributeurs qui reste au voisinage du "
+     "contour. Bas = cour incidente entre des lanières qui continuent au loin "
+     "(faux positif de parcellaire) ; un vrai enclos est proche de 1."),
+    ("max_isolement", "Isolement max (0–1)", 0.0, 1.0, 0.05, 2, False,
+     "Part max du contour partagée avec d'autres candidats — écarte les "
+     "mailles de trame parcellaire (un enclos isolé ≈ 0)."),
+    ("min_rectangularite", "Rectangularité min (0–1)", 0.0, 1.0, 0.05, 2, False,
+     "Régularité min de la forme (0 = tout accepter ; un cercle vaut ~0,79)."),
+    # — Axes linéaires (bandes directionnelles) —
+    ("band_width_m", "Largeur max de la bande (m)", 5.0, 200.0, 5.0, 0, True,
+     "Étalement latéral maximal des brins parallèles d'un même axe "
+     "(fossés bordiers + agger + tronçons décalés)."),
+    ("angle_tolerance_deg", "Tolérance d'orientation (°)", 5.0, 45.0, 1.0, 0, True,
+     "Écart d'azimut maximal entre un fragment et la direction de l'axe."),
+    ("min_length_m", "Longueur min (m)", 50.0, 50_000.0, 50.0, 0, True,
+     "Longueur minimale d'un axe publié — la rectitude kilométrique est la "
+     "signature des voies anciennes."),
+    ("max_gap_m", "Interruption max (m)", 10.0, 5000.0, 10.0, 0, True,
+     "Au-delà de ce trou le long de l'axe, l'enfilade est coupée en deux axes."),
+    ("min_coverage", "Couverture min (0–1)", 0.0, 1.0, 0.05, 2, False,
+     "Part minimale de l'axe réellement couverte par des détections."),
+    ("min_sources", "Nb min de fragments", 2.0, 1000.0, 1.0, 0, True,
+     "Nombre minimal de détections constitutives d'un axe."),
 )
 
 
 class EntityCard(QFrame):
     toggled = pyqtSignal(str, bool)        # entity_id, selected
-    model_changed = pyqtSignal(str, str)   # entity_id, model_name
+    models_changed = pyqtSignal(str, list)  # entity_id, [model_name, ...] (≥2 = comparaison A/B)
     cluster_toggled = pyqtSignal(str, bool)
     activate_rvt = pyqtSignal(str)         # rvt key
     thresholds_changed = pyqtSignal(str, float, float)  # entity_id, confiance, aire min
@@ -61,7 +115,7 @@ class EntityCard(QFrame):
         self._loading = False
         self._advanced = False
         self._candidates: Dict[str, str] = {}  # name -> display_name
-        self._current_model: Optional[str] = None
+        self._current_models: list = []  # modèles effectifs (1..n ; ≥2 = comparaison)
         self._active_cluster_keys: set = set()  # params de cluster effectivement édités
         self.setObjectName("EntityCard")
         self.setProperty("state", "off")
@@ -169,6 +223,13 @@ class EntityCard(QFrame):
         self._adv_row.addWidget(self._area_spin)
         self._adv_row.setVisible(False)
         layout.addWidget(self._adv_row)
+        # Aide fiabilité (mode avancé) : les coupures effectives des catégories
+        # douteux/possible/probable/très probable au seuil courant, par classe.
+        self._fiab_hint = QLabel("")
+        self._fiab_hint.setObjectName("EntityFiabHint")
+        self._fiab_hint.setWordWrap(True)
+        self._fiab_hint.setVisible(False)
+        layout.addWidget(self._fiab_hint)
 
         # Paramètres du regroupement (DBSCAN) : éditables en mode avancé pour une
         # entité dérivée / clusterisée. Place NON réservée (apparaît seulement pour
@@ -261,7 +322,7 @@ class EntityCard(QFrame):
         self,
         *,
         selected: bool,
-        current_model: Optional[str],
+        current_models: Sequence[str],
         rvt: str,
         rvt_active: bool,
         cluster_outputs: Sequence[str],
@@ -273,9 +334,14 @@ class EntityCard(QFrame):
         is_derived: bool = False,
         cluster_default_params: Optional[Dict[str, float]] = None,
         cluster_params_override: Optional[Dict[str, float]] = None,
+        missing_rvt: Optional[str] = None,
+        fiabilite_hint: str = "",
     ) -> None:
         self._selected = selected
-        self._rvt_key = rvt
+        # ``rvt`` est un AFFICHAGE (peut joindre plusieurs indices en
+        # comparaison, ex. « LD + SVF ») ; la clé d'activation du bouton
+        # « + Activer » est le premier indice MANQUANT, pas le libellé.
+        self._rvt_key = missing_rvt or rvt
         self._check.setText("✓" if selected else "")
 
         # Tag RVT (orange si l'indice n'est pas activé à l'étape 2)
@@ -299,15 +365,24 @@ class EntityCard(QFrame):
         show_rvt_warn = selected and self._has_model and not rvt_active
         self._rvt_row.setVisible(show_rvt_warn)
         if show_rvt_warn:
-            self._rvt_warn.setText(f"Indice {rvt} non activé à l'étape 2")
+            self._rvt_warn.setText(
+                f"Indice {missing_rvt or rvt} non activé à l'étape 2"
+            )
 
-        # Ligne modèle : nom du modèle + « Changer ▾ » discret (si plusieurs)
+        # Ligne modèle : nom du modèle + « Changer ▾ » discret (si plusieurs).
+        # Plusieurs modèles cochés (comparaison A/B) → « N modèles (comparaison) »
+        # avec la liste complète en tooltip.
         show_model = selected and self._has_model
         self._model_row.setVisible(show_model)
         if show_model:
-            self._current_model = current_model
-            disp = self._candidates.get(current_model, current_model or "")
-            short = disp if len(disp) <= 28 else disp[:27] + "…"
+            self._current_models = list(current_models or [])
+            disps = [self._candidates.get(n, n) for n in self._current_models]
+            if len(disps) > 1:
+                disp = " + ".join(disps)
+                short = f"{len(disps)} modèles (comparaison)"
+            else:
+                disp = disps[0] if disps else ""
+                short = disp if len(disp) <= 28 else disp[:27] + "…"
             self._model_name.setText(short)
             self._model_name.setToolTip(disp)
             multi = len(self._candidates) > 1
@@ -341,8 +416,19 @@ class EntityCard(QFrame):
                 self._area_spin.setValue(
                     float(area_override if area_override is not None else default_min_area)
                 )
+                # Comparaison A/B : la valeur affichée est le défaut du modèle
+                # primaire, mais tant qu'elle n'est pas modifiée chaque run
+                # applique le défaut de SON modèle — le tooltip le dit.
+                self._conf_spin.setToolTip(
+                    "Comparaison : sans modification, chaque modèle applique "
+                    "son propre seuil par défaut ; modifier la valeur impose "
+                    "le même seuil à toutes les variantes."
+                    if len(self._current_models) > 1 else ""
+                )
             finally:
                 self._loading = False
+        self._fiab_hint.setText(fiabilite_hint or "")
+        self._fiab_hint.setVisible(bool(show_adv and fiabilite_hint))
 
         # Paramètres du regroupement (DBSCAN) — en mode avancé, pour une entité
         # dérivée ou clusterisée disposant de défauts. Pré-remplis (override sinon
@@ -397,17 +483,33 @@ class EntityCard(QFrame):
 
     # ------------------------------------------------------------------
     def _on_change_clicked(self) -> None:
-        menu = QMenu(self)
+        # Cases NON exclusives : cocher un 2ᵉ modèle = mode comparaison A/B
+        # (un run et des sorties par modèle). Le menu RESTE OUVERT pendant les
+        # coches (remplacer A par B = cocher B puis décocher A en une seule
+        # ouverture) et on émet UNE fois à la fermeture — aucun état transitoire
+        # « comparaison » n'est persisté par l'autosave.
+        menu = _StayOpenMenu(self)
+        # Action désactivée plutôt que addSection : les styles à menus natifs
+        # (macOS) rendent une section comme un simple séparateur sans texte.
+        hint = menu.addAction("Cocher plusieurs modèles = comparaison")
+        hint.setEnabled(False)
+        menu.addSeparator()
         for name, disp in self._candidates.items():
             act = menu.addAction(disp)
             act.setData(name)
             act.setCheckable(True)
-            act.setChecked(name == self._current_model)
-        chosen = menu.exec(self._change_btn.mapToGlobal(self._change_btn.rect().bottomLeft()))
-        if chosen is not None:
-            name = chosen.data()
-            if name and name != self._current_model:
-                self.model_changed.emit(self._id, name)
+            act.setChecked(name in self._current_models)
+        menu.exec(self._change_btn.mapToGlobal(self._change_btn.rect().bottomLeft()))
+        checked = [a.data() for a in menu.actions() if a.isCheckable() and a.isChecked()]
+        if not checked:
+            return  # une entité garde au moins un modèle : sélection vide ignorée
+        # Ordre stable : les modèles déjà sélectionnés gardent leur rang (le
+        # « primaire » — RVT/défauts affichés — ne bascule pas quand on en
+        # ajoute un), les nouveaux s'ajoutent à la suite.
+        ordered = [n for n in self._current_models if n in checked]
+        ordered += [n for n in checked if n not in ordered]
+        if ordered != list(self._current_models):
+            self.models_changed.emit(self._id, ordered)
 
     def _on_cluster_toggled(self, checked: bool) -> None:
         if not self._loading:

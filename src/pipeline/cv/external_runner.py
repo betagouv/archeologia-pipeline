@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 import tempfile
 import time
@@ -30,6 +31,18 @@ ImageProgressFn = Callable[[int, int, str], None]
 Signature : ``(index_1based, total, image_name)``. Sert au stepper UI
 à actualiser la sous-progression d'un run CV.
 """
+
+TileProgressFn = Callable[[int, int], None]
+"""Callback invoqué à chaque ligne « SAHI: X/Y tuiles traitées » du runner.
+
+Signature : ``(current, total)``. Sous-progression AU SEIN d'une image :
+sur une grande dalle (centaines de tuiles SAHI, plusieurs minutes CPU),
+c'est le seul signal qui bouge entre deux ``ImageProgressFn``.
+"""
+
+# « RF-DETR Seg SAHI: 10/144 tuiles traitées » / « SegFormer SAHI: 3/36 tuiles… »
+# L'annonce du total (« SAHI: 144 tuiles », sans slash) ne matche pas.
+_TILE_PROGRESS_RE = re.compile(r"SAHI: (\d+)/(\d+) tuiles")
 
 
 class RunnerPayload(TypedDict, total=False):
@@ -63,6 +76,18 @@ def find_external_cv_runner(log: Optional[LogFn] = None) -> Optional[Path]:
 
     try:
         if candidate.exists() and candidate.is_file():
+            if log:
+                # Traçabilité du binaire (audit 2026-08-31) : sans stamp, un exe
+                # périmé a tourné 2 mois et demi sans que rien ne le dise.
+                info_path = candidate.parent / "build_info.json"
+                try:
+                    import json as _json
+                    _info = _json.loads(info_path.read_text(encoding="utf-8"))
+                    log(f"Computer Vision: runner ONNX build {_info.get('date', '?')} "
+                        f"(commit {_info.get('commit', '?')})")
+                except Exception:
+                    log("Computer Vision: runner ONNX SANS build_info.json — âge "
+                        "inconnu, recompiler via dev/runner_onnx/build.py")
             return candidate
         elif log:
             log(f"Computer Vision: runner ONNX non trouvé à {candidate}")
@@ -77,14 +102,31 @@ def _parse_runner_stdout(
     line: str,
     log: LogFn,
     image_progress: Optional[ImageProgressFn] = None,
-) -> None:
+    tile_progress: Optional[TileProgressFn] = None,
+) -> Optional[int]:
     """Parse une ligne de stdout du runner externe et la log de façon lisible.
 
     ``image_progress``, si fourni, est invoqué pour chaque ligne
     ``progress=N/TOTAL`` quel que soit le status (processing, done,
     skipped). Permet au stepper UI de suivre la sous-progression sans
     parser à nouveau les logs textuels.
+
+    ``tile_progress``, si fourni, est invoqué pour chaque ligne
+    « SAHI: X/Y tuiles traitées » (sous-progression intra-image, cf.
+    :data:`TileProgressFn`). La ligne reste relayée au log à l'identique.
+
+    Retourne le ``total_detections`` de la ligne ``summary:`` (None pour
+    toute autre ligne) — remonté jusqu'au narrateur pour annoncer
+    « Détection terminée : N zones ».
     """
+    if tile_progress is not None:
+        m = _TILE_PROGRESS_RE.search(line)
+        if m is not None:
+            try:
+                tile_progress(int(m.group(1)), int(m.group(2)))
+            except Exception:
+                pass
+
     if line.startswith("progress="):
         try:
             parts = line.split()
@@ -128,6 +170,12 @@ def _parse_runner_stdout(
             parts = line.replace("summary:", "").strip().split()
             info = {p.split("=")[0]: p.split("=")[1] for p in parts}
             log(f"Computer Vision: Terminé - {info.get('success', '?')} images traitées, {info.get('total_detections', '?')} détections au total")
+            td = info.get("total_detections")
+            if td is not None:
+                try:
+                    return int(td)
+                except ValueError:
+                    pass
         except Exception:
             log(f"[cv_runner] {line}")
     elif line.startswith("images="):
@@ -151,6 +199,7 @@ def _parse_runner_stdout(
     else:
         # Relayer les lignes non reconnues (logs internes, debug, etc.)
         log(f"[cv_runner] {line}")
+    return None
 
 
 def run_external_cv_runner(
@@ -169,9 +218,14 @@ def run_external_cv_runner(
     log: LogFn = lambda _: None,
     cancel_check: Optional[CancelCheckFn] = None,
     image_progress: Optional[ImageProgressFn] = None,
-) -> None:
+    tile_progress: Optional[TileProgressFn] = None,
+) -> Optional[int]:
     """
     Exécute le runner ONNX externe via subprocess et parse sa sortie en temps réel.
+
+    Returns:
+        Le ``total_detections`` annoncé par la ligne ``summary:`` du runner,
+        ou None si elle est absente (ancien binaire, sortie tronquée).
 
     Raises:
         RuntimeError: si le runner échoue ou est annulé.
@@ -227,6 +281,7 @@ def run_external_cv_runner(
         )
 
         cancelled = False
+        total_detections: Optional[int] = None
         if process.stdout:
             for line in process.stdout:
                 if cancel_check and cancel_check():
@@ -242,7 +297,11 @@ def run_external_cv_runner(
                 line = line.rstrip()
                 if not line:
                     continue
-                _parse_runner_stdout(line, log, image_progress=image_progress)
+                parsed = _parse_runner_stdout(
+                    line, log, image_progress=image_progress, tile_progress=tile_progress
+                )
+                if parsed is not None:
+                    total_detections = parsed
 
         if cancelled:
             raise PipelineCancelled()
@@ -288,6 +347,7 @@ def run_external_cv_runner(
                         )
                         if world_path:
                             log(f"Fichier world créé: {world_path.name}")
+        return total_detections
     finally:
         try:
             cfg_path.unlink(missing_ok=True)  # type: ignore[arg-type]

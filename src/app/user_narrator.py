@@ -76,6 +76,9 @@ class UserNarrator:
     def __init__(self, reporter: "ProgressReporter"):
         self._r = reporter
         self._pipeline_started_at: Optional[float] = None
+        # Dernière ligne « Image i/N : nom » émise — base sur laquelle
+        # cv_run_tile_progress ajoute la sous-progression tuile.
+        self._last_cv_image_msg: Optional[str] = None
 
     def _user_info_transient(self, msg: str, group: str) -> None:
         """Émet une sous-progression dans le canal transient si dispo.
@@ -144,8 +147,14 @@ class UserNarrator:
             parts.append("produits : " + ", ".join(labels))
         self._r.user_success(" — ".join(parts))
 
-    def pipeline_failed(self, message: str) -> None:
-        duration = self._elapsed_str()
+    def pipeline_failed(self, message: str, start_time: Optional[float] = None) -> None:
+        # Même logique que pipeline_complete : ``start_time`` explicite quand le
+        # narrateur n'est pas celui qui a vu ``pipeline_starting`` (cas typique :
+        # narrateur instancié dans finalize_service — sinon durée « 0s »).
+        if start_time is not None:
+            duration = _format_duration(time.time() - start_time)
+        else:
+            duration = self._elapsed_str()
         self._r.user_warning(
             f"⚠ Le traitement s'est interrompu après {duration} : {message}. "
             f"Voir le journal détaillé dans le dossier de sortie pour plus d'informations."
@@ -293,11 +302,24 @@ class UserNarrator:
         plusieurs images d'affilée.
         """
         short = image_name if len(image_name) <= 30 else image_name[:27] + "…"
+        msg = f"      ↳ Image {index}/{total} : {short}"
+        self._last_cv_image_msg = msg
+        self._user_info_transient(msg, group="cv_image_progress")
+        self._metric(index, total, "images")
+
+    def cv_run_tile_progress(self, current: int, total: int) -> None:
+        """Sous-progression tuile SAHI au sein d'une image (grands rasters).
+
+        Réécrit la MÊME ligne transiente que :meth:`cv_run_image_progress`
+        en y ajoutant « — analyse X/Y » : une grande dalle (centaines de
+        tuiles, plusieurs minutes CPU) ne fige plus l'affichage sur
+        « Image i/N » pendant toute son inférence.
+        """
+        base = self._last_cv_image_msg or "      ↳ Analyse de l'image"
         self._user_info_transient(
-            f"      ↳ Image {index}/{total} : {short}",
+            f"{base} — analyse {current}/{total}",
             group="cv_image_progress",
         )
-        self._metric(index, total, "images")
 
     def cv_complete(self, n_detections: int) -> None:
         if n_detections == 0:

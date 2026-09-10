@@ -24,6 +24,12 @@ except Exception:
 
 from ..cancellation import check_cancelled
 from ..types import CancelCheckFn
+from .model_config import (
+    DEFAULT_CONFIDENCE,
+    DEFAULT_IOU,
+    DEFAULT_SAHI_OVERLAP,
+    DEFAULT_SAHI_SLICE,
+)
 from .cv_output import (
     save_empty_outputs,
     save_detections_to_files,
@@ -35,6 +41,16 @@ from .sahi_lite import (
     merge_sliced_detections,
 )
 from .types import Detection
+
+
+def _tile_progress_due(done: int, total: int) -> bool:
+    """Faut-il logger « SAHI: done/total tuiles traitées » ?
+
+    Une tuile sur 10 pour ne pas spammer, **plus la dernière** : sans elle
+    un run à 25 tuiles s'affichait figé sur « analyse 20/25 » (la ligne
+    est relayée à l'UI par ``external_runner._TILE_PROGRESS_RE``).
+    """
+    return done % 10 == 0 or done == total
 
 logger = logging.getLogger(__name__)
 
@@ -52,13 +68,22 @@ def _load_onnx_model(model_path: str):
         raise ImportError(f"onnxruntime n'est pas installé: {e}")
     
     # Configurer les providers (GPU si disponible, sinon CPU)
-    providers = ['CUDAExecutionProvider', 'CPUExecutionProvider']
     available_providers = ort.get_available_providers()
-    providers = [p for p in providers if p in available_providers]
-    
-    if not providers:
-        providers = ['CPUExecutionProvider']
-    
+    noms = [p for p in ('CUDAExecutionProvider', 'CPUExecutionProvider')
+            if p in available_providers] or ['CPUExecutionProvider']
+
+    # TF32 est actif par défaut sur les GPU Ampere et au-delà : les convolutions et
+    # matmuls tournent alors avec 10 bits de mantisse, et les sorties divergent du
+    # chemin CPU — le seul validé, puisque le runner livré est un build CPU.
+    # Mesuré sur lineaires_seg_v2_1, même entrée, RTX 4060 :
+    #   écart CPU/GPU  logits de masque 1,40e+02 · logits de classe 2,40e+00
+    #   erreur relative médiane 2 à 5 % · 65 détections en CPU contre 57 en GPU
+    #   avec use_tf32=0 : 1,73e-02, soit de l'arrondi float32 ordinaire
+    # CPU et GPU sont chacun parfaitement déterministes en rejeu (0,00e+00) : c'est bien
+    # un choix de précision, pas du bruit.
+    providers = [(p, {'use_tf32': '0'}) if p == 'CUDAExecutionProvider' else p
+                 for p in noms]
+
     logger.info(f"ONNX: providers disponibles: {available_providers}")
     logger.info(f"ONNX: utilisation de: {providers}")
     
@@ -69,16 +94,38 @@ def _load_onnx_model(model_path: str):
     input_name = input_info.name
     input_shape = input_info.shape  # [batch, channels, height, width]
     
-    # Charger les métadonnées si disponibles
+    # Charger les métadonnées si disponibles.
+    # Sidecar PRÉSENT mais illisible = erreur EXPLICITE (durci 2026-08-31) : un
+    # `except: pass` silencieux faisait retomber class_offset/task/model_type sur
+    # leurs défauts — toutes les classes décalées d'un cran, sans aucun log.
     model_meta = {}
     meta_path = Path(model_path).with_suffix('.json')
     if meta_path.exists():
         try:
             model_meta = json.loads(meta_path.read_text())
-        except Exception:
-            pass
-    
+        except Exception as e:
+            raise RuntimeError(
+                f"Sidecar illisible : {meta_path} ({e}). Corriger ou régénérer "
+                f"weights/best.json (export_to_onnx.py) — ne PAS le supprimer : "
+                f"sans lui, class_offset/task retombent sur des défauts dangereux."
+            ) from e
+
     return session, input_name, input_shape, model_meta
+
+
+def _require_class_offset(model_meta: Dict) -> int:
+    """``class_offset`` du sidecar best.json — OBLIGATOIRE pour un modèle RF-DETR.
+
+    Le défaut historique (1) décalait silencieusement toutes les classes d'un
+    modèle rfdetr >= 1.8 (offset réel 0) quand le sidecar manquait : classe 0
+    perdue, taxonomie décalée, zéro log. Durci 2026-08-31.
+    """
+    if "class_offset" not in model_meta:
+        raise RuntimeError(
+            "Sidecar weights/best.json sans class_offset — un offset deviné est "
+            "dangereux (classes décalées d'un cran). Régénérer via export_to_onnx.py."
+        )
+    return int(model_meta["class_offset"])
 
 
 def _preprocess_image(pil_image, target_size: Tuple[int, int], model_type: str = "yolo") -> np.ndarray:
@@ -321,12 +368,20 @@ def _run_rfdetr_seg_with_sahi(
     slice_height: int,
     overlap_ratio: float,
     confidence_threshold: float,
+    confidence_per_class: Optional[Dict[int, float]] = None,
     class_offset: int = 1,
     cancel_check: Optional[CancelCheckFn] = None,
+    n_classes: Optional[int] = None,
 ) -> List[Dict]:
     """
     Exécute RF-DETR Seg avec SAHI slicing en accumulant les masques de probabilité
     par instance dans l'espace image global, puis extrait les polygones par instance.
+
+    ``confidence_per_class`` ({class_id APRÈS offset: seuil}) surcharge le seuil
+    global classe par classe — même convention que ``confidence_par_classe`` du banc
+    (tools/bench/decode.py, parité). Motivation mesurée : les optima par classe de
+    lineaires_seg_v2_1 s'étalent de 0,10 à 0,30 (F1 longueur, niveau B) ; un seuil
+    unique sacrifie les classes rares, sous-confiantes par construction (loss IA-BCE).
 
     Accumulation par instance (pas par classe) : chaque détection individuelle conserve
     son propre masque global. Cela évite le remplissage de la zone centrale quand
@@ -430,7 +485,12 @@ def _run_rfdetr_seg_with_sahi(
 
         n_cls = logits_out.shape[1]
         if n_real is None:
-            n_real = max(1, n_cls - class_offset)
+            # Le modèle sort une colonne de logits de plus qu'il n'y a de classes
+            # (6 pour 5 sur lineaires_seg_v2_1). Sans borne explicite, une colonne
+            # gagnante hors taxonomie passerait en `classe_N` fantôme en aval.
+            # Sur ce modèle la colonne surnuméraire ne gagne jamais (sigmoïde max
+            # 0,0048) : défaut latent, mais il deviendrait actif sur un réexport.
+            n_real = n_classes if n_classes else max(1, n_cls - class_offset)
 
         end_x = min(start_x + slice_w, orig_width)
         end_y = min(start_y + slice_h, orig_height)
@@ -439,15 +499,34 @@ def _run_rfdetr_seg_with_sahi(
 
         scale_x = slice_w / model_width
         scale_y = slice_h / model_height
-        boxes_normalized = boxes_out.max() <= 1.0
+
+        # RF-DETR sort TOUJOURS du cxcywh normalisé : dans cette fonction, qui lui est
+        # propre, il n'y a rien à deviner. L'ancien test `boxes_out.max() <= 1.0` basculait
+        # dès qu'une boîte mordait hors de l'image — mesuré sur 600 tuiles du split valid :
+        # 50,7 % des tuiles concernées, dépassement médian 0,0157. Le plugin lisait alors
+        # les boîtes comme des pixels absolus, gcx = int(0,98) = 0, et TOUTES les clés
+        # d'instance s'écrasaient sur (classe, 0, 0, 0, 0).
+        # Conséquences mesurées sur la tuile la plus dense (134 annotations), conf 0,05 :
+        #   avant : 123 instances en 50,26 s   après : 245 instances en 4,43 s
+        # Les instances n'étaient pas séparées, et la recherche de suffixe ci-dessous
+        # devenait quadratique faute de clés distinctes.
+        boxes_normalized = True
+        if boxes_out.size and boxes_out.max() > 1.5:
+            logger.warning(
+                "RF-DETR Seg: boîtes hors [0,1] (max=%.3f) — export inattendu, "
+                "les boîtes sont pourtant lues comme normalisées", float(boxes_out.max()))
 
         for i in range(len(max_scores)):
-            confidence = float(max_scores[i])
-            if confidence < confidence_threshold:
-                continue
-
+            # La classe d'abord : le seuil peut en dépendre. Réordonner les deux
+            # filtres ne change pas l'ensemble retenu (deux `continue` commutent).
             class_id = int(class_ids[i]) - class_offset
             if class_id < 0 or class_id >= n_real:
+                continue
+
+            confidence = float(max_scores[i])
+            seuil = (confidence_per_class.get(class_id, confidence_threshold)
+                     if confidence_per_class else confidence_threshold)
+            if confidence < seuil:
                 continue
 
             # Coordonnées de la boîte en espace global (centre + taille)
@@ -529,7 +608,7 @@ def _run_rfdetr_seg_with_sahi(
             else:
                 _inst_merge(instance_maps[matched_key], start_y, start_x, end_y, end_x, new_vals, confidence)
 
-        if (slice_idx + 1) % 10 == 0:
+        if _tile_progress_due(slice_idx + 1, len(sliced_images)):
             logger.info(f"RF-DETR Seg SAHI: {slice_idx + 1}/{len(sliced_images)} tuiles traitées")
 
     if not instance_maps:
@@ -940,7 +1019,7 @@ def _run_segformer_with_sahi(
         global_probs[:, start_y:end_y, start_x:end_x] += probs_resized[:, :actual_h, :actual_w]
         vote_count[start_y:end_y, start_x:end_x] += 1.0
         
-        if (idx + 1) % 10 == 0:
+        if _tile_progress_due(idx + 1, len(sliced_images)):
             logger.info(f"SegFormer SAHI: {idx + 1}/{len(sliced_images)} tuiles traitées")
     
     # Normaliser par le nombre de votes (moyenne des probabilités)
@@ -1138,11 +1217,12 @@ def run_onnx_inference(
     image_path: str,
     model_path: str,
     output_path: str,
-    confidence_threshold: float = 0.5,
-    iou_threshold: float = 0.5,
-    slice_height: int = 640,
-    slice_width: int = 640,
-    overlap_ratio: float = 0.2,
+    confidence_threshold: float = DEFAULT_CONFIDENCE,
+    confidence_per_class: Optional[Dict[int, float]] = None,
+    iou_threshold: float = DEFAULT_IOU,
+    slice_height: int = DEFAULT_SAHI_SLICE,
+    slice_width: int = DEFAULT_SAHI_SLICE,
+    overlap_ratio: float = DEFAULT_SAHI_OVERLAP,
     generate_annotated_images: bool = False,
     annotated_output_dir: Optional[str] = None,
     jpg_folder_path: Optional[str] = None,
@@ -1198,9 +1278,16 @@ def run_onnx_inference(
         else:
             model_height = model_width = 640
         
-        # Détecter le type de modèle
-        model_type = model_meta.get("model_type", "yolo")
-        task = model_meta.get("task", "detect")
+        # Détecter le type de modèle — SANS repli (durci 2026-08-31) : les défauts
+        # historiques (yolo/detect) faisaient post-traiter un RF-DETR en mode YOLO
+        # sans erreur (0 détection ou géométries absurdes).
+        model_type = model_meta.get("model_type")
+        task = model_meta.get("task")
+        if not model_type or not task:
+            raise RuntimeError(
+                "Sidecar weights/best.json absent ou incomplet (model_type et task "
+                "requis) — régénérer via export_to_onnx.py."
+            )
         logger.info(f"ONNX: modèle {model_type}, taille {model_width}x{model_height}, task={task}")
         
         # =====================================================================
@@ -1297,7 +1384,7 @@ def run_onnx_inference(
         # =====================================================================
         if model_type == "rfdetr" and task == "instance_segmentation":
             logger.info("ONNX: mode instance segmentation RF-DETR Seg")
-            class_offset = model_meta.get("class_offset", 1)
+            class_offset = _require_class_offset(model_meta)
 
             # Accumulation des masques de probabilité par classe dans l'espace global
             # → polygones extraits une seule fois, pas de doublons ni d'offsets
@@ -1311,8 +1398,10 @@ def run_onnx_inference(
                 slice_height=slice_height,
                 overlap_ratio=overlap_ratio,
                 confidence_threshold=confidence_threshold,
+                confidence_per_class=confidence_per_class,
                 class_offset=class_offset,
                 cancel_check=cancel_check,
+                n_classes=len(class_names) if class_names else None,
             )
             orig_width, orig_height = pil_image.size
             logger.info(f"RF-DETR Seg: {len(all_detections)} instances après fusion globale")
@@ -1372,7 +1461,7 @@ def run_onnx_inference(
             
             # Post-traiter selon le type de modèle
             if model_type == "rfdetr":
-                class_offset = model_meta.get("class_offset", 1)  # défaut: 1 pour compatibilité
+                class_offset = _require_class_offset(model_meta)
                 dets = _postprocess_rfdetr(outputs, slice_w, slice_h, model_width, model_height, confidence_threshold, class_offset)
             else:
                 dets = _postprocess_yolo(outputs, slice_w, slice_h, model_width, model_height, confidence_threshold)
@@ -1380,6 +1469,10 @@ def run_onnx_inference(
             total_raw_detections += len(dets)
             if len(dets) > 0:
                 logger.info(f"ONNX: slice {idx+1}/{len(sliced_images)} -> {len(dets)} détections")
+            # Progression régulière (même cadence que RF-DETR Seg/SegFormer) :
+            # remontée à l'UI via _TILE_PROGRESS_RE (« SAHI: X/Y tuiles »).
+            if _tile_progress_due(idx + 1, len(sliced_images)):
+                logger.info(f"ONNX SAHI: {idx + 1}/{len(sliced_images)} tuiles traitées")
             
             # Convertir en objets sahi_lite.Detection (pour merge_sliced_detections)
             slice_detections = [

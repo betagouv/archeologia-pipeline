@@ -7,7 +7,9 @@ from typing import Any, Dict, Optional
 
 from .cvat import compute_cvat
 from .qgis_processing import run_qgis_algorithm
+from .results import needs_refresh
 from .rvt_naming import get_rvt_temp_filename
+from ...tilespec import reclass_rvt_nodata
 from ...types import LogFn, format_params_line
 
 
@@ -71,7 +73,7 @@ def create_visualization_products(
         ve_factor = _as_int(hs.get("ve_factor", 1), 1)
         save_as_8bit = _as_bool(hs.get("save_as_8bit", True), True)
         out = temp_dir / get_rvt_temp_filename("HS", current_tile_name, rvt_params)
-        if not out.exists():
+        if needs_refresh(input_path, out):
             log(format_params_line("RVT/HS", {
                 "tile": current_tile_name,
                 "sun_azimuth": sun_azimuth,
@@ -88,6 +90,8 @@ def create_visualization_products(
                 "SAVE_AS_8BIT": save_as_8bit,
             }
             run_qgis_algorithm("rvt:rvt_hillshade", params, feedback=feedback, context=context)
+        else:
+            log(f"HS réutilisé (cache intermédiaire) : {out.name}")
         if out.exists():
             outputs["HS"] = out
         else:
@@ -105,7 +109,7 @@ def create_visualization_products(
         ve_factor = _as_int(mdh.get("ve_factor", 1), 1)
         save_as_8bit = _as_bool(mdh.get("save_as_8bit", True), True)
         out = temp_dir / get_rvt_temp_filename("M_HS", current_tile_name, rvt_params)
-        if not out.exists():
+        if needs_refresh(input_path, out):
             log(format_params_line("RVT/M_HS", {
                 "tile": current_tile_name,
                 "num_directions": num_directions,
@@ -122,6 +126,8 @@ def create_visualization_products(
                 "VE_FACTOR": ve_factor,
             }
             run_qgis_algorithm("rvt:rvt_multi_hillshade", params, feedback=feedback, context=context)
+        else:
+            log(f"M_HS réutilisé (cache intermédiaire) : {out.name}")
         if out.exists():
             outputs["M_HS"] = out
         else:
@@ -138,7 +144,7 @@ def create_visualization_products(
         noise_remove = _as_int(svf.get("noise_remove", 0), 0)
         save_as_8bit = _as_bool(svf.get("save_as_8bit", True), True)
         out = temp_dir / get_rvt_temp_filename("SVF", current_tile_name, rvt_params)
-        if not out.exists():
+        if needs_refresh(input_path, out):
             log(format_params_line("RVT/SVF", {
                 "tile": current_tile_name,
                 "num_directions": num_directions,
@@ -157,6 +163,8 @@ def create_visualization_products(
                 "VE_FACTOR": ve_factor,
             }
             run_qgis_algorithm("rvt:rvt_svf", params, feedback=feedback, context=context)
+        else:
+            log(f"SVF réutilisé (cache intermédiaire) : {out.name}")
         if out.exists():
             outputs["SVF"] = out
         else:
@@ -168,7 +176,7 @@ def create_visualization_products(
         ve_factor = _as_int(slope.get("ve_factor", 1), 1)
         save_as_8bit = _as_bool(slope.get("save_as_8bit", True), True)
         out = temp_dir / get_rvt_temp_filename("SLO", current_tile_name, rvt_params)
-        if not out.exists():
+        if needs_refresh(input_path, out):
             log(format_params_line("RVT/SLO", {
                 "tile": current_tile_name,
                 "unit": "degrees" if unit == 0 else "percent",
@@ -183,6 +191,8 @@ def create_visualization_products(
                 "SAVE_AS_8BIT": save_as_8bit,
             }
             run_qgis_algorithm("rvt:rvt_slope", params, feedback=feedback, context=context)
+        else:
+            log(f"SLO réutilisé (cache intermédiaire) : {out.name}")
         if out.exists():
             outputs["SLO"] = out
         else:
@@ -202,7 +212,7 @@ def create_visualization_products(
         ve_factor = _as_int(ldo.get("ve_factor", 1), 1)
         save_as_8bit = _as_bool(ldo.get("save_as_8bit", True), True)
         out = temp_dir / get_rvt_temp_filename("LD", current_tile_name, rvt_params)
-        if not out.exists():
+        if needs_refresh(input_path, out):
             # RVT QGIS: passer un entier si la valeur est entière, sinon float
             observer_h_param = int(observer_h) if observer_h == int(observer_h) else observer_h
             log(format_params_line("RVT/LD", {
@@ -225,6 +235,8 @@ def create_visualization_products(
                 "SAVE_AS_8BIT": save_as_8bit,
             }
             run_qgis_algorithm("rvt:rvt_ld", params, feedback=feedback, context=context)
+        else:
+            log(f"LD réutilisé (cache intermédiaire) : {out.name}")
         if out.exists():
             outputs["LD"] = out
         else:
@@ -236,7 +248,7 @@ def create_visualization_products(
         ve_factor = _as_int(slrm.get("ve_factor", 1), 1)
         save_as_8bit = _as_bool(slrm.get("save_as_8bit", True), True)
         out = temp_dir / get_rvt_temp_filename("SLRM", current_tile_name, rvt_params)
-        if not out.exists():
+        if needs_refresh(input_path, out):
             log(format_params_line("RVT/SLRM", {
                 "tile": current_tile_name,
                 "radius": radius,
@@ -251,6 +263,8 @@ def create_visualization_products(
                 "SAVE_AS_8BIT": save_as_8bit,
             }
             run_qgis_algorithm("rvt:rvt_slrm", params, feedback=feedback, context=context)
+        else:
+            log(f"SLRM réutilisé (cache intermédiaire) : {out.name}")
         if out.exists():
             outputs["SLRM"] = out
         else:
@@ -267,7 +281,7 @@ def create_visualization_products(
         # Le nom de base pour les outputs intermédiaires de rvt_blender
         vat_output_base = standard_vat_tif.with_suffix("").with_name(standard_vat_tif.stem + "_outputs")
 
-        if not standard_vat_tif.exists():
+        if needs_refresh(input_path, standard_vat_tif):
             log(format_params_line("RVT/VAT", {
                 "tile": current_tile_name,
                 "terrain_type": {0: "general", 1: "flat", 2: "steep"}.get(terrain_type, str(terrain_type)),
@@ -294,6 +308,8 @@ def create_visualization_products(
                 candidates = sorted(temp_dir.glob(f"{vat_output_base.name}*.tif"))
                 if candidates:
                     shutil.copy2(str(candidates[0]), str(standard_vat_tif))
+        else:
+            log(f"VAT réutilisé (cache intermédiaire) : {standard_vat_tif.name}")
 
         if standard_vat_tif.exists():
             outputs["VAT"] = standard_vat_tif
@@ -306,6 +322,11 @@ def create_visualization_products(
         meso_scale_min = _as_int(mstp.get("meso_scale_min", 23), 23)
         meso_scale_max = _as_int(mstp.get("meso_scale_max", 203), 203)
         meso_scale_step = _as_int(mstp.get("meso_scale_step", 18), 18)
+        # Ces repli 223/2023/180 sont les défauts de RVT (clé absente), PAS les
+        # défauts du plugin (100/400/60, écrits par config_manager et l'UI). Ne
+        # pas les « aligner » : rvt_naming.py replie sur les mêmes valeurs, et
+        # les faire diverger ferait nommer le dossier autrement qu'il n'est
+        # calculé (cf. l'invariant « même rvt_params des deux côtés »).
         broad_scale_min = _as_int(mstp.get("broad_scale_min", 223), 223)
         broad_scale_max = _as_int(mstp.get("broad_scale_max", 2023), 2023)
         broad_scale_step = _as_int(mstp.get("broad_scale_step", 180), 180)
@@ -313,7 +334,7 @@ def create_visualization_products(
         ve_factor = _as_int(mstp.get("ve_factor", 1), 1)
         save_as_8bit = _as_bool(mstp.get("save_as_8bit", True), True)
         out = temp_dir / get_rvt_temp_filename("MSTP", current_tile_name, rvt_params)
-        if not out.exists():
+        if needs_refresh(input_path, out):
             log(format_params_line("RVT/MSTP", {
                 "tile": current_tile_name,
                 "local_scale": f"{local_scale_min}-{local_scale_max}/{local_scale_step}",
@@ -340,6 +361,8 @@ def create_visualization_products(
                 "SAVE_AS_8BIT": save_as_8bit,
             }
             run_qgis_algorithm("rvt:rvt_mstp", params, feedback=feedback, context=context)
+        else:
+            log(f"MSTP réutilisé (cache intermédiaire) : {out.name}")
         if out.exists():
             outputs["MSTP"] = out
         else:
@@ -349,7 +372,7 @@ def create_visualization_products(
         cvat = (rvt_params or {}).get("cvat", {})
         save_as_8bit = _as_bool(cvat.get("save_as_8bit", True), True)
         out = temp_dir / get_rvt_temp_filename("CVAT", current_tile_name, rvt_params)
-        if not out.exists():
+        if needs_refresh(input_path, out):
             log(format_params_line("RVT/CVAT", {
                 "tile": current_tile_name,
                 "save_as_8bit": save_as_8bit,
@@ -361,9 +384,23 @@ def create_visualization_products(
                 save_as_8bit=save_as_8bit,
                 log=log,
             )
+        else:
+            log(f"CVAT réutilisé (cache intermédiaire) : {out.name}")
         if out.exists():
             outputs["CVAT"] = out
         else:
             log(f"CVAT non créé: {out.name}")
+
+    # Rendus 8 bits : séparer NoData réel (→255, étiqueté) et valides saturés
+    # (→254) tant que le MNT est sous la main — après coup les deux classes de
+    # 255 sont indiscernables (cf. tilespec.reclass_rvt_nodata). Sans cela, un
+    # MNT à large NoData (dalle étrangère reprojetée) rend le sans-donnée en
+    # blanc opaque, et masquer 255 en aval troue les zones saturées (talus).
+    # Idempotent, best-effort, no-op sur un produit float.
+    for key, out_path in outputs.items():
+        try:
+            reclass_rvt_nodata(out_path, input_path)
+        except Exception as exc:
+            log(f"Reclass NoData {key} ignoré ({exc!r})")
 
     return IndicesResult(outputs=outputs)

@@ -282,6 +282,74 @@ class TestPostprocessRelationSizeGate:
         assert len(out["cratere"]) == 2
 
 
+class TestBboxKeepBestGeometry:
+    """Doublons cross-dalles des modèles bbox (halo inter-dalles) : en stratégie
+    'relation' avec ``keep_best_geometry``, la composante fusionnée garde la
+    BOÎTE de la détection la plus confiante telle quelle (rectangle propre),
+    pas l'union en L de rectangles décalés."""
+
+    def test_cross_tile_duplicate_boxes_keep_best_box(self):
+        # Même objet vu par deux dalles voisines : boîtes décalées de ~0,3 m
+        # (IoU ≈ 0,95). On garde la plus confiante, géométrie intacte.
+        best_box = _square(0.0, 0.0, 10.0)
+        other = _square(0.3, 0.2, 10.0)
+        out = _resolve_same_class_overlaps(
+            [_det(other, 0.244), _det(best_box, 0.337)],
+            0.5, unary_union, STRtree, keep_best_geometry=True,
+        )
+        assert len(out) == 1
+        assert out[0]["geometry"].equals(best_box)
+        assert out[0]["confidence"] == 0.337
+
+    def test_quadruple_corner_duplicate_resolved_to_one(self):
+        # Objet en coin de dalle vu par 4 dalles (mesuré sur Foret_de_Parroy).
+        boxes = [
+            (_square(0.0, 0.0, 10.0), 0.4),
+            (_square(0.2, 0.1, 10.0), 0.7),
+            (_square(-0.1, 0.3, 10.0), 0.5),
+            (_square(0.3, -0.2, 10.0), 0.3),
+        ]
+        out = _resolve_same_class_overlaps(
+            [_det(g, c) for g, c in boxes],
+            0.5, unary_union, STRtree, keep_best_geometry=True,
+        )
+        assert len(out) == 1
+        assert out[0]["geometry"].equals(boxes[1][0])  # la plus confiante
+
+    def test_weak_overlap_boxes_both_kept(self):
+        # Deux objets distincts faiblement sécants : pas de fusion.
+        a = _det(_square(0.0, 0.0, 10.0), 0.8)
+        b = _det(_square(9.0, 9.0, 10.0), 0.6)
+        out = _resolve_same_class_overlaps(
+            [a, b], 0.5, unary_union, STRtree, keep_best_geometry=True,
+        )
+        assert len(out) == 2
+
+    def test_keep_best_via_postprocess_geo_detections(self):
+        # Intégration : le flag traverse postprocess_geo_detections.
+        best_box = _square(0.0, 0.0, 10.0)
+        out = postprocess_geo_detections(
+            {"charbonniere": [_det(_square(0.3, 0.2, 10.0), 0.244),
+                              _det(best_box, 0.337)]},
+            do_merge=False,
+            do_remove_overlaps=True,
+            overlap_strategy="relation",
+            overlap_ios_threshold=0.5,
+            overlap_keep_best_geometry=True,
+        )
+        assert len(out["charbonniere"]) == 1
+        assert out["charbonniere"][0]["geometry"].equals(best_box)
+
+    def test_union_stays_default_without_flag(self):
+        # Sans le flag (segmentation), la relation fusionne toujours par union.
+        a, b = _square(0.0, 0.0, 10.0), _square(3.0, 0.0, 10.0)
+        out = _resolve_same_class_overlaps(
+            [_det(a, 0.8), _det(b, 0.6)], 0.5, unary_union, STRtree,
+        )
+        assert len(out) == 1
+        assert out[0]["geometry"].area > a.area  # union, pas la meilleure boîte
+
+
 class TestPostprocessDifferenceStrategyUnchanged:
     """Garde-fou : la stratégie 'difference' (défaut) reste le découpage legacy."""
 

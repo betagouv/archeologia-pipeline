@@ -29,12 +29,14 @@ from qgis.PyQt.QtWidgets import (
 from ...app.services.model_orchestrator import (
     build_entity_coverage,
     discover_installed_models,
+    effective_model_names,
     group_entities_by_morphology,
     load_entities_catalog,
     resolve_runs_from_entities,
 )
 from ..widgets.card import build_card
 from ..widgets.entity_card import EntityCard
+from ..widgets.toast import show_toast
 from ..widgets.toggle_switch import ToggleSwitch
 
 
@@ -64,6 +66,7 @@ class DetectionPage(QWidget):
         self._entity_cluster_params: dict = {}  # eid -> {eps_m, min_cluster_size, …}
         self._active_rvts: set = set()
         self._loading = False
+        self._readonly = False
         self._cards: dict = {}
         self._filter = "all"            # filtre morphologique courant (affichage only)
         self._filter_buttons: dict = {}
@@ -142,6 +145,24 @@ class DetectionPage(QWidget):
         self._sel_count = ent_card.counter  # « X sur Y sélectionnées » dans l'en-tête
         adv_row = QHBoxLayout()
         adv_row.addStretch(1)
+        # Les surcharges par entité sont persistées d'une session à l'autre et priment
+        # sur les seuils du modèle : sans ce bouton, un réglage ancien reste appliqué
+        # en silence, y compris après la mise à jour d'un modèle. Le piège est réel —
+        # les seuils d'un run sont ramenés à leur MINIMUM (model_orchestrator l. 747),
+        # donc une seule entité oubliée à une valeur basse tire tout le run avec elle.
+        # Aligné sur la réinitialisation des réglages avancés de l'étape 2 : même préfixe
+        # « ↺ », même style GhostButton, même curseur, même confirmation par Toast.
+        self._reset_btn = QPushButton("↺  Réinit. val. défaut du modèle")
+        self._reset_btn.setObjectName("GhostButton")
+        self._reset_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._reset_btn.setToolTip(
+            "Efface toutes les surcharges par entité (confiance, aire minimale et "
+            "paramètres de regroupement) et revient aux valeurs recommandées par le "
+            "modèle sélectionné."
+        )
+        self._reset_btn.clicked.connect(self._on_reset_defaults)
+        self._reset_btn.setVisible(False)
+        adv_row.addWidget(self._reset_btn)
         self._adv_check = QCheckBox("Réglages avancés (seuils par entité)")
         self._adv_check.setObjectName("WizardPageSub")
         self._adv_check.toggled.connect(self._on_advanced_toggled)
@@ -256,7 +277,7 @@ class DetectionPage(QWidget):
         )
         card.set_candidates(candidates, has_cluster=has_cluster, is_derived=is_derived)
         card.toggled.connect(self._on_entity_toggled)
-        card.model_changed.connect(self._on_model_changed)
+        card.models_changed.connect(self._on_models_changed)
         card.cluster_toggled.connect(self._on_cluster_toggled)
         card.activate_rvt.connect(self.activate_rvt)
         card.thresholds_changed.connect(self._on_thresholds_changed)
@@ -290,8 +311,10 @@ class DetectionPage(QWidget):
         if not self._loading:
             self.changed.emit()
 
-    def _on_model_changed(self, entity_id: str, model_name: str) -> None:
-        self._overrides[entity_id] = model_name
+    def _on_models_changed(self, entity_id: str, model_names: list) -> None:
+        # 1..n modèles cochés dans le menu de la carte (≥2 = comparaison A/B).
+        # La surcharge persistée accepte str (legacy) ou liste — on stocke la liste.
+        self._overrides[entity_id] = [str(n) for n in model_names]
         self._refresh()
         if not self._loading:
             self.changed.emit()
@@ -328,9 +351,78 @@ class DetectionPage(QWidget):
         if not self._loading:
             self.changed.emit()
 
+    def _on_reset_defaults(self) -> None:
+        """Efface les surcharges : les cartes retombent sur les défauts du modèle.
+
+        On vide les dictionnaires plutôt que d'y réécrire les valeurs du modèle. C'est
+        la seule façon de rester juste quand on change de modèle ensuite : une valeur
+        recopiée redeviendrait une surcharge, figée sur l'ancien modèle.
+        """
+        if not (self._entity_thresholds or self._entity_cluster_params):
+            return
+        # Compté AVANT d'effacer : la confirmation dit ce qui a été fait, pas un
+        # « c'est fait » générique qui laisserait douter que quelque chose ait bougé.
+        n_seuils = len(self._entity_thresholds)
+        n_cluster = len(self._entity_cluster_params)
+        self._entity_thresholds.clear()
+        self._entity_cluster_params.clear()
+        # Pas besoin de geler les signaux ici : EntityCard.update_state met déjà son
+        # propre `_loading` autour de ses setValue, et n'émet donc pas pendant qu'on
+        # repeuple les spinbox avec les défauts du modèle.
+        self._refresh()
+
+        parties = []
+        if n_seuils:
+            parties.append(f"{n_seuils} seuil{'s' if n_seuils > 1 else ''} par entité")
+        if n_cluster:
+            parties.append(f"{n_cluster} jeu{'x' if n_cluster > 1 else ''} de paramètres "
+                           f"de regroupement")
+        show_toast(self, "↺  " + " et ".join(parties)
+                   + " effacé(s) — valeurs du modèle rétablies")
+        if not self._loading:
+            self.changed.emit()
+
     # ------------------------------------------------------------------
     # Rafraîchissement
     # ------------------------------------------------------------------
+    @staticmethod
+    def _default_conf_entite(model, eid: str) -> float:
+        """Défaut de confiance affiché pour UNE entité.
+
+        Si le model_card porte des seuils par classe (mesurés au banc), l'entité
+        hérite du seuil de SES classes — c'est aussi la valeur vers laquelle le
+        bouton « Réinit. val. défaut du modèle » la ramène. ``min`` si l'entité
+        couvre plusieurs classes aux seuils différents (cohérent avec le plancher
+        de décodage). Sinon, défaut global du modèle, comme avant.
+        """
+        if model is None:
+            return 0.2
+        pc = getattr(model, "default_confidence_per_class", None) or {}
+        vals = [pc[c] for c in model.coverage.get(eid, ()) if c in pc]
+        return float(min(vals)) if vals else float(model.default_confidence)
+
+    @staticmethod
+    def _fiabilite_hint(model, eid: str, conf_override) -> str:
+        """Aide « Fiabilité affichée — douteux dès 0,29 · … » pour UNE entité : les
+        catégories EFFECTIVES de chacune de ses classes au seuil courant (surcharge
+        UI si posée, sinon seuil par classe du modèle) — même règle que le run."""
+        if model is None or not getattr(model, "fiabilite_per_class", None):
+            return ""
+        try:
+            from ...app.services.fiabilite import categories_effectives, hint_etape3
+        except ImportError:
+            from app.services.fiabilite import categories_effectives, hint_etape3  # type: ignore[no-redef]
+        pc = getattr(model, "default_confidence_per_class", None) or {}
+        par_classe = {}
+        for c in model.coverage.get(eid, ()):
+            cats = model.fiabilite_per_class.get(c)
+            if not cats:
+                continue
+            seuil = (float(conf_override) if conf_override is not None
+                     else float(pc.get(c, model.default_confidence)))
+            par_classe[c] = categories_effectives(cats, seuil)
+        return hint_etape3(par_classe)
+
     def _refresh(self) -> None:
         self._enable_check.setChecked(self._enabled)
         # Le bandeau ne doit dire « actif » (bleu) que si la détection l'est :
@@ -344,9 +436,21 @@ class DetectionPage(QWidget):
 
         for eid, card in self._cards.items():
             ec = self._coverage.get(eid)
-            model_name = self._overrides.get(eid) or (ec.default_model if ec else None)
-            model = self._models.get(model_name) if model_name else None
-            rvt = model.target_rvt if model else "—"
+            model_names = effective_model_names(ec, self._overrides) if ec else []
+            # Modèle « primaire » (1ᵉʳ de la liste) : porte les défauts des
+            # spinbox. En comparaison A/B les surcharges de seuils s'appliquent
+            # identiquement aux deux runs (comparaison à seuil égal).
+            model = self._models.get(model_names[0]) if model_names else None
+            # Garde RVT sur TOUS les modèles cochés : sans elle, le run du
+            # modèle secondaire dont l'indice n'est pas activé à l'étape 2
+            # partirait sans avertissement et échouerait à l'exécution.
+            rvts: list = []
+            for _n in model_names:
+                _m = self._models.get(_n)
+                if _m and _m.target_rvt not in rvts:
+                    rvts.append(_m.target_rvt)
+            rvt = " + ".join(rvts) if rvts else "—"
+            missing_rvts = [r for r in rvts if r not in self._active_rvts]
             cluster_outputs = model.cluster_options.get(eid, ()) if model else ()
             is_derived = bool(model) and eid in model.derived_entities
             ov = self._entity_thresholds.get(eid, {})
@@ -365,19 +469,28 @@ class DetectionPage(QWidget):
                         break
             card.update_state(
                 selected=bool(self._selected.get(eid)),
-                current_model=model_name,
+                current_models=model_names,
                 rvt=rvt,
-                rvt_active=(rvt in self._active_rvts) if model else True,
+                rvt_active=(not missing_rvts) if model else True,
+                missing_rvt=missing_rvts[0] if missing_rvts else None,
                 cluster_outputs=cluster_outputs,
                 cluster_on=eid in self._cluster,
-                default_confidence=model.default_confidence if model else 0.2,
+                default_confidence=self._default_conf_entite(model, eid),
                 default_min_area=model.default_min_area if model else 0.0,
                 conf_override=ov.get("confidence_threshold"),
                 area_override=ov.get("min_area_m2"),
                 is_derived=is_derived,
                 cluster_default_params=cluster_default_params,
                 cluster_params_override=self._entity_cluster_params.get(eid),
+                fiabilite_hint=self._fiabilite_hint(model, eid, ov.get("confidence_threshold")),
             )
+        # Le bouton n'existe que là où il sert : en mode avancé, et seulement s'il y a
+        # effectivement quelque chose à effacer. Sinon il promettrait une action sans effet.
+        self._reset_btn.setVisible(self._advanced)
+        self._reset_btn.setEnabled(
+            not self._readonly
+            and bool(self._entity_thresholds or self._entity_cluster_params)
+        )
         self._update_selection_count()
         self._rebuild_runs()
         self._apply_filter()
@@ -497,9 +610,16 @@ class DetectionPage(QWidget):
         (navigation) et la case « Réglages avancés » (révèle les seuils en
         lecture seule). N'agit que sur ``setEnabled`` → aucun ``changed``/autosave.
         """
+        self._readonly = bool(ro)
         self._enable_check.setEnabled(not ro)
         self._annot_check.setEnabled(not ro)
         self._es_btn.setEnabled(not ro)
+        # Sans ça le bouton resterait cliquable pendant un run : les cartes sont
+        # désactivées mais lui vit dans la barre des réglages avancés, qui reste
+        # active pour la consultation.
+        self._reset_btn.setEnabled(
+            not ro and bool(self._entity_thresholds or self._entity_cluster_params)
+        )
         for card in self._cards.values():
             card.setEnabled(not ro)
 

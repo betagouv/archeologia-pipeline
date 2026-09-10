@@ -9,7 +9,7 @@ name=Archéolog'IA
 qgisMinimumVersion=3.34
 qgisMaximumVersion=4.99
 description=Détection de sites archéologiques par réseaux de neurones
-version=0.7.4
+version=0.8.0
 author=Valentin VIEUX
 email=valentin.vieux.pro@outlook.com
 about=Plugin pour automatiser la production d'indices de visualisation (à l'aide du plugin Relief Visualization Toolbox) à partir de données LiDAR ou de MNT et pour détecter des sites archéologiques à l'aide de réseaux de neurones (YOLO, RF-DETR détection ou segmentation)
@@ -21,7 +21,17 @@ repository=https://github.com/betagouv/archeologia-pipeline
 #
 
 hasProcessingProvider=no
-changelog=0.7.4 (2026-06-25)
+changelog=0.8.0 (2026-09-10)
+    * Nouvelle entité « Enclos » : à partir des fragments de parcellaire détectés, le plugin reconstitue les contours fermés et publie les enclos candidats (fermeture vectorielle, filtres d'aire, d'élongation, d'ancrage et d'isolement, tous éditables à l'étape 3). Un mode calibration publie aussi les rejetés avec le motif du rejet
+    * Nouvelle entité « Axes linéaires » : les détections parcellaires alignées sont regroupées en bandes directionnelles (voies anciennes, limites majeures, levées), avec longueur, couverture, nombre de brins et parallélisme en attributs
+    * Comparaison A/B : une même entité peut être confiée à deux modèles à la fois — une couche par modèle, réunies dans un groupe QGIS « (comparaison) », pour trancher sur pièces
+    * Légende : les tranches de score sont remplacées par une fiabilité lisible — douteux / possible / probable / très probable — dont le sens est identique d'un modèle à l'autre, car adossée à la part de vrais objets mesurée au banc (35 / 60 / 85 % garantis). Le pourcentage mesuré figure dans l'infobulle de la couche et dans la fiche du modèle
+    * Seuil de confiance réglable par classe (et non plus par modèle), avec un bouton « Valeurs par défaut du modèle » à l'étape 3 pour revenir aux réglages recommandés
+    * Objets à cheval sur deux dalles : l'inférence travaille désormais sur un halo débordant sur les dalles voisines, dans tous les modes — un enclos ou un chemin coupé par un bord de dalle est vu entier. Chaque dalle ne rapporte que les objets dont le centre lui appartient, ce qui supprime les doublons de bordure
+    * MNT étrangers : les valeurs de NoData issues d'un rééchantillonnage 8 bits sont reconnues et étiquetées (fin des bandes noires en bord de raster), et les indices RVT sont calculés avec le contexte des dalles voisines
+    * Préflight : la présence réelle des algorithmes RVT est vérifiée avant le lancement, et la publication des indices repose sur la fraîcheur des fichiers (un dossier `indices/` existant n'est plus purgé)
+    * Correctifs : détections imbriquées ou accolées fusionnées au lieu d'être découpées ; couches d'enclos et d'axes rendues invisibles par la symbologie ; surcharge de modèle périmée revenant silencieusement au défaut ; étape de fermeture des enclos ramenée de ~3 h à quelques minutes
+ 0.7.4 (2026-06-25)
     * Téléchargement IGN : correctif du proxy d'entreprise — une URL d'auto-configuration (PAC, ex. http://serveur/proxy.pac) renseignée comme proxy dans QGIS produisait une adresse cassée (double « http:// ») qui faisait échouer tous les téléchargements ; ces URL PAC sont désormais détectées et ignorées avec un message expliquant comment définir un proxy hôte:port explicite (QGIS → Préférences → Réseau)
     * Téléchargement IGN : si aucune dalle n'a pu être récupérée (réseau coupé ou proxy invalide), le pipeline s'arrête immédiatement avec un message clair au lieu de remonter une erreur opaque plus loin (« fichier central introuvable »)
     * Journal de téléchargement : la sous-progression affiche « échec » au lieu de « téléchargée » quand une dalle n'a pas pu être récupérée

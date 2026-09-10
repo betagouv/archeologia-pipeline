@@ -15,6 +15,18 @@ from ..cancellation import PipelineCancelled, check_cancelled
 from ..types import CancelCheckFn, LogFn
 
 
+def _run_model_slug(cv_config: Optional[Dict[str, Any]]) -> Optional[str]:
+    """Slug du modèle du run courant (``selected_model`` posé par
+    ``resolve_cv_runs``), ou ``None`` si indisponible."""
+    try:
+        from .runner_cache import get_model_slug
+        if isinstance(cv_config, dict) and cv_config.get("selected_model"):
+            return get_model_slug(cv_config)
+    except Exception:
+        pass
+    return None
+
+
 def deduplicate_cv_shapefiles_final(
     *,
     labels_dir: Path,
@@ -24,6 +36,8 @@ def deduplicate_cv_shapefiles_final(
     output_dir: Optional[Path] = None,
     cv_config: Optional[Dict[str, Any]] = None,
     tif_transform_data: Optional[Dict[str, Tuple[float, float, float, float]]] = None,
+    valid_region_bounds: Optional[list] = None,
+    cell_bounds_by_stem: Optional[Dict[str, Tuple[float, float, float, float]]] = None,
     global_color_map: Optional[Dict[str, int]] = None,
     temp_dir: Optional[Path] = None,
     crs: str = "EPSG:2154",
@@ -83,8 +97,10 @@ def deduplicate_cv_shapefiles_final(
             if isinstance(ov, dict) and ov:
                 # Clés CONNUES uniquement, castées et bornées (AUDIT PARSE-03) :
                 # la config modèle est validée au chargement, les surcharges UI
-                # doivent l'être aussi avant la fusion.
-                cc.update(sanitize_clustering_overrides(ov, warn=log))
+                # doivent l'être aussi avant la fusion. Bornes selon le TYPE de
+                # la règle (dbscan/enclosure).
+                cc.update(sanitize_clustering_overrides(
+                    ov, warn=log, rule_type=str(cc.get("type", "dbscan"))))
         log(f"Computer Vision: surcharges de clustering appliquées ({len(_cluster_overrides)} sortie(s))")
 
     # shp_dir n'est PLUS créé d'office : la sortie est routée par entité vers
@@ -117,6 +133,17 @@ def deduplicate_cv_shapefiles_final(
         out_shp.parent.mkdir(parents=True, exist_ok=True)
         log(f"Computer Vision: run sans 'entities' — repli modèle-centré detections/{slug}/")
 
+    # Fiabilité affichée (bloc du run posé par l'orchestrateur : catégories
+    # douteux/possible/probable/quasi_certain au seuil effectif de chaque classe).
+    fiabilite = (cv_config or {}).get("fiabilite") if isinstance(cv_config, dict) else None
+    if isinstance(fiabilite, dict):
+        for _cl, _cats in (fiabilite.get("par_classe") or {}).items():
+            log("Computer Vision: fiabilité " + str(_cl) + " : " + " · ".join(
+                f"{c.get('categorie')} dès {c.get('seuil')}" for c in _cats if isinstance(c, dict)))
+    else:
+        fiabilite = None
+        log("Computer Vision: pas de table de fiabilité pour ce modèle — tranches de confiance historiques")
+
     # Générer les shapefiles par classe (le post-processing global
     # — fusion des polygones adjacents + suppression des superpositions —
     # est intégré directement dans create_shapefile_from_detections)
@@ -142,6 +169,13 @@ def deduplicate_cv_shapefiles_final(
             postprocess_config=postprocess_config,
             min_confidence=float((cv_config or {}).get("confidence_threshold", 0.0) or 0.0),
             class_targets=class_targets,
+            valid_region_bounds=valid_region_bounds,
+            cell_bounds_by_stem=cell_bounds_by_stem,
+            # Attribut model_name des détections : le modèle DU RUN (multi-runs
+            # A/B), pas le selected_model top-level de config.json (qui peut
+            # désigner un autre run).
+            model_name=_run_model_slug(cv_config),
+            fiabilite=fiabilite,
             cancel_check=cancel_check,
         ))
         qgs_root = shp_dir.parent if shp_dir.name.lower() in {"shapefiles", "shp"} else shp_dir
@@ -178,11 +212,24 @@ def deduplicate_cv_shapefiles_final(
         else:
             gpkg_paths = [str(p) for p in shp_dir.glob("*.gpkg")]
         if gpkg_paths:
+            # Couches issues des briques de synthèse (clusters, enclos) : elles
+            # portent leur propre min_area_m2 par règle — le seuil global du
+            # modèle ne doit pas les raboter (un enclos funéraire de 80 m²
+            # serait effacé après écriture). Nom de couche = output_class,
+            # éventuellement renommé par le routage entité (output_label).
+            _exempt_layers = set()
+            for cc in (clustering_configs or []):
+                oc = str(cc.get("output_class_name") or "").strip()
+                if not oc:
+                    continue
+                for _gp, layer in (class_targets or {}).get(oc) or [(None, oc)]:
+                    _exempt_layers.add(layer)
             try:
                 _filter_gpkg_by_min_area(
                     gpkg_paths=gpkg_paths,
                     min_area_m2=min_area_m2,
                     crs=str(crs),
+                    exempt_layers=frozenset(_exempt_layers),
                 )
             except Exception as e:
                 log(f"Computer Vision: filtrage par aire ignoré (erreur): {e}")

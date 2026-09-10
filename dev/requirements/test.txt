@@ -13,6 +13,10 @@ pyyaml>=6.0
 # côté plugin (les fonctions concernées font import lazy dans except).
 shapely>=2.0
 
+# DBSCAN du clustering (pipeline.cv.clustering : cKDTree) : nécessaire pour
+# tester run_synthesis/run_clustering. QGIS l'embarque (dépendance de fait).
+scipy>=1.10
+
 # Lecture des métadonnées raster + interprétation CRS : nécessaire pour
 # tester pipeline.tilespec (crs_is_projected, TileSpec.from_raster,
 # assign_crs_if_missing) et pipeline.ingest_plan. Côté plugin l'accès

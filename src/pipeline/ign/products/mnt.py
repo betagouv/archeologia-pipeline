@@ -6,6 +6,7 @@ from typing import Any, Dict, Optional, Tuple
 
 from ..pdal_validation import get_laz_bounds, validate_las_or_laz_with_pdal
 from .qgis_processing import run_qgis_algorithm
+from .results import needs_refresh
 from ...tilespec import assign_crs_if_missing
 from ...types import LogFn
 
@@ -48,7 +49,11 @@ def create_terrain_model(
     if not ok:
         raise IOError(f"Fichier d'entrée MNT illisible/corrompu via PDAL: {input_laz_path} ({msg})")
 
-    if output_path.exists():
+    # Fraîcheur vis-à-vis du LAZ fusionné (pas simple existence) : un
+    # re-merge (jeu de voisins modifié, halo) re-matérialise le LAZ → le MNT
+    # doit suivre, et la chaîne aval (RVT/PNG/cache CV) se ré-arme d'elle-même.
+    if not needs_refresh(input_laz_path, output_path):
+        log(f"MNT réutilisé (cache intermédiaire) : {output_file}")
         return TerrainModelResult(mnt_path=output_path)
 
     temp_dir.mkdir(parents=True, exist_ok=True)

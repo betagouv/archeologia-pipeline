@@ -1,9 +1,7 @@
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
-import pytest
 
 from pipeline.cv.model_config import (
     _resolve_model_dir,
@@ -202,6 +200,25 @@ class TestResolveCvRuns:
         runs = resolve_cv_runs(cfg)
         assert runs[0]["confidence_threshold"] == 0.45
         assert runs[0]["iou_threshold"] == 0.6
+
+    def test_propagates_fiabilite_block(self):
+        # 2026-09-09 : le bloc fiabilité posé par l'orchestrateur doit survivre à la
+        # reconstruction du cv_config du run — sinon la conversion n'écrit ni champs
+        # ni sidecar et la légende retombe sur les tranches de score (bug Fénétrange).
+        bloc = {"modele": "m", "provenance": "p",
+                "par_classe": {"c": [{"categorie": "douteux", "seuil": 0.3, "garanti": 0.0,
+                                       "mesure": 0.2, "n": 40}]}}
+        cfg = {
+            "runs": [
+                {"model": "m1", "target_rvt": "LD", "fiabilite": bloc},
+                {"model": "m2", "target_rvt": "LD"},
+                {"model": "m3", "target_rvt": "LD", "fiabilite": "pas un dict"},
+            ],
+            "models_dir": "models",
+        }
+        runs = resolve_cv_runs(cfg)
+        assert runs[0]["fiabilite"] == bloc
+        assert "fiabilite" not in runs[1] and "fiabilite" not in runs[2]
 
     def test_skips_runs_without_model(self):
         cfg = {

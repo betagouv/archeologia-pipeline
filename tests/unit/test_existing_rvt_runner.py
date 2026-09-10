@@ -110,6 +110,58 @@ class TestExistingRvtRunner:
         assert calls[0]["cv_config"]["enabled"] is False
         assert any("aucun modèle" in msg for msg in reporter.messages)
 
+    def test_halo_resolver_wired_when_intermediaires_exists(self, tmp_path: Path, monkeypatch):
+        captured = {}
+
+        def fake_run_existing_rvt(**kwargs):
+            captured.update(kwargs)
+            return SimpleNamespace(total_images=1, total_detections=None)
+
+        monkeypatch.setattr("pipeline.modes.existing_rvt.run_existing_rvt", fake_run_existing_rvt)
+        monkeypatch.setattr("app.runners.existing_rvt_runner.finalize_pipeline", lambda **_kwargs: None)
+
+        ctx = _ctx(tmp_path, {"enabled": True, "target_rvt": "LD"})
+        (ctx.output_dir / "intermediaires").mkdir()
+
+        resolved = tmp_path / "source_non_rognee.tif"
+        seen = {}
+
+        def fake_resolve(cropped, src, rvt, params):
+            seen.update(cropped=cropped, src=src, rvt=rvt, params=params)
+            return resolved
+
+        monkeypatch.setattr(
+            "app.runners.existing_rvt_runner.resolve_uncropped_tif", fake_resolve
+        )
+
+        ExistingRvtRunner().run(
+            ctx=ctx, reporter=_Reporter(), cancel=CancelToken(threading.Event())
+        )
+
+        resolver = captured.get("inference_tif_resolver")
+        assert callable(resolver)
+        assert resolver(Path("LHD_FXX_0390_6818_LD.tif")) == resolved
+        assert seen["src"] == ctx.output_dir / "intermediaires"
+        assert seen["rvt"] == "LD"
+
+    def test_no_halo_resolver_without_intermediaires(self, tmp_path: Path, monkeypatch):
+        captured = {}
+
+        def fake_run_existing_rvt(**kwargs):
+            captured.update(kwargs)
+            return SimpleNamespace(total_images=1, total_detections=None)
+
+        monkeypatch.setattr("pipeline.modes.existing_rvt.run_existing_rvt", fake_run_existing_rvt)
+        monkeypatch.setattr("app.runners.existing_rvt_runner.finalize_pipeline", lambda **_kwargs: None)
+
+        ExistingRvtRunner().run(
+            ctx=_ctx(tmp_path, {"enabled": True, "target_rvt": "LD"}),
+            reporter=_Reporter(),
+            cancel=CancelToken(threading.Event()),
+        )
+
+        assert captured.get("inference_tif_resolver") is None
+
     def test_progress_advances_in_cv_band_and_wires_on_busy(self, tmp_path: Path, monkeypatch):
         captured = {}
 

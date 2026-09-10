@@ -7,7 +7,7 @@ from ..cancel_token import CancelToken
 from ..progress_reporter import ProgressReporter, report_busy, report_stage_id
 from ..progress_stages import Stage
 from ..run_context import RunContext
-from ..services.cv_post_service import _model_display_name
+from ..services.cv_post_service import _model_display_name, resolve_uncropped_tif
 from ..services.finalize_service import finalize_pipeline
 from ..structured_logger import log_section
 from ..user_narrator import create_user_narrator
@@ -16,9 +16,11 @@ from .progress_plan import build_progress_plan, cv_pct
 try:  # cross-package import : OK en QGIS, fallback en tests standalone (src/ sur le path)
     from ...pipeline.cancellation import PipelineCancelled
     from ...pipeline.batch import process_items_isolated
+    from ...pipeline.output_paths import intermediaires_dir
 except ImportError:  # pragma: no cover
     from pipeline.cancellation import PipelineCancelled
     from pipeline.batch import process_items_isolated
+    from pipeline.output_paths import intermediaires_dir
 
 if TYPE_CHECKING:
     from ..structured_logger import StructuredLogger
@@ -31,7 +33,7 @@ class ExistingRvtRunner:
         reporter: ProgressReporter,
         cancel: CancelToken,
         slog: Optional["StructuredLogger"] = None,
-    ) -> None:
+    ) -> Optional[bool]:
         try:
             from ...pipeline.modes.existing_rvt import run_existing_rvt
         except ImportError:
@@ -88,6 +90,10 @@ class ExistingRvtRunner:
             # image par image via cv_pct dans _on_image_progress.
             reporter.progress(plan.cv[0])
 
+        # total_detections par run (résumé du runner) — None exclus : si aucun
+        # run n'a de résumé (fallback, vieux binaire), pas d'annonce de total.
+        detection_counts: list = []
+
         def _process_run(run_idx: int, run_cfg: dict) -> None:
             nonlocal total_images
             run_model = run_cfg.get("selected_model", "?")
@@ -105,6 +111,21 @@ class ExistingRvtRunner:
                 narrator.cv_run_image_progress(_model, idx, total, image_name)
                 reporter.progress(cv_pct(_ri, _n, idx, total, plan.cv))
 
+            # Option B (halo inter-dalles) étendue à existing_rvt : si le dossier
+            # de sortie contient les TIF non rognés d'un run complet antérieur
+            # (intermediaires/, modes ign_laz/local_laz), l'inférence tourne
+            # dessus — les objets à cheval sur une frontière de dalle sont vus
+            # en entier. Sans correspondance (dalle absente, paramètres RVT
+            # différents des noms d'intermediaires), resolve_uncropped_tif
+            # renvoie None et le TIF rogné est utilisé (comportement historique).
+            inference_tif_resolver = None
+            halo_dir = intermediaires_dir(ctx.output_dir)
+            if halo_dir.is_dir():
+                def inference_tif_resolver(
+                    cropped, _rvt=run_rvt, _src=halo_dir,
+                ):
+                    return resolve_uncropped_tif(cropped, _src, _rvt, ctx.rvt_params)
+
             res = run_existing_rvt(
                 existing_rvt_dir=existing_rvt_dir,
                 output_dir=ctx.output_dir,
@@ -116,9 +137,13 @@ class ExistingRvtRunner:
                 global_color_map=global_color_map,
                 indices_folder_name="RVT",
                 image_progress=_on_image_progress if cv_runs else None,
+                tile_progress=narrator.cv_run_tile_progress if cv_runs else None,
                 on_busy=lambda active: report_busy(reporter, active),
+                inference_tif_resolver=inference_tif_resolver,
             )
             total_images = max(total_images, res.total_images)
+            if res.total_detections is not None:
+                detection_counts.append(res.total_detections)
 
         def _on_run_failure(run_idx: int, run_cfg: dict, exc: Exception) -> None:
             model_display = _model_display_name(run_cfg.get("selected_model", "?"))
@@ -134,6 +159,7 @@ class ExistingRvtRunner:
         # runner avait été oublié par le correctif ROB-02/03/04).
         cancelled = False
         fatal = False
+        final_ok: Optional[bool] = None
         try:
             _ok, failed = process_items_isolated(
                 run_configs,
@@ -146,6 +172,8 @@ class ExistingRvtRunner:
                     f"⚠️ Computer Vision: {len(failed)} run(s) sur "
                     f"{len(run_configs)} en échec — voir le journal."
                 )
+            if detection_counts:
+                narrator.cv_complete(sum(detection_counts))
         except PipelineCancelled:
             cancelled = True
             reporter.info("Annulation demandée — finalisation des résultats partiels…")
@@ -164,7 +192,7 @@ class ExistingRvtRunner:
                 outcome = "failed"
             else:
                 outcome = "success"
-            finalize_pipeline(
+            final_ok = finalize_pipeline(
                 output_dir=ctx.output_dir,
                 cv_cfg=cv_config,
                 rvt_params=ctx.rvt_params,
@@ -180,3 +208,5 @@ class ExistingRvtRunner:
 
         if cancelled or cancel.is_cancelled():
             narrator.pipeline_cancelled()
+            return None
+        return final_ok

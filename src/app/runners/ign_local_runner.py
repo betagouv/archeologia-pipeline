@@ -51,14 +51,22 @@ class IgnOrLocalRunner:
         total_tiles: int,
         active_products: list,
     ) -> None:
-        from ...pipeline.ign.products.coverage import create_coverage_map
-        from ...pipeline.ign.products.crop import crop_final_products
-        from ...pipeline.ign.products.density import create_density_map
-        from ...pipeline.ign.products.indices import create_visualization_products
-        from ...pipeline.ign.products.mnt import create_terrain_model
-        from ...pipeline.ign.products.results import copy_final_products_to_results
-
-        from ...pipeline.output_paths import intermediaires_dir
+        try:  # fallback standalone (tests : src/ sur le path)
+            from ...pipeline.ign.products.coverage import create_coverage_map
+            from ...pipeline.ign.products.crop import crop_final_products
+            from ...pipeline.ign.products.density import create_density_map
+            from ...pipeline.ign.products.indices import create_visualization_products
+            from ...pipeline.ign.products.mnt import create_terrain_model
+            from ...pipeline.ign.products.results import copy_final_products_to_results
+            from ...pipeline.output_paths import intermediaires_dir
+        except ImportError:  # pragma: no cover
+            from pipeline.ign.products.coverage import create_coverage_map
+            from pipeline.ign.products.crop import crop_final_products
+            from pipeline.ign.products.density import create_density_map
+            from pipeline.ign.products.indices import create_visualization_products
+            from pipeline.ign.products.mnt import create_terrain_model
+            from pipeline.ign.products.results import copy_final_products_to_results
+            from pipeline.output_paths import intermediaires_dir
 
         tile_name = merged_path.name.replace(".copc.laz", "").replace(".laz", "")
         temp_dir = intermediaires_dir(output_dir)
@@ -159,7 +167,7 @@ class IgnOrLocalRunner:
         reporter: ProgressReporter,
         cancel: CancelToken,
         slog: Optional["StructuredLogger"] = None,
-    ) -> None:
+    ) -> Optional[bool]:
         # Vider le cache de validation PDAL au début de chaque run
         try:  # fallback standalone (tests : src/ sur le path), cf. imports module
             from ...pipeline.ign.pdal_validation import clear_validation_cache
@@ -209,6 +217,7 @@ class IgnOrLocalRunner:
         # La FUSION est DANS le try/finally (AUDIT v2 ROB-12) : un échec de
         # fusion ne saute plus la finalisation des produits déjà sur disque.
         cancelled = False
+        final_ok: Optional[bool] = None
         fatal = False
         try:
             log_section("FUSION DES TUILES", "process", slog=slog, reporter=reporter)
@@ -221,6 +230,33 @@ class IgnOrLocalRunner:
 
             def _on_tile_merged(i: int, n: int, tile_name: str) -> None:
                 narrator.merging_tile_progress(i, n, tile_name)
+
+            # Re-run dans le même output_dir : les caches « le fichier existe →
+            # on saute » (merged.laz, <dalle>_MNT.tif…) n'encodent pas ces
+            # paramètres dans leurs noms — sans purge, un nouveau réglage
+            # serait silencieusement ignoré (bug SRA HDF 2026-08-31). Placé
+            # APRÈS l'acquisition (une annulation du téléchargement ne purge
+            # rien) et juste avant le premier consommateur du cache ; seule
+            # intermediaires/ est touchée (indices/ = livrable accumulé,
+            # re-publié par fraîcheur dans results.needs_refresh).
+            try:  # fallback standalone (tests : src/ sur le path)
+                from ...pipeline.output_paths import intermediaires_dir as _inter_dir
+            except ImportError:  # pragma: no cover
+                from pipeline.output_paths import intermediaires_dir as _inter_dir
+            from ..services.cache_guard import build_signature, ensure_cache_matches
+            ensure_cache_matches(
+                signature=build_signature(
+                    mnt_resolution=processing.mnt_resolution,
+                    density_resolution=processing.density_resolution,
+                    tile_overlap=processing.tile_overlap,
+                    filter_expression=processing.filter_expression,
+                ),
+                intermediaires=_inter_dir(ctx.output_dir),
+                # user_warning : le ⚠️ de purge doit être VISIBLE dans la
+                # fenêtre (reporter.info = INFO=20, filtré par le seuil
+                # USER_INFO=25 du journal du wizard — pattern ROB-15).
+                log=lambda m: reporter.user_warning(m),
+            )
 
             merged_result = prepare_merged_tiles(
                 sorted_list_file=result.sorted_list_file,
@@ -305,6 +341,10 @@ class IgnOrLocalRunner:
                 # Computer Vision globale (post-boucle)
                 if ctx.cv.enabled and not cancel.is_cancelled():
                     from ..services.cv_post_service import run_cv_post_loop
+                    try:  # fallback standalone (tests : src/ sur le path)
+                        from ...pipeline.output_paths import intermediaires_dir
+                    except ImportError:  # pragma: no cover
+                        from pipeline.output_paths import intermediaires_dir
                     try:
                         run_cv_post_loop(
                             ctx=ctx,
@@ -314,6 +354,9 @@ class IgnOrLocalRunner:
                             cancel=cancel,
                             slog=slog,
                             cv_band=plan.cv,
+                            # Option B (halo inter-dalles) : les TIF non rognés
+                            # d'intermediaires/ servent de source d'inférence.
+                            halo_source_dir=intermediaires_dir(ctx.output_dir),
                         )
                     except PipelineCancelled:
                         raise
@@ -338,7 +381,7 @@ class IgnOrLocalRunner:
                 outcome = "failed"
             else:
                 outcome = "success"
-            finalize_pipeline(
+            final_ok = finalize_pipeline(
                 output_dir=ctx.output_dir,
                 cv_cfg=ctx.cv.raw,
                 rvt_params=ctx.rvt_params,
@@ -356,3 +399,5 @@ class IgnOrLocalRunner:
 
         if cancelled or cancel.is_cancelled():
             narrator.pipeline_cancelled()
+            return None
+        return final_ok

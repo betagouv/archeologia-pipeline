@@ -18,16 +18,22 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from ..cancellation import PipelineCancelled
 from ..types import LogFn, CancelCheckFn
-from .external_runner import ImageProgressFn, find_external_cv_runner, run_external_cv_runner
+from .external_runner import (
+    ImageProgressFn,
+    TileProgressFn,
+    find_external_cv_runner,
+    run_external_cv_runner,
+)
 from .runner_cache import (
     get_model_slug,
     has_cached_detection,
     list_candidate_pngs,
     prepare_model_workdir,
+    purge_stale_cached_detections,
 )
 from .runner_inference import run_fallback_inference
 from .runner_shapefiles import deduplicate_cv_shapefiles_final
@@ -64,13 +70,18 @@ def run_cv_on_folder(
     rvt_base_dir: Optional[Path] = None,
     output_dir: Optional[Path] = None,
     tif_transform_data: Optional[Dict[str, Tuple[float, float, float, float]]] = None,
+    valid_region_bounds: Optional[List[Tuple[float, float, float, float]]] = None,
+    cell_bounds_by_stem: Optional[Dict[str, Tuple[float, float, float, float]]] = None,
     single_jpg: Optional[Path] = None,
     run_shapefile_dedup: bool = True,
     global_color_map: Optional[Dict[str, int]] = None,
     log: LogFn = lambda _: None,
     cancel_check: Optional[CancelCheckFn] = None,
     image_progress: Optional[ImageProgressFn] = None,
-) -> None:
+    tile_progress: Optional[TileProgressFn] = None,
+) -> Optional[int]:
+    # Retour : total_detections du run (résumé du runner externe), None si
+    # inconnu (fallback in-process, court-circuit, ancien binaire).
     # ``models_dir`` → absolu : indispensable pour que le runner externe
     # (subprocess) ET le fallback trouvent le .onnx quel que soit le CWD.
     cv_config = _absolutize_models_dir(cv_config)
@@ -145,7 +156,8 @@ def run_cv_on_folder(
     # Trace post-hoc des paramètres effectifs CV (resolution post
     # ModelProfile pour confidence_threshold).
     from ..types import format_params_line
-    _runtime_conf = float(cv_config.get("confidence_threshold", 0.3) or 0.3)
+    from .model_config import DEFAULT_CONFIDENCE
+    _runtime_conf = float(cv_config.get("confidence_threshold", DEFAULT_CONFIDENCE) or DEFAULT_CONFIDENCE)
     _effective_conf = _runtime_conf
     _conf_source = "runtime"
     try:
@@ -193,6 +205,15 @@ def run_cv_on_folder(
     candidate_pngs = list_candidate_pngs(
         jpg_dir=jpg_dir, cv_config=cv_config, single_jpg=single_jpg,
     )
+    # Un cache plus ancien que son PNG a été calculé sur une autre géométrie
+    # (ex. bascule rogné → à marge) : purgé pour forcer la ré-inférence — le
+    # binaire externe saute par simple existence des fichiers, sans les dates.
+    stale = purge_stale_cached_detections(effective_raw_dir, candidate_pngs)
+    if stale:
+        log(
+            f"Computer Vision [{model_slug}]: {stale} cache(s) de détection "
+            "plus ancien(s) que leur PNG — purgé(s), ré-inférence"
+        )
     if not force_reprocess and candidate_pngs:
         missing = [p for p in candidate_pngs if not has_cached_detection(effective_raw_dir, p.stem)]
         if not missing:
@@ -210,6 +231,8 @@ def run_cv_on_folder(
                     output_dir=output_dir,
                     cv_config=cv_config,
                     tif_transform_data=tif_transform_data,
+                    valid_region_bounds=valid_region_bounds,
+                    cell_bounds_by_stem=cell_bounds_by_stem,
                     crs="EPSG:2154",
                     global_color_map=global_color_map,
                     log=log,
@@ -232,7 +255,7 @@ def run_cv_on_folder(
             # Le runner externe ne gère que l'inférence (pas les shapefiles).
             # La génération shapefile + post-processing global est faite côté
             # plugin Python (shapely disponible) après le retour du runner.
-            run_external_cv_runner(
+            total_detections = run_external_cv_runner(
                 ext=ext,
                 jpg_dir=jpg_dir,
                 target_rvt=target_rvt,
@@ -247,6 +270,7 @@ def run_cv_on_folder(
                 log=log,
                 cancel_check=cancel_check,
                 image_progress=image_progress,
+                tile_progress=tile_progress,
             )
             # Générer les shapefiles côté plugin (avec shapely + post-processing)
             if run_shapefile_dedup:
@@ -259,12 +283,14 @@ def run_cv_on_folder(
                     output_dir=output_dir,
                     cv_config=cv_config,
                     tif_transform_data=tif_transform_data,
+                    valid_region_bounds=valid_region_bounds,
+                    cell_bounds_by_stem=cell_bounds_by_stem,
                     crs="EPSG:2154",
                     global_color_map=global_color_map,
                     log=log,
                     cancel_check=cancel_check,
                 )
-            return
+            return total_detections
         except PipelineCancelled:
             # Annulation utilisateur : propager sans tenter le fallback.
             raise
@@ -280,8 +306,10 @@ def run_cv_on_folder(
 
     enabled = bool((cv_config or {}).get("enabled", False))
     if not enabled:
-        return
+        return None
 
+    # ponytail: le fallback in-process ne remonte ni tuiles ni total — chemin
+    # rare (binaire absent), à câbler si l'usage sans binaire se généralise.
     run_fallback_inference(
         jpg_dir=jpg_dir,
         raw_dir=effective_raw_dir,
@@ -291,6 +319,8 @@ def run_cv_on_folder(
         output_dir=output_dir,
         effective_detection_dir=effective_detection_dir,
         tif_transform_data=tif_transform_data,
+        valid_region_bounds=valid_region_bounds,
+        cell_bounds_by_stem=cell_bounds_by_stem,
         single_jpg=single_jpg,
         run_shapefile_dedup=run_shapefile_dedup,
         global_color_map=global_color_map,

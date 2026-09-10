@@ -8,8 +8,10 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 from ..geo_utils import extract_tif_transform_data
 from ..coords import extract_xy_from_filename, get_raster_bounds, infer_xy_from_file
 from ..constants import IGN_TILE_SIZE_M
-from ..cv.external_runner import ImageProgressFn
-from ..output_paths import indice_base_dir, indice_tif_dir, indice_jpg_dir
+from ..cv.external_runner import ImageProgressFn, TileProgressFn
+from ..ign.products.results import needs_refresh
+from ..output_paths import indice_base_dir, indice_tif_dir, indice_jpg_dir, intermediaires_dir
+from .neighbor_halo import DEFAULT_HALO_MARGIN_M, NeighborHalo
 from ..types import LogFn, CancelCheckFn
 
 
@@ -33,6 +35,18 @@ def _tif_size(path):
         with rasterio.open(str(path)) as ds:
             return (ds.width, ds.height)
     except Exception:
+        pass
+    # rasterio n'est pas garanti dans le Python de QGIS : sans ce repli GDAL,
+    # la garde GEO-03 devenait silencieusement inopérante (PNG jamais comparé).
+    try:
+        from osgeo import gdal
+        ds = gdal.Open(str(path))
+        if ds is None:
+            return None
+        size = (ds.RasterXSize, ds.RasterYSize)
+        ds = None
+        return size
+    except Exception:
         return None
 
 
@@ -55,9 +69,23 @@ def _png_consistent_with_tif(png_path, tif_path, *, png_size_fn=None, tif_size_f
         return True
 
 
+def _png_stale(png_path, tif_path) -> bool:
+    """Vrai si la source d'inférence est plus récente que le PNG → régénérer.
+
+    Complément mtime de la garde GEO-03 (qui ne compare que les dimensions) :
+    une source RECALCULÉE aux mêmes dimensions (cache invalidé par cache_guard,
+    MNT remplacé) doit régénérer le PNG — sinon ``purge_stale_cached_detections``
+    garde le cache d'inférence et les détections périmées sont re-publiées.
+    """
+    return needs_refresh(Path(tif_path), Path(png_path))
+
+
 @dataclass(frozen=True)
 class ExistingRvtResult:
     total_images: int
+    # total_detections du résumé du runner externe ; None si inconnu
+    # (CV désactivée, fallback in-process, annulation avant le résumé).
+    total_detections: Optional[int] = None
 
 
 def _classify_rvt_layout(
@@ -157,7 +185,10 @@ def run_existing_rvt(
     global_color_map: Dict[str, Any] | None = None,
     indices_folder_name: str | None = None,
     image_progress: Optional[ImageProgressFn] = None,
+    tile_progress: Optional[TileProgressFn] = None,
     on_busy: Optional[Callable[[bool], None]] = None,
+    inference_tif_resolver: Optional[Callable[[Path], Optional[Path]]] = None,
+    halo_margin_m: float = DEFAULT_HALO_MARGIN_M,
 ) -> ExistingRvtResult:
     if not existing_rvt_dir.exists() or not existing_rvt_dir.is_dir():
         raise FileNotFoundError(f"Dossier RVT inexistant ou invalide: {existing_rvt_dir}")
@@ -187,8 +218,11 @@ def run_existing_rvt(
     except Exception:
         rvt_output_dir = None
 
+    # png/ ne sert qu'à l'inférence CV : sans CV, ni dossier ni conversion —
+    # un run existing_rvt sans détection ne doit produire aucun PNG.
     jpg_output_dir = indice_jpg_dir(output_dir, folder_name) if rvt_output_dir is not None else existing_rvt_dir
-    jpg_output_dir.mkdir(parents=True, exist_ok=True)
+    if cv_enabled:
+        jpg_output_dir.mkdir(parents=True, exist_ok=True)
 
     tif_out_dir = indice_tif_dir(output_dir, folder_name) if rvt_output_dir is not None else None
     if tif_out_dir is not None:
@@ -207,17 +241,43 @@ def run_existing_rvt(
     # ``convert_tif_to_png.py`` et ``computer_vision_onnx.py`` pour autoriser
     # les grandes emprises.
     has_large = False
-    for tif_path in tif_files:
-        bounds = get_raster_bounds(tif_path)
-        layout = _classify_rvt_layout(bounds) if bounds is not None else "standard"
-        if layout == "large" and bounds is not None:
-            has_large = True
-            width = bounds[2] - bounds[0]
-            height = bounds[3] - bounds[1]
-            log(
-                f"RVT {tif_path.name}: emprise ≈ {width:.0f} x {height:.0f} m → "
-                f"SAHI assure le slicing à l'inférence (pas de pré-découpage)"
-            )
+    tile_bounds: Dict[Path, Tuple[float, float, float, float]] = {}
+    if cv_enabled:  # information d'inférence : sans CV, ni utile ni loggée
+        for tif_path in tif_files:
+            bounds = get_raster_bounds(tif_path)
+            if bounds is not None:
+                tile_bounds[tif_path] = bounds
+            layout = _classify_rvt_layout(bounds) if bounds is not None else "standard"
+            if layout == "large" and bounds is not None:
+                has_large = True
+                width = bounds[2] - bounds[0]
+                height = bounds[3] - bounds[1]
+                log(
+                    f"RVT {tif_path.name}: emprise ≈ {width:.0f} x {height:.0f} m → "
+                    f"SAHI assure le slicing à l'inférence (pas de pré-découpage)"
+                )
+
+    # Halo inter-dalles fabriqué depuis les voisins (modes sans intermediaires/,
+    # ou dalle sans correspondance non rognée) : repli après le résolveur
+    # explicite. Un raster large n'a pas de voisin ; une dalle seule non plus.
+    neighbor_halo: Optional[NeighborHalo] = None
+    if cv_enabled and halo_margin_m > 0 and not has_large and len(tile_bounds) >= 2:
+        neighbor_halo = NeighborHalo(
+            tile_bounds, intermediaires_dir(output_dir) / "halo" / folder_name,
+            halo_margin_m, log=log,
+        )
+
+    # Option B : en mode halo, le clip aval a besoin du périmètre réellement
+    # commandé = union des emprises des TIF ROGNÉS (les détections du halo
+    # extérieur — donnée fabriquée — sont supprimées). Région incomplète
+    # (une emprise illisible) → None : clipper partiellement couperait des
+    # détections légitimes, on préfère ne pas clipper du tout.
+    valid_region_bounds: Optional[List[Tuple[float, float, float, float]]] = (
+        [] if (inference_tif_resolver is not None or neighbor_halo is not None) else None
+    )
+    # Règle du centroïde (conversion_shp / postprocessing.owned_by_cell) :
+    # cellule rognée de chaque image à halo, indexée par le stem du PNG.
+    cell_bounds_by_stem: Dict[str, Tuple[float, float, float, float]] = {}
 
     total_tif = len(tif_files)
     log(f"Traitement de {total_tif} fichiers TIF…")
@@ -228,11 +288,17 @@ def run_existing_rvt(
             break
 
         effective_tif_path = tif_path
+        # Couplage copie→PNG : si la copie dest a été rafraîchie (source
+        # remplacée, mtime de DONNÉES), le PNG doit suivre même quand son
+        # mtime de GÉNÉRATION (horloge du run précédent) est plus récent que
+        # la nouvelle source — sinon TIF publié neuf + détections anciennes.
+        dest_refreshed = False
         if tif_out_dir is not None and tif_out_dir.resolve() != existing_rvt_dir.resolve():
             try:
                 normalized_name = _normalized_rvt_name(tif_path=tif_path, target_rvt=target_rvt)
                 dest = tif_out_dir / normalized_name
-                if not dest.exists():
+                dest_refreshed = needs_refresh(tif_path, dest)
+                if dest_refreshed:
                     if dest.name != tif_path.name:
                         log(f"RVT: renommage (coords) {tif_path.name} -> {dest.name}")
                     shutil.copy2(str(tif_path), str(dest))
@@ -244,36 +310,82 @@ def run_existing_rvt(
             # existing_rvt_dir == tif_out_dir : les TIFs sont déjà au bon endroit
             kept_tif_names.add(tif_path.name)
 
-        jpg_path = jpg_output_dir / (effective_tif_path.stem + ".png")
-        # GEO-03 : le PNG d'inférence DOIT venir du même raster que le transform
-        # (effective_tif_path, rogné). Un PNG préexistant aux mauvaises dimensions
-        # (export d'indices non rogné) est régénéré, sinon décalage de la marge.
-        if jpg_path.exists() and not _png_consistent_with_tif(jpg_path, effective_tif_path):
-            log(f"PNG incohérent avec le TIF (dimensions ≠), régénération: {jpg_path.name}")
-            try:
-                jpg_path.unlink()
-            except OSError:
-                pass
-        if not jpg_path.exists():
-            log(f"Conversion TIF->PNG (existing_rvt): {effective_tif_path.name} -> {jpg_path.name}")
-            _convert_tif_to_png_with_world(effective_tif_path, jpg_path)
-        jpg_files.append(jpg_path)
-        kept_jpg_names.add(jpg_path.name)
+        if cv_enabled:
+            # Option B (halo inter-dalles) : l'appelant peut résoudre une source
+            # d'inférence alternative — le TIF non rogné d'intermediaires/, dont
+            # la marge est de la vraie donnée voisine. Les objets à cheval sur
+            # une frontière de dalle sont alors vus en entier ; les doublons de
+            # la zone de recouvrement sont fusionnés en aval (espace géo).
+            inference_src = effective_tif_path
+            resolved = None
+            if inference_tif_resolver is not None:
+                try:
+                    resolved = inference_tif_resolver(effective_tif_path)
+                except Exception:
+                    resolved = None
+            if resolved is None and neighbor_halo is not None:
+                resolved = neighbor_halo.resolve(tif_path)
+            if resolved is not None and Path(resolved).exists():
+                inference_src = Path(resolved)
 
-        pixel_width, pixel_height, x_origin, y_origin = extract_tif_transform_data(effective_tif_path)
-        if all(v is not None for v in (pixel_width, pixel_height, x_origin, y_origin)):
-            tif_transform_data[jpg_path.stem] = (float(pixel_width), float(pixel_height), float(x_origin), float(y_origin))
+            if valid_region_bounds is not None:
+                cell_bounds = get_raster_bounds(effective_tif_path)
+                if cell_bounds is None:
+                    valid_region_bounds = None
+                else:
+                    valid_region_bounds.append(cell_bounds)
+                    cell_bounds_by_stem[effective_tif_path.stem] = cell_bounds
+
+            # Le NOM du PNG reste celui du TIF rogné (stems stables : cache,
+            # couches, images annotées) — seul le CONTENU vient de la source.
+            jpg_path = jpg_output_dir / (effective_tif_path.stem + ".png")
+            # GEO-03 : le PNG d'inférence DOIT venir du même raster que le
+            # transform (inference_src). Un PNG préexistant aux mauvaises
+            # dimensions (ex. PNG rogné d'un run antérieur vs source à marge)
+            # est régénéré, sinon décalage de la marge.
+            if jpg_path.exists() and not _png_consistent_with_tif(jpg_path, inference_src):
+                log(f"PNG incohérent avec le TIF (dimensions ≠), régénération: {jpg_path.name}")
+                try:
+                    jpg_path.unlink()
+                except OSError:
+                    pass
+            elif jpg_path.exists() and (dest_refreshed or _png_stale(jpg_path, inference_src)):
+                # Source recalculée (mtime plus récent) : régénérer le PNG
+                # ré-arme purge_stale_cached_detections puis la ré-inférence.
+                log(f"PNG plus ancien que sa source, régénération: {jpg_path.name}")
+                try:
+                    jpg_path.unlink()
+                except OSError:
+                    pass
+            if not jpg_path.exists():
+                log(f"Conversion TIF->PNG (existing_rvt): {inference_src.name} -> {jpg_path.name}")
+                _convert_tif_to_png_with_world(inference_src, jpg_path)
+            jpg_files.append(jpg_path)
+            kept_jpg_names.add(jpg_path.name)
+
+            pixel_width, pixel_height, x_origin, y_origin = extract_tif_transform_data(inference_src)
+            if all(v is not None for v in (pixel_width, pixel_height, x_origin, y_origin)):
+                tif_transform_data[jpg_path.stem] = (float(pixel_width), float(pixel_height), float(x_origin), float(y_origin))
 
         if total_tif > 100 and (idx + 1) % 500 == 0:
             log(f"  … {idx + 1}/{total_tif} TIF traités")
 
+    if neighbor_halo is not None and (neighbor_halo.built or neighbor_halo.reused):
+        log(
+            f"Halo inter-dalles depuis les voisins (marge {neighbor_halo.margin_m:g} m) : "
+            f"{neighbor_halo.built} fabriqué(s), {neighbor_halo.reused} réutilisé(s), "
+            f"{neighbor_halo.skipped} dalle(s) sans voisin"
+        )
+
     # Nettoyage des fichiers orphelins (vides ou numériques) non produits par cette exécution
     _cleanup_orphans(tif_out_dir, "*.tif", kept_tif_names)
-    _cleanup_orphans(jpg_output_dir, "*.png", kept_jpg_names)
+    if cv_enabled:
+        _cleanup_orphans(jpg_output_dir, "*.png", kept_jpg_names)
 
     # Computer Vision (uniquement si activée)
     # La déduplication shapefile est gérée par run_cv_on_folder (run_shapefile_dedup=True).
     # La création des VRT est déléguée à finalize_pipeline() pour éviter le double travail.
+    total_detections: Optional[int] = None
     if cv_enabled and not (cancel_check is not None and cancel_check()):
         from ..cv.runner import run_cv_on_folder
 
@@ -288,21 +400,24 @@ def run_existing_rvt(
         if busy_large:
             on_busy(True)
         try:
-            run_cv_on_folder(
+            total_detections = run_cv_on_folder(
                 jpg_dir=jpg_output_dir,
                 cv_config=cv_config,
                 target_rvt=target_rvt,
                 rvt_base_dir=rvt_output_dir,
                 output_dir=output_dir,
                 tif_transform_data=tif_transform_data,
+                valid_region_bounds=valid_region_bounds or None,
+                cell_bounds_by_stem=cell_bounds_by_stem or None,
                 run_shapefile_dedup=True,
                 global_color_map=global_color_map,
                 log=log,
                 cancel_check=cancel_check,
                 image_progress=image_progress,
+                tile_progress=tile_progress,
             )
         finally:
             if busy_large:
                 on_busy(False)
 
-    return ExistingRvtResult(total_images=len(jpg_files))
+    return ExistingRvtResult(total_images=len(jpg_files), total_detections=total_detections)

@@ -344,6 +344,68 @@ class TestBuildEntityCoverage:
         # production prime sur le nombre de classes
         assert cov["cratere"].default_model == "prod_model"
 
+    def test_measured_thresholds_break_status_tie(self, tmp_path):
+        # Audit 2026-08-31 : à statut ÉGAL, le modèle aux seuils par classe
+        # MESURÉS (thresholds.confidence_per_class) gagne l'élection — même s'il
+        # a plus de classes et un nom alphabétiquement perdant.
+        mesure = VERDUN + "thresholds:\n  confidence_per_class:\n    cratere: 0.35\n"
+        _write_model(tmp_path, "aaa_sans_mesure", CRATERE)  # 1 classe, gagnant historique
+        _write_model(tmp_path, "zzz_mesure", mesure)        # 3 classes, seuils mesurés
+        installed = discover_installed_models(tmp_path)
+        cov = {ec.entity.id: ec for ec in build_entity_coverage(_catalog(), installed)}
+        assert cov["cratere"].default_model == "zzz_mesure"
+
+
+# Fiabilité affichée (2026-09-09) : catégories par classe dans le model_card.
+CRATERE_FIAB = CRATERE + """thresholds:
+  confidence_default: 0.3
+  confidence_per_class: {cratere: 0.3}
+  fiabilite:
+    par_classe:
+      cratere:
+      - {categorie: douteux, seuil: 0.3, garanti: 0.0, mesure: 0.2, n: 100}
+      - {categorie: probable, seuil: 0.5, garanti: 0.6, mesure: 0.7, n: 80}
+    provenance: p
+"""
+
+
+class TestFiabiliteDansLesRuns:
+    def test_discovery_et_bloc_effectif(self, tmp_path):
+        _write_model(tmp_path, "cratere_circulaire_2", CRATERE_FIAB)
+        installed = discover_installed_models(tmp_path)
+        m = installed[0]
+        assert [c.categorie for c in m.fiabilite_per_class["cratere"]] == ["douteux", "probable"]
+        assert m.fiabilite_provenance == "p"
+        runs = resolve_runs_from_entities(["cratere"], {}, installed, _catalog())
+        bloc = runs[0]["fiabilite"]
+        assert bloc["modele"] == "Cratères circulaires" and bloc["provenance"] == "p"
+        assert [(c["categorie"], c["seuil"]) for c in bloc["par_classe"]["cratere"]] == [
+            ("douteux", 0.3), ("probable", 0.5)]
+        json.dumps(runs)  # config.json
+
+    def test_surcharge_ui_recale_les_categories(self, tmp_path):
+        _write_model(tmp_path, "cratere_circulaire_2", CRATERE_FIAB)
+        installed = discover_installed_models(tmp_path)
+        runs = resolve_runs_from_entities(
+            ["cratere"], {}, installed, _catalog(),
+            entity_thresholds={"cratere": {"confidence_threshold": 0.5}},
+        )
+        cats = runs[0]["fiabilite"]["par_classe"]["cratere"]
+        assert [(c["categorie"], c["seuil"]) for c in cats] == [("probable", 0.5)]
+        runs = resolve_runs_from_entities(
+            ["cratere"], {}, installed, _catalog(),
+            entity_thresholds={"cratere": {"confidence_threshold": 0.2}},
+        )
+        cats = runs[0]["fiabilite"]["par_classe"]["cratere"]
+        assert cats[0] == {"categorie": "douteux", "seuil": 0.2, "garanti": 0.0, "mesure": 0.2, "n": 100}
+
+    def test_sans_bloc_pas_de_cle(self, tmp_path):
+        _write_model(tmp_path, "cratere_circulaire_2", CRATERE)
+        installed = discover_installed_models(tmp_path)
+        assert installed[0].fiabilite_per_class == {}
+        runs = resolve_runs_from_entities(["cratere"], {}, installed, _catalog())
+        assert "fiabilite" not in runs[0]
+
 
 # ----------------------------------------------------------------------
 # resolve_runs_from_entities
@@ -394,6 +456,27 @@ class TestResolveRuns:
         )
         assert _summ(runs) == [("verdun_3_classes_1", "SVF", ["cratere"])]
 
+    def test_stale_override_falls_back_to_default_model(self, tmp_path):
+        # Surcharge périmée (model_card modifié entre deux sessions) : le modèle
+        # surchargé est installé mais ne couvre plus l'entité → retour au défaut,
+        # l'entité ne doit PAS disparaître silencieusement du run.
+        _write_model(tmp_path, "cratere_circulaire_2", CRATERE)  # ne couvre pas parcellaire
+        _write_model(tmp_path, "formes", FORMES)                 # défaut parcellaire
+        installed = discover_installed_models(tmp_path)
+        runs = resolve_runs_from_entities(
+            ["parcellaire"], {"parcellaire": "cratere_circulaire_2"}, installed, _catalog()
+        )
+        assert _summ(runs) == [("formes", "LD", ["parcellaire"])]
+
+    def test_stale_override_to_uninstalled_model_falls_back(self, tmp_path):
+        # Surcharge vers un modèle désinstallé → même auto-réparation.
+        _write_model(tmp_path, "formes", FORMES)
+        installed = discover_installed_models(tmp_path)
+        runs = resolve_runs_from_entities(
+            ["parcellaire"], {"parcellaire": "modele_disparu"}, installed, _catalog()
+        )
+        assert _summ(runs) == [("formes", "LD", ["parcellaire"])]
+
     def test_entity_without_model_skipped(self, tmp_path):
         _write_model(tmp_path, "formes", FORMES)
         installed = discover_installed_models(tmp_path)
@@ -424,6 +507,123 @@ class TestResolveRuns:
 # ----------------------------------------------------------------------
 # Cibles dérivées : une sortie de clustering présentée comme une entité
 # ----------------------------------------------------------------------
+class TestMultiModelComparison:
+    """A/B : 2 modèles cochés pour la MÊME entité → 1 run par modèle, sorties
+    qualifiées par modèle (slug/label/couches) + group_label de comparaison.
+    La surcharge ``entity_model_overrides`` accepte une LISTE de modèles
+    (rétrocompat : une chaîne = comportement mono-modèle historique)."""
+
+    def _installed(self, tmp_path):
+        _write_model(tmp_path, "formes", FORMES)          # parcellaire (3 classes)
+        _write_model(tmp_path, "lineaires_v2", THRESH)    # parcellaire (1 classe)
+        return discover_installed_models(tmp_path)
+
+    def test_list_override_yields_one_run_per_model(self, tmp_path):
+        runs = resolve_runs_from_entities(
+            ["parcellaire"], {"parcellaire": ["formes", "lineaires_v2"]},
+            self._installed(tmp_path), _catalog(),
+        )
+        assert [r["model"] for r in runs] == ["formes", "lineaires_v2"]
+        for r in runs:
+            ent = r["entities"][0]
+            assert ent["id"] == "parcellaire"
+            assert ent["slug"] == f"parcellaire--{r['model']}"
+            assert ent["group_label"] == "Parcellaire (comparaison)"
+            assert ent["label"].startswith("Parcellaire — ")
+            # chaque classe reçoit un nom de couche qualifié par le modèle
+            assert ent["layer_names"]["parcellaire"].startswith("parcellaire — ")
+        assert runs[0]["entities"][0]["label"] != runs[1]["entities"][0]["label"]
+        assert (runs[0]["entities"][0]["layer_names"]["parcellaire"]
+                != runs[1]["entities"][0]["layer_names"]["parcellaire"])
+
+    def test_single_selection_unchanged(self, tmp_path):
+        # Pas de surcharge → défaut mono-modèle, sorties NON qualifiées.
+        runs = resolve_runs_from_entities(
+            ["parcellaire"], {}, self._installed(tmp_path), _catalog()
+        )
+        assert len(runs) == 1
+        ent = runs[0]["entities"][0]
+        assert ent["slug"] == "parcellaire"
+        assert ent["label"] == "Parcellaire"
+        assert "group_label" not in ent
+        assert ent["layer_names"] == {}
+
+    def test_legacy_str_override_unchanged(self, tmp_path):
+        runs = resolve_runs_from_entities(
+            ["parcellaire"], {"parcellaire": "formes"},
+            self._installed(tmp_path), _catalog(),
+        )
+        assert _summ(runs) == [("formes", "LD", ["parcellaire"])]
+        assert runs[0]["entities"][0]["slug"] == "parcellaire"
+
+    def test_stale_member_filtered_no_comparison(self, tmp_path):
+        # Un membre périmé dans la liste → filtré ; il reste 1 modèle valide
+        # → pas de mode comparaison, sorties non qualifiées.
+        runs = resolve_runs_from_entities(
+            ["parcellaire"], {"parcellaire": ["formes", "fantome"]},
+            self._installed(tmp_path), _catalog(),
+        )
+        assert _summ(runs) == [("formes", "LD", ["parcellaire"])]
+        assert runs[0]["entities"][0]["slug"] == "parcellaire"
+
+    def test_all_stale_falls_back_to_default(self, tmp_path):
+        runs = resolve_runs_from_entities(
+            ["parcellaire"], {"parcellaire": ["fantome1", "fantome2"]},
+            self._installed(tmp_path), _catalog(),
+        )
+        assert len(runs) == 1
+        assert runs[0]["entities"][0]["slug"] == "parcellaire"
+
+    def test_threshold_override_applies_to_both_variants(self, tmp_path):
+        # Comparaison à seuil ÉGAL : la surcharge de confiance par entité
+        # s'applique aux classes de l'entité dans CHAQUE run.
+        runs = resolve_runs_from_entities(
+            ["parcellaire"], {"parcellaire": ["formes", "lineaires_v2"]},
+            self._installed(tmp_path), _catalog(),
+            entity_thresholds={"parcellaire": {"confidence_threshold": 0.42}},
+        )
+        assert len(runs) == 2
+        for r in runs:
+            assert r["confidence_per_class"]["parcellaire"] == 0.42
+
+    def test_scalar_override_falls_back_without_crash(self, tmp_path):
+        # Config éditée à la main : valeur ni str ni liste → tolérée comme une
+        # surcharge périmée (warning + défaut), jamais de TypeError.
+        installed = self._installed(tmp_path)
+        for bogus in (42, 3.14, True, {"x": 1}):
+            runs = resolve_runs_from_entities(
+                ["parcellaire"], {"parcellaire": bogus}, installed, _catalog(),
+            )
+            assert len(runs) == 1
+            assert runs[0]["entities"][0]["slug"] == "parcellaire"
+
+    def test_qualifier_preserves_dashes_and_folds_accents(self):
+        from app.services.model_orchestrator import _model_slug_qualifier
+        # « formes-v2 » et « formes_v2 » doivent rester des qualificatifs
+        # DISTINCTS (slugify les aurait confondus) — sinon deux variantes
+        # routeraient vers le même dossier.
+        assert _model_slug_qualifier("formes-v2") == "formes-v2"
+        assert _model_slug_qualifier("formes_v2") == "formes_v2"
+        assert _model_slug_qualifier("Modèle É") == "modele_e"
+        assert _model_slug_qualifier("") == "modele"
+
+    def test_mixed_compared_and_plain_entity_in_same_run(self, tmp_path):
+        # chemin_creux n'est couvert que par formes → bloc NON qualifié dans le
+        # run formes, aux côtés du bloc parcellaire qualifié.
+        runs = resolve_runs_from_entities(
+            ["parcellaire", "chemin_creux"],
+            {"parcellaire": ["formes", "lineaires_v2"]},
+            self._installed(tmp_path), _catalog(),
+        )
+        by_model = {r["model"]: r for r in runs}
+        ents_formes = {e["id"]: e for e in by_model["formes"]["entities"]}
+        assert ents_formes["chemin_creux"]["slug"] == "chemins_creux"
+        assert "group_label" not in ents_formes["chemin_creux"]
+        assert ents_formes["parcellaire"]["slug"] == "parcellaire--formes"
+        assert (by_model["lineaires_v2"]["entities"][0]["slug"]
+                == "parcellaire--lineaires_v2")
+
+
 class TestDerivedTargets:
     def test_include_source_covers_source_and_output_classes(self, tmp_path):
         _write_model(tmp_path, "cratere_circulaire_2", CRATERE_DERIVED, args_yaml=CRATERE_ARGS)
@@ -487,7 +687,7 @@ class TestThresholds:
     def test_discover_threshold_defaults_when_absent(self, tmp_path):
         _write_model(tmp_path, "formes", FORMES)
         m = discover_installed_models(tmp_path)[0]
-        assert m.default_confidence == 0.2  # défaut de base (model_card sans seuil)
+        assert m.default_confidence == 0.3  # défaut UNIFIÉ 2026-08-31 (model_card sans seuil)
         assert m.default_min_area == 0.0
         assert m.default_iou == 0.5
 
@@ -650,9 +850,9 @@ class TestMorphology:
         by_morph: dict = {}
         for e in cat:
             by_morph.setdefault(e.morphology, []).append(e.id)
-        assert len(by_morph.get("circulaire", [])) == 5
-        assert len(by_morph.get("lineaire", [])) == 4
-        assert by_morph.get("zone", []) == ["regroupement_crateres"]
+        assert len(by_morph.get("circulaire", [])) == 7
+        assert len(by_morph.get("lineaire", [])) == 6
+        assert by_morph.get("zone", []) == ["regroupement_crateres", "axe_lineaire"]
 
 
 # args.yaml avec les paramètres DBSCAN complets (défauts exposables dans l'UI)
@@ -728,3 +928,142 @@ class TestImportIsolation:
         )
         assert result.returncode == 0, f"stdout={result.stdout!r} stderr={result.stderr!r}"
         assert "OK" in result.stdout
+
+
+# ----------------------------------------------------------------------
+# Brique enclosure : entité dérivée « enclos » + défauts exposables UI
+# ----------------------------------------------------------------------
+FORMES_ENCLOS_ARGS = """
+clustering:
+  - type: enclosure
+    target_classes: ["parcellaire", "talus_fosse"]
+    output_class_name: "enclos"
+    gap_tolerance_m: 10
+    min_area_m2: 50
+    max_area_m2: 60000
+    min_closure: 0.6
+    max_elongation: 3
+    max_isolement: 0.3
+    min_rectangularite: 0.5
+"""
+
+FORMES_ENCLOS = FORMES + """derived_targets:
+  - output_class: enclos
+    entity: enclos
+    include_source: true
+    output_label: Enclos
+    source_label: Linéaments sources
+"""
+
+
+class TestEnclosureEntity:
+    def _installed(self, tmp_path):
+        _write_model(tmp_path, "formes", FORMES_ENCLOS, args_yaml=FORMES_ENCLOS_ARGS)
+        return discover_installed_models(tmp_path)
+
+    def _cat(self):
+        return _catalog() + [
+            EntityDef(id="enclos", label="Enclos", display_order=97, morphology="zone")
+        ]
+
+    def test_enclosure_defaults_exposed_for_ui(self, tmp_path):
+        m = self._installed(tmp_path)[0]
+        assert m.cluster_defaults["enclos"] == {
+            "gap_tolerance_m": 10.0,
+            "min_area_m2": 50.0,
+            "max_area_m2": 60000.0,
+            "min_closure": 0.6,
+            "max_elongation": 3.0,
+            "max_isolement": 0.3,
+            "min_rectangularite": 0.5,
+        }
+
+    def test_enclos_entity_is_derived_with_sources(self, tmp_path):
+        m = self._installed(tmp_path)[0]
+        assert "enclos" in m.derived_entities
+        assert m.coverage["enclos"] == ("enclos", "parcellaire", "talus_fosse")
+
+    def test_resolve_run_selects_output_and_overrides(self, tmp_path):
+        installed = self._installed(tmp_path)
+        runs = resolve_runs_from_entities(
+            ["enclos"], {}, installed, self._cat(),
+            entity_cluster_params={"enclos": {"gap_tolerance_m": 12.0}},
+        )
+        assert len(runs) == 1
+        run = runs[0]
+        assert "enclos" in run["selected_classes"]
+        assert "parcellaire" in run["selected_classes"]
+        assert run["clustering_overrides"] == {"enclos": {"gap_tolerance_m": 12.0}}
+        ent = next(e for e in run["entities"] if e["id"] == "enclos")
+        assert ent["is_derived"] is True
+
+
+# ----------------------------------------------------------------------
+# Brique alignment : entité dérivée « axe_lineaire » + défauts exposables UI
+# ----------------------------------------------------------------------
+FORMES_AXE_ARGS = """
+clustering:
+  - type: enclosure
+    target_classes: ["parcellaire", "talus_fosse"]
+    output_class_name: "enclos"
+    gap_tolerance_m: 10
+    min_area_m2: 50
+  - type: alignment
+    target_classes: ["parcellaire"]
+    output_class_name: "axe_lineaire"
+    band_width_m: 40
+    angle_tolerance_deg: 20
+    min_length_m: 500
+    max_gap_m: 200
+    min_coverage: 0.25
+    min_sources: 5
+"""
+
+FORMES_AXE = FORMES + """derived_targets:
+  - output_class: axe_lineaire
+    entity: axe_lineaire
+    include_source: true
+    output_label: "Axes linéaires"
+    source_label: "Fragments sources"
+"""
+
+
+class TestAlignmentEntity:
+    def _installed(self, tmp_path):
+        _write_model(tmp_path, "formes", FORMES_AXE, args_yaml=FORMES_AXE_ARGS)
+        return discover_installed_models(tmp_path)
+
+    def _cat(self):
+        return _catalog() + [
+            EntityDef(id="axe_lineaire", label="Axes linéaires",
+                      display_order=98, morphology="zone")
+        ]
+
+    def test_alignment_defaults_exposed_for_ui(self, tmp_path):
+        m = self._installed(tmp_path)[0]
+        assert m.cluster_defaults["axe_lineaire"] == {
+            "band_width_m": 40.0,
+            "angle_tolerance_deg": 20.0,
+            "min_length_m": 500.0,
+            "max_gap_m": 200.0,
+            "min_coverage": 0.25,
+            "min_sources": 5,
+        }
+
+    def test_axe_entity_derived_with_sources(self, tmp_path):
+        m = self._installed(tmp_path)[0]
+        assert "axe_lineaire" in m.derived_entities
+        assert m.coverage["axe_lineaire"] == ("axe_lineaire", "parcellaire")
+
+    def test_resolve_run_with_overrides(self, tmp_path):
+        installed = self._installed(tmp_path)
+        runs = resolve_runs_from_entities(
+            ["axe_lineaire"], {}, installed, self._cat(),
+            entity_cluster_params={"axe_lineaire": {"band_width_m": 60.0,
+                                                    "min_sources": 8}},
+        )
+        assert len(runs) == 1
+        run = runs[0]
+        assert "axe_lineaire" in run["selected_classes"]
+        assert run["clustering_overrides"] == {
+            "axe_lineaire": {"band_width_m": 60.0, "min_sources": 8}}

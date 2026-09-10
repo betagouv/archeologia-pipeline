@@ -35,10 +35,43 @@ NUMERIC_BOUNDS: Dict[str, tuple] = {
 
 ALLOWED_GEOMETRIES = ("convex_hull", "concave_hull", "bounding_box")
 
+# Bornes des règles « enclosure » (fermeture vectorielle + scoring).
+ENCLOSURE_BOUNDS: Dict[str, tuple] = {
+    "gap_tolerance_m": (0.5, 50.0, False),
+    "min_area_m2": (1.0, None, False),
+    "max_area_m2": (1.0, None, False),
+    "min_closure": (0.0, 1.0, False),
+    "max_elongation": (1.0, None, False),
+    "min_ancrage": (0.0, 1.0, False),
+    "max_isolement": (0.0, 1.0, False),
+    "min_rectangularite": (0.0, 1.0, False),
+    "min_confidence": (0.0, 1.0, False),
+}
 
-def _clamp(key: str, value: Any, warn: Optional[WarnFn]) -> Optional[Any]:
+# Bornes des règles « alignment » (bandes directionnelles multi-brins).
+ALIGNMENT_BOUNDS: Dict[str, tuple] = {
+    "band_width_m": (5.0, 200.0, False),
+    "angle_tolerance_deg": (5.0, 45.0, False),
+    "min_length_m": (50.0, None, False),
+    "max_gap_m": (10.0, None, False),
+    "min_coverage": (0.0, 1.0, False),
+    "min_sources": (2, None, True),
+    "min_confidence": (0.0, 1.0, False),
+}
+
+# Registre par type de règle de synthèse (args.yaml:clustering → champ ``type``).
+BOUNDS_BY_TYPE: Dict[str, Dict[str, tuple]] = {
+    "dbscan": NUMERIC_BOUNDS,
+    "enclosure": ENCLOSURE_BOUNDS,
+    "alignment": ALIGNMENT_BOUNDS,
+}
+
+
+def _clamp(
+    key: str, value: Any, warn: Optional[WarnFn], bounds: Dict[str, tuple] = NUMERIC_BOUNDS
+) -> Optional[Any]:
     """Caste puis borne ``value`` pour ``key``. None si non castable."""
-    lo, hi, is_int = NUMERIC_BOUNDS[key]
+    lo, hi, is_int = bounds[key]
     try:
         num = int(float(value)) if is_int else float(value)
     except (TypeError, ValueError):
@@ -52,24 +85,26 @@ def _clamp(key: str, value: Any, warn: Optional[WarnFn]) -> Optional[Any]:
 
 
 def sanitize_clustering_rule(
-    rule: Dict[str, Any], warn: Optional[WarnFn] = None
+    rule: Dict[str, Any], warn: Optional[WarnFn] = None, rule_type: str = "dbscan"
 ) -> Dict[str, Any]:
     """Borne les champs numériques d'une règle (les autres clés sont gardées).
 
     Un champ non castable retombe sur la borne basse (la règle reste
     utilisable) — l'isolation par règle est gérée par l'appelant.
+    ``rule_type`` sélectionne le jeu de bornes (dbscan par défaut).
     """
     warn = warn or logger.warning
+    bounds = BOUNDS_BY_TYPE.get(rule_type, NUMERIC_BOUNDS)
     out = dict(rule)
-    for key in NUMERIC_BOUNDS:
+    for key in bounds:
         if key in out:
-            clamped = _clamp(key, out[key], warn)
-            out[key] = clamped if clamped is not None else NUMERIC_BOUNDS[key][0]
+            clamped = _clamp(key, out[key], warn, bounds)
+            out[key] = clamped if clamped is not None else bounds[key][0]
     return out
 
 
 def sanitize_clustering_overrides(
-    overrides: Dict[str, Any], warn: Optional[WarnFn] = None
+    overrides: Dict[str, Any], warn: Optional[WarnFn] = None, rule_type: str = "dbscan"
 ) -> Dict[str, Any]:
     """Filtre des surcharges UI : clés CONNUES uniquement, castées et bornées.
 
@@ -78,13 +113,14 @@ def sanitize_clustering_overrides(
     types/plages non garantis, clés arbitraires injectables.
     """
     warn = warn or logger.warning
+    bounds = BOUNDS_BY_TYPE.get(rule_type, NUMERIC_BOUNDS)
     out: Dict[str, Any] = {}
     for key, value in (overrides or {}).items():
-        if key in NUMERIC_BOUNDS:
-            clamped = _clamp(key, value, warn)
+        if key in bounds:
+            clamped = _clamp(key, value, warn, bounds)
             if clamped is not None:
                 out[key] = clamped
-        elif key == "output_geometry":
+        elif key == "output_geometry" and rule_type == "dbscan":
             geom = str(value)
             if geom in ALLOWED_GEOMETRIES:
                 out[key] = geom

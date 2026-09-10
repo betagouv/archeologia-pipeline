@@ -88,7 +88,11 @@ def file_logging(output_dir: Optional[Path], reporter: ProgressReporter) -> Iter
 
 
 class PipelineController:
-    def run(self, ctx: RunContext, reporter: ProgressReporter, cancel: CancelToken) -> None:
+    def run(self, ctx: RunContext, reporter: ProgressReporter, cancel: CancelToken) -> "Optional[bool]":
+        # Verdict remonté à l'UI (run_view : ``ok is not False``) : False = refus
+        # préflight/config ou run conclu ❌ par la finalisation (ex. 0/N dalle
+        # produite) ; None = annulation ; True = succès. Sans cela, un journal
+        # « ❌ » s'affichait quand même « ✓ Pipeline terminé » dans le bandeau.
         # slog → écrit via reporter.info (level INFO) : visible UNIQUEMENT
         # dans le fichier de log (UI filtre à USER_INFO=25).
         slog = create_structured_logger(reporter.info)
@@ -113,7 +117,7 @@ class PipelineController:
                 reporter.error(err)
             slog.end_pipeline(success=False)
             narrator.preflight_failed()
-            return
+            return False
 
         slog.section("VÉRIFICATION DES DÉPENDANCES", "info")
 
@@ -132,7 +136,7 @@ class PipelineController:
         ):
             slog.end_pipeline(success=False)
             narrator.preflight_failed()
-            return
+            return False
 
         narrator.preflight_ok()
 
@@ -140,7 +144,7 @@ class PipelineController:
             reporter.info("Annulation demandée avant le lancement du pipeline.")
             slog.end_pipeline(success=False)
             narrator.pipeline_cancelled()
-            return
+            return None
 
         try:  # fallback standalone (tests : src/ sur le path)
             from ..pipeline.cancellation import PipelineCancelled
@@ -150,7 +154,7 @@ class PipelineController:
 
         runner = get_runner(ctx.mode)
         try:
-            runner.run(ctx=ctx, reporter=reporter, cancel=cancel, slog=slog)
+            return runner.run(ctx=ctx, reporter=reporter, cancel=cancel, slog=slog)
         except PipelineCancelled:
             # Filet de sécurité : une annulation a remonté hors de la zone gérée
             # par le runner (ex. pendant téléchargement/fusion, avant qu'il y ait
@@ -158,7 +162,7 @@ class PipelineController:
             reporter.info("Pipeline annulé par l'utilisateur.")
             slog.end_pipeline(success=False)
             narrator.pipeline_cancelled()
-            return
+            return None
         except Exception as e:
             # Filet de sécurité (AUDIT v1 ROB-01) : la clôture d'échec est
             # normalement déjà faite par le finally du runner (finalize avec

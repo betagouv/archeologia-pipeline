@@ -31,13 +31,22 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 
 logger = logging.getLogger(__name__)
 
+# Tâches « segmentation » du sidecar ``task`` — même vocabulaire que le gate
+# de ``conversion_shp.create_shapefile_from_detections`` (une tâche connue hors
+# de cet ensemble est un modèle bbox / object detection).
+_SEGMENTATION_TASKS = frozenset(
+    {"instance_segmentation", "semantic_segmentation", "segment"}
+)
+
+from .model_config import DEFAULT_SAHI_OVERLAP, DEFAULT_SAHI_SLICE  # noqa: E402
+
 
 @dataclass(frozen=True)
 class SahiConfig:
-    """Paramètres SAHI (slicing à l'inférence)."""
-    slice_height: int = 640
-    slice_width: int = 640
-    overlap_ratio: float = 0.2
+    """Paramètres SAHI (slicing à l'inférence). Défauts = model_config.DEFAULT_SAHI_*."""
+    slice_height: int = DEFAULT_SAHI_SLICE
+    slice_width: int = DEFAULT_SAHI_SLICE
+    overlap_ratio: float = DEFAULT_SAHI_OVERLAP
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -49,7 +58,7 @@ class SahiConfig:
 
 @dataclass(frozen=True)
 class ClusteringRule:
-    """Une règle de clustering DBSCAN spatial post-détection."""
+    """Une règle de clustering DBSCAN spatial post-détection (type: dbscan)."""
     target_classes: Tuple[str, ...]
     min_confidence: float
     min_confidence_extend: float
@@ -62,9 +71,11 @@ class ClusteringRule:
     min_area_m2: float
     concave_ratio: float
     confidence_weight: float
+    type: str = "dbscan"
 
     def to_dict(self) -> Dict[str, Any]:
         return {
+            "type": self.type,
             "target_classes": list(self.target_classes),
             "min_confidence": self.min_confidence,
             "min_confidence_extend": self.min_confidence_extend,
@@ -81,6 +92,82 @@ class ClusteringRule:
 
 
 @dataclass(frozen=True)
+class EnclosureRule:
+    """Règle « enclosure » : fermeture vectorielle (buffer±T/2) + scoring.
+
+    Détecte des enclos (circuits fermés/quasi fermés) à partir des détections
+    des ``target_classes`` — voir ``pipeline.cv.enclosure``. Distances en
+    mètres (Lambert-93 métrique).
+    """
+    target_classes: Tuple[str, ...]
+    output_class_name: str
+    gap_tolerance_m: float
+    min_area_m2: float
+    max_area_m2: float
+    min_closure: float
+    max_elongation: float
+    min_ancrage: float
+    min_confidence: float
+    max_isolement: float = 0.5
+    min_rectangularite: float = 0.0
+    generator: str = "auto"
+    mode_calibration: bool = False
+    type: str = "enclosure"
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "type": self.type,
+            "target_classes": list(self.target_classes),
+            "output_class_name": self.output_class_name,
+            "generator": self.generator,
+            "gap_tolerance_m": self.gap_tolerance_m,
+            "min_area_m2": self.min_area_m2,
+            "max_area_m2": self.max_area_m2,
+            "min_closure": self.min_closure,
+            "max_elongation": self.max_elongation,
+            "min_ancrage": self.min_ancrage,
+            "max_isolement": self.max_isolement,
+            "min_rectangularite": self.min_rectangularite,
+            "min_confidence": self.min_confidence,
+            "mode_calibration": self.mode_calibration,
+        }
+
+
+@dataclass(frozen=True)
+class AlignmentRule:
+    """Règle « alignment » : bandes directionnelles à brins multiples.
+
+    Détecte les axes linéaires (voies anciennes…) — enfilades de détections
+    co-orientées dans une bande étroite — voir ``pipeline.cv.alignment``.
+    Distances en mètres, angles en degrés (azimut modulo 180°).
+    """
+    target_classes: Tuple[str, ...]
+    output_class_name: str
+    band_width_m: float
+    angle_tolerance_deg: float
+    min_length_m: float
+    max_gap_m: float
+    min_coverage: float
+    min_sources: int
+    min_confidence: float
+    type: str = "alignment"
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "type": self.type,
+            "target_classes": list(self.target_classes),
+            "output_class_name": self.output_class_name,
+            "band_width_m": self.band_width_m,
+            "angle_tolerance_deg": self.angle_tolerance_deg,
+            "min_length_m": self.min_length_m,
+            "max_gap_m": self.max_gap_m,
+            "min_coverage": self.min_coverage,
+            "min_sources": self.min_sources,
+            "min_confidence": self.min_confidence,
+        }
+
+
+@dataclass(frozen=True)
 class PostprocessConfig:
     """Activation des étapes de post-traitement géométrique.
 
@@ -91,10 +178,13 @@ class PostprocessConfig:
     ``overlap_strategy`` pilote l'étape de suppression des superpositions
     (``remove_overlaps``) :
 
-    - ``"difference"`` (défaut, historique) : découpe le polygone le moins
-      confiant le long du contour de l'autre (``geom.difference``). Pour un
-      modèle mono-classe (cratères) ce découpage FABRIQUE des artefacts —
-      anneau troué (petit imbriqué) ou arête droite partagée (accolés).
+    - ``"difference"`` (défaut segmentation, historique) : découpe le polygone
+      le moins confiant le long du contour de l'autre (``geom.difference``).
+      Pour un modèle mono-classe (cratères) ce découpage FABRIQUE des
+      artefacts — anneau troué (petit imbriqué) ou arête droite partagée
+      (accolés). Il ne supprime JAMAIS un doublon, d'où le défaut
+      ``"relation"`` pour les modèles bbox (cf. :func:`_parse_postprocess`) :
+      le halo inter-dalles fait détecter le même objet par plusieurs dalles.
     - ``"relation"`` : pour les détections de MÊME classe, on raisonne en
       confinement (IoS = aire intersection / aire du plus petit) — si
       IoS ≥ ``overlap_ios_threshold`` on FUSIONNE par union (l'union absorbe le
@@ -184,7 +274,10 @@ class ModelProfile:
 
         sahi = _parse_sahi(args_yaml)
         clustering = _parse_clustering(args_yaml)
-        postprocess = _parse_postprocess(args_yaml)
+        _task = metadata.get("task")
+        postprocess = _parse_postprocess(
+            args_yaml, task=str(_task) if _task is not None else None
+        )
         class_colors = _parse_class_colors(args_yaml)
         is_rfdetr = _parse_is_rfdetr(args_yaml)
         class_names = _load_class_names(model_dir)
@@ -288,9 +381,9 @@ def _parse_sahi(args_yaml: Dict[str, Any]) -> SahiConfig:
     if not isinstance(sahi, dict):
         return SahiConfig()
     try:
-        raw_h = int(sahi.get("slice_height", 640))
-        raw_w = int(sahi.get("slice_width", 640))
-        raw_ov = float(sahi.get("overlap_ratio", 0.2))
+        raw_h = int(sahi.get("slice_height", DEFAULT_SAHI_SLICE))
+        raw_w = int(sahi.get("slice_width", DEFAULT_SAHI_SLICE))
+        raw_ov = float(sahi.get("overlap_ratio", DEFAULT_SAHI_OVERLAP))
         # Bornes (AUDIT v2 PARSE-12) : slice ≥ 32, overlap ∈ [0, 0.9] — un
         # overlap ≥ 1 ou un slice ≤ 0 gèle l'inférence en boucle infinie.
         cfg = SahiConfig(
@@ -309,7 +402,8 @@ def _parse_sahi(args_yaml: Dict[str, Any]) -> SahiConfig:
         return SahiConfig()
 
 
-def _parse_clustering(args_yaml: Dict[str, Any]) -> Tuple[ClusteringRule, ...]:
+def _parse_clustering(args_yaml: Dict[str, Any]) -> Tuple[Any, ...]:
+    """Règles de synthèse typées : ClusteringRule (dbscan) ou EnclosureRule."""
     raw = args_yaml.get("clustering")
     if not raw:
         return tuple()
@@ -318,7 +412,7 @@ def _parse_clustering(args_yaml: Dict[str, Any]) -> Tuple[ClusteringRule, ...]:
     if not isinstance(raw, list):
         return tuple()
 
-    rules: List[ClusteringRule] = []
+    rules: List[Any] = []
     for cfg in raw:
         if not isinstance(cfg, dict):
             continue
@@ -327,6 +421,79 @@ def _parse_clustering(args_yaml: Dict[str, Any]) -> Tuple[ClusteringRule, ...]:
             target = [target]
         if not isinstance(target, list) or not target:
             logger.warning("Clustering rule ignorée : target_classes manquant/invalide")
+            continue
+        rule_type = str(cfg.get("type", "dbscan")).strip().lower() or "dbscan"
+        if rule_type == "enclosure":
+            try:
+                from .clustering_bounds import sanitize_clustering_rule
+
+                # Défauts V3 calibrés campagne Bretagne (131 GT à parcellaire,
+                # générateur auto) : F1 0,264, R 0,39, sentinelles fid30/fid34
+                # publiées, plafond 1 ha (95 % des GT < 1,2 ha — les géants
+                # sont des parcelles modernes, verdict terrain V2).
+                sane = sanitize_clustering_rule(
+                    {
+                        "gap_tolerance_m": float(cfg.get("gap_tolerance_m", 15.0)),
+                        "min_area_m2": float(cfg.get("min_area_m2", 200.0)),
+                        "max_area_m2": float(cfg.get("max_area_m2", 10000.0)),
+                        "min_closure": float(cfg.get("min_closure", 0.5)),
+                        "max_elongation": float(cfg.get("max_elongation", 2.0)),
+                        "min_ancrage": float(cfg.get("min_ancrage", 0.2)),
+                        "max_isolement": float(cfg.get("max_isolement", 0.5)),
+                        "min_rectangularite": float(cfg.get("min_rectangularite", 0.0)),
+                        "min_confidence": float(cfg.get("min_confidence", 0.0)),
+                    },
+                    warn=logger.warning,
+                    rule_type="enclosure",
+                )
+                if sane["max_area_m2"] < sane["min_area_m2"]:
+                    sane["max_area_m2"] = sane["min_area_m2"]
+                # Générateur de candidats : "auto" (V3 — anneaux ∪ cours ∪
+                # blobs, dédoublonné), "hull" (enveloppe seule) ou "dilation"
+                # (fermeture V1 seule).
+                gen = str(cfg.get("generator", "auto")).strip().lower()
+                if gen not in ("auto", "hull", "dilation"):
+                    logger.warning(f"Enclosure: generator {gen!r} inconnu — auto utilisé")
+                    gen = "auto"
+                output_class = str(cfg.get("output_class_name", "")) or f"enclos_{'_'.join(target)}"
+                rules.append(EnclosureRule(
+                    target_classes=tuple(str(t) for t in target),
+                    output_class_name=output_class,
+                    generator=gen,
+                    mode_calibration=bool(cfg.get("mode_calibration", False)),
+                    **sane,
+                ))
+            except (TypeError, ValueError) as e:
+                logger.warning(f"Règle enclosure ignorée : {e}")
+            continue
+        if rule_type == "alignment":
+            try:
+                from .clustering_bounds import sanitize_clustering_rule
+
+                sane = sanitize_clustering_rule(
+                    {
+                        "band_width_m": float(cfg.get("band_width_m", 40.0)),
+                        "angle_tolerance_deg": float(cfg.get("angle_tolerance_deg", 20.0)),
+                        "min_length_m": float(cfg.get("min_length_m", 500.0)),
+                        "max_gap_m": float(cfg.get("max_gap_m", 200.0)),
+                        "min_coverage": float(cfg.get("min_coverage", 0.25)),
+                        "min_sources": int(cfg.get("min_sources", 5)),
+                        "min_confidence": float(cfg.get("min_confidence", 0.0)),
+                    },
+                    warn=logger.warning,
+                    rule_type="alignment",
+                )
+                output_class = str(cfg.get("output_class_name", "")) or f"axe_{'_'.join(target)}"
+                rules.append(AlignmentRule(
+                    target_classes=tuple(str(t) for t in target),
+                    output_class_name=output_class,
+                    **sane,
+                ))
+            except (TypeError, ValueError) as e:
+                logger.warning(f"Règle alignment ignorée : {e}")
+            continue
+        if rule_type != "dbscan":
+            logger.warning(f"Règle de synthèse ignorée : type inconnu {rule_type!r}")
             continue
         try:
             from .clustering_bounds import sanitize_clustering_rule
@@ -371,10 +538,22 @@ def _parse_clustering(args_yaml: Dict[str, Any]) -> Tuple[ClusteringRule, ...]:
     return tuple(rules)
 
 
-def _parse_postprocess(args_yaml: Dict[str, Any]) -> PostprocessConfig:
+def _parse_postprocess(
+    args_yaml: Dict[str, Any], task: Optional[str] = None
+) -> PostprocessConfig:
+    # Défaut de stratégie de superposition selon la tâche : pour un modèle bbox
+    # (object detection), « difference » ne supprime jamais un doublon (elle
+    # rogne le perdant) — or le halo inter-dalles fait détecter le même objet
+    # par 2–4 dalles voisines. Seule « relation » (IoS) déduplique réellement,
+    # donc c'est le défaut bbox ; args.yaml peut toujours surcharger.
+    default_strategy = (
+        "relation"
+        if task is not None and str(task) not in _SEGMENTATION_TASKS
+        else "difference"
+    )
     pp = args_yaml.get("postprocess")
     if not isinstance(pp, dict):
-        return PostprocessConfig()
+        return PostprocessConfig(overlap_strategy=default_strategy)
     try:
         buffer_m = float(pp.get("merge_buffer_m", 0.5))
     except (TypeError, ValueError):
@@ -382,9 +561,9 @@ def _parse_postprocess(args_yaml: Dict[str, Any]) -> PostprocessConfig:
     if not (0 < buffer_m < float("inf")):  # ≤ 0, NaN ou inf → défaut
         buffer_m = 0.5
 
-    strategy = str(pp.get("overlap_strategy", "difference")).strip().lower()
+    strategy = str(pp.get("overlap_strategy", default_strategy)).strip().lower()
     if strategy not in ("difference", "relation"):
-        strategy = "difference"
+        strategy = default_strategy
 
     try:
         ios = float(pp.get("overlap_ios_threshold", 0.5))

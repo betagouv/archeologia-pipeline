@@ -41,6 +41,9 @@ EXCLUDE_DIRS = {
     "output",
     "output_test",
     "temp",
+    # Traçabilité d'entraînement des modèles (metrics.csv, tfevents, evaluation/,
+    # comparaison_*/) — réservée au poste de dev, jamais chez l'archéologue.
+    "entrainement",
 }
 
 EXCLUDE_FILES = {
@@ -55,13 +58,17 @@ EXCLUDE_FILES = {
     "run_tests.py",
     ".DS_Store",
     "Thumbs.db",
+    "desktop.ini",  # pollution Explorer/OneDrive (les deux casses)
+    "Desktop.ini",
     "CLAUDE.md",  # instructions assistant (AUDIT v2 PKG-04)
 }
 
 # Taille maximale plausible du ZIP : un dépassement signale une régression
 # d'exclusion (ex. virtualenv embarqué, cf. AUDIT v1 PKG-01 : 749 Mo) et doit
 # faire ÉCHOUER le build plutôt que livrer l'artefact (AUDIT v2 PKG-05).
-MAX_ZIP_SIZE_MB = 800
+# 2026-08-31 : relevée 800 → 1600 (décision utilisateur, monolithe conservé) —
+# 7 modèles ONNX ≈ 920 Mo + exe 190 Mo ; la garde reste un détecteur de fuite.
+MAX_ZIP_SIZE_MB = 1600
 
 EXCLUDE_EXTENSIONS = {
     ".pyc",

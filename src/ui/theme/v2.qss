@@ -193,7 +193,11 @@ QPushButton:disabled { color: #909090; border-color: #b0b0b0; }
     border-top-left-radius: 4px; border-top-right-radius: 4px;
     padding: 4px 12px; margin-right: 2px;
 }
-#AdvTabs QTabBar::tab:selected { background: #ffffff; color: #1d5a96; font-weight: bold; }
+/* Pas de font-weight : la graisse ajoutee par QSS sur un etat elargit le
+   texte peint sans elargir la boite deja dimensionnee, et le libelle se
+   fait rogner. Le fond blanc et le texte bleu suffisent a marquer l'onglet
+   actif. Verrouille par tests/unit/test_qss_graisse_etats.py. */
+#AdvTabs QTabBar::tab:selected { background: #ffffff; color: #1d5a96; }
 /* :!selected : survoler l'onglet actif ne doit pas casser sa fusion avec le pane. */
 #AdvTabs QTabBar::tab:hover:!selected { background: #d6e6f4; }
 #AdvTabs QTabBar::tab:disabled { color: #707070; }
@@ -634,8 +638,11 @@ QPushButton[role="micro"] {
     border: 1px solid #a0a0a0; border-radius: 2px; background: #ffffff;
 }
 #VisuFamilyBtn:hover { background: #e8e8e8; border-color: #2b79c2; }
+/* Pas de font-weight ici : le bouton est dimensionne avec la police normale
+   et serait peint en gras — « Tous (10) » sortait « ous (10 ». Le fond bleu
+   et le texte bleu disent deja l'etat actif. Meme piege que QTabBar::tab. */
 #VisuFamilyBtn:checked {
-    background: #d6e6f4; border-color: #2b79c2; color: #1d5a96; font-weight: bold;
+    background: #d6e6f4; border-color: #2b79c2; color: #1d5a96;
 }
 #VisuFamilyBtn:disabled { color: #909090; border-color: #c4c4c4; background: #f7f7f7; }
 

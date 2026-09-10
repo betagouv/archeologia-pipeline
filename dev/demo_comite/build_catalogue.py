@@ -8,10 +8,11 @@ Ce qui est VRAI dans ce catalogue :
   - les vignettes sont des rendus réels de dalles LiDAR HD (cf. build_thumbs.py) ;
   - les ``source`` pointent des mosaïques VRT réellement calculées, donc
     « Afficher dans QGIS » charge une vraie couche ;
-  - trois départements portent leurs propres données : 35 et 22 (run Bretagne),
-    78 (run forêt de Saint-Germain).
+  - deux départements portent leurs propres données : 35 (run Bretagne) et
+    78 (run forêt de Saint-Germain) ;
+  - toutes les emprises visées sont des rectangles SANS TROU (cf. plus bas).
 
-Ce qui est SIMULÉ : la couverture des 98 autres départements et les volumes.
+Ce qui est SIMULÉ : la couverture des 83 autres départements et les volumes.
 Ils réutilisent les rasters bretons — c'est une maquette de parcours, pas un
 catalogue de production. Le champ ``streamed: false`` le dit à l'interface, qui
 affiche « fichier local » au lieu de « flux distant ».
@@ -24,10 +25,17 @@ import argparse
 import json
 from pathlib import Path
 
-# Emprises Lambert-93 mesurées sur les runs (cf. README du dossier).
-BRETAGNE_BLOC = [357000, 6793000, 366000, 6803000]      # bloc plein 9x10 km, nord de Rennes
-BRETAGNE_LARGE = [169000, 6764000, 399000, 6871000]     # les 201 dalles, dispersées
-SAINT_GERMAIN_BLOC = [625000, 6852000, 638000, 6871000]
+# Emprises Lambert-93 : les plus grands rectangles SANS TROU de chaque run.
+#
+# Le piège : les 201 dalles bretonnes sont dispersées (1 % de remplissage sur
+# 231 x 119 km), et même leur plus gros bloc contigu — 33 dalles, 9 x 10 km —
+# n'est rempli qu'à 37 %. S'y recadrer donnait un écran de dalles éparpillées.
+# On vise donc le plus grand rectangle plein, calculé sur les dalles présentes
+# dans TOUS les indices du run. C'est petit, mais c'est plein — et l'utilisateur
+# regarde 3 km de terrain, pas une carte de couverture.
+BRETAGNE_VALLEE = [389000, 6816000, 392000, 6819000]    # 3x3 km, 9 dalles, vallée encaissée
+BRETAGNE_BOCAGE = [357000, 6796000, 362000, 6798000]    # 5x2 km, 10 dalles, bocage et labours
+SAINT_GERMAIN_BLOC = [629000, 6860000, 635000, 6865000] # 6x5 km, 30 dalles
 
 BRETAGNE_RUN = "output_bretagne"
 SAINT_GERMAIN_RUN = "output_78_Foret_domaniale_Saint-Germain_lidar_HD"
@@ -121,11 +129,8 @@ def build(src: Path) -> dict:
 
     departments = []
     for code, name in DEPTS:
-        if code == "35":                       # données réelles, bloc plein : le département vitrine
-            items = [_item(k, bret[k], BRETAGNE_BLOC, _size(code, k), False) for k in FILL_ORDER]
-            updated = "2026-07"
-        elif code == "22":                     # mêmes données, vues sur l'emprise dispersée
-            items = [_item(k, bret[k], BRETAGNE_LARGE, _size(code, k), False) for k in FILL_ORDER]
+        if code == "35":                       # le département vitrine : 10 indices, vue pleine
+            items = [_item(k, bret[k], BRETAGNE_VALLEE, _size(code, k), False) for k in FILL_ORDER]
             updated = "2026-07"
         elif code == "78":                     # run forêt de Saint-Germain
             items = [_item(k, sg[k], SAINT_GERMAIN_BLOC, _size(code, k), False)
@@ -137,7 +142,7 @@ def build(src: Path) -> dict:
                 continue
             n = 3 + int(_seeded(code, "n") * 8)          # 3 à 10 indices
             month = 1 + int(_seeded(code, "m") * 9)      # janvier → septembre 2026
-            items = [_item(k, bret[k], BRETAGNE_BLOC, _size(code, k), False)
+            items = [_item(k, bret[k], BRETAGNE_BOCAGE, _size(code, k), False)
                      for k in FILL_ORDER[:n]]
             updated = f"2026-{month:02d}"
         entry = {
@@ -145,7 +150,7 @@ def build(src: Path) -> dict:
             "resolution": 0.5, "items": items,
         }
         if code == "35":
-            # Le mur s'ouvre ici : 10 indices, données réelles, bloc plein.
+            # Le mur s'ouvre ici : 10 indices et une vue pleine.
             entry["featured"] = True
         departments.append(entry)
 

@@ -8,10 +8,10 @@ et les ouvrir dans QGIS d'un clic, sans relancer de pipeline.
 
 1. Ouvrir le plugin → l'onglet **Visualisation** (2ᵉ onglet).
    Il s'ouvre sur **Ille-et-Vilaine**, 10 indices, mur plein.
-2. **« Le relief nu » → Afficher dans QGIS.** La carte se cale sur le bloc plein
-   (9 × 10 km au nord de Rennes). On ne voit presque rien : c'est le propos.
-3. **« Structures en relief » (LD) → Afficher dans QGIS.** L'étoile forestière et
-   les labours anciens surgissent. Même sol, autre lecture.
+2. **« Le relief nu » → Afficher dans QGIS.** La carte se cale sur une vallée
+   encaissée de 3 × 3 km à l'est de Rennes. On ne voit presque rien : c'est le propos.
+3. **« Structures en relief » (LD) → Afficher dans QGIS.** Le réseau de talwegs,
+   les terrasses et le parcellaire surgissent. Même sol, autre lecture.
 4. **« Voir dans QGIS → »** (en bas à droite) range la fenêtre et laisse la carte.
 5. Rouvrir le plugin, filtrer « morbihan » ou cliquer un autre département :
    le mur montre la couverture, département par département.
@@ -22,10 +22,11 @@ Le contraste **MNT → LD** est l'argument. Ne pas le rater.
 
 | | |
 |---|---|
-| **Vrai** | Les 10 vignettes sont des rendus réels d'une dalle LiDAR HD (Bretagne, `0362_6800`), une image par indice, même emprise. |
+| **Vrai** | Les 10 vignettes sont des rendus réels d'une dalle LiDAR HD (Bretagne, `0362_6800` — une étoile forestière), une image par indice, même emprise. |
+| **Nuance** | La vignette et la couche chargée ne montrent pas le même endroit : la dalle de l'étoile n'est dans aucune fenêtre sans trou. La vignette est un échantillon de l'indice, pas un aperçu de la zone. |
 | **Vrai** | « Afficher dans QGIS » charge une **vraie couche raster** depuis les mosaïques VRT calculées par le pipeline. |
-| **Vrai** | 3 départements portent leurs propres données : **35** et **22** (run Bretagne), **78** (run forêt de Saint-Germain). |
-| **Maquette** | La couverture des 82 autres départements et les volumes affichés. Ils réutilisent les rasters bretons. |
+| **Vrai** | 2 départements portent leurs propres données : **35** (run Bretagne) et **78** (run forêt de Saint-Germain). |
+| **Maquette** | La couverture des 83 autres départements et les volumes affichés. Ils réutilisent les rasters bretons. |
 | **Maquette** | Il n'y a **pas** de diffusion en flux : les sources sont des fichiers locaux. L'écran le dit (« Aperçu local », « source locale ») plutôt que de laisser croire le contraire. |
 
 **Deux indices manquent** : `DENSITE` et `COUVERTURE` (famille Qualité) ne sont
@@ -63,7 +64,29 @@ deux couches, en retire une, et sort `RESULTAT : OK`.
   n'est pas monté, ou les VRT ont bougé. Les chemins sont **absolus** dans le
   catalogue : c'est une démo, pas un livrable.
 - **Rien ne s'affiche après le clic** → la couche est chargée mais le canevas est
-  ailleurs : clic droit sur la couche → « Zoomer sur la couche ».
+  ailleurs : clic droit sur la couche → « Zoomer sur la couche ». ⚠ La mosaïque
+  couvre tout le run, pas seulement la fenêtre visée : « Zoomer sur la couche »
+  montrera donc des dalles éparpillées. Repasser par une carte du mur pour
+  retrouver le bon cadrage.
+
+## Pourquoi les emprises sont si petites
+
+Les 201 dalles bretonnes sont **dispersées** : 1 % de remplissage sur 231 × 119 km,
+et même leur plus gros bloc contigu (33 dalles, 9 × 10 km) n'est rempli qu'à 37 %.
+Se recadrer dessus donnait un écran de dalles éparpillées. Les emprises du
+catalogue sont donc les plus grands **rectangles sans trou**, calculés sur les
+dalles présentes dans *tous* les indices du run :
+
+| département | fenêtre | dalles | indices |
+|---|---|---|---|
+| 35 Ille-et-Vilaine (vitrine) | vallée, 3 × 3 km | 9 | 10 |
+| les autres | bocage, 5 × 2 km | 10 | 3 à 10 |
+| 78 Yvelines | Saint-Germain, 6 × 5 km | 30 | 3 |
+
+Le compromis est structurel : dans `D:\pipeline_results`, les jeux denses ont peu
+d'indices (Dreux 75 dalles / 1 indice, Fénétrange 42 / 1) et le seul jeu riche
+— la Bretagne, 11 indices — est dispersé. Un run dense **et** complet lèverait
+la contrainte : ~30 dalles jointives avec les 12 produits cochés.
 
 ## Ce qui a été volontairement laissé de côté
 

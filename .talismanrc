@@ -12,9 +12,9 @@ fileignoreconfig:
 - filename: .githooks/pre-push
   checksum: b0e75a8b481a83c7a519218d19fa137bfe34752ee3b1f5fbf3fafd19b1d15b03
 - filename: CLAUDE.md
-  checksum: a5c5ec93902e19665d869863d69c58b35b80b58a6047723932e6ebf5386da539
+  checksum: d5e129c968b128457d9d9ef5539ae0bae63cc5ad566dde74674b81b666556ca3
 - filename: README.md
-  checksum: 87ce555fa1197ca44bcb84575509b6b5a8e4aa33a4e3c314b3084c3080904651
+  checksum: 678bbf9e2789d705722f8905eac896f3799d2587ade0ae4a930d2256a16197f5
 - filename: data/third_party/cv_runner_onnx/windows/build_info.json
   ignore_detectors:
   - filecontent
@@ -25,13 +25,13 @@ fileignoreconfig:
 - filename: dev/make_htpasswd.py
   checksum: c0ff22f08b4066ace9c930bb79069b5263aec0bcf12aabb90b7f87f4475dbff3
 - filename: dev/runner_onnx/export_to_onnx.py
-  checksum: a57f927637dc3d995cde24fdc0c23873acbc1206bd72150fc36e76e05e951b82
+  checksum: 03d5a53bd20391c454612c7ffcdbd5b8e1ae8d7c97516f5f225524d8148a7eff
 - filename: docs/reference-parametres-briques.html
   checksum: a5dc04309f54a2d4a818845ecfaa44800b945fe480e6c81e2fa3d78e3fef30e0
 - filename: scripts/_apply_notebook_standardization.py
   checksum: 6e0ed4488d8a8af1730676c54ef79200ea56acf9efcdb8ec9b784a94c875ea4e
 - filename: scripts/validate_models_metadata.py
-  checksum: 11311306617cc4ff2fce166d79c676be135c9a7faec98d4ee4fb34b16189e6ac
+  checksum: 473b237ae5fea488505a24a15210e10a8cc98359171857ca23aa22e6c6e329bc
 - filename: src/app/run_context.py
   checksum: f7d7f2933daf3a785c3245b97c2fdf6f7bf21d18e12ab004b63685c43f496a4e
 - filename: src/app/services/fiabilite.py
@@ -93,7 +93,7 @@ fileignoreconfig:
 - filename: src/pipeline/types.py
   checksum: cc071751349938091505bf7c7cbe20240ae757e05677e4184c939ccc2edca6d9
 - filename: src/ui/dialogs/_model_info_data.py
-  checksum: e18c977030055fe99e86cf8447c626125e83380cc9d34f212b487f5c8b1e745f
+  checksum: bd353e4b446752c4df0f84e2d682ab86df8224ee1306686a7b8f3912a3b52264
 - filename: src/ui/icons.py
   checksum: df0d068fd896cf1361d0a6286e537fc015e473c5bc58924f9d79c3813df543b0
 - filename: src/ui/layer_loader.py
@@ -107,17 +107,17 @@ fileignoreconfig:
 - filename: src/ui/steps/step_2_indices.py
   checksum: 890dd2448caf101008c7922104ddcc7553a65f5d8b9c79e045a8332a68200d0e
 - filename: src/ui/steps/step_3_detection.py
-  checksum: f54804ee307f68da9eed320341c8d400de06f94f546c4cfc727888b776791eb8
+  checksum: 514d48adc6c23f1799770c89368253e22ce947a03fca207976d9b11821c5999a
 - filename: src/ui/steps/step_4_launch.py
   checksum: 4708f745d0c746a1711696595fdbf33250d63a3544c94d63975dd8cb2bcf0696
 - filename: src/ui/theme/v2.qss
-  checksum: 33cc0f832b337290d60f6e871fa341d900e4f18d797e40d63342b09dae20a016
+  checksum: 81c4344a572c21e6f16f0eb04813a5fcd05ad119199759907cd1d88d21e0be77
 - filename: src/ui/widgets/entity_card.py
-  checksum: 1f35c6bbe919b048cd99693cc9a4245067b6eb0406533a542b0d806beefda14e
+  checksum: 8e538c96572c812aade10a48a83a1ce56e82ea8b0eb0b4b0aab14458fff3a10b
 - filename: src/ui/wizard_dialog.py
   checksum: b71d144a28f055c17f6e4873c4f99e6d928ea4882c48d8d806e1248e3563ed9f
 - filename: tests/TESTS_MANUELS_QGIS.md
-  checksum: eb4cf91d99377735bb8c14df526d387f87cdd399e67ecd3ae391ca326008a24c
+  checksum: aaba7fee98fe35f26a077d842b2c13026abfef557d2856e5e468a024c388daf2
 - filename: tests/integration/test_existing_mnt_runner_finalize.py
   checksum: 059625c9d9ebc7107abcbd0339c12957be8c7e56918dcd458ce45f61e1e5f973
 - filename: tests/integration/test_existing_rvt_runner_isolation.py
@@ -153,7 +153,7 @@ fileignoreconfig:
 - filename: tests/unit/test_ingest_plan.py
   checksum: 539fa2bae75150a11780074cce7a05d834544024de91a6b0babc14dd436453e2
 - filename: tests/unit/test_model_orchestrator.py
-  checksum: 2bbc22595cab5a38e086749e985d6d8748741b32ed1788ae6d68c150975545f7
+  checksum: 7801b4ca838051ad1807b5f61f9caac173b0327a9db067b4732230513e510ec6
 - filename: tests/unit/test_model_profile.py
   checksum: 61855cd3a8a06498a8661459ef574ff8eb73aaabe7e3b77bb0d21d9b73cfc8c3
 - filename: tests/unit/test_models_connectivity.py
@@ -176,4 +176,8 @@ fileignoreconfig:
   checksum: 39af6c9298dcb12f2b1d7e0b51b3bcf8ac4afed8e6f14bbb4b0589da5c42a2a9
 - filename: tests/unit/test_tilespec.py
   checksum: a3ffe79b6a5bdbc44f33213aebc85102dc29768621293064f664b9b8419f5235
+- filename: dev/fiches/injecter_fiches.py
+  checksum: 08dcb445bdf440ad539e24058a9b37657ed145f8a4aaea033410e8d95bab1534
+- filename: dev/fiches/reporter_sur_drive.py
+  checksum: 566b3a44b5badbf4d11f60d12f98342f7ddcf59df5e9b5bec465972beae32b58
 version: '1.0'

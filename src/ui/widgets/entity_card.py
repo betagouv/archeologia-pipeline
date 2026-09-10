@@ -13,7 +13,8 @@ from __future__ import annotations
 
 from typing import Dict, Optional, Sequence, Tuple
 
-from qgis.PyQt.QtCore import Qt, pyqtSignal
+from qgis.PyQt.QtCore import QSize, Qt, pyqtSignal
+from qgis.PyQt.QtGui import QIcon, QPixmap
 from qgis.PyQt.QtWidgets import (
     QCheckBox,
     QFrame,
@@ -99,6 +100,9 @@ _CLUSTER_PARAM_SPECS = (
 )
 
 
+_THUMB = 44  # côté de la vignette de carte, en px logiques
+
+
 class EntityCard(QFrame):
     toggled = pyqtSignal(str, bool)        # entity_id, selected
     models_changed = pyqtSignal(str, list)  # entity_id, [model_name, ...] (≥2 = comparaison A/B)
@@ -106,6 +110,7 @@ class EntityCard(QFrame):
     activate_rvt = pyqtSignal(str)         # rvt key
     thresholds_changed = pyqtSignal(str, float, float)  # entity_id, confiance, aire min
     cluster_params_changed = pyqtSignal(str, dict)  # entity_id, {param: valeur}
+    fiche_requested = pyqtSignal(str)      # entity_id — ouvrir la fiche de structure
 
     def __init__(self, entity_id: str, label: str, description: str, parent=None):
         super().__init__(parent)
@@ -120,9 +125,28 @@ class EntityCard(QFrame):
         self.setObjectName("EntityCard")
         self.setProperty("state", "off")
 
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(10, 7, 10, 7)
+        # Deux colonnes : la vignette de la structure à gauche, tout le reste à
+        # droite. La colonne de gauche a une largeur FIXE, occupée même sans
+        # vignette (cadre d'attente) : les libellés restent alignés d'une carte
+        # à l'autre, et le gabarit de hauteur verrouillé plus bas n'est pas
+        # touché (le contenu réservé dépasse toujours 44 px).
+        outer = QHBoxLayout(self)
+        outer.setContentsMargins(10, 7, 10, 7)
+        outer.setSpacing(9)
+
+        self._thumb = QPushButton("")
+        self._thumb.setObjectName("EntityThumb")
+        self._thumb.setFixedSize(_THUMB, _THUMB)
+        self._thumb.setFlat(True)
+        self._thumb.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._thumb.setToolTip("Voir la fiche de la structure")
+        self._thumb.clicked.connect(lambda: self.fiche_requested.emit(self._id))
+        outer.addWidget(self._thumb, 0, Qt.AlignmentFlag.AlignTop)
+
+        layout = QVBoxLayout()
+        layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(3)
+        outer.addLayout(layout, 1)
 
         header = QHBoxLayout()
         header.setSpacing(7)
@@ -132,11 +156,21 @@ class EntityCard(QFrame):
         self._check.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._label = QLabel(label)
         self._label.setObjectName("EntityLabel")
+        self._fiche_btn = QPushButton("Fiche")
+        self._fiche_btn.setObjectName("EntityFicheBtn")
+        self._fiche_btn.setFlat(True)
+        self._fiche_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._fiche_btn.setToolTip(
+            "Illustration, provenance des données d'entraînement, hors-cible "
+            "et contexte d'utilisation"
+        )
+        self._fiche_btn.clicked.connect(lambda: self.fiche_requested.emit(self._id))
         self._rvt_tag = QLabel("")
         self._rvt_tag.setObjectName("EntityRvtTag")
         header.addWidget(self._check)
         header.addWidget(self._label)
         header.addStretch(1)
+        header.addWidget(self._fiche_btn)
         header.addWidget(self._rvt_tag)
         layout.addLayout(header)
 
@@ -271,6 +305,60 @@ class EntityCard(QFrame):
         # (dés)activer les réglages avancés ne change JAMAIS la hauteur. Une
         # carte sans clustering est donc naturellement plus courte qu'une carte
         # qui en propose : chaque carte est « au plus juste » de son gabarit.
+
+    # ------------------------------------------------------------------
+    def set_fiche(
+        self,
+        vignette_path: Optional[str],
+        *,
+        disponible: bool = True,
+        cadrage: Optional[Tuple[float, float, float]] = None,
+    ) -> None:
+        """Alimente la vignette et l'accès à la fiche de structure.
+
+        ``vignette_path`` absent ou illisible → cadre d'attente (la classe
+        n'a pas encore de bloc ``fiche.vignettes`` dans son ``model_card``).
+        ``disponible=False`` (aucun modèle n'installe cette entité) → l'accès
+        à la fiche disparaît : il n'y aurait rien à montrer.
+
+        ``cadrage`` = ``(x, y, côté)`` en fractions de l'image : la vignette
+        couvre 324 m de terrain, réduite à 44 px elle serait illisible, donc
+        l'icône n'en montre que la fenêtre qui porte la structure. Absent →
+        image entière (comportement d'origine).
+        """
+        self._fiche_btn.setVisible(disponible)
+        self._thumb.setEnabled(disponible)
+
+        pix = QPixmap(vignette_path) if vignette_path else QPixmap()
+        if not pix.isNull() and cadrage:
+            pix = self._decouper(pix, cadrage)
+        if pix.isNull():
+            self._thumb.setIcon(QIcon())
+            self._thumb.setText("◌" if disponible else "")
+            self._thumb.setProperty("state", "vide")
+        else:
+            marge = 2  # laisse respirer le liseré du cadre
+            self._thumb.setText("")
+            self._thumb.setIcon(QIcon(pix))
+            self._thumb.setIconSize(QSize(_THUMB - marge * 2, _THUMB - marge * 2))
+            self._thumb.setProperty("state", "plein")
+        self._thumb.style().unpolish(self._thumb)
+        self._thumb.style().polish(self._thumb)
+
+    @staticmethod
+    def _decouper(pix: QPixmap, cadrage: Tuple[float, float, float]) -> QPixmap:
+        """Découpe la fenêtre ``(x, y, côté)`` fractionnaire du pixmap.
+
+        Le cadrage est déjà borné à l'image par ``app.services.class_fiche`` ;
+        on reborne quand même ici (un pixmap non carré donnerait un rectangle
+        hors limites) et on rend l'image entière si le découpage est vide.
+        """
+        x, y, cote = cadrage
+        c = max(1, int(round(cote * pix.width())))
+        left = min(max(0, int(round(x * pix.width()))), max(0, pix.width() - c))
+        top = min(max(0, int(round(y * pix.height()))), max(0, pix.height() - c))
+        decoupe = pix.copy(left, top, c, c)
+        return pix if decoupe.isNull() else decoupe
 
     # ------------------------------------------------------------------
     def set_candidates(

@@ -1148,6 +1148,14 @@ def _validate_single_image(
         # ── Inférence PyTorch ──────────────────────────────────────
         if model_type == "rfdetr":
             model = pytorch_model.model.model
+            # Sur un poste avec GPU, rfdetr construit le modèle sur CUDA alors que
+            # l'entrée de validation reste un tenseur CPU : la porte de parité
+            # échouait sur « Input type (torch.FloatTensor) and weight type
+            # (torch.cuda.FloatTensor) should be the same » sans jamais comparer
+            # quoi que ce soit. On ramène le modèle sur CPU — c'est de toute façon
+            # la référence à laquelle onnxruntime est comparé, et cela garde les
+            # `.detach().numpy()` de ce bloc valides.
+            model = model.cpu()
             model.eval()
             model.export()
             with torch.no_grad():

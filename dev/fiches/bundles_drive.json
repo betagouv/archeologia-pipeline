@@ -1,0 +1,8 @@
+{
+  "depressions_grandes_seg_ld_v1": "ponctuelles/depressions_grandes/runs/training/depressions_grandes_seg_ld_v1/package",
+  "ponctuelles_2cl_det_ld_v1": "ponctuelles/ponctuelles_2_classes/runs/training/ponctuelles_2cl_det_ld_v1/package",
+  "enclos_fr_seg_ld_v1": "enclos/enclos_fr/runs/training/enclos_fr_seg_v1/package",
+  "enclos_ie_seg_ld_v1": "enclos/enclos_ie/runs/training/enclos_ie_seg_v1/package",
+  "lineaires_seg_v3_1": "lineaires/lineaires_3_classes/runs/training/lineaires_seg_v3_1/package",
+  "tranchees_seg_ld_v1": "crateres_tranchees/tranchees_1_classe/runs/training/tranchees_seg_ld_v1/package"
+}

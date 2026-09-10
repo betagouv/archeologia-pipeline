@@ -842,17 +842,32 @@ class TestMorphology:
         assert [key for key, *_ in groups] == ["lineaire"]
 
     def test_real_catalog_morphology_mapping(self):
+        """Le catalogue réel est bien typé, et n'a pas de nom périmé.
+
+        On vérifie des invariants, pas des effectifs : le catalogue bouge à
+        chaque modèle ajouté ou retiré, et un test qui compte les entités
+        casse à chaque fois sans rien protéger.
+        """
         catalog_path = Path(__file__).resolve().parents[2] / "data" / "entities_catalog.json"
         cat = load_entities_catalog(catalog_path)
         ids = {e.id for e in cat}
         assert "cratere" in ids and "regroupement_crateres" in ids
+        # Renommages passés : ces identifiants ne doivent jamais réapparaître.
         assert "cratere_obus" not in ids and "zones_extraction_materiaux" not in ids
+        # Retirées le 2026-09-10 : talus et fosse ont fusionné dans talus_fosse
+        # (linéaires v3), abri n'a plus de modèle et n'en aura plus.
+        assert {"talus", "fosse", "abri"}.isdisjoint(ids)
+
         by_morph: dict = {}
         for e in cat:
             by_morph.setdefault(e.morphology, []).append(e.id)
-        assert len(by_morph.get("circulaire", [])) == 7
-        assert len(by_morph.get("lineaire", [])) == 6
+        # Toute entité porte une morphologie connue : une valeur inattendue la
+        # ferait tomber dans le groupe « Autres » de l'étape 3, en silence.
+        assert set(by_morph) <= {"circulaire", "lineaire", "zone"}
         assert by_morph.get("zone", []) == ["regroupement_crateres", "axe_lineaire"]
+        for attendu, morpho in (("talus_fosse", "lineaire"), ("parcellaire", "lineaire"),
+                                ("cratere", "circulaire"), ("enclos", "circulaire")):
+            assert attendu in by_morph[morpho]
 
 
 # args.yaml avec les paramètres DBSCAN complets (défauts exposables dans l'UI)

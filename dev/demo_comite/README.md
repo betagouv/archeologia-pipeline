@@ -7,9 +7,9 @@ et les ouvrir dans QGIS d'un clic, sans relancer de pipeline.
 ## Le geste de la démo (3 minutes)
 
 1. Ouvrir le plugin → l'onglet **Visualisation** (2ᵉ onglet).
-   Il s'ouvre sur **Ille-et-Vilaine**, 10 indices, mur plein.
-2. **« Le relief nu » → Afficher dans QGIS.** La carte se cale sur une vallée
-   encaissée de 3 × 3 km à l'est de Rennes. On ne voit presque rien : c'est le propos.
+   Il s'ouvre sur **Ille-et-Vilaine**, 12 indices, mur plein.
+2. **« Le relief nu » → Afficher dans QGIS.** La carte se cale sur le bloc de
+   6 × 5 km à l'est de Rennes. Un dégradé, presque rien d'autre : c'est le propos.
 3. **« Structures en relief » (LD) → Afficher dans QGIS.** Le réseau de talwegs,
    les terrasses et le parcellaire surgissent. Même sol, autre lecture.
 4. **« Voir dans QGIS → »** (en bas à droite) range la fenêtre et laisse la carte.
@@ -22,11 +22,11 @@ Le contraste **MNT → LD** est l'argument. Ne pas le rater.
 
 | | |
 |---|---|
-| **Vrai** | Les 10 vignettes sont des rendus réels d'une dalle LiDAR HD (Bretagne, `0362_6800` — une étoile forestière), une image par indice, même emprise. |
-| **Nuance** | La vignette et la couche chargée ne montrent pas le même endroit : la dalle de l'étoile n'est dans aucune fenêtre sans trou. La vignette est un échantillon de l'indice, pas un aperçu de la zone. |
+| **Vrai** | Les **12 vignettes** sont des rendus réels de la dalle `0390_6818`, une image par indice, **même fenêtre de 800 × 448 m** — c'est ce qui permet de reconnaître un indice à son rendu. |
+| **Vrai** | La dalle des vignettes est **dans** le bloc affiché : la vignette est un extrait de ce que « Afficher dans QGIS » va charger, à un autre zoom. |
 | **Vrai** | « Afficher dans QGIS » charge une **vraie couche raster** depuis les mosaïques VRT calculées par le pipeline. |
-| **Vrai** | 2 départements portent leurs propres données : **35** (run Bretagne) et **78** (run forêt de Saint-Germain). |
-| **Maquette** | La couverture des 83 autres départements et les volumes affichés. Ils réutilisent les rasters bretons. |
+| **Vrai** | 2 départements portent leurs propres données : **35** (jeu `demo_comite`) et **78** (run forêt de Saint-Germain). |
+| **Maquette** | La couverture des 83 autres départements et les volumes affichés. Ils réutilisent les rasters de `demo_comite`. |
 | **Maquette** | Il n'y a **pas** de diffusion en flux : les sources sont des fichiers locaux. L'écran le dit (« Aperçu local », « source locale ») plutôt que de laisser croire le contraire. |
 
 Le mur montre les **12 produits** du pipeline, `DENSITE` et `COUVERTURE` compris.
@@ -37,7 +37,8 @@ Le mur montre les **12 produits** du pipeline, `DENSITE` et `COUVERTURE` compris
 # vignettes : une image par indice, même dalle, depuis les vraies données
 .venv_dev/Scripts/python.exe dev/demo_comite/build_thumbs.py
 #   --run <dossier>    run source (défaut : demo_comite)
-#   --tile 0389_6818   dalle à rendre ; vide = choix au score de texture
+#   --tile 0390_6818   dalle à rendre ; vide = choix au score de texture
+#   --planche x.png    planche-contact des 30 dalles, pour choisir à l'œil
 #
 # ⚠ Le score de texture vise les BOURGS : le bâti sature le LD et gagne à tous
 #   les coups. Il donne un point de départ, jamais un verdict — regarder les
@@ -97,14 +98,16 @@ même son plus gros bloc contigu n'est rempli qu'à 37 %). S'y recadrer donnait 
 Refaire le jeu ailleurs :
 
 ```powershell
-& "C:\Program Files\QGIS 4.0.3in\python-qgis.bat" dev\demo_comiteun_pipeline.py `
+& "C:\Program Files\QGIS 4.0.3in\python-qgis.bat" dev\demo_comite
+un_pipeline.py `
     --x0 388 --x1 393 --y0 6816 --y1 6820 --out D:/pipeline_results/demo_comite
 #   --dry-run   n'écrit que la liste de dalles
 #   --tiles N   se limite à N dalles (répétition à blanc)
 ```
 
-Coût mesuré : 2 dalles / 12 produits = 7 min 46 et 1,1 Go ; 30 dalles ≈ 2 h et
-≈ 16 Go, dont ~6 Go de LAZ téléchargés.
+Coût **mesuré** : 2 dalles / 12 produits = 7 min 46 et 1,1 Go ; les 30 dalles =
+**2 h 59 et 27 Go**, dont 6 Go de LAZ téléchargés (le reste est du LAZ fusionné
+intermédiaire, supprimable).
 
 ## Ce qui a été volontairement laissé de côté
 

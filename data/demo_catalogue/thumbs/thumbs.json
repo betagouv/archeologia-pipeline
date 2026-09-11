@@ -1,20 +1,22 @@
 {
-  "source": "output_bretagne",
-  "tile": "0362_6800",
+  "source": "demo_comite",
+  "tile": "0390_6818",
   "window_m": [
-    800,
-    448
+    800.0,
+    448.0
   ],
   "thumbs": {
     "MNT": "MNT.png",
-    "HS": "HS.png",
     "M_HS": "M_HS.png",
     "SVF": "SVF.png",
-    "SLO": "SLO.png",
     "LD": "LD.png",
     "SLRM": "SLRM.png",
     "VAT": "VAT.png",
+    "CVAT": "CVAT.png",
     "MSTP": "MSTP.png",
-    "CVAT": "CVAT.png"
+    "HS": "HS.png",
+    "SLO": "SLO.png",
+    "DENSITE": "DENSITE.png",
+    "COUVERTURE": "COUVERTURE.png"
   }
 }

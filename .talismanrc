@@ -111,11 +111,11 @@ fileignoreconfig:
 - filename: src/ui/steps/step_4_launch.py
   checksum: 4708f745d0c746a1711696595fdbf33250d63a3544c94d63975dd8cb2bcf0696
 - filename: src/ui/theme/v2.qss
-  checksum: 81c4344a572c21e6f16f0eb04813a5fcd05ad119199759907cd1d88d21e0be77
+  checksum: dca27217c80103612799a4aa1291252cd4d08b09d51e8a6edd103f740636ffa3
 - filename: src/ui/widgets/entity_card.py
   checksum: 8e538c96572c812aade10a48a83a1ce56e82ea8b0eb0b4b0aab14458fff3a10b
 - filename: src/ui/wizard_dialog.py
-  checksum: f70cac866d83c2a56fb294e2a726090aa0ab073263b246a3120ac0cbf15e6207
+  checksum: bc79c259e163fb73dbebcf37d19755022efef3949271fe723fc3c730df53ca59
 - filename: tests/TESTS_MANUELS_QGIS.md
   checksum: aaba7fee98fe35f26a077d842b2c13026abfef557d2856e5e468a024c388daf2
 - filename: tests/integration/test_existing_mnt_runner_finalize.py
@@ -180,4 +180,22 @@ fileignoreconfig:
   checksum: 08dcb445bdf440ad539e24058a9b37657ed145f8a4aaea033410e8d95bab1534
 - filename: dev/fiches/reporter_sur_drive.py
   checksum: 566b3a44b5badbf4d11f60d12f98342f7ddcf59df5e9b5bec465972beae32b58
+- filename: dev/demo_comite/build_catalogue.py
+  checksum: d5a7bfd0dd22bfebbce5cf211641ffb45690d42b648d37024b1d9501b795a9b3
+- filename: dev/demo_comite/build_thumbs.py
+  checksum: 0359ea8bcbbcacd1720070d74f869b08143bceaebdcca969f37a129ccc233ede
+- filename: tests/unit/test_visu_catalogue.py
+  checksum: b1025036f5ed06d75bd579b8973f7d3f1b5aa8ad94334e88ab12c6ebfe774d61
+- filename: src/ui/visualisation_tab.py
+  checksum: afe9a60493ff960b9a72aea2a4f3f339f7866bef977e3b020091a6629ee34a71
+- filename: src/app/services/visu_catalogue.py
+  checksum: ea17aa8b9b8d3d21fb1016077464417464c80e5966397efa12ea0c08ca6bbad2
+- filename: src/ui/widgets/indice_card.py
+  checksum: 06132cfabbad865873948a477ad1bf331a7460290d819a73134e7ecacd37d3c6
+- filename: data/demo_catalogue/thumbs/CVAT.png
+  checksum: 4bd6a500a7307be334589e67effdde4005153c89deb0802b47f159d553729a32
+- filename: data/demo_catalogue/thumbs/SLRM.png
+  checksum: e6483e8dc8432299a84e209a0e807179de252f0ef684f6cce5f3a98d65160532
+- filename: data/demo_catalogue/catalogue.json
+  checksum: 6911e4cf35ab0c02f2debdf114bab68d62171443c6f97739aeb417627c7a4b6e
 version: '1.0'

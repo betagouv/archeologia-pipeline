@@ -101,8 +101,12 @@ def main() -> int:
     qss = qss.replace("@ICONS@", (ROOT / "src" / "ui" / "theme" / "icons").as_posix())
     app.setStyleSheet(qss)
 
+    from archeo.src.ui import wizard_dialog
     from archeo.src.ui.wizard_dialog import WizardDialog
 
+    # L'onglet est masqué en production tant que le flux n'est pas terminé :
+    # ce rendu de démo le rallume explicitement.
+    wizard_dialog.VISUALISATION_TAB_ENABLED = True
     dlg = WizardDialog(iface=_StubIface())
     dlg.show()
     app.processEvents()

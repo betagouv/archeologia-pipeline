@@ -39,6 +39,10 @@ from .steps.step_4_launch import LaunchPage, RecapSection
 from .visualisation_tab import VisualisationTab
 from .widgets.stepper_rail import StepperRail
 
+# Onglet « Visualisation » (flux Géoplateforme) : chantier inachevé, masqué en
+# attendant sa reprise. Remettre à True pour retrouver l'onglet et sa largeur.
+VISUALISATION_TAB_ENABLED = False
+
 try:
     from ..app.plugin_metadata import get_plugin_version
 except Exception:  # pragma: no cover - défensif (hors QGIS)
@@ -104,7 +108,10 @@ class WizardDialog(QDialog):
         self.setWindowFlags(self.windowFlags() | Qt.WindowType.WindowMinimizeButtonHint)
         # Plus large que le wizard seul : le mur visuel de l'onglet Visualisation
         # tient 4 cartes de 200 px à côté du rail de 252 px.
-        self.resize(1120, 700)
+        if VISUALISATION_TAB_ENABLED:
+            self.resize(1120, 700)
+        else:
+            self.resize(980, 660)
 
         self._apply_theme()
 
@@ -139,13 +146,17 @@ class WizardDialog(QDialog):
         wizard_layout.addLayout(body, 1)
         wizard_layout.addWidget(self._build_action_bar())
 
-        self._tabs = QTabWidget()
-        self._tabs.addTab(wizard_tab, "Nouveau traitement")
-        self._visu_tab = VisualisationTab(self._plugin_root, iface=self._iface)
-        self._visu_tab.layer_count_changed.connect(self._on_visu_layer_count)
-        self._tabs.addTab(self._visu_tab, "Visualisation")
-        self._tabs.setCurrentIndex(0)          # le wizard reste l'entrée principale
-        root.addWidget(self._tabs)
+        self._visu_tab = None
+        if VISUALISATION_TAB_ENABLED:
+            self._tabs = QTabWidget()
+            self._tabs.addTab(wizard_tab, "Nouveau traitement")
+            self._visu_tab = VisualisationTab(self._plugin_root, iface=self._iface)
+            self._visu_tab.layer_count_changed.connect(self._on_visu_layer_count)
+            self._tabs.addTab(self._visu_tab, "Visualisation")
+            self._tabs.setCurrentIndex(0)      # le wizard reste l'entrée principale
+            root.addWidget(self._tabs)
+        else:
+            root.addWidget(wizard_tab)
 
         # Restaurer la config, brancher l'autosave + le sous-libellé du rail.
         self._source_page.load_from(self._config)
@@ -577,7 +588,8 @@ class WizardDialog(QDialog):
         # Le plugin est déchargé : l'onglet Visualisation oublie ses couches
         # sans y toucher — elles appartiennent au projet de l'utilisateur.
         try:
-            self._visu_tab.cleanup()
+            if self._visu_tab is not None:
+                self._visu_tab.cleanup()
         except Exception:
             pass
         try:

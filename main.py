@@ -38,7 +38,9 @@ class ArcheologiaPipelinePlugin:
         from .src.ui.wizard_dialog import WizardDialog
 
         if self.dialog is None:
-            self.dialog = WizardDialog(parent=self.iface.mainWindow())
+            # iface est requis par l'onglet Visualisation (canevas, barre de
+            # message) ; le wizard, lui, ne s'en sert pas.
+            self.dialog = WizardDialog(parent=self.iface.mainWindow(), iface=self.iface)
         self.dialog.show()
         self.dialog.raise_()
         self.dialog.activateWindow()

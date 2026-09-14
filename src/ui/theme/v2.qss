@@ -193,7 +193,11 @@ QPushButton:disabled { color: #909090; border-color: #b0b0b0; }
     border-top-left-radius: 4px; border-top-right-radius: 4px;
     padding: 4px 12px; margin-right: 2px;
 }
-#AdvTabs QTabBar::tab:selected { background: #ffffff; color: #1d5a96; font-weight: bold; }
+/* Pas de font-weight : la graisse ajoutee par QSS sur un etat elargit le
+   texte peint sans elargir la boite deja dimensionnee, et le libelle se
+   fait rogner. Le fond blanc et le texte bleu suffisent a marquer l'onglet
+   actif. Verrouille par tests/unit/test_qss_graisse_etats.py. */
+#AdvTabs QTabBar::tab:selected { background: #ffffff; color: #1d5a96; }
 /* :!selected : survoler l'onglet actif ne doit pas casser sa fusion avec le pane. */
 #AdvTabs QTabBar::tab:hover:!selected { background: #d6e6f4; }
 #AdvTabs QTabBar::tab:disabled { color: #707070; }
@@ -595,3 +599,114 @@ QPushButton[role="micro"] {
     font-size: 12px; padding: 0; min-height: 18px;
     border: 1px solid #888888; border-radius: 2px; background: #f0f0f0;
 }
+
+/* ═══ Onglet « Visualisation » — mur visuel du catalogue ═══════════════════
+   Mêmes tokens que le wizard : bleu #2b79c2 (pressé #1d5a96), sélection
+   #d6e6f4, bordures #c4c4c4 / #b8b8b8 (cartes), texte atténué #5a5a5a.
+   Les cartes portent un rayon de 3px (badge) et non 6px : ce sont des
+   éléments de grille répétés, pas des conteneurs de section. */
+
+#VisuHeader { background: #ffffff; border-bottom: 1px solid #c4c4c4; }
+#VisuTitle { font-size: 14px; font-weight: bold; color: #000000; }
+#VisuSubtitle { font-size: 11px; color: #5a5a5a; }
+#VisuStamp { font-family: Consolas, monospace; font-size: 10px; color: #5a5a5a; }
+
+/* ---- Rail des départements ---- */
+#VisuRail { background: #f0f0f0; border-right: 1px solid #c4c4c4; }
+#VisuRailCount { font-size: 10px; color: #5a5a5a; }
+#VisuRailList { background: transparent; }
+#VisuRailList::item { border-left: 3px solid transparent; }
+#VisuRailList::item:hover { background: #e8e8e8; }
+#VisuRailList::item:selected { background: #d6e6f4; border-left: 3px solid #2b79c2; }
+#VisuRailItem { background: transparent; }
+#VisuRailCode {
+    background: #ffffff; border: 1px solid #a0a0a0; border-radius: 3px;
+    font-size: 11px; font-weight: bold; color: #2c2c2c;
+}
+#VisuRailName { font-size: 11px; font-weight: 600; color: #000000; }
+#VisuRailSub { font-size: 10px; color: #5a5a5a; }
+#VisuRailItem[state="active"] #VisuRailCode {
+    background: #2b79c2; border-color: #1d5a96; color: #ffffff;
+}
+#VisuRailItem[state="active"] #VisuRailName { color: #1d5a96; }
+
+/* ---- En-tête du mur ---- */
+#VisuWallTitle { font-size: 13px; font-weight: bold; color: #000000; }
+#VisuWallMeta { font-size: 11px; color: #5a5a5a; }
+#VisuFamilyBtn {
+    font-size: 10px; padding: 2px 10px; min-height: 20px;
+    border: 1px solid #a0a0a0; border-radius: 2px; background: #ffffff;
+}
+#VisuFamilyBtn:hover { background: #e8e8e8; border-color: #2b79c2; }
+/* Pas de font-weight ici : le bouton est dimensionne avec la police normale
+   et serait peint en gras — « Tous (10) » sortait « ous (10 ». Le fond bleu
+   et le texte bleu disent deja l'etat actif. Meme piege que QTabBar::tab. */
+#VisuFamilyBtn:checked {
+    background: #d6e6f4; border-color: #2b79c2; color: #1d5a96;
+}
+#VisuFamilyBtn:disabled { color: #909090; border-color: #c4c4c4; background: #f7f7f7; }
+
+#VisuBanner {
+    background: #d6e6f4; border: 1px solid #2b79c2; border-radius: 6px;
+    padding: 8px 12px; font-size: 11px; color: #1c1c1c;
+}
+#VisuEmpty { color: #5a5a5a; font-style: italic; font-size: 11px; }
+
+/* ---- Cartes du mur ---- */
+#VisuCard { background: #ffffff; border: 1px solid #b8b8b8; border-radius: 3px; }
+#VisuCard:hover { border-color: #2b79c2; }
+#VisuCard[state="loading"] { border-color: #2b79c2; }
+#VisuCard[state="loaded"] { border: 1px solid #2b79c2; }
+#VisuCardTitle { font-size: 12px; font-weight: bold; color: #000000; }
+#VisuCard[state="loaded"] #VisuCardTitle { color: #1d5a96; }
+#VisuCardTech { font-size: 10px; color: #5a5a5a; }
+#VisuCardBtn {
+    font-size: 11px; min-height: 24px; border-radius: 2px;
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #3f8ad2, stop:1 #2b79c2);
+    border: 1px solid #1d5a96; color: #ffffff;
+}
+#VisuCardBtn:hover {
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #4e97dd, stop:1 #2f83d0);
+}
+#VisuCardBtn:pressed { background: #1d5a96; }
+#VisuCardBtn:disabled {
+    background: #eaf2fa; border-color: #a9c8e4; color: #1d5a96;
+}
+
+/* ---- Pied ---- */
+#VisuFooter { background: #f0f0f0; border-top: 1px solid #c4c4c4; }
+#VisuFooterState { font-size: 11px; color: #5a5a5a; }
+#VisuPrimaryBtn {
+    font-size: 11px; min-height: 24px; padding: 3px 14px; border-radius: 2px;
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #3f8ad2, stop:1 #2b79c2);
+    border: 1px solid #1d5a96; color: #ffffff; font-weight: bold;
+}
+#VisuPrimaryBtn:hover {
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #4e97dd, stop:1 #2f83d0);
+}
+#VisuPrimaryBtn:pressed { background: #1d5a96; }
+
+/* ---- Onglets du dialogue ----
+   Volontairement PAS de regle QTabBar::tab : styler l'onglet en QSS fait
+   calculer sa largeur avec une metrique et peindre avec une autre (le gras
+   de l'onglet actif suffit a decaler), et les libelles se retrouvent rognes
+   des deux cotes. Les onglets natifs sont dimensionnes correctement par Qt,
+   et collent a la palette QGIS que ce theme suit par ailleurs. Seul le cadre
+   du panneau est retire : il n'entre pas dans le calcul du texte. */
+QTabWidget::pane { border: none; background: #f0f0f0; }
+
+/* Styler le fond d'un QAbstractScrollArea en QSS bascule aussi ses ascenseurs
+   sur le rendu QSS minimal (fond noir par défaut). Dès qu'on touche au fond du
+   rail, il faut donc redessiner son ascenseur — ailleurs dans le plugin les
+   zones de défilement gardent l'ascenseur natif, et c'est très bien. */
+#VisuRailList QScrollBar:vertical {
+    background: transparent; width: 10px; margin: 0;
+}
+#VisuRailList QScrollBar::handle:vertical {
+    background: #c0c0c0; border-radius: 5px; min-height: 30px;
+}
+#VisuRailList QScrollBar::handle:vertical:hover { background: #a0a0a0; }
+#VisuRailList QScrollBar::add-line:vertical,
+#VisuRailList QScrollBar::sub-line:vertical { height: 0; }
+#VisuRailList QScrollBar::add-page:vertical,
+#VisuRailList QScrollBar::sub-page:vertical { background: transparent; }

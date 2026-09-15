@@ -277,7 +277,14 @@ class DetectionPage(QWidget):
         is_derived = any(
             entity.id in self._models[name].derived_entities for name in cand_names
         )
-        card.set_candidates(candidates, has_cluster=has_cluster, is_derived=is_derived)
+        # Entité qu'une cible dérivée peut INCLURE (ex. Cratères sous Regroupement
+        # de cratères) : la carte réserve la place du badge « inclus dans ».
+        implicable = any(
+            entity.id in self._models[name].implied_entities for name in cand_names
+        )
+        card.set_candidates(
+            candidates, has_cluster=has_cluster, is_derived=is_derived, implicable=implicable
+        )
         vignette, cadrage = self._premiere_vignette(entity.id)
         card.set_fiche(vignette, disponible=bool(cand_names), cadrage=cadrage)
         card.fiche_requested.connect(self._open_class_fiche)
@@ -311,10 +318,38 @@ class DetectionPage(QWidget):
             self.changed.emit()
 
     def _on_entity_toggled(self, entity_id: str, selected: bool) -> None:
+        if entity_id in self._incluses():
+            return  # incluse par une cible dérivée cochée : c'est elle qu'on décoche
         self._selected[entity_id] = selected
         self._refresh()
         if not self._loading:
             self.changed.emit()
+
+    def _incluses(self) -> dict:
+        """``{entité de base: cible dérivée cochée qui l'inclut}``.
+
+        Cocher « Regroupement de cratères » produit déjà la couche Cratères
+        (une seule, dans le groupe du regroupement) : « Cratères » est alors
+        cochée d'office, non décochable, et son seuil se règle sur la carte du
+        regroupement. ``self._selected`` reste le choix EXPLICITE de
+        l'utilisateur ; l'inclusion se recalcule, elle n'est jamais persistée.
+        """
+        out: dict = {}
+        for derived, on in self._selected.items():
+            if not on:
+                continue
+            ec = self._coverage.get(derived)
+            for name in (effective_model_names(ec, self._overrides) if ec else []):
+                model = self._models.get(name)
+                for base, d in (model.implied_entities.items() if model else ()):
+                    if d == derived:
+                        out[base] = derived
+        return out
+
+    def _selection_effective(self) -> list:
+        """Entités cochées explicitement + celles incluses par une dérivée cochée."""
+        explicites = [e for e, on in self._selected.items() if on]
+        return explicites + [b for b in self._incluses() if not self._selected.get(b)]
 
     def _on_models_changed(self, entity_id: str, model_names: list) -> None:
         # 1..n modèles cochés dans le menu de la carte (≥2 = comparaison A/B).
@@ -439,6 +474,7 @@ class DetectionPage(QWidget):
         if not self._enabled:
             return
 
+        incluses = self._incluses()
         for eid, card in self._cards.items():
             ec = self._coverage.get(eid)
             model_names = effective_model_names(ec, self._overrides) if ec else []
@@ -458,7 +494,25 @@ class DetectionPage(QWidget):
             missing_rvts = [r for r in rvts if r not in self._active_rvts]
             cluster_outputs = model.cluster_options.get(eid, ()) if model else ()
             is_derived = bool(model) and eid in model.derived_entities
-            ov = self._entity_thresholds.get(eid, {})
+            # Entité incluse par une dérivée cochée : cochée d'office, ses seuils
+            # sont CEUX de la dérivée (un seul réglage, affiché ici en lecture seule).
+            par = incluses.get(eid)
+            ov = self._entity_thresholds.get(par or eid, {})
+            label_par = self._coverage[par].entity.label if par else ""
+            conf_label, conf_tip = "Confiance", ""
+            if par:
+                conf_tip = f"Réglé sur la carte « {label_par} », qui inclut cette entité"
+            elif is_derived and model.derived_source_classes.get(eid):
+                sources = model.derived_source_labels.get(eid) or ", ".join(
+                    self._coverage[b].entity.label
+                    for b, d in model.implied_entities.items() if d == eid
+                ) or "détections sources"
+                defaut = f"{self._default_conf_entite(model, eid):.2f}".replace(".", ",")
+                conf_label = f"Confiance des {sources.lower()}"
+                conf_tip = (
+                    f"Seuil appliqué aux {sources.lower()} détectés, dont les zones sont "
+                    f"calculées : le relever change les zones (règle calibrée au seuil {defaut})"
+                )
             # Défauts des paramètres de regroupement (DBSCAN) pour cette entité :
             # ceux de la 1ʳᵉ sortie de clustering qu'elle produit (dérivée ou cluster).
             cluster_default_params: dict = {}
@@ -473,7 +527,10 @@ class DetectionPage(QWidget):
                         cluster_default_params = model.cluster_defaults[oc]
                         break
             card.update_state(
-                selected=bool(self._selected.get(eid)),
+                selected=bool(self._selected.get(eid) or par),
+                implique_par=label_par,
+                conf_label=conf_label,
+                conf_tip=conf_tip,
                 current_models=model_names,
                 rvt=rvt,
                 rvt_active=(not missing_rvts) if model else True,
@@ -507,7 +564,7 @@ class DetectionPage(QWidget):
             1 for e in self._catalog
             if (self._coverage.get(e.id) and self._coverage[e.id].default_model)
         )
-        n = sum(1 for on in self._selected.values() if on)
+        n = len(self._selection_effective())
         self._sel_count.setText(f"{n} sur {total} sélectionnée{'s' if n != 1 else ''}")
 
     def _rebuild_runs(self) -> None:
@@ -521,7 +578,7 @@ class DetectionPage(QWidget):
             w.deleteLater()
         self._run_rows = []
 
-        selected_ids = [e for e, on in self._selected.items() if on]
+        selected_ids = self._selection_effective()
         runs = resolve_runs_from_entities(
             selected_ids, self._overrides, self._installed, self._catalog, self._cluster,
             entity_thresholds=self._entity_thresholds,
@@ -695,7 +752,7 @@ class DetectionPage(QWidget):
     def summary(self) -> str:
         if not self._enabled:
             return "désactivée"
-        selected_ids = [e for e, on in self._selected.items() if on]
+        selected_ids = self._selection_effective()
         if not selected_ids:
             if self._legacy_runs:
                 n = len(self._legacy_runs)
@@ -712,7 +769,8 @@ class DetectionPage(QWidget):
         """Libellés des entités cochées, dans l'ordre du catalogue (récap étape 4)."""
         if not self._enabled:
             return []
-        return [e.label for e in self._catalog if self._selected.get(e.id)]
+        effectives = set(self._selection_effective())
+        return [e.label for e in self._catalog if e.id in effectives]
 
     def recap_runs(self) -> list:
         """Une chaîne par run résolu : « <modèle> sur <RVT> » (récap étape 4).
@@ -721,7 +779,7 @@ class DetectionPage(QWidget):
         """
         if not self._enabled:
             return []
-        selected_ids = [e for e, on in self._selected.items() if on]
+        selected_ids = self._selection_effective()
         if selected_ids:
             runs = resolve_runs_from_entities(
                 selected_ids, self._overrides, self._installed, self._catalog,
@@ -738,7 +796,7 @@ class DetectionPage(QWidget):
 
     def model_count(self) -> int:
         """Nombre de modèles distincts impliqués (sous-libellé timeline)."""
-        selected_ids = [e for e, on in self._selected.items() if on]
+        selected_ids = self._selection_effective()
         if selected_ids:
             runs = resolve_runs_from_entities(
                 selected_ids, self._overrides, self._installed, self._catalog, self._cluster
@@ -771,10 +829,13 @@ class DetectionPage(QWidget):
     def collect_into(self, config: dict) -> None:
         cv = config.setdefault("computer_vision", {})
         cv["enabled"] = self._enabled
-        selected_ids = [e for e, on in self._selected.items() if on]
+        selected_ids = self._selection_effective()
         if selected_ids:
             self._legacy_runs = None  # l'utilisateur pilote par entités désormais
-        cv["selected_entities"] = selected_ids
+        # Persisté : le choix EXPLICITE seulement — une entité incluse par une
+        # dérivée se recalcule au rechargement (sinon elle resterait cochée
+        # après qu'on a décoché la dérivée).
+        cv["selected_entities"] = [e for e, on in self._selected.items() if on]
         cv["entity_model_overrides"] = {
             e: m for e, m in self._overrides.items() if self._selected.get(e)
         }

@@ -392,6 +392,8 @@ Sélectionner une cible dérivée active le regroupement **d'office** : pas de c
 
 Dans un profil de configuration (cf. `config.example.json`), la section computer vision est sous la clé `computer_vision`. Le format **multi-modèles** utilise un tableau `runs`, chaque entrée ciblant un RVT (`target_rvt`) avec son propre modèle :
 
+**Entité incluse par une cible dérivée** (2026-09-15). Avec `include_source`, cocher la cible produit déjà la couche de ses classes sources (une seule couche « Cratères », dans le groupe « Regroupement de cratères » — jamais en double à la racine). L'entité de base correspondante (« Cratères ») est donc **cochée d'office** quand la cible est cochée : badge « ↳ inclus dans « Regroupement de cratères » », carte non décochable (décocher la cible la libère, elle retrouve alors son état antérieur), seuils en lecture seule. Le seuil des détections sources se règle **sur la carte de la cible** (libellé « Confiance des cratères ») : il pilote les zones, et la règle de regroupement est calibrée au seuil du modèle. Une surcharge de seuil posée sur l'entité incluse est ignorée par l'orchestrateur tant que la cible est cochée (`InstalledModel.implied_entities`).
+
 ```json
 {
   "computer_vision": {

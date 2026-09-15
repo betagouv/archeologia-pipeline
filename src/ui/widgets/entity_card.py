@@ -237,6 +237,7 @@ class EntityCard(QFrame):
         self._adv_row = _Row()
         conf_lbl = QLabel("Confiance")
         conf_lbl.setObjectName("EntityModelLabel")
+        self._conf_lbl = conf_lbl  # relibellé « Confiance des cratères » sur une dérivée
         self._conf_spin = NoWheelDoubleSpinBox()
         self._conf_spin.setRange(0.0, 1.0)
         self._conf_spin.setSingleStep(0.05)
@@ -367,6 +368,7 @@ class EntityCard(QFrame):
         *,
         has_cluster: bool = False,
         is_derived: bool = False,
+        implicable: bool = False,
     ) -> None:
         """``candidates`` = [(model_name, display_name)…] ; couvre l'entité.
 
@@ -375,6 +377,9 @@ class EntityCard(QFrame):
         ``is_derived`` : l'entité est une *cible dérivée* (sortie de clustering
         présentée comme entité) → badge « regroupement automatique » à la place
         de la case cluster ; sa place est réservée en permanence.
+        ``implicable`` : une cible dérivée peut INCLURE cette entité (ex.
+        Cratères sous Regroupement de cratères) → même badge, texte « inclus
+        dans », place réservée aussi.
         """
         self._candidates = {name: disp for name, disp in candidates}
         self._has_model = bool(candidates)
@@ -384,7 +389,7 @@ class EntityCard(QFrame):
             Qt.CursorShape.PointingHandCursor if self._has_model
             else Qt.CursorShape.ArrowCursor
         )
-        self._configure_reservations(has_cluster, is_derived)
+        self._configure_reservations(has_cluster, is_derived or implicable)
 
     def _configure_reservations(self, has_cluster: bool, is_derived: bool = False) -> None:
         """Verrouille le gabarit : les lignes du contenu MAXIMAL réservent leur
@@ -424,8 +429,20 @@ class EntityCard(QFrame):
         cluster_params_override: Optional[Dict[str, float]] = None,
         missing_rvt: Optional[str] = None,
         fiabilite_hint: str = "",
+        implique_par: str = "",
+        conf_label: str = "Confiance",
+        conf_tip: str = "",
     ) -> None:
+        """``implique_par`` : libellé de la cible dérivée cochée qui INCLUT cette
+        entité (2026-09-15) → cochée d'office, badge « inclus dans », seuils en
+        lecture seule (ce sont ceux de la dérivée). ``conf_label`` / ``conf_tip`` :
+        libellé et aide du seuil de confiance (une dérivée dit « Confiance des
+        cratères » : son seuil est celui des détections sources)."""
         self._selected = selected
+        self.setToolTip(
+            f"Inclus dans « {implique_par} » — décochez cette carte-là pour l'exclure"
+            if implique_par else ""
+        )
         # ``rvt`` est un AFFICHAGE (peut joindre plusieurs indices en
         # comparaison, ex. « LD + SVF ») ; la clé d'activation du bouton
         # « + Activer » est le premier indice MANQUANT, pas le libellé.
@@ -489,12 +506,23 @@ class EntityCard(QFrame):
                 self._loading = False
 
         # Badge cible dérivée (regroupement intrinsèque) — exclusif de la case
-        # cluster : pour une cible dérivée, ``cluster_outputs`` est vide.
-        self._derived_badge.setVisible(bool(selected and self._has_model and is_derived))
+        # cluster : pour une cible dérivée, ``cluster_outputs`` est vide. Même
+        # badge, autre texte, pour une entité INCLUSE par une dérivée cochée.
+        self._derived_badge.setText(
+            f"↳ inclus dans « {implique_par} » : une seule couche, seuil réglé sur cette carte-là"
+            if implique_par else "↳ regroupement automatique en zones"
+        )
+        self._derived_badge.setVisible(
+            bool(selected and self._has_model and (is_derived or implique_par))
+        )
 
-        # Réglages avancés (confiance + aire min) : visibles si mode avancé.
+        # Réglages avancés (confiance + aire min) : visibles si mode avancé ;
+        # en lecture seule pour une entité incluse (ses seuils sont ceux de la dérivée).
         show_adv = bool(selected and self._has_model and self._advanced)
         self._adv_row.setVisible(show_adv)
+        self._adv_row.setEnabled(not implique_par)
+        self._conf_lbl.setText(conf_label)
+        self._conf_lbl.setToolTip(conf_tip)
         if show_adv:
             self._loading = True
             try:
@@ -511,7 +539,7 @@ class EntityCard(QFrame):
                     "Comparaison : sans modification, chaque modèle applique "
                     "son propre seuil par défaut ; modifier la valeur impose "
                     "le même seuil à toutes les variantes."
-                    if len(self._current_models) > 1 else ""
+                    if len(self._current_models) > 1 else conf_tip
                 )
             finally:
                 self._loading = False

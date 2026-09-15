@@ -207,9 +207,18 @@ thresholds:
 # derived_targets:
 #   - output_class: zone_crateres      # == une clustering.output_class_name
 #     entity: regroupement_crateres    # id du catalogue
-#     include_source: true             # sortie = zones + détections sources
+#     include_source: true             # sortie = zones + détections sources. Conséquence UI
+#                                      # (2026-09-15) : l'entité de base couverte par les classes
+#                                      # sources (Cratères) est INCLUSE quand la cible est cochée —
+#                                      # cochée d'office, non décochable, une seule couche (dans le
+#                                      # groupe), seuil réglé sur la carte de la cible dérivée.
 #     output_label: Regroupements      # nom de la couche cluster (optionnel)
 #     source_label: Cratères           # nom de la couche source (optionnel)
+#     label_fr: Regroupement de cratères  # libellé de la fiche (repli output_label)
+#     fiche: {...}                     # MÊME bloc que classes[].fiche (2026-09-14) : la
+#                                      # cible dérivée est cochée comme une classe, elle a
+#                                      # sa fiche (vignettes de regroupements, usage, limites) ;
+#                                      # validée comme classes[].fiche, sans exigence classes.txt.
 
 # Documente les divergences imgsz / SAHI vs training. Optionnel mais REQUIS si
 # divergence. Depuis 2026-08-31 le validateur vérifie que `value` == la valeur

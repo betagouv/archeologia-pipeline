@@ -274,6 +274,9 @@ Cette grille indique, pour chaque vague livrée, **quelles sections de tests son
   - Via « Changer ▾ », basculer sur `verdun_3_classes_1` → le run passe sur `🔗 SVF`
   - Lancer sur un RVT LD existant → GeoPackage avec polygones `zone_crateres` (zones) **ET** points/masques `cratere` (dépressions individuelles)
   - Cocher en plus « Cratères » (même modèle par défaut) → toujours **un seul run** (fusion, pas de double inférence)
+  - **Entité incluse (2026-09-15)** : « Regroupement de cratères » cochée seule → la carte « Cratères » passe cochée d'elle-même avec le badge **« ↳ inclus dans « Regroupement de cratères » »**, compteur « 2 sur N sélectionnées » ; cliquer « Cratères » ne la décoche PAS (tooltip : décocher la carte du regroupement) ; décocher le regroupement → « Cratères » revient à son état d'avant
+  - Réglages avancés : sur « Regroupement de cratères » le seuil est libellé **« Confiance des cratères »** (aide : le relever change les zones) ; sur « Cratères » incluse, confiance et aire sont grisées et montrent la valeur réglée sur le regroupement
+  - Résultat QGIS : un seul groupe « Regroupement de cratères » (zones + couche « Cratères » avec TOUS les cratères au seuil), aucune couche « cratere » à la racine ; décocher la couche des cratères dans l'arbre suffit pour ne garder que les zones
 
 ---
 

@@ -106,6 +106,11 @@ class InstalledModel:
     # entity_id → libellé de couche du cluster (model_card derived_targets.output_label).
     # Absent → la couche cluster garde son nom de classe brut.
     derived_output_labels: Dict[str, str] = field(default_factory=dict)
+    # entité de base → entité dérivée qui l'INCLUT (2026-09-15) : toutes ses classes
+    # sont des classes sources d'une cible dérivée à ``include_source``. Cocher la
+    # dérivée produit déjà sa couche (décision C du routage : une seule couche, dans
+    # le groupe) → l'étape 3 la coche d'office et son seuil se règle sur la dérivée.
+    implied_entities: Dict[str, str] = field(default_factory=dict)
     # Seuils par défaut (model_card:thresholds) — injectés par run, surchargeables
     # par entité côté UI (confiance + aire min). IoU jamais exposé dans l'UI.
     # 0.3 = défaut UNIFIÉ de la chaîne CV (= pipeline.cv.model_config.DEFAULT_CONFIDENCE,
@@ -269,6 +274,9 @@ def discover_installed_models(models_dir: Any) -> List[InstalledModel]:
                 derived_source_classes={k: v[0] for k, v in derived_meta.items()},
                 derived_source_labels={k: v[1] for k, v in derived_meta.items() if v[1]},
                 derived_output_labels={k: v[2] for k, v in derived_meta.items() if v[2]},
+                implied_entities=_implied_entities(
+                    coverage, {k: v[0] for k, v in derived_meta.items()}
+                ),
                 default_confidence=conf,
                 default_confidence_per_class=conf_pc,
                 fiabilite_per_class=fiab_pc,
@@ -619,6 +627,29 @@ def _merge_derived_targets(
     return meta
 
 
+def _implied_entities(
+    coverage: Dict[str, Tuple[str, ...]],
+    derived_source_classes: Dict[str, Tuple[str, ...]],
+) -> Dict[str, str]:
+    """``{entité de base: entité dérivée}`` — les entités INCLUSES par une dérivée.
+
+    Une entité de base dont toutes les classes sont des classes SOURCES d'une
+    cible dérivée (``include_source``) n'a rien à produire en plus quand la
+    dérivée est cochée : le routage n'écrit sa couche qu'une fois, dans le groupe
+    de la dérivée (décision C). Cocher « Regroupement de cratères » inclut donc
+    « Cratères ». ``include_source: false`` (sources vides) n'inclut rien.
+    """
+    out: Dict[str, str] = {}
+    for derived, sources in derived_source_classes.items():
+        src = set(sources)
+        for eid, classes in coverage.items():
+            if eid in derived_source_classes or not classes:
+                continue
+            if set(classes) <= src:
+                out[eid] = derived
+    return out
+
+
 # ----------------------------------------------------------------------
 # Couverture entité → modèles
 # ----------------------------------------------------------------------
@@ -899,7 +930,12 @@ def resolve_runs_from_entities(
             c: v for c, v in model.default_confidence_per_class.items()
             if c in group["classes"]
         }
-        for e in group["entities"]:
+        # Entité INCLUSE par une cible dérivée de ce run (ex. Cratères sous
+        # Regroupement de cratères) : son seuil se règle sur la carte de la
+        # dérivée — ses surcharges propres sont ignorées, sinon « dernier gagne ».
+        incluses = {b for b, d in model.implied_entities.items() if d in group["entities"]}
+        reglees = [e for e in group["entities"] if e not in incluses]
+        for e in reglees:
             ov_e = entity_thresholds.get(e, {})
             if "confidence_threshold" in ov_e:
                 for c in group["entity_classes"][e]:
@@ -910,7 +946,7 @@ def resolve_runs_from_entities(
         )
         area_over = [
             entity_thresholds[e]["min_area_m2"]
-            for e in group["entities"]
+            for e in reglees
             if e in entity_thresholds and "min_area_m2" in entity_thresholds[e]
         ]
         # Surcharges de paramètres de clustering, mappées par output_class_name

@@ -1082,3 +1082,53 @@ class TestAlignmentEntity:
         assert "axe_lineaire" in run["selected_classes"]
         assert run["clustering_overrides"] == {
             "axe_lineaire": {"band_width_m": 60.0, "min_sources": 8}}
+
+
+# ----------------------------------------------------------------------
+# Entités INCLUSES par une cible dérivée (2026-09-15)
+# ----------------------------------------------------------------------
+# Une cible dérivée à ``include_source`` produit déjà la couche de ses classes
+# sources (décision C du routage : une seule couche « Cratères », dans le groupe
+# du regroupement). L'entité de base couverte par ces classes est donc INCLUSE
+# quand la dérivée est cochée : l'orchestrateur l'expose (``implied_entities``)
+# pour que l'étape 3 la coche d'office, et ignore ses surcharges de seuil au
+# profit de celles de la dérivée — un seul réglage, plus de « dernier gagne ».
+class TestEntitesIncluses:
+    def test_include_source_implies_base_entity(self, tmp_path):
+        _write_model(tmp_path, "cratere_circulaire_2", CRATERE_DERIVED, args_yaml=CRATERE_ARGS)
+        m = discover_installed_models(tmp_path)[0]
+        assert m.implied_entities == {"cratere": "regroupement_crateres"}
+
+    def test_zones_only_implies_nothing(self, tmp_path):
+        _write_model(tmp_path, "cratere_circulaire_2", CRATERE_DERIVED_ZONES_ONLY,
+                     args_yaml=CRATERE_ARGS)
+        m = discover_installed_models(tmp_path)[0]
+        assert m.implied_entities == {}
+
+    def test_enclos_implies_every_source_entity(self, tmp_path):
+        _write_model(tmp_path, "formes", FORMES_ENCLOS, args_yaml=FORMES_ENCLOS_ARGS)
+        m = discover_installed_models(tmp_path)[0]
+        assert m.implied_entities == {"parcellaire": "enclos", "talus_fosse": "enclos"}
+
+    def test_override_of_included_entity_ignored_when_derived_selected(self, tmp_path):
+        _write_model(tmp_path, "cratere_circulaire_2", CRATERE_DERIVED, args_yaml=CRATERE_ARGS)
+        installed = discover_installed_models(tmp_path)
+        (run,) = resolve_runs_from_entities(
+            ["cratere", "regroupement_crateres"], {}, installed, _catalog(),
+            entity_thresholds={
+                "cratere": {"confidence_threshold": 0.7, "min_area_m2": 90},
+                "regroupement_crateres": {"confidence_threshold": 0.5, "min_area_m2": 20},
+            },
+        )
+        # le seuil des cratères est celui de la carte du regroupement, pas « le dernier »
+        assert run["confidence_per_class"]["cratere"] == 0.5
+        assert run["min_area_m2"] == 20.0
+
+    def test_override_of_base_entity_applies_when_derived_not_selected(self, tmp_path):
+        _write_model(tmp_path, "cratere_circulaire_2", CRATERE_DERIVED, args_yaml=CRATERE_ARGS)
+        installed = discover_installed_models(tmp_path)
+        (run,) = resolve_runs_from_entities(
+            ["cratere"], {}, installed, _catalog(),
+            entity_thresholds={"cratere": {"confidence_threshold": 0.7}},
+        )
+        assert run["confidence_per_class"]["cratere"] == 0.7

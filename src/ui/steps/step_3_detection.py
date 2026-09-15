@@ -822,6 +822,13 @@ class DetectionPage(QWidget):
             # que l'utilisateur ne sélectionne pas d'entité (cf. collect_into).
             legacy = cv.get("runs") or []
             self._legacy_runs = list(legacy) if (legacy and not self._selected) else None
+            # Config d'avant l'inclusion (2026-09-15) : un seuil posé sur « Cratères »
+            # avec le regroupement coché s'appliquait ; il se règle désormais sur la
+            # carte du regroupement → on l'y recopie si elle n'en a pas, sinon le
+            # choix enregistré serait ignoré en silence.
+            for base, derived in self._incluses().items():
+                if base in self._entity_thresholds and derived not in self._entity_thresholds:
+                    self._entity_thresholds[derived] = dict(self._entity_thresholds[base])
             self._refresh()
         finally:
             self._loading = prev

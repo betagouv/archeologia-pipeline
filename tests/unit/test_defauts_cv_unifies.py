@@ -65,3 +65,68 @@ def test_cli_binaire_aligne_source():
     src = (PLUGIN_ROOT / "dev" / "runner_onnx" / "cv_runner_onnx_cli.py").read_text(encoding="utf-8")
     assert "DEFAULT_SAHI_SLICE" in src and "DEFAULT_CONFIDENCE" in src
     assert not re.search(r'slice_(height|width)",\s*750', src), "défaut SAHI 750 réintroduit"
+
+
+# ----------------------------------------------------------------------
+# Défauts de TRAITEMENT : run_context vs config_manager
+# ----------------------------------------------------------------------
+# Même maladie que les défauts CV ci-dessus, sur une autre table. Les deux
+# divergeaient : tile_overlap 5 contre 20, max_workers 4 contre 3. Une config
+# sans ces clés — config partagée, config.json édité à la main, appel
+# programmatique — calculait donc avec une marge de tuilage de 50 m au lieu de
+# 200 m : coutures RVT entre dalles, halo rétréci, et le diagnostic de contexte
+# des noyaux (rvt_kernel_context) porté sur la mauvaise marge (audit 2026-09-16).
+
+CHAMPS_PROCESSING = (
+    "mnt_resolution",
+    "density_resolution",
+    "tile_overlap",
+    "max_workers",
+    "filter_expression",
+)
+
+
+def _defaut_config_manager() -> dict:
+    """``default_config()`` sans instancier ConfigManager (il veut un chemin)."""
+    import inspect
+
+    from config.config_manager import ConfigManager
+
+    fn = ConfigManager.default_config
+    if len(inspect.signature(fn).parameters):      # méthode d'instance
+        return fn(ConfigManager.__new__(ConfigManager))
+    return fn()
+
+
+def test_defauts_processing_identiques_des_deux_cotes():
+    """Une config VIDE et la config par défaut doivent donner le même traitement.
+
+    C'est la seule façon de garantir qu'un chemin qui n'écrit pas ces clés
+    calcule comme l'interface.
+    """
+    from app.run_context import build_run_context
+
+    vide = build_run_context({}).processing
+    plein = build_run_context(_defaut_config_manager()).processing
+    divergents = {
+        champ: (getattr(vide, champ), getattr(plein, champ))
+        for champ in CHAMPS_PROCESSING
+        if getattr(vide, champ) != getattr(plein, champ)
+    }
+    assert divergents == {}, (
+        "défauts divergents (repli run_context, default_config) : " + repr(divergents)
+    )
+
+
+def test_marge_de_tuilage_par_defaut_vaut_bien_200_m():
+    """La marge est un POURCENTAGE d'une dalle de 1 km : 20 % = 200 m.
+
+    C'est la valeur sur laquelle reposent le halo inter-dalles et le diagnostic
+    de contexte des noyaux RVT ; la figer ici évite qu'un repli la ramène à 50 m
+    sans que rien ne le dise.
+    """
+    from app.run_context import build_run_context
+
+    assert build_run_context({}).processing.tile_overlap == 20.0
+    assert 1000.0 * build_run_context({}).processing.tile_overlap / 100.0 == 200.0
+

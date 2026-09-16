@@ -1,0 +1,1171 @@
+{
+  "_lisezmoi": [
+    "Fiches des produits de l'étape 2 — contrat et coercitions : src/app/services/indice_fiche.py.",
+    "L'identité d'un produit (sigle, nom technique, titre métier, famille) N'EST PAS ici :",
+    "elle vient de indices_model.py et visu_catalogue.py, source unique déjà partagée avec",
+    "l'onglet Visualisation. Ce fichier ne porte que ce qui s'écrit à la main.",
+    "Les chemins de vignettes sont relatifs à data/. Les rayons RVT sont en PIXELS :",
+    "au MNT 0,5 m du plugin, 10 px = 5 m.",
+    "tests/unit/test_indice_fiche.py échoue si un produit du pipeline n'a pas sa fiche complète,",
+    "si un paramètre cité n'existe pas dans la config, ou si une vignette déclarée est absente."
+  ],
+  "MNT": {
+    "resume": "Altitude du sol débarrassé de la végétation, en mètres au-dessus du niveau de la mer (IGN 1969), sur une grille de 0,5 m en Lambert-93. C'est la donnée dont dérivent tous les indices : un défaut du MNT se retrouve dans chacun d'eux.",
+    "lire": "Seule l'altitude est codée. À l'échelle d'une dalle de 1 km, les micro-reliefs archéologiques — quelques décimètres — sont invisibles à l'œil : le MNT est un socle de calcul et une référence altimétrique, pas un document de lecture. C'est le rôle des indices de les révéler.",
+    "usage": [
+      "Base de calcul de tous les indices : cocher un indice force le MNT.",
+      "Lire une altitude, tracer un profil en travers, mesurer la hauteur d'un talus ou la profondeur d'un fossé — en flottant, pas en 8 bits.",
+      "Le charger sous les indices pour interroger une valeur au clic."
+    ],
+    "limites": [
+      "Là où il n'y a pas de point sol, le relief est interpolé, pas mesuré : la triangulation tend des facettes planes entre des points éloignés (sous bâti dense, sur l'eau, sous couvert très fermé). Le produit Couverture localise ces zones — une « structure » lue dans une zone rouge est suspecte.",
+      "L'IGN classe « Sol » des objets temporaires : herbe, dépôts agricoles (ensilage, tas de fumier, de betteraves, fauches récentes), tas de terre et de matériaux, carrières et zones de travaux (descriptif de contenu, § 2.2.8.2).",
+      "La classe 66 « Points virtuels » n'est pas de la mesure : ce sont des points artificiels posés sur des lignes de rupture de pente saisies sous les ponts, plus quelques points dans des cours d'eau retraités (§ 2.2.8.8). Ils améliorent le sol sous les ponts, ils ne le constatent pas.",
+      "Le filtre par défaut du plugin retient aussi les classes 6 « Bâtiment » et 67 « Divers – bâtis » : en zone bâtie, le modèle conserve donc les toits. C'est volontaire — les retirer creuserait un trou interpolé à la place de chaque bâtiment — mais cela veut dire que le produit n'est pas un modèle de terrain au sens strict sous le bâti.",
+      "La classe 67 est produite par le classement automatique et contient aussi, de l'aveu de l'IGN, des haies taillées, des rochers, des terrasses, des cabanes de chantier et des caravanes (§ 2.2.8.9)."
+    ],
+    "methode": [
+      "Nuage IGN LiDAR HD : densité prévisionnelle « d'au moins 10 impulsions au m² et 5 impulsions au m² au-dessus de 3200 m d'altitude », dalles carrées de 1 km calées sur le carroyage kilométrique, format LAZ 1.4, RGF93 / Lambert-93 (EPSG:2154), altitudes IGN 1969 (EPSG:5720).",
+      "Filtre PDAL sur la classification ASPRS, puis triangulation : QGIS « Export to raster (using triangulation) » — « Exports point cloud data to a 2D raster grid using a triangulation of points and then interpolating cell values from triangles », c'est-à-dire un maillage de Delaunay rastérisé (PDAL filters.faceraster). Repli automatique sur « Export to raster » (writers.gdal) si la triangulation échoue.",
+      "Le calcul porte sur la dalle élargie de la marge de tuilage (200 m par défaut), puis le résultat est rogné à la dalle : les indices calculés ensuite disposent ainsi d'un vrai voisinage au lieu d'un bord fabriqué.",
+      "Les dalles sont assemblées en une mosaïque virtuelle index_MNT.vrt, qui est le fichier à charger dans QGIS."
+    ],
+    "parametres": [
+      {
+        "cle": "processing.mnt_resolution",
+        "label": "Résolution MNT",
+        "defaut": "0,5 m",
+        "sens": "Taille de cellule, identique à celle du MNT LiDAR HD diffusé par l'IGN. Elle fixe l'échelle en mètres de tous les rayons RVT, qui sont exprimés en pixels : passer à 1 m double la portée de chaque indice sans toucher à ses réglages."
+      },
+      {
+        "cle": "processing.filter_expression",
+        "label": "Filtre PDAL",
+        "defaut": "classes 2, 6, 66, 67, 9",
+        "sens": "Classes conservées pour reconstruire le sol : sol, bâtiment, points virtuels, divers-bâtis, eau."
+      },
+      {
+        "cle": "processing.tile_overlap",
+        "label": "Marge tuiles",
+        "defaut": "20 %",
+        "sens": "200 m pris sur les dalles voisines, pour que les indices n'aient pas d'effet de bord aux jointures."
+      }
+    ],
+    "references": [
+      {
+        "citation": "IGN, LiDAR HD version 1.0 — Descriptif de contenu, révision juillet 2026 (§ 2.2.8 classes, § 2.3.1.2 densité, § 2.5 découpage en dalles)",
+        "url": "https://data.geopf.fr/annexes/ressources/documentation/DC_LiDAR_HD_1-0.pdf"
+      },
+      {
+        "citation": "QGIS User Manual, Point cloud conversion — Export to raster (using triangulation)",
+        "url": "https://docs.qgis.org/latest/en/docs/user_manual/processing_algs/qgis/pointcloudconversion.html"
+      },
+      {
+        "citation": "PDAL, filters.faceraster",
+        "url": "https://pdal.io/en/stable/stages/filters.faceraster.html"
+      },
+      {
+        "citation": "IGN, Nuages de points LiDAR HD (licence ouverte Etalab)",
+        "url": "https://www.data.gouv.fr/datasets/nuages-de-points-lidar-hd"
+      }
+    ],
+    "vignettes": [
+      {
+        "image": "indices_vignettes/MNT.jpg",
+        "source": "Dalle LHD_FXX_0392_6818, 324 m de côté",
+        "licence": "Produite par le plugin sur données IGN LiDAR HD (licence ouverte Etalab)",
+        "legende": "Le vallon que montrent les onze autres vignettes : à cette échelle, seule la pente générale se lit, aucune structure n'apparaît.",
+        "cadrage": {
+          "x": 0.1829,
+          "y": 0.1389,
+          "cote": 0.581
+        }
+      }
+    ]
+  },
+  "HS": {
+    "resume": "Éclairage simulé du relief par une seule source lumineuse, placée au nord-ouest à 35° au-dessus de l'horizon. C'est la visualisation la plus immédiatement lisible — et celle qui a le plus d'angles morts.",
+    "lire": "Les versants tournés vers la lumière sont clairs, les opposés sombres. Un fossé se lit comme une ligne sombre (sa berge au nord-ouest) doublée d'une ligne claire ; un talus donne l'inverse. La lumière vient du haut à gauche par convention cartographique : avec le nord en haut, elle paraît venir du nord-ouest.",
+    "usage": [
+      "Fond de carte, illustration, communication : la documentation RVT le décrit comme donnant « the most 'natural', i.e. intuitively readable, visual impression of all techniques » — lisible sans formation.",
+      "Repérage rapide des structures perpendiculaires à la lumière, donc orientées nord-est / sud-ouest avec les réglages par défaut.",
+      "Vérifier une hypothèse en changeant l'azimut : une forme qui disparaît sous un éclairage et réapparaît sous un autre est bien du relief, pas un artefact."
+    ],
+    "limites": [
+      "Une structure linéaire parallèle à la lumière disparaît : « a single light beam also fails to reveal linear structures that lie parallel to it which can be problematic in some applications, especially in archaeology » (manuel RVT). Avec l'azimut par défaut, un fossé nord-ouest / sud-est est invisible.",
+      "Ombres portées et zones surexposées sont vides d'information : « direct illumination restricts the visualization in dark shades and brightly lit areas, where no or very little detail can be perceived ».",
+      "Un éclairage venu du sud produit une illusion de relief inversé — les creux se lisent comme des bosses : « values from southern hemisphere (90 … 270) display inverted shaded relief ».",
+      "Les structures paraissent décalées du côté de leur ombre. Le SVF et l'openness n'ont pas ce défaut : « features visualized by SVF (or by openness) do not contain any horizontal displacements »."
+    ],
+    "methode": [
+      "Le terrain est traité comme une surface lambertienne éclairée par une source à l'infini : la clarté d'un pixel est le cosinus de l'angle entre la normale au terrain et la direction de la lumière.",
+      "Pente et orientation sont calculées par différences finies sur le voisinage 3×3 (méthode de Horn, 1981), puis combinées à l'azimut et à l'élévation solaires."
+    ],
+    "parametres": [
+      {
+        "cle": "hs.sun_azimuth",
+        "label": "Azimut solaire",
+        "defaut": "315°",
+        "sens": "Direction de la lumière : 0 = nord, 90 = est. GDAL note que « the default value, 315, should rarely be changed as it is the value generally used to generate shaded maps »."
+      },
+      {
+        "cle": "hs.sun_elevation",
+        "label": "Élévation solaire",
+        "defaut": "35°",
+        "sens": "Hauteur du soleil. Le manuel RVT conseille 5 à 45° : « use small values (5, 10) for flat terrain and higher values (45) for steep terrain »."
+      },
+      {
+        "cle": "hs.ve_factor",
+        "label": "Facteur VE",
+        "defaut": "1",
+        "sens": "Exagération verticale : multiplie les altitudes avant le calcul. À monter pour contraster un relief très mou."
+      },
+      {
+        "cle": "hs.save_as_8bit",
+        "label": "Sortie 8 bits",
+        "defaut": "activé",
+        "sens": "Étirement linéaire fixe de 0 à 1 puis codage sur 0–255. Suffisant pour l'affichage et pour l'inférence ; décocher conserve les valeurs flottantes."
+      }
+    ],
+    "references": [
+      {
+        "citation": "Relief Visualization Toolbox, documentation — Hillshading",
+        "url": "https://rvt-py.readthedocs.io/en/latest/listofvis_hillshade.html"
+      },
+      {
+        "citation": "Kokalj Ž. et al., Relief Visualization Toolbox ver. 2.2.1 — Manual, ZRC SAZU, p. 4-5",
+        "url": "https://www.zrc-sazu.si/sites/default/files/rvt_2.2.1_0.pdf"
+      },
+      {
+        "citation": "Horn B. K. P. 1981, Hill shading and the reflectance map, Proceedings of the IEEE 69(1), p. 14-47",
+        "url": "https://doi.org/10.1109/PROC.1981.11918"
+      },
+      {
+        "citation": "GDAL, gdaldem hillshade",
+        "url": "https://gdal.org/en/stable/programs/gdaldem.html"
+      }
+    ],
+    "vignettes": [
+      {
+        "image": "indices_vignettes/HS.jpg",
+        "source": "Dalle LHD_FXX_0392_6818, 324 m de côté",
+        "licence": "Produite par le plugin sur données IGN LiDAR HD (licence ouverte Etalab)",
+        "legende": "Le vallon et le chemin creux ressortent, mais les linéaires orientés comme la lumière du nord-ouest s'effacent.",
+        "cadrage": {
+          "x": 0.1829,
+          "y": 0.1389,
+          "cote": 0.581
+        }
+      }
+    ]
+  },
+  "M_HS": {
+    "resume": "Seize ombrages calculés tous les 22,5° et réunis en une seule image : aucune structure n'est parallèle à toutes les lumières à la fois. C'est l'ombrage débarrassé de son angle mort.",
+    "lire": "Chaque structure linéaire est éclairée par au moins une direction, donc visible. Les teintes traduisent l'orientation des versants : la sortie 8 bits est une composition en couleurs de trois des directions (315° dans le rouge, 15° dans le vert, 75° dans le bleu). Le fichier flottant, lui, garde une bande par direction, 0° en bande 1 puis dans le sens horaire.",
+    "usage": [
+      "Premier repérage toutes orientations confondues : c'est un fond plus complet que l'ombrage simple, au même coût de lecture.",
+      "Indice d'entrée de plusieurs modèles de détection du plugin.",
+      "Lire un réseau linéaire complexe — parcellaire, tranchées — sans avoir à tester plusieurs azimuts à la main."
+    ],
+    "limites": [
+      "Lecture moins immédiate que l'ombrage simple : les couleurs demandent une habitude, et la documentation RVT note que l'approche « increases interpretative complexity ».",
+      "Le contraste local est plus faible qu'un ombrage bien orienté sur la structure recherchée : ce qui est gagné en couverture est perdu en netteté.",
+      "Les creux restent moins nets qu'en Sky-View Factor : combiner plusieurs éclairages ne supprime pas la nature directionnelle de l'ombrage, cela la moyenne.",
+      "Zones saturées et décalage visuel des structures subsistent, comme pour tout ombrage."
+    ],
+    "methode": [
+      "L'ombrage est recalculé pour N azimuts équirépartis entre 0 et 360°, à élévation solaire constante (Hobbs 1999, cité par le manuel RVT).",
+      "Le fichier 8 bits compose trois de ces directions dans les canaux rouge, vert et bleu, avec le même étirement 0–1 que l'ombrage simple."
+    ],
+    "parametres": [
+      {
+        "cle": "mdh.num_directions",
+        "label": "Nombre de directions",
+        "defaut": "16",
+        "sens": "Manuel RVT : valeurs utiles 4 à 36, « 16 is optimal for most applications ». Le temps de calcul croît linéairement."
+      },
+      {
+        "cle": "mdh.sun_elevation",
+        "label": "Élévation solaire",
+        "defaut": "35°",
+        "sens": "Comme pour l'ombrage simple. Les préréglages de terrain du VAT descendent à 15° en terrain plat et montent à 55° en terrain pentu."
+      },
+      {
+        "cle": "mdh.ve_factor",
+        "label": "Facteur VE",
+        "defaut": "1",
+        "sens": "Exagération verticale."
+      },
+      {
+        "cle": "mdh.save_as_8bit",
+        "label": "Sortie 8 bits",
+        "defaut": "activé",
+        "sens": "Composition RVB de trois directions, étirement 0–1 par bande. Décocher conserve les N bandes flottantes."
+      }
+    ],
+    "references": [
+      {
+        "citation": "Relief Visualization Toolbox, documentation — Hillshading from multiple directions",
+        "url": "https://rvt-py.readthedocs.io/en/latest/listofvis_hillshade.html"
+      },
+      {
+        "citation": "Kokalj Ž. et al., Relief Visualization Toolbox ver. 2.2.1 — Manual, ZRC SAZU, p. 5",
+        "url": "https://www.zrc-sazu.si/sites/default/files/rvt_2.2.1_0.pdf"
+      },
+      {
+        "citation": "Kokalj Ž., Hesse R. 2017, Airborne laser scanning raster data visualization: A Guide to Good Practice, Založba ZRC",
+        "url": "https://doi.org/10.3986/9789612549848"
+      }
+    ],
+    "vignettes": [
+      {
+        "image": "indices_vignettes/M_HS.jpg",
+        "source": "Dalle LHD_FXX_0392_6818, 324 m de côté",
+        "licence": "Produite par le plugin sur données IGN LiDAR HD (licence ouverte Etalab)",
+        "legende": "Les mêmes structures éclairées de seize directions : aucune n'est perdue, au prix d'une image à décoder.",
+        "cadrage": {
+          "x": 0.1829,
+          "y": 0.1389,
+          "cote": 0.581
+        }
+      }
+    ]
+  },
+  "SLO": {
+    "resume": "Inclinaison maximale du terrain en chaque cellule, en degrés. Première dérivée du modèle d'altitude, indépendante de l'orientation : une rupture de pente ressort quelle que soit sa direction.",
+    "lire": "L'image sépare le plat du pentu, pas le haut du bas. Le plat est **clair**, le pentu **sombre** : le fichier 8 bits écrit par RVT est un étirement inversé, la valeur vaut 255 moins la pente ramenée sur 0–51°, si bien qu'un terrain à moins d'un degré sort à 251 et un versant à 30° à 105 ; au-delà de 51° l'image est noire et sature. Un fossé apparaît donc comme deux lignes sombres parallèles — ses deux berges — et un talus donne exactement la même signature.",
+    "usage": [
+      "Ruptures de pente : talus, bords de terrasses agricoles, berges de fossés, escarpements.",
+      "Couche « luminosité » de la visualisation archéologique (VAT), où elle apporte le modelé.",
+      "Quantifier une pente réelle, en travaillant sur le fichier flottant plutôt que sur le 8 bits."
+    ],
+    "limites": [
+      "La pente ne dit pas le sens : « additional information is needed to distinguish between positive/convex (e.g. banks) and negative/concave (e.g. ditches) features, since slopes of the same gradient, regardless of rising or falling, are presented with the same colour » (documentation RVT).",
+      "Très bruitée sur un modèle à 0,5 m : chaque irrégularité de surface est une pente, y compris le bruit de mesure.",
+      "Peu d'information en terrain plat, là où l'archéologie a justement besoin d'aide.",
+      "Au-delà de 51° l'image sature en noir : en montagne, les versants raides deviennent une masse uniforme sans détail."
+    ],
+    "methode": [
+      "« Slope (gradient) represents the maximum rate of change between each cell and its neighbours » : le calcul est fait par différences finies sur le voisinage 3×3.",
+      "La pente peut être exprimée en degrés ou en pourcentage (100 % = 45°)."
+    ],
+    "parametres": [
+      {
+        "cle": "slope.unit",
+        "label": "Unité",
+        "defaut": "degrés",
+        "sens": "Degrés ou pourcentage. Le pourcentage est une tangente, pas un angle : 100 % vaut 45°."
+      },
+      {
+        "cle": "slope.ve_factor",
+        "label": "Facteur VE",
+        "defaut": "1",
+        "sens": "Exagération verticale."
+      },
+      {
+        "cle": "slope.save_as_8bit",
+        "label": "Sortie 8 bits",
+        "defaut": "activé",
+        "sens": "Étirement linéaire **inversé** de 0 à 51° : le plat sort blanc, le pentu noir, conformément à la convention RVT. Décocher conserve la pente en degrés, mesurable."
+      }
+    ],
+    "references": [
+      {
+        "citation": "Relief Visualization Toolbox, documentation — Slope",
+        "url": "https://rvt-py.readthedocs.io/en/latest/listofvis_slope.html"
+      },
+      {
+        "citation": "Kokalj Ž. et al., Relief Visualization Toolbox ver. 2.2.1 — Manual, ZRC SAZU, tableau 1",
+        "url": "https://www.zrc-sazu.si/sites/default/files/rvt_2.2.1_0.pdf"
+      },
+      {
+        "citation": "GDAL, gdaldem slope",
+        "url": "https://gdal.org/en/stable/programs/gdaldem.html"
+      }
+    ],
+    "vignettes": [
+      {
+        "image": "indices_vignettes/SLO.jpg",
+        "source": "Dalle LHD_FXX_0392_6818, 324 m de côté",
+        "licence": "Produite par le plugin sur données IGN LiDAR HD (licence ouverte Etalab)",
+        "legende": "Seules les ruptures de pente subsistent : les deux berges du chemin creux forment deux lignes sombres parallèles, sans dire laquelle monte.",
+        "cadrage": {
+          "x": 0.1829,
+          "y": 0.1389,
+          "cote": 0.581
+        }
+      }
+    ]
+  },
+  "SVF": {
+    "resume": "Part du ciel visible depuis chaque point du terrain, l'horizon étant mesuré dans seize directions jusqu'à dix pixels de distance. Un éclairage diffus plutôt qu'un soleil : pas de direction aveugle, pas d'ombre portée, pas de décalage des structures.",
+    "lire": "Le manuel RVT le résume ainsi : « locally flat terrain, ridges and earthworks (e.g. building walls, cultivation ridges, burial mounds) which receive more illumination are highlighted and appear in light to white colours on a SVF image, while depressions (e.g. trenches, moats, ploughing furrows, mining pits) are dark because they receive less illumination ». Un fossé est une ligne sombre continue, quelle que soit son orientation.",
+    "usage": [
+      "Les creux, de toute forme et de toute orientation : fossés, chemins creux, cratères, mardelles, fosses d'extraction, trous d'obus.",
+      "Cartographier sans biais directionnel : à la différence de l'ombrage, les formes ne sont pas déplacées visuellement, ce qui permet de digitaliser directement dessus.",
+      "Les structures posées sur un versant, que l'ombrage écrase : le SVF donne son meilleur rendu « in moderate to steep topography »."
+    ],
+    "limites": [
+      "En terrain plat, le SVF ne montre presque que les creux et amplifie le bruit : « in areas with flat or very gentle topography, sky-view factor is generally limited to the presentation of negative relief features (…) and becomes very sensitive to DEM noise ». Pour un relief positif faible — talus arasé, tertre — le Local Dominance ou le Simple Local Relief Model valent mieux.",
+      "Sur les fortes pentes, tout devient sombre et le détail disparaît : c'est pour compenser cette saturation que la visualisation archéologique (VAT) lui adjoint trois autres couches.",
+      "Le rayon borne la taille des formes vues. À 10 pixels, soit 5 m au pas de 0,5 m, un enclos de 30 m n'est révélé que par ses bords, jamais comme une forme entière : il faut alors monter le rayon à une trentaine de pixels, en vérifiant que la marge de tuilage reste plus large que le rayon.",
+      "Le manuel RVT cadre l'usage archéologique : « use small search radius (5-10 m; i.e. 5-20 pixels) if you are interested in small features, e.g. archaeology »."
+    ],
+    "methode": [
+      "Dans chaque direction, l'algorithme cherche l'angle d'élévation de l'horizon jusqu'à la distance maximale ; le facteur est la moyenne, sur toutes les directions, de la part d'hémisphère céleste non masquée.",
+      "L'option de suppression du bruit ignore les tout premiers pixels du rayon, ce qui gomme l'effet « poivre et sel » venu du nuage de points sans toucher aux structures.",
+      "Le calcul lit au-delà du bord du raster : le plugin le nourrit avec la dalle élargie de la marge de tuilage, faute de quoi RVT fabriquerait le voisinage manquant en repliant l'image sur elle-même."
+    ],
+    "parametres": [
+      {
+        "cle": "svf.num_directions",
+        "label": "Nombre de directions",
+        "defaut": "16",
+        "sens": "Directions d'horizon échantillonnées. Manuel RVT : « 16 is optimal for most applications », le temps croît linéairement."
+      },
+      {
+        "cle": "svf.radius",
+        "label": "Rayon",
+        "defaut": "10 px, soit 5 m",
+        "sens": "Distance de recherche de l'horizon, en pixels. C'est le réglage qui fixe la taille des structures visibles : le préréglage « terrain plat » du VAT monte à 20 px."
+      },
+      {
+        "cle": "svf.noise_remove",
+        "label": "Suppression du bruit",
+        "defaut": "0 (aucune)",
+        "sens": "0 aucune, 1 faible, 2 moyenne, 3 forte. Le préréglage « terrain plat » du VAT utilise 3."
+      },
+      {
+        "cle": "svf.ve_factor",
+        "label": "Facteur VE",
+        "defaut": "1",
+        "sens": "Exagération verticale."
+      },
+      {
+        "cle": "svf.save_as_8bit",
+        "label": "Sortie 8 bits",
+        "defaut": "activé",
+        "sens": "Étirement linéaire de 0,6375 à 1. La documentation conseille 0,65–1 en terrain varié et 0,9–1 en terrain très plat."
+      }
+    ],
+    "references": [
+      {
+        "citation": "Zakšek K., Oštir K., Kokalj Ž. 2011, Sky-View Factor as a Relief Visualization Technique, Remote Sensing 3(2), p. 398-415",
+        "url": "https://doi.org/10.3390/rs3020398"
+      },
+      {
+        "citation": "Kokalj Ž., Zakšek K., Oštir K. 2011, Application of sky-view factor for the visualisation of historic landscape features in lidar-derived relief models, Antiquity 85(327), p. 263-273",
+        "url": "https://doi.org/10.1017/S0003598X00067594"
+      },
+      {
+        "citation": "Relief Visualization Toolbox, documentation — Sky-view factor",
+        "url": "https://rvt-py.readthedocs.io/en/latest/listofvis_svf.html"
+      },
+      {
+        "citation": "Kokalj Ž. et al., Relief Visualization Toolbox ver. 2.2.1 — Manual, ZRC SAZU, p. 6",
+        "url": "https://www.zrc-sazu.si/sites/default/files/rvt_2.2.1_0.pdf"
+      }
+    ],
+    "vignettes": [
+      {
+        "image": "indices_vignettes/SVF.jpg",
+        "source": "Dalle LHD_FXX_0392_6818, 324 m de côté",
+        "licence": "Produite par le plugin sur données IGN LiDAR HD (licence ouverte Etalab)",
+        "legende": "Le chemin creux se lit comme une ligne sombre continue, et le faisceau de fossés du bas apparaît en entier, sans biais d'orientation.",
+        "cadrage": {
+          "x": 0.1829,
+          "y": 0.1389,
+          "cote": 0.581
+        }
+      }
+    ]
+  },
+  "LD": {
+    "resume": "Un observateur de 1,70 m posé sur chaque pixel regarde le terrain entre 5 et 10 m autour de lui, dans vingt-quatre directions : plus il regarde vers le bas, plus il « domine », plus le pixel est clair. Conçu pour les reliefs positifs très faibles en terrain plat, il excelle aussi sur les creux.",
+    "lire": "Clair : un point haut ou un versant — talus, tertre, mur arasé, bord de terrasse. Sombre : un creux — doline, chemin creux, fosse. Le manuel RVT le formule ainsi : « dominance is higher for points on local protrusions as well as on slopes, and lower for points in local depressions ».",
+    "usage": [
+      "Les reliefs positifs que rien d'autre ne montre : « well suited for very subtle positive relief features such as former field boundaries or heavily eroded burial mounds » — parcellaire fossile, tumulus arasés, en terrain plat à modéré.",
+      "Les dépressions : « delivers very good results for topographic depressions such as dolines, mining traces, and hollow ways ». C'est l'indice d'entrée des modèles de grandes dépressions du plugin.",
+      "Garder le paysage en tête tout en lisant le détail : il conserve « a (limited) visual impression of the overall landscape forms »."
+    ],
+    "limites": [
+      "Cette même sensibilité aux versants est un piège : un flanc de colline naturel est clair lui aussi, comme le serait un talus. La forme, pas la clarté, fait la différence.",
+      "Les deux rayons fixent la taille des structures visées. Manuel RVT : le rayon minimal doit valoir « a bit more than half the size of the features you are interested in », le maximal « a bit more than the size ». À 10–20 pixels, soit 5–10 m, on vise des structures de 5 à 10 m ; un enclos de 40 m demande de monter les deux rayons en proportion.",
+      "En partie interchangeable avec le Simple Local Relief Model, qui donne des hauteurs relatives plus réalistes là où le Local Dominance donne un meilleur modelé.",
+      "Le calcul est plus lent que celui du SVF, la charge croissant avec le rayon maximal et la finesse angulaire."
+    ],
+    "methode": [
+      "Pour chaque direction — pas angulaire de 15°, soit vingt-quatre directions — et chaque distance comprise entre le rayon minimal et le rayon maximal, on calcule l'angle sous lequel l'observateur voit le terrain ; la dominance est la moyenne de ces angles.",
+      "L'algorithme vient du Lidar Visualisation Toolbox (LiVT) de Ralf Hesse, développé au Landesamt für Denkmalpflege du Bade-Wurtemberg, et a été repris dans RVT."
+    ],
+    "parametres": [
+      {
+        "cle": "ldo.angular_res",
+        "label": "Résolution angulaire",
+        "defaut": "15°",
+        "sens": "Pas du balayage : 15° donne vingt-quatre directions. Plus petit signifie plus précis et plus lent."
+      },
+      {
+        "cle": "ldo.min_radius",
+        "label": "Rayon min",
+        "defaut": "10 px, soit 5 m",
+        "sens": "Distance à partir de laquelle l'observateur regarde. Un peu plus que la moitié de la taille des structures visées."
+      },
+      {
+        "cle": "ldo.max_radius",
+        "label": "Rayon max",
+        "defaut": "20 px, soit 10 m",
+        "sens": "Distance jusqu'où il regarde. Un peu plus que la taille des structures visées ; valeurs utiles 10 à 50 px."
+      },
+      {
+        "cle": "ldo.observer_h",
+        "label": "Hauteur observateur",
+        "defaut": "1,7 m",
+        "sens": "Hauteur de l'œil virtuel au-dessus du sol. Le préréglage « terrain pentu » du VAT monte à 16 m."
+      },
+      {
+        "cle": "ldo.ve_factor",
+        "label": "Facteur VE",
+        "defaut": "1",
+        "sens": "Exagération verticale."
+      },
+      {
+        "cle": "ldo.save_as_8bit",
+        "label": "Sortie 8 bits",
+        "defaut": "activé",
+        "sens": "Étirement linéaire de 0,5 à 1,8."
+      }
+    ],
+    "references": [
+      {
+        "citation": "Hesse R. 2016, Visualisierung hochauflösender Digitaler Geländemodelle mit LiVT, in : Computeranwendungen und Quantitative Methoden in der Archäologie, Topoi",
+        "url": "https://topoi.org/publication/36926/"
+      },
+      {
+        "citation": "Relief Visualization Toolbox, documentation — Local dominance",
+        "url": "https://rvt-py.readthedocs.io/en/latest/listofvis_localdom.html"
+      },
+      {
+        "citation": "Kokalj Ž. et al., Relief Visualization Toolbox ver. 2.2.1 — Manual, ZRC SAZU, p. 7",
+        "url": "https://www.zrc-sazu.si/sites/default/files/rvt_2.2.1_0.pdf"
+      },
+      {
+        "citation": "Kokalj Ž., Hesse R. 2017, Airborne laser scanning raster data visualization: A Guide to Good Practice, Založba ZRC",
+        "url": "https://doi.org/10.3986/9789612549848"
+      }
+    ],
+    "vignettes": [
+      {
+        "image": "indices_vignettes/LD.jpg",
+        "source": "Dalle LHD_FXX_0392_6818, 324 m de côté",
+        "licence": "Produite par le plugin sur données IGN LiDAR HD (licence ouverte Etalab)",
+        "legende": "Talus et bords de parcelle ressortent en clair, les creux en sombre ; la dépression ovale du centre se détache nettement.",
+        "cadrage": {
+          "x": 0.1829,
+          "y": 0.1389,
+          "cote": 0.581
+        }
+      }
+    ]
+  },
+  "SLRM": {
+    "resume": "Le modèle d'altitude moins sa propre version lissée sur vingt pixels, soit dix mètres. Il ne reste que l'écart local, en mètres : positif pour ce qui dépasse la tendance du terrain, négatif pour ce qui s'y enfonce. Version simplifiée du Local Relief Model de Hesse (2010).",
+    "lire": "Gris moyen : le terrain suit sa tendance. Clair : une bosse — talus, tertre, levée. Sombre : un creux. Les valeurs flottantes sont directement des hauteurs relatives en mètres, et la documentation RVT souligne que « local relief model produces more realistic relative elevation values of relief anomalies ».",
+    "usage": [
+      "Le terrain plat à modéré : « in areas with flat or very gentle to moderate topography, local relief model and local dominance are very helpful to highlight very low relief features such as former field boundaries or levelled burial mounds ».",
+      "Mesurer : la hauteur d'un talus ou la profondeur d'un fossé se lisent directement sur le fichier flottant.",
+      "Isoler une micro-structure d'un versant en pente, puisque la pente générale est justement ce qui est retiré."
+    ],
+    "limites": [
+      "Le rayon borne la taille des structures : « radius should be a bit more than half the size of the features you are interested in » (manuel RVT). Une structure plus large que deux fois le rayon est absorbée dans la tendance et n'apparaît plus que par ses bords.",
+      "Des halos clairs ou sombres apparaissent autour des grandes ruptures — bord de plateau, talus routier, carrière — parce que le lissage y déborde.",
+      "Le bruit du modèle d'altitude est conservé tel quel, sans atténuation.",
+      "« SLRM is computationally the same as the most common version of Topographic Position Index (TPI) » : c'est le même calcul, avec une fenêtre plus large que le 3×3 habituel du TPI."
+    ],
+    "methode": [
+      "Retrait de tendance : « trend removal (…) accomplished by subtracting the smoothed DEM from the original DEM », le lissage étant une moyenne mobile de rayon donné — RVT a remplacé le lissage gaussien par une moyenne simple à partir de sa version 1.2.",
+      "Le Local Relief Model complet de Hesse ajoute une seconde passe, qui reconstruit une surface de référence à partir des courbes de niveau zéro ; RVT n'implémente que la version simple, d'où le « simple » du nom."
+    ],
+    "parametres": [
+      {
+        "cle": "slrm.radius",
+        "label": "Rayon",
+        "defaut": "20 px, soit 10 m",
+        "sens": "Rayon du lissage, qui sépare le micro-relief de la tendance. Valeurs utiles 10 à 50 px ; le préréglage « terrain plat » du VAT descend à 10 px."
+      },
+      {
+        "cle": "slrm.ve_factor",
+        "label": "Facteur VE",
+        "defaut": "1",
+        "sens": "Exagération verticale."
+      },
+      {
+        "cle": "slrm.save_as_8bit",
+        "label": "Sortie 8 bits",
+        "defaut": "activé",
+        "sens": "Étirement linéaire de −2 à +2 m ; le préréglage « terrain général » du VAT resserre à −1 / +1 m."
+      }
+    ],
+    "references": [
+      {
+        "citation": "Hesse R. 2010, LiDAR-derived Local Relief Models — a new tool for archaeological prospection, Archaeological Prospection 17(2), p. 67-72",
+        "url": "https://doi.org/10.1002/arp.374"
+      },
+      {
+        "citation": "Relief Visualization Toolbox, documentation — Simple local relief model",
+        "url": "https://rvt-py.readthedocs.io/en/latest/listofvis_slrm.html"
+      },
+      {
+        "citation": "Kokalj Ž. et al., Relief Visualization Toolbox ver. 2.2.1 — Manual, ZRC SAZU, p. 5-6",
+        "url": "https://www.zrc-sazu.si/sites/default/files/rvt_2.2.1_0.pdf"
+      }
+    ],
+    "vignettes": [
+      {
+        "image": "indices_vignettes/SLRM.jpg",
+        "source": "Dalle LHD_FXX_0392_6818, 324 m de côté",
+        "licence": "Produite par le plugin sur données IGN LiDAR HD (licence ouverte Etalab)",
+        "legende": "La pente du vallon est retirée : il ne reste que le micro-relief, talus et fossés, en hauteurs relatives lisibles.",
+        "cadrage": {
+          "x": 0.1829,
+          "y": 0.1389,
+          "cote": 0.581
+        }
+      }
+    ]
+  },
+  "VAT": {
+    "resume": "Quatre couches fondues en une seule image : part de ciel visible, openness positive, pente et ombrage. Conçue pour la cartographie archéologique, elle est « intuitive and easy to interpret, does not depend on the orientation or shape of small topographic features, works well in all terrain types, and does not create artifacts ».",
+    "lire": "L'image se lit comme un ombrage — le modelé est là — mais sans direction aveugle ni ombre portée. Les creux sont assombris par les couches de ciel visible et d'openness, les pentes par la couche de luminosité, et l'ombrage rend la plasticité générale. Les tons restent comparables d'une région à l'autre.",
+    "usage": [
+      "La visualisation de référence pour cartographier à l'écran et sur le terrain, telle que proposée par Kokalj et Somrak (2019).",
+      "Fond de carte sous des vecteurs denses : « VAT computed with a setting for general terrain is a good choice for a base map » (documentation RVT).",
+      "Indice d'entrée de modèles de détection du plugin."
+    ],
+    "limites": [
+      "Le préréglage « terrain général » ne rend pas les formes larges et douces : il « fails to portray the broader, subtle features of flat terrain ».",
+      "Le préréglage « terrain plat » les rend très bien mais « can become oversaturated in areas with very steep slopes ». C'est précisément ce compromis que le VAT combiné résout.",
+      "Quatre visualisations sont calculées pour en produire une : comptez environ quatre fois le temps d'un indice simple.",
+      "L'image est une composition : on ne peut plus y mesurer ni la pente, ni la part de ciel visible. Pour mesurer, il faut l'indice correspondant."
+    ],
+    "methode": [
+      "Recette de rvt-qgis (fichier blender_VAT.json), du fond vers la surface : part de ciel visible étirée de 0,7 à 1 en mode Multiply à 25 % d'opacité ; openness positive étirée de 68 à 93° en mode Overlay à 50 % ; pente étirée de 0 à 50° en mode Luminosity à 50 % ; ombrage étiré de 0 à 1 en mode Normal à 100 %.",
+      "L'openness positive, qui n'est pas produite seule par le plugin, est l'angle moyen d'horizon vu vers le haut : elle apporte le détail des micro-formes sans dépendre d'une direction d'éclairage.",
+      "Le type de terrain ajuste toute la recette : élévation solaire (35° en général, 15° en plat, 55° en pentu), rayon et bruit du SVF (20 px et bruit fort en terrain plat), et les étirements (pente 0–15° en plat, 0–60° en pentu ; SVF 0,9–1 en plat, 0,55–1 en pentu)."
+    ],
+    "parametres": [
+      {
+        "cle": "vat.terrain_type",
+        "label": "Type de terrain",
+        "defaut": "général",
+        "sens": "Préréglage adapté au relief dominant : général, plat ou pentu. Il ne change pas la recette mais tous ses réglages et étirements."
+      },
+      {
+        "cle": "vat.save_as_8bit",
+        "label": "Sortie 8 bits",
+        "defaut": "activé",
+        "sens": "La sortie est déjà une composition : le flottant n'apporte rien à l'affichage."
+      }
+    ],
+    "references": [
+      {
+        "citation": "Kokalj Ž., Somrak M. 2019, Why Not a Single Image? Combining Visualizations to Facilitate Fieldwork and On-Screen Mapping, Remote Sensing 11(7), 747",
+        "url": "https://doi.org/10.3390/rs11070747"
+      },
+      {
+        "citation": "Relief Visualization Toolbox, documentation — Visualisation for Archaeological Topography",
+        "url": "https://rvt-py.readthedocs.io/en/latest/listofvis_VAT.html"
+      },
+      {
+        "citation": "Yokoyama R., Shirasawa M., Pike R. J. 2002, Visualizing topography by openness, Photogrammetric Engineering & Remote Sensing 68(3), p. 257-265"
+      },
+      {
+        "citation": "Doneus M. 2013, Openness as Visualization Technique for Interpretative Mapping of Airborne Lidar Derived Digital Terrain Models, Remote Sensing 5(12), p. 6427-6442",
+        "url": "https://doi.org/10.3390/rs5126427"
+      }
+    ],
+    "vignettes": [
+      {
+        "image": "indices_vignettes/VAT.jpg",
+        "source": "Dalle LHD_FXX_0392_6818, 324 m de côté",
+        "licence": "Produite par le plugin sur données IGN LiDAR HD (licence ouverte Etalab)",
+        "legende": "La composition à quatre couches : le modelé d'un ombrage, les creux du sky-view factor, et aucune direction aveugle.",
+        "cadrage": {
+          "x": 0.1829,
+          "y": 0.1389,
+          "cote": 0.581
+        }
+      }
+    ]
+  },
+  "CVAT": {
+    "resume": "Deux visualisations archéologiques superposées : le préréglage « terrain général » à 50 % d'opacité par-dessus le préréglage « terrain plat ». Le contraste du second sur les formes subtiles, la tenue du premier sur les fortes pentes.",
+    "lire": "Cela se lit comme le VAT, avec des formes larges et douces mieux rendues en terrain plat et sans la saturation du préréglage plat sur les versants raides. La composition est figée : il n'y a rien à régler hormis la sortie 8 bits.",
+    "usage": [
+      "Le choix par défaut pour une carte de prospection ou une publication : la documentation RVT recommande « replacing hillshading and many other techniques in scientific and technical literature with combined VAT because it offers all the benefits (…) but provides much more detail ».",
+      "Comparer des secteurs éloignés : Kokalj (2025) la retient comme base robuste, lisible intuitivement, sans artefact marqué et adaptée aux comparaisons interrégionales.",
+      "Fond à colorier : « a very suitable base visualisation that can be fused with other techniques to add additional information in the form of colors »."
+    ],
+    "limites": [
+      "Deux visualisations complètes sont calculées, dont chacune en agrège quatre : c'est le plus long des indices du plugin.",
+      "Le calcul dépend du plugin QGIS rvt-qgis installé. S'il est absent, l'indice est simplement ignoré, avec un message au journal, et le reste du traitement continue.",
+      "Les limites de fond du VAT demeurent : rayon du SVF exprimé en pixels, ombrage saturé en très fort relief, et l'impossibilité de mesurer sur une image composée."
+    ],
+    "methode": [
+      "rvt-qgis n'expose le VAT combiné que dans sa boîte de dialogue, pas dans son fournisseur Processing : le plugin le calcule donc lui-même, en réutilisant le paquet Python rvt du plugin voisin.",
+      "Il rend deux VAT complets, l'un avec les réglages « general », l'autre « flat », puis les fond en mode Normal aux opacités 50 et 100 — exactement la recette de la branche CVAT de rvt_blender.py."
+    ],
+    "parametres": [
+      {
+        "cle": "cvat.save_as_8bit",
+        "label": "Sortie 8 bits",
+        "defaut": "activé",
+        "sens": "La composition est figée ; c'est le seul réglage de cet indice."
+      }
+    ],
+    "references": [
+      {
+        "citation": "Relief Visualization Toolbox, documentation — Combined VAT",
+        "url": "https://rvt-py.readthedocs.io/en/latest/listofvis_VAT.html"
+      },
+      {
+        "citation": "Kokalj Ž. 2025, Standardizing Visualization in Ancient Maya Lidar Research: Techniques, Challenges and Recommendations, Archaeological Prospection 32(4), p. 967-988",
+        "url": "https://doi.org/10.1002/arp.70002"
+      },
+      {
+        "citation": "Relief Visualization Toolbox, documentation — Choosing a visualization",
+        "url": "https://rvt-py.readthedocs.io/en/latest/start_choosing.html"
+      }
+    ],
+    "vignettes": [
+      {
+        "image": "indices_vignettes/CVAT.jpg",
+        "source": "Dalle LHD_FXX_0392_6818, 324 m de côté",
+        "licence": "Produite par le plugin sur données IGN LiDAR HD (licence ouverte Etalab)",
+        "legende": "La même scène que le VAT, avec les formes larges et douces mieux tenues : c'est la vue de référence pour cartographier.",
+        "cadrage": {
+          "x": 0.1829,
+          "y": 0.1389,
+          "cote": 0.581
+        }
+      }
+    ]
+  },
+  "MSTP": {
+    "resume": "Pour chaque pixel, de combien il s'écarte de l'altitude moyenne de son entourage, mesuré à trois gammes d'échelles et composé en couleurs : le bleu pour l'échelle locale, le vert pour l'intermédiaire, le rouge pour la large. Une image qui demande de l'apprentissage, et qui dit à quelle échelle une forme existe.",
+    "lire": "La couleur d'un pixel est la somme de sa position topographique relative aux trois échelles. Un point qui domine ou creuse son voisinage proche s'allume en bleu, à moyenne distance en vert, à grande distance en rouge ; un tertre isolé cumule les trois. La documentation RVT prévient : « colours do not have a unique meaning — the same color range can represent a slightly raised embankment or a very shallow dip ».",
+    "usage": [
+      "Voir en une seule image des formes de tailles très différentes : fosses et tertres d'un côté, enclos, terrasses et plateaux de l'autre.",
+      "Replacer un site dans sa géomorphologie, en lisant d'un coup le détail et le contexte.",
+      "Repérer une organisation à une échelle qu'on ne cherchait pas : une teinte homogène sur une large zone signale une forme large, même invisible sur les indices à petit rayon."
+    ],
+    "limites": [
+      "La couleur ne dit pas le sens : « additional information is needed to distinguish between concave and convex features ». Une bosse et une cuvette peuvent porter la même teinte.",
+      "L'image demande un apprentissage — « training is needed to recognize colors » — et un réglage de luminosité adapté, faute de quoi elle paraît sombre.",
+      "L'échelle large réclame un contexte considérable. RVT propose 223 à 2023 pixels, soit plus d'un kilomètre au pas de 0,5 m ; le plugin retient 100 à 400 pixels, soit 50 à 200 m, pour rester dans la marge de tuilage de 200 m. Au-delà, le voisinage manquant serait fabriqué par symétrie et la valeur produite n'aurait plus de sens.",
+      "C'est le seul indice dont le nom de dossier encode les trois gammes d'échelles : deux réglages différents produisent deux dossiers, ce qui évite de les confondre."
+    ],
+    "methode": [
+      "L'indicateur de base est l'écart à l'altitude moyenne : altitude du pixel moins moyenne du voisinage, divisée par l'écart-type du voisinage — « essentially equivalent to a local elevation z-score » (Lindsay et al. 2015).",
+      "Pour chaque gamme d'échelles, définie par un rayon minimal, un rayon maximal et un pas, on retient l'écart de plus grande valeur absolue.",
+      "Les trois résultats sont écrits dans les canaux rouge, vert et bleu — large, intermédiaire, locale — avec un facteur de luminosité."
+    ],
+    "parametres": [
+      {
+        "cle": "mstp.local_scale_min",
+        "label": "Échelle locale — rayon min",
+        "defaut": "3 px, soit 1,5 m",
+        "sens": "Détails fins, portés par le canal bleu."
+      },
+      {
+        "cle": "mstp.local_scale_max",
+        "label": "Échelle locale — rayon max",
+        "defaut": "21 px, soit 10 m",
+        "sens": "Borne haute de l'échelle locale."
+      },
+      {
+        "cle": "mstp.meso_scale_min",
+        "label": "Échelle méso — rayon min",
+        "defaut": "23 px, soit 11 m",
+        "sens": "Structures intermédiaires, portées par le canal vert."
+      },
+      {
+        "cle": "mstp.meso_scale_max",
+        "label": "Échelle méso — rayon max",
+        "defaut": "203 px, soit 100 m",
+        "sens": "Borne haute de l'échelle intermédiaire."
+      },
+      {
+        "cle": "mstp.broad_scale_min",
+        "label": "Échelle large — rayon min",
+        "defaut": "100 px, soit 50 m",
+        "sens": "Grandes formes du paysage, portées par le canal rouge. Le défaut du plugin s'écarte de celui de RVT (223 px) pour rester dans la marge de tuilage."
+      },
+      {
+        "cle": "mstp.broad_scale_max",
+        "label": "Échelle large — rayon max",
+        "defaut": "400 px, soit 200 m",
+        "sens": "Borne haute de l'échelle large, calée sur la marge de tuilage de 200 m. RVT propose 2023 px, soit plus d'un kilomètre."
+      },
+      {
+        "cle": "mstp.lightness",
+        "label": "Luminosité",
+        "defaut": "1,2",
+        "sens": "Clarté globale de la composition ; RVT utilise 0,9. « Lightness factor to adjust MSTP visibility »."
+      },
+      {
+        "cle": "mstp.ve_factor",
+        "label": "Facteur VE",
+        "defaut": "1",
+        "sens": "Exagération verticale."
+      },
+      {
+        "cle": "mstp.save_as_8bit",
+        "label": "Sortie 8 bits",
+        "defaut": "activé",
+        "sens": "Étirement de 0 à 1 par canal."
+      }
+    ],
+    "references": [
+      {
+        "citation": "Lindsay J. B., Cockburn J. M. H., Russell H. A. J. 2015, An integral image approach to performing multi-scale topographic position analysis, Geomorphology 245, p. 51-61",
+        "url": "https://doi.org/10.1016/j.geomorph.2015.05.025"
+      },
+      {
+        "citation": "Relief Visualization Toolbox, documentation — Multi-scale topographic position",
+        "url": "https://rvt-py.readthedocs.io/en/latest/listofvis_mstp.html"
+      },
+      {
+        "citation": "Lindsay J. B., WhiteboxTools User Manual — MaxElevationDeviation, MultiscaleTopographicPositionImage",
+        "url": "https://jblindsay.github.io/wbt_book/available_tools/geomorphometric_analysis.html"
+      }
+    ],
+    "vignettes": [
+      {
+        "image": "indices_vignettes/MSTP.jpg",
+        "source": "Dalle LHD_FXX_0392_6818, 324 m de côté",
+        "licence": "Produite par le plugin sur données IGN LiDAR HD (licence ouverte Etalab)",
+        "legende": "Les couleurs disent à quelle échelle une forme existe : le versant en rouge et jaune, les fossés fins en bleu et vert.",
+        "cadrage": {
+          "x": 0.1829,
+          "y": 0.1389,
+          "cote": 0.581
+        }
+      }
+    ]
+  },
+  "DENSITE": {
+    "resume": "Nombre de points LiDAR retenus par le filtre dans chaque cellule d'un mètre : des points par mètre carré. Ce n'est pas un indice de relief mais un contrôle de la donnée qui a servi à construire le modèle d'altitude.",
+    "lire": "Clair : beaucoup de points sol. Sombre : peu. Zéro sur les plans d'eau, sous les bâtiments si leur classe n'est pas retenue, et sous un couvert très fermé. Les bandes plus denses correspondent aux recouvrements entre passages de l'avion.",
+    "usage": [
+      "Juger localement la fiabilité du modèle d'altitude et des indices qui en découlent. QGIS présente l'algorithme comme « useful for quality checking of point cloud datasets ».",
+      "Expliquer un artefact : facettes planes, moiré, marche d'escalier entre deux bandes de vol se lisent d'abord ici.",
+      "Choisir une résolution de modèle cohérente avec la densité réelle : demander 0,25 m là où il y a un point tous les deux mètres, c'est inventer du relief."
+    ],
+    "limites": [
+      "C'est la densité des classes retenues par le filtre, pas celle du nuage brut : elle chute là où les échos ont été classés en végétation, même si le sol y a été touché.",
+      "Une densité élevée dans un recouvrement de bandes ne rend pas le modèle meilleur à cet endroit ; elle peut même y révéler un défaut de calage entre bandes.",
+      "Le chiffre annoncé par l'IGN — au moins dix impulsions par mètre carré — est une densité d'impulsions, pas de points : « une impulsion peut donner lieu à plusieurs échos », les artefacts sont retirés, et l'occultation du sol par la végétation ou le bâti réduit localement la densité de points sol.",
+      "À une cellule d'un mètre, les trous plus petits qu'une cellule sont lissés : c'est le produit Couverture qui répond à la question « le sol est-il mesuré autour d'ici ? »."
+    ],
+    "methode": [
+      "Algorithme QGIS « Density » (PDAL) : « exports a raster file based on the number of points within each raster cell ».",
+      "Sous le capot, c'est l'écriture GDAL de PDAL avec la statistique count, qui donne à la cellule « the number of points that lie within the given radius ».",
+      "Le calcul porte sur la dalle élargie de la marge de tuilage et applique le même filtre de classification que le modèle d'altitude, pour que les deux produits parlent de la même donnée."
+    ],
+    "parametres": [
+      {
+        "cle": "processing.density_resolution",
+        "label": "Résolution densité",
+        "defaut": "1 m",
+        "sens": "Taille de cellule du raster. À un mètre, la valeur se lit directement en points par mètre carré."
+      },
+      {
+        "cle": "processing.filter_expression",
+        "label": "Filtre PDAL",
+        "defaut": "celui du modèle d'altitude",
+        "sens": "Classes comptées. C'est ce qui fait que la densité affichée est celle du sol utile, pas celle du nuage entier."
+      }
+    ],
+    "references": [
+      {
+        "citation": "QGIS User Manual, Point cloud extraction — Density",
+        "url": "https://docs.qgis.org/latest/en/docs/user_manual/processing_algs/qgis/pointcloudextraction.html"
+      },
+      {
+        "citation": "PDAL, writers.gdal (output_type count)",
+        "url": "https://pdal.io/en/stable/stages/writers.gdal.html"
+      },
+      {
+        "citation": "IGN, LiDAR HD version 1.0 — Descriptif de contenu, § 2.3.1.2 Densité des données et § 2.3.1.3 Distribution des points au sol",
+        "url": "https://data.geopf.fr/annexes/ressources/documentation/DC_LiDAR_HD_1-0.pdf"
+      }
+    ],
+    "vignettes": [
+      {
+        "image": "indices_vignettes/DENSITE.jpg",
+        "source": "Dalle LHD_FXX_0392_6818, 324 m de côté",
+        "licence": "Produite par le plugin sur données IGN LiDAR HD (licence ouverte Etalab)",
+        "legende": "Les taches sombres sont les bosquets et les alignements d'arbres, où peu d'impulsions atteignent le sol ; les parcelles ouvertes restent claires.",
+        "cadrage": {
+          "x": 0.1829,
+          "y": 0.1389,
+          "cote": 0.581
+        }
+      }
+    ]
+  },
+  "COUVERTURE": {
+    "resume": "Pour chaque cellule, la part des cellules voisines qui contiennent au moins un point sol, dans un disque de cinq cellules de diamètre. À 100 %, le sol est mesuré tout autour ; à 0 %, le relief affiché est entièrement interpolé. C'est un masque de confiance, pas une visualisation.",
+    "lire": "Les lacunes ressortent en rouge par-dessus le modèle d'altitude, le reste s'efface progressivement jusqu'à la transparence. Une couche vectorielle hachurée délimite en plus les zones passées sous le seuil, débarrassées des taches trop petites pour signifier quelque chose.",
+    "usage": [
+      "Masque de confiance avant toute interprétation : une « structure » lue ou une détection automatique tombée dans une zone rouge est suspecte — le relief y est une facette de triangulation, pas une mesure.",
+      "Documenter une prospection en disant aussi où l'on n'a pas pu voir, ce qu'une carte de détections seule ne dit jamais.",
+      "Comparer deux acquisitions ou deux filtres de classification sur la même emprise."
+    ],
+    "limites": [
+      "Le produit n'évalue que la présence de points, jamais leur exactitude ni la justesse de leur classement : une zone bien couverte de points mal classés paraît parfaitement fiable.",
+      "L'échelle dépend de la résolution de densité : à une cellule d'un mètre, le disque d'analyse fait cinq mètres de diamètre. Changer la résolution change le sens du pourcentage.",
+      "Le produit n'existe pas sans nuage de points : il est indisponible dans les modes partant d'un modèle d'altitude ou d'indices déjà calculés.",
+      "Le seuil est un choix d'affichage, pas une frontière physique : à 30 %, une cellule sur trois porte un point sol dans son voisinage immédiat."
+    ],
+    "methode": [
+      "La méthode est celle publiée par Le Jeune, Dardignac et David (2017) pour la forêt de Bercé, où « la couverture lidar est […] définie par un pourcentage de cellules raster documentée par au moins un point de mesure lidar au sol […] par l'usage d'une fenêtre flottante circulaire de cinq cellules de diamètre ». Le plugin la transpose en calcul natif ; l'original passait par GRASS GIS.",
+      "Le calcul part du raster de densité : une cellule compte comme « mesurée » si elle contient au moins un point. Pour chaque cellule, on compte la proportion de cellules mesurées dans un disque de rayon deux cellules, soit treize cellules au total.",
+      "La proportion est normalisée par le nombre réel de cellules de la fenêtre, ce qui corrige le biais de bord d'une division fixe par treize.",
+      "Le résultat est un raster d'entiers de 0 à 100. Les cellules passées sous le seuil sont ensuite vectorisées en polygones, dans un GeoPackage chargé automatiquement au-dessus des autres couches.",
+      "L'absence de donnée à l'intérieur d'une dalle est une information et vaut 0 % : seul l'extérieur des dalles est traité comme une absence de valeur."
+    ],
+    "parametres": [
+      {
+        "cle": "processing.coverage_threshold_percent",
+        "label": "Seuil zones mal couvertes",
+        "defaut": "30 %",
+        "sens": "En dessous, la zone est déclarée mal couverte : elle passe en orange sur le raster et devient un polygone hachuré. La valeur de 30 % est celle retenue par Le Jeune, Dardignac et David (2017), dont les cartes distinguent la « couverture lidar faible (< 30 %) »."
+      },
+      {
+        "cle": "processing.density_resolution",
+        "label": "Résolution densité",
+        "defaut": "1 m",
+        "sens": "Héritée du produit Densité, qui sert de source au calcul. Elle fixe la taille du disque d'analyse."
+      }
+    ],
+    "references": [
+      {
+        "citation": "Le Jeune Y., Dardignac C., David S. 2017, Bercé avant la forêt. Premiers résultats des traitements cartographiques et prospections lidar sur la forêt de Bercé (Sarthe), Revue forestière française LXIX-4-5, p. 519-543 (méthode de la carte de couverture, fig. 6)",
+        "url": "https://doi.org/10.4267/2042/67877"
+      },
+      {
+        "citation": "IGN, LiDAR HD version 1.0 — Descriptif de contenu, § 2.3.1.2 (occultation du sol par le sursol, artefacts retirés)",
+        "url": "https://data.geopf.fr/annexes/ressources/documentation/DC_LiDAR_HD_1-0.pdf"
+      },
+      {
+        "citation": "QGIS User Manual, Point cloud extraction — Density (raster source du calcul)",
+        "url": "https://docs.qgis.org/latest/en/docs/user_manual/processing_algs/qgis/pointcloudextraction.html"
+      }
+    ],
+    "vignettes": [
+      {
+        "image": "indices_vignettes/COUVERTURE.jpg",
+        "source": "Dalle LHD_FXX_0392_6818, 324 m de côté",
+        "licence": "Produite par le plugin sur données IGN LiDAR HD (licence ouverte Etalab)",
+        "legende": "Les semis rouges se superposent aux bosquets : c'est là que le sol est le moins mesuré et que le relief est interpolé.",
+        "cadrage": {
+          "x": 0.1829,
+          "y": 0.1389,
+          "cote": 0.581
+        }
+      }
+    ]
+  },
+  "_comparaison": {
+    "note": "Une fiche dit ce que montre UN produit ; ces deux tableaux disent LEQUEL prendre. Ils se lisent en diagonale : aucun produit n'est bon partout, et c'est pourquoi on en coche plusieurs. En cas d'hésitation, le VAT combiné (CVAT) est le meilleur point de départ, et le MNT suit d'office puisque tous les indices en dérivent.",
+    "legende": {
+      "oui": "adapté",
+      "partiel": "utilisable, avec la réserve indiquée dans la fiche",
+      "non": "inadapté"
+    },
+    "tableaux": [
+      {
+        "titre": "Ce que chaque produit sait faire",
+        "colonnes": [
+          {
+            "cle": "intuitif",
+            "libelle": "Lecture sans formation",
+            "aide": "Se comprend au premier regard, sans qu'on explique l'indice."
+          },
+          {
+            "cle": "sans_direction",
+            "libelle": "Sans angle mort",
+            "aide": "Aucune orientation de structure n'est effacée par le calcul."
+          },
+          {
+            "cle": "sans_decalage",
+            "libelle": "Sans décalage",
+            "aide": "Les structures se voient à leur place : on peut digitaliser dessus."
+          },
+          {
+            "cle": "comparable",
+            "libelle": "Comparable entre régions",
+            "aide": "Les tons gardent le même sens d'une zone à l'autre."
+          },
+          {
+            "cle": "plat",
+            "libelle": "Utile en terrain plat",
+            "aide": "Révèle encore quelque chose là où le relief général est faible."
+          },
+          {
+            "cle": "pentu",
+            "libelle": "Utile en terrain pentu",
+            "aide": "Ne sature pas et garde du détail sur les versants raides."
+          },
+          {
+            "cle": "mesurable",
+            "libelle": "Mesurable",
+            "aide": "Les valeurs ont une unité exploitable, en sortie flottante."
+          }
+        ],
+        "cases": {
+          "MNT": {
+            "intuitif": "non",
+            "sans_direction": "oui",
+            "sans_decalage": "oui",
+            "comparable": "oui",
+            "plat": "non",
+            "pentu": "non",
+            "mesurable": "oui"
+          },
+          "DENSITE": {
+            "intuitif": "oui",
+            "sans_direction": "oui",
+            "sans_decalage": "oui",
+            "comparable": "oui",
+            "mesurable": "oui"
+          },
+          "COUVERTURE": {
+            "intuitif": "partiel",
+            "sans_direction": "oui",
+            "sans_decalage": "oui",
+            "comparable": "oui",
+            "mesurable": "oui"
+          },
+          "HS": {
+            "intuitif": "oui",
+            "sans_direction": "non",
+            "sans_decalage": "non",
+            "comparable": "partiel",
+            "plat": "partiel",
+            "pentu": "partiel",
+            "mesurable": "non"
+          },
+          "M_HS": {
+            "intuitif": "partiel",
+            "sans_direction": "oui",
+            "sans_decalage": "non",
+            "comparable": "partiel",
+            "plat": "partiel",
+            "pentu": "partiel",
+            "mesurable": "non"
+          },
+          "SVF": {
+            "intuitif": "partiel",
+            "sans_direction": "oui",
+            "sans_decalage": "oui",
+            "comparable": "oui",
+            "plat": "partiel",
+            "pentu": "oui",
+            "mesurable": "oui"
+          },
+          "SLO": {
+            "intuitif": "partiel",
+            "sans_direction": "oui",
+            "sans_decalage": "oui",
+            "comparable": "oui",
+            "plat": "non",
+            "pentu": "partiel",
+            "mesurable": "oui"
+          },
+          "LD": {
+            "intuitif": "partiel",
+            "sans_direction": "oui",
+            "sans_decalage": "oui",
+            "comparable": "partiel",
+            "plat": "oui",
+            "pentu": "partiel",
+            "mesurable": "non"
+          },
+          "SLRM": {
+            "intuitif": "partiel",
+            "sans_direction": "oui",
+            "sans_decalage": "oui",
+            "comparable": "partiel",
+            "plat": "oui",
+            "pentu": "partiel",
+            "mesurable": "oui"
+          },
+          "VAT": {
+            "intuitif": "oui",
+            "sans_direction": "oui",
+            "sans_decalage": "oui",
+            "comparable": "oui",
+            "plat": "partiel",
+            "pentu": "oui",
+            "mesurable": "non"
+          },
+          "MSTP": {
+            "intuitif": "non",
+            "sans_direction": "oui",
+            "sans_decalage": "oui",
+            "comparable": "partiel",
+            "plat": "oui",
+            "pentu": "oui",
+            "mesurable": "non"
+          },
+          "CVAT": {
+            "intuitif": "oui",
+            "sans_direction": "oui",
+            "sans_decalage": "oui",
+            "comparable": "oui",
+            "plat": "oui",
+            "pentu": "oui",
+            "mesurable": "non"
+          }
+        },
+        "source": "Synthèse des sources citées dans chaque fiche (documentation et manuel RVT, Zakšek et al. 2011, Hesse 2010 et 2016, Kokalj & Somrak 2019, Kokalj & Hesse 2017, Lindsay et al. 2015) confrontée aux runs du plugin. Ce n'est pas la reproduction d'un tableau publié : les tableaux de Kokalj (2025), plus larges mais sans la densité ni la couverture, se consultent dans la documentation RVT, page « Choosing a visualization »."
+      },
+      {
+        "titre": "Quel produit pour quelle forme",
+        "colonnes": [
+          {
+            "cle": "creux_lin",
+            "libelle": "Creux linéaires",
+            "aide": "Fossés, chemins creux, tranchées."
+          },
+          {
+            "cle": "creux_ponct",
+            "libelle": "Creux ponctuels",
+            "aide": "Fosses, cratères, mardelles, dépressions d'extraction."
+          },
+          {
+            "cle": "relief_lin",
+            "libelle": "Reliefs linéaires",
+            "aide": "Talus, murs arasés, limites de parcelles fossiles."
+          },
+          {
+            "cle": "relief_ponct",
+            "libelle": "Reliefs ponctuels",
+            "aide": "Tertres, tumulus arasés, charbonnières."
+          },
+          {
+            "cle": "formes_larges",
+            "libelle": "Formes larges",
+            "aide": "Enclos, terrasses, organisations de plusieurs dizaines de mètres."
+          },
+          {
+            "cle": "qualite",
+            "libelle": "Qualité de la donnée",
+            "aide": "Dit où la mesure manque, et non ce que le sol porte."
+          }
+        ],
+        "cases": {
+          "MNT": {
+            "creux_lin": "non",
+            "creux_ponct": "non",
+            "relief_lin": "non",
+            "relief_ponct": "non",
+            "formes_larges": "partiel",
+            "qualite": "non"
+          },
+          "DENSITE": {
+            "creux_lin": "non",
+            "creux_ponct": "non",
+            "relief_lin": "non",
+            "relief_ponct": "non",
+            "formes_larges": "non",
+            "qualite": "oui"
+          },
+          "COUVERTURE": {
+            "creux_lin": "non",
+            "creux_ponct": "non",
+            "relief_lin": "non",
+            "relief_ponct": "non",
+            "formes_larges": "non",
+            "qualite": "oui"
+          },
+          "HS": {
+            "creux_lin": "partiel",
+            "creux_ponct": "oui",
+            "relief_lin": "partiel",
+            "relief_ponct": "oui",
+            "formes_larges": "partiel",
+            "qualite": "non"
+          },
+          "M_HS": {
+            "creux_lin": "oui",
+            "creux_ponct": "oui",
+            "relief_lin": "oui",
+            "relief_ponct": "oui",
+            "formes_larges": "partiel",
+            "qualite": "non"
+          },
+          "SVF": {
+            "creux_lin": "oui",
+            "creux_ponct": "oui",
+            "relief_lin": "partiel",
+            "relief_ponct": "partiel",
+            "formes_larges": "partiel",
+            "qualite": "non"
+          },
+          "SLO": {
+            "creux_lin": "partiel",
+            "creux_ponct": "partiel",
+            "relief_lin": "partiel",
+            "relief_ponct": "partiel",
+            "formes_larges": "non",
+            "qualite": "non"
+          },
+          "LD": {
+            "creux_lin": "oui",
+            "creux_ponct": "oui",
+            "relief_lin": "oui",
+            "relief_ponct": "oui",
+            "formes_larges": "partiel",
+            "qualite": "non"
+          },
+          "SLRM": {
+            "creux_lin": "oui",
+            "creux_ponct": "oui",
+            "relief_lin": "oui",
+            "relief_ponct": "oui",
+            "formes_larges": "non",
+            "qualite": "non"
+          },
+          "VAT": {
+            "creux_lin": "oui",
+            "creux_ponct": "oui",
+            "relief_lin": "oui",
+            "relief_ponct": "oui",
+            "formes_larges": "partiel",
+            "qualite": "non"
+          },
+          "MSTP": {
+            "creux_lin": "partiel",
+            "creux_ponct": "partiel",
+            "relief_lin": "partiel",
+            "relief_ponct": "partiel",
+            "formes_larges": "oui",
+            "qualite": "non"
+          },
+          "CVAT": {
+            "creux_lin": "oui",
+            "creux_ponct": "oui",
+            "relief_lin": "oui",
+            "relief_ponct": "oui",
+            "formes_larges": "oui",
+            "qualite": "non"
+          }
+        },
+        "source": "Synthèse des sources citées dans chaque fiche (documentation et manuel RVT, Zakšek et al. 2011, Hesse 2010 et 2016, Kokalj & Somrak 2019, Kokalj & Hesse 2017, Lindsay et al. 2015) confrontée aux runs du plugin. Ce n'est pas la reproduction d'un tableau publié : les tableaux de Kokalj (2025), plus larges mais sans la densité ni la couverture, se consultent dans la documentation RVT, page « Choosing a visualization »."
+      }
+    ]
+  }
+}

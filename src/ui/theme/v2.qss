@@ -152,14 +152,7 @@ QPushButton:disabled { color: #909090; border-color: #b0b0b0; }
 #ModeBannerSub { color: #5a5a5a; font-size: 11px; }
 #ModeBannerText { color: #2c2c2c; font-size: 11px; }
 
-/* ---- Étape 2 : chips MNT / Densité (QFrame + label) ---- */
-#Chip { background: #e3e3e3; border: 1px solid #a0a0a0; border-radius: 6px; }
-#Chip:hover { border-color: #2b79c2; }
-#Chip[checked="true"] { background: #d6e6f4; border: 1px solid #2b79c2; }
-#ChipLabel { color: #000000; }
-/* Pas de gras à l'état coché : le changement de graisse faisait varier la
-   largeur de la chip (décalage au clic) — même règle que #EntityChip. */
-#Chip[checked="true"] #ChipLabel { color: #1d5a96; }
+/* ---- Étape 2 : verrou MNT (les produits de base sont des #IndexCard) ---- */
 #MntHint { color: #5a5a5a; font-style: italic; font-size: 10px; }
 
 /* ---- Étape 2 : cartes d'indices ---- */
@@ -193,7 +186,11 @@ QPushButton:disabled { color: #909090; border-color: #b0b0b0; }
     border-top-left-radius: 4px; border-top-right-radius: 4px;
     padding: 4px 12px; margin-right: 2px;
 }
-#AdvTabs QTabBar::tab:selected { background: #ffffff; color: #1d5a96; font-weight: bold; }
+/* Pas de font-weight : la graisse ajoutee par QSS sur un etat elargit le
+   texte peint sans elargir la boite deja dimensionnee, et le libelle se
+   fait rogner. Le fond blanc et le texte bleu suffisent a marquer l'onglet
+   actif. Verrouille par tests/unit/test_qss_graisse_etats.py. */
+#AdvTabs QTabBar::tab:selected { background: #ffffff; color: #1d5a96; }
 /* :!selected : survoler l'onglet actif ne doit pas casser sa fusion avec le pane. */
 #AdvTabs QTabBar::tab:hover:!selected { background: #d6e6f4; }
 #AdvTabs QTabBar::tab:disabled { color: #707070; }
@@ -297,6 +294,38 @@ QPushButton:disabled { color: #909090; border-color: #b0b0b0; }
     font-size: 10px; padding: 0 2px; min-height: 0;
 }
 #EntityChangeBtn:hover { color: #1d5a96; text-decoration: underline; }
+/* Vignette de la structure : cadre plein quand une illustration existe,
+   cadre d'attente en pointillés ocre tant que le model_card n'a pas de
+   bloc fiche.vignettes (l'absence se voit, elle ne se devine pas). */
+/* Vignette d'accès à une fiche — #FicheThumb/#FicheBtn sont le widget partagé
+   (ui/widgets/vignette.py) posé sur les cartes de produits de l'étape 2 ; les
+   sélecteurs #Entity* restent ceux des cartes d'entités de l'étape 3. Un seul
+   jeu de règles : les deux fiches s'ouvrent avec le même visuel. */
+#EntityThumb, #FicheThumb {
+    background: #ffffff; border: 1px solid #c4c4c4; border-radius: 3px;
+    padding: 0; color: #b07a20; font-size: 15px;
+}
+#EntityThumb:hover, #FicheThumb:hover { border-color: #2b79c2; }
+#EntityThumb[state="vide"], #FicheThumb[state="vide"] {
+    border: 1px dashed #b07a20; background: #f6efdc;
+}
+#EntityThumb:disabled, #FicheThumb:disabled {
+    border-color: #e3e3e3; background: #f0f0f0; color: transparent;
+}
+/* Réinitialisation d'UNE entité, sur sa ligne de réglages avancés. Discret :
+   c'est une annulation, elle ne doit pas concurrencer les champs qu'elle rend
+   à leur valeur de modèle. Grisé quand l'entité n'a rien à rétablir. */
+#EntityResetBtn {
+    background: transparent; border: none; color: #2b79c2;
+    font-size: 13px; padding: 0 5px; min-height: 0; min-width: 18px;
+}
+#EntityResetBtn:hover { color: #1d5a96; }
+#EntityResetBtn:disabled { color: #c4c4c4; }
+#EntityFicheBtn, #FicheBtn {
+    background: transparent; border: none; color: #2b79c2;
+    font-size: 10px; padding: 0 4px; min-height: 0;
+}
+#EntityFicheBtn:hover, #FicheBtn:hover { color: #1d5a96; text-decoration: underline; }
 
 /* ---- Étape 3 : runs IA programmés ---- */
 #RunRow { background: #ffffff; border: 1px solid #c4c4c4; border-radius: 6px; }
@@ -532,3 +561,171 @@ QPushButton[role="micro"] {
 #ModelInfoFooter { background: #f0f0f0; border-top: 1px solid #c4c4c4; }
 #ModelInfoOpenDirButton { padding: 4px 12px; }
 #ModelInfoCloseButton { padding: 4px 18px; font-weight: bold; }
+
+/* ---- Fiche d'une structure détectable (class_info_dialog) ---- */
+#ClassInfoDialog { background: #f0f0f0; }
+#FicheScroll { background: #ffffff; }
+#FicheListe {
+    background: #f6f6f6; border: none; border-right: 1px solid #c4c4c4;
+    font-size: 11px; outline: none;
+}
+#FicheListe::item { padding: 7px 10px; border-bottom: 1px solid #e3e3e3; }
+#FicheListe::item:selected { background: #d6e6f4; color: #1d5a96; }
+#FicheTitre { font-size: 15px; font-weight: bold; color: #000000; }
+#FicheId {
+    color: #5a5a5a; font-size: 10px;
+    font-family: "Consolas", "Courier New", monospace;
+}
+#FicheResume { color: #2c2c2c; font-size: 12px; }
+#FicheBlocTitre {
+    color: #1d5a96; font-size: 10px; font-weight: bold; letter-spacing: 0.5px;
+}
+#FicheTexte { color: #2c2c2c; font-size: 11px; }
+#FicheHorsCible { color: #8a5e18; font-size: 11px; }
+#FicheManque {
+    color: #8a5e18; font-size: 11px; font-style: italic;
+    background: #f6efdc; border: 1px solid #b07a20; border-radius: 3px;
+    padding: 6px 9px;
+}
+#FicheSep { color: #e3e3e3; max-height: 1px; }
+#FicheLegende { color: #5a5a5a; font-size: 10px; }
+/* Tableaux comparatifs des produits (fiche d'indice). Les trois verdicts
+   reprennent les couleurs déjà en service : le vert de « prêt », l'ocre des
+   avertissements, un gris neutre pour l'inadapté. Le point du sans-objet est
+   assez pâle pour ne pas se lire comme un quatrième verdict. */
+#FicheColonne { color: #5a5a5a; font-size: 9px; font-weight: bold; }
+#VerdictOui     { color: #2d6a2d; font-size: 13px; }
+#VerdictPartiel { color: #8a5e18; font-size: 13px; }
+#VerdictNon     { color: #a0a0a0; font-size: 13px; }
+#VerdictVide    { color: #d8d8d8; font-size: 13px; }
+#FicheCompteur { color: #5a5a5a; font-size: 10px; padding: 0 4px; }
+/* Cadre de l'aperçu : plein = liseré neutre ; vide = attente ocre, même
+   langage que la vignette de carte. */
+#FicheImage {
+    background: #f6f6f6; border: 1px solid #c4c4c4; border-radius: 3px;
+    color: #5a5a5a; font-size: 11px;
+}
+#FicheImage[state="vide"] {
+    border: 1px dashed #b07a20; background: #f6efdc; color: #8a5e18;
+}
+#FicheToggle {
+    font-size: 10px; padding: 2px 10px; min-height: 18px;
+    border: 1px solid #888888; border-radius: 0; background: #f0f0f0;
+}
+#FicheToggle:checked { background: #2b79c2; border-color: #1d5a96; color: #ffffff; }
+#FicheToggle:disabled { color: #909090; border-color: #c4c4c4; }
+#FicheNav {
+    font-size: 12px; padding: 0; min-height: 18px;
+    border: 1px solid #888888; border-radius: 2px; background: #f0f0f0;
+}
+
+/* ═══ Onglet « Visualisation » — mur visuel du catalogue ═══════════════════
+   Mêmes tokens que le wizard : bleu #2b79c2 (pressé #1d5a96), sélection
+   #d6e6f4, bordures #c4c4c4 / #b8b8b8 (cartes), texte atténué #5a5a5a.
+   Les cartes portent un rayon de 3px (badge) et non 6px : ce sont des
+   éléments de grille répétés, pas des conteneurs de section. */
+
+#VisuHeader { background: #ffffff; border-bottom: 1px solid #c4c4c4; }
+#VisuTitle { font-size: 14px; font-weight: bold; color: #000000; }
+#VisuSubtitle { font-size: 11px; color: #5a5a5a; }
+#VisuStamp { font-family: Consolas, monospace; font-size: 10px; color: #5a5a5a; }
+
+/* ---- Rail des départements ---- */
+#VisuRail { background: #f0f0f0; border-right: 1px solid #c4c4c4; }
+#VisuRailCount { font-size: 10px; color: #5a5a5a; }
+#VisuRailList { background: transparent; }
+#VisuRailList::item { border-left: 3px solid transparent; }
+#VisuRailList::item:hover { background: #e8e8e8; }
+#VisuRailList::item:selected { background: #d6e6f4; border-left: 3px solid #2b79c2; }
+#VisuRailItem { background: transparent; }
+#VisuRailCode {
+    background: #ffffff; border: 1px solid #a0a0a0; border-radius: 3px;
+    font-size: 11px; font-weight: bold; color: #2c2c2c;
+}
+#VisuRailName { font-size: 11px; font-weight: 600; color: #000000; }
+#VisuRailSub { font-size: 10px; color: #5a5a5a; }
+#VisuRailItem[state="active"] #VisuRailCode {
+    background: #2b79c2; border-color: #1d5a96; color: #ffffff;
+}
+#VisuRailItem[state="active"] #VisuRailName { color: #1d5a96; }
+
+/* ---- En-tête du mur ---- */
+#VisuWallTitle { font-size: 13px; font-weight: bold; color: #000000; }
+#VisuWallMeta { font-size: 11px; color: #5a5a5a; }
+#VisuFamilyBtn {
+    font-size: 10px; padding: 2px 10px; min-height: 20px;
+    border: 1px solid #a0a0a0; border-radius: 2px; background: #ffffff;
+}
+#VisuFamilyBtn:hover { background: #e8e8e8; border-color: #2b79c2; }
+/* Pas de font-weight ici : le bouton est dimensionne avec la police normale
+   et serait peint en gras — « Tous (10) » sortait « ous (10 ». Le fond bleu
+   et le texte bleu disent deja l'etat actif. Meme piege que QTabBar::tab. */
+#VisuFamilyBtn:checked {
+    background: #d6e6f4; border-color: #2b79c2; color: #1d5a96;
+}
+#VisuFamilyBtn:disabled { color: #909090; border-color: #c4c4c4; background: #f7f7f7; }
+
+#VisuBanner {
+    background: #d6e6f4; border: 1px solid #2b79c2; border-radius: 6px;
+    padding: 8px 12px; font-size: 11px; color: #1c1c1c;
+}
+#VisuEmpty { color: #5a5a5a; font-style: italic; font-size: 11px; }
+
+/* ---- Cartes du mur ---- */
+#VisuCard { background: #ffffff; border: 1px solid #b8b8b8; border-radius: 3px; }
+#VisuCard:hover { border-color: #2b79c2; }
+#VisuCard[state="loading"] { border-color: #2b79c2; }
+#VisuCard[state="loaded"] { border: 1px solid #2b79c2; }
+#VisuCardTitle { font-size: 12px; font-weight: bold; color: #000000; }
+#VisuCard[state="loaded"] #VisuCardTitle { color: #1d5a96; }
+#VisuCardTech { font-size: 10px; color: #5a5a5a; }
+#VisuCardBtn {
+    font-size: 11px; min-height: 24px; border-radius: 2px;
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #3f8ad2, stop:1 #2b79c2);
+    border: 1px solid #1d5a96; color: #ffffff;
+}
+#VisuCardBtn:hover {
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #4e97dd, stop:1 #2f83d0);
+}
+#VisuCardBtn:pressed { background: #1d5a96; }
+#VisuCardBtn:disabled {
+    background: #eaf2fa; border-color: #a9c8e4; color: #1d5a96;
+}
+
+/* ---- Pied ---- */
+#VisuFooter { background: #f0f0f0; border-top: 1px solid #c4c4c4; }
+#VisuFooterState { font-size: 11px; color: #5a5a5a; }
+#VisuPrimaryBtn {
+    font-size: 11px; min-height: 24px; padding: 3px 14px; border-radius: 2px;
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #3f8ad2, stop:1 #2b79c2);
+    border: 1px solid #1d5a96; color: #ffffff; font-weight: bold;
+}
+#VisuPrimaryBtn:hover {
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #4e97dd, stop:1 #2f83d0);
+}
+#VisuPrimaryBtn:pressed { background: #1d5a96; }
+
+/* ---- Onglets du dialogue ----
+   Volontairement PAS de regle QTabBar::tab : styler l'onglet en QSS fait
+   calculer sa largeur avec une metrique et peindre avec une autre (le gras
+   de l'onglet actif suffit a decaler), et les libelles se retrouvent rognes
+   des deux cotes. Les onglets natifs sont dimensionnes correctement par Qt,
+   et collent a la palette QGIS que ce theme suit par ailleurs. Seul le cadre
+   du panneau est retire : il n'entre pas dans le calcul du texte. */
+QTabWidget::pane { border: none; background: #f0f0f0; }
+
+/* Styler le fond d'un QAbstractScrollArea en QSS bascule aussi ses ascenseurs
+   sur le rendu QSS minimal (fond noir par défaut). Dès qu'on touche au fond du
+   rail, il faut donc redessiner son ascenseur — ailleurs dans le plugin les
+   zones de défilement gardent l'ascenseur natif, et c'est très bien. */
+#VisuRailList QScrollBar:vertical {
+    background: transparent; width: 10px; margin: 0;
+}
+#VisuRailList QScrollBar::handle:vertical {
+    background: #c0c0c0; border-radius: 5px; min-height: 30px;
+}
+#VisuRailList QScrollBar::handle:vertical:hover { background: #a0a0a0; }
+#VisuRailList QScrollBar::add-line:vertical,
+#VisuRailList QScrollBar::sub-line:vertical { height: 0; }
+#VisuRailList QScrollBar::add-page:vertical,
+#VisuRailList QScrollBar::sub-page:vertical { background: transparent; }

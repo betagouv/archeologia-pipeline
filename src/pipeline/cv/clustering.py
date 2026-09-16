@@ -218,6 +218,19 @@ def _build_cluster_geometry(
     return cluster_geom
 
 
+def _median_elongation(geometries: List[Polygon]) -> float:
+    """Allongement médian des boîtes englobantes (grand côté / petit côté, >= 1)."""
+    ratios = []
+    for g in geometries:
+        try:
+            x0, y0, x1, y1 = g.bounds
+        except Exception:
+            continue
+        w, h = x1 - x0, y1 - y0
+        ratios.append(max(w, h) / max(min(w, h), 0.01))
+    return float(np.median(ratios)) if ratios else 1.0
+
+
 # ------------------------------------------------------------------ #
 #  Fonction principale de clustering                                   #
 # ------------------------------------------------------------------ #
@@ -277,6 +290,13 @@ def run_clustering(
         buffer_m = cfg["buffer_m"]
         min_area_m2 = cfg["min_area_m2"]
         concave_ratio = cfg.get("concave_ratio", 0.3)
+        # Filtres de ZONE (audit 2026-09-14) : une zone n'est gardée que si le
+        # 90e centile de confiance de ses cratères atteint min_conf_p90 et si
+        # l'allongement médian de leurs boîtes reste sous max_elong_med. Les
+        # terrasses agricoles font des « cratères » allongés et peu sûrs ; c'est
+        # ce qui les sépare des carrières. None = pas de filtre.
+        min_conf_p90 = cfg.get("min_conf_p90")
+        max_elong_med = cfg.get("max_elong_med")
         hysteresis_active = min_confidence_extend < min_confidence
         logger.info(
             f"Clustering [{cfg_idx+1}/{len(clustering_configs)}]: "
@@ -392,6 +412,14 @@ def run_clustering(
             nb_detections = int(mask.sum())
             valid_confs = [c for c in cluster_confs if c is not None and c > 0]
             mean_confidence = float(np.mean(valid_confs)) if valid_confs else 0.0
+            conf_p90 = float(np.percentile(valid_confs, 90)) if valid_confs else 0.0
+            elong_med = _median_elongation(cluster_geoms)
+            if min_conf_p90 is not None and conf_p90 < float(min_conf_p90):
+                logger.debug(f"Cluster {label_id} filtré: conf_p90={conf_p90:.2f} < {min_conf_p90}")
+                continue
+            if max_elong_med is not None and elong_med > float(max_elong_med):
+                logger.debug(f"Cluster {label_id} filtré: elong_med={elong_med:.2f} > {max_elong_med}")
+                continue
             density = nb_detections / area_m2 if area_m2 > 0 else 0.0
             
             # Récupérer model_name depuis une détection du cluster
@@ -410,6 +438,8 @@ def run_clustering(
                 "nb_detect": nb_detections,
                 "area_m2": round(area_m2, 1),
                 "density": round(density, 6),
+                "conf_p90": round(conf_p90, 3),
+                "elong_med": round(elong_med, 2),
                 "cluster_id": f"{output_class_name}_{label_id}",
             }
             cluster_dets.append(cluster_det)

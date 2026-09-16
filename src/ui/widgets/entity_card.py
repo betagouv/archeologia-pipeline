@@ -13,7 +13,8 @@ from __future__ import annotations
 
 from typing import Dict, Optional, Sequence, Tuple
 
-from qgis.PyQt.QtCore import Qt, pyqtSignal
+from qgis.PyQt.QtCore import QSize, Qt, pyqtSignal
+from qgis.PyQt.QtGui import QIcon, QPixmap
 from qgis.PyQt.QtWidgets import (
     QCheckBox,
     QFrame,
@@ -25,6 +26,7 @@ from qgis.PyQt.QtWidgets import (
 )
 
 from .no_wheel import NoWheelDoubleSpinBox
+from .vignette import pixmap_ajuste
 
 
 class _StayOpenMenu(QMenu):
@@ -99,6 +101,9 @@ _CLUSTER_PARAM_SPECS = (
 )
 
 
+_THUMB = 44  # côté de la vignette de carte, en px logiques
+
+
 class EntityCard(QFrame):
     toggled = pyqtSignal(str, bool)        # entity_id, selected
     models_changed = pyqtSignal(str, list)  # entity_id, [model_name, ...] (≥2 = comparaison A/B)
@@ -106,6 +111,8 @@ class EntityCard(QFrame):
     activate_rvt = pyqtSignal(str)         # rvt key
     thresholds_changed = pyqtSignal(str, float, float)  # entity_id, confiance, aire min
     cluster_params_changed = pyqtSignal(str, dict)  # entity_id, {param: valeur}
+    fiche_requested = pyqtSignal(str)      # entity_id — ouvrir la fiche de structure
+    reset_requested = pyqtSignal(str)      # entity_id — rétablir SES valeurs de modèle
 
     def __init__(self, entity_id: str, label: str, description: str, parent=None):
         super().__init__(parent)
@@ -120,9 +127,28 @@ class EntityCard(QFrame):
         self.setObjectName("EntityCard")
         self.setProperty("state", "off")
 
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(10, 7, 10, 7)
+        # Deux colonnes : la vignette de la structure à gauche, tout le reste à
+        # droite. La colonne de gauche a une largeur FIXE, occupée même sans
+        # vignette (cadre d'attente) : les libellés restent alignés d'une carte
+        # à l'autre, et le gabarit de hauteur verrouillé plus bas n'est pas
+        # touché (le contenu réservé dépasse toujours 44 px).
+        outer = QHBoxLayout(self)
+        outer.setContentsMargins(10, 7, 10, 7)
+        outer.setSpacing(9)
+
+        self._thumb = QPushButton("")
+        self._thumb.setObjectName("EntityThumb")
+        self._thumb.setFixedSize(_THUMB, _THUMB)
+        self._thumb.setFlat(True)
+        self._thumb.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._thumb.setToolTip("Voir la fiche de la structure")
+        self._thumb.clicked.connect(lambda: self.fiche_requested.emit(self._id))
+        outer.addWidget(self._thumb, 0, Qt.AlignmentFlag.AlignTop)
+
+        layout = QVBoxLayout()
+        layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(3)
+        outer.addLayout(layout, 1)
 
         header = QHBoxLayout()
         header.setSpacing(7)
@@ -132,11 +158,21 @@ class EntityCard(QFrame):
         self._check.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._label = QLabel(label)
         self._label.setObjectName("EntityLabel")
+        self._fiche_btn = QPushButton("Fiche")
+        self._fiche_btn.setObjectName("EntityFicheBtn")
+        self._fiche_btn.setFlat(True)
+        self._fiche_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._fiche_btn.setToolTip(
+            "Illustration, provenance des données d'entraînement, hors-cible "
+            "et contexte d'utilisation"
+        )
+        self._fiche_btn.clicked.connect(lambda: self.fiche_requested.emit(self._id))
         self._rvt_tag = QLabel("")
         self._rvt_tag.setObjectName("EntityRvtTag")
         header.addWidget(self._check)
         header.addWidget(self._label)
         header.addStretch(1)
+        header.addWidget(self._fiche_btn)
         header.addWidget(self._rvt_tag)
         layout.addLayout(header)
 
@@ -203,6 +239,7 @@ class EntityCard(QFrame):
         self._adv_row = _Row()
         conf_lbl = QLabel("Confiance")
         conf_lbl.setObjectName("EntityModelLabel")
+        self._conf_lbl = conf_lbl  # relibellé « Confiance des cratères » sur une dérivée
         self._conf_spin = NoWheelDoubleSpinBox()
         self._conf_spin.setRange(0.0, 1.0)
         self._conf_spin.setSingleStep(0.05)
@@ -217,10 +254,27 @@ class EntityCard(QFrame):
         self._area_spin.setDecimals(0)
         self._area_spin.setFixedWidth(82)
         self._area_spin.valueChanged.connect(self._on_thresholds_changed)
+        # Réinitialisation de CETTE entité seulement. Le bouton global qui vivait
+        # dans l'en-tête de la carte « Entités à détecter » effaçait les surcharges
+        # de toutes les entités d'un coup (demande utilisateur 2026-09-16) : on
+        # réglait une entité, on voulait annuler ce réglage-là, et on perdait les
+        # autres. Il est désactivé avec toute la ligne quand l'entité est incluse
+        # par une dérivée : ses seuils sont ceux de la carte parente, c'est là
+        # qu'on les réinitialise.
+        self._reinit_btn = QPushButton("↺")
+        self._reinit_btn.setObjectName("EntityResetBtn")
+        self._reinit_btn.setFlat(True)
+        self._reinit_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._reinit_btn.setToolTip(
+            "Rétablit les valeurs recommandées par le modèle pour cette entité. "
+            "Les autres entités ne sont pas touchées."
+        )
+        self._reinit_btn.clicked.connect(lambda: self.reset_requested.emit(self._id))
         self._adv_row.addWidget(conf_lbl)
         self._adv_row.addWidget(self._conf_spin)
         self._adv_row.addWidget(area_lbl)
         self._adv_row.addWidget(self._area_spin)
+        self._adv_row.addWidget(self._reinit_btn)
         self._adv_row.setVisible(False)
         layout.addWidget(self._adv_row)
         # Aide fiabilité (mode avancé) : les coupures effectives des catégories
@@ -273,12 +327,53 @@ class EntityCard(QFrame):
         # qui en propose : chaque carte est « au plus juste » de son gabarit.
 
     # ------------------------------------------------------------------
+    def set_fiche(
+        self,
+        vignette_path: Optional[str],
+        *,
+        disponible: bool = True,
+        cadrage: Optional[Tuple[float, float, float]] = None,
+    ) -> None:
+        """Alimente la vignette et l'accès à la fiche de structure.
+
+        ``vignette_path`` absent ou illisible → cadre d'attente (la classe
+        n'a pas encore de bloc ``fiche.vignettes`` dans son ``model_card``).
+        ``disponible=False`` (aucun modèle n'installe cette entité) → l'accès
+        à la fiche disparaît : il n'y aurait rien à montrer.
+
+        ``cadrage`` = ``(x, y, côté)`` en fractions de l'image : la vignette
+        couvre 324 m de terrain, réduite à 44 px elle serait illisible, donc
+        l'icône n'en montre que la fenêtre qui porte la structure. Absent →
+        image entière (comportement d'origine).
+        """
+        self._fiche_btn.setVisible(disponible)
+        self._thumb.setEnabled(disponible)
+
+        marge = 2  # laisse respirer le liseré du cadre
+        cote = _THUMB - marge * 2
+        pix = pixmap_ajuste(
+            vignette_path, cote, dpr=self.devicePixelRatioF(), cadrage=cadrage
+        ) if vignette_path else QPixmap()
+        if pix.isNull():
+            self._thumb.setIcon(QIcon())
+            self._thumb.setText("◌" if disponible else "")
+            self._thumb.setProperty("state", "vide")
+        else:
+            self._thumb.setText("")
+            self._thumb.setIcon(QIcon(pix))
+            self._thumb.setIconSize(QSize(cote, cote))   # px logiques, comme le pixmap
+            self._thumb.setProperty("state", "plein")
+        self._thumb.style().unpolish(self._thumb)
+        self._thumb.style().polish(self._thumb)
+
+    # ------------------------------------------------------------------
     def set_candidates(
         self,
         candidates: Sequence[Tuple[str, str]],
         *,
         has_cluster: bool = False,
         is_derived: bool = False,
+        implicable: bool = False,
     ) -> None:
         """``candidates`` = [(model_name, display_name)…] ; couvre l'entité.
 
@@ -287,6 +382,9 @@ class EntityCard(QFrame):
         ``is_derived`` : l'entité est une *cible dérivée* (sortie de clustering
         présentée comme entité) → badge « regroupement automatique » à la place
         de la case cluster ; sa place est réservée en permanence.
+        ``implicable`` : une cible dérivée peut INCLURE cette entité (ex.
+        Cratères sous Regroupement de cratères) → même badge, texte « inclus
+        dans », place réservée aussi.
         """
         self._candidates = {name: disp for name, disp in candidates}
         self._has_model = bool(candidates)
@@ -296,7 +394,7 @@ class EntityCard(QFrame):
             Qt.CursorShape.PointingHandCursor if self._has_model
             else Qt.CursorShape.ArrowCursor
         )
-        self._configure_reservations(has_cluster, is_derived)
+        self._configure_reservations(has_cluster, is_derived or implicable)
 
     def _configure_reservations(self, has_cluster: bool, is_derived: bool = False) -> None:
         """Verrouille le gabarit : les lignes du contenu MAXIMAL réservent leur
@@ -336,8 +434,24 @@ class EntityCard(QFrame):
         cluster_params_override: Optional[Dict[str, float]] = None,
         missing_rvt: Optional[str] = None,
         fiabilite_hint: str = "",
+        implique_par: str = "",
+        conf_label: str = "Confiance",
+        conf_tip: str = "",
+        reinit_possible: bool = False,
     ) -> None:
+        """``implique_par`` : libellé de la cible dérivée cochée qui INCLUT cette
+        entité (2026-09-15) → cochée d'office, badge « inclus dans », seuils en
+        lecture seule (ce sont ceux de la dérivée). ``conf_label`` / ``conf_tip`` :
+        libellé et aide du seuil de confiance (une dérivée dit « Confiance des
+        cratères » : son seuil est celui des détections sources)."""
         self._selected = selected
+        # Inactif quand il n'y a rien à rétablir : proposer d'annuler un réglage
+        # qui n'a jamais été fait ne dit rien à l'utilisateur.
+        self._reinit_btn.setEnabled(bool(reinit_possible))
+        self.setToolTip(
+            f"Inclus dans « {implique_par} » — décochez cette carte-là pour l'exclure"
+            if implique_par else ""
+        )
         # ``rvt`` est un AFFICHAGE (peut joindre plusieurs indices en
         # comparaison, ex. « LD + SVF ») ; la clé d'activation du bouton
         # « + Activer » est le premier indice MANQUANT, pas le libellé.
@@ -401,12 +515,23 @@ class EntityCard(QFrame):
                 self._loading = False
 
         # Badge cible dérivée (regroupement intrinsèque) — exclusif de la case
-        # cluster : pour une cible dérivée, ``cluster_outputs`` est vide.
-        self._derived_badge.setVisible(bool(selected and self._has_model and is_derived))
+        # cluster : pour une cible dérivée, ``cluster_outputs`` est vide. Même
+        # badge, autre texte, pour une entité INCLUSE par une dérivée cochée.
+        self._derived_badge.setText(
+            f"↳ inclus dans « {implique_par} » : une seule couche, seuil réglé sur cette carte-là"
+            if implique_par else "↳ regroupement automatique en zones"
+        )
+        self._derived_badge.setVisible(
+            bool(selected and self._has_model and (is_derived or implique_par))
+        )
 
-        # Réglages avancés (confiance + aire min) : visibles si mode avancé.
+        # Réglages avancés (confiance + aire min) : visibles si mode avancé ;
+        # en lecture seule pour une entité incluse (ses seuils sont ceux de la dérivée).
         show_adv = bool(selected and self._has_model and self._advanced)
         self._adv_row.setVisible(show_adv)
+        self._adv_row.setEnabled(not implique_par)
+        self._conf_lbl.setText(conf_label)
+        self._conf_lbl.setToolTip(conf_tip)
         if show_adv:
             self._loading = True
             try:
@@ -423,7 +548,7 @@ class EntityCard(QFrame):
                     "Comparaison : sans modification, chaque modèle applique "
                     "son propre seuil par défaut ; modifier la valeur impose "
                     "le même seuil à toutes les variantes."
-                    if len(self._current_models) > 1 else ""
+                    if len(self._current_models) > 1 else conf_tip
                 )
             finally:
                 self._loading = False

@@ -232,6 +232,252 @@ def _validate_fiabilite(
                 )
 
 
+# ----------------------------------------------------------------------
+# Fiche de classe (classes[].fiche) — contrat de présentation
+# ----------------------------------------------------------------------
+_SPLITS_CONNUS = ("train", "valid", "test")
+
+
+def _fiche_vignettes(
+    raw: Any, classe: str, report: ValidationReport, model_dir: Path
+) -> None:
+    """Une vignette qui pointe un fichier absent = image cassée dans QGIS."""
+    if not isinstance(raw, list):
+        report.errors.append(
+            f"classes['{classe}'].fiche.vignettes doit être une liste"
+        )
+        return
+    for j, item in enumerate(raw):
+        où = f"classes['{classe}'].fiche.vignettes[{j}]"
+        if not isinstance(item, dict):
+            report.errors.append(f"{où} doit être un mapping")
+            continue
+        brut = str(item.get("brut") or "").strip()
+        if not brut:
+            report.errors.append(f"{où} : clé 'brut' obligatoire (le cadre RVT seul)")
+        for clé in ("brut", "annote"):
+            chemin = str(item.get(clé) or "").strip()
+            if not chemin:
+                continue  # 'annote' est facultatif ; 'brut' vide est déjà signalé
+            if ABS_PATH_RE.match(chemin):
+                report.errors.append(
+                    f"{où}.{clé} : chemin absolu local détecté ({chemin!r})"
+                )
+            elif not (model_dir / chemin).is_file():
+                report.errors.append(f"{où}.{clé} : fichier absent ({chemin})")
+
+        # Fenêtre découpée par l'icône de la carte d'entité : fractions de
+        # l'image, donc toujours dans [0 ; 1] et sans déborder.
+        cadrage = item.get("cadrage")
+        if cadrage is not None:
+            if not isinstance(cadrage, dict):
+                report.errors.append(f"{où}.cadrage doit être un mapping {{x, y, cote}}")
+                continue
+            manquantes = [k for k in ("x", "y", "cote") if k not in cadrage]
+            if manquantes:
+                report.errors.append(
+                    f"{où}.cadrage : clé(s) obligatoire(s) absente(s) : {', '.join(manquantes)}"
+                )
+                continue
+            vals = {}
+            for k in ("x", "y", "cote"):
+                v = cadrage[k]
+                if not isinstance(v, (int, float)) or isinstance(v, bool):
+                    report.errors.append(f"{où}.cadrage.{k} doit être un nombre (reçu {v!r})")
+                else:
+                    vals[k] = float(v)
+            if len(vals) < 3:
+                continue
+            if not 0 < vals["cote"] <= 1:
+                report.errors.append(
+                    f"{où}.cadrage.cote doit être dans ]0 ; 1] (fraction de l'image, reçu {vals['cote']})"
+                )
+            for k in ("x", "y"):
+                if not 0 <= vals[k] <= 1:
+                    report.errors.append(
+                        f"{où}.cadrage.{k} doit être dans [0 ; 1] (reçu {vals[k]})"
+                    )
+                elif vals[k] + vals["cote"] > 1.0001:
+                    report.errors.append(
+                        f"{où}.cadrage : la fenêtre déborde de l'image sur {k} "
+                        f"({vals[k]} + {vals['cote']} > 1)"
+                    )
+
+
+def _fiche_entrainement(
+    raw: Any, classe: str, report: ValidationReport
+) -> None:
+    """« Où, en quelle quantité » : des zones nommées et des effectifs entiers."""
+    où = f"classes['{classe}'].fiche.entrainement"
+    if not isinstance(raw, dict):
+        report.errors.append(f"{où} doit être un mapping")
+        return
+
+    # corpus / annotation : un texte, ou une liste de puces (forme lisible
+    # par un archéologue, 2026-09-15) — jamais un mapping ni des nombres.
+    for clé in ("corpus", "annotation"):
+        v = raw.get(clé)
+        if v is None or isinstance(v, str):
+            continue
+        if not isinstance(v, list) or not all(isinstance(x, str) for x in v):
+            report.errors.append(
+                f"{où}.{clé} doit être un texte ou une liste de textes "
+                f"(reçu {type(v).__name__})"
+            )
+
+    zones = raw.get("zones")
+    if zones is not None:
+        if not isinstance(zones, list):
+            report.errors.append(f"{où}.zones doit être une liste")
+        else:
+            sans_effectif = 0
+            for j, z in enumerate(zones):
+                if not isinstance(z, dict):
+                    report.errors.append(f"{où}.zones[{j}] doit être un mapping")
+                    continue
+                if not str(z.get("nom") or "").strip():
+                    report.errors.append(
+                        f"{où}.zones[{j}] : clé 'nom' obligatoire "
+                        "(une zone sans nom n'est pas citable dans la fiche)"
+                    )
+                for clé in ("tuiles", "objets"):
+                    v = z.get(clé)
+                    if v is not None and not isinstance(v, int):
+                        report.errors.append(
+                            f"{où}.zones[{j}].{clé} doit être un entier (reçu {v!r})"
+                        )
+                if z.get("tuiles") is None and z.get("objets") is None:
+                    sans_effectif += 1
+            if sans_effectif:
+                report.warnings.append(
+                    f"{où}.zones : {sans_effectif} zone(s) sans effectif (tuiles/objets) "
+                    "— la fiche ne pourra pas dire en quelle quantité la classe a été apprise"
+                )
+
+    splits = raw.get("splits")
+    if splits is not None:
+        if not isinstance(splits, dict):
+            report.errors.append(f"{où}.splits doit être un mapping")
+        else:
+            for nom, bloc in splits.items():
+                if nom not in _SPLITS_CONNUS:
+                    report.warnings.append(
+                        f"{où}.splits : split inattendu '{nom}' "
+                        f"(connus : {', '.join(_SPLITS_CONNUS)})"
+                    )
+                if not isinstance(bloc, dict):
+                    report.errors.append(f"{où}.splits['{nom}'] doit être un mapping")
+                    continue
+                for clé in ("tuiles", "objets"):
+                    v = bloc.get(clé)
+                    if v is not None and not isinstance(v, int):
+                        report.errors.append(
+                            f"{où}.splits['{nom}'].{clé} doit être un entier (reçu {v!r})"
+                        )
+
+
+def _validate_fiche(
+    model_card: dict[str, Any],
+    class_set: set[str],
+    report: ValidationReport,
+    *,
+    model_dir: Path,
+) -> None:
+    """Valide ``classes[].fiche`` — le bloc de présentation lu par l'étape 3.
+
+    Le bloc est OPTIONNEL : son absence (ou son incomplétude) est un warning de
+    suivi, pas une erreur — les modèles se remplissent un par un. Mais dès qu'il
+    est là il doit être exploitable : une vignette qui pointe un fichier absent
+    donnerait une image cassée dans QGIS, donc c'est une erreur.
+    """
+    classes = model_card.get("classes")
+    if isinstance(classes, list):
+        for c in classes:
+            if not isinstance(c, dict):
+                continue
+            classe = str(c.get("name") or "").strip()
+            if not classe:
+                continue
+            if class_set and classe not in class_set:
+                report.errors.append(
+                    f"model_card.classes : '{classe}' porte une fiche mais n'est pas "
+                    "dans classes.txt"
+                )
+            _validate_fiche_bloc(c, classe, "classes", report, model_dir)
+
+    # Les cibles dérivées (sorties de clustering cochables comme entités) portent
+    # leur propre fiche sous derived_targets[].fiche — même contrat, mais leur
+    # nom (output_class) n'est PAS dans classes.txt : pas de contrôle d'appartenance.
+    derived = model_card.get("derived_targets")
+    if isinstance(derived, dict):
+        derived = [derived]
+    if isinstance(derived, list):
+        for dt in derived:
+            if not isinstance(dt, dict):
+                continue
+            classe = str(dt.get("output_class") or "").strip()
+            if classe:
+                _validate_fiche_bloc(dt, classe, "derived_targets", report, model_dir)
+
+
+def _validate_fiche_bloc(
+    bloc: dict[str, Any],
+    classe: str,
+    rubrique: str,
+    report: ValidationReport,
+    model_dir: Path,
+) -> None:
+    """Contrôle d'UN bloc ``fiche`` — d'une classe ou d'une cible dérivée."""
+    fiche = bloc.get("fiche")
+    if fiche is None:
+        report.warnings.append(
+            f"{rubrique}['{classe}'] : pas de bloc 'fiche' — resume, usage, "
+            "vignettes, entrainement à écrire (l'étape 3 affichera la classe "
+            "sans illustration ni provenance)"
+        )
+        return
+    if not isinstance(fiche, dict):
+        report.errors.append(f"{rubrique}['{classe}'].fiche doit être un mapping")
+        return
+
+    for clé in ("resume", "reconnaitre"):
+        v = fiche.get(clé)
+        if v is not None and not isinstance(v, str):
+            report.errors.append(
+                f"{rubrique}['{classe}'].fiche.{clé} doit être du texte (reçu {type(v).__name__})"
+            )
+    # usage : un texte, ou une liste de puces (lisibilité, 2026-09-15)
+    usage = fiche.get("usage")
+    if usage is not None and not (
+        isinstance(usage, str)
+        or (isinstance(usage, list) and all(isinstance(x, str) for x in usage))
+    ):
+        report.errors.append(
+            f"{rubrique}['{classe}'].fiche.usage doit être un texte ou une liste de textes "
+            f"(reçu {type(usage).__name__})"
+        )
+
+    hors_cible = fiche.get("hors_cible")
+    if hors_cible is not None and not isinstance(hors_cible, (str, list)):
+        report.errors.append(
+            f"{rubrique}['{classe}'].fiche.hors_cible doit être une liste de textes"
+        )
+
+    if fiche.get("vignettes") is not None:
+        _fiche_vignettes(fiche["vignettes"], classe, report, model_dir)
+    if fiche.get("entrainement") is not None:
+        _fiche_entrainement(fiche["entrainement"], classe, report)
+
+    manques = [
+        clé for clé in ("resume", "usage", "vignettes", "entrainement")
+        if not fiche.get(clé)
+    ]
+    if manques:
+        report.warnings.append(
+            f"{rubrique}['{classe}'].fiche incomplète : {', '.join(manques)} à écrire"
+        )
+
+
 def _read_json(path: Path) -> dict[str, Any] | None:
     try:
         return json.loads(path.read_text(encoding="utf-8-sig"))
@@ -272,6 +518,15 @@ def _check_required_files(model_dir: Path, report: ValidationReport) -> None:
             report.errors.append(f"Fichier obligatoire absent : {rel}")
     if not (model_dir / "evaluation_results.json").is_file():
         report.warnings.append("evaluation_results.json absent (recommandé)")
+    # Règle utilisateur 2026-09-15 : les prédictions de test / planches d'inférence d'un run
+    # (visualizations/) ne vivent JAMAIS dans data/models — Drive runs/training/<run>/
+    # visualizations/, ou D:/brouillons/<chantier>/ le temps d'un test.
+    if (model_dir / "entrainement" / "visualizations").exists():
+        report.errors.append(
+            "entrainement/visualizations/ présent : les visualisations de test n'ont rien à "
+            "faire dans data/models (Drive runs/training/<run>/visualizations/ ou D:/brouillons) "
+            "— à supprimer"
+        )
 
 
 def _check_classes_txt(lines: list[str], report: ValidationReport) -> list[str]:
@@ -657,6 +912,12 @@ def validate_model_dir(model_dir: Path, strict: bool = False) -> ValidationRepor
     if fiab_raw is not None:
         _validate_fiabilite(fiab_raw, mc_thresholds, class_set, conf_default, pc,
                             metriques_par_classe, report, model_dir=model_dir)
+
+    # ----- fiche de classe (classes[].fiche) -----
+    # Bloc de présentation lu par l'étape 3 : illustration, provenance des données
+    # d'entraînement, hors-cible, contexte de prospection. Optionnel (warning de
+    # suivi tant qu'il manque) mais strictement contrôlé dès qu'il est là.
+    _validate_fiche(model_card, class_set, report, model_dir=model_dir)
 
     # ----- entités ⊆ catalogue (hors catalogue = modèle INVISIBLE dans l'UI) -----
     catalog_path = REPO_ROOT / "data" / "entities_catalog.json"

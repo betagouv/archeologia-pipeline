@@ -9,7 +9,6 @@ même emplacement que la branche polygone (``resolve_tiles_from_polygon``).
 """
 from __future__ import annotations
 
-from pathlib import Path
 
 from app.runners.input_strategy import persist_resolved_dalles_list
 

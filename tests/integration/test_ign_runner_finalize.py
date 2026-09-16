@@ -126,3 +126,75 @@ class TestIgnRunnerFinalize:
         assert len(finalized) == 1
         # Échec PARTIEL absorbé → l'issue globale reste un succès.
         assert finalized[0]["outcome"] == "success"
+
+
+class TestIgnRunnerVerditHonnete:
+    """Un run qui n'a rien produit ne doit jamais s'annoncer réussi.
+
+    L'interface lit le retour du contrôleur comme « ok sauf si False »
+    (ui/run_view.py) : renvoyer ``None`` sur un échec affiche donc
+    « ✓ Pipeline terminé » sur un dossier vide. Ces deux tests verrouillent les
+    deux portes par lesquelles ce mensonge passait (audit 2026-09-16).
+    """
+
+    def test_acquisition_sans_dalle_renvoie_un_echec(
+        self, config_with_output_dir, tmp_path, monkeypatch, finalized
+    ):
+        """Polygone n'intersectant aucune dalle, téléchargements tous en échec,
+        dossier LAZ vide : la stratégie rend ``None``."""
+
+        class _StrategieVide(_StubStrategy):
+            def acquire(self, **kwargs):
+                return None
+
+        monkeypatch.setattr(
+            "app.runners.ign_local_runner.select_input_strategy",
+            lambda mode, plan: _StrategieVide(tmp_path),
+        )
+        ctx = _ctx(config_with_output_dir, tmp_path)
+
+        verdict = IgnOrLocalRunner().run(
+            ctx=ctx,
+            reporter=RecordingReporter(),
+            cancel=CancelToken(threading.Event()),
+        )
+        assert verdict is False, (
+            "acquisition vide rendue comme un succès — l'interface afficherait "
+            "« ✓ Pipeline terminé » sur un dossier sans aucune donnée"
+        )
+
+    def test_aucune_dalle_fusionnee_compte_les_echecs_dans_le_total(
+        self, config_with_output_dir, tmp_path, monkeypatch, finalized, stub_strategy
+    ):
+        """0 fusionnée sur 3 tentées doit arriver à la finalisation comme 0/3.
+
+        Transmettre 0/0 désarmerait la garde « 0 sur N » de finalize_service,
+        qui teste ``bool(total)`` : le run repartirait en succès.
+        """
+        ctx = _ctx(config_with_output_dir, tmp_path)
+
+        def tout_echoue(**kwargs):
+            return SimpleNamespace(
+                merged_dir=tmp_path,
+                temp_dir=tmp_path,
+                merged_files=[],
+                failed=[
+                    "LHD_FXX_0500_6500: PDAL merge failed",
+                    "LHD_FXX_0501_6500: PDAL merge failed",
+                    "LHD_FXX_0502_6500: PDAL merge failed",
+                ],
+            )
+
+        monkeypatch.setattr("pipeline.ign.preprocess.prepare_merged_tiles", tout_echoue)
+
+        IgnOrLocalRunner().run(
+            ctx=ctx,
+            reporter=RecordingReporter(),
+            cancel=CancelToken(threading.Event()),
+        )
+        assert len(finalized) == 1
+        assert finalized[0]["tiles_processed"] == 0
+        assert finalized[0]["tiles_total"] == 3, (
+            "le total ignore les dalles en échec : 0/0 désarme la garde « 0 sur N »"
+        )
+

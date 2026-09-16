@@ -1649,7 +1649,7 @@ def create_shapefile_from_detections(
                         pass
 
                 # Colonnes numériques des briques de synthèse (clustering, enclos, axes)
-                for ncol in ("nb_detect", "area_m2", "density", "surface_m2",
+                for ncol in ("nb_detect", "area_m2", "density", "conf_p90", "elong_med", "surface_m2",
                              "conf_fragments",
                              "closure_ratio", "ancrage", "isolement", "rectangularite",
                              "compacite", "elongation", "nb_sources",

@@ -200,7 +200,11 @@ class IgnOrLocalRunner:
             processing=processing,
         )
         if result is None:
-            return
+            # Aucune dalle acquise : polygone qui n'intersecte aucune dalle IGN,
+            # téléchargements tous en échec, dossier LAZ local vide. Un ``return``
+            # nu renvoyait ``None``, que l'interface lit comme « pas False », donc
+            # « ✓ Pipeline terminé » sur un dossier vide (audit 2026-09-16).
+            return False
 
         try:  # fallback standalone (tests : src/ sur le path)
             from ...pipeline.ign.preprocess import prepare_merged_tiles
@@ -281,7 +285,12 @@ class IgnOrLocalRunner:
 
             # Par défaut (pas de traitement par dalle), le décompte reflète
             # les dalles fusionnées ; la boucle produits le précise ensuite.
-            tiles_ok = tiles_total = len(merged_result.merged_files)
+            # ⚠ Le TOTAL inclut les dalles en échec : sinon un lot où aucune
+            # fusion n'aboutit donne 0/0, et la garde « 0 sur N » de
+            # finalize_service (qui teste ``bool(total)``) se désarme —
+            # un dossier vide repartait en succès (audit 2026-09-16).
+            tiles_ok = len(merged_result.merged_files)
+            tiles_total = tiles_ok + len(getattr(merged_result, "failed", []) or [])
 
             if products.needs_tile_processing() and merged_result.merged_files:
                 rvt_params = ctx.rvt_params

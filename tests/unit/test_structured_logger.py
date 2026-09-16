@@ -1,4 +1,3 @@
-import pytest
 
 from app.structured_logger import StructuredLogger, create_structured_logger
 from pipeline.types import format_params_line

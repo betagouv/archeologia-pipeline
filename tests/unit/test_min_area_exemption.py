@@ -13,9 +13,9 @@ import pytest
 pytest.importorskip("shapely")
 gpd = pytest.importorskip("geopandas")
 
-from shapely.geometry import box
+from shapely.geometry import box  # noqa: E402 (après importorskip : la dépendance est optionnelle)
 
-from pipeline.cv.conversion_shp import _filter_gpkg_by_min_area
+from pipeline.cv.conversion_shp import _filter_gpkg_by_min_area  # noqa: E402 (après importorskip : la dépendance est optionnelle)
 
 
 def _write_layer(path, layer, area_m2):

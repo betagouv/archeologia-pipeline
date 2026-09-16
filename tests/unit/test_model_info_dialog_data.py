@@ -28,7 +28,7 @@ class TestPrettyRvtName:
         assert pretty_rvt_name("HS") == "Hillshade simple (HS)"
         assert pretty_rvt_name("SLO") == "Pente (SLO)"
         assert pretty_rvt_name("SLRM") == "Simple Local Relief Model (SLRM)"
-        assert pretty_rvt_name("VAT") == "Visualisation Archéologique Totale (VAT)"
+        assert pretty_rvt_name("VAT") == "Visualisation pour la topographie archéologique (VAT)"
 
     def test_unknown_code_falls_back_to_raw(self):
         # Repli : on retourne le code brut sans planter.
@@ -222,9 +222,9 @@ class TestBuildSections:
         mnt = next(s for s in sections if s.title == "MNT D'ENTRAÎNEMENT")
         labels = [r.label for r in mnt.rows]
         values = [r.value for r in mnt.rows]
-        assert any("solution" in l.lower() for l in labels)
+        assert any("solution" in lab.lower() for lab in labels)
         assert any("0.5" in v for v in values)
-        assert any("iltre" in l for l in labels)
+        assert any("iltre" in lab for lab in labels)
         # Le filtre doit être rendu en monospace (sera utilisé par le widget Qt).
         filter_row = next(r for r in mnt.rows if "iltre" in r.label)
         assert filter_row.mono is True

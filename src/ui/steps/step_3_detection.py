@@ -32,10 +32,16 @@ from ...app.services.model_orchestrator import (
     effective_model_names,
     group_entities_by_morphology,
     load_entities_catalog,
+    load_model_card,
     resolve_runs_from_entities,
 )
 from ..widgets.card import build_card
 from ..widgets.entity_card import EntityCard
+from ...app.services.reglages_defaut import (
+    a_des_surcharges,
+    effacer_surcharges,
+    phrase_entite_reinitialisee,
+)
 from ..widgets.toast import show_toast
 from ..widgets.toggle_switch import ToggleSwitch
 
@@ -56,6 +62,7 @@ class DetectionPage(QWidget):
             for ec in build_entity_coverage(self._catalog, self._installed)
         }
         self._models = {m.name: m for m in self._installed}
+        self._model_cards: dict = {}  # nom de modèle -> model_card.yaml parsé (à la demande)
 
         self._enabled = False
         self._advanced = False
@@ -145,24 +152,12 @@ class DetectionPage(QWidget):
         self._sel_count = ent_card.counter  # « X sur Y sélectionnées » dans l'en-tête
         adv_row = QHBoxLayout()
         adv_row.addStretch(1)
-        # Les surcharges par entité sont persistées d'une session à l'autre et priment
-        # sur les seuils du modèle : sans ce bouton, un réglage ancien reste appliqué
-        # en silence, y compris après la mise à jour d'un modèle. Le piège est réel —
-        # les seuils d'un run sont ramenés à leur MINIMUM (model_orchestrator l. 747),
-        # donc une seule entité oubliée à une valeur basse tire tout le run avec elle.
-        # Aligné sur la réinitialisation des réglages avancés de l'étape 2 : même préfixe
-        # « ↺ », même style GhostButton, même curseur, même confirmation par Toast.
-        self._reset_btn = QPushButton("↺  Réinit. val. défaut du modèle")
-        self._reset_btn.setObjectName("GhostButton")
-        self._reset_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        self._reset_btn.setToolTip(
-            "Efface toutes les surcharges par entité (confiance, aire minimale et "
-            "paramètres de regroupement) et revient aux valeurs recommandées par le "
-            "modèle sélectionné."
-        )
-        self._reset_btn.clicked.connect(self._on_reset_defaults)
-        self._reset_btn.setVisible(False)
-        adv_row.addWidget(self._reset_btn)
+        # Plus de réinitialisation globale ici : elle effaçait les surcharges de
+        # TOUTES les entités d'un coup (demande utilisateur 2026-09-16). Chaque
+        # carte porte la sienne, sur sa ligne de réglages avancés, et ne remet
+        # que ses propres valeurs — le piège que le bouton global adressait (un
+        # seuil ancien qui tire tout le run vers son minimum, cf.
+        # model_orchestrator) reste couvert, entité par entité.
         self._adv_check = QCheckBox("Réglages avancés (seuils par entité)")
         self._adv_check.setObjectName("WizardPageSub")
         self._adv_check.toggled.connect(self._on_advanced_toggled)
@@ -275,7 +270,18 @@ class DetectionPage(QWidget):
         is_derived = any(
             entity.id in self._models[name].derived_entities for name in cand_names
         )
-        card.set_candidates(candidates, has_cluster=has_cluster, is_derived=is_derived)
+        # Entité qu'une cible dérivée peut INCLURE (ex. Cratères sous Regroupement
+        # de cratères) : la carte réserve la place du badge « inclus dans ».
+        implicable = any(
+            entity.id in self._models[name].implied_entities for name in cand_names
+        )
+        card.set_candidates(
+            candidates, has_cluster=has_cluster, is_derived=is_derived, implicable=implicable
+        )
+        vignette, cadrage = self._premiere_vignette(entity.id)
+        card.set_fiche(vignette, disponible=bool(cand_names), cadrage=cadrage)
+        card.fiche_requested.connect(self._open_class_fiche)
+        card.reset_requested.connect(self._on_reset_entity)
         card.toggled.connect(self._on_entity_toggled)
         card.models_changed.connect(self._on_models_changed)
         card.cluster_toggled.connect(self._on_cluster_toggled)
@@ -306,10 +312,38 @@ class DetectionPage(QWidget):
             self.changed.emit()
 
     def _on_entity_toggled(self, entity_id: str, selected: bool) -> None:
+        if entity_id in self._incluses():
+            return  # incluse par une cible dérivée cochée : c'est elle qu'on décoche
         self._selected[entity_id] = selected
         self._refresh()
         if not self._loading:
             self.changed.emit()
+
+    def _incluses(self) -> dict:
+        """``{entité de base: cible dérivée cochée qui l'inclut}``.
+
+        Cocher « Regroupement de cratères » produit déjà la couche Cratères
+        (une seule, dans le groupe du regroupement) : « Cratères » est alors
+        cochée d'office, non décochable, et son seuil se règle sur la carte du
+        regroupement. ``self._selected`` reste le choix EXPLICITE de
+        l'utilisateur ; l'inclusion se recalcule, elle n'est jamais persistée.
+        """
+        out: dict = {}
+        for derived, on in self._selected.items():
+            if not on:
+                continue
+            ec = self._coverage.get(derived)
+            for name in (effective_model_names(ec, self._overrides) if ec else []):
+                model = self._models.get(name)
+                for base, d in (model.implied_entities.items() if model else ()):
+                    if d == derived:
+                        out[base] = derived
+        return out
+
+    def _selection_effective(self) -> list:
+        """Entités cochées explicitement + celles incluses par une dérivée cochée."""
+        explicites = [e for e, on in self._selected.items() if on]
+        return explicites + [b for b in self._incluses() if not self._selected.get(b)]
 
     def _on_models_changed(self, entity_id: str, model_names: list) -> None:
         # 1..n modèles cochés dans le menu de la carte (≥2 = comparaison A/B).
@@ -351,34 +385,37 @@ class DetectionPage(QWidget):
         if not self._loading:
             self.changed.emit()
 
-    def _on_reset_defaults(self) -> None:
-        """Efface les surcharges : les cartes retombent sur les défauts du modèle.
+    def _cle_surcharge(self, entity_id: str) -> str:
+        """Entité sous laquelle les surcharges de ``entity_id`` sont rangées.
 
-        On vide les dictionnaires plutôt que d'y réécrire les valeurs du modèle. C'est
-        la seule façon de rester juste quand on change de modèle ensuite : une valeur
-        recopiée redeviendrait une surcharge, figée sur l'ancien modèle.
+        Une entité incluse par une cible dérivée n'a pas de seuil propre : c'est
+        celui de la dérivée qui s'applique (règle 2026-09-15). Sa ligne avancée
+        est d'ailleurs désactivée, bouton compris ; cette résolution n'est donc
+        qu'une sécurité si le chemin change.
         """
-        if not (self._entity_thresholds or self._entity_cluster_params):
-            return
-        # Compté AVANT d'effacer : la confirmation dit ce qui a été fait, pas un
-        # « c'est fait » générique qui laisserait douter que quelque chose ait bougé.
-        n_seuils = len(self._entity_thresholds)
-        n_cluster = len(self._entity_cluster_params)
-        self._entity_thresholds.clear()
-        self._entity_cluster_params.clear()
-        # Pas besoin de geler les signaux ici : EntityCard.update_state met déjà son
-        # propre `_loading` autour de ses setValue, et n'émet donc pas pendant qu'on
-        # repeuple les spinbox avec les défauts du modèle.
-        self._refresh()
+        return self._incluses().get(entity_id) or entity_id
 
-        parties = []
-        if n_seuils:
-            parties.append(f"{n_seuils} seuil{'s' if n_seuils > 1 else ''} par entité")
-        if n_cluster:
-            parties.append(f"{n_cluster} jeu{'x' if n_cluster > 1 else ''} de paramètres "
-                           f"de regroupement")
-        show_toast(self, "↺  " + " et ".join(parties)
-                   + " effacé(s) — valeurs du modèle rétablies")
+    def _on_reset_entity(self, entity_id: str) -> None:
+        """Rétablit les valeurs du modèle pour UNE entité. Les autres sont intactes.
+
+        On retire les entrées plutôt que d'y réécrire les valeurs du modèle : une
+        valeur recopiée redeviendrait une surcharge, figée sur l'ancien modèle, et
+        survivrait à un changement de modèle.
+        """
+        cle = self._cle_surcharge(entity_id)
+        touches = effacer_surcharges(
+            cle, self._entity_thresholds, self._entity_cluster_params
+        )
+        if not touches:
+            return
+        # Pas besoin de geler les signaux : EntityCard.update_state met déjà son
+        # propre `_loading` autour de ses setValue, et n'émet donc pas pendant
+        # qu'on repeuple les spinbox avec les défauts du modèle.
+        self._refresh()
+        couverture = self._coverage.get(cle)
+        show_toast(self, phrase_entite_reinitialisee(
+            couverture.entity.label if couverture else cle, touches
+        ))
         if not self._loading:
             self.changed.emit()
 
@@ -391,7 +428,7 @@ class DetectionPage(QWidget):
 
         Si le model_card porte des seuils par classe (mesurés au banc), l'entité
         hérite du seuil de SES classes — c'est aussi la valeur vers laquelle le
-        bouton « Réinit. val. défaut du modèle » la ramène. ``min`` si l'entité
+        bouton « ↺ » de la carte la ramène. ``min`` si l'entité
         couvre plusieurs classes aux seuils différents (cohérent avec le plancher
         de décodage). Sinon, défaut global du modèle, comme avant.
         """
@@ -434,6 +471,7 @@ class DetectionPage(QWidget):
         if not self._enabled:
             return
 
+        incluses = self._incluses()
         for eid, card in self._cards.items():
             ec = self._coverage.get(eid)
             model_names = effective_model_names(ec, self._overrides) if ec else []
@@ -453,7 +491,25 @@ class DetectionPage(QWidget):
             missing_rvts = [r for r in rvts if r not in self._active_rvts]
             cluster_outputs = model.cluster_options.get(eid, ()) if model else ()
             is_derived = bool(model) and eid in model.derived_entities
-            ov = self._entity_thresholds.get(eid, {})
+            # Entité incluse par une dérivée cochée : cochée d'office, ses seuils
+            # sont CEUX de la dérivée (un seul réglage, affiché ici en lecture seule).
+            par = incluses.get(eid)
+            ov = self._entity_thresholds.get(par or eid, {})
+            label_par = self._coverage[par].entity.label if par else ""
+            conf_label, conf_tip = "Confiance", ""
+            if par:
+                conf_tip = f"Réglé sur la carte « {label_par} », qui inclut cette entité"
+            elif is_derived and model.derived_source_classes.get(eid):
+                sources = model.derived_source_labels.get(eid) or ", ".join(
+                    self._coverage[b].entity.label
+                    for b, d in model.implied_entities.items() if d == eid
+                ) or "détections sources"
+                defaut = f"{self._default_conf_entite(model, eid):.2f}".replace(".", ",")
+                conf_label = f"Confiance des {sources.lower()}"
+                conf_tip = (
+                    f"Seuil appliqué aux {sources.lower()} détectés, dont les zones sont "
+                    f"calculées : le relever change les zones (règle calibrée au seuil {defaut})"
+                )
             # Défauts des paramètres de regroupement (DBSCAN) pour cette entité :
             # ceux de la 1ʳᵉ sortie de clustering qu'elle produit (dérivée ou cluster).
             cluster_default_params: dict = {}
@@ -468,7 +524,10 @@ class DetectionPage(QWidget):
                         cluster_default_params = model.cluster_defaults[oc]
                         break
             card.update_state(
-                selected=bool(self._selected.get(eid)),
+                selected=bool(self._selected.get(eid) or par),
+                implique_par=label_par,
+                conf_label=conf_label,
+                conf_tip=conf_tip,
                 current_models=model_names,
                 rvt=rvt,
                 rvt_active=(not missing_rvts) if model else True,
@@ -483,14 +542,11 @@ class DetectionPage(QWidget):
                 cluster_default_params=cluster_default_params,
                 cluster_params_override=self._entity_cluster_params.get(eid),
                 fiabilite_hint=self._fiabilite_hint(model, eid, ov.get("confidence_threshold")),
+                # Le bouton de la carte ne sert que si CETTE entité a été réglée.
+                reinit_possible=not self._readonly and a_des_surcharges(
+                    par or eid, self._entity_thresholds, self._entity_cluster_params
+                ),
             )
-        # Le bouton n'existe que là où il sert : en mode avancé, et seulement s'il y a
-        # effectivement quelque chose à effacer. Sinon il promettrait une action sans effet.
-        self._reset_btn.setVisible(self._advanced)
-        self._reset_btn.setEnabled(
-            not self._readonly
-            and bool(self._entity_thresholds or self._entity_cluster_params)
-        )
         self._update_selection_count()
         self._rebuild_runs()
         self._apply_filter()
@@ -502,7 +558,7 @@ class DetectionPage(QWidget):
             1 for e in self._catalog
             if (self._coverage.get(e.id) and self._coverage[e.id].default_model)
         )
-        n = sum(1 for on in self._selected.values() if on)
+        n = len(self._selection_effective())
         self._sel_count.setText(f"{n} sur {total} sélectionnée{'s' if n != 1 else ''}")
 
     def _rebuild_runs(self) -> None:
@@ -516,7 +572,7 @@ class DetectionPage(QWidget):
             w.deleteLater()
         self._run_rows = []
 
-        selected_ids = [e for e, on in self._selected.items() if on]
+        selected_ids = self._selection_effective()
         runs = resolve_runs_from_entities(
             selected_ids, self._overrides, self._installed, self._catalog, self._cluster,
             entity_thresholds=self._entity_thresholds,
@@ -583,6 +639,70 @@ class DetectionPage(QWidget):
             self._run_rows.append(row)
 
     # ------------------------------------------------------------------
+    # Fiche de structure (illustration + provenance des données d'entraînement)
+    # ------------------------------------------------------------------
+    def _model_card(self, model_name: str):
+        """``model_card.yaml`` parsé, mémorisé par modèle.
+
+        ``discover_installed_models`` lit déjà ces fichiers mais n'en garde que
+        l'extrait dont l'orchestrateur a besoin ; la fiche veut la carte
+        entière. Lecture à la demande, une fois par modèle et par session.
+        """
+        if model_name in self._model_cards:
+            return self._model_cards[model_name]
+        model = self._models.get(model_name)
+        card = None
+        if model is not None and model.model_dir is not None:
+            card = load_model_card(model.model_dir)
+        self._model_cards[model_name] = card
+        return card
+
+    def _fiches_for_entity(self, entity_id: str):
+        """Les fiches des classes qui portent ``entity_id``, tous modèles
+        effectifs confondus (une comparaison A/B en produit une par modèle)."""
+        from ...app.services.class_fiche import fiches_par_entite
+
+        out = []
+        ec = self._coverage.get(entity_id)
+        for name in (effective_model_names(ec, self._overrides) if ec else []):
+            card = self._model_card(name)
+            model = self._models.get(name)
+            if card is None or model is None:
+                continue
+            out.extend(fiches_par_entite(card, model.coverage.get(entity_id, ())))
+        return out
+
+    def _premiere_vignette(self, entity_id: str):
+        """``(chemin absolu, cadrage)`` de la vignette d'icône, ou ``(None, None)``.
+
+        La première vignette du premier modèle qui existe réellement sur
+        disque ; son ``cadrage`` dit quelle fenêtre l'icône découpe.
+        """
+        for fiche in self._fiches_for_entity(entity_id):
+            model = self._models.get(fiche.modele_id)
+            if model is None or model.model_dir is None:
+                continue
+            for v in fiche.vignettes:
+                p = Path(model.model_dir) / v.brut
+                if p.is_file():
+                    return str(p), v.cadrage
+        return None, None
+
+    def _open_class_fiche(self, entity_id: str) -> None:
+        """Ouvre la fiche de la structure. Import différé du dialog Qt."""
+        fiches = self._fiches_for_entity(entity_id)
+        if not fiches:
+            return
+        from ..dialogs.class_info_dialog import ouvrir_fiche_entite
+
+        dirs = {
+            m.name: m.model_dir for m in self._installed if m.model_dir is not None
+        }
+        couverture = self._coverage.get(entity_id)
+        titre = couverture.entity.label if couverture else entity_id
+        ouvrir_fiche_entite(fiches, dirs, titre, parent=self)
+
+    # ------------------------------------------------------------------
     def _open_model_info(self, model) -> None:
         """Ouvre la fenêtre d'info détaillée pour ``model`` (carte modèle).
 
@@ -614,19 +734,15 @@ class DetectionPage(QWidget):
         self._enable_check.setEnabled(not ro)
         self._annot_check.setEnabled(not ro)
         self._es_btn.setEnabled(not ro)
-        # Sans ça le bouton resterait cliquable pendant un run : les cartes sont
-        # désactivées mais lui vit dans la barre des réglages avancés, qui reste
-        # active pour la consultation.
-        self._reset_btn.setEnabled(
-            not ro and bool(self._entity_thresholds or self._entity_cluster_params)
-        )
+        # Les boutons de réinitialisation vivent désormais SUR les cartes, que la
+        # boucle ci-dessous désactive : plus rien à neutraliser à part.
         for card in self._cards.values():
             card.setEnabled(not ro)
 
     def summary(self) -> str:
         if not self._enabled:
             return "désactivée"
-        selected_ids = [e for e, on in self._selected.items() if on]
+        selected_ids = self._selection_effective()
         if not selected_ids:
             if self._legacy_runs:
                 n = len(self._legacy_runs)
@@ -643,7 +759,8 @@ class DetectionPage(QWidget):
         """Libellés des entités cochées, dans l'ordre du catalogue (récap étape 4)."""
         if not self._enabled:
             return []
-        return [e.label for e in self._catalog if self._selected.get(e.id)]
+        effectives = set(self._selection_effective())
+        return [e.label for e in self._catalog if e.id in effectives]
 
     def recap_runs(self) -> list:
         """Une chaîne par run résolu : « <modèle> sur <RVT> » (récap étape 4).
@@ -652,7 +769,7 @@ class DetectionPage(QWidget):
         """
         if not self._enabled:
             return []
-        selected_ids = [e for e, on in self._selected.items() if on]
+        selected_ids = self._selection_effective()
         if selected_ids:
             runs = resolve_runs_from_entities(
                 selected_ids, self._overrides, self._installed, self._catalog,
@@ -669,7 +786,7 @@ class DetectionPage(QWidget):
 
     def model_count(self) -> int:
         """Nombre de modèles distincts impliqués (sous-libellé timeline)."""
-        selected_ids = [e for e, on in self._selected.items() if on]
+        selected_ids = self._selection_effective()
         if selected_ids:
             runs = resolve_runs_from_entities(
                 selected_ids, self._overrides, self._installed, self._catalog, self._cluster
@@ -695,6 +812,13 @@ class DetectionPage(QWidget):
             # que l'utilisateur ne sélectionne pas d'entité (cf. collect_into).
             legacy = cv.get("runs") or []
             self._legacy_runs = list(legacy) if (legacy and not self._selected) else None
+            # Config d'avant l'inclusion (2026-09-15) : un seuil posé sur « Cratères »
+            # avec le regroupement coché s'appliquait ; il se règle désormais sur la
+            # carte du regroupement → on l'y recopie si elle n'en a pas, sinon le
+            # choix enregistré serait ignoré en silence.
+            for base, derived in self._incluses().items():
+                if base in self._entity_thresholds and derived not in self._entity_thresholds:
+                    self._entity_thresholds[derived] = dict(self._entity_thresholds[base])
             self._refresh()
         finally:
             self._loading = prev
@@ -702,10 +826,13 @@ class DetectionPage(QWidget):
     def collect_into(self, config: dict) -> None:
         cv = config.setdefault("computer_vision", {})
         cv["enabled"] = self._enabled
-        selected_ids = [e for e, on in self._selected.items() if on]
+        selected_ids = self._selection_effective()
         if selected_ids:
             self._legacy_runs = None  # l'utilisateur pilote par entités désormais
-        cv["selected_entities"] = selected_ids
+        # Persisté : le choix EXPLICITE seulement — une entité incluse par une
+        # dérivée se recalcule au rechargement (sinon elle resterait cochée
+        # après qu'on a décoché la dérivée).
+        cv["selected_entities"] = [e for e, on in self._selected.items() if on]
         cv["entity_model_overrides"] = {
             e: m for e, m in self._overrides.items() if self._selected.get(e)
         }

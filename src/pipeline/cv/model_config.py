@@ -266,6 +266,10 @@ def load_clustering_config_from_model(model_path: Union[str, Path]) -> Optional[
                     "concave_ratio": float(cfg.get("concave_ratio", 0.3)),
                     "confidence_weight": float(cfg.get("confidence_weight", 0.0)),
                 }
+                # Filtres de zone optionnels : absents = pas de filtre (jamais de défaut).
+                for key in ("min_conf_p90", "max_elong_med"):
+                    if cfg.get(key) is not None:
+                        parsed[key] = float(cfg[key])
             except (TypeError, ValueError) as e:
                 logger.warning(f"Clustering config ignorée ({target}): {e}")
                 continue

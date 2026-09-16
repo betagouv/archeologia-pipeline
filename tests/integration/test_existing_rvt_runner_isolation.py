@@ -124,3 +124,69 @@ class TestExistingRvtRunnerIsolation:
         assert len(finalized) == 1
         # ROB-14 : la finalisation sait que le run a été annulé (pas de « ✅ »).
         assert finalized[0]["outcome"] == "cancelled"
+
+
+class TestExistingRvtVerdictHonnete:
+    """Tous les runs CV en échec ne doit pas donner un succès.
+
+    ``finalize_pipeline`` retombe sur ``tiles_processed`` quand aucun
+    ``tiles_total`` ne lui est transmis. Or ce runner comptait des IMAGES : zéro
+    image traitée donnait 0/0, ``bool(total)`` était faux, et la garde « 0 sur N »
+    se désarmait (audit 2026-09-16 — même famille que le correctif ROB-02/03/04,
+    qui avait déjà oublié ce runner une fois).
+    """
+
+    def test_tous_les_runs_en_echec_transmettent_un_total_honnete(
+        self, config_with_output_dir, tmp_path, monkeypatch, finalized
+    ):
+        ctx = _ctx(config_with_output_dir, tmp_path)
+
+        def tout_echoue(**kwargs):
+            raise RuntimeError("TIF illisible")
+
+        monkeypatch.setattr(
+            "pipeline.modes.existing_rvt.run_existing_rvt", tout_echoue
+        )
+
+        ExistingRvtRunner().run(
+            ctx=ctx, reporter=RecordingReporter(), cancel=CancelToken(threading.Event())
+        )
+
+        assert len(finalized) == 1
+        assert finalized[0]["tiles_processed"] == 0
+        assert finalized[0].get("tiles_total") == 2, (
+            "aucun total transmis : 0/0 désarme la garde « 0 sur N » et le run "
+            "repart en succès alors qu'aucune image n'a été traitée"
+        )
+
+    def test_le_total_reste_dans_l_unite_des_images(
+        self, config_with_output_dir, tmp_path, monkeypatch, finalized
+    ):
+        """Traité et total comptent la MÊME chose : des images.
+
+        ``structured_logger.end_pipeline`` imprime « Dalles traitées :
+        traité/total ». Un total exprimé en runs CV donnait « 4/2 » dans le
+        journal technique — deux unités dans une même fraction (relecture des
+        commits, 2026-09-16). Le repli sur le nombre de runs ne concerne que le
+        cas où AUCUN run n'aboutit, où le numérateur vaut 0.
+        """
+        ctx = _ctx(config_with_output_dir, tmp_path)
+
+        def un_seul_marche(**kwargs):
+            if kwargs["cv_config"].get("selected_model") == "modele_a":
+                raise RuntimeError("TIF illisible")
+            return SimpleNamespace(total_images=4, total_detections=None)
+
+        monkeypatch.setattr(
+            "pipeline.modes.existing_rvt.run_existing_rvt", un_seul_marche
+        )
+
+        ExistingRvtRunner().run(
+            ctx=ctx, reporter=RecordingReporter(), cancel=CancelToken(threading.Event())
+        )
+
+        assert finalized[0]["tiles_processed"] == 4
+        assert finalized[0].get("tiles_total") == 4, (
+            "total en runs CV : le journal technique afficherait « 4/2 »"
+        )
+

@@ -29,7 +29,9 @@ entrainement/
 │   ├── appariements.json        # cache d'appariements (re-rendu sans ré-inférence)
 │   └── *.png                    # planches P/R/F1/PR
 ├── comparaison_<vs>/            # superpositions multi-modèles (courbes_eval)
-├── metrics.csv (+ historiques + NOTE-metriques.md), hparams.yaml, tfevents, visualizations/
+├── metrics.csv (+ historiques + NOTE-metriques.md), hparams.yaml, tfevents
+│                                # JAMAIS visualizations/ ici (prédictions de test : Drive
+│                                # runs/training/<run>/ ou D:\brouillons, règle 2026-09-15)
 ```
 
 `thresholds.confidence_default` et `confidence_per_class` du model_card proviennent de
@@ -131,6 +133,43 @@ classes:
     label_fr: "Cratère d'obus"  # accentué — affichage utilisateur
     color_index: 0              # index dans args.yaml.class_colors
     description: "Cratère d'obus circulaire de Première Guerre mondiale."
+    # Bloc de PRÉSENTATION lu par l'étape 3 (fiche de la structure, 2026-09-10).
+    # Entièrement OPTIONNEL — sans lui la fiche se replie sur `description` et
+    # l'étape 3 affiche la classe sans illustration ni provenance. Mais dès qu'il
+    # est là, il est strictement validé : une vignette qui pointe un fichier
+    # absent donnerait une image cassée dans QGIS (ERR), de même qu'une zone sans
+    # nom ou un effectif non entier. Le validateur signale par un WARNING chaque
+    # classe qui n'a pas encore son bloc, et lesquels de ses champs manquent.
+    # fiche:
+    #   resume: "Cratère d'obus…"      # UNE phrase : ce que la structure EST
+    #   reconnaitre: "Cuvette sombre…" # la signature sur le RVT (forme, taille, contraste)
+    #   usage: "Champs de bataille…"   # dans quelle optique s'en servir, avec quel rendement —
+    #                                  # texte, OU liste de puces (2026-09-15 : un pavé est illisible)
+    #   hors_cible:                    # ce que la classe n'est PAS (classes voisines comprises)
+    #     - "Dépressions naturelles (mardelles, dolines)"
+    #   vignettes:                     # cadres illustratifs, chemins RELATIFS au dossier modèle
+    #     - brut: vignettes/cratere_obus_01_brut.jpg     # le RVT seul (obligatoire)
+    #       annote: vignettes/cratere_obus_01_annote.jpg # même cadre + vérité terrain (optionnel)
+    #       zone: "Verdun (55)"           # SEUL texte affiché sous la vignette (2026-09-15)
+    #       legende: "Semis de cratères sur un versant"   # note interne de relecture, non affichée
+    #       # Fenêtre carrée découpée par l'ICÔNE 44 px de la carte d'entité, en
+    #       # FRACTIONS de l'image (donc indépendante de sa résolution). Une vignette
+    #       # couvre 324 m : réduite à 44 px sans recadrage, elle est illisible. La
+    #       # fiche, elle, montre toujours le cadre entier. Absent = image complète.
+    #       # Contrôlé : 0 < cote <= 1, x et y dans [0 ; 1], x+cote et y+cote <= 1.
+    #       cadrage: {x: 0.39, y: 0.27, cote: 0.26}
+    #   entrainement:                  # OÙ et EN QUELLE QUANTITÉ la classe a été apprise
+    #     corpus:                      # texte, OU liste de puces courtes (2026-09-15) en langage
+    #       - "Une seule zone : Verdun…"        # d'archéologue — sans hash de commit ni chemin
+    #       - "7 288 tuiles de 126 m…"          # d'outil (la traçabilité vit dans le run)
+    #     annotation:                  # même forme ; dire si l'annotation N'EST PAS exhaustive
+    #       - "Polygones repris de la couche validée…"
+    #     zones:                       # totaux train+valid+test PAR ZONE, cette classe
+    #       - {nom: "Verdun (55)", tuiles: 710, objets: 2096}
+    #     splits:                      # totaux PAR SPLIT, cette classe
+    #       train: {tuiles: 1285, objets: 3577}
+    #       valid: {tuiles: 330, objets: 948}
+    #       test:  {tuiles: 219, objets: 817}
     # entity: cratere           # OPTIONNEL — id d'entité du catalogue si != name
                                 # (la couverture UI repli sur name == entity.id ;
                                 #  une entité hors entities_catalog.json = modèle
@@ -174,9 +213,18 @@ thresholds:
 # derived_targets:
 #   - output_class: zone_crateres      # == une clustering.output_class_name
 #     entity: regroupement_crateres    # id du catalogue
-#     include_source: true             # sortie = zones + détections sources
+#     include_source: true             # sortie = zones + détections sources. Conséquence UI
+#                                      # (2026-09-15) : l'entité de base couverte par les classes
+#                                      # sources (Cratères) est INCLUSE quand la cible est cochée —
+#                                      # cochée d'office, non décochable, une seule couche (dans le
+#                                      # groupe), seuil réglé sur la carte de la cible dérivée.
 #     output_label: Regroupements      # nom de la couche cluster (optionnel)
 #     source_label: Cratères           # nom de la couche source (optionnel)
+#     label_fr: Regroupement de cratères  # libellé de la fiche (repli output_label)
+#     fiche: {...}                     # MÊME bloc que classes[].fiche (2026-09-14) : la
+#                                      # cible dérivée est cochée comme une classe, elle a
+#                                      # sa fiche (vignettes de regroupements, usage, limites) ;
+#                                      # validée comme classes[].fiche, sans exigence classes.txt.
 
 # Documente les divergences imgsz / SAHI vs training. Optionnel mais REQUIS si
 # divergence. Depuis 2026-08-31 le validateur vérifie que `value` == la valeur
@@ -212,7 +260,9 @@ class_colors: [0]               # longueur == len(classes.txt) (doublons compris
 clustering:                     # optionnel
   - target_classes: ["cratere_obus"]      # ⊆ classes.txt (unique)
     min_confidence: 0.4
-    min_confidence_extend: 0.3            # hystérésis ; >= min_confidence
+    min_confidence_extend: 0.3            # hystérésis ; <= min_confidence (sinon neutralisée)
+    min_conf_p90: 0.60                    # OPTIONNEL — filtre de zone : 90e centile de confiance
+    max_elong_med: 1.32                   # OPTIONNEL — filtre de zone : allongement médian des boîtes
     min_cluster_size: 40
     min_samples: 5
     eps_m: 40
@@ -349,20 +399,112 @@ python run_tests.py unit -k test_models_connectivity
 
 ## Workflow d'ajout d'un nouveau modèle
 
-1. Entraîner avec `data/models/rfdetr_unified_pipeline.ipynb`.
+La checklist complète et opposable est le skill partagé `.claude/skills/installer-modele-plugin`
+(identique dans training-models, cf. CLAUDE.md § « deux dépôts ») ; ce paragraphe n'en est que
+le résumé côté contrat.
+
+1. Entraîner avec le notebook canonique de training-models (`docs/google_collab/`, skill
+   `/entrainement-modele`) — il n'y a plus de notebook dans le plugin.
 2. Le notebook produit `runs/training/<RUN_ID>/package/` avec les 5 fichiers texte du contrat + `weights/best.pth`.
-3. Copier `package/` → `data/models/<RUN_ID>/`.
+3. Copier `package/` → `data/models/<RUN_ID>/`, **plus** `runs/training/<RUN_ID>/evaluation/` (et `evaluation_couverture/` s'il existe) → `data/models/<RUN_ID>/entrainement/`. Sans ce sous-dossier, le validateur ne peut pas re-dériver les mesures de fiabilité et la fiche n'a aucune source de chiffres. (`entrainement/` est exclu du ZIP livré — cf. `dev/package_plugin.py` — il ne sert qu'au poste de dev.)
 4. Exporter l'ONNX :
    ```bash
    python dev/runner_onnx/export_to_onnx.py \
        --model data/models/<RUN_ID>/weights/best.pth \
        --output data/models/<RUN_ID>/weights/best.onnx
    ```
+   La **porte de parité** PyTorch ↔ ONNX qui suit l'export est bloquante : elle
+   doit afficher `✓ Export ONNX validé`. Si le simplificateur la fait échouer,
+   ré-exporter avec `--no-simplify` et consigner le motif dans un
+   `NOTE-export-onnx.md` à côté du run (précédent : `lineaires_seg_v3_1`).
 5. Vérifier la conformité :
    ```bash
    python scripts/validate_models_metadata.py data/models/<RUN_ID>
    python run_tests.py unit -k test_models
    ```
+   Sous Windows, préfixer par `PYTHONIOENCODING=utf-8` : le rapport contient des
+   caractères que cp1252 ne sait pas encoder (il plante à l'affichage, pas à la
+   validation).
+6. **Écrire la fiche de la classe** (`classes[].fiche`) — le validateur la réclame
+   par un warning tant qu'elle manque, et l'étape 3 affiche alors la classe sans
+   illustration ni provenance. Voir « Produire une fiche de classe » ci-dessous.
+
+### Produire une fiche de classe
+
+La fiche est ce que l'archéologue lit avant de cocher l'entité. Elle se fabrique
+en quatre temps, dans cet ordre — les scripts réutilisables sont dans
+`dev/fiches/` :
+
+1. **Candidats** — extraire six cadres du corpus d'entraînement (le brut et le
+   même cadre avec la vérité terrain dessinée), en variant zones et états de
+   conservation. Source : le corpus COCO, jamais les planches de
+   `visualizations/` du run (sur le Drive, jamais dans le plugin) qui sont des montages à quatre panneaux.
+2. **Choix** — faire choisir deux ou trois cadres par un humain, **dans le
+   navigateur** : `dev/fiches/page_choix.py` fabrique une page (cadres brut /
+   vérité terrain, ordre des clics = ordre de la fiche, le premier retenu devient
+   l'icône de la carte d'entité) publiée comme artefact avec la capacité `db`.
+3. **Cadrage** — sur la même page, poser la fenêtre `vignettes[].cadrage` sur
+   chaque cadre retenu, avec l'aperçu de l'icône à sa taille réelle. Une
+   vignette couvre 324 m : sans recadrage l'icône 44 px est illisible. Le choix
+   est relu dans la base de l'artefact (`choix/<classe>`),
+   `dev/fiches/appliquer_choix.py` copie les cadres dans `vignettes/` et
+   `dev/fiches/injecter_cadrages.py` écrit la clé et rend une planche de
+   contrôle des icônes à leur taille réelle.
+4. **Rédaction, puis vérification adverse** — rédiger `resume`, `reconnaitre`,
+   `usage`, `hors_cible` et `entrainement` **sur les sources primaires**
+   (les `_annotations.coco.json` recomptés, `metriques_eval.json`, et les documents
+   de `raw/docs/` de la zone sur le Drive — rapports, articles — pour la nature et la
+   méthode de l'annotation : la fiche cratère du 2026-09-14 les avait ignorés et disait
+   « abris non annotés » alors que la couche source les contient), puis faire
+   **rejouer chaque chiffre** par un second passage dont le mandat est de
+   prendre le texte en défaut. Ce n'est pas du zèle : sur la première campagne,
+   6 écarts bloquants sur 22 étaient des statistiques inventées puis
+   auto-attestées comme recomptées (`parcellaire` annonçait 4 361 tuiles
+   porteuses pour 6 068 réelles). Les effectifs de `zones` et `splits`, eux,
+   étaient exacts partout.
+
+Règles de contenu, apprises à l'usage :
+
+- `reconnaitre` = **une phrase courte**, sur le modèle « Sur le Local Dominance à
+  0,5 m, le cratère se lit comme une tache sombre, ronde ou légèrement ovale, le plus
+  souvent de 2 à 5 m » : support (indice + résolution), aspect, taille courante en
+  fourchette simple et arrondie — pas de percentile, la précision statistique va dans
+  `known_limitations` ; rien d'autre (décision 2026-09-16 : le paragraphe de la fiche
+  cratère était trop long ; contexte, répartition, coalescence, états de conservation
+  et classes englobées vont dans `usage`, `hors_cible`, `entrainement.annotation` ou
+  `known_limitations`, ou se coupent) ;
+- `usage` cite le rendement **au seuil de confiance déployé** (c'est le libellé de
+  l'interface, « Seuil de confiance déployé », 2026-09-15), par zone, et dit franchement
+  quand une classe est faible plutôt que de la vendre ; si l'annotation de référence
+  n'est pas exhaustive, le dire là, dans `entrainement.annotation` et dans
+  `known_limitations` : la précision mesurée est alors un plancher ;
+- `usage`, `entrainement.corpus` et `entrainement.annotation` : des listes de puces
+  courtes (une idée par puce), lisibles par un archéologue — pas de hash de commit,
+  pas de chemin de config ni d'outil (la traçabilité vit dans le run et `manifests/`) ;
+- `entrainement.annotation` **crédite** toute vérité terrain qui n'est pas la nôtre :
+  organisme fournisseur + année, et la publication de la méthode quand elle existe
+  (« couche de référence fournie par Sorbonne Université (2025), issue d'une détection
+  semi-automatique publiée par de Matos-Machado et al., 2019 » ; « relevés LiDAR de
+  l'ONF, Rambouillet 2024 »). Un crédit n'est pas du dispositif interne : il dit au
+  lecteur ce qui fait autorité ;
+- **rien d'invérifiable** dans un texte affiché : chaque énoncé, même qualitatif, se
+  rattache à une source rejouable (COCO, banc, document de la zone, manifeste) ou à une
+  vignette de la fiche. Le constat visuel de l'auteur sur un cadre écarté n'en est pas
+  une (leçon 2026-09-16, fiche cratère : « sous labour, la cuvette s'efface en tache
+  floue dans les rayures de charrue » ne tient qu'à deux cadres candidats absents de la
+  fiche) — sourcer, montrer le cadre, ou couper ;
+- `hors_cible` nomme les classes voisines du **même modèle** et les exclusions
+  volontaires du corpus — c'est la question la plus posée ;
+- une classe **linéaire** se juge au critère `couverture`, pas en IoU 1-1 : le
+  bloc `fiabilite` doit alors porter la clé `source:` pointant
+  `entrainement/evaluation_couverture/metriques_eval.json`. Sans elle le
+  validateur re-dérive du mauvais fichier et signale un écart fantôme
+  (constaté sur `tranchees_seg_ld_v1`).
+
+Enfin, `data/models/**` est **gitignoré** : une fiche écrite ici n'est pas
+versionnée et le prochain ré-export du modèle l'effacerait. La reporter dans
+`runs/training/<RUN_ID>/package/model_card.yaml` de l'archive
+(`dev/fiches/reporter_sur_drive.py`), qui est la copie dont repartira l'export.
 
 ## Code consommateur (référence)
 

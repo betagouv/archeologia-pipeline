@@ -121,6 +121,7 @@ class TestProductsUnavailableInMode:
 
     def test_rvt_products_stay_available_in_existing_mnt(self):
         # Les indices RVT se calculent depuis le MNT existant — pas purgés.
+        assert len(rvt_keys()) >= 9, "anti-test-creux : plus aucun indice RVT à vérifier"
         for k in rvt_keys():
             assert k not in products_unavailable_in_mode("existing_mnt")
 

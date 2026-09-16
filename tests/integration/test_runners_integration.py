@@ -1,12 +1,10 @@
 from __future__ import annotations
 
-import threading
+import inspect
 from pathlib import Path
 
 import pytest
 
-from app.cancel_token import CancelToken
-from app.progress_reporter import NullProgressReporter
 from app.run_context import build_run_context
 from app.runners.registry import get_runner
 from app.runners.ign_local_runner import IgnOrLocalRunner
@@ -15,20 +13,31 @@ from app.runners.existing_rvt_runner import ExistingRvtRunner
 
 
 class TestRunnersIntegration:
-    def test_ign_local_runner_initializes(self):
-        runner = IgnOrLocalRunner()
-        assert runner is not None
-        assert hasattr(runner, "run")
+    """⚠ Les trois premiers tests de ce fichier étaient
+    ``assert runner is not None`` et ``hasattr(runner, "run")`` : un
+    constructeur Python ne rend jamais None et la méthode est écrite dans le
+    même dépôt. Ils ne pouvaient pas échouer (audit 2026-09-16). Ce qui compte
+    vraiment est que les quatre runners honorent le MÊME contrat d'appel — c'est
+    ce que le contrôleur suppose quand il délègue sans savoir lequel il tient.
+    """
 
-    def test_existing_mnt_runner_initializes(self):
-        runner = ExistingMntRunner()
-        assert runner is not None
-        assert hasattr(runner, "run")
+    @pytest.mark.parametrize(
+        "classe", [IgnOrLocalRunner, ExistingMntRunner, ExistingRvtRunner]
+    )
+    def test_chaque_runner_honore_le_contrat_d_appel(self, classe):
+        """``run(ctx=…, reporter=…, cancel=…, slog=…)``, en mots-clés.
 
-    def test_existing_rvt_runner_initializes(self):
-        runner = ExistingRvtRunner()
-        assert runner is not None
-        assert hasattr(runner, "run")
+        Le contrôleur appelle TOUJOURS par mot-clé (pipeline_controller.py) : un
+        runner qui renommerait un paramètre planterait à l'exécution, dans QGIS,
+        sur le seul mode concerné — donc potentiellement longtemps après.
+        """
+        params = inspect.signature(classe().run).parameters
+        for requis in ("ctx", "reporter", "cancel"):
+            assert requis in params, f"{classe.__name__}.run sans paramètre {requis}"
+        # ``slog`` est passé par le contrôleur : optionnel, mais accepté.
+        assert "slog" in params or any(
+            p.kind is inspect.Parameter.VAR_KEYWORD for p in params.values()
+        ), f"{classe.__name__}.run refuserait le slog du contrôleur"
 
     def test_registry_returns_correct_runner_types(self):
         assert isinstance(get_runner("ign_laz"), IgnOrLocalRunner)

@@ -16,13 +16,6 @@
       "morphology": "lineaire"
     },
     {
-      "id": "abri",
-      "label": "Abris",
-      "description": "Abris et sapes militaires.",
-      "display_order": 30,
-      "morphology": "circulaire"
-    },
-    {
       "id": "chemin_creux",
       "label": "Chemins creux",
       "description": "Voies en creux / chemins anciens encaissés.",
@@ -41,20 +34,6 @@
       "label": "Talus et fossés",
       "description": "Talus et fossés linéaires.",
       "display_order": 60,
-      "morphology": "lineaire"
-    },
-    {
-      "id": "talus",
-      "label": "Talus",
-      "description": "Talus seuls (relief linéaire positif, sans fossé associé visible).",
-      "display_order": 62,
-      "morphology": "lineaire"
-    },
-    {
-      "id": "fosse",
-      "label": "Fossés",
-      "description": "Fossés seuls (relief linéaire négatif, sans talus associé visible).",
-      "display_order": 64,
       "morphology": "lineaire"
     },
     {

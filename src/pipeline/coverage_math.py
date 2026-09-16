@@ -1,10 +1,26 @@
 """Calcul du pourcentage de couverture locale des points sol (produit COUVERTURE).
 
 Module **pur numpy** (aucun import QGIS/GDAL/rasterio) : testable standalone.
-Transposition native du bloc « Coverage » de PCSAPS.sh (GRASS ``r.neighbors -c
-size=5``) : pour chaque cellule, % de cellules contenant au moins un point dans
-un disque de 5 cellules de diamètre, normalisé par le nombre réel de cellules
-de la fenêtre (corrige le biais de bord du ``*100/13`` fixe du script).
+
+**Origine de la méthode.** Elle est publiée par Le Jeune, Dardignac & David
+(2017), « Bercé avant la forêt. Premiers résultats des traitements
+cartographiques et prospections lidar sur la forêt de Bercé (Sarthe) », *Revue
+forestière française* LXIX-4-5, p. 519-543, doi 10.4267/2042/67877 (HAL
+hal-03447369) : « la couverture lidar est ici définie par un pourcentage de
+cellules raster documentée par au moins un point de mesure lidar au sol […] par
+l'usage d'une fenêtre flottante circulaire de cinq cellules de diamètre », et
+leurs cartes distinguent la « couverture lidar faible (< 30 %) » — d'où le seuil
+par défaut du plugin. L'original tourne sous GRASS GIS.
+
+Le code transpose nativement le bloc « Coverage » de ``PCSAPS.sh`` (Y. Le Jeune,
+GRASS ``r.neighbors -c size=5``), script non publié dont le sigle n'a pas pu
+être élucidé (recherche du 2026-09-16 : aucune occurrence, ni en ligne ni dans
+les rapports disponibles — ne pas le développer au hasard). La citation
+ci-dessus est la source à donner.
+
+Pour chaque cellule : % de cellules contenant au moins un point dans un disque
+de 5 cellules de diamètre, normalisé par le nombre réel de cellules de la
+fenêtre — ce qui corrige le biais de bord du ``*100/13`` fixe du script.
 """
 from __future__ import annotations
 

@@ -169,10 +169,18 @@ class TestScores:
         assert dets[0]["discordance_deg"] < 5.0
 
     def test_confidence_is_mean_of_members(self):
-        frags = [_frag(a, b, 0.0, conf=(0.2 if i % 2 else 0.6))
-                 for i, (a, b) in enumerate(STRAND)]
+        """La MOYENNE, pas « quelque part entre les deux ».
+
+        ``0.2 < conf < 0.6`` était vrai pour la médiane, la moyenne pondérée ou
+        n'importe quelle agrégation intermédiaire : le nom du test promettait
+        plus que son assertion (audit 2026-09-16).
+        """
+        confs = [0.2 if i % 2 else 0.6 for i, _ in enumerate(STRAND)]
+        frags = [_frag(a, b, 0.0, conf=c) for (a, b), c in zip(STRAND, confs)]
         out, _ = _run(frags)
-        assert 0.2 < out["axe_lineaire"][0]["confidence"] < 0.6
+        assert out["axe_lineaire"], "aucun axe produit : rien à vérifier"
+        attendu = sum(confs) / len(confs)
+        assert out["axe_lineaire"][0]["confidence"] == pytest.approx(attendu, abs=1e-6)
 
     def test_far_fragment_not_tagged(self):
         far = _frag(5000, 5150, 5000.0)

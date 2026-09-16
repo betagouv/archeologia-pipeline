@@ -309,7 +309,16 @@ class TestHullGenerator:
         # BRUTE : un C coupé en deux arcs ne redonne jamais la cour complète.
         frags = _rect_fragments(0, 0, 40, 40, gaps=[(0, 0, 40), (2, 15, 10)])
         out, _ = _run(frags, _hcfg(min_closure=0.3))
-        assert all(d["surface_m2"] < 800 for d in out.get("enclos", []))
+        produits = out.get("enclos", [])
+        # ⚠ ``all()`` sur une liste VIDE est vrai : sans cette distinction, le
+        # test passait aussi bien quand le hull ne produisait rien du tout que
+        # quand il produisait la bonne chose (audit 2026-09-16). Les deux issues
+        # sont acceptables ici — aucun enclos, ou des enclos petits — mais un
+        # hull GÉANT, lui, doit échouer, et c'est le seul cas qu'on veut voir.
+        geants = [d["surface_m2"] for d in produits if d["surface_m2"] >= 800]
+        assert not geants, (
+            f"le hull a soudé des composantes sans rapport : surfaces {geants}"
+        )
 
     def test_network_span_guard(self):
         # deux lanières kilométriques reliées : composante > 400 m → aucune

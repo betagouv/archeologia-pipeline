@@ -35,6 +35,7 @@ class TestModeInfo:
         assert mode_info("nope").mode == "ign_laz"
 
     def test_each_mode_has_labels_and_description(self):
+        assert len(ordered_modes()) >= 4, "anti-test-creux : plus aucun mode à vérifier"
         for mode in ordered_modes():
             info = mode_info(mode)
             assert info.source_label
@@ -78,6 +79,7 @@ class TestPipelineStages:
         assert last.id == 5
 
     def test_every_stage_has_icon_and_label(self):
+        assert len(pipeline_stages()) >= 3, "anti-test-creux : plus aucune étape à vérifier"
         for s in pipeline_stages():
             assert s.icon
             assert s.label

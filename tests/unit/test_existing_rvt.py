@@ -1,9 +1,7 @@
 from __future__ import annotations
 
-import tempfile
 from pathlib import Path
 
-import pytest
 
 from pipeline.modes.existing_rvt import _classify_rvt_layout, _cleanup_orphans
 

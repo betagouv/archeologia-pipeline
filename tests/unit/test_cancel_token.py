@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import threading
 
-import pytest
 
 from app.cancel_token import CancelToken
 

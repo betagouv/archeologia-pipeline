@@ -6,7 +6,7 @@ import pytest
 pytest.importorskip("shapely")
 PIL_Image = pytest.importorskip("PIL.Image")
 
-from pipeline.cv.conversion_shp import _tile_extent_polygon_from_jpg
+from pipeline.cv.conversion_shp import _tile_extent_polygon_from_jpg  # noqa: E402 (après importorskip : la dépendance est optionnelle)
 
 
 def _make_png_with_world(tmp_path, name, ext, *, px=0.5, x0=700000.0, y0=6600000.0,

@@ -124,6 +124,14 @@ class TestOutputContract:
         # lui donne une géométrie auto-intersectée — cas réel rencontré
         # avec des masques de segmentation bruyants.
         bowtie = Polygon([(0, 0), (10, 10), (10, 0), (0, 10)])
-        # Soit fusion réussie, soit None — pas d'exception.
         result = buffer_union_debuffer([bowtie], 0.5)
-        assert result is None or isinstance(result, list)
+        # ⚠ « None ou list » est vrai par construction de la signature : cela
+        # ne testait rien (audit 2026-09-16). Ce qui compte pour l'appelant,
+        # c'est que le nœud auto-intersecté soit RÉSOLU — une géométrie valide
+        # en sortie — ou que la fonction rende None pour qu'il garde ses
+        # originaux. Le cas interdit est une sortie invalide.
+        assert result is None or all(g.is_valid for g in result), (
+            "géométrie invalide rendue : l'appelant la propagerait au GeoPackage"
+        )
+        if result:
+            assert all(not g.is_empty for g in result)

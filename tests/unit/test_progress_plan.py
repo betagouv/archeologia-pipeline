@@ -54,6 +54,7 @@ class TestBuildProgressPlan:
     def test_bands_contiguous_and_monotone(self, mode, cv):
         plan = build_progress_plan(mode, cv_enabled=cv)
         bands = _bands_in_order(plan)
+        assert len(bands) >= 2, "anti-test-creux : aucune bande à comparer"
         for lo, hi in bands:
             assert lo <= hi, f"bande non croissante: ({lo},{hi})"
         for (a_lo, a_hi), (b_lo, b_hi) in zip(bands, bands[1:]):

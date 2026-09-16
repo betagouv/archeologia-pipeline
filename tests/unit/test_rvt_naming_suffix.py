@@ -4,6 +4,7 @@ from pathlib import Path
 
 from pipeline.coords import extract_xy_from_tile_name
 from pipeline.ign.products.rvt_naming import (
+    PRODUCT_ORDER,
     get_rvt_folder_name,
     get_rvt_param_suffix,
     get_rvt_source_and_dest_filenames,
@@ -16,8 +17,10 @@ X, Y = "0624", "6864"
 LD_PARAMS = {"ldo": {"angular_res": 15, "min_radius": 10, "max_radius": 20,
                      "observer_h": 1.7, "ve_factor": 1}}
 HS_PARAMS = {"hs": {"sun_azimuth": 315, "sun_elevation": 35, "ve_factor": 1}}
-ALL_PRODUCTS = ["MNT", "DENSITE", "HS", "M_HS", "SVF", "SLO", "LD", "SLRM", "VAT",
-                "MSTP", "CVAT"]
+# La SOURCE des produits, pas une copie : la liste écrite à la main ici avait
+# dérivé et omettait COUVERTURE, qui n'était donc vérifiée par aucun test de
+# nommage (constat 2026-09-16).
+ALL_PRODUCTS = list(PRODUCT_ORDER)
 
 
 def _dest(product, params=None, **kw):
@@ -90,9 +93,35 @@ class TestRvtFolderName:
         assert get_rvt_folder_name("HS", HS_PARAMS) == "HS_Az315_E35_V1"
 
     def test_folder_equals_product_plus_suffix(self):
-        for product in ALL_PRODUCTS:
-            assert get_rvt_folder_name(product, LD_PARAMS) == \
-                product + get_rvt_param_suffix(product, LD_PARAMS)
+        """La composition, vérifiée sur des noms ÉCRITS EN TOUTES LETTRES.
+
+        Réutiliser ``get_rvt_param_suffix`` pour construire l'attendu revenait à
+        comparer la fonction à elle-même : le test passait quel que soit le
+        suffixe produit (audit 2026-09-16). On fige donc les noms réellement
+        attendus pour les paramètres par défaut.
+        """
+        attendus = {
+            "MNT": "MNT",
+            "DENSITE": "DENSITE",
+            "COUVERTURE": "COUVERTURE",
+            "CVAT": "CVAT",
+            "LD": "LD_A15_Rmin10_Rmax20_H1p7_V1",
+            "SVF": "SVF_R10_D16_V1_N0",
+            "HS": "HS_Az315_E35_V1",
+            "M_HS": "M_HS_D16_E35_V1",
+            "SLO": "SLO_U0_V1",
+            "SLRM": "SLRM_R20_V1",
+            "VAT": "VAT_T0_B0",
+            "MSTP": "MSTP_L3-21_M23-203_B223-2023_Li1p2",
+        }
+        for product, attendu in attendus.items():
+            assert get_rvt_folder_name(product, {}) == attendu, product
+        # Les douze produits sont figés ci-dessus : cette garde fait échouer le
+        # test si l'un d'eux cesse d'être couvert par le dictionnaire.
+        assert len(ALL_PRODUCTS) >= 12, "anti-test-creux : plus aucun produit à vérifier"
+        assert set(ALL_PRODUCTS) <= set(attendus), (
+            f"produits sans nom figé : {sorted(set(ALL_PRODUCTS) - set(attendus))}"
+        )
 
     def test_distinct_params_give_distinct_folders(self):
         svf_r10 = get_rvt_folder_name("SVF", {"svf": {"radius": 10}})

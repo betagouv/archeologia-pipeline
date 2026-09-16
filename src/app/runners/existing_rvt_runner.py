@@ -200,6 +200,20 @@ class ExistingRvtRunner:
                 slog=slog,
                 start_time=start_time,
                 tiles_processed=total_images,
+                # Sans ce total, ``finalize_service`` retombe sur
+                # ``tiles_processed`` : 0 traité donne 0/0, ``bool(total)`` est
+                # faux, et la garde « 0 sur N » se désarme — tous les runs CV en
+                # échec repartaient en succès (audit 2026-09-16, même famille que
+                # le correctif ROB-02/03/04 qui avait oublié ce runner).
+                #
+                # ⚠ Le total doit rester dans la MÊME unité que
+                # ``tiles_processed``, qui compte des IMAGES : ``structured_logger``
+                # imprime « Dalles traitées : traité/total » et un total en runs CV
+                # donnait « 4/2 ». D'où ``total_images`` dès qu'un run a abouti.
+                # Le repli sur le nombre de runs ne sert qu'au cas où RIEN n'a
+                # abouti — il faut alors un total non nul pour armer la garde, et
+                # le numérateur y vaut 0 de toute façon.
+                tiles_total=total_images or len(run_configs),
                 active_products=active_rvts,
                 extra_label="Images traitées",
                 ui_config=ctx.ui_config,

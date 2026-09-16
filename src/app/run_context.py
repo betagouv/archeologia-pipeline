@@ -131,8 +131,14 @@ class ProcessingConfig:
     """Paramètres de traitement (résolutions, parallélisme, formats)."""
 
     products: ProductsConfig = field(default_factory=ProductsConfig)
-    max_workers: int = 4
-    tile_overlap: float = 5.0
+    # ⚠ Ces défauts DOIVENT valoir ceux de ``config.config_manager.default_config``
+    # (verrouillé par tests/unit/test_defauts_cv_unifies.py). Ils divergeaient :
+    # tile_overlap 5 contre 20 et max_workers 4 contre 3, si bien qu'une config
+    # sans ces clés — config partagée, config.json édité à la main — calculait
+    # avec une marge de tuilage de 50 m au lieu de 200 m, donc des coutures RVT
+    # et un diagnostic de contexte faussé (audit 2026-09-16).
+    max_workers: int = 3
+    tile_overlap: float = 20.0
     mnt_resolution: float = 0.5
     density_resolution: float = 1.0
     coverage_threshold_percent: float = 30.0
@@ -338,11 +344,11 @@ def _build_processing_config(processing_dict: Dict[str, Any]) -> ProcessingConfi
     return ProcessingConfig(
         products=_build_products_config(products_dict),
         # max_workers >= 1 : 0 ferait planter ThreadPoolExecutor.
-        max_workers=_coerce_int_min(processing_dict.get("max_workers", 4), 4, min_value=1),
+        max_workers=_coerce_int_min(processing_dict.get("max_workers", 3), 3, min_value=1),
         # tile_overlap >= 0 : négatif inverserait les bounds spatiales.
         # On accepte 0 (warning émis par validate_run_context).
         tile_overlap=_coerce_positive_float(
-            processing_dict.get("tile_overlap", 5), 5.0, exclusive=False
+            processing_dict.get("tile_overlap", 20), 20.0, exclusive=False
         ),
         # Résolutions PDAL : doivent être > 0 (pas de raster à RESOLUTION=0).
         mnt_resolution=_coerce_positive_float(processing_dict.get("mnt_resolution", 0.5), 0.5),
@@ -357,10 +363,13 @@ def _build_processing_config(processing_dict: Dict[str, Any]) -> ProcessingConfi
 def _normalize_cv_run(run_dict: Dict[str, Any]) -> Dict[str, Any]:
     """Coerce les paramètres numériques d'un run CV vers des plages saines.
 
-    Modifie une COPIE du dict — on garde l'original intact pour ne pas
-    perturber les call-sites qui consomment encore ``cv.raw["runs"]``.
-    Les autres clés (``model``, ``target_rvt``, ``selected_classes``…)
-    sont préservées tel quel.
+    Modifie une COPIE du dict. Les autres clés (``model``, ``target_rvt``,
+    ``selected_classes``…) sont préservées telles quelles.
+
+    ⚠ Le résultat est posé DANS ``cv.raw["runs"]`` par :func:`_build_cv_config` :
+    c'est ce dict-là que lisent le préflight, les trois runners et le
+    post-traitement. Garder l'original « intact » à cet endroit revenait à ne
+    borner que la copie que personne n'exécute (audit 2026-09-16).
     """
     out = dict(run_dict)
     if "confidence_threshold" in out:
@@ -397,14 +406,18 @@ def _build_cv_config(cv_dict: Dict[str, Any]) -> CvConfig:
         runs = []
     typed_runs = [_normalize_cv_run(r) for r in runs if isinstance(r, dict)]
 
-    # Aussi normaliser les seuils globaux dans cv.raw, pour les
-    # consommateurs qui lisent encore le dict brut (ex. external_runner,
-    # conversion_shp).
+    # Normaliser AUSSI cv.raw : c'est le dict que consomment réellement le
+    # préflight (pipeline_controller), les trois runners et cv_post_service.
+    # ``dict(cv_dict)`` est une copie de SURFACE — sans la ligne sur "runs",
+    # les runs restaient ceux d'origine, non bornés, et un seuil négatif ou un
+    # IoU à 5 partait tel quel à l'inférence (audit 2026-09-16).
     raw = dict(cv_dict)
     if "confidence_threshold" in raw:
         raw["confidence_threshold"] = _coerce_unit_interval(raw["confidence_threshold"], 0.3)
     if "iou_threshold" in raw:
         raw["iou_threshold"] = _coerce_unit_interval(raw["iou_threshold"], 0.5)
+    if isinstance(cv_dict.get("runs"), list):
+        raw["runs"] = typed_runs
 
     return CvConfig(
         enabled=bool(cv_dict.get("enabled", False)),

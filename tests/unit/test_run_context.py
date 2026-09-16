@@ -512,20 +512,21 @@ class TestBuildRunContextDegenerate:
         assert ctx.processing.density_resolution == 1.0
 
     def test_max_workers_zero_falls_back(self):
-        # max_workers=0 ferait planter ThreadPoolExecutor
+        # max_workers=0 ferait planter ThreadPoolExecutor. Le repli vaut celui
+        # de config_manager.default_config (cf. test_defauts_cv_unifies).
         config = {"processing": {"max_workers": 0}}
         ctx = build_run_context(config)
-        assert ctx.processing.max_workers == 4
+        assert ctx.processing.max_workers == 3
 
     def test_max_workers_negative_falls_back(self):
         config = {"processing": {"max_workers": -2}}
         ctx = build_run_context(config)
-        assert ctx.processing.max_workers == 4
+        assert ctx.processing.max_workers == 3
 
     def test_tile_overlap_negative_falls_back(self):
         config = {"processing": {"tile_overlap": -10}}
         ctx = build_run_context(config)
-        assert ctx.processing.tile_overlap == 5.0
+        assert ctx.processing.tile_overlap == 20.0
 
     def test_tile_overlap_zero_accepted(self):
         # 0 est valide (= pas de marge), juste warned par
@@ -533,6 +534,45 @@ class TestBuildRunContextDegenerate:
         config = {"processing": {"tile_overlap": 0}}
         ctx = build_run_context(config)
         assert ctx.processing.tile_overlap == 0.0
+
+    def test_coercitions_atteignent_le_dict_consomme(self):
+        """Les runs bornés doivent l'être DANS ``cv.raw``.
+
+        ``cv.raw`` est le dict que lisent le préflight (pipeline_controller),
+        les trois runners et cv_post_service. ``dict(cv_dict)`` étant une copie
+        de surface, ``raw["runs"]`` restait la liste d'origine : les bornes
+        n'existaient que sur ``cv.runs``, que le pipeline n'exécute pas
+        (audit 2026-09-16).
+        """
+        ctx = build_run_context({"computer_vision": {"enabled": True, "runs": [
+            {"model": "X", "confidence_threshold": -1,
+             "iou_threshold": 5, "min_area_m2": -3},
+        ]}})
+        brut = ctx.cv.raw["runs"][0]
+        assert brut["confidence_threshold"] == 0.0
+        assert brut["iou_threshold"] == 1.0
+        assert brut["min_area_m2"] == 0.0
+        # Et les deux vues restent cohérentes entre elles.
+        assert brut == ctx.cv.runs[0]
+
+    def test_coercitions_preservent_les_cles_non_numeriques(self):
+        """Borner ne doit rien perdre : le modèle, l'indice et les classes
+        sélectionnées voyagent dans le même dict que les seuils."""
+        ctx = build_run_context({"computer_vision": {"enabled": True, "runs": [
+            {"model": "X", "target_rvt": "LD", "selected_classes": ["a"],
+             "confidence_threshold": 9},
+        ]}})
+        brut = ctx.cv.raw["runs"][0]
+        assert brut["model"] == "X"
+        assert brut["target_rvt"] == "LD"
+        assert brut["selected_classes"] == ["a"]
+        assert brut["confidence_threshold"] == 1.0
+
+    def test_cv_sans_runs_ne_fabrique_pas_la_cle(self):
+        """Une config sans ``runs`` ne doit pas se voir inventer une liste vide :
+        des consommateurs distinguent « pas de clé » de « aucun run »."""
+        ctx = build_run_context({"computer_vision": {"enabled": True}})
+        assert "runs" not in ctx.cv.raw
 
     def test_cv_run_confidence_threshold_clipped(self):
         config = {

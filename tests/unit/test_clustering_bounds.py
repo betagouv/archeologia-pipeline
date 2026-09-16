@@ -110,3 +110,34 @@ class TestParse05SlugDeRepli:
         assert "/" not in gpkg.replace(str(tmp_path), "")
         for ch in ':*?"<>|':
             assert ch not in gpkg.replace(str(tmp_path), "")
+
+
+class TestFiltresDeZone:
+    """min_conf_p90 / max_elong_med : bornés comme les autres clés, jamais inventés."""
+
+    def test_bornes(self):
+        rule = sanitize_clustering_rule({"min_conf_p90": 1.7, "max_elong_med": 0.2})
+        assert rule["min_conf_p90"] == 1.0
+        assert rule["max_elong_med"] == 1.0
+
+    def test_surcharge_ui_acceptee(self):
+        assert sanitize_clustering_overrides({"min_conf_p90": "0.6"}) == {"min_conf_p90": 0.6}
+
+    def test_absents_du_yaml_restent_absents(self, tmp_path):
+        (tmp_path / "args.yaml").write_text(
+            "clustering:\n  - target_classes: [c]\n    output_class_name: z\n", encoding="utf-8")
+        cfg = load_clustering_config_from_model(tmp_path)[0]
+        assert "min_conf_p90" not in cfg and "max_elong_med" not in cfg
+        rule = _parse_clustering({"clustering": [{"target_classes": ["c"], "output_class_name": "z"}]})[0]
+        assert rule.min_conf_p90 is None and "min_conf_p90" not in rule.to_dict()
+
+    def test_presents_dans_le_yaml_traverses(self, tmp_path):
+        (tmp_path / "args.yaml").write_text(
+            "clustering:\n  - target_classes: [c]\n    output_class_name: z\n"
+            "    min_conf_p90: 0.6\n    max_elong_med: 1.32\n", encoding="utf-8")
+        cfg = load_clustering_config_from_model(tmp_path)[0]
+        assert cfg["min_conf_p90"] == 0.6 and cfg["max_elong_med"] == 1.32
+        rule = _parse_clustering({"clustering": [{"target_classes": ["c"], "output_class_name": "z",
+                                                  "min_conf_p90": 0.6, "max_elong_med": 1.32}]})[0]
+        assert rule.to_dict()["min_conf_p90"] == 0.6 and rule.to_dict()["max_elong_med"] == 1.32
+

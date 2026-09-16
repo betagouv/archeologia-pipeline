@@ -31,6 +31,8 @@ NUMERIC_BOUNDS: Dict[str, tuple] = {
     "min_area_m2": (0.0, None, False),
     "concave_ratio": (0.0, 1.0, False),
     "confidence_weight": (0.0, None, False),
+    "min_conf_p90": (0.0, 1.0, False),      # filtre de zone : 90e centile de confiance
+    "max_elong_med": (1.0, None, False),    # filtre de zone : allongement médian des boîtes
 }
 
 ALLOWED_GEOMETRIES = ("convex_hull", "concave_hull", "bounding_box")

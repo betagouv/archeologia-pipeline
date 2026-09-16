@@ -157,12 +157,21 @@ class TestRobustesse:
         assert r.errors == []
 
 
-@pytest.mark.parametrize("bloc", ["resume", "usage"])
+@pytest.mark.parametrize("bloc", ["resume", "reconnaitre"])
 def test_texte_non_scalaire_refuse(tmp_path, bloc):
     f = _fiche_complete(tmp_path)
     f[bloc] = ["une", "liste"]
     r = _run(_card(f), tmp_path)
     assert any(bloc in e for e in r.errors)
+
+
+def test_usage_en_liste_accepte_mais_pas_de_nombres(tmp_path):
+    """``usage`` : texte ou liste de puces (2026-09-15), jamais autre chose."""
+    f = _fiche_complete(tmp_path)
+    f["usage"] = ["Cartographier un champ de bataille.", "Rendement : 66 % de vrais."]
+    assert not any("usage" in e for e in _run(_card(f), tmp_path).errors)
+    f["usage"] = [1, 2]
+    assert any("usage" in e for e in _run(_card(f), tmp_path).errors)
 
 
 class TestCadrageVignette:
@@ -208,3 +217,36 @@ class TestCadrageVignette:
     def test_cadrage_non_mapping_refuse(self, tmp_path):
         r = self._avec(tmp_path, [0.1, 0.1, 0.4])
         assert any("mapping" in e for e in r.errors)
+
+
+class TestCibleDerivee:
+    """``derived_targets[].fiche`` obéit au même contrat que ``classes[].fiche``,
+    sans le contrôle d'appartenance à classes.txt (une sortie de clustering
+    n'y figure jamais)."""
+
+    def _card(self, fiche=None, **extra):
+        dt = {"output_class": "zone_crateres", "entity": "regroupement_crateres", **extra}
+        if fiche is not None:
+            dt["fiche"] = fiche
+        return {"classes": [{"id": 0, "name": "depression_circulaire_grande", "label_fr": "D",
+                             "fiche": {"resume": "x"}}],
+                "derived_targets": [dt]}
+
+    def test_fiche_complete_ne_produit_pas_d_erreur(self, tmp_path):
+        r = _run(self._card(_fiche_complete(tmp_path)), tmp_path)
+        assert r.errors == []
+        assert not any("zone_crateres" in w and "pas de bloc" in w for w in r.warnings)
+
+    def test_absence_de_fiche_est_un_warning_de_suivi(self, tmp_path):
+        r = _run(self._card(), tmp_path)
+        assert r.errors == []
+        assert any("derived_targets['zone_crateres'] : pas de bloc 'fiche'" in w for w in r.warnings)
+
+    def test_vignette_absente_est_une_erreur(self, tmp_path):
+        r = _run(self._card({"vignettes": [{"brut": "vignettes/absente.jpg"}]}), tmp_path)
+        assert any("zone_crateres" in e and "absente.jpg" in e for e in r.errors)
+
+    def test_la_cible_derivee_n_est_pas_exigee_dans_classes_txt(self, tmp_path):
+        r = _run(self._card(_fiche_complete(tmp_path)), tmp_path)
+        assert not any("classes.txt" in e for e in r.errors)
+

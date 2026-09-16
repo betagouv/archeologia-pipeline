@@ -115,7 +115,7 @@ def main():
         )
         trouve = any(
             v.get("brut") == e["vignette"] and v.get("cadrage")
-            for cl in card.get("classes", [])
+            for cl in (card.get("classes") or []) + (card.get("derived_targets") or [])
             for v in ((cl.get("fiche") or {}).get("vignettes") or [])
         )
         if not trouve:

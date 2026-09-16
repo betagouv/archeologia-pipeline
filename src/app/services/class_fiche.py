@@ -17,7 +17,7 @@ fois à l'évaluation ::
         fiche:
           resume: Mardelles, dolines et cuvettes de 14 m et plus.
           reconnaitre: Cuvette sombre à contour net, souvent en grappe.
-          usage: Plateaux et massifs forestiers, LD 0,5 m.
+          usage: Plateaux et massifs forestiers, LD 0,5 m.   # texte, ou liste de puces
           hors_cible:
             - Dépressions de moins de 14 m
           vignettes:
@@ -26,7 +26,7 @@ fois à l'évaluation ::
               zone: Chailluz (25)
               legende: 15 cuvettes sur une dalle de test
           entrainement:
-            corpus: depressions_grandes_648_v1
+            corpus: depressions_grandes_648_v1      # texte, ou liste de puces
             annotation: masques SAM 2.1 sur boîtes revues à la main
             zones:
               - {nom: Fénétrange (57), tuiles: 620, objets: 1834}
@@ -88,9 +88,15 @@ class Effectif:
 
 @dataclass(frozen=True)
 class Entrainement:
-    """Où, en quelle quantité et comment la classe a été apprise."""
-    corpus: str = ""
-    annotation: str = ""
+    """Où, en quelle quantité et comment la classe a été apprise.
+
+    ``corpus`` et ``annotation`` sont des listes de phrases : le ``model_card``
+    porte soit un texte (forme d'origine, une seule phrase), soit une liste de
+    puces courtes lisibles par un archéologue (décision 2026-09-15, fiche
+    cratère : le pavé était illisible). L'UI rend une puce par élément.
+    """
+    corpus: Tuple[str, ...] = ()
+    annotation: Tuple[str, ...] = ()
     zones: Tuple[Effectif, ...] = ()
     splits: Tuple[Effectif, ...] = ()
 
@@ -117,7 +123,7 @@ class ClassFiche:
     modele: str              # display_name du modèle
     resume: str = ""
     reconnaitre: str = ""
-    usage: str = ""
+    usage: Tuple[str, ...] = ()   # texte (un élément) ou liste de puces (2026-09-15)
     hors_cible: Tuple[str, ...] = ()
     vignettes: Tuple[Vignette, ...] = ()
     entrainement: Optional[Entrainement] = None
@@ -193,8 +199,11 @@ def _dict(v: Any) -> Mapping[str, Any]:
 # ----------------------------------------------------------------------
 # Sous-blocs
 # ----------------------------------------------------------------------
-def _cadrage(raw: Any) -> Optional[Tuple[float, float, float]]:
+def cadrage_fractions(raw: Any) -> Optional[Tuple[float, float, float]]:
     """``{x, y, cote}`` → fenêtre carrée ramenée DANS l'image.
+
+    PUBLIQUE parce que partagée : la fiche d'un indice (``indice_fiche``)
+    pose la même fenêtre d'icône sur ses vignettes, avec le même contrat.
 
     Une fenêtre qui déborde est recadrée plutôt qu'écartée : mieux vaut une
     icône légèrement décalée qu'une icône silencieusement non recadrée. Un
@@ -231,7 +240,7 @@ def _vignettes(raw: Any) -> Tuple[Vignette, ...]:
             annote=_txt(d.get("annote")),
             zone=_txt(d.get("zone")),
             legende=_txt(d.get("legende")),
-            cadrage=_cadrage(d.get("cadrage")),
+            cadrage=cadrage_fractions(d.get("cadrage")),
         ))
     return tuple(out)
 
@@ -269,8 +278,8 @@ def _entrainement(raw: Any) -> Optional[Entrainement]:
     if not d:
         return None
     ent = Entrainement(
-        corpus=_txt(d.get("corpus")),
-        annotation=_txt(d.get("annotation")),
+        corpus=_liste_txt(d.get("corpus")),
+        annotation=_liste_txt(d.get("annotation")),
         zones=_effectifs_zones(d.get("zones")),
         splits=_effectifs_splits(d.get("splits")),
     )
@@ -283,10 +292,46 @@ def _entrainement(raw: Any) -> Optional[Entrainement]:
 # Builders
 # ----------------------------------------------------------------------
 def _classes(card: Any) -> List[Mapping[str, Any]]:
-    raw = _dict(card).get("classes")
+    """Blocs de classe du ``model_card`` : ``classes[]`` puis les cibles
+    dérivées (``derived_targets[]``), présentées comme des pseudo-classes.
+
+    Une cible dérivée (sortie de clustering exposée comme entité) n'est pas
+    dans ``classes.txt`` mais l'archéologue la coche comme une classe : elle
+    porte donc sa propre fiche, sous ``derived_targets[].fiche`` (même contrat
+    que ``classes[].fiche``), avec ``label_fr`` (repli ``output_label``).
+    """
+    c = _dict(card)
+    raw = c.get("classes")
+    out = (
+        [k for k in raw if isinstance(k, Mapping) and _txt(k.get("name"))]
+        if isinstance(raw, (list, tuple)) else []
+    )
+    out.extend(_cibles_derivees(c))
+    return out
+
+
+def _cibles_derivees(card: Mapping[str, Any]) -> List[Mapping[str, Any]]:
+    raw = card.get("derived_targets")
+    if isinstance(raw, Mapping):
+        raw = [raw]
     if not isinstance(raw, (list, tuple)):
         return []
-    return [c for c in raw if isinstance(c, Mapping) and _txt(c.get("name"))]
+    out: List[Mapping[str, Any]] = []
+    for cfg in raw:
+        if not isinstance(cfg, Mapping) or not _txt(cfg.get("output_class")):
+            continue
+        out.append({
+            "name": _txt(cfg.get("output_class")),
+            "label_fr": _txt(cfg.get("label_fr")) or _txt(cfg.get("output_label")),
+            "description": _txt(cfg.get("description")),
+            "fiche": cfg.get("fiche"),
+        })
+    return out
+
+
+def noms_cibles_derivees(card: Any) -> Tuple[str, ...]:
+    """Les ``output_class`` des cibles dérivées déclarées par la carte."""
+    return tuple(b["name"] for b in _cibles_derivees(_dict(card)))
 
 
 def _seuil(card: Mapping[str, Any], nom: str) -> Optional[float]:
@@ -325,7 +370,7 @@ def build_class_fiche(card: Any, class_name: str) -> Optional[ClassFiche]:
         modele=_txt(c.get("display_name")) or _txt(c.get("id")),
         resume=_txt(fiche.get("resume")) or _txt(bloc.get("description")),
         reconnaitre=_txt(fiche.get("reconnaitre")),
-        usage=_txt(fiche.get("usage")),
+        usage=_liste_txt(fiche.get("usage")),
         hors_cible=_liste_txt(fiche.get("hors_cible")),
         vignettes=_vignettes(fiche.get("vignettes")),
         entrainement=_entrainement(fiche.get("entrainement")),
@@ -366,7 +411,13 @@ def fiches_par_entite(
     alors une fiche par classe.
     """
     voulues = {c for c in classes_de_l_entite if c}
-    return tuple(f for f in build_all_fiches(card) if f.nom in voulues)
+    derivees = set(noms_cibles_derivees(card))
+    fiches = [f for f in build_all_fiches(card) if f.nom in voulues]
+    # Une cible dérivée d'abord : c'est elle que l'entité désigne, ses classes
+    # sources (``include_source``) ne viennent qu'en complément — et c'est sa
+    # vignette qui fait l'icône de la carte d'entité.
+    fiches.sort(key=lambda f: f.nom not in derivees)
+    return tuple(fiches)
 
 
 def resume_manques(fiches: Sequence[ClassFiche]) -> str:

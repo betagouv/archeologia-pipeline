@@ -4,5 +4,6 @@
   "enclos_fr_seg_ld_v1": "enclos/enclos_fr/runs/training/enclos_fr_seg_v1/package",
   "enclos_ie_seg_ld_v1": "enclos/enclos_ie/runs/training/enclos_ie_seg_v1/package",
   "lineaires_seg_v3_1": "lineaires/lineaires_3_classes/runs/training/lineaires_seg_v3_1/package",
-  "tranchees_seg_ld_v1": "crateres_tranchees/tranchees_1_classe/runs/training/tranchees_seg_ld_v1/package"
+  "tranchees_seg_ld_v1": "crateres_tranchees/tranchees_1_classe/runs/training/tranchees_seg_ld_v1/package",
+  "crateres_seg_ld_v1": "crateres_tranchees/crateres_1_classe/runs/training/crateres_seg_ld_v1/package"
 }

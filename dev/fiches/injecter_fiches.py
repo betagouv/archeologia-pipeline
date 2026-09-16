@@ -44,15 +44,29 @@ def indent_de(ligne: str) -> int:
 
 
 def injecter(chemin: str, classe: str, fiche: dict) -> str:
-    """Ajoute ``fiche`` à l'entrée ``classe``. Renvoie un message d'état."""
+    """Ajoute ``fiche`` à l'entrée ``classe``. Renvoie un message d'état.
+
+    ``classe`` est cherchée dans ``classes:`` (clé ``name``) puis, à défaut,
+    dans ``derived_targets:`` (clé ``output_class``) : une cible dérivée porte
+    sa fiche au même format (contrat 2026-09-14).
+    """
+    for section, cle in (("classes:", "name"), ("derived_targets:", "output_class")):
+        msg = _injecter_dans(chemin, section, cle, classe, fiche)
+        if msg is not None:
+            return msg
+    return f"ERREUR {classe} : classe absente de {os.path.basename(chemin)}"
+
+
+def _injecter_dans(chemin: str, section: str, cle: str, classe: str, fiche: dict):
+    """Tente l'insertion sous ``section`` ; None si la classe n'y est pas."""
     lignes = open(chemin, encoding="utf-8").read().splitlines(keepends=True)
 
-    # 1. la section classes:
+    # 1. la section (classes: ou derived_targets:)
     i_classes = next(
-        (i for i, li in enumerate(lignes) if li.rstrip("\n") == "classes:"), None
+        (i for i, li in enumerate(lignes) if li.rstrip("\n") == section), None
     )
     if i_classes is None:
-        return f"ERREUR {classe} : pas de section 'classes:'"
+        return None
 
     # 2. les entrées de la liste (tirets au premier niveau sous classes:)
     debut = i_classes + 1
@@ -80,28 +94,30 @@ def injecter(chemin: str, classe: str, fiche: dict) -> str:
             break
         i += 1
 
-    # 3. l'entrée qui porte name: <classe>
+    # 3. l'entrée qui porte <cle>: <classe> — la clé peut être sur la ligne du
+    #    tiret elle-même (« - output_class: zone_crateres »)
     cible = None
     for a, b in entrees:
         texte = "".join(lignes[a:b])
         for ligne in texte.splitlines():
-            if ligne.strip().rstrip() in (f"name: {classe}", f"name: '{classe}'",
-                                          f'name: "{classe}"'):
+            corps = ligne.strip()
+            if corps.startswith("- "):
+                corps = corps[2:].strip()
+            if corps in (f"{cle}: {classe}", f"{cle}: '{classe}'", f'{cle}: "{classe}"'):
                 cible = (a, b)
                 break
         if cible:
             break
     if cible is None:
-        return f"ERREUR {classe} : classe absente de {os.path.basename(chemin)}"
+        return None
 
     a, b = cible
     if any("fiche:" in ligne for ligne in lignes[a:b]):
         return f"IGNORE {classe} : bloc fiche déjà présent"
 
-    # indentation des clés DANS l'entrée (celle de « name: »)
-    interne = next(
-        indent_de(li) for li in lignes[a:b] if li.strip().startswith("name:")
-    )
+    # indentation des clés DANS l'entrée : celle du tiret + 2 (« - id: 0 » puis
+    # « name: … » deux colonnes plus loin), valable pour les deux sections.
+    interne = indent_de(lignes[a]) + 2
 
     # fin réelle de l'entrée : dernière ligne non vide
     fin = b
@@ -115,9 +131,12 @@ def injecter(chemin: str, classe: str, fiche: dict) -> str:
 
 def verifier(chemin: str, classe: str, fiche: dict) -> str:
     data = yaml.safe_load(open(chemin, encoding="utf-8"))
+    entrees = [(c, "name") for c in data.get("classes") or []] + [
+        (c, "output_class") for c in data.get("derived_targets") or []
+    ]
     bloc = next(
-        (c.get("fiche") for c in data.get("classes", [])
-         if isinstance(c, dict) and c.get("name") == classe),
+        (c.get("fiche") for c, cle in entrees
+         if isinstance(c, dict) and c.get(cle) == classe),
         None,
     )
     if bloc is None:

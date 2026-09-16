@@ -72,9 +72,12 @@ class ClusteringRule:
     concave_ratio: float
     confidence_weight: float
     type: str = "dbscan"
+    # Filtres de zone optionnels (audit 2026-09-14) ; None = pas de filtre.
+    min_conf_p90: Optional[float] = None
+    max_elong_med: Optional[float] = None
 
     def to_dict(self) -> Dict[str, Any]:
-        return {
+        d = {
             "type": self.type,
             "target_classes": list(self.target_classes),
             "min_confidence": self.min_confidence,
@@ -89,6 +92,11 @@ class ClusteringRule:
             "concave_ratio": self.concave_ratio,
             "confidence_weight": self.confidence_weight,
         }
+        if self.min_conf_p90 is not None:
+            d["min_conf_p90"] = self.min_conf_p90
+        if self.max_elong_med is not None:
+            d["max_elong_med"] = self.max_elong_med
+        return d
 
 
 @dataclass(frozen=True)
@@ -499,8 +507,10 @@ def _parse_clustering(args_yaml: Dict[str, Any]) -> Tuple[Any, ...]:
             from .clustering_bounds import sanitize_clustering_rule
 
             min_conf = float(cfg.get("min_confidence", 0.0))
+            filtres = {k: float(cfg[k]) for k in ("min_conf_p90", "max_elong_med") if cfg.get(k) is not None}
             sane = sanitize_clustering_rule(
                 {
+                    **filtres,
                     "min_confidence": min_conf,
                     "min_confidence_extend": float(
                         cfg.get("min_confidence_extend", min_conf)
@@ -528,6 +538,8 @@ def _parse_clustering(args_yaml: Dict[str, Any]) -> Tuple[Any, ...]:
                     output_geometry=str(cfg.get("output_geometry", "convex_hull")),
                     buffer_m=sane["buffer_m"],
                     min_area_m2=sane["min_area_m2"],
+                    min_conf_p90=sane.get("min_conf_p90"),
+                    max_elong_med=sane.get("max_elong_med"),
                     concave_ratio=sane["concave_ratio"],
                     confidence_weight=sane["confidence_weight"],
                 )

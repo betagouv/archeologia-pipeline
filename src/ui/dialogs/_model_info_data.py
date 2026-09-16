@@ -136,6 +136,8 @@ _CLUSTER_LABELS: Dict[str, str] = {
     "min_area_m2": "Surface minimale (m²)",
     "output_geometry": "Géométrie de sortie",
     "confidence_weight": "Pondération par confiance",
+    "min_conf_p90": "Confiance min. d'une zone (90e centile)",
+    "max_elong_med": "Allongement médian max. d'une zone",
 }
 
 

@@ -313,6 +313,18 @@ def _fiche_entrainement(
         report.errors.append(f"{où} doit être un mapping")
         return
 
+    # corpus / annotation : un texte, ou une liste de puces (forme lisible
+    # par un archéologue, 2026-09-15) — jamais un mapping ni des nombres.
+    for clé in ("corpus", "annotation"):
+        v = raw.get(clé)
+        if v is None or isinstance(v, str):
+            continue
+        if not isinstance(v, list) or not all(isinstance(x, str) for x in v):
+            report.errors.append(
+                f"{où}.{clé} doit être un texte ou une liste de textes "
+                f"(reçu {type(v).__name__})"
+            )
+
     zones = raw.get("zones")
     if zones is not None:
         if not isinstance(zones, list):
@@ -379,59 +391,91 @@ def _validate_fiche(
     donnerait une image cassée dans QGIS, donc c'est une erreur.
     """
     classes = model_card.get("classes")
-    if not isinstance(classes, list):
+    if isinstance(classes, list):
+        for c in classes:
+            if not isinstance(c, dict):
+                continue
+            classe = str(c.get("name") or "").strip()
+            if not classe:
+                continue
+            if class_set and classe not in class_set:
+                report.errors.append(
+                    f"model_card.classes : '{classe}' porte une fiche mais n'est pas "
+                    "dans classes.txt"
+                )
+            _validate_fiche_bloc(c, classe, "classes", report, model_dir)
+
+    # Les cibles dérivées (sorties de clustering cochables comme entités) portent
+    # leur propre fiche sous derived_targets[].fiche — même contrat, mais leur
+    # nom (output_class) n'est PAS dans classes.txt : pas de contrôle d'appartenance.
+    derived = model_card.get("derived_targets")
+    if isinstance(derived, dict):
+        derived = [derived]
+    if isinstance(derived, list):
+        for dt in derived:
+            if not isinstance(dt, dict):
+                continue
+            classe = str(dt.get("output_class") or "").strip()
+            if classe:
+                _validate_fiche_bloc(dt, classe, "derived_targets", report, model_dir)
+
+
+def _validate_fiche_bloc(
+    bloc: dict[str, Any],
+    classe: str,
+    rubrique: str,
+    report: ValidationReport,
+    model_dir: Path,
+) -> None:
+    """Contrôle d'UN bloc ``fiche`` — d'une classe ou d'une cible dérivée."""
+    fiche = bloc.get("fiche")
+    if fiche is None:
+        report.warnings.append(
+            f"{rubrique}['{classe}'] : pas de bloc 'fiche' — resume, usage, "
+            "vignettes, entrainement à écrire (l'étape 3 affichera la classe "
+            "sans illustration ni provenance)"
+        )
+        return
+    if not isinstance(fiche, dict):
+        report.errors.append(f"{rubrique}['{classe}'].fiche doit être un mapping")
         return
 
-    for c in classes:
-        if not isinstance(c, dict):
-            continue
-        classe = str(c.get("name") or "").strip()
-        if not classe:
-            continue
-        if class_set and classe not in class_set:
+    for clé in ("resume", "reconnaitre"):
+        v = fiche.get(clé)
+        if v is not None and not isinstance(v, str):
             report.errors.append(
-                f"model_card.classes : '{classe}' porte une fiche mais n'est pas "
-                "dans classes.txt"
+                f"{rubrique}['{classe}'].fiche.{clé} doit être du texte (reçu {type(v).__name__})"
             )
+    # usage : un texte, ou une liste de puces (lisibilité, 2026-09-15)
+    usage = fiche.get("usage")
+    if usage is not None and not (
+        isinstance(usage, str)
+        or (isinstance(usage, list) and all(isinstance(x, str) for x in usage))
+    ):
+        report.errors.append(
+            f"{rubrique}['{classe}'].fiche.usage doit être un texte ou une liste de textes "
+            f"(reçu {type(usage).__name__})"
+        )
 
-        fiche = c.get("fiche")
-        if fiche is None:
-            report.warnings.append(
-                f"classes['{classe}'] : pas de bloc 'fiche' — resume, usage, "
-                "vignettes, entrainement à écrire (l'étape 3 affichera la classe "
-                "sans illustration ni provenance)"
-            )
-            continue
-        if not isinstance(fiche, dict):
-            report.errors.append(f"classes['{classe}'].fiche doit être un mapping")
-            continue
+    hors_cible = fiche.get("hors_cible")
+    if hors_cible is not None and not isinstance(hors_cible, (str, list)):
+        report.errors.append(
+            f"{rubrique}['{classe}'].fiche.hors_cible doit être une liste de textes"
+        )
 
-        for clé in ("resume", "reconnaitre", "usage"):
-            v = fiche.get(clé)
-            if v is not None and not isinstance(v, str):
-                report.errors.append(
-                    f"classes['{classe}'].fiche.{clé} doit être du texte (reçu {type(v).__name__})"
-                )
+    if fiche.get("vignettes") is not None:
+        _fiche_vignettes(fiche["vignettes"], classe, report, model_dir)
+    if fiche.get("entrainement") is not None:
+        _fiche_entrainement(fiche["entrainement"], classe, report)
 
-        hors_cible = fiche.get("hors_cible")
-        if hors_cible is not None and not isinstance(hors_cible, (str, list)):
-            report.errors.append(
-                f"classes['{classe}'].fiche.hors_cible doit être une liste de textes"
-            )
-
-        if fiche.get("vignettes") is not None:
-            _fiche_vignettes(fiche["vignettes"], classe, report, model_dir)
-        if fiche.get("entrainement") is not None:
-            _fiche_entrainement(fiche["entrainement"], classe, report)
-
-        manques = [
-            clé for clé in ("resume", "usage", "vignettes", "entrainement")
-            if not fiche.get(clé)
-        ]
-        if manques:
-            report.warnings.append(
-                f"classes['{classe}'].fiche incomplète : {', '.join(manques)} à écrire"
-            )
+    manques = [
+        clé for clé in ("resume", "usage", "vignettes", "entrainement")
+        if not fiche.get(clé)
+    ]
+    if manques:
+        report.warnings.append(
+            f"{rubrique}['{classe}'].fiche incomplète : {', '.join(manques)} à écrire"
+        )
 
 
 def _read_json(path: Path) -> dict[str, Any] | None:
@@ -474,6 +518,15 @@ def _check_required_files(model_dir: Path, report: ValidationReport) -> None:
             report.errors.append(f"Fichier obligatoire absent : {rel}")
     if not (model_dir / "evaluation_results.json").is_file():
         report.warnings.append("evaluation_results.json absent (recommandé)")
+    # Règle utilisateur 2026-09-15 : les prédictions de test / planches d'inférence d'un run
+    # (visualizations/) ne vivent JAMAIS dans data/models — Drive runs/training/<run>/
+    # visualizations/, ou D:/brouillons/<chantier>/ le temps d'un test.
+    if (model_dir / "entrainement" / "visualizations").exists():
+        report.errors.append(
+            "entrainement/visualizations/ présent : les visualisations de test n'ont rien à "
+            "faire dans data/models (Drive runs/training/<run>/visualizations/ ou D:/brouillons) "
+            "— à supprimer"
+        )
 
 
 def _check_classes_txt(lines: list[str], report: ValidationReport) -> list[str]:

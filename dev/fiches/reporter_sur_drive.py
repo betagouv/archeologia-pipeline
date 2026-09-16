@@ -4,11 +4,11 @@ Les model_card du plugin sont la copie de travail ; celles de
 ``…/runs/training/<modèle>/package/`` sont la source dont un ré-export
 repartira. Sans ce report, les fiches seraient effacées au prochain export.
 
-Purement ADDITIF : on lit le bloc `fiche` déjà écrit côté plugin (donc corrections
-manuelles comprises), on l'insère dans la carte Drive par la même chirurgie
+La copie plugin FAIT FOI : on retire tous les blocs `fiche` de la carte Drive, puis
+on y insère ceux du plugin (corrections manuelles comprises) par la même chirurgie
 textuelle que côté plugin — aucun round-trip PyYAML, aucun commentaire perdu — et
-on copie le dossier ``vignettes/``. Une carte qui porte déjà un bloc `fiche` est
-laissée telle quelle et signalée.
+on copie le dossier ``vignettes/``. Tout ce qui est HORS fiche (known_limitations,
+description, seuils…) reste à reporter à la main : ``comparer_drive.py`` le liste.
 """
 import importlib.util
 import json
@@ -69,6 +69,9 @@ for nom, rel in BUNDLES.items():
     plug = yaml.safe_load(open(src_card, encoding="utf-8"))
     fiches = {c["name"]: c["fiche"] for c in plug.get("classes") or []
               if isinstance(c, dict) and c.get("fiche")}
+    # Cibles dérivées (derived_targets[].fiche, clé output_class) : même report.
+    fiches.update({c["output_class"]: c["fiche"] for c in plug.get("derived_targets") or []
+                   if isinstance(c, dict) and c.get("fiche") and c.get("output_class")})
 
     # La copie plugin fait foi : on retire d'abord TOUS les blocs `fiche` de la
     # carte Drive (une seule passe, sinon la boucle par classe se marcherait

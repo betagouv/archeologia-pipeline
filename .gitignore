@@ -1,7 +1,13 @@
 __pycache__/
 *.pyc
 .vscode/
-.claude/
+# .claude/ reste privé (plans, settings.local, skills perso) SAUF les deux skills partagés avec
+# training-models (règle 2026-09-15, cf. CLAUDE.md § deux dépôts) : versionnés des deux côtés.
+.claude/*
+!.claude/skills/
+.claude/skills/*
+!.claude/skills/installer-modele-plugin/
+!.claude/skills/fiche-classe-plugin/
 .superpowers/
 
 # PyInstaller (dev/runner_onnx build artifacts)

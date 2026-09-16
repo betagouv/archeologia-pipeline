@@ -11,6 +11,7 @@ from app.services.class_fiche import (
     ClassFiche,
     build_all_fiches,
     build_class_fiche,
+    fiches_par_entite,
 )
 
 
@@ -103,7 +104,7 @@ class TestFicheComplete:
         f = build_class_fiche(CARD_COMPLET, "depression_circulaire_grande")
         assert f.resume.startswith("Mardelles")
         assert "grappe" in f.reconnaitre
-        assert f.usage.startswith("Plateaux")
+        assert f.usage == ("Plateaux et massifs forestiers, LD 0,5 m.",)
         assert f.hors_cible == (
             "Dépressions de moins de 14 m",
             "Fosses d'extraction allongées",
@@ -123,13 +124,28 @@ class TestFicheComplete:
         f = build_class_fiche(CARD_COMPLET, "depression_circulaire_grande")
         e = f.entrainement
         assert e is not None
-        assert e.corpus == "depressions_grandes_648_v1"
-        assert "SAM" in e.annotation
+        assert e.corpus == ("depressions_grandes_648_v1",)
+        assert "SAM" in e.annotation[0]
         assert [z.nom for z in e.zones] == ["Fénétrange (57)", "Chailluz (25)"]
         assert e.zones[0].objets == 1834
         assert dict((s.nom, s.objets) for s in e.splits) == {
             "train": 3577, "valid": 948, "test": 817,
         }
+
+    def test_entrainement_corpus_en_liste(self):
+        """Forme liste (2026-09-15) : une puce par élément, ordre conservé ;
+        un texte seul reste un élément unique."""
+        card = {"id": "m", "classes": [{"name": "c", "fiche": {
+            "usage": ["Cartographier un champ de bataille.", "Rendement : 66 % de vrais."],
+            "entrainement": {
+                "corpus": ["Une seule zone : Verdun", "7 288 tuiles de 126 m"],
+                "annotation": "polygones repris tels quels",
+            }}}]}
+        f = build_class_fiche(card, "c")
+        assert f.usage == ("Cartographier un champ de bataille.", "Rendement : 66 % de vrais.")
+        e = f.entrainement
+        assert e.corpus == ("Une seule zone : Verdun", "7 288 tuiles de 126 m")
+        assert e.annotation == ("polygones repris tels quels",)
 
     def test_entrainement_totaux(self):
         e = build_class_fiche(CARD_COMPLET, "depression_circulaire_grande").entrainement
@@ -166,7 +182,7 @@ class TestFicheDegradee:
     def test_repli_sur_description(self):
         f = build_class_fiche(CARD_NU, "talus_fosse")
         assert f.resume == "Talus ou fossé."
-        assert f.usage == ""
+        assert f.usage == ()
         assert f.vignettes == ()
         assert f.entrainement is None
 
@@ -304,3 +320,55 @@ class TestCadrage:
     def test_cadrage_incomplet_ignore(self):
         v = self._v(self._card({"brut": "a.jpg", "cadrage": {"x": 0.1, "cote": 0.4}}))
         assert v.cadrage is None
+
+
+class TestCibleDerivee:
+    """Une cible dérivée (sortie de clustering cochable comme entité) porte sa
+    propre fiche sous ``derived_targets[].fiche`` : elle n'est pas dans
+    ``classes.txt`` mais l'archéologue la coche comme une classe."""
+
+    CARD = {
+        "id": "crateres_seg_ld_v1",
+        "display_name": "Cratères d'obus (LD)",
+        "classes": [{"id": 0, "name": "cratere", "label_fr": "Cratères", "description": "Cuvette."}],
+        "derived_targets": [{
+            "output_class": "zone_crateres",
+            "entity": "regroupement_crateres",
+            "include_source": True,
+            "label_fr": "Regroupement de cratères",
+            "fiche": {
+                "resume": "Zone criblée de cratères proches, regroupés par DBSCAN.",
+                "vignettes": [{"brut": "vignettes/zone_crateres_01_brut.jpg"}],
+            },
+        }],
+        "thresholds": {"confidence_default": 0.29},
+    }
+
+    def test_la_cible_derivee_est_une_fiche_a_part_entiere(self):
+        f = build_class_fiche(self.CARD, "zone_crateres")
+        assert f is not None
+        assert f.label == "Regroupement de cratères"
+        assert f.resume.startswith("Zone criblée")
+        assert f.vignettes[0].brut == "vignettes/zone_crateres_01_brut.jpg"
+        assert f.seuil == 0.29
+
+    def test_build_all_liste_les_classes_puis_les_derivees(self):
+        assert [f.nom for f in build_all_fiches(self.CARD)] == ["cratere", "zone_crateres"]
+
+    def test_pour_l_entite_derivee_sa_fiche_vient_en_premier(self):
+        fiches = fiches_par_entite(self.CARD, ("cratere", "zone_crateres"))
+        assert [f.nom for f in fiches] == ["zone_crateres", "cratere"]
+
+    def test_sans_fiche_ni_label_le_repli_est_sain(self):
+        card = dict(self.CARD)
+        card["derived_targets"] = [{"output_class": "zone_crateres", "entity": "regroupement_crateres",
+                                    "output_label": "Regroupements"}]
+        f = build_class_fiche(card, "zone_crateres")
+        assert f is not None and f.label == "Regroupements" and not f.est_complete
+        assert "vignettes" in f.manques
+
+    def test_derived_targets_malforme_ignore(self):
+        card = dict(self.CARD)
+        card["derived_targets"] = ["n'importe quoi", {"entity": "x"}]
+        assert [f.nom for f in build_all_fiches(card)] == ["cratere"]
+

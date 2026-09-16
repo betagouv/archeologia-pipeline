@@ -68,13 +68,13 @@ class WizardDialog(QDialog):
 
     RAIL_STEPS = [
         {"label": "Source", "sub": "—"},
-        {"label": "Indices", "sub": "—"},
+        {"label": "Produits", "sub": "—"},
         {"label": "Détection IA", "sub": "—", "optional": True},
         {"label": "Lancer", "sub": "Vérification & run"},
     ]
     TITLES = {
         1: ("Nouveau traitement LiDAR", "Points d'entrée du pipeline"),
-        2: ("Indices de visualisation", "Rasters dérivés du MNT"),
+        2: ("Produits à calculer", "MNT, qualité de la donnée, indices de visualisation"),
         3: ("Détection automatique", "Sélection par entités archéologiques"),
         4: ("Lancer le pipeline", "Vérification & récapitulatif"),
     }

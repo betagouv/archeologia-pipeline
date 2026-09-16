@@ -18,7 +18,10 @@ _RVT_LONG_NAMES: Dict[str, str] = {
     "HS": "Hillshade simple (HS)",
     "SLO": "Pente (SLO)",
     "SLRM": "Simple Local Relief Model (SLRM)",
-    "VAT": "Visualisation Archéologique Totale (VAT)",
+    # « Visualization for Archaeological Topography » (Kokalj & Somrak 2019) — et
+    # non « Visualisation Archéologique Totale », rétro-acronyme faux corrigé le
+    # 2026-09-16 en écrivant les fiches d'indices.
+    "VAT": "Visualisation pour la topographie archéologique (VAT)",
     "MSTP": "Multi-Scale Topographic Position (MSTP)",
     "CVAT": "Combined VAT (CVAT)",
 }

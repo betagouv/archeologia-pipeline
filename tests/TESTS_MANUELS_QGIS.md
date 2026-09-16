@@ -353,7 +353,7 @@ Cette grille indique, pour chaque vague livrée, **quelles sections de tests son
 ## 19. Consultation lecture-seule pendant un run ⭐ P0
 
 - [ ] **19.1** Lancer un run ; pendant l'exécution, cliquer **étape 1** dans le rail → page Source affichée, bandeau « 🔒 Lecture seule — run en cours » visible ; chemins, boutons « Parcourir… »/« Couche / groupe QGIS » et frise de mode **inactifs** mais valeurs lisibles
-- [ ] **19.2** **Étape 2** → « Réglages avancés… » fonctionne, bascule entre les onglets RVT fonctionne ; tous les spinbox/checkbox/combos grisés-inactifs ; « ↺ Réinitialiser » inactif ; valeurs lancées affichées
+- [ ] **19.2** **Étape 2** → « Réglages avancés… » fonctionne, bascule entre les onglets RVT fonctionne ; tous les spinbox/checkbox/combos grisés-inactifs ; **tous** les boutons « ↺ Défauts » des onglets et celui de la carte Tuilage inactifs ; valeurs lancées affichées
 - [ ] **19.3** **Étape 3** → interrupteur, cartes d'entités, combos « Changer ▾ », case « Regrouper », case « Générer images annotées » **inactifs** ; chips de filtre morphologique + scroll **utilisables** ; cocher « Réglages avancés » révèle les seuils par entité (en lecture seule)
 - [ ] **19.4** Cliquer **étape 4** dans le rail (1 clic) → retour au **RunView en direct** (pas le récap), la progression continue ; bandeau lecture-seule disparu
 - [ ] **19.5** Enchaîner « Suivant » de l'étape 1 jusqu'à l'étape 4 pendant le run → autorisé ; sur l'étape 4 le bouton « ▶ Lancer le pipeline » reste **désactivé** (pas de relance)
@@ -381,9 +381,9 @@ Cette grille indique, pour chaque vague livrée, **quelles sections de tests son
 ## 20. Produit Couverture (QA points sol)
 
 - [ ] **20.1 Étape 2 — carte et réglage**
-  - Mode IGN/LAZ local : carte « Couverture · QA points sol » visible à côté de « Densité », décochée par défaut
+  - Mode IGN/LAZ local : carte « Couverture » (Couverture des points sol) à côté de « MNT » et « Densité », même gabarit que les cartes d'indices, décochée par défaut
   - Mode MNT existant : la carte « Modèle de base » (et donc Couverture) reste masquée
-  - Réglages avancés > onglet MNT : « Seuil zones mal couvertes (%) » (défaut 30, bornes 5–95), persisté entre sessions
+  - Réglages avancés > onglet **Couverture** : « Seuil zones mal couvertes (%) » (défaut 30, bornes 5–95), persisté entre sessions
 - [ ] **20.2 Run avec Couverture seule (sans Densité)**
   - La passe densité tourne quand même (sert de source au calcul)
   - `indices/COUVERTURE/tif/*.tif` créés, **pas** de dossier `indices/DENSITE/`
@@ -628,7 +628,8 @@ ponctuelle (charbonnières / fours) pour vérifier les coupures par classe.
 - [ ] **31.1 Vignette sur la carte** : étape 3, chaque entité couverte affiche une vignette 44 px à gauche de son libellé ; les libellés restent alignés d'une carte à l'autre. Une entité sans modèle (Cratères, Tranchées, Abris) n'affiche ni vignette utile ni bouton « Fiche ».
 - [ ] **31.2 Hauteur inchangée** : cocher / décocher une entité, activer les réglages avancés → la hauteur des cartes ne bouge pas (le gabarit verrouillé est préservé malgré la colonne de vignette).
 - [ ] **31.3 Ouverture** : cliquer la vignette OU le bouton « Fiche » ouvre le dialogue ; le clic **ne coche pas** l'entité.
-- [ ] **31.4 Contenu** : titre = libellé de classe, nom technique en monospace ; aperçu avec bascule « Relief seul » / « Vérité terrain » ; blocs « Ce que le modèle a appris » (corpus, zones nommées avec tuiles et objets, répartition train/valid/test, total), « Ne détecte pas », « Dans quelle optique l'utiliser », « Limites connues », « Fiabilité mesurée au banc » et « Contexte technique » (indice RVT, résolution, seuil déployé, modèle, statut).
+- [ ] **31.4 Contenu** : titre = libellé de classe, nom technique en monospace ; aperçu avec bascule « Relief seul » / « Vérité terrain » ; blocs « Ce que le modèle a appris » (corpus et annotation en puces quand le model_card les écrit en liste, zones nommées avec tuiles et objets, répartition train/valid/test, total), « Ne détecte pas », « Dans quelle optique l'utiliser », « Limites connues », « Fiabilité mesurée au banc » et « Contexte technique » (indice RVT, résolution, « Seuil de confiance déployé », modèle, statut).
+- [ ] **31.4bis Lieu seul** : sous la vignette n'apparaît que le lieu (`vignettes[].zone`, ex. « Alès, garrigues nord-est (30) »), jamais la légende.
 - [ ] **31.5 Vérité terrain** : le bouton « Vérité terrain » est actif quand la vignette a un cadre annoté et affiche bien l'annotation (contours ou boîtes jaunes) ; il est grisé sinon.
 - [ ] **31.6 Plusieurs cadres** : sur `enclos` (2 vignettes), les flèches ‹ › et le compteur « 1 / 2 » apparaissent et font défiler ; sur une classe à une seule vignette ils sont absents.
 - [ ] **31.7 Comparaison A/B** : une entité confiée à deux modèles ouvre une fiche par modèle, sélectionnables dans la liste de gauche (la liste est cachée quand il n'y en a qu'une).
@@ -636,3 +637,76 @@ ponctuelle (charbonnières / fours) pour vérifier les coupures par classe.
 - [ ] **31.9 Chiffres justes** : les effectifs affichés (par zone et par split) correspondent au `corpus_manifest.yaml` du corpus concerné.
 - [ ] **31.10 Qt6** : rejouer 31.3 à 31.6 sous QGIS 4 (Qt6) — aucun `AttributeError` d'énuméré dans le journal Python.
 - [ ] **31.11 Cadrage de l'icône** : la vignette 44 px montre la fenêtre définie par `vignettes[].cadrage` (zoom sur la structure), pas la dalle entière — comparer avec le grand aperçu de la fiche, qui lui reste plein cadre. Retirer le `cadrage` d'une classe → l'icône reprend l'image complète, sans erreur.
+
+---
+
+## 32. Paramètres du modèle de base : un onglet par produit (étape 2) ⭐ P0
+
+- [ ] **32.1 Plus de doublon** : la carte « Modèle de base » n'affiche plus de champ « Résolution MNT » — seulement les cartes MNT / Densité / Couverture et le rappel « Réglages avancés… ».
+- [ ] **32.2 Un onglet par produit** : « Réglages avancés… » montre les onglets **MNT** (filtre PDAL + « Résolution MNT (m/pixel) », défaut **0,50**), **Densité** (« Résolution densité (m) », défaut 1,00) et **Couverture** (« Seuil zones mal couvertes (%) », défaut 30) — aucun paramètre d'un produit dans l'onglet d'un autre.
+- [ ] **32.3 Badge OFF + activation** : les onglets Densité et Couverture portent le badge « OFF » tant que le produit n'est pas coché ; leur case « Produit activé » coche/décoche la carte correspondante de la vue d'ensemble, et inversement. L'onglet MNT n'a pas de case (le MNT reste piloté par les cartes et par les indices RVT).
+- [ ] **32.4 Résolution effective** : passer la résolution MNT à 1,00 → le récap de l'étape 4 et la pastille « Produits » de la timeline affichent « 1 m/pixel », et le diagnostic « Contexte fourni aux noyaux RVT » (carte Tuilage) se recalcule.
+- [ ] **32.5 Persistance / réinit.** : la valeur survit à la fermeture du dialogue (`last_ui_config.json`) et à Charger / Enregistrer config ; le bouton « ↺ Défauts » de **l'onglet MNT** la ramène à 0,50 et le toast nomme le produit.
+- [ ] **32.6 Modes sans nuage** : en `existing_mnt` / `existing_rvt`, les onglets MNT / Densité / Couverture sont grisés-inactifs (les onglets RVT restent utilisables).
+- [ ] **32.7 Lecture seule pendant un run** : rejouer 19.2 — la résolution MNT est grisée comme les autres champs avancés.
+
+---
+
+## 33. Fiche d'un produit de visualisation (étape 2) ⭐ P0
+
+Pendant, côté produits, de la recette § 31. Les textes viennent de
+`data/indices_fiches.json`, les images de `data/indices_vignettes/`.
+
+- [ ] **33.1 Accès, même visuel qu'à l'étape 3** : chaque carte de produit — les trois du « Modèle de base » comme les neuf indices — porte une vignette carrée à gauche et un lien « Fiche » dans son en-tête, au même format que les cartes d'entités de l'étape 3.
+- [ ] **33.2 Le clic ne coche pas** : cliquer la vignette **ou** le lien « Fiche » ouvre la fiche **sans** cocher ni décocher le produit ; cliquer ailleurs sur la carte le coche comme avant.
+- [ ] **33.3 Contenu** : la fiche ouvre sur le produit cliqué et montre, dans l'ordre : titre métier + sigle + nom technique, résumé, « Ce que montre l'image », « Dans quelle optique l'utiliser », « Ce que ce produit ne montre pas », « Comment c'est calculé », « Réglages (étape 2 → Réglages avancés…) », « Sources ».
+- [ ] **33.4 Feuilletage** : la liste de gauche présente les douze produits dans l'ordre du mur (MNT d'abord, Densité et Couverture en dernier) ; passer de SVF à LD sans refermer la fenêtre.
+- [ ] **33.5 Réglages justes** : pour SVF, la fiche annonce rayon **10 px, soit 5 m**, 16 directions, bruit 0 — confronter aux valeurs réelles de « Réglages avancés… » (onglet SVF). Idem LD (10–20 px, 15°, 1,7 m) et MSTP (échelle large **100–400 px**, défaut du plugin, pas les 223–2023 de RVT).
+- [ ] **33.6 Sources cliquables** : dans « Sources », un clic sur une citation ouvre le DOI ou la page dans le navigateur.
+- [ ] **33.7 Dégradé sans vignette** : tant que `data/indices_vignettes/` est vide, la carte montre le cadre pointillé ocre « ◌ » et la fiche affiche « Illustration à produire pour ce produit » — aucun plantage.
+- [ ] **33.8 Dégradé sans fichier** : renommer temporairement `data/indices_fiches.json` → l'étape 2 s'ouvre normalement, les fiches se replient sur la description du catalogue et signalent « Fiche incomplète ».
+- [ ] **33.9 Cadrage de l'icône** : une fois les vignettes installées, la vignette 44 px montre la fenêtre de `vignettes[].cadrage`, pas l'image entière ; le grand aperçu de la fiche reste plein cadre.
+- [ ] **33.10 Qt6** : rejouer 33.1 à 33.6 sous QGIS 4 (Qt6) — aucun `AttributeError` d'énuméré dans le journal Python.
+- [ ] **33.12 Vignettes nettes, sans liseré** : sur un écran à **125 % ou 150 %** (Windows → Paramètres d'affichage → Mise à l'échelle), ouvrir une fiche de produit **et** une fiche de classe (étape 3) : l'image de l'aperçu remplit son cadre — **aucune bande claire à gauche ni à droite** — et le grain est net, pas rééchantillonné. Idem pour les vignettes de 44 px des cartes des deux étapes. À 100 %, rien ne doit changer par rapport à avant.
+- [ ] **33.13 Comparer les produits** : la liste de gauche de la fiche s'ouvre sur une première entrée « ⊞ Comparer les produits » ; elle affiche deux tableaux, douze lignes dans l'ordre des cartes de l'étape 2, avec la légende ● adapté / ◐ avec réserve / ○ inadapté. Survoler un en-tête de colonne donne son explication ; une case colorée donne son verdict en infobulle. Les colonnes de forme des produits de qualité (Densité, Couverture) portent un point pâle, pas un « non ».
+- [ ] **33.14 Comparaison absente** : retirer le bloc `_comparaison` de `data/indices_fiches.json` → l'entrée disparaît simplement de la liste, la fiche du produit cliqué s'ouvre normalement, aucune erreur au journal.
+
+### 33.11 Sens du gris de la pente (SLO) — confirmation
+
+**Tranché le 2026-09-16 par la mesure**, pas à l'œil : sur la dalle
+`LHD_FXX_0392_6818` du run `demo_comite`, la valeur du TIF 8 bits corrèle à
+**−0,995** avec la pente vraie recalculée depuis le MNT (0–1° → 251 en moyenne ;
+20–90° → 114). RVT écrit donc l'inversion **dans le fichier** : plat = blanc,
+pentu = noir, saturation au-delà de 51°. La fiche le dit maintenant sans détour
+et aucune symbologie n'est à poser au chargement.
+
+- [ ] Charger `indices/SLO_U0_V1/tif/index_SLO_U0_V1.vrt` dans QGIS, sans style particulier, et vérifier d'un coup d'œil sur un talus franc que le pentu est bien **sombre** — si ce n'était pas le cas, c'est que rvt-qgis a changé de convention et la fiche SLO serait à reprendre.
+
+---
+
+## 34. Réinitialisation ciblée aux valeurs par défaut ⭐ P0
+
+Les deux boutons globaux sont supprimés : la portée d'une réinitialisation est
+désormais **un produit** (étape 2) ou **une entité** (étape 3).
+
+### Étape 2 — un bouton par produit
+
+- [ ] **34.1 Plus de bouton global** : « Réglages avancés… » — l'en-tête ne porte plus que « ← Vue d'ensemble » et le titre. Aucun bouton de réinitialisation à droite.
+- [ ] **34.2 Un bouton par onglet** : chacun des douze onglets porte « ↺ Défauts » en haut à droite, à côté de la case « Indice activé » / « Produit activé » quand elle existe. L'infobulle nomme le produit.
+- [ ] **34.3 Portée réellement isolée** : changer une valeur dans **trois** onglets différents (par exemple SVF → Rayon 25, LD → Rayon max 40, MNT → Résolution 1,00), puis cliquer « ↺ Défauts » **sur le seul onglet SVF**. Le rayon du SVF revient à 10 ; **le LD reste à 40 et le MNT à 1,00**. C'est le cœur de la recette.
+- [ ] **34.4 Les trois produits de base ne se confondent pas** : ils écrivent tous dans la même section de configuration. Régler la résolution densité **et** le seuil de couverture, puis réinitialiser **le seul onglet Densité** → le seuil de couverture est intact.
+- [ ] **34.5 Toast nommé** : la confirmation dit le produit et le nombre, par exemple « ↺ Sky-View Factor : 2 réglages remis aux valeurs par défaut ». Recliquer sans rien changer affiche « déjà aux valeurs par défaut ».
+- [ ] **34.6 Tuilage** : la carte « Tuilage & overlap » a son propre bouton ; il ne remet que la marge, et aucun paramètre d'indice.
+- [ ] **34.7 Persistance** : après une réinitialisation ciblée, fermer puis rouvrir le dialogue → seules les valeurs réinitialisées sont revenues au défaut, les autres ont gardé leur réglage (`last_ui_config.json`).
+
+### Étape 3 — un bouton par entité
+
+- [ ] **34.8 Plus de bouton global** : cocher « Réglages avancés (seuils par entité) » — la ligne d'en-tête ne porte plus « ↺ Réinit. val. défaut du modèle ».
+- [ ] **34.9 Un bouton par carte** : chaque carte d'entité cochée affiche un « ↺ » discret au bout de sa ligne Confiance / Aire min. Il est **grisé** tant que cette entité n'a pas été réglée.
+- [ ] **34.10 Portée réellement isolée** : régler la confiance de **deux** entités (par exemple Cratères 0,45 et Fours 0,35), puis cliquer « ↺ » **sur Cratères seulement**. Cratères revient au défaut du modèle, **Fours reste à 0,35**.
+- [ ] **34.11 Extinction** : après le clic, le « ↺ » de Cratères est grisé, celui de Fours reste actif.
+- [ ] **34.12 Paramètres de regroupement** : sur une entité qui en propose, modifier un paramètre de cluster puis cliquer son « ↺ » → les paramètres de regroupement **et** les seuils de cette entité reviennent aux valeurs du modèle, les autres entités sont intactes.
+- [ ] **34.13 Entité incluse par une dérivée** : cocher « Regroupement de cratères » → la carte « Cratères » passe en « inclus dans », sa ligne avancée est désactivée, **son ↺ aussi**. Le réglage se fait, et se réinitialise, sur la carte de la dérivée.
+- [ ] **34.14 Lecture seule** : pendant un run, rejouer 19.2 — tous les « ↺ » des deux étapes sont inactifs.
+- [ ] **34.15 Qt6** : rejouer 34.3 et 34.10 sous QGIS 4 (Qt6) — aucun `AttributeError` d'énuméré, aucun `ValueError` de dépaquetage dans le journal Python.
+

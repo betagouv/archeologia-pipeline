@@ -1,24 +1,27 @@
-"""Étape 2 — Indices de visualisation.
+"""Étape 2 — Produits à calculer.
 
-Sélection des produits : MNT/Densité (modèle de base) + 6 indices RVT. Le MNT
+Sélection des produits : MNT / Densité / Couverture (modèle de base) + indices
+RVT, tous sur le même gabarit de carte (``_IndexCard``). Le MNT
 est verrouillé tant qu'un indice RVT est coché (clic → toast explicatif). Selon
 le mode de données, les sections déjà fournies sont masquées (existing_mnt /
 existing_rvt). La logique pure vient de :mod:`app.services.indices_model`.
 
 Le bouton « Réglages avancés… » bascule (via un ``QStackedWidget`` interne) sur
 une vue plein écran à onglets reproduisant tous les paramètres RVT de l'ancien
-plugin (M-HS, SVF, Slope, LD, SLRM, VAT) + filtre PDAL / résolution densité /
-marge de tuilage. Ces réglages sont persistés dans ``rvt_params`` et
+plugin (M-HS, SVF, Slope, LD, SLRM, VAT), un onglet par produit du modèle de
+base (MNT : filtre PDAL + résolution ; Densité ; Couverture) et la marge de
+tuilage. Ces réglages sont persistés dans ``rvt_params`` et
 ``processing`` du config (consommés tels quels par le pipeline).
 """
 from __future__ import annotations
+
+from pathlib import Path
 
 from qgis.PyQt.QtCore import QRect, Qt, pyqtSignal
 from qgis.PyQt.QtGui import QColor, QPainter
 from qgis.PyQt.QtWidgets import (
     QCheckBox,
     QComboBox,
-    QDoubleSpinBox,
     QFrame,
     QGridLayout,
     QHBoxLayout,
@@ -37,8 +40,14 @@ from ...app.services.rvt_kernel_context import (
     tile_margin_px,
     tiled_context_warnings,
 )
+from ...app.services.indice_fiche import (
+    build_all_fiches,
+    build_comparaison,
+    load_indices_fiches,
+)
 from ...app.services.indices_model import (
     all_products,
+    base_keys,
     count_selected,
     default_products,
     product,
@@ -47,9 +56,20 @@ from ...app.services.indices_model import (
     rvt_keys,
     toggle,
 )
+from ...app.services.reglages_defaut import (
+    TUILAGE,
+    champs_du_produit,
+    phrase_produit_reinitialise,
+    produit_de_section,
+)
 from ..widgets.card import build_card
 from ..widgets.no_wheel import NoWheelDoubleSpinBox, NoWheelSpinBox
 from ..widgets.toast import show_toast
+from ..widgets.vignette import FicheButton, FicheThumb
+
+#: Dossier ``data/`` du plugin — les chemins de vignettes du JSON des fiches y
+#: sont relatifs. Ce module vit dans ``src/ui/steps/``.
+_DATA_DIR = Path(__file__).resolve().parents[3] / "data"
 
 # Filtre PDAL par défaut (identique à ConfigManager.default_config).
 DEFAULT_FILTER = (
@@ -60,6 +80,10 @@ DEFAULT_FILTER = (
 # Descriptions longues affichées en tête de chaque onglet de paramètres détaillés.
 _TAB_DESC = {
     "MNT": "Reconstruit le sol à partir du nuage de points LiDAR classé.",
+    "DENSITE": "Nombre de points LiDAR sol par cellule — où la donnée d'entrée "
+               "est dense ou clairsemée.",
+    "COUVERTURE": "Part de cellules avec points sol dans le voisinage — signale "
+                  "les zones où le MNT n'est qu'une interpolation.",
     "HS": "Ombrage simple depuis une seule direction de lumière.",
     "M_HS": "Combine plusieurs angles d'éclairage simulés pour révéler le micro-relief.",
     "SVF": "Part de ciel visible en chaque point — révèle creux, fossés et dépressions.",
@@ -122,9 +146,18 @@ class _AdvTabBar(QTabBar):
 
 
 class _IndexCard(QFrame):
-    """Carte cliquable d'un indice RVT (tag + nom + description + coche)."""
+    """Carte cliquable d'un produit (vignette + tag + nom + description + coche).
+
+    Même gabarit que la carte d'entité de l'étape 3 : la vignette de 44 px à
+    gauche et le lien « Fiche » dans l'en-tête ouvrent la fiche du produit, et
+    consomment leur propre clic — ils ne cochent donc pas la carte.
+
+    Sert AUSSI aux produits de base (MNT, Densité, Couverture) : il n'y a qu'un
+    gabarit de carte à l'étape 2.
+    """
 
     clicked = pyqtSignal(str)
+    fiche_requested = pyqtSignal(str)   # clé de produit — ouvrir sa fiche
 
     def __init__(self, key: str, tag: str, full_name: str, desc: str, parent=None):
         super().__init__(parent)
@@ -133,27 +166,52 @@ class _IndexCard(QFrame):
         self.setProperty("checked", False)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
 
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(10, 8, 10, 8)
+        # Colonne de gauche à largeur FIXE, occupée même sans vignette (cadre
+        # d'attente) : les libellés restent alignés d'une carte à l'autre.
+        outer = QHBoxLayout(self)
+        outer.setContentsMargins(10, 8, 10, 8)
+        outer.setSpacing(9)
+        self._thumb = FicheThumb("Voir la fiche de ce produit")
+        self._thumb.clicked.connect(lambda: self.fiche_requested.emit(self._key))
+        outer.addWidget(self._thumb, 0, Qt.AlignmentFlag.AlignTop)
+
+        layout = QVBoxLayout()
+        layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(2)
+        outer.addLayout(layout, 1)
+
         top = QHBoxLayout()
+        top.setSpacing(6)
         self._tag = QLabel(tag)
         self._tag.setObjectName("IndexTag")
+        self._fiche_btn = FicheButton(
+            "Ce que montre l'image, à quoi elle sert, ce qu'elle ne montre pas, "
+            "réglages et sources"
+        )
+        self._fiche_btn.clicked.connect(lambda: self.fiche_requested.emit(self._key))
         self._check = QLabel("")
         self._check.setObjectName("IndexCheck")
         self._check.setFixedSize(15, 15)
         self._check.setAlignment(Qt.AlignmentFlag.AlignCenter)
         top.addWidget(self._tag)
         top.addStretch(1)
+        top.addWidget(self._fiche_btn)
         top.addWidget(self._check)
         self._name = QLabel(full_name)
         self._name.setObjectName("IndexName")
+        # Sans retour à la ligne, « Multi-Scale Topographic Position » élargirait
+        # sa colonne et déformerait la grille.
+        self._name.setWordWrap(True)
         desc_lbl = QLabel(desc)
         desc_lbl.setObjectName("IndexDesc")
         desc_lbl.setWordWrap(True)
         layout.addLayout(top)
         layout.addWidget(self._name)
         layout.addWidget(desc_lbl)
+
+    def set_vignette(self, chemin, cadrage=None) -> None:
+        """Pose la vignette de la fiche ; absente → cadre d'attente."""
+        self._thumb.set_vignette(chemin, cadrage=cadrage)
 
     def set_checked(self, on: bool) -> None:
         self.setProperty("checked", on)
@@ -162,38 +220,6 @@ class _IndexCard(QFrame):
         # Re-polish la carte ET ses enfants stylés (tag/nom/coche) sinon les
         # sélecteurs descendants #IndexCard[checked] #IndexTag restent figés.
         for w in (self, self._check, self._tag, self._name):
-            w.style().unpolish(w)
-            w.style().polish(w)
-
-    def mousePressEvent(self, event):  # noqa: N802 (signature Qt)
-        self.clicked.emit(self._key)
-        super().mousePressEvent(event)
-
-
-class _Chip(QFrame):
-    """Pastille MNT / Densité (QFrame + layout → dimensionnement fiable)."""
-
-    clicked = pyqtSignal(str)
-
-    def __init__(self, key: str, parent=None):
-        super().__init__(parent)
-        self._key = key
-        self.setObjectName("Chip")
-        self.setProperty("checked", False)
-        self.setCursor(Qt.CursorShape.PointingHandCursor)
-        layout = QHBoxLayout(self)
-        layout.setContentsMargins(12, 5, 12, 5)
-        layout.setSpacing(6)
-        self._label = QLabel("")
-        self._label.setObjectName("ChipLabel")
-        layout.addWidget(self._label)
-
-    def set_text(self, text: str) -> None:
-        self._label.setText(text)
-
-    def set_checked(self, on: bool) -> None:
-        self.setProperty("checked", on)
-        for w in (self, self._label):
             w.style().unpolish(w)
             w.style().polish(w)
 
@@ -211,8 +237,13 @@ class IndicesPage(QWidget):
         self._products = default_products()
         self._loading = False
         self._index_cards: dict = {}
-        self._adv_fields: list = []  # descripteurs (section, key, widget, kind, default)
+        # descripteurs (produit, section, key, widget, kind, default) — le produit
+        # porte la PORTÉE de la réinitialisation, cf. app/services/reglages_defaut.
+        self._adv_fields: list = []
+        self._reset_btns: dict = {}       # clé de produit → bouton « ↺ Défauts »
         self._activate_checks: dict = {}  # clé RVT → QCheckBox « Indice activé »
+        self._fiches_cache = None         # fiches des produits, chargées à la demande
+        self._comparaison_cache = None    # tableaux comparatifs, lus en même temps
         self._tab_index: dict = {}        # clé RVT → index d'onglet (badge OFF)
         self._build()
         self._refresh()
@@ -235,7 +266,7 @@ class IndicesPage(QWidget):
         root.setContentsMargins(16, 16, 16, 16)
         root.setSpacing(12)
 
-        heading = QLabel("Choisir les indices à calculer")
+        heading = QLabel("Choisir les produits à calculer")
         heading.setObjectName("WizardPageHeading")
         root.addWidget(heading)
         self._sub = QLabel("")
@@ -249,21 +280,14 @@ class IndicesPage(QWidget):
         self._mode_banner.setVisible(False)
         root.addWidget(self._mode_banner)
 
-        # ── ① Modèle de base ──
+        # ── ① Modèle de base — même gabarit de carte que les indices ──
         self._base_card, bv = build_card("Modèle de base", "1")
-        chips = QHBoxLayout()
-        chips.setSpacing(8)
-        self._mnt_chip = _Chip("MNT")
-        self._mnt_chip.clicked.connect(self._on_product_clicked)
-        self._dens_chip = _Chip("DENSITE")
-        self._dens_chip.clicked.connect(self._on_product_clicked)
-        self._cov_chip = _Chip("COUVERTURE")
-        self._cov_chip.clicked.connect(self._on_product_clicked)
-        chips.addWidget(self._mnt_chip)
-        chips.addWidget(self._dens_chip)
-        chips.addWidget(self._cov_chip)
-        chips.addStretch(1)
-        bv.addLayout(chips)
+        base_grid = QGridLayout()
+        base_grid.setHorizontalSpacing(8)
+        base_grid.setVerticalSpacing(8)
+        for i, key in enumerate(base_keys()):
+            base_grid.addWidget(self._make_card(key), i // 3, i % 3)
+        bv.addLayout(base_grid)
         self._mnt_hint = QLabel("MNT requis tant qu'un indice RVT est coché.")
         self._mnt_hint.setObjectName("MntHint")
         self._mnt_hint.setVisible(False)
@@ -273,24 +297,12 @@ class IndicesPage(QWidget):
         _hint_policy.setRetainSizeWhenHidden(True)
         self._mnt_hint.setSizePolicy(_hint_policy)
         bv.addWidget(self._mnt_hint)
-        res_row = QHBoxLayout()
-        res_row.setSpacing(8)
-        res_label = QLabel("Résolution MNT")
-        res_label.setObjectName("FieldLabel")
-        self._res_spin = QDoubleSpinBox()
-        self._res_spin.setRange(0.1, 10.0)
-        self._res_spin.setSingleStep(0.1)
-        self._res_spin.setDecimals(2)
-        self._res_spin.setValue(0.5)
-        self._res_spin.setFixedWidth(80)
-        self._res_spin.valueChanged.connect(self._on_changed)
-        res_row.addWidget(res_label)
-        res_row.addWidget(self._res_spin)
-        res_unit = QLabel("m / pixel")
-        res_unit.setObjectName("FieldUnit")
-        res_row.addWidget(res_unit)
-        res_row.addStretch(1)
-        bv.addLayout(res_row)
+        adv_hint = QLabel(
+            "Résolution, filtre PDAL et seuils : bouton « Réglages avancés… » ci-dessous."
+        )
+        adv_hint.setObjectName("MntHint")
+        adv_hint.setWordWrap(True)
+        bv.addWidget(adv_hint)
         root.addWidget(self._base_card)
 
         # ── ② Indices de visualisation ──
@@ -299,11 +311,7 @@ class IndicesPage(QWidget):
         grid.setHorizontalSpacing(8)
         grid.setVerticalSpacing(8)
         for i, key in enumerate(rvt_keys()):
-            p = product(key)
-            card = _IndexCard(key, p.tag, p.full_name, p.description)
-            card.clicked.connect(self._on_product_clicked)
-            self._index_cards[key] = card
-            grid.addWidget(card, i // 3, i % 3)
+            grid.addWidget(self._make_card(key), i // 3, i % 3)
         rv.addLayout(grid)
         footer = QHBoxLayout()
         self._count_label = QLabel("")
@@ -344,44 +352,65 @@ class IndicesPage(QWidget):
         subtitle.setWordWrap(True)
         titles.addWidget(title)
         titles.addWidget(subtitle)
-        self._reset_btn = QPushButton("↺  Réinit. val. par défaut")
-        self._reset_btn.setObjectName("GhostButton")
-        self._reset_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        self._reset_btn.setToolTip(
-            "Rétablit tous les paramètres techniques avancés à leurs valeurs RVT-py "
-            "officielles."
-        )
-        self._reset_btn.clicked.connect(self._reset_advanced)
+        # Pas de réinitialisation globale ici : elle emportait les douze produits
+        # d'un coup (demande utilisateur 2026-09-16). Chaque onglet porte la
+        # sienne, qui ne touche qu'à ses propres champs.
         header.addWidget(self._adv_back_btn)
         header.addSpacing(10)
         header.addLayout(titles)
         header.addStretch(1)
-        header.addWidget(self._reset_btn)
         root.addLayout(header)
 
         self._adv_tabs = QTabWidget()
         self._adv_tabs.setObjectName("AdvTabs")
         self._adv_tabs.setTabBar(_AdvTabBar())  # voile + badge « OFF » des indices off
 
-        # — Onglet MNT : filtre PDAL + résolution densité —
-        # (mnt_resolution reste sur la vue d'ensemble pour ne pas dupliquer.)
+        # — Onglets du modèle de base : un produit = un onglet, qui ne porte que
+        #   SES paramètres. La résolution MNT se règle ici et nulle part ailleurs
+        #   (elle était aussi sur la vue d'ensemble, juste à côté de la résolution
+        #   densité de cet onglet : deux champs, deux valeurs, même sens apparent).
         self._filter_edit = QLineEdit()
         self._filter_edit.setPlaceholderText("Ex: Classification = 2 OR Classification = 6")
         self._filter_edit.textChanged.connect(self._on_changed)
+        self._res_spin = self._mk_dspin(0.1, 10.0, 0.5)
         self._density_spin = self._mk_dspin(0.01, 100.0, 1.0)
         self._cov_thr_spin = self._mk_spin(5, 95, 30)
-        self._reg(("processing",), "filter_expression", self._filter_edit, "text", DEFAULT_FILTER)
-        self._reg(("processing",), "density_resolution", self._density_spin, "float", 1.0)
-        self._reg(("processing",), "coverage_threshold_percent", self._cov_thr_spin, "int", 30)
-        self._adv_tabs.addTab(self._make_param_tab("MNT", [
-            ("Filtre PDAL", self._filter_edit,
-             "Classes LiDAR conservées pour reconstruire le sol (codes ASPRS)."),
-            ("Résolution densité (m)", self._density_spin,
-             "Taille de cellule du raster de densité de points."),
-            ("Seuil zones mal couvertes (%)", self._cov_thr_spin,
-             "Produit Couverture : en-dessous de ce % de cellules avec points "
-             "sol dans le voisinage, la zone est marquée « mal couverte »."),
-        ]), "MNT")
+        # ⚠ Ces quatre champs partagent la section ``processing`` : le produit ne
+        # peut PAS s'en déduire, il faut le nommer — sans quoi les trois onglets de
+        # base se réinitialiseraient ensemble.
+        self._reg(("processing",), "filter_expression", self._filter_edit, "text",
+                  DEFAULT_FILTER, produit="MNT")
+        self._reg(("processing",), "mnt_resolution", self._res_spin, "float", 0.5,
+                  produit="MNT")
+        self._reg(("processing",), "density_resolution", self._density_spin, "float", 1.0,
+                  produit="DENSITE")
+        self._reg(("processing",), "coverage_threshold_percent", self._cov_thr_spin, "int",
+                  30, produit="COUVERTURE")
+        base_tabs = [
+            ("MNT", [
+                ("Filtre PDAL", self._filter_edit,
+                 "Classes LiDAR conservées pour reconstruire le sol (codes ASPRS)."),
+                ("Résolution MNT (m/pixel)", self._res_spin,
+                 "Taille de cellule du MNT, base de tous les indices RVT."),
+            ]),
+            ("DENSITE", [
+                ("Résolution densité (m)", self._density_spin,
+                 "Taille de cellule du raster de densité de points."),
+            ]),
+            ("COUVERTURE", [
+                ("Seuil zones mal couvertes (%)", self._cov_thr_spin,
+                 "En-dessous de ce % de cellules avec points sol dans le "
+                 "voisinage, la zone est marquée « mal couverte ». Le calcul part "
+                 "du raster de densité, dans sa résolution (onglet Densité)."),
+            ]),
+        ]
+        # Onglets « nuage de points » : neutralisés hors ign_laz/local_laz (set_mode).
+        self._base_tab_indices = []
+        for _key, _rows in base_tabs:
+            _idx = self._adv_tabs.addTab(self._make_param_tab(_key, _rows), product(_key).tag)
+            self._base_tab_indices.append(_idx)
+            if _key != "MNT":  # badge « OFF » tant que le produit n'est pas coché
+                self._tab_index[_key] = _idx
 
         # — HS (hs) —
         hs_az = self._mk_spin(0, 360, 315)
@@ -570,7 +599,8 @@ class IndicesPage(QWidget):
         # — Tuilage (global à tous les indices) —
         ov_card, ovv = build_card("Tuilage & overlap")
         self._overlap_spin = self._mk_spin(0, 100, 20)
-        self._reg(("processing",), "tile_overlap", self._overlap_spin, "int", 20)
+        self._reg(("processing",), "tile_overlap", self._overlap_spin, "int", 20,
+                  produit=TUILAGE)
         ov_row = QHBoxLayout()
         ov_row.setSpacing(8)
         ov_lbl = QLabel("Marge tuiles")
@@ -581,6 +611,10 @@ class IndicesPage(QWidget):
         ov_unit.setObjectName("FieldUnit")
         ov_row.addWidget(ov_unit)
         ov_row.addStretch(1)
+        # Le tuilage n'a pas d'onglet — il vaut pour tous les indices — donc il
+        # porte son bouton ici. Sans lui, ce réglage serait le seul à n'avoir
+        # plus aucune réinitialisation depuis le retrait du bouton global.
+        ov_row.addWidget(self._mk_reset_btn(TUILAGE, "Tuilage & overlap"))
         ov_hint = QLabel(
             "Chevauchement entre tuiles lors du calcul RVT. Évite les artefacts "
             "aux bordures. S'applique à tous les indices."
@@ -624,8 +658,17 @@ class IndicesPage(QWidget):
         c.toggled.connect(self._on_changed)
         return c
 
-    def _reg(self, section: tuple, key: str, widget, kind: str, default) -> None:
-        self._adv_fields.append((section, key, widget, kind, default))
+    def _reg(self, section: tuple, key: str, widget, kind: str, default,
+             produit: str = "") -> None:
+        """Enregistre un champ avancé, rattaché à SON produit.
+
+        Le produit se déduit de la section pour les indices RVT ; il doit être
+        nommé explicitement pour ``("processing",)``, que MNT, Densité,
+        Couverture et le tuilage se partagent.
+        """
+        produit = produit or produit_de_section(section)
+        assert produit, f"champ {key} sans produit : la réinitialisation le raterait"
+        self._adv_fields.append((produit, section, key, widget, kind, default))
 
     def _make_param_tab(self, key: str, rows) -> QWidget:
         """Onglet de paramètres : en-tête (nom + description [+ « Indice activé »
@@ -651,12 +694,14 @@ class IndicesPage(QWidget):
         titles.addWidget(title)
         titles.addWidget(desc)
         head.addLayout(titles, 1)
-        if key in rvt_keys():
-            chk = QCheckBox("Indice activé")
+        if key != "MNT":  # MNT : coché/verrouillé par les indices RVT, pas ici
+            chk = QCheckBox("Indice activé" if key in rvt_keys() else "Produit activé")
             chk.setObjectName("ActivateCheck")
             chk.toggled.connect(lambda on, k=key: self._on_activate_toggled(k, on))
             self._activate_checks[key] = chk
             head.addWidget(chk, 0, Qt.AlignmentFlag.AlignTop)
+        head.addWidget(self._mk_reset_btn(key, product(key).full_name), 0,
+                       Qt.AlignmentFlag.AlignTop)
         outer.addLayout(head)
 
         # — Grille 2 colonnes de champs —
@@ -723,6 +768,65 @@ class IndicesPage(QWidget):
         wrap = QWidget()
         wrap.setLayout(cell)
         return wrap
+
+    # ------------------------------------------------------------------
+    # Cartes de produits et fiches
+    # ------------------------------------------------------------------
+    def _make_card(self, key: str) -> _IndexCard:
+        """Une carte de produit, câblée et illustrée.
+
+        Produits de base et indices passent par ici : un seul gabarit, donc un
+        seul endroit où brancher la sélection et l'accès à la fiche.
+        """
+        p = product(key)
+        card = _IndexCard(key, p.tag, p.full_name, p.description)
+        card.clicked.connect(self._on_product_clicked)
+        card.fiche_requested.connect(self._open_fiche)
+        chemin, cadrage = self._vignette_de(key)
+        card.set_vignette(chemin, cadrage)
+        self._index_cards[key] = card
+        return card
+
+    def _fiches(self):
+        """Les fiches des douze produits, lues une fois par session.
+
+        Le JSON est petit et la lecture est tolérante (fichier absent → fiches
+        dégradées) : l'étape 2 s'ouvre même si le fichier manque.
+        """
+        if self._fiches_cache is None:
+            donnees = load_indices_fiches()
+            self._fiches_cache = build_all_fiches(donnees)
+            self._comparaison_cache = build_comparaison(donnees)
+        return self._fiches_cache
+
+    def _vignette_de(self, key: str):
+        """``(chemin absolu, cadrage)`` de la vignette d'icône, ou ``(None, None)``.
+
+        La première vignette déclarée qui existe réellement sur disque ; son
+        ``cadrage`` dit quelle fenêtre l'icône de 44 px découpe.
+        """
+        for fiche in self._fiches():
+            if fiche.cle != key:
+                continue
+            for v in fiche.vignettes:
+                chemin = _DATA_DIR / v.image
+                if chemin.is_file():
+                    return str(chemin), v.cadrage
+        return None, None
+
+    def _open_fiche(self, key: str) -> None:
+        """Ouvre les fiches des produits, positionnées sur ``key``.
+
+        Import différé du dialog : les widgets de la fiche ne se chargent que
+        si l'utilisateur la demande.
+        """
+        from ..dialogs.indice_info_dialog import ouvrir_fiche_indice
+
+        fiches = self._fiches()   # remplit aussi le cache de comparaison
+        ouvrir_fiche_indice(
+            fiches, _DATA_DIR, key, parent=self,
+            comparaison=self._comparaison_cache,
+        )
 
     # ------------------------------------------------------------------
     # Logique
@@ -794,16 +898,7 @@ class IndicesPage(QWidget):
             )
 
     def _refresh(self) -> None:
-        self._mnt_chip.set_checked(self._products.get("MNT", False))
-        self._dens_chip.set_checked(self._products.get("DENSITE", False))
-        self._dens_chip.set_text("Densité · points LiDAR / m²")
-        self._cov_chip.set_checked(self._products.get("COUVERTURE", False))
-        self._cov_chip.set_text("Couverture · QA points sol")
-        locked = requires_mnt(self._products)
-        self._mnt_chip.set_text(
-            "MNT · altitude du sol" + ("   · REQUIS" if locked else "")
-        )
-        self._mnt_hint.setVisible(locked)
+        self._mnt_hint.setVisible(requires_mnt(self._products))
         for key, card in self._index_cards.items():
             card.set_checked(self._products.get(key, False))
         # Vue détaillée : cases « Indice activé » + badges « OFF » sur les onglets.
@@ -822,7 +917,7 @@ class IndicesPage(QWidget):
             f"{n} produit{'s' if n > 1 else ''} sélectionné{'s' if n > 1 else ''}"
         )
         self._sub.setText(
-            "Le MNT est la base des indices RVT. Cliquez un indice pour le sélectionner."
+            "Cliquez un produit pour le sélectionner. Le MNT est la base des indices."
             if self._mode not in ("existing_mnt", "existing_rvt")
             else "Données déjà fournies en entrée — sélectionnez les indices RVT à calculer."
         )
@@ -847,9 +942,10 @@ class IndicesPage(QWidget):
             self._mode_banner.setVisible(True)
         else:
             self._mode_banner.setVisible(False)
-        # L'onglet MNT (filtre PDAL + densité) n'a de sens que pour les modes
-        # qui calculent un MNT depuis un nuage de points.
-        self._adv_tabs.setTabEnabled(0, mode in ("ign_laz", "local_laz"))
+        # Les onglets du modèle de base n'ont de sens que pour les modes qui
+        # calculent un MNT depuis un nuage de points.
+        for idx in self._base_tab_indices:
+            self._adv_tabs.setTabEnabled(idx, mode in ("ign_laz", "local_laz"))
         # Purge des produits dérivés du nuage (densité/couverture) dans les modes
         # sans nuage : la carte « Modèle de base » est seulement masquée, jamais
         # réinitialisée — sans ça une sélection héritée d'un run LAZ persiste dans
@@ -911,16 +1007,13 @@ class IndicesPage(QWidget):
         scroll) restent actifs pour permettre de tout consulter. N'agit que sur
         ``setEnabled``/``setReadOnly`` → aucun signal ``changed`` ni autosave.
         """
-        self._mnt_chip.setEnabled(not ro)
-        self._dens_chip.setEnabled(not ro)
-        self._cov_chip.setEnabled(not ro)
-        self._res_spin.setEnabled(not ro)
-        self._reset_btn.setEnabled(not ro)
+        for btn in self._reset_btns.values():
+            btn.setEnabled(not ro)
         for card in self._index_cards.values():
             card.setEnabled(not ro)
         for chk in self._activate_checks.values():
             chk.setEnabled(not ro)
-        for _section, _key, widget, kind, _default in self._adv_fields:
+        for _p, _section, _key, widget, kind, _default in self._adv_fields:
             widget.setEnabled(not ro)
             if kind == "text":
                 widget.setReadOnly(ro)
@@ -932,11 +1025,7 @@ class IndicesPage(QWidget):
         self._loading = True
         try:
             self._products = {p.key: bool(prods.get(p.key, False)) for p in all_products()}
-            try:
-                self._res_spin.setValue(float(proc.get("mnt_resolution", 0.5)))
-            except (TypeError, ValueError):
-                self._res_spin.setValue(0.5)
-            self._load_advanced(config)
+            self._load_advanced(config)  # mnt_resolution incluse (champ avancé)
             self._refresh()
         finally:
             self._loading = prev
@@ -946,14 +1035,13 @@ class IndicesPage(QWidget):
         products = proc.setdefault("products", {})
         for p in all_products():
             products[p.key] = bool(self._products.get(p.key, False))
-        proc["mnt_resolution"] = float(self._res_spin.value())
         self._collect_advanced(config)
 
     # ------------------------------------------------------------------
     # Réglages avancés — chargement / collecte / reset (data-driven)
     # ------------------------------------------------------------------
     def _load_advanced(self, config: dict) -> None:
-        for section, key, widget, kind, default in self._adv_fields:
+        for _p, section, key, widget, kind, default in self._adv_fields:
             container = config
             for part in section:
                 container = container.get(part) if isinstance(container, dict) else None
@@ -963,30 +1051,51 @@ class IndicesPage(QWidget):
             self._apply_field(widget, kind, raw, default)
 
     def _collect_advanced(self, config: dict) -> None:
-        for section, key, widget, kind, _default in self._adv_fields:
+        for _p, section, key, widget, kind, _default in self._adv_fields:
             container = config
             for part in section:
                 container = container.setdefault(part, {})
             container[key] = self._read_field(widget, kind)
 
-    def _reset_advanced(self) -> None:
+    def _mk_reset_btn(self, produit: str, libelle: str) -> QPushButton:
+        """Bouton « ↺ Défauts » d'un produit, mémorisé pour le mode lecture seule."""
+        btn = QPushButton("↺  Défauts")
+        btn.setObjectName("GhostButton")
+        btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn.setToolTip(
+            f"Rétablit les paramètres de « {libelle} » à leurs valeurs par défaut. "
+            "Les autres produits ne sont pas touchés."
+        )
+        btn.clicked.connect(lambda _c=False, p=produit, lib=libelle: self._reset_produit(p, lib))
+        self._reset_btns[produit] = btn
+        return btn
+
+    def _reset_produit(self, produit: str, libelle: str) -> None:
+        """Rétablit les défauts d'UN produit. Les onze autres sont intacts.
+
+        La portée vient de ``app.services.reglages_defaut.champs_du_produit`` :
+        c'est le produit déclaré à l'enregistrement qui fait foi, jamais la
+        section de configuration — MNT, Densité et Couverture partagent
+        ``processing`` et seraient sinon réinitialisés ensemble.
+        """
         prev = self._loading
         self._loading = True
         modifies = 0
         try:
-            for _section, _key, widget, kind, default in self._adv_fields:
+            for _p, _section, _key, widget, kind, default in champs_du_produit(
+                self._adv_fields, produit
+            ):
                 avant = self._read_field(widget, kind)
                 self._apply_field(widget, kind, default, default)
                 if self._read_field(widget, kind) != avant:
                     modifies += 1
         finally:
             self._loading = prev
-        # Confirmation explicite, alignée sur la réinitialisation de l'étape 3 : dire ce
-        # qui a bougé plutôt que laisser douter qu'il se soit passé quelque chose.
-        show_toast(self, f"↺  {modifies} paramètre{'s' if modifies > 1 else ''} rétabli"
-                         f"{'s' if modifies > 1 else ''} aux valeurs par défaut"
-                   if modifies else "↺  Tous les paramètres étaient déjà aux valeurs "
-                                    "par défaut")
+        # Confirmation qui NOMME le produit : c'est ce qui dit à l'utilisateur
+        # qu'il n'a pas perdu le reste de ses réglages.
+        show_toast(self, phrase_produit_reinitialise(libelle, modifies)
+                   or f"↺  {libelle} : déjà aux valeurs par défaut")
+        self._update_context_hint()
         if not self._loading:
             self.changed.emit()
 

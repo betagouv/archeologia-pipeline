@@ -37,6 +37,11 @@ from ...app.services.model_orchestrator import (
 )
 from ..widgets.card import build_card
 from ..widgets.entity_card import EntityCard
+from ...app.services.reglages_defaut import (
+    a_des_surcharges,
+    effacer_surcharges,
+    phrase_entite_reinitialisee,
+)
 from ..widgets.toast import show_toast
 from ..widgets.toggle_switch import ToggleSwitch
 
@@ -147,24 +152,12 @@ class DetectionPage(QWidget):
         self._sel_count = ent_card.counter  # « X sur Y sélectionnées » dans l'en-tête
         adv_row = QHBoxLayout()
         adv_row.addStretch(1)
-        # Les surcharges par entité sont persistées d'une session à l'autre et priment
-        # sur les seuils du modèle : sans ce bouton, un réglage ancien reste appliqué
-        # en silence, y compris après la mise à jour d'un modèle. Le piège est réel —
-        # les seuils d'un run sont ramenés à leur MINIMUM (model_orchestrator l. 747),
-        # donc une seule entité oubliée à une valeur basse tire tout le run avec elle.
-        # Aligné sur la réinitialisation des réglages avancés de l'étape 2 : même préfixe
-        # « ↺ », même style GhostButton, même curseur, même confirmation par Toast.
-        self._reset_btn = QPushButton("↺  Réinit. val. défaut du modèle")
-        self._reset_btn.setObjectName("GhostButton")
-        self._reset_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        self._reset_btn.setToolTip(
-            "Efface toutes les surcharges par entité (confiance, aire minimale et "
-            "paramètres de regroupement) et revient aux valeurs recommandées par le "
-            "modèle sélectionné."
-        )
-        self._reset_btn.clicked.connect(self._on_reset_defaults)
-        self._reset_btn.setVisible(False)
-        adv_row.addWidget(self._reset_btn)
+        # Plus de réinitialisation globale ici : elle effaçait les surcharges de
+        # TOUTES les entités d'un coup (demande utilisateur 2026-09-16). Chaque
+        # carte porte la sienne, sur sa ligne de réglages avancés, et ne remet
+        # que ses propres valeurs — le piège que le bouton global adressait (un
+        # seuil ancien qui tire tout le run vers son minimum, cf.
+        # model_orchestrator) reste couvert, entité par entité.
         self._adv_check = QCheckBox("Réglages avancés (seuils par entité)")
         self._adv_check.setObjectName("WizardPageSub")
         self._adv_check.toggled.connect(self._on_advanced_toggled)
@@ -288,6 +281,7 @@ class DetectionPage(QWidget):
         vignette, cadrage = self._premiere_vignette(entity.id)
         card.set_fiche(vignette, disponible=bool(cand_names), cadrage=cadrage)
         card.fiche_requested.connect(self._open_class_fiche)
+        card.reset_requested.connect(self._on_reset_entity)
         card.toggled.connect(self._on_entity_toggled)
         card.models_changed.connect(self._on_models_changed)
         card.cluster_toggled.connect(self._on_cluster_toggled)
@@ -391,34 +385,37 @@ class DetectionPage(QWidget):
         if not self._loading:
             self.changed.emit()
 
-    def _on_reset_defaults(self) -> None:
-        """Efface les surcharges : les cartes retombent sur les défauts du modèle.
+    def _cle_surcharge(self, entity_id: str) -> str:
+        """Entité sous laquelle les surcharges de ``entity_id`` sont rangées.
 
-        On vide les dictionnaires plutôt que d'y réécrire les valeurs du modèle. C'est
-        la seule façon de rester juste quand on change de modèle ensuite : une valeur
-        recopiée redeviendrait une surcharge, figée sur l'ancien modèle.
+        Une entité incluse par une cible dérivée n'a pas de seuil propre : c'est
+        celui de la dérivée qui s'applique (règle 2026-09-15). Sa ligne avancée
+        est d'ailleurs désactivée, bouton compris ; cette résolution n'est donc
+        qu'une sécurité si le chemin change.
         """
-        if not (self._entity_thresholds or self._entity_cluster_params):
-            return
-        # Compté AVANT d'effacer : la confirmation dit ce qui a été fait, pas un
-        # « c'est fait » générique qui laisserait douter que quelque chose ait bougé.
-        n_seuils = len(self._entity_thresholds)
-        n_cluster = len(self._entity_cluster_params)
-        self._entity_thresholds.clear()
-        self._entity_cluster_params.clear()
-        # Pas besoin de geler les signaux ici : EntityCard.update_state met déjà son
-        # propre `_loading` autour de ses setValue, et n'émet donc pas pendant qu'on
-        # repeuple les spinbox avec les défauts du modèle.
-        self._refresh()
+        return self._incluses().get(entity_id) or entity_id
 
-        parties = []
-        if n_seuils:
-            parties.append(f"{n_seuils} seuil{'s' if n_seuils > 1 else ''} par entité")
-        if n_cluster:
-            parties.append(f"{n_cluster} jeu{'x' if n_cluster > 1 else ''} de paramètres "
-                           f"de regroupement")
-        show_toast(self, "↺  " + " et ".join(parties)
-                   + " effacé(s) — valeurs du modèle rétablies")
+    def _on_reset_entity(self, entity_id: str) -> None:
+        """Rétablit les valeurs du modèle pour UNE entité. Les autres sont intactes.
+
+        On retire les entrées plutôt que d'y réécrire les valeurs du modèle : une
+        valeur recopiée redeviendrait une surcharge, figée sur l'ancien modèle, et
+        survivrait à un changement de modèle.
+        """
+        cle = self._cle_surcharge(entity_id)
+        touches = effacer_surcharges(
+            cle, self._entity_thresholds, self._entity_cluster_params
+        )
+        if not touches:
+            return
+        # Pas besoin de geler les signaux : EntityCard.update_state met déjà son
+        # propre `_loading` autour de ses setValue, et n'émet donc pas pendant
+        # qu'on repeuple les spinbox avec les défauts du modèle.
+        self._refresh()
+        couverture = self._coverage.get(cle)
+        show_toast(self, phrase_entite_reinitialisee(
+            couverture.entity.label if couverture else cle, touches
+        ))
         if not self._loading:
             self.changed.emit()
 
@@ -431,7 +428,7 @@ class DetectionPage(QWidget):
 
         Si le model_card porte des seuils par classe (mesurés au banc), l'entité
         hérite du seuil de SES classes — c'est aussi la valeur vers laquelle le
-        bouton « Réinit. val. défaut du modèle » la ramène. ``min`` si l'entité
+        bouton « ↺ » de la carte la ramène. ``min`` si l'entité
         couvre plusieurs classes aux seuils différents (cohérent avec le plancher
         de décodage). Sinon, défaut global du modèle, comme avant.
         """
@@ -545,14 +542,11 @@ class DetectionPage(QWidget):
                 cluster_default_params=cluster_default_params,
                 cluster_params_override=self._entity_cluster_params.get(eid),
                 fiabilite_hint=self._fiabilite_hint(model, eid, ov.get("confidence_threshold")),
+                # Le bouton de la carte ne sert que si CETTE entité a été réglée.
+                reinit_possible=not self._readonly and a_des_surcharges(
+                    par or eid, self._entity_thresholds, self._entity_cluster_params
+                ),
             )
-        # Le bouton n'existe que là où il sert : en mode avancé, et seulement s'il y a
-        # effectivement quelque chose à effacer. Sinon il promettrait une action sans effet.
-        self._reset_btn.setVisible(self._advanced)
-        self._reset_btn.setEnabled(
-            not self._readonly
-            and bool(self._entity_thresholds or self._entity_cluster_params)
-        )
         self._update_selection_count()
         self._rebuild_runs()
         self._apply_filter()
@@ -740,12 +734,8 @@ class DetectionPage(QWidget):
         self._enable_check.setEnabled(not ro)
         self._annot_check.setEnabled(not ro)
         self._es_btn.setEnabled(not ro)
-        # Sans ça le bouton resterait cliquable pendant un run : les cartes sont
-        # désactivées mais lui vit dans la barre des réglages avancés, qui reste
-        # active pour la consultation.
-        self._reset_btn.setEnabled(
-            not ro and bool(self._entity_thresholds or self._entity_cluster_params)
-        )
+        # Les boutons de réinitialisation vivent désormais SUR les cartes, que la
+        # boucle ci-dessous désactive : plus rien à neutraliser à part.
         for card in self._cards.values():
             card.setEnabled(not ro)
 

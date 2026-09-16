@@ -39,6 +39,7 @@ from qgis.PyQt.QtWidgets import (
 
 from ...app.services.class_fiche import ClassFiche
 from ...app.services.fiabilite import pct
+from ..widgets.vignette import pixmap_ajuste
 
 _VIGNETTE_MAX = 320  # côté max de l'aperçu, en px logiques
 
@@ -62,6 +63,14 @@ def _titre_bloc(text: str) -> QLabel:
 def _puces(items: Sequence[str], obj: str = "FicheTexte") -> QLabel:
     """Liste à puces en un seul QLabel : moins de widgets, wrap correct."""
     return _label("\n".join(f"•  {t}" for t in items), obj)
+
+
+def _lignes_liste(titre: str, items: Sequence[str]) -> List[str]:
+    """Un seul élément : « Titre : texte » (forme d'origine des fiches) ;
+    plusieurs : une puce par élément, sans titre — la liste se lit seule."""
+    if len(items) == 1:
+        return [f"{titre} : {items[0]}"]
+    return [f"•  {t}" for t in items]
 
 
 def _nb(n: int) -> str:
@@ -186,23 +195,25 @@ class _Apercu(QWidget):
                 if not n else "Vignette introuvable\ndans le dossier du modèle"
             )
         else:
-            pix = QPixmap(str(chemin))
+            # −2 px : le cadre du QSS prend 1 px de chaque côté, viser la
+            # taille du widget ferait rogner l'image d'autant.
+            pix = pixmap_ajuste(
+                str(chemin), _VIGNETTE_MAX - 2, dpr=self.devicePixelRatioF()
+            )
             self._image.setProperty("state", "plein")
             if pix.isNull():
                 self._image.setText("Vignette illisible")
             else:
                 self._image.setText("")
-                self._image.setPixmap(pix.scaled(
-                    _VIGNETTE_MAX, _VIGNETTE_MAX,
-                    Qt.AspectRatioMode.KeepAspectRatio,
-                    Qt.TransformationMode.SmoothTransformation,
-                ))
+                self._image.setPixmap(pix)
         # Repolish : la propriété dynamique pilote le style du cadre.
         self._image.style().unpolish(self._image)
         self._image.style().polish(self._image)
 
-        morceaux = [m for m in (v.zone if v else "", v.legende if v else "") if m]
-        self._legende.setText(" — ".join(morceaux))
+        # Sous l'image, seulement le LIEU (décision utilisateur 2026-09-15) : la
+        # légende du model_card est une note interne de relecture, pas un texte
+        # d'interface.
+        self._legende.setText(v.zone if v else "")
 
 
 # ----------------------------------------------------------------------
@@ -262,7 +273,7 @@ class _CorpsFiche(QWidget):
         if f.task_label:
             lignes.append(f"Sortie : {f.task_label.lower()}")
         if f.seuil is not None:
-            lignes.append(f"Seuil déployé : {f.seuil:g}".replace(".", ","))
+            lignes.append(f"Seuil de confiance déployé : {f.seuil:g}".replace(".", ","))
         if f.modele:
             lignes.append(f"Modèle : {f.modele}")
         if f.statut:
@@ -285,9 +296,9 @@ class _CorpsFiche(QWidget):
             return ""
         lignes: List[str] = []
         if e.corpus:
-            lignes.append(f"Corpus : {e.corpus}")
+            lignes.extend(_lignes_liste("Corpus", e.corpus))
         if e.annotation:
-            lignes.append(f"Annotation : {e.annotation}")
+            lignes.extend(_lignes_liste("Annotation", e.annotation))
         if e.zones:
             lignes.append("")
             lignes.append("Zones d'apprentissage :")
@@ -330,7 +341,10 @@ class _CorpsFiche(QWidget):
         if f.hors_cible:
             out.append(("Ne détecte pas", _puces(f.hors_cible, "FicheHorsCible")))
         if f.usage:
-            out.append(("Dans quelle optique l'utiliser", _label(f.usage, "FicheTexte")))
+            # Un texte seul (forme d'origine) reste un paragraphe ; plusieurs
+            # éléments = une puce chacun, comme « Ne détecte pas ».
+            contenu = _puces(f.usage) if len(f.usage) > 1 else _label(f.usage[0], "FicheTexte")
+            out.append(("Dans quelle optique l'utiliser", contenu))
         if f.limites:
             out.append(("Limites connues du modèle", _puces(f.limites)))
         return out

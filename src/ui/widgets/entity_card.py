@@ -26,6 +26,7 @@ from qgis.PyQt.QtWidgets import (
 )
 
 from .no_wheel import NoWheelDoubleSpinBox
+from .vignette import pixmap_ajuste
 
 
 class _StayOpenMenu(QMenu):
@@ -111,6 +112,7 @@ class EntityCard(QFrame):
     thresholds_changed = pyqtSignal(str, float, float)  # entity_id, confiance, aire min
     cluster_params_changed = pyqtSignal(str, dict)  # entity_id, {param: valeur}
     fiche_requested = pyqtSignal(str)      # entity_id — ouvrir la fiche de structure
+    reset_requested = pyqtSignal(str)      # entity_id — rétablir SES valeurs de modèle
 
     def __init__(self, entity_id: str, label: str, description: str, parent=None):
         super().__init__(parent)
@@ -252,10 +254,27 @@ class EntityCard(QFrame):
         self._area_spin.setDecimals(0)
         self._area_spin.setFixedWidth(82)
         self._area_spin.valueChanged.connect(self._on_thresholds_changed)
+        # Réinitialisation de CETTE entité seulement. Le bouton global qui vivait
+        # dans l'en-tête de la carte « Entités à détecter » effaçait les surcharges
+        # de toutes les entités d'un coup (demande utilisateur 2026-09-16) : on
+        # réglait une entité, on voulait annuler ce réglage-là, et on perdait les
+        # autres. Il est désactivé avec toute la ligne quand l'entité est incluse
+        # par une dérivée : ses seuils sont ceux de la carte parente, c'est là
+        # qu'on les réinitialise.
+        self._reinit_btn = QPushButton("↺")
+        self._reinit_btn.setObjectName("EntityResetBtn")
+        self._reinit_btn.setFlat(True)
+        self._reinit_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._reinit_btn.setToolTip(
+            "Rétablit les valeurs recommandées par le modèle pour cette entité. "
+            "Les autres entités ne sont pas touchées."
+        )
+        self._reinit_btn.clicked.connect(lambda: self.reset_requested.emit(self._id))
         self._adv_row.addWidget(conf_lbl)
         self._adv_row.addWidget(self._conf_spin)
         self._adv_row.addWidget(area_lbl)
         self._adv_row.addWidget(self._area_spin)
+        self._adv_row.addWidget(self._reinit_btn)
         self._adv_row.setVisible(False)
         layout.addWidget(self._adv_row)
         # Aide fiabilité (mode avancé) : les coupures effectives des catégories
@@ -330,36 +349,22 @@ class EntityCard(QFrame):
         self._fiche_btn.setVisible(disponible)
         self._thumb.setEnabled(disponible)
 
-        pix = QPixmap(vignette_path) if vignette_path else QPixmap()
-        if not pix.isNull() and cadrage:
-            pix = self._decouper(pix, cadrage)
+        marge = 2  # laisse respirer le liseré du cadre
+        cote = _THUMB - marge * 2
+        pix = pixmap_ajuste(
+            vignette_path, cote, dpr=self.devicePixelRatioF(), cadrage=cadrage
+        ) if vignette_path else QPixmap()
         if pix.isNull():
             self._thumb.setIcon(QIcon())
             self._thumb.setText("◌" if disponible else "")
             self._thumb.setProperty("state", "vide")
         else:
-            marge = 2  # laisse respirer le liseré du cadre
             self._thumb.setText("")
             self._thumb.setIcon(QIcon(pix))
-            self._thumb.setIconSize(QSize(_THUMB - marge * 2, _THUMB - marge * 2))
+            self._thumb.setIconSize(QSize(cote, cote))   # px logiques, comme le pixmap
             self._thumb.setProperty("state", "plein")
         self._thumb.style().unpolish(self._thumb)
         self._thumb.style().polish(self._thumb)
-
-    @staticmethod
-    def _decouper(pix: QPixmap, cadrage: Tuple[float, float, float]) -> QPixmap:
-        """Découpe la fenêtre ``(x, y, côté)`` fractionnaire du pixmap.
-
-        Le cadrage est déjà borné à l'image par ``app.services.class_fiche`` ;
-        on reborne quand même ici (un pixmap non carré donnerait un rectangle
-        hors limites) et on rend l'image entière si le découpage est vide.
-        """
-        x, y, cote = cadrage
-        c = max(1, int(round(cote * pix.width())))
-        left = min(max(0, int(round(x * pix.width()))), max(0, pix.width() - c))
-        top = min(max(0, int(round(y * pix.height()))), max(0, pix.height() - c))
-        decoupe = pix.copy(left, top, c, c)
-        return pix if decoupe.isNull() else decoupe
 
     # ------------------------------------------------------------------
     def set_candidates(
@@ -432,6 +437,7 @@ class EntityCard(QFrame):
         implique_par: str = "",
         conf_label: str = "Confiance",
         conf_tip: str = "",
+        reinit_possible: bool = False,
     ) -> None:
         """``implique_par`` : libellé de la cible dérivée cochée qui INCLUT cette
         entité (2026-09-15) → cochée d'office, badge « inclus dans », seuils en
@@ -439,6 +445,9 @@ class EntityCard(QFrame):
         libellé et aide du seuil de confiance (une dérivée dit « Confiance des
         cratères » : son seuil est celui des détections sources)."""
         self._selected = selected
+        # Inactif quand il n'y a rien à rétablir : proposer d'annuler un réglage
+        # qui n'a jamais été fait ne dit rien à l'utilisateur.
+        self._reinit_btn.setEnabled(bool(reinit_possible))
         self.setToolTip(
             f"Inclus dans « {implique_par} » — décochez cette carte-là pour l'exclure"
             if implique_par else ""

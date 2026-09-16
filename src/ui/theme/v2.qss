@@ -152,14 +152,7 @@ QPushButton:disabled { color: #909090; border-color: #b0b0b0; }
 #ModeBannerSub { color: #5a5a5a; font-size: 11px; }
 #ModeBannerText { color: #2c2c2c; font-size: 11px; }
 
-/* ---- Étape 2 : chips MNT / Densité (QFrame + label) ---- */
-#Chip { background: #e3e3e3; border: 1px solid #a0a0a0; border-radius: 6px; }
-#Chip:hover { border-color: #2b79c2; }
-#Chip[checked="true"] { background: #d6e6f4; border: 1px solid #2b79c2; }
-#ChipLabel { color: #000000; }
-/* Pas de gras à l'état coché : le changement de graisse faisait varier la
-   largeur de la chip (décalage au clic) — même règle que #EntityChip. */
-#Chip[checked="true"] #ChipLabel { color: #1d5a96; }
+/* ---- Étape 2 : verrou MNT (les produits de base sont des #IndexCard) ---- */
 #MntHint { color: #5a5a5a; font-style: italic; font-size: 10px; }
 
 /* ---- Étape 2 : cartes d'indices ---- */
@@ -304,18 +297,35 @@ QPushButton:disabled { color: #909090; border-color: #b0b0b0; }
 /* Vignette de la structure : cadre plein quand une illustration existe,
    cadre d'attente en pointillés ocre tant que le model_card n'a pas de
    bloc fiche.vignettes (l'absence se voit, elle ne se devine pas). */
-#EntityThumb {
+/* Vignette d'accès à une fiche — #FicheThumb/#FicheBtn sont le widget partagé
+   (ui/widgets/vignette.py) posé sur les cartes de produits de l'étape 2 ; les
+   sélecteurs #Entity* restent ceux des cartes d'entités de l'étape 3. Un seul
+   jeu de règles : les deux fiches s'ouvrent avec le même visuel. */
+#EntityThumb, #FicheThumb {
     background: #ffffff; border: 1px solid #c4c4c4; border-radius: 3px;
     padding: 0; color: #b07a20; font-size: 15px;
 }
-#EntityThumb:hover { border-color: #2b79c2; }
-#EntityThumb[state="vide"] { border: 1px dashed #b07a20; background: #f6efdc; }
-#EntityThumb:disabled { border-color: #e3e3e3; background: #f0f0f0; color: transparent; }
-#EntityFicheBtn {
+#EntityThumb:hover, #FicheThumb:hover { border-color: #2b79c2; }
+#EntityThumb[state="vide"], #FicheThumb[state="vide"] {
+    border: 1px dashed #b07a20; background: #f6efdc;
+}
+#EntityThumb:disabled, #FicheThumb:disabled {
+    border-color: #e3e3e3; background: #f0f0f0; color: transparent;
+}
+/* Réinitialisation d'UNE entité, sur sa ligne de réglages avancés. Discret :
+   c'est une annulation, elle ne doit pas concurrencer les champs qu'elle rend
+   à leur valeur de modèle. Grisé quand l'entité n'a rien à rétablir. */
+#EntityResetBtn {
+    background: transparent; border: none; color: #2b79c2;
+    font-size: 13px; padding: 0 5px; min-height: 0; min-width: 18px;
+}
+#EntityResetBtn:hover { color: #1d5a96; }
+#EntityResetBtn:disabled { color: #c4c4c4; }
+#EntityFicheBtn, #FicheBtn {
     background: transparent; border: none; color: #2b79c2;
     font-size: 10px; padding: 0 4px; min-height: 0;
 }
-#EntityFicheBtn:hover { color: #1d5a96; text-decoration: underline; }
+#EntityFicheBtn:hover, #FicheBtn:hover { color: #1d5a96; text-decoration: underline; }
 
 /* ---- Étape 3 : runs IA programmés ---- */
 #RunRow { background: #ffffff; border: 1px solid #c4c4c4; border-radius: 6px; }
@@ -579,6 +589,15 @@ QPushButton[role="micro"] {
 }
 #FicheSep { color: #e3e3e3; max-height: 1px; }
 #FicheLegende { color: #5a5a5a; font-size: 10px; }
+/* Tableaux comparatifs des produits (fiche d'indice). Les trois verdicts
+   reprennent les couleurs déjà en service : le vert de « prêt », l'ocre des
+   avertissements, un gris neutre pour l'inadapté. Le point du sans-objet est
+   assez pâle pour ne pas se lire comme un quatrième verdict. */
+#FicheColonne { color: #5a5a5a; font-size: 9px; font-weight: bold; }
+#VerdictOui     { color: #2d6a2d; font-size: 13px; }
+#VerdictPartiel { color: #8a5e18; font-size: 13px; }
+#VerdictNon     { color: #a0a0a0; font-size: 13px; }
+#VerdictVide    { color: #d8d8d8; font-size: 13px; }
 #FicheCompteur { color: #5a5a5a; font-size: 10px; padding: 0 4px; }
 /* Cadre de l'aperçu : plein = liseré neutre ; vide = attente ocre, même
    langage que la vignette de carte. */

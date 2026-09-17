@@ -358,6 +358,54 @@ def _postprocess_rfdetr(
     return detections
 
 
+MASK_IOU_MERGE_THRESHOLD = 0.15  # IoU masque minimum pour autoriser la fusion
+
+
+def _inst_iou(inst: dict, sy: int, sx: int, ey: int, ex: int, new_vals: np.ndarray) -> float:
+    """IoU entre le prob_map d'une instance et ``new_vals``, dans [sy:ey, sx:ex]."""
+    bb = inst["bbox"]  # [min_y, min_x, max_y, max_x]
+    # Intersection de la zone de la slice avec le bbox de l'instance
+    iy0 = max(sy, bb[0])
+    ix0 = max(sx, bb[1])
+    iy1 = min(ey, bb[2])
+    ix1 = min(ex, bb[3])
+    if iy0 >= iy1 or ix0 >= ix1:
+        return 0.0
+    # Extraire les sous-régions
+    existing_patch = inst["prob"][iy0 - bb[0]:iy1 - bb[0], ix0 - bb[1]:ix1 - bb[1]]
+    new_patch = new_vals[iy0 - sy:iy1 - sy, ix0 - sx:ix1 - sx]
+    e_bin = existing_patch >= 0.5
+    n_bin = new_patch >= 0.5
+    inter = np.count_nonzero(e_bin & n_bin)
+    union = np.count_nonzero(e_bin | n_bin)
+    return inter / max(union, 1)
+
+
+def _inst_merge(inst: dict, sy: int, sx: int, ey: int, ex: int,
+                new_vals: np.ndarray, conf: float) -> None:
+    """Fusionne new_vals dans le prob_map local, en agrandissant le bbox si nécessaire."""
+    bb = inst["bbox"]  # [min_y, min_x, max_y, max_x]
+    new_min_y, new_min_x = min(bb[0], sy), min(bb[1], sx)
+    new_max_y, new_max_x = max(bb[2], ey), max(bb[3], ex)
+    if new_min_y < bb[0] or new_min_x < bb[1] or new_max_y > bb[2] or new_max_x > bb[3]:
+        # Agrandir le prob_map
+        new_h, new_w = new_max_y - new_min_y, new_max_x - new_min_x
+        new_prob = np.zeros((new_h, new_w), dtype=np.float32)
+        # Copier l'ancien contenu
+        off_y, off_x = bb[0] - new_min_y, bb[1] - new_min_x
+        old_h, old_w = bb[2] - bb[0], bb[3] - bb[1]
+        new_prob[off_y:off_y + old_h, off_x:off_x + old_w] = inst["prob"]
+        inst["prob"] = new_prob
+        inst["bbox"] = [new_min_y, new_min_x, new_max_y, new_max_x]
+        bb = inst["bbox"]
+    # Fusionner par max
+    ry, rx = sy - bb[0], sx - bb[1]
+    rh, rw = ey - sy, ex - sx
+    existing = inst["prob"][ry:ry + rh, rx:rx + rw]
+    inst["prob"][ry:ry + rh, rx:rx + rw] = np.maximum(existing, new_vals)
+    inst["conf"] = max(inst["conf"], conf)
+
+
 def _run_rfdetr_seg_with_sahi(
     pil_image,
     session,
@@ -372,6 +420,7 @@ def _run_rfdetr_seg_with_sahi(
     class_offset: int = 1,
     cancel_check: Optional[CancelCheckFn] = None,
     n_classes: Optional[int] = None,
+    silencieux: bool = False,
 ) -> List[Dict]:
     """
     Exécute RF-DETR Seg avec SAHI slicing en accumulant les masques de probabilité
@@ -390,6 +439,12 @@ def _run_rfdetr_seg_with_sahi(
     Les doublons (même instance détectée dans plusieurs tuiles avec chevauchement)
     sont fusionnés par max(prob) sur le même masque instance, identifiés par un hash
     de position de boîte englobante.
+
+    ``silencieux`` coupe les lignes de progression. Le recentrage (cf.
+    :mod:`recentrage`) rappelle cette fonction une fois par détection tranchée,
+    sur une seule fenêtre : sans ce drapeau, chaque appel écrirait
+    « SAHI: 1/1 tuiles », que ``external_runner._TILE_PROGRESS_RE`` relaie à la
+    barre de progression de l'UI.
     """
     try:
         import cv2
@@ -409,7 +464,8 @@ def _run_rfdetr_seg_with_sahi(
         overlap_height_ratio=overlap_ratio,
         overlap_width_ratio=overlap_ratio,
     )
-    logger.info(f"RF-DETR Seg SAHI: {len(sliced_images)} tuiles")
+    if not silencieux:
+        logger.info(f"RF-DETR Seg SAHI: {len(sliced_images)} tuiles")
 
     # Accumulation par instance dans l'espace global avec prob_maps locales (bbox-sized).
     # Clé: (class_id, gcx, gcy, gw, gh) en pixels globaux (centre+taille, discrétisés)
@@ -419,49 +475,6 @@ def _run_rfdetr_seg_with_sahi(
     n_real = None
 
     SNAP = 16  # tolérance de snap pour identifier la même instance entre tuiles
-    MASK_IOU_MERGE_THRESHOLD = 0.15  # IoU masque minimum pour autoriser la fusion
-
-    def _inst_iou(inst: dict, sy: int, sx: int, ey: int, ex: int, new_vals: np.ndarray) -> float:
-        """Calcule l'IoU entre un prob_map local et new_vals dans la zone [sy:ey, sx:ex]."""
-        bb = inst["bbox"]  # [min_y, min_x, max_y, max_x]
-        # Intersection de la zone de la slice avec le bbox de l'instance
-        iy0 = max(sy, bb[0])
-        ix0 = max(sx, bb[1])
-        iy1 = min(ey, bb[2])
-        ix1 = min(ex, bb[3])
-        if iy0 >= iy1 or ix0 >= ix1:
-            return 0.0
-        # Extraire les sous-régions
-        existing_patch = inst["prob"][iy0 - bb[0]:iy1 - bb[0], ix0 - bb[1]:ix1 - bb[1]]
-        new_patch = new_vals[iy0 - sy:iy1 - sy, ix0 - sx:ix1 - sx]
-        e_bin = existing_patch >= 0.5
-        n_bin = new_patch >= 0.5
-        inter = np.count_nonzero(e_bin & n_bin)
-        union = np.count_nonzero(e_bin | n_bin)
-        return inter / max(union, 1)
-
-    def _inst_merge(inst: dict, sy: int, sx: int, ey: int, ex: int, new_vals: np.ndarray, conf: float) -> None:
-        """Fusionne new_vals dans le prob_map local, en agrandissant le bbox si nécessaire."""
-        bb = inst["bbox"]  # [min_y, min_x, max_y, max_x]
-        new_min_y, new_min_x = min(bb[0], sy), min(bb[1], sx)
-        new_max_y, new_max_x = max(bb[2], ey), max(bb[3], ex)
-        if new_min_y < bb[0] or new_min_x < bb[1] or new_max_y > bb[2] or new_max_x > bb[3]:
-            # Agrandir le prob_map
-            new_h, new_w = new_max_y - new_min_y, new_max_x - new_min_x
-            new_prob = np.zeros((new_h, new_w), dtype=np.float32)
-            # Copier l'ancien contenu
-            off_y, off_x = bb[0] - new_min_y, bb[1] - new_min_x
-            old_h, old_w = bb[2] - bb[0], bb[3] - bb[1]
-            new_prob[off_y:off_y + old_h, off_x:off_x + old_w] = inst["prob"]
-            inst["prob"] = new_prob
-            inst["bbox"] = [new_min_y, new_min_x, new_max_y, new_max_x]
-            bb = inst["bbox"]
-        # Fusionner par max
-        ry, rx = sy - bb[0], sx - bb[1]
-        rh, rw = ey - sy, ex - sx
-        existing = inst["prob"][ry:ry + rh, rx:rx + rw]
-        inst["prob"][ry:ry + rh, rx:rx + rw] = np.maximum(existing, new_vals)
-        inst["conf"] = max(inst["conf"], conf)
 
     for slice_idx, sliced_img in enumerate(sliced_images):
         check_cancelled(cancel_check)
@@ -608,13 +621,14 @@ def _run_rfdetr_seg_with_sahi(
             else:
                 _inst_merge(instance_maps[matched_key], start_y, start_x, end_y, end_x, new_vals, confidence)
 
-        if _tile_progress_due(slice_idx + 1, len(sliced_images)):
+        if not silencieux and _tile_progress_due(slice_idx + 1, len(sliced_images)):
             logger.info(f"RF-DETR Seg SAHI: {slice_idx + 1}/{len(sliced_images)} tuiles traitées")
 
     if not instance_maps:
         return []
 
-    logger.info(f"RF-DETR Seg SAHI: {len(instance_maps)} instances candidates après accumulation")
+    if not silencieux:
+        logger.info(f"RF-DETR Seg SAHI: {len(instance_maps)} instances candidates après accumulation")
 
     # Extraire les polygones depuis chaque masque d'instance
     # RETR_CCOMP : récupère contours extérieurs + trous directs (formes en anneau)
@@ -676,7 +690,8 @@ def _run_rfdetr_seg_with_sahi(
                 logger.debug(f"RF-DETR Seg: instance classe {class_id} avec {len(holes)} trou(s)")
             detections.append(det)
 
-    logger.info(f"RF-DETR Seg SAHI: {len(detections)} polygones extraits (accumulation par instance)")
+    if not silencieux:
+        logger.info(f"RF-DETR Seg SAHI: {len(detections)} polygones extraits (accumulation par instance)")
     return detections
 
 
@@ -1405,6 +1420,46 @@ def run_onnx_inference(
             )
             orig_width, orig_height = pil_image.size
             logger.info(f"RF-DETR Seg: {len(all_detections)} instances après fusion globale")
+
+            # Recentrage des objets tranchés par une couture SAHI (enclos).
+            # Post-traitement optionnel et isolé : cf. src/pipeline/cv/recentrage.py.
+            from .recentrage import RECENTRAGE_ACTIF, coutures_depuis_slices, recentrer_les_coupes
+            if RECENTRAGE_ACTIF and all_detections:
+                from .sahi_lite import get_slice_bboxes
+
+                def _seconde_passe(crop, _s=session, _in=input_name):
+                    """Une fenêtre, une passe : le crop fait la taille d'une tuile."""
+                    return _run_rfdetr_seg_with_sahi(
+                        pil_image=crop,
+                        session=_s,
+                        input_name=_in,
+                        model_width=model_width,
+                        model_height=model_height,
+                        slice_width=slice_width,
+                        slice_height=slice_height,
+                        overlap_ratio=overlap_ratio,
+                        confidence_threshold=confidence_threshold,
+                        confidence_per_class=confidence_per_class,
+                        class_offset=class_offset,
+                        cancel_check=cancel_check,
+                        n_classes=len(class_names) if class_names else None,
+                        silencieux=True,
+                    )
+
+                all_detections = recentrer_les_coupes(
+                    all_detections,
+                    image=pil_image,
+                    largeur=orig_width,
+                    hauteur=orig_height,
+                    coutures=coutures_depuis_slices(
+                        get_slice_bboxes(orig_height, orig_width, slice_height,
+                                         slice_width, overlap_ratio, overlap_ratio),
+                        orig_width, orig_height,
+                    ),
+                    fenetre_px=(slice_width, slice_height),
+                    inferer=_seconde_passe,
+                    noms_de_classes=class_names,
+                )
 
             if not all_detections:
                 save_empty_outputs(image_path=image_path, output_path=output_path, jpg_folder_path=jpg_folder_path)

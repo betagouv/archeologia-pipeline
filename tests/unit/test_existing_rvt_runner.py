@@ -198,3 +198,56 @@ class TestExistingRvtRunner:
         assert all(10 <= v <= 95 for v in emitted), emitted
         assert emitted == sorted(emitted), "progression monotone"
         assert emitted[-1] == 95
+
+    def test_preparation_avance_la_barre_seulement_au_premier_run(
+        self, tmp_path: Path, monkeypatch
+    ):
+        """La conversion TIF→PNG (longue, muette) pilote la bande 0–10.
+
+        Au 2e run les PNG existent déjà : sa préparation ne doit PAS
+        ramener la barre de 95 à 0.
+        """
+        captured = []
+
+        def fake_run_existing_rvt(**kwargs):
+            captured.append(kwargs)
+            return SimpleNamespace(total_images=10, total_detections=None)
+
+        monkeypatch.setattr(
+            "pipeline.cv.class_utils.resolve_cv_runs",
+            lambda _cfg: [
+                {"selected_model": "m1", "target_rvt": "LD", "enabled": True},
+                {"selected_model": "m2", "target_rvt": "LD", "enabled": True},
+            ],
+        )
+        monkeypatch.setattr("pipeline.modes.existing_rvt.run_existing_rvt", fake_run_existing_rvt)
+        monkeypatch.setattr("app.runners.existing_rvt_runner.finalize_pipeline", lambda **_kwargs: None)
+
+        reporter = _Reporter()
+        ExistingRvtRunner().run(
+            ctx=_ctx(tmp_path, {"enabled": True, "target_rvt": "LD"}),
+            reporter=reporter,
+            cancel=CancelToken(threading.Event()),
+        )
+
+        assert len(captured) == 2
+        prep1 = captured[0]["prep_progress"]
+        prep2 = captured[1]["prep_progress"]
+        assert callable(prep1) and callable(prep2)
+
+        before = len(reporter.progress_values)
+        for i in (1, 500, 1000, 1575):
+            prep1(i, 1575, f"dalle_{i}.tif")
+        run1 = reporter.progress_values[before:]
+        assert run1 == sorted(run1) and run1, run1
+        assert all(0 <= v <= 10 for v in run1), run1
+        assert run1[-1] == 10
+
+        # Le message narratif dit où en est la préparation.
+        assert any("Préparation des images 1000/1575" in m for m in reporter.messages)
+
+        before = len(reporter.progress_values)
+        for i in (1, 1575):
+            prep2(i, 1575, f"dalle_{i}.tif")
+        assert reporter.progress_values[before:] == [], "le run 2 ne doit pas faire reculer la barre"
+

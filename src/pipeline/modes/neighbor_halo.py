@@ -16,6 +16,7 @@ mtime frais ré-arme la chaîne aval (PNG → purge du cache CV → ré-inféren
 from __future__ import annotations
 
 import json
+import threading
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Sequence, Tuple
 
@@ -84,6 +85,9 @@ class NeighborHalo:
         log: LogFn = lambda _: None,
         extract_fn: Optional[ExtractFn] = None,
     ) -> None:
+        # Les compteurs sont lus/écrits depuis le pool de threads de la
+        # préparation (run_existing_rvt) : ``+=`` n'est pas atomique.
+        self._lock = threading.Lock()
         self._tiles = dict(tiles)
         self._halo_dir = Path(halo_dir)
         self._margin = float(margin_m)
@@ -103,13 +107,15 @@ class NeighborHalo:
             return None
         inputs = halo_inputs(Path(tif), self._tiles, self._margin)
         if len(inputs) < 2:  # aucun voisin : la marge ne serait qu'un aplat
-            self.skipped += 1
+            with self._lock:
+                self.skipped += 1
             return None
         dst = self._halo_dir / Path(tif).name
         sidecar = dst.with_suffix(".inputs.json")
         expected = sorted(p.name for p in inputs)
         if dst.exists() and _is_fresh(dst, sidecar, expected, inputs):
-            self.reused += 1
+            with self._lock:
+                self.reused += 1
             return dst
         try:
             self._halo_dir.mkdir(parents=True, exist_ok=True)
@@ -121,7 +127,8 @@ class NeighborHalo:
                 "— inférence sur la dalle seule"
             )
             return None
-        self.built += 1
+        with self._lock:
+            self.built += 1
         return dst
 
 

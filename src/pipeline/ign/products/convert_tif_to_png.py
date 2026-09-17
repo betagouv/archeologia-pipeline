@@ -24,7 +24,12 @@ def convert_tif_to_png(
             if img.mode not in ("RGB", "RGBA", "L", "LA"):
                 img = img.convert("RGB")
 
-            img.save(output_path, "PNG", optimize=True)
+            # compress_level=1 plutôt que optimize=True : mesuré 0,12 s contre
+            # 0,56 s par dalle 2200×2200 pour 2,9 Mo contre 2,4 Mo. Ces PNG ne
+            # sont qu'une entrée d'inférence (jamais un livrable), le PNG reste
+            # sans perte — les pixels vus par le modèle sont identiques — et sur
+            # un lot de 1575 dalles l'optimisation coûtait 12 min pour 0,8 Go.
+            img.save(output_path, "PNG", compress_level=1)
 
         if create_world_file:
             ref_tif = reference_tif_path if reference_tif_path else input_path

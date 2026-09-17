@@ -221,6 +221,7 @@ def run_cv_post_loop(
             tile_progress=narrator.cv_run_tile_progress,
             on_busy=lambda active: report_busy(reporter, active),
             inference_tif_resolver=inference_tif_resolver,
+            max_workers=ctx.processing.max_workers,
         )
         if res.total_detections is not None:
             detection_counts.append(res.total_detections)

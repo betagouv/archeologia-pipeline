@@ -9,7 +9,7 @@ name=Archéolog'IA
 qgisMinimumVersion=3.34
 qgisMaximumVersion=4.99
 description=Détection de sites archéologiques par réseaux de neurones
-version=0.10.0
+version=0.11.0
 author=Valentin VIEUX
 email=valentin.vieux.pro@outlook.com
 about=Plugin pour automatiser la production d'indices de visualisation (à l'aide du plugin Relief Visualization Toolbox) à partir de données LiDAR ou de MNT et pour détecter des sites archéologiques à l'aide de réseaux de neurones (YOLO, RF-DETR détection ou segmentation)
@@ -21,7 +21,11 @@ repository=https://github.com/betagouv/archeologia-pipeline
 #
 
 hasProcessingProvider=no
-changelog=0.10.0 (2026-09-16)
+changelog=0.11.0 (2026-09-17)
+    * Deux nouveaux produits de visualisation, portant le catalogue de l'étape 2 à quatorze. « Relief coloré » (CRIM) : le micro-relief en clair-obscur et la PENTE en couleurs — fond crème sur le plat, rouge sur les fortes pentes. « Ouverture prismatique » (PRISM) : ouvertures positive et négative posées sur un ombrage multi-directionnel, où la couleur dit l'orientation du versant. Les deux ont leur fiche, leur vignette sur la dalle de référence, leurs réglages avancés et leur ligne dans les tableaux comparatifs.
+    * Recentrage des enclos tranchés par une fenêtre d'inférence : une détection posée sur une couture de découpage est redemandée au modèle sur une fenêtre centrée sur elle, où l'objet est entier. La réponse remplace la première ; sans confirmation, la détection est écartée.
+    * Bibliothèque de configurations : les réglages d'un chantier se sauvegardent sous un nom et se rechargent, hors du dossier du plugin — une mise à jour ne les emporte plus.
+ 0.10.0 (2026-09-16)
     * Fiche de produit : l'étape 2 s'appelle désormais « Produits » — elle ne contenait pas que des indices — et chacun des douze (MNT, densité, couverture et les neuf indices RVT) a sa fiche : ce que l'image montre, dans quelle optique s'en servir, ce qu'elle ne montre pas, comment elle est calculée, ses réglages et ses sources. Les douze vignettes sont produites sur une même dalle de référence, donc directement comparables entre elles.
     * Tableaux comparatifs, en tête des fiches : « ce que chaque produit sait faire » (7 critères) et « quel produit pour quelle forme » (6 types de vestiges) — pour choisir sans ouvrir douze fiches.
     * MNT, densité et couverture s'affichent sur le même gabarit de carte que les indices.

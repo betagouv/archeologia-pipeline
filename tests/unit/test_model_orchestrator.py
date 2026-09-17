@@ -857,6 +857,14 @@ class TestMorphology:
         # Retirées le 2026-09-10 : talus et fosse ont fusionné dans talus_fosse
         # (linéaires v3), abri n'a plus de modèle et n'en aura plus.
         assert {"talus", "fosse", "abri"}.isdisjoint(ids)
+        # Retirée le 2026-09-17 à la demande : « Axes linéaires de parcellaires »
+        # ne doit plus apparaître à l'étape 3. L'étape 3 fabrique une carte pour
+        # CHAQUE entité du catalogue, sans filtrer sur la couverture — la retirer
+        # du catalogue est donc le seul moyen de la masquer. Aucun modèle installé
+        # ne la déclarait, rien d'autre ne casse. Pour la réafficher : remettre le
+        # bloc `axe_lineaire` (morphology "zone", display_order 98) et rétablir
+        # l'assertion `by_morph["zone"]` ci-dessous.
+        assert "axe_lineaire" not in ids
 
         by_morph: dict = {}
         for e in cat:
@@ -864,7 +872,7 @@ class TestMorphology:
         # Toute entité porte une morphologie connue : une valeur inattendue la
         # ferait tomber dans le groupe « Autres » de l'étape 3, en silence.
         assert set(by_morph) <= {"circulaire", "lineaire", "zone"}
-        assert by_morph.get("zone", []) == ["regroupement_crateres", "axe_lineaire"]
+        assert by_morph.get("zone", []) == ["regroupement_crateres"]
         for attendu, morpho in (("talus_fosse", "lineaire"), ("parcellaire", "lineaire"),
                                 ("cratere", "circulaire"), ("enclos", "circulaire")):
             assert attendu in by_morph[morpho]

@@ -35,6 +35,10 @@ _PRODUCTS: List[ProductInfo] = [
                 "Position topographique multi-échelle (RGB)", True),
     ProductInfo("CVAT", "CVAT", "Combined VAT",
                 "VAT combiné (general + flat), terrains variés", True),
+    ProductInfo("PRISM", "PRISM", "Prismatic Openness",
+                "Ouverture prismatique, micro-relief en couleurs (RGB)", True),
+    ProductInfo("CRIM", "CRIM", "Color Relief Image Map",
+                "Relief coloré par la pente, fond sable (RGB)", True),
 ]
 _BY_KEY = {p.key: p for p in _PRODUCTS}
 

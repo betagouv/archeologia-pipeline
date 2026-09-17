@@ -95,6 +95,10 @@ _TAB_DESC = {
             "(locale/méso/large) en une image RGB.",
     "CVAT": "VAT combiné : fusionne les variantes « general » et « flat » du VAT. "
             "Composition figée — aucun paramètre hormis la sortie 8 bits.",
+    "PRISM": "Ouverture prismatique : ouvertures positive et négative posées sur "
+             "un ombrage multi-directionnel. Image en couleurs, fort contraste.",
+    "CRIM": "Relief coloré : le micro-relief en nuances de gris, la PENTE en "
+            "couleurs. C'est la pente qui est colorée, jamais l'altitude.",
 }
 
 # Aides communes à plusieurs indices.
@@ -352,7 +356,7 @@ class IndicesPage(QWidget):
         subtitle.setWordWrap(True)
         titles.addWidget(title)
         titles.addWidget(subtitle)
-        # Pas de réinitialisation globale ici : elle emportait les douze produits
+        # Pas de réinitialisation globale ici : elle emportait tous les produits
         # d'un coup (demande utilisateur 2026-09-16). Chaque onglet porte la
         # sienne, qui ne touche qu'à ses propres champs.
         header.addWidget(self._adv_back_btn)
@@ -594,6 +598,65 @@ class IndicesPage(QWidget):
             ("", cvat_8, _HELP_8BIT),
         ]), "CVAT")
 
+        # — PRISM (prism) : ouverture prismatique, combinaison 1 du blender —
+        # Même forme que le VAT : le préréglage de terrain vaut pour TOUTE
+        # combinaison du blender, il change l'élévation solaire et les
+        # étirements sous-jacents.
+        # Chaque ``_reg`` est écrit en toutes lettres (et non dans une boucle) :
+        # tests/unit/test_reset_defauts_ui.py relit ces appels par AST pour
+        # vérifier que tout champ est rattaché à un produit. Une section passée
+        # par variable y devient illisible, et le champ orphelin.
+        prism_terrain = QComboBox()
+        prism_terrain.addItem("Général", 0)
+        prism_terrain.addItem("Plat", 1)
+        prism_terrain.addItem("Pentu", 2)
+        prism_terrain.currentIndexChanged.connect(self._on_changed)
+        prism_8 = self._mk_check()
+        self._reg(("rvt_params", "prism"), "terrain_type", prism_terrain, "combo", 0)
+        self._reg(("rvt_params", "prism"), "save_as_8bit", prism_8, "bool", True)
+        self._tab_index["PRISM"] = self._adv_tabs.addTab(self._make_param_tab("PRISM", [
+            ("Type de terrain", prism_terrain,
+             "Préréglage adapté au relief dominant de la zone."),
+            ("", prism_8, _HELP_8BIT),
+        ]), "PRISM")
+
+        # — CRIM (crim) : relief coloré par la pente —
+        crim_cmap = QComboBox()
+        # Colormaps matplotlib séquentielles, lisibles en relief. « OrRd » est
+        # le défaut de rvt.blend.color_relief_image_map : fond sable, pentes en
+        # rouge. Changer de colormap change entièrement l'image, d'où le dossier
+        # de sortie distinct (cf. rvt_naming.get_rvt_param_suffix).
+        for _libelle, _valeur in (("Orangé → rouge (OrRd)", "OrRd"),
+                                  ("Rouge inversé (Reds_r)", "Reds_r"),
+                                  ("Jaune → orangé → rouge (YlOrRd)", "YlOrRd"),
+                                  ("Gris inversé (Greys_r)", "Greys_r"),
+                                  ("Terrain (gist_earth)", "gist_earth")):
+            crim_cmap.addItem(_libelle, _valeur)
+        crim_cmap.currentIndexChanged.connect(self._on_changed)
+        crim_cut_min = self._mk_dspin(0.0, 1.0, 0.0)
+        crim_cut_max = self._mk_dspin(0.0, 1.0, 1.0)
+        # Les deux bornes ne peuvent pas se croiser : RVT lève dès que la coupe
+        # basse atteint la haute, et le garde-fou de crim.py avale l'exception —
+        # l'indice serait simplement absent, sans rien dire à l'utilisateur.
+        crim_cut_min.valueChanged.connect(
+            lambda v, hi=crim_cut_max: hi.setMinimum(min(1.0, v + 0.01)))
+        crim_cut_max.valueChanged.connect(
+            lambda v, lo=crim_cut_min: lo.setMaximum(max(0.0, v - 0.01)))
+        crim_8 = self._mk_check()
+        self._reg(("rvt_params", "crim"), "colormap", crim_cmap, "combo", "OrRd")
+        self._reg(("rvt_params", "crim"), "min_colormap_cut", crim_cut_min, "float", 0.0)
+        self._reg(("rvt_params", "crim"), "max_colormap_cut", crim_cut_max, "float", 1.0)
+        self._reg(("rvt_params", "crim"), "save_as_8bit", crim_8, "bool", True)
+        self._tab_index["CRIM"] = self._adv_tabs.addTab(self._make_param_tab("CRIM", [
+            ("Palette de couleurs", crim_cmap,
+             "Palette appliquée à la PENTE du terrain, jamais à l'altitude."),
+            ("Coupe basse de la palette", crim_cut_min,
+             "Retire le bas de la palette (0 = palette entière)."),
+            ("Coupe haute de la palette", crim_cut_max,
+             "Retire le haut de la palette (1 = palette entière)."),
+            ("", crim_8, _HELP_8BIT),
+        ]), "CRIM")
+
         root.addWidget(self._adv_tabs)
 
         # — Tuilage (global à tous les indices) —
@@ -788,7 +851,7 @@ class IndicesPage(QWidget):
         return card
 
     def _fiches(self):
-        """Les fiches des douze produits, lues une fois par session.
+        """Les fiches de tous les produits, lues une fois par session.
 
         Le JSON est petit et la lecture est tolérante (fichier absent → fiches
         dégradées) : l'étape 2 s'ouvre même si le fichier manque.

@@ -60,6 +60,11 @@ KERNEL_PARAMS: Dict[str, KernelParam] = {
     "LD": KernelParam("ldo", "max_radius", 20, "Rayon max"),
     "SLRM": KernelParam("slrm", "radius", 20, "Rayon"),
     "MSTP": KernelParam("mstp", "broad_scale_max", 2023, "Échelle large — rayon max"),
+    # VAT, CVAT, PRISM et CRIM n'ont volontairement PAS d'entrée : leurs
+    # noyaux (openness, SVF) sont figés aux défauts RVT — rayon 10 px, soit 5 m
+    # au pas de 0,5 m, très en deçà de la marge de tuilage (20 m par défaut).
+    # Aucun réglage de l'étape 2 ne peut les faire déborder, contrairement au
+    # rayon du SVF ou à l'échelle large du MSTP, exposés à l'utilisateur.
 }
 
 # Bandes d'échelle MSTP : (préfixe de clé, libellé, min, max, pas) par défaut.

@@ -66,7 +66,8 @@ class TestDefaultConfig:
 
     def test_default_rvt_params_has_all_sections(self, cm: ConfigManager):
         cfg = cm.default_config()
-        expected = {"hs", "mdh", "svf", "slope", "ldo", "slrm", "vat", "mstp", "cvat"}
+        expected = {"hs", "mdh", "svf", "slope", "ldo", "slrm", "vat", "mstp", "cvat",
+                    "prism", "crim"}
         assert set(cfg["rvt_params"].keys()) == expected
 
 

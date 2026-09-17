@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, Optional
 
+from .crim import compute_crim
 from .cvat import compute_cvat
 from .qgis_processing import run_qgis_algorithm
 from .results import needs_refresh
@@ -390,6 +391,87 @@ def create_visualization_products(
             outputs["CVAT"] = out
         else:
             log(f"CVAT non créé: {out.name}")
+
+    # PRISM : combinaison 1 du MÊME algorithme que le VAT
+    # (settings/default_blender_combinations.json, dans l'ordre VAT / Prismatic
+    # openness / City). Seul l'indice de combinaison change.
+    if products.get("PRISM", False):
+        prism = (rvt_params or {}).get("prism", {})
+        # Le préréglage de terrain s'applique à TOUTE combinaison du blender
+        # (rvt_blender.py appelle apply_terrain avant le rendu), pas seulement
+        # au VAT : il change l'élévation solaire et les étirements sous-jacents.
+        terrain_type = _as_int(prism.get("terrain_type", 0), 0)
+        save_as_8bit = _as_bool(prism.get("save_as_8bit", True), True)
+
+        cible = temp_dir / get_rvt_temp_filename("PRISM", current_tile_name, rvt_params)
+        base_sorties = cible.with_suffix("").with_name(cible.stem + "_outputs")
+
+        if needs_refresh(input_path, cible):
+            log(format_params_line("RVT/PRISM", {
+                "tile": current_tile_name,
+                "blend_combination": 1,
+                "terrain_type": {0: "general", 1: "flat", 2: "steep"}.get(
+                    terrain_type, str(terrain_type)),
+                "save_as_8bit": save_as_8bit,
+            }))
+            params = {
+                "INPUT": str(input_path),
+                "distance_units": "meters",
+                "area_units": "m2",
+                "ellipsoid": "EPSG:7019",
+                "BLEND_COMBINATION": 1,
+                "TERRAIN_TYPE": terrain_type,
+                "SAVE_AS_8BIT": save_as_8bit,
+                "SAVE_AS_FLOAT": False,
+                "OUTPUT": str(base_sorties),
+            }
+            run_qgis_algorithm("rvt:rvt_blender", params, feedback=feedback, context=context)
+
+            attendu = Path(str(base_sorties) + "_8bit.tif")
+            if attendu.exists():
+                shutil.copy2(str(attendu), str(cible))
+            else:
+                candidats = sorted(temp_dir.glob(f"{base_sorties.name}*.tif"))
+                if candidats:
+                    shutil.copy2(str(candidats[0]), str(cible))
+        else:
+            log(f"PRISM réutilisé (cache intermédiaire) : {cible.name}")
+
+        if cible.exists():
+            outputs["PRISM"] = cible
+        else:
+            log(f"PRISM non créé: {cible.name}")
+
+    if products.get("CRIM", False):
+        crim = (rvt_params or {}).get("crim", {})
+        colormap = str(crim.get("colormap", "OrRd")).strip() or "OrRd"
+        cut_min = _as_float(crim.get("min_colormap_cut", 0.0), 0.0)
+        cut_max = _as_float(crim.get("max_colormap_cut", 1.0), 1.0)
+        save_as_8bit = _as_bool(crim.get("save_as_8bit", True), True)
+        out = temp_dir / get_rvt_temp_filename("CRIM", current_tile_name, rvt_params)
+        if needs_refresh(input_path, out):
+            log(format_params_line("RVT/CRIM", {
+                "tile": current_tile_name,
+                "colormap": colormap,
+                "colormap_cut": f"{cut_min}-{cut_max}",
+                "save_as_8bit": save_as_8bit,
+            }))
+            # CRIM n'est pas exposé via Processing : calcul in-process (cf. crim.py).
+            compute_crim(
+                input_path=input_path,
+                output_path=out,
+                colormap=colormap,
+                min_colormap_cut=cut_min,
+                max_colormap_cut=cut_max,
+                save_as_8bit=save_as_8bit,
+                log=log,
+            )
+        else:
+            log(f"CRIM réutilisé (cache intermédiaire) : {out.name}")
+        if out.exists():
+            outputs["CRIM"] = out
+        else:
+            log(f"CRIM non créé: {out.name}")
 
     # Rendus 8 bits : séparer NoData réel (→255, étiqueté) et valides saturés
     # (→254) tant que le MNT est sous la main — après coup les deux classes de

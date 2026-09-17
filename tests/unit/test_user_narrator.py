@@ -341,10 +341,15 @@ class TestUserNarratorFactory:
         assert isinstance(n, UserNarrator)
 
     def test_product_labels_cover_all_products(self):
-        # Tous les codes produits utilisés dans products_cfg doivent
-        # avoir un libellé humain.
-        expected_codes = {"MNT", "DENSITE", "M_HS", "SVF", "SLO", "LD", "SLRM", "VAT"}
-        assert expected_codes.issubset(set(PRODUCT_LABELS.keys()))
+        # Tous les codes produits du catalogue doivent avoir un libellé
+        # humain. La liste venait du CATALOGUE et non d'un ensemble figé :
+        # écrite en dur, elle est restée à 8 codes quand le catalogue en a
+        # compté 14, et ne pouvait plus signaler un produit sans libellé.
+        from app.services.indices_model import all_products
+        attendus = {p.key for p in all_products()}
+        assert len(attendus) >= 14, "anti-test-creux : catalogue vidé ?"
+        manquants = sorted(attendus - set(PRODUCT_LABELS))
+        assert manquants == [], f"produits sans libellé humain : {manquants}"
 
 
 # ----------------------------------------------------------------------

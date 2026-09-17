@@ -9,7 +9,7 @@ répond à quatre questions que l'étape 2 ne savait pas poser :
 3. **Qu'est-ce que ça ne montre pas ?** — les angles morts, dits franchement ;
 4. **D'où ça sort ?** — méthode, réglages de l'étape 2 et sources.
 
-Les douze produits sont toujours chargés ensemble : ouvrir la fiche du Sky-View
+Tous les produits sont toujours chargés ensemble : ouvrir la fiche du Sky-View
 Factor et feuilleter jusqu'au Local Dominance est précisément la façon dont on
 choisit entre deux indices.
 
@@ -265,7 +265,7 @@ class _CorpsComparaison(QWidget):
     """Les tableaux comparatifs.
 
     Une fiche répond « que montre ce produit » ; ces tableaux répondent
-    « lequel prendre », qui est la question qu'on se pose devant les douze
+    « lequel prendre », qui est la question qu'on se pose devant la liste
     cases à cocher de l'étape 2 et qu'aucune fiche prise seule ne résout.
     """
 
@@ -366,7 +366,7 @@ class IndiceInfoDialog(QDialog):
         corps.setContentsMargins(0, 0, 0, 0)
         corps.setSpacing(0)
 
-        # Liste de gauche : les douze produits, pour comparer avant de cocher.
+        # Liste de gauche : tous les produits, pour comparer avant de cocher.
         self._liste = QListWidget()
         self._liste.setObjectName("FicheListe")
         self._liste.setFixedWidth(210)

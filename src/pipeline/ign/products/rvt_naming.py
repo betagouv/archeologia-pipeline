@@ -16,7 +16,7 @@ from typing import Any, Dict, Tuple
 #: package — un test verrouille la synchronisation des deux tuples).
 PRODUCT_ORDER: Tuple[str, ...] = (
     "MNT", "DENSITE", "COUVERTURE", "HS", "M_HS", "SVF", "SLO", "LD", "SLRM", "VAT",
-    "MSTP", "CVAT",
+    "MSTP", "CVAT", "PRISM", "CRIM",
 )
 
 
@@ -129,6 +129,26 @@ def get_rvt_param_suffix(product_name: str, rvt_params: Dict[str, Any]) -> str:
         lightness_str = str(lightness).replace(".", "p")
         return f"_L{l_min}-{l_max}_M{m_min}-{m_max}_B{b_min}-{b_max}_Li{lightness_str}"
 
+    elif product_name == "PRISM":
+        # Combinaison 1 du blender RVT. Comme pour le VAT, le préréglage de
+        # terrain ne change pas la recette mais tous ses réglages sous-jacents :
+        # il doit donc figurer au nom du dossier.
+        prism = rvt_params.get("prism", {})
+        terrain_type = _as_int(prism.get("terrain_type", 0), 0)
+        return f"_T{terrain_type}"
+
+    elif product_name == "CRIM":
+        crim = rvt_params.get("crim", {})
+        # La colormap est le paramètre visible du produit : deux colormaps
+        # donnent deux images sans rapport, elles ne peuvent pas partager un
+        # dossier. Les bornes de coupe suivent la même règle.
+        colormap = str(crim.get("colormap", "OrRd")).strip() or "OrRd"
+        colormap = "".join(c for c in colormap if c.isalnum() or c == "_")
+        cut_min = _as_float(crim.get("min_colormap_cut", 0.0), 0.0)
+        cut_max = _as_float(crim.get("max_colormap_cut", 1.0), 1.0)
+        bornes = f"{cut_min}-{cut_max}".replace(".", "p")
+        return f"_C{colormap}_Cut{bornes}"
+
     # MNT, DENSITE, COUVERTURE, CVAT (composition figée): pas de suffixe.
     return ""
 
@@ -182,6 +202,8 @@ def get_rvt_temp_filename(
         "VAT": "VAT",
         "MSTP": "MSTP",
         "CVAT": "CVAT",
+        "PRISM": "PRISM",
+        "CRIM": "CRIM",
     }
     
     base_name = base_names.get(product_name, product_name)

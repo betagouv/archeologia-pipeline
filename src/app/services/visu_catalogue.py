@@ -41,6 +41,8 @@ _METIER: Dict[str, tuple] = {
     "SLRM":       ("Micro-reliefs",           FAMILY_RVT),
     "VAT":        ("Vue archéo optimisée",    FAMILY_RVT),
     "CVAT":       ("Vue archéo renforcée",    FAMILY_RVT),
+    "CRIM":       ("Relief coloré",           FAMILY_RVT),
+    "PRISM":      ("Ouverture prismatique",   FAMILY_RVT),
     "MSTP":       ("Bosses & cuvettes",       FAMILY_RVT),
     "HS":         ("Ombrage simple",          FAMILY_RVT),
     "SLO":        ("Pente du terrain",        FAMILY_RVT),

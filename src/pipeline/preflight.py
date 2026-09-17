@@ -30,6 +30,12 @@ RVT_ALGO_BY_PRODUCT: Dict[str, str] = {
     "SLRM": "rvt_slrm",
     "VAT": "rvt_blender",
     "MSTP": "rvt_mstp",
+    # PRISM est la combinaison 1 du MÊME algorithme que le VAT. CRIM en
+    # revanche n'est pas dans l'enum BLEND_COMBINATION (construit depuis
+    # settings/default_blender_combinations.json, qui ne liste que VAT /
+    # Prismatic openness / City) : comme CVAT, il est calculé in-process et
+    # vérifié séparément.
+    "PRISM": "rvt_blender",
 }
 
 
@@ -306,9 +312,13 @@ def collect_preflight_results(
                 critical=False,
             ))
 
-    # CVAT n'utilise pas Processing : il est calculé in-process via le paquet
-    # ``rvt`` fourni par le plugin rvt-qgis. On vérifie qu'il est localisable.
-    if products.get("CVAT", False) and mode in ("ign_laz", "local_laz", "existing_mnt"):
+    # CVAT et CRIM n'utilisent pas Processing : ils sont calculés in-process via
+    # le paquet ``rvt`` fourni par le plugin rvt-qgis. On vérifie qu'il est
+    # localisable. Une seule vérification suffit : les deux passent par le même
+    # ``_locate_rvt_package``.
+    _in_process = [k for k in ("CVAT", "CRIM") if products.get(k, False)]
+    if _in_process and mode in ("ign_laz", "local_laz", "existing_mnt"):
+        _libelle = f"{' et '.join(_in_process)} (lib rvt in-process)"
         try:
             # Import relatif différé : un import absolu `pipeline.*` ne résout pas
             # dans QGIS (le package n'est pas exposé sous ce nom au runtime), et
@@ -317,13 +327,13 @@ def collect_preflight_results(
             from .ign.products.cvat import _locate_rvt_package
             ok = _locate_rvt_package() is not None
             results.append(CheckResult(
-                name="CVAT (lib rvt in-process)",
+                name=_libelle,
                 ok=ok,
                 details="plugin rvt-qgis détecté" if ok else "plugin rvt-qgis introuvable",
                 critical=False,
             ))
         except Exception as e:
-            results.append(CheckResult(name="CVAT (lib rvt in-process)", ok=False, details=repr(e), critical=False))
+            results.append(CheckResult(name=_libelle, ok=False, details=repr(e), critical=False))
 
     if cv_enabled:
         runner = _find_external_cv_runner()

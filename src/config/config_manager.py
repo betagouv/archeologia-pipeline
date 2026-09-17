@@ -21,6 +21,10 @@ class ConfigManager:
         # emplacement est migré automatiquement au premier lancement.
         base = Path(settings_dir) if settings_dir is not None else plugin_root
         self.last_ui_path = base / "last_ui_config.json"
+        # Bibliothèque de configurations nommées (menu « Charger une config »).
+        # Même dossier que la session pour la même raison : une mise à jour du
+        # plugin ne doit pas emporter les configs de l'utilisateur.
+        self.configs_dir = base / "configs"
         if settings_dir is not None:
             self._migrate_legacy_last_ui()
 
@@ -54,6 +58,7 @@ class ConfigManager:
                 "products": {
                     "MNT": False,
                     "DENSITE": False,
+                    "COUVERTURE": False,
                     "HS": False,
                     "M_HS": False,
                     "SVF": False,
@@ -63,6 +68,8 @@ class ConfigManager:
                     "VAT": False,
                     "MSTP": False,
                     "CVAT": False,
+                    "PRISM": False,
+                    "CRIM": False,
                 },
                 "output_formats": {
                     "jpg": {
@@ -74,6 +81,8 @@ class ConfigManager:
                         "VAT": False,
                         "MSTP": False,
                         "CVAT": False,
+                        "PRISM": False,
+                        "CRIM": False,
                     }
                 },
             },
@@ -135,6 +144,20 @@ class ConfigManager:
                 },
                 "vat": {
                     "terrain_type": 0,
+                    "save_as_8bit": True,
+                },
+                "prism": {
+                    "terrain_type": 0,
+                    "save_as_8bit": True,
+                },
+                "crim": {
+                    # Colormap matplotlib appliquée à la PENTE. "OrRd" est le
+                    # défaut de rvt.blend.color_relief_image_map : fond sable,
+                    # pentes en rouge. C'est le rendu qui donne à CRIM sa
+                    # signature, changer la colormap change toute l'image.
+                    "colormap": "OrRd",
+                    "min_colormap_cut": 0.0,
+                    "max_colormap_cut": 1.0,
                     "save_as_8bit": True,
                 },
                 "mstp": {

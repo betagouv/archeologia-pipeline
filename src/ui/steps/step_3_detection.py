@@ -108,6 +108,7 @@ class DetectionPage(QWidget):
         title.setObjectName("DetectionSwitch")
         sub = QLabel("Sélectionnez les entités à détecter — les modèles sont choisis automatiquement.")
         sub.setObjectName("WizardPageSub")
+        sub.setWordWrap(True)  # sinon ses 869 px deviennent la largeur mini de la fenêtre
         text = QVBoxLayout()
         text.setSpacing(1)
         text.addWidget(title)
@@ -228,6 +229,13 @@ class DetectionPage(QWidget):
         content_scroll.setObjectName("DetectionScroll")
         content_scroll.setWidgetResizable(True)
         content_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        # Un seul sens de défilement : la page descend, elle ne va jamais de
+        # côté (demande utilisateur 2026-09-17). Les libellés de cartes et de
+        # runs se replient (setWordWrap) pour que le contenu tienne vraiment
+        # dans la largeur — la politique ci-dessous n'est que le garde-fou.
+        content_scroll.setHorizontalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+        )
         content_scroll.setWidget(self._content)
         self._content_scroll = content_scroll
 
@@ -595,6 +603,7 @@ class DetectionPage(QWidget):
             h.setSpacing(8)
             name = QLabel(disp)
             name.setObjectName("RunName")
+            name.setWordWrap(True)  # nom long = largeur mini de la page sinon
             # Bouton ⓘ : ouvre un dialog modal d'info détaillée sur le modèle
             # (model_card.yaml + args.yaml). Désactivé si le modèle n'est pas
             # résolu (run orphelin, ne devrait pas arriver en pratique).

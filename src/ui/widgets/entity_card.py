@@ -158,6 +158,10 @@ class EntityCard(QFrame):
         self._check.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._label = QLabel(label)
         self._label.setObjectName("EntityLabel")
+        # Tout libellé de la carte se replie : sans ça sa largeur de texte
+        # devient une largeur MINIMALE, et deux colonnes de cartes ne tiennent
+        # plus dans la page → barre de défilement horizontale (2026-09-17).
+        self._label.setWordWrap(True)
         self._fiche_btn = QPushButton("Fiche")
         self._fiche_btn.setObjectName("EntityFicheBtn")
         self._fiche_btn.setFlat(True)
@@ -207,6 +211,7 @@ class EntityCard(QFrame):
         self._model_row = _Row()
         self._model_name = QLabel("")
         self._model_name.setObjectName("EntityModelName")
+        self._model_name.setWordWrap(True)
         self._change_btn = QPushButton("Changer ▾")
         self._change_btn.setObjectName("EntityChangeBtn")
         self._change_btn.setFlat(True)
@@ -239,6 +244,7 @@ class EntityCard(QFrame):
         self._adv_row = _Row()
         conf_lbl = QLabel("Confiance")
         conf_lbl.setObjectName("EntityModelLabel")
+        conf_lbl.setWordWrap(True)
         self._conf_lbl = conf_lbl  # relibellé « Confiance des cratères » sur une dérivée
         self._conf_spin = NoWheelDoubleSpinBox()
         self._conf_spin.setRange(0.0, 1.0)
@@ -248,6 +254,7 @@ class EntityCard(QFrame):
         self._conf_spin.valueChanged.connect(self._on_thresholds_changed)
         area_lbl = QLabel("Aire min m²")
         area_lbl.setObjectName("EntityModelLabel")
+        area_lbl.setWordWrap(True)
         self._area_spin = NoWheelDoubleSpinBox()
         self._area_spin.setRange(0.0, 1_000_000.0)
         self._area_spin.setSingleStep(50.0)
@@ -302,6 +309,7 @@ class EntityCard(QFrame):
             r = _Row()
             wl = QLabel(lbl)
             wl.setObjectName("EntityModelLabel")
+            wl.setWordWrap(True)
             sp = NoWheelDoubleSpinBox()
             sp.setRange(mn, mx)
             sp.setSingleStep(step)

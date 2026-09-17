@@ -63,3 +63,16 @@ def test_ecriture_atomique_ne_laisse_pas_de_tmp(tmp_path):
     leftovers = [p.name for p in tmp_path.iterdir() if p.suffix == ".tmp"]
     assert leftovers == []
     assert cm.load_last_ui_config()["app"]["files"]["output_dir"] == "X:/out"
+
+
+def test_configs_dir_voisin_de_last_ui_config(tmp_path):
+    """Les configs nommées vivent dans le PROFIL, à côté de last_ui_config.json —
+    pas dans le dossier du plugin, effacé à chaque mise à jour (CFG-02)."""
+    plugin_root = tmp_path / "plugin"
+    plugin_root.mkdir()
+    settings = tmp_path / "profil" / "archeologia"
+
+    cm = ConfigManager(plugin_root, settings_dir=settings)
+
+    assert cm.configs_dir == settings / "configs"
+    assert plugin_root not in cm.configs_dir.parents

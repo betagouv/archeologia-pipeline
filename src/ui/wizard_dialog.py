@@ -18,9 +18,11 @@ from qgis.PyQt.QtWidgets import (
     QFrame,
     QHBoxLayout,
     QLabel,
+    QMenu,
     QMessageBox,
     QProgressBar,
     QPushButton,
+    QScrollArea,
     QStackedWidget,
     QTabWidget,
     QVBoxLayout,
@@ -30,7 +32,9 @@ from qgis.PyQt.QtWidgets import (
 from ..app.progress_stages import Stage
 from ..app.services.indices_model import product, rvt_keys
 from ..app.services.source_modes import mode_info
+from ..app.services.config_store import ConfigStore
 from ..config.config_manager import ConfigManager
+from .dialogs.config_dialogs import ConfigsDialog, demander_nom
 from .icons import colored_icon, colored_pixmap
 from .steps.step_1_source import SourcePage
 from .steps.step_2_indices import IndicesPage
@@ -97,6 +101,8 @@ class WizardDialog(QDialog):
             pass  # hors QGIS (tests) : ancien comportement
         self._cm = ConfigManager(self._plugin_root, settings_dir=settings_dir)
         self._config = self._cm.load_last_ui_config()
+        self._store = ConfigStore(self._cm.configs_dir)
+        self._last_config_name = ""
         self._loading = False
         self._validation_errors: list = []
 
@@ -108,10 +114,18 @@ class WizardDialog(QDialog):
         self.setWindowFlags(self.windowFlags() | Qt.WindowType.WindowMinimizeButtonHint)
         # Plus large que le wizard seul : le mur visuel de l'onglet Visualisation
         # tient 4 cartes de 200 px à côté du rail de 252 px.
-        if VISUALISATION_TAB_ENABLED:
-            self.resize(1120, 700)
-        else:
-            self.resize(980, 660)
+        largeur, hauteur = (1120, 700) if VISUALISATION_TAB_ENABLED else (980, 660)
+        # Jamais plus grand que l'écran : le dialogue s'ouvrait à sa taille
+        # MINIMALE (1327 × 711, imposée par les pages qui ne défilaient pas) et
+        # débordait sous le bord bas des portables (2026-09-17). Les pages
+        # défilent maintenant en hauteur, donc cette taille est tenable.
+        try:
+            ecran = self.screen().availableGeometry()
+            largeur = min(largeur, ecran.width() - 40)
+            hauteur = min(hauteur, ecran.height() - 80)
+        except Exception:
+            pass  # pas d'écran (tests hors session graphique)
+        self.resize(largeur, hauteur)
 
         self._apply_theme()
 
@@ -137,8 +151,8 @@ class WizardDialog(QDialog):
         self._indices_page = IndicesPage()
         self._detection_page = DetectionPage(self._plugin_root)
         self._launch_page = LaunchPage(self._plugin_root, self._config)
-        self._stack.addWidget(self._source_page)               # étape 1
-        self._stack.addWidget(self._indices_page)              # étape 2
+        self._stack.addWidget(self._defilante(self._source_page))    # étape 1
+        self._stack.addWidget(self._defilante(self._indices_page))   # étape 2
         self._stack.addWidget(self._detection_page)            # étape 3
         self._stack.addWidget(self._launch_page)               # étape 4
         body.addWidget(self._rail)
@@ -211,7 +225,14 @@ class WizardDialog(QDialog):
         # remplaçait l'affichage ET last_ui_config.json).
         load_btn = QPushButton("Charger une config")
         load_btn.setObjectName("GhostButton")
-        load_btn.clicked.connect(self._load_config_file)
+        # Bouton-MENU : le navigateur de fichiers obligeait à retrouver soi-même
+        # un .json rangé n'importe où. Le menu liste les configurations
+        # enregistrées et est reconstruit à chaque ouverture (aboutToShow) —
+        # une config enregistrée ou supprimée apparaît sans relancer le plugin.
+        self._load_menu = QMenu(load_btn)
+        self._load_menu.setToolTipsVisible(True)  # sinon l'infobulle de « Réinitialiser » ne s'affiche pas
+        self._load_menu.aboutToShow.connect(self._rebuild_load_menu)
+        load_btn.setMenu(self._load_menu)
         self._load_btn = load_btn
         save_btn = QPushButton("Enregistrer la config")
         save_btn.setObjectName("GhostButton")
@@ -267,6 +288,27 @@ class WizardDialog(QDialog):
         layout.addStretch(1)
         layout.addWidget(self._next_btn)
         return bar
+
+    @staticmethod
+    def _defilante(page: QWidget) -> QScrollArea:
+        """Rend une page défilante EN HAUTEUR seulement.
+
+        Sans ça, la hauteur minimale de la page devient la hauteur minimale de
+        la fenêtre (étape 2 : 606 px → dialogue 711 px, hors écran en bas sur un
+        portable). La largeur minimale de la page est reportée sur la zone
+        défilante : rien n'est rogné sur les côtés et aucune barre horizontale
+        n'apparaît — on ne défile jamais que vers le bas.
+        """
+        zone = QScrollArea()
+        zone.setObjectName("WizardPageScroll")
+        zone.setWidgetResizable(True)
+        zone.setFrameShape(QFrame.Shape.NoFrame)
+        zone.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        zone.setWidget(page)
+        zone.setMinimumWidth(
+            page.minimumSizeHint().width() + zone.verticalScrollBar().sizeHint().width()
+        )
+        return zone
 
     def _apply_theme(self) -> None:
         qss_path = Path(__file__).parent / "theme" / "v2.qss"
@@ -629,23 +671,78 @@ class WizardDialog(QDialog):
     # Import / export d'un fichier de config (boutons de l'en-tête)
     # ------------------------------------------------------------------
     def _save_config_file(self) -> None:
-        path, _ = QFileDialog.getSaveFileName(
-            self, "Enregistrer la configuration", "", "Configuration (*.json);;Tous (*.*)"
-        )
-        if not path:
+        """Enregistre la configuration courante SOUS UN NOM, dans le dossier du
+        profil QGIS (cf. app/services/config_store). Plus de navigateur de
+        fichiers : l'utilisateur nommait son fichier puis devait le retrouver."""
+        nom = demander_nom(self, self._store, propose=self._last_config_name)
+        if nom is None:
             return
-        if not path.endswith(".json"):
-            path += ".json"
         self._collect_config()
         try:
-            with open(path, "w", encoding="utf-8") as f:
-                json.dump(self._config, f, indent=2, ensure_ascii=False)
-        except Exception as e:  # noqa: BLE001
+            self._store.save(nom, self._config)
+        except OSError as e:  # noqa: BLE001
             QMessageBox.warning(self, "Erreur", f"Impossible d'enregistrer : {e}")
+            return
+        self._last_config_name = nom
+
+    # ------------------------------------------------------------------
+    # Menu « Charger une config »
+    # ------------------------------------------------------------------
+    def _rebuild_load_menu(self) -> None:
+        menu = self._load_menu
+        menu.clear()
+        # En TÊTE et isolée par un séparateur : la réinitialisation n'est pas une
+        # configuration comme les autres, elle jette les réglages en cours.
+        reset = menu.addAction(
+            colored_icon("reset", "#5a6672", 14, dpr=self.devicePixelRatioF()),
+            "Réinitialiser — valeurs par défaut",
+        )
+        reset.setToolTip("Remet TOUS les réglages du plugin à leurs valeurs d'origine.")
+        reset.triggered.connect(self._reset_to_defaults)
+        menu.addSeparator()
+
+        noms = self._store.list_names()
+        if noms:
+            for nom in noms:
+                act = menu.addAction(nom)
+                act.triggered.connect(lambda _=False, n=nom: self._load_saved_config(n))
+        else:
+            vide = menu.addAction("Aucune configuration enregistrée")
+            vide.setEnabled(False)
+        menu.addSeparator()
+        menu.addAction("Gérer les configurations…").triggered.connect(self._manage_configs)
+        menu.addAction("Importer un fichier…").triggered.connect(self._load_config_file)
+
+    def _load_saved_config(self, nom: str) -> None:
+        try:
+            loaded = self._store.load(nom)
+        except (OSError, ValueError) as e:  # noqa: BLE001
+            QMessageBox.warning(self, "Erreur", f"Impossible de charger « {nom} » : {e}")
+            return
+        self._apply_config(loaded)
+        self._last_config_name = nom
+
+    def _reset_to_defaults(self) -> None:
+        rep = QMessageBox.question(
+            self, "Réinitialiser ?",
+            "Remettre tous les réglages à leurs valeurs par défaut ? "
+            "Les réglages en cours seront perdus (les configurations "
+            "enregistrées, elles, sont conservées).",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if rep != QMessageBox.StandardButton.Yes:
+            return
+        self._apply_config(self._cm.default_config())
+        self._last_config_name = ""
+
+    def _manage_configs(self) -> None:
+        ConfigsDialog(self._store, self).exec()
 
     def _load_config_file(self) -> None:
+        """Import d'un .json venu d'ailleurs (config partagée par un collègue)."""
         path, _ = QFileDialog.getOpenFileName(
-            self, "Charger une configuration", "", "Configuration (*.json);;Tous (*.*)"
+            self, "Importer une configuration", "", "Configuration (*.json);;Tous (*.*)"
         )
         if not path:
             return
@@ -655,6 +752,11 @@ class WizardDialog(QDialog):
         except Exception as e:  # noqa: BLE001
             QMessageBox.warning(self, "Erreur", f"Impossible de charger : {e}")
             return
+        self._apply_config(loaded)
+
+    def _apply_config(self, loaded) -> None:
+        """Point de passage UNIQUE d'un changement de config (menu, import,
+        réinitialisation) : normalisation, rechargement des pages, persistance."""
         if isinstance(loaded, dict) and isinstance(loaded.get("ui_config"), dict):
             loaded = loaded["ui_config"]  # compat ancien wrapper
         cfg = self._cm.default_config()
@@ -676,4 +778,4 @@ class WizardDialog(QDialog):
         finally:
             self._loading = False
         self._refresh_rail_subs()
-        self._autosave_now()  # chargement explicite → persistance immédiate
+        self._autosave_now()  # changement explicite → persistance immédiate

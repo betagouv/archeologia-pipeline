@@ -1,7 +1,7 @@
 """Portée d'une réinitialisation aux valeurs par défaut — module pur.
 
 Les deux étapes réglables offraient un bouton **global** : « Réinit. val. par
-défaut » remettait d'un coup les paramètres des douze produits (étape 2), et
+défaut » remettait d'un coup les paramètres de tous les produits (étape 2), et
 « Réinit. val. défaut du modèle » effaçait les surcharges de **toutes** les
 entités (étape 3). C'est trop brutal : on affine le rayon du Sky-View Factor, on
 veut annuler ce réglage-là, et on perd au passage l'élévation solaire de
@@ -33,6 +33,8 @@ SECTION_PRODUIT = {
     "vat": "VAT",
     "mstp": "MSTP",
     "cvat": "CVAT",
+    "prism": "PRISM",
+    "crim": "CRIM",
 }
 
 #: Pseudo-produit du réglage de tuilage. Il vaut pour tous les indices à la fois

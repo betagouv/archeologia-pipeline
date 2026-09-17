@@ -77,13 +77,6 @@
       "description": "Enclos à morphologie circulaire (ringforts, enclosures) — modèle entraîné sur le corpus irlandais, LD 1 m. Adapté à la prospection de formes circulaires.",
       "display_order": 97,
       "morphology": "circulaire"
-    },
-    {
-      "id": "axe_lineaire",
-      "label": "Axes linéaires",
-      "description": "Bandes directionnelles reconstruites depuis les détections parcellaires alignées (voies anciennes, limites majeures, levées). Longueur, couverture, nombre de brins, parallélisme et discordance en attributs.",
-      "display_order": 98,
-      "morphology": "zone"
     }
   ]
 }

@@ -19,6 +19,7 @@
     "products": {
       "MNT": false,
       "DENSITE": false,
+      "COUVERTURE": false,
       "HS": false,
       "M_HS": false,
       "SVF": false,
@@ -27,7 +28,9 @@
       "SLRM": false,
       "VAT": false,
       "MSTP": false,
-      "CVAT": false
+      "CVAT": false,
+      "PRISM": false,
+      "CRIM": false
     },
     "output_formats": {
       "jpg": {
@@ -38,7 +41,9 @@
         "LD": false,
         "VAT": false,
         "MSTP": false,
-        "CVAT": false
+        "CVAT": false,
+        "PRISM": false,
+        "CRIM": false
       }
     }
   },
@@ -124,6 +129,16 @@
       "save_as_8bit": true
     },
     "cvat": {
+      "save_as_8bit": true
+    },
+    "prism": {
+      "terrain_type": 0,
+      "save_as_8bit": true
+    },
+    "crim": {
+      "colormap": "OrRd",
+      "min_colormap_cut": 0.0,
+      "max_colormap_cut": 1.0,
       "save_as_8bit": true
     }
   }

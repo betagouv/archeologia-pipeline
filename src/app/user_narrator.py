@@ -41,6 +41,8 @@ PRODUCT_LABELS = {
     "VAT": "visualisation pour l'archéologie (VAT)",
     "MSTP": "position topographique multi-échelle (MSTP)",
     "CVAT": "visualisation archéo combinée (CVAT)",
+    "PRISM": "ouverture prismatique (PRISM)",
+    "CRIM": "relief coloré par la pente (CRIM)",
 }
 
 
@@ -274,6 +276,21 @@ class UserNarrator:
             group="mnt_progress",
         )
         self._metric(index, total, "MNT")
+
+    def rvt_prep_progress(self, index: int, total: int, image_name: str) -> None:
+        """Sous-progression de la préparation TIF→PNG (mode existing_rvt).
+
+        Phase muette jusqu'ici : sur un gros lot (>1000 dalles, ~1,5 s
+        chacune) elle dure des dizaines de minutes entre « Modèle 1/N » et
+        la première image analysée, sans rien afficher. Ligne unique
+        réécrite à chaque dalle (canal transient).
+        """
+        short = image_name if len(image_name) <= 30 else image_name[:27] + "…"
+        self._user_info_transient(
+            f"   ↳ Préparation des images {index}/{total} : {short}",
+            group="rvt_prep_progress",
+        )
+        self._metric(index, total, "images")
 
     # ------------------------------------------------------------------
     # Computer Vision

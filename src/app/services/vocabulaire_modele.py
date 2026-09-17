@@ -24,6 +24,8 @@ _RVT_LONG_NAMES: Dict[str, str] = {
     "VAT": "Visualisation pour la topographie archéologique (VAT)",
     "MSTP": "Multi-Scale Topographic Position (MSTP)",
     "CVAT": "Combined VAT (CVAT)",
+    "PRISM": "Ouverture prismatique (PRISM)",
+    "CRIM": "Color Relief Image Map (CRIM)",
 }
 
 _TASK_LABELS: Dict[str, str] = {

@@ -183,3 +183,18 @@ def test_catalogue_livre_est_coherent():
             if item.thumbnail:
                 assert (path.parent / item.thumbnail).is_file(), \
                     f"vignette manquante : {item.thumbnail}"
+
+
+def test_chaque_produit_du_pipeline_a_un_libelle_metier():
+    """Un produit absent de ``_METIER`` s'affiche quand même — mais sans titre
+    métier, sans famille, et hors de ``DISPLAY_ORDER`` : il part en fin de mur,
+    incohérent avec les autres. Le repli étant silencieux (cf.
+    ``test_cle_inconnue_reste_affichable``), rien ne signalait le trou.
+    """
+    from app.services.indices_model import all_products
+    from app.services.visu_catalogue import _METIER
+
+    attendus = {p.key for p in all_products()}
+    assert len(attendus) >= 14, "anti-test-creux : catalogue vidé ?"
+    manquants = sorted(attendus - set(_METIER))
+    assert manquants == [], f"produits sans libellé métier : {manquants}"

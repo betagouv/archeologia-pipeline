@@ -86,9 +86,9 @@ class ExistingRvtRunner:
         if cv_runs:
             narrator.cv_start(len(cv_runs))
             reporter.stage("Computer Vision")
-            # La barre entre dans la bande CV (10) ; elle progresse ensuite
-            # image par image via cv_pct dans _on_image_progress.
-            reporter.progress(plan.cv[0])
+            # La barre reste dans la bande « préparation » (0–10) pendant la
+            # conversion TIF→PNG du 1er run (_on_prep_progress), puis passe
+            # à la bande CV image par image via cv_pct dans _on_image_progress.
 
         # total_detections par run (résumé du runner) — None exclus : si aucun
         # run n'a de résumé (fallback, vieux binaire), pas d'annonce de total.
@@ -110,6 +110,14 @@ class ExistingRvtRunner:
             ):
                 narrator.cv_run_image_progress(_model, idx, total, image_name)
                 reporter.progress(cv_pct(_ri, _n, idx, total, plan.cv))
+
+            # Préparation TIF→PNG : seul le 1er run la subit réellement (les
+            # PNG des suivants sont déjà là) → lui seul pilote la bande 0–10,
+            # sinon la barre reculerait de 95 à 0 au run 2.
+            def _on_prep_progress(idx, total, name, _ri=run_idx):
+                narrator.rvt_prep_progress(idx, total, name)
+                if _ri == 1:
+                    reporter.progress(plan.at(plan.products, idx / max(1, total)))
 
             # Option B (halo inter-dalles) étendue à existing_rvt : si le dossier
             # de sortie contient les TIF non rognés d'un run complet antérieur
@@ -137,6 +145,8 @@ class ExistingRvtRunner:
                 global_color_map=global_color_map,
                 indices_folder_name="RVT",
                 image_progress=_on_image_progress if cv_runs else None,
+                prep_progress=_on_prep_progress,
+                max_workers=processing.max_workers,
                 tile_progress=narrator.cv_run_tile_progress if cv_runs else None,
                 on_busy=lambda active: report_busy(reporter, active),
                 inference_tif_resolver=inference_tif_resolver,

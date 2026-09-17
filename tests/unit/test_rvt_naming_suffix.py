@@ -113,12 +113,23 @@ class TestRvtFolderName:
             "SLRM": "SLRM_R20_V1",
             "VAT": "VAT_T0_B0",
             "MSTP": "MSTP_L3-21_M23-203_B223-2023_Li1p2",
+            # Combinaison 1 du blender : seul le préréglage de terrain
+            # distingue deux rendus, d'où le suffixe réduit à _T<terrain>.
+            "PRISM": "PRISM_T0",
+            # CRIM : la colormap EST le produit, deux colormaps ne peuvent pas
+            # partager un dossier. Défauts de color_relief_image_map.
+            "CRIM": "CRIM_COrRd_Cut0p0-1p0",
         }
         for product, attendu in attendus.items():
             assert get_rvt_folder_name(product, {}) == attendu, product
-        # Les douze produits sont figés ci-dessus : cette garde fait échouer le
-        # test si l'un d'eux cesse d'être couvert par le dictionnaire.
-        assert len(ALL_PRODUCTS) >= 12, "anti-test-creux : plus aucun produit à vérifier"
+        # Tous les produits sont figés ci-dessus : la garde compare les DEUX
+        # ensembles, pour qu'elle reste équivalente à « tous les produits sont
+        # couverts » quel que soit leur nombre. Écrite « >= 12 » elle tolérait
+        # la disparition silencieuse de deux produits une fois le catalogue
+        # passé à 14.
+        assert len(ALL_PRODUCTS) == len(attendus), (
+            f"catalogue {len(ALL_PRODUCTS)} produits, {len(attendus)} noms figés"
+        )
         assert set(ALL_PRODUCTS) <= set(attendus), (
             f"produits sans nom figé : {sorted(set(ALL_PRODUCTS) - set(attendus))}"
         )

@@ -176,6 +176,7 @@ def test_chaque_parametre_cite_un_reglage_qui_existe(livrees):
 
     sections = {
         "processing", "hs", "mdh", "svf", "slope", "ldo", "slrm", "vat", "mstp", "cvat",
+        "prism", "crim",
     }
     fautifs = [
         (f.cle, p.cle)

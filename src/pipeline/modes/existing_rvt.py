@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import shutil
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
@@ -189,6 +190,8 @@ def run_existing_rvt(
     on_busy: Optional[Callable[[bool], None]] = None,
     inference_tif_resolver: Optional[Callable[[Path], Optional[Path]]] = None,
     halo_margin_m: float = DEFAULT_HALO_MARGIN_M,
+    prep_progress: Optional[Callable[[int, int, str], None]] = None,
+    max_workers: int = 1,
 ) -> ExistingRvtResult:
     if not existing_rvt_dir.exists() or not existing_rvt_dir.is_dir():
         raise FileNotFoundError(f"Dossier RVT inexistant ou invalide: {existing_rvt_dir}")
@@ -282,11 +285,22 @@ def run_existing_rvt(
     total_tif = len(tif_files)
     log(f"Traitement de {total_tif} fichiers TIF…")
 
-    for idx, tif_path in enumerate(tif_files):
-        if cancel_check is not None and cancel_check():
-            log("Annulation demandée, arrêt du traitement RVT.")
-            break
+    # ``valid_region_bounds`` peut passer à None en cours de fusion (dalle
+    # sans emprise lisible) : les workers lisent ce drapeau figé, la décision
+    # reste au thread de fusion.
+    needs_bounds = valid_region_bounds is not None
 
+    def _prepare_one(tif_path: Path) -> Optional[Dict[str, Any]]:
+        """Copie + halo + PNG d'UNE dalle, sans toucher à l'état partagé.
+
+        Le résultat est fusionné par l'appelant dans l'ordre des dalles : la
+        fonction tourne donc telle quelle dans un pool de threads sans changer
+        la sortie d'un run séquentiel. ``None`` = annulation demandée.
+        """
+        if cancel_check is not None and cancel_check():
+            return None
+
+        res: Dict[str, Any] = {}
         effective_tif_path = tif_path
         # Couplage copie→PNG : si la copie dest a été rafraîchie (source
         # remplacée, mtime de DONNÉES), le PNG doit suivre même quand son
@@ -303,72 +317,114 @@ def run_existing_rvt(
                         log(f"RVT: renommage (coords) {tif_path.name} -> {dest.name}")
                     shutil.copy2(str(tif_path), str(dest))
                 effective_tif_path = dest
-                kept_tif_names.add(dest.name)
+                res["kept_tif"] = dest.name
             except Exception:
                 effective_tif_path = tif_path
         elif tif_out_dir is not None:
             # existing_rvt_dir == tif_out_dir : les TIFs sont déjà au bon endroit
-            kept_tif_names.add(tif_path.name)
+            res["kept_tif"] = tif_path.name
 
-        if cv_enabled:
-            # Option B (halo inter-dalles) : l'appelant peut résoudre une source
-            # d'inférence alternative — le TIF non rogné d'intermediaires/, dont
-            # la marge est de la vraie donnée voisine. Les objets à cheval sur
-            # une frontière de dalle sont alors vus en entier ; les doublons de
-            # la zone de recouvrement sont fusionnés en aval (espace géo).
-            inference_src = effective_tif_path
-            resolved = None
-            if inference_tif_resolver is not None:
-                try:
-                    resolved = inference_tif_resolver(effective_tif_path)
-                except Exception:
-                    resolved = None
-            if resolved is None and neighbor_halo is not None:
-                resolved = neighbor_halo.resolve(tif_path)
-            if resolved is not None and Path(resolved).exists():
-                inference_src = Path(resolved)
+        if not cv_enabled:
+            return res
 
-            if valid_region_bounds is not None:
-                cell_bounds = get_raster_bounds(effective_tif_path)
+        # Option B (halo inter-dalles) : l'appelant peut résoudre une source
+        # d'inférence alternative — le TIF non rogné d'intermediaires/, dont
+        # la marge est de la vraie donnée voisine. Les objets à cheval sur
+        # une frontière de dalle sont alors vus en entier ; les doublons de
+        # la zone de recouvrement sont fusionnés en aval (espace géo).
+        inference_src = effective_tif_path
+        resolved = None
+        if inference_tif_resolver is not None:
+            try:
+                resolved = inference_tif_resolver(effective_tif_path)
+            except Exception:
+                resolved = None
+        if resolved is None and neighbor_halo is not None:
+            resolved = neighbor_halo.resolve(tif_path)
+        if resolved is not None and Path(resolved).exists():
+            inference_src = Path(resolved)
+
+        res["stem"] = effective_tif_path.stem
+        if needs_bounds:
+            res["cell_bounds"] = get_raster_bounds(effective_tif_path)
+
+        # Le NOM du PNG reste celui du TIF rogné (stems stables : cache,
+        # couches, images annotées) — seul le CONTENU vient de la source.
+        jpg_path = jpg_output_dir / (effective_tif_path.stem + ".png")
+        # GEO-03 : le PNG d'inférence DOIT venir du même raster que le
+        # transform (inference_src). Un PNG préexistant aux mauvaises
+        # dimensions (ex. PNG rogné d'un run antérieur vs source à marge)
+        # est régénéré, sinon décalage de la marge.
+        if jpg_path.exists() and not _png_consistent_with_tif(jpg_path, inference_src):
+            log(f"PNG incohérent avec le TIF (dimensions ≠), régénération: {jpg_path.name}")
+            try:
+                jpg_path.unlink()
+            except OSError:
+                pass
+        elif jpg_path.exists() and (dest_refreshed or _png_stale(jpg_path, inference_src)):
+            # Source recalculée (mtime plus récent) : régénérer le PNG
+            # ré-arme purge_stale_cached_detections puis la ré-inférence.
+            log(f"PNG plus ancien que sa source, régénération: {jpg_path.name}")
+            try:
+                jpg_path.unlink()
+            except OSError:
+                pass
+        if not jpg_path.exists():
+            log(f"Conversion TIF->PNG (existing_rvt): {inference_src.name} -> {jpg_path.name}")
+            _convert_tif_to_png_with_world(inference_src, jpg_path)
+        res["jpg"] = jpg_path
+
+        pixel_width, pixel_height, x_origin, y_origin = extract_tif_transform_data(inference_src)
+        if all(v is not None for v in (pixel_width, pixel_height, x_origin, y_origin)):
+            res["transform"] = (float(pixel_width), float(pixel_height), float(x_origin), float(y_origin))
+        return res
+
+    # Parallélisation : copie (shutil), halo (GDAL) et encodage PNG (PIL) sont
+    # trois appels C qui relâchent le GIL — mesuré ×2,6 à 3 workers et ×4 à 6
+    # sur 12 cœurs. Les dalles sont indépendantes ; ``map`` rend les résultats
+    # dans l'ordre de soumission, donc la fusion est identique au séquentiel.
+    workers = max(1, int(max_workers or 1)) if total_tif > 1 else 1
+    pool = ThreadPoolExecutor(max_workers=workers) if workers > 1 else None
+    try:
+        prepared = pool.map(_prepare_one, tif_files) if pool is not None else map(_prepare_one, tif_files)
+        for idx, (tif_path, res) in enumerate(zip(tif_files, prepared)):
+            if res is None:
+                # Annulation : les tâches encore en file sortent immédiatement
+                # sur le même test, la main est rendue en une dalle.
+                log("Annulation demandée, arrêt du traitement RVT.")
+                break
+
+            kept_tif = res.get("kept_tif")
+            if kept_tif is not None:
+                kept_tif_names.add(kept_tif)
+            if "cell_bounds" in res:
+                cell_bounds = res["cell_bounds"]
                 if cell_bounds is None:
                     valid_region_bounds = None
-                else:
+                elif valid_region_bounds is not None:
                     valid_region_bounds.append(cell_bounds)
-                    cell_bounds_by_stem[effective_tif_path.stem] = cell_bounds
+                    cell_bounds_by_stem[res["stem"]] = cell_bounds
+            jpg_path = res.get("jpg")
+            if jpg_path is not None:
+                jpg_files.append(jpg_path)
+                kept_jpg_names.add(jpg_path.name)
+                if "transform" in res:
+                    tif_transform_data[jpg_path.stem] = res["transform"]
 
-            # Le NOM du PNG reste celui du TIF rogné (stems stables : cache,
-            # couches, images annotées) — seul le CONTENU vient de la source.
-            jpg_path = jpg_output_dir / (effective_tif_path.stem + ".png")
-            # GEO-03 : le PNG d'inférence DOIT venir du même raster que le
-            # transform (inference_src). Un PNG préexistant aux mauvaises
-            # dimensions (ex. PNG rogné d'un run antérieur vs source à marge)
-            # est régénéré, sinon décalage de la marge.
-            if jpg_path.exists() and not _png_consistent_with_tif(jpg_path, inference_src):
-                log(f"PNG incohérent avec le TIF (dimensions ≠), régénération: {jpg_path.name}")
+            # Sous-progression UI : copie + halo + conversion PNG coûtent ~1,5 s
+            # par dalle ; sur un lot de plusieurs centaines cette boucle est la
+            # plus longue phase du mode, et elle n'émettait que du log technique.
+            if prep_progress is not None:
                 try:
-                    jpg_path.unlink()
-                except OSError:
+                    prep_progress(idx + 1, total_tif, tif_path.name)
+                except Exception:
                     pass
-            elif jpg_path.exists() and (dest_refreshed or _png_stale(jpg_path, inference_src)):
-                # Source recalculée (mtime plus récent) : régénérer le PNG
-                # ré-arme purge_stale_cached_detections puis la ré-inférence.
-                log(f"PNG plus ancien que sa source, régénération: {jpg_path.name}")
-                try:
-                    jpg_path.unlink()
-                except OSError:
-                    pass
-            if not jpg_path.exists():
-                log(f"Conversion TIF->PNG (existing_rvt): {inference_src.name} -> {jpg_path.name}")
-                _convert_tif_to_png_with_world(inference_src, jpg_path)
-            jpg_files.append(jpg_path)
-            kept_jpg_names.add(jpg_path.name)
 
-            pixel_width, pixel_height, x_origin, y_origin = extract_tif_transform_data(inference_src)
-            if all(v is not None for v in (pixel_width, pixel_height, x_origin, y_origin)):
-                tif_transform_data[jpg_path.stem] = (float(pixel_width), float(pixel_height), float(x_origin), float(y_origin))
-
-        if total_tif > 100 and (idx + 1) % 500 == 0:
-            log(f"  … {idx + 1}/{total_tif} TIF traités")
+            if total_tif > 100 and (idx + 1) % 500 == 0:
+                log(f"  … {idx + 1}/{total_tif} TIF traités")
+    finally:
+        if pool is not None:
+            pool.shutdown(wait=True, cancel_futures=True)
 
     if neighbor_halo is not None and (neighbor_halo.built or neighbor_halo.reused):
         log(

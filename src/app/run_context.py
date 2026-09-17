@@ -75,6 +75,7 @@ class FilesConfig:
 # en dur (HS absent de la validation, SLRM absent de needs_mnt…).
 _VISUALIZATION_PRODUCTS: Tuple[str, ...] = (
     "HS", "M_HS", "SVF", "SLO", "LD", "SLRM", "VAT", "MSTP", "CVAT",
+    "PRISM", "CRIM",
 )
 _ALL_PRODUCTS: Tuple[str, ...] = ("MNT", "DENSITE", "COUVERTURE", *_VISUALIZATION_PRODUCTS)
 
@@ -99,6 +100,8 @@ class ProductsConfig:
     VAT: bool = False
     MSTP: bool = False
     CVAT: bool = False
+    PRISM: bool = False
+    CRIM: bool = False
 
     def active(self) -> List[str]:
         """Liste des produits activés (pour les logs/metadata)."""
@@ -315,6 +318,8 @@ def _build_products_config(products_dict: Dict[str, Any]) -> ProductsConfig:
         VAT=bool(products_dict.get("VAT", False)),
         MSTP=bool(products_dict.get("MSTP", False)),
         CVAT=bool(products_dict.get("CVAT", False)),
+        PRISM=bool(products_dict.get("PRISM", False)),
+        CRIM=bool(products_dict.get("CRIM", False)),
     )
 
 

@@ -650,6 +650,168 @@
       }
     ]
   },
+  "PRISM": {
+    "resume": "Trois couches fondues en une seule image : un ombrage multidirectionnel en couleurs sert de fond, et les deux openness — positive puis négative — sont posées par-dessus en mode Overlay. Conçue pour le petit relief, elle éclaircit ce qui saille et assombrit ce qui creuse, sans perdre le modelé général du terrain : « Prismatic openness was developed to facilitate detection of small structures by Canuto et al. (2018) » (documentation RVT).",
+    "lire": "Le terrain plan et non perturbé reste gris neutre. Tout ce qui saille — tertre, crête de talus, bord de cratère — s'éclaircit ; tout ce qui creuse — fossé, mardelle, chemin creux — s'assombrit, l'openness négative étant affichée en échelle inversée : « For consistent readability, it is recommended that negative openness is displayed with inverted greyscale (i.e. darker for higher values), so that concave features are always presented by dark tones ». Un talus se lit donc comme une ligne claire bordée de deux lignes sombres, un fossé comme une ligne sombre bordée de deux liserés clairs. La couleur, elle, ne vient pas de l'openness mais du fond : elle dit l'orientation du versant, les trois ombrages composés étant éclairés depuis 315° (canal rouge), 22,5° (vert) et 90° (bleu) — un versant exposé au nord-ouest tire vers l'orange, au nord-est vers le vert, à l'est vers le bleu, et les versants exposés au sud, que n'atteint aucune des trois lumières, restent sombres.",
+    "usage": [
+      "Le petit relief, positif et négatif à la fois : c'est l'objet même de la méthode, née du relevé LiDAR maya de Canuto et al. (2018) pour repérer des constructions de faible ampleur.",
+      "Distinguer un talus de son fossé sur la même image : la documentation RVT retient de l'openness sa capacité à « differentially highlight positive and negative relief features », donc parcellaire fossoyé, enclos, levées et leurs fossés d'accompagnement se lisent d'un coup, sans changer d'indice.",
+      "Les structures posées sur un versant : l'openness ne sature ni en pente douce ni en pente forte, et la signature d'une forme reste la même où qu'elle se trouve dans le paysage — « it is particularly suitable for targeted detection of these features ».",
+      "Vue de contrôle après le VAT ou le Sky-View Factor : la même dalle relue avec une couche supplémentaire dédiée aux convexités, utile quand un talus arasé se devine sans se confirmer."
+    ],
+    "limites": [
+      "La couleur dit l'orientation du versant, pas la nature de la forme : deux structures identiques exposées différemment prennent deux teintes. Comme pour l'ombrage multidirectionnel, la lecture demande de l'habitude.",
+      "Le fond reste un ombrage, et ses trois lumières sont toutes comprises entre le nord-ouest et l'est : les versants exposés au sud restent sombres et y perdent du contraste. Les deux couches d'openness, elles, n'ont aucune direction privilégiée.",
+      "La taille des formes vues est bornée par le rayon de recherche d'horizon — 10 px, soit 5 m au pas de 0,5 m, en terrain général ; 20 px en terrain plat. Une forme plus large n'est révélée que par ses bords. Ce rayon vient des valeurs par défaut de RVT et du préréglage de terrain, pas du réglage de rayon du Sky-View Factor du plugin, qui n'a aucun effet ici.",
+      "Les étirements sont étroits (68 à 93° en positif, 60 à 95° en négatif) : une rupture de pente franche sature vite vers le blanc ou le noir, et le détail interne d'un fossé profond s'y perd.",
+      "L'image est une composition : on ne peut plus y mesurer ni l'openness, ni la pente. Pour mesurer, il faut l'indice correspondant.",
+      "Deux recherches d'horizon complètes sont nécessaires, une par openness, plus trois ombrages : comptez le double d'un Sky-View Factor, auquel s'ajoute le fond."
+    ],
+    "methode": [
+      "Recette de rvt-qgis (fichier default_blender_combinations.json, combinaison « Prismatic openness », BLEND_COMBINATION = 1), du fond vers la surface : ombrage multidirectionnel étiré de 0 à 1 en mode Normal à 100 % ; openness négative en mode Overlay à 50 % ; openness positive étirée de 68 à 93° en mode Overlay à 50 %. Le fichier annonce 68 à 93° pour l'openness négative, mais le préréglage de terrain réécrit cet étirement : 60 à 95° en terrain général.",
+      "L'openness est la moyenne des angles d'horizon mesurés dans seize directions jusqu'au rayon de recherche. La positive est la moyenne des angles au zénith : elle est haute sur les convexités. La négative est le même calcul sur le MNT inversé, donc la moyenne des angles au nadir : elle est haute dans les concavités. « Openness considers the whole sphere for calculation, not just the celestial hemisphere as SVF does » — le résultat est débarrassé de la pente générale, et « while positive openness highlights topographic convexities (e.g. ridges between hollow ways and rims of bomb craters), negative openness emphasizes the lowest parts of concavities, (e.g. the actual hollow ways, the lowest parts of gorges and the lower edges of cliffs) ».",
+      "Le fond réintroduit la topographie générale que l'openness efface : c'est la composition RVB de trois ombrages calculés aux azimuts 315°, 22,5° et 90°, à l'élévation solaire du préréglage de terrain (35° en général).",
+      "Filiation : la méthode vient de Canuto et al. (2018) ; Verbovšek et al. (2019) l'ont modifiée en « replacing the three-times vertical exaggeration of terrain to compute hillshading from three directions with an overlay fusion technique (blend mode) for positive and negative openness », ce qui « improves the effectiveness of conveying information because colors are more pronounced and the general topography is well-defined ».",
+      "Le calcul passe entièrement par l'algorithme rvt:rvt_blender du plugin rvt-qgis, comme le VAT : à la différence du CVAT, rien n'est recalculé dans le plugin. Et comme pour le Sky-View Factor, le calcul lit au-delà du bord de la dalle : le plugin le nourrit avec la dalle élargie de la marge de tuilage, faute de quoi RVT fabriquerait le voisinage manquant en repliant l'image sur elle-même."
+    ],
+    "parametres": [
+      {
+        "cle": "prism.terrain_type",
+        "label": "Type de terrain",
+        "defaut": "général",
+        "sens": "Préréglage adapté au relief dominant : général, plat ou pentu. Il ne change pas la recette mais tous ses réglages — l'étirement des deux openness (68–93° et 60–95° en général ; 85–93° et 75–95° en plat ; 55–95° et 45–95° en pentu), le rayon et le bruit de la recherche d'horizon (10 px et aucun bruit retiré ; 20 px et bruit fort en terrain plat) et l'élévation solaire du fond (35°, 15° en plat, 55° en pentu)."
+      },
+      {
+        "cle": "prism.save_as_8bit",
+        "label": "Sortie 8 bits",
+        "defaut": "activé",
+        "sens": "La sortie est déjà une composition en trois bandes, étirée de 0 à 1 par canal : le flottant n'apporte rien à l'affichage."
+      }
+    ],
+    "references": [
+      {
+        "citation": "Relief Visualization Toolbox, documentation — Prismatic openness",
+        "url": "https://rvt-py.readthedocs.io/en/latest/listofvis_openness_prismatic.html"
+      },
+      {
+        "citation": "Relief Visualization Toolbox, documentation — Openness",
+        "url": "https://rvt-py.readthedocs.io/en/latest/listofvis_openness.html"
+      },
+      {
+        "citation": "Canuto M. A., Estrada-Belli F., Garrison T. G. et al. 2018, Ancient lowland Maya complexity as revealed by airborne laser scanning of northern Guatemala, Science 361(6409), eaau0137",
+        "url": "https://doi.org/10.1126/science.aau0137"
+      },
+      {
+        "citation": "Verbovšek T., Popit T., Kokalj Ž. 2019, VAT Method for Visualization of Mass Movement Features: An Alternative to Hillshaded DEM, Remote Sensing 11(24), 2946",
+        "url": "https://doi.org/10.3390/rs11242946"
+      },
+      {
+        "citation": "Yokoyama R., Shirasawa M., Pike R. J. 2002, Visualizing topography by openness, Photogrammetric Engineering & Remote Sensing 68(3), p. 257-265"
+      },
+      {
+        "citation": "Doneus M. 2013, Openness as Visualization Technique for Interpretative Mapping of Airborne Lidar Derived Digital Terrain Models, Remote Sensing 5(12), p. 6427-6442",
+        "url": "https://doi.org/10.3390/rs5126427"
+      },
+      {
+        "citation": "Kokalj Ž., Hesse R. 2017, Airborne laser scanning raster data visualization: A Guide to Good Practice, Založba ZRC",
+        "url": "https://doi.org/10.3986/9789612549848"
+      },
+      {
+        "citation": "Kokalj Ž. 2025, Standardizing Visualization in Ancient Maya Lidar Research: Techniques, Challenges and Recommendations, Archaeological Prospection 32(4), p. 967-988",
+        "url": "https://doi.org/10.1002/arp.70002"
+      }
+    ],
+    "vignettes": [
+      {
+        "image": "indices_vignettes/PRISM.jpg",
+        "source": "Dalle LHD_FXX_0392_6818, 324 m de côté",
+        "licence": "Produite par le plugin sur données IGN LiDAR HD (licence ouverte Etalab)",
+        "legende": "La même scène que le CVAT : le micro-relief ressort davantage, et la couleur dit l'orientation du versant, pas la nature de la forme."
+      }
+    ]
+  },
+  "CRIM": {
+    "resume": "Le relief rendu par la différence entre openness positive et openness négative, posé sur un fond où la couleur code la **pente** : pâle là où le terrain est plat, orange puis rouge sombre là où il se redresse. C'est la généralisation, à d'autres palettes, du Red Relief Image Map de Chiba et al. (2008). Comme toutes les images fondées sur l'openness, elle n'a ni ombre portée ni direction d'éclairage.",
+    "lire": "La couleur ne dit pas l'altitude — c'est le contresens le plus fréquent sur cette image — mais la pente. Avec la colormap OrRd par défaut, qui va du crème très pâle au rouge sombre, un terrain plat sort en crème, une pente moyenne en orange, une pente d'environ 46° ou plus en rouge sombre : un fond de vallée plat et un sommet de plateau plat portent donc exactement la même teinte. Le modelé, lui, ne vient pas de la couleur mais des deux couches d'openness fondues par-dessus : ce qui dépasse son voisinage s'éclaircit, ce qui s'y enfonce s'assombrit. On lit ainsi deux informations superposées — la forme en clair-obscur, la raideur en couleur.",
+    "usage": [
+      "Lire d'un coup une forme et sa raideur : plateforme aménagée, front de taille, talus de terrasse se distinguent d'emblée du terrain qui les porte, parce qu'ils changent de couleur et pas seulement de nuance.",
+      "Compléter une vue en niveaux de gris (CVAT, SLRM) : la raideur, information perdue dès qu'une composition est monochrome, y revient par la couleur.",
+      "Trancher entre une forme à bords francs et un simple ondulé du terrain : seule la première marque la couche de pente."
+    ],
+    "limites": [
+      "L'image est une composition RGB : on n'y mesure ni altitude, ni profondeur, ni pente. Pour mesurer, prendre le MNT ou la pente (SLO) en sortie flottante.",
+      "Au-delà d'environ 46° la couche de pente sature dans la teinte la plus foncée de la palette, et le mode overlay y écrase le modelé : sur les versants très raides l'image perd le détail qu'elle rend si bien ailleurs.",
+      "Le rayon de recherche d'horizon est imposé par RVT : la fonction force ``svf_r_max = 10`` pixels, soit 5 m au pas de 0,5 m du plugin. Le rayon réglé pour le sky-view factor à l'étape 2 ne s'y applique pas, et les formes larges et douces restent pâles.",
+      "L'étirement de la pente est fixe, de 0 à 0,8 radian (environ 46°), et n'est pas réglable depuis l'étape 2 : au-delà, tout porte la teinte la plus foncée de la colormap.",
+      "Un fond coloré supporte mal une symbologie vectorielle dense : pour digitaliser sous des vecteurs, le CVAT reste un meilleur support.",
+      "Deux openness complets sont calculés, la positive et la négative : comptez environ le double d'un sky-view factor.",
+      "Le calcul dépend du plugin QGIS rvt-qgis (paquet ``rvt`` et matplotlib). S'il est absent, l'indice est simplement ignoré, avec un message au journal, et le reste du traitement continue — même contrat que le CVAT.",
+      "La colormap et ses bornes de coupe figurent au nom du dossier de sortie : deux colormaps produisent deux dossiers, ce qui évite de confondre deux images sans rapport."
+    ],
+    "methode": [
+      "rvt-qgis n'expose CRIM ni dans son fournisseur Processing — l'enum ``BLEND_COMBINATION`` de ``rvt:rvt_blender`` est construit depuis ``settings/default_blender_combinations.json``, qui ne liste que VAT, Prismatic openness et City — ni dans sa boîte de dialogue. Le plugin l'appelle donc lui-même, en réutilisant le paquet Python ``rvt`` du plugin voisin : ``rvt.blend.color_relief_image_map`` (rvt-qgis 1.0.1). Même dispositif que pour le CVAT, avec un seul point de détection du paquet pour les deux.",
+      "Trois couches. L'image de base est la pente, calculée en radians, étirée de 0 à 0,8 (environ 46°) et colorée par une colormap matplotlib — OrRd par défaut. Par-dessus, deux fois la même différence « openness positive moins openness négative », étirée de −28 à +28° : une fois en mode luminosity à 50 % d'opacité, une fois en mode overlay à 50 %. Le rendu de RVT part de la dernière couche déclarée et remonte, la pente colorée est donc bien le fond.",
+      "L'openness positive est l'angle moyen, sur seize directions, entre le zénith et la ligne d'horizon : grand sur une crête où l'horizon est bas, petit au fond d'un creux. L'openness négative est la même mesure sur le relief inversé, c'est-à-dire vers le bas. Leur différence est positive sur les convexités, négative dans les creux, nulle en terrain plan — c'est elle qui porte tout le modelé de l'image, indépendamment de toute source de lumière.",
+      "Les deux openness sont calculées dans un rayon de 10 pixels, valeur écrite en dur par la fonction elle-même : CRIM ne voit donc que le voisinage proche, et sa lecture ne dépend d'aucun réglage de rayon."
+    ],
+    "parametres": [
+      {
+        "cle": "crim.colormap",
+        "label": "Palette de couleurs",
+        "defaut": "OrRd",
+        "sens": "Palette appliquée à la PENTE, et non à l'altitude. L'étape 2 en propose cinq : OrRd (défaut, crème → rouge sombre), Reds_r, YlOrRd, Greys_r et gist_earth. En changer change toute l'image, et le dossier de sortie."
+      },
+      {
+        "cle": "crim.min_colormap_cut",
+        "label": "Coupe basse de la palette",
+        "defaut": "0",
+        "sens": "Part des couleurs basses retirée de la rampe, entre 0 et 1 : à 0,2 les 20 % de teintes les plus claires ne servent plus, et les terrains plats prennent déjà de la couleur."
+      },
+      {
+        "cle": "crim.max_colormap_cut",
+        "label": "Coupe haute de la palette",
+        "defaut": "1",
+        "sens": "Où s'arrête la palette, entre 0 et 1 : à 0,8 les 20 % de teintes les plus foncées ne servent plus. Cela ne réduit PAS la saturation des fortes pentes — celles-ci sont écrêtées à 0,8 radian avant d'être colorées — mais change la teinte dans laquelle elles se confondent."
+      },
+      {
+        "cle": "crim.save_as_8bit",
+        "label": "Sortie 8 bits",
+        "defaut": "activé",
+        "sens": "La sortie est déjà une composition en trois bandes : le flottant n'apporte rien à l'affichage."
+      }
+    ],
+    "references": [
+      {
+        "citation": "Chiba T., Kaneta S., Suzuki Y. 2008, Red relief image map: new visualization method for three-dimensional data, The International Archives of the Photogrammetry, Remote Sensing and Spatial Information Sciences XXXVII, Part B2 (congrès ISPRS, Pékin), p. 1071-1076"
+      },
+      {
+        "citation": "Yokoyama R., Shirasawa M., Pike R. J. 2002, Visualizing topography by openness, Photogrammetric Engineering & Remote Sensing 68(3), p. 257-265"
+      },
+      {
+        "citation": "Doneus M. 2013, Openness as Visualization Technique for Interpretative Mapping of Airborne Lidar Derived Digital Terrain Models, Remote Sensing 5(12), p. 6427-6442",
+        "url": "https://doi.org/10.3390/rs5126427"
+      },
+      {
+        "citation": "Kokalj Ž., Hesse R. 2017, Airborne laser scanning raster data visualization: A Guide to Good Practice, Založba ZRC",
+        "url": "https://doi.org/10.3986/9789612549848"
+      },
+      {
+        "citation": "Kokalj Ž., Somrak M. 2019, Why Not a Single Image? Combining Visualizations to Facilitate Fieldwork and On-Screen Mapping, Remote Sensing 11(7), 747",
+        "url": "https://doi.org/10.3390/rs11070747"
+      },
+      {
+        "citation": "Relief Visualization Toolbox, paquet Python rvt (rvt-qgis 1.0.1) — fonction rvt.blend.color_relief_image_map"
+      }
+    ],
+    "vignettes": [
+      {
+        "image": "indices_vignettes/CRIM.jpg",
+        "source": "Dalle LHD_FXX_0392_6818, 324 m de côté",
+        "licence": "Produite par le plugin sur données IGN LiDAR HD (licence ouverte Etalab)",
+        "legende": "Le fond crème est du terrain plat ; le rouge marque la raideur — talus de parcelles, berges, bords de la voie. La couleur est la pente."
+      }
+    ]
+  },
   "MSTP": {
     "resume": "Pour chaque pixel, de combien il s'écarte de l'altitude moyenne de son entourage, mesuré à trois gammes d'échelles et composé en couleurs : le bleu pour l'échelle locale, le vert pour l'intermédiaire, le rouge pour la large. Une image qui demande de l'apprentissage, et qui dit à quelle échelle une forme existe.",
     "lire": "La couleur d'un pixel est la somme de sa position topographique relative aux trois échelles. Un point qui domine ou creuse son voisinage proche s'allume en bleu, à moyenne distance en vert, à grande distance en rouge ; un tertre isolé cumule les trois. La documentation RVT prévient : « colours do not have a unique meaning — the same color range can represent a slightly raised embankment or a very shallow dip ».",
@@ -1028,6 +1190,24 @@
             "plat": "oui",
             "pentu": "oui",
             "mesurable": "non"
+          },
+          "PRISM": {
+            "intuitif": "partiel",
+            "sans_direction": "oui",
+            "sans_decalage": "partiel",
+            "comparable": "oui",
+            "plat": "partiel",
+            "pentu": "oui",
+            "mesurable": "non"
+          },
+          "CRIM": {
+            "intuitif": "partiel",
+            "sans_direction": "oui",
+            "sans_decalage": "oui",
+            "comparable": "oui",
+            "plat": "partiel",
+            "pentu": "oui",
+            "mesurable": "non"
           }
         },
         "source": "Synthèse des sources citées dans chaque fiche (documentation et manuel RVT, Zakšek et al. 2011, Hesse 2010 et 2016, Kokalj & Somrak 2019, Kokalj & Hesse 2017, Lindsay et al. 2015) confrontée aux runs du plugin. Ce n'est pas la reproduction d'un tableau publié : les tableaux de Kokalj (2025), plus larges mais sans la densité ni la couverture, se consultent dans la documentation RVT, page « Choosing a visualization »."
@@ -1161,6 +1341,22 @@
             "relief_lin": "oui",
             "relief_ponct": "oui",
             "formes_larges": "oui",
+            "qualite": "non"
+          },
+          "PRISM": {
+            "creux_lin": "oui",
+            "creux_ponct": "oui",
+            "relief_lin": "oui",
+            "relief_ponct": "oui",
+            "formes_larges": "partiel",
+            "qualite": "non"
+          },
+          "CRIM": {
+            "creux_lin": "oui",
+            "creux_ponct": "oui",
+            "relief_lin": "oui",
+            "relief_ponct": "oui",
+            "formes_larges": "partiel",
             "qualite": "non"
           }
         },

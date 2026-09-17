@@ -146,7 +146,7 @@ class Comparaison:
 
     Une fiche répond « que montre ce produit » ; ces tableaux répondent « lequel
     prendre pour ce que je cherche », qui est la question qu'on se pose à
-    l'étape 2 devant douze cases à cocher.
+    l'étape 2 devant la liste des produits.
     """
     tableaux: Tuple[Tableau, ...] = ()
     legende: Tuple[Tuple[str, str], ...] = ()

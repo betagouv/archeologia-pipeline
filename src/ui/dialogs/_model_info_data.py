@@ -121,6 +121,16 @@ RVT_PARAM_LABELS: Dict[str, Dict[str, str]] = {
     "CVAT": {
         "save_as_8bit": "Export 8 bits",
     },
+    "PRISM": {
+        "terrain_type": "Type de terrain (0 = général, 1 = plat, 2 = pentu)",
+        "save_as_8bit": "Export 8 bits",
+    },
+    "CRIM": {
+        "colormap": "Palette de couleurs",
+        "min_colormap_cut": "Coupe basse de la palette",
+        "max_colormap_cut": "Coupe haute de la palette",
+        "save_as_8bit": "Export 8 bits",
+    },
 }
 
 

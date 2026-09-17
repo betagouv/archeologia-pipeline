@@ -9,6 +9,9 @@ images annotées).
 """
 from __future__ import annotations
 
+import pathlib
+import shutil
+import threading
 from pathlib import Path
 
 import pytest
@@ -187,6 +190,7 @@ class TestRunCvPostLoopHalo:
         ctx = SimpleNamespace(
             cv=SimpleNamespace(raw={"selected_model": "fake_model", "target_rvt": "LD"}),
             output_dir=tmp_path,
+            processing=SimpleNamespace(max_workers=3),
         )
         cancel = SimpleNamespace(is_cancelled=lambda: False)
         return {"cps": cps, "ctx": ctx, "cancel": cancel, "captured": captured}
@@ -320,3 +324,147 @@ class TestNeighborHaloFallback:
         self._run(env2)
 
         assert env2["calls"]["extract"] == []
+
+
+class TestPrepProgress:
+    def test_prep_progress_emis_par_dalle(self, env):
+        """La boucle de préparation (copie + halo + PNG) rend la main à l'UI.
+
+        Sans ce rappel, un lot de 1575 dalles reste ~40 min sans aucune
+        ligne narrative entre « Modèle 1/N » et la 1re image analysée.
+        """
+        second = env["tif_dir"] / _CROPPED.replace("0872_6904", "0872_6905")
+        second.write_bytes(b"tif")
+
+        vus = []
+        _run(env, prep_progress=lambda i, n, name: vus.append((i, n, name)))
+
+        assert vus == [(1, 2, _CROPPED), (2, 2, second.name)]
+
+    def test_erreur_du_rappel_ne_casse_pas_le_run(self, env):
+        def boom(*_args):
+            raise RuntimeError("UI morte")
+
+        res = _run(env, prep_progress=boom)
+
+        assert res.total_images == 1
+
+
+class TestAnnulationPendantLaPreparation:
+    """La boucle de préparation (la plus longue du mode) doit être annulable.
+
+    Elle dure ~1,5 s par dalle : sur un lot de 1575 elle occupe ~40 min
+    avant la moindre inférence. Sans court-circuit, le bouton « Annuler »
+    ne rendrait la main qu'au bout de la phase entière.
+    """
+
+    def _trois_dalles(self, env):
+        noms = [
+            _CROPPED,
+            _CROPPED.replace("0872_6904", "0872_6905"),
+            _CROPPED.replace("0872_6904", "0872_6906"),
+        ]
+        for nom in noms[1:]:
+            (env["tif_dir"] / nom).write_bytes(b"tif")
+        return noms
+
+    def test_arret_a_la_dalle_suivante(self, env):
+        noms = self._trois_dalles(env)
+        vus = []
+
+        appels = {"n": 0}
+
+        def cancel_check():
+            appels["n"] += 1
+            return appels["n"] > 1  # annulé juste après la 1re dalle
+
+        res = _run(
+            env,
+            cancel_check=cancel_check,
+            prep_progress=lambda i, n, name: vus.append(name),
+        )
+
+        assert vus == [noms[0]], "la boucle doit s'arrêter dès l'annulation"
+        assert res.total_images == 1
+        assert env["calls"]["cv"] == [], "aucune inférence après annulation"
+
+    def test_les_png_deja_en_cache_survivent(self, env):
+        """Un run annulé ne doit pas jeter le cache : la reprise repart de là."""
+        noms = self._trois_dalles(env)
+        jpg_dir = env["output_dir"] / "indices" / "LD_TEST" / "png"
+        jpg_dir.mkdir(parents=True)
+        cache = jpg_dir / (pathlib.Path(noms[2]).stem + ".png")
+        cache.write_bytes(b"png deja converti")
+
+        _run(env, cancel_check=lambda: True)
+
+        assert cache.exists(), "le PNG d'une dalle non atteinte a été supprimé"
+
+class TestPreparationParallele:
+    """La préparation tourne dans un pool de threads (``max_workers``).
+
+    Elle est la phase la plus longue du mode (copie + halo GDAL + encodage
+    PNG, ~1,5 s par dalle en séquentiel). Le pool ne doit rien changer au
+    résultat : mêmes fichiers, même ordre de fusion qu'en séquentiel.
+    """
+
+    def _dalles(self, env, n):
+        noms = [_CROPPED] + [
+            _CROPPED.replace("0872_6904", f"0872_69{5 + i:02d}") for i in range(n - 1)
+        ]
+        for nom in noms[1:]:
+            (env["tif_dir"] / nom).write_bytes(b"tif")
+        return sorted(noms)
+
+    def test_resultat_et_ordre_identiques_au_sequentiel(self, env):
+        noms = self._dalles(env, 8)
+        png_dir = env["output_dir"] / "indices" / "LD_TEST" / "png"
+
+        vus_seq = []
+        seq = _run(env, max_workers=1, prep_progress=lambda i, n, nom: vus_seq.append(nom))
+        kwargs_seq = env["calls"]["cv"][-1]
+        convert_seq = sorted(dst.name for _src, dst in env["calls"]["convert"])
+
+        # On repart à blanc : sinon le 2e run réutiliserait les PNG du 1er.
+        shutil.rmtree(png_dir)
+        env["calls"]["convert"].clear()
+
+        vus_par = []
+        par = _run(env, max_workers=4, prep_progress=lambda i, n, nom: vus_par.append(nom))
+        kwargs_par = env["calls"]["cv"][-1]
+        convert_par = sorted(dst.name for _src, dst in env["calls"]["convert"])
+
+        assert vus_seq == noms, "le séquentiel doit suivre l'ordre des dalles"
+        assert vus_par == vus_seq, "la fusion parallèle doit rester dans l'ordre"
+        assert convert_par == convert_seq
+        assert par.total_images == seq.total_images == 8
+        assert kwargs_par["tif_transform_data"] == kwargs_seq["tif_transform_data"]
+        assert kwargs_par["cell_bounds_by_stem"] == kwargs_seq["cell_bounds_by_stem"]
+
+    def test_les_dalles_sont_bien_traitees_en_concurrence(self, env, monkeypatch):
+        """Garde-fou : sans vrai parallélisme, la barrière expire et le test tombe."""
+        self._dalles(env, 8)
+        barriere = threading.Barrier(2, timeout=10)
+        threads = set()
+
+        def convert_synchronise(src, dst):
+            threads.add(threading.current_thread().name)
+            barriere.wait()  # exige qu'une 2e dalle soit traitée en même temps
+            Path(dst).parent.mkdir(parents=True, exist_ok=True)
+            Path(dst).write_bytes(b"png")
+
+        monkeypatch.setattr(er, "_convert_tif_to_png_with_world", convert_synchronise)
+
+        res = _run(env, max_workers=4)
+
+        assert res.total_images == 8
+        assert len(threads) > 1, f"un seul thread a converti : {threads}"
+
+    def test_annulation_en_parallele_ne_traite_rien(self, env):
+        self._dalles(env, 8)
+
+        res = _run(env, max_workers=4, cancel_check=lambda: True)
+
+        assert res.total_images == 0
+        assert env["calls"]["cv"] == []
+

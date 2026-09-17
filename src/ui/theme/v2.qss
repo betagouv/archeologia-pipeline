@@ -361,6 +361,7 @@ QPushButton:disabled { color: #909090; border-color: #b0b0b0; }
 
 /* ---- Étape 4 : zone défilante du récap ---- */
 #LaunchScroll { background: transparent; border: none; }
+#WizardPageScroll { background: transparent; border: none; }
 #LaunchScroll > QWidget { background: transparent; }
 #LaunchHint { color: #5a5a5a; font-size: 11px; font-style: italic; }
 

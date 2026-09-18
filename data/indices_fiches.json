@@ -1040,327 +1040,299 @@
     ]
   },
   "_comparaison": {
-    "note": "Une fiche dit ce que montre UN produit ; ces deux tableaux disent LEQUEL prendre. Ils se lisent en diagonale : aucun produit n'est bon partout, et c'est pourquoi on en coche plusieurs. En cas d'hésitation, le VAT combiné (CVAT) est le meilleur point de départ, et le MNT suit d'office puisque tous les indices en dérivent.",
+    "note": "Ces deux tableaux sont ceux de la documentation RVT, traduits. Les verdicts sont ceux de Kokalj (2025) et sont repris tels quels : aucun n'a été réévalué ici. Seules apparaissent les lignes des produits que le plugin calcule ; la source évalue des visualisations de relief et ne dit donc rien du modèle d'altitude brut, de la densité ni de la couverture, dont les lignes restent vides. Correspondances avec le vocabulaire de la source : notre CRIM y est le « modified red relief image map » (RRIM), notre VAT le VAT calculé avec les réglages « terrain général », notre PRISM la « modified prismatic openness ». En cas d'hésitation, la source recommande de commencer par le VAT combiné (CVAT), et le MNT suit d'office puisque tous les indices en dérivent.",
     "legende": {
-      "oui": "adapté",
-      "partiel": "utilisable, avec la réserve indiquée dans la fiche",
-      "non": "inadapté"
+      "-": "inadapté",
+      "o": "indistinct",
+      "+": "adapté",
+      "++": "très adapté",
+      "-*": "non, mais calculable sans saturation",
+      "+*": "oui, mais un peu de saturation reste nécessaire au contraste"
     },
     "tableaux": [
       {
-        "titre": "Ce que chaque produit sait faire",
+        "titre": "Caractéristiques des visualisations",
         "colonnes": [
           {
-            "cle": "intuitif",
-            "libelle": "Lecture sans formation",
-            "aide": "Se comprend au premier regard, sans qu'on explique l'indice."
+            "cle": "complexite",
+            "libelle": "Complexité",
+            "aide": "« Complexity » : ++ très complexe, + complexe, o simple. Seule colonne où ++ est un inconvénient."
           },
           {
-            "cle": "sans_direction",
-            "libelle": "Sans angle mort",
-            "aide": "Aucune orientation de structure n'est effacée par le calcul."
+            "cle": "microrelief",
+            "libelle": "Rendu du microrelief",
+            "aide": "« General microrelief emphasis » : mise en évidence du petit relief. - médiocre, o moyen, + bon, ++ excellent."
           },
           {
-            "cle": "sans_decalage",
-            "libelle": "Sans décalage",
-            "aide": "Les structures se voient à leur place : on peut digitaliser dessus."
+            "cle": "intuitivite",
+            "libelle": "Intuitivité",
+            "aide": "« Intuitivity » : l'image se comprend sans qu'on explique l'indice. - médiocre, o moyen, + bon, ++ excellent."
           },
           {
-            "cle": "comparable",
-            "libelle": "Comparable entre régions",
-            "aide": "Les tons gardent le même sens d'une zone à l'autre."
+            "cle": "invariance_forme",
+            "libelle": "Invariance de forme",
+            "aide": "« Shape invariance » : une même structure se rend pareil quelles que soient sa taille et sa forme. - médiocre, o moyen, + bon, ++ excellent."
           },
           {
-            "cle": "plat",
-            "libelle": "Utile en terrain plat",
-            "aide": "Révèle encore quelque chose là où le relief général est faible."
+            "cle": "invariance_orientation",
+            "libelle": "Invariance d'orientation",
+            "aide": "« Orientation invariance » : aucune orientation de structure n'est favorisée ni effacée. - médiocre, o moyen, + bon, ++ excellent."
           },
           {
-            "cle": "pentu",
-            "libelle": "Utile en terrain pentu",
-            "aide": "Ne sature pas et garde du détail sur les versants raides."
+            "cle": "adaptabilite",
+            "libelle": "Adaptabilité au terrain",
+            "aide": "« Terrain adaptability » : tient aussi bien en terrain plat qu'en fort relief. - médiocre, o moyen, + bon, ++ excellent."
           },
           {
-            "cle": "mesurable",
-            "libelle": "Mesurable",
-            "aide": "Les valeurs ont une unité exploitable, en sortie flottante."
+            "cle": "sans_artefacts",
+            "libelle": "Sans artefacts",
+            "aide": "« Without artifacts » : - non, o indistinct, + oui."
+          },
+          {
+            "cle": "sans_saturation",
+            "libelle": "Sans saturation subie",
+            "aide": "« Without unwanted saturation » : - non, o indistinct, + oui ou calculable sans. L'astérisque marque une visualisation calculable sans saturation, mais qui en demande un peu pour avoir assez de contraste."
           }
         ],
         "cases": {
-          "MNT": {
-            "intuitif": "non",
-            "sans_direction": "oui",
-            "sans_decalage": "oui",
-            "comparable": "oui",
-            "plat": "non",
-            "pentu": "non",
-            "mesurable": "oui"
-          },
-          "DENSITE": {
-            "intuitif": "oui",
-            "sans_direction": "oui",
-            "sans_decalage": "oui",
-            "comparable": "oui",
-            "mesurable": "oui"
-          },
-          "COUVERTURE": {
-            "intuitif": "partiel",
-            "sans_direction": "oui",
-            "sans_decalage": "oui",
-            "comparable": "oui",
-            "mesurable": "oui"
-          },
           "HS": {
-            "intuitif": "oui",
-            "sans_direction": "non",
-            "sans_decalage": "non",
-            "comparable": "partiel",
-            "plat": "partiel",
-            "pentu": "partiel",
-            "mesurable": "non"
+            "complexite": "o",
+            "microrelief": "-",
+            "intuitivite": "++",
+            "invariance_forme": "-",
+            "invariance_orientation": "-",
+            "adaptabilite": "-",
+            "sans_artefacts": "+",
+            "sans_saturation": "-*"
           },
           "M_HS": {
-            "intuitif": "partiel",
-            "sans_direction": "oui",
-            "sans_decalage": "non",
-            "comparable": "partiel",
-            "plat": "partiel",
-            "pentu": "partiel",
-            "mesurable": "non"
-          },
-          "SVF": {
-            "intuitif": "partiel",
-            "sans_direction": "oui",
-            "sans_decalage": "oui",
-            "comparable": "oui",
-            "plat": "partiel",
-            "pentu": "oui",
-            "mesurable": "oui"
+            "complexite": "o",
+            "microrelief": "o",
+            "intuitivite": "+",
+            "invariance_forme": "o",
+            "invariance_orientation": "o",
+            "adaptabilite": "o",
+            "sans_artefacts": "+",
+            "sans_saturation": "-*"
           },
           "SLO": {
-            "intuitif": "partiel",
-            "sans_direction": "oui",
-            "sans_decalage": "oui",
-            "comparable": "oui",
-            "plat": "non",
-            "pentu": "partiel",
-            "mesurable": "oui"
+            "complexite": "o",
+            "microrelief": "+",
+            "intuitivite": "+",
+            "invariance_forme": "++",
+            "invariance_orientation": "++",
+            "adaptabilite": "+",
+            "sans_artefacts": "+",
+            "sans_saturation": "+"
           },
-          "LD": {
-            "intuitif": "partiel",
-            "sans_direction": "oui",
-            "sans_decalage": "oui",
-            "comparable": "partiel",
-            "plat": "oui",
-            "pentu": "partiel",
-            "mesurable": "non"
+          "SVF": {
+            "complexite": "+",
+            "microrelief": "+",
+            "intuitivite": "+",
+            "invariance_forme": "++",
+            "invariance_orientation": "++",
+            "adaptabilite": "+",
+            "sans_artefacts": "o",
+            "sans_saturation": "+"
           },
           "SLRM": {
-            "intuitif": "partiel",
-            "sans_direction": "oui",
-            "sans_decalage": "oui",
-            "comparable": "partiel",
-            "plat": "oui",
-            "pentu": "partiel",
-            "mesurable": "oui"
+            "complexite": "o",
+            "microrelief": "++",
+            "intuitivite": "++",
+            "invariance_forme": "++",
+            "invariance_orientation": "++",
+            "adaptabilite": "++",
+            "sans_artefacts": "-",
+            "sans_saturation": "+*"
           },
-          "VAT": {
-            "intuitif": "oui",
-            "sans_direction": "oui",
-            "sans_decalage": "oui",
-            "comparable": "oui",
-            "plat": "partiel",
-            "pentu": "oui",
-            "mesurable": "non"
+          "LD": {
+            "complexite": "+",
+            "microrelief": "++",
+            "intuitivite": "++",
+            "invariance_forme": "++",
+            "invariance_orientation": "++",
+            "adaptabilite": "++",
+            "sans_artefacts": "-",
+            "sans_saturation": "+*"
           },
           "MSTP": {
-            "intuitif": "non",
-            "sans_direction": "oui",
-            "sans_decalage": "oui",
-            "comparable": "partiel",
-            "plat": "oui",
-            "pentu": "oui",
-            "mesurable": "non"
+            "complexite": "+",
+            "microrelief": "+",
+            "intuitivite": "-",
+            "invariance_forme": "++",
+            "invariance_orientation": "++",
+            "adaptabilite": "++",
+            "sans_artefacts": "-",
+            "sans_saturation": "+"
+          },
+          "VAT": {
+            "complexite": "+",
+            "microrelief": "+",
+            "intuitivite": "++",
+            "invariance_forme": "++",
+            "invariance_orientation": "++",
+            "adaptabilite": "+",
+            "sans_artefacts": "+",
+            "sans_saturation": "+"
           },
           "CVAT": {
-            "intuitif": "oui",
-            "sans_direction": "oui",
-            "sans_decalage": "oui",
-            "comparable": "oui",
-            "plat": "oui",
-            "pentu": "oui",
-            "mesurable": "non"
-          },
-          "PRISM": {
-            "intuitif": "partiel",
-            "sans_direction": "oui",
-            "sans_decalage": "partiel",
-            "comparable": "oui",
-            "plat": "partiel",
-            "pentu": "oui",
-            "mesurable": "non"
+            "complexite": "+",
+            "microrelief": "++",
+            "intuitivite": "++",
+            "invariance_forme": "++",
+            "invariance_orientation": "++",
+            "adaptabilite": "++",
+            "sans_artefacts": "+",
+            "sans_saturation": "+"
           },
           "CRIM": {
-            "intuitif": "partiel",
-            "sans_direction": "oui",
-            "sans_decalage": "oui",
-            "comparable": "oui",
-            "plat": "partiel",
-            "pentu": "oui",
-            "mesurable": "non"
+            "complexite": "+",
+            "microrelief": "++",
+            "intuitivite": "+",
+            "invariance_forme": "++",
+            "invariance_orientation": "++",
+            "adaptabilite": "+",
+            "sans_artefacts": "+",
+            "sans_saturation": "+"
+          },
+          "PRISM": {
+            "complexite": "+",
+            "microrelief": "++",
+            "intuitivite": "++",
+            "invariance_forme": "o",
+            "invariance_orientation": "++",
+            "adaptabilite": "++",
+            "sans_artefacts": "+",
+            "sans_saturation": "+"
           }
         },
-        "source": "Synthèse des sources citées dans chaque fiche (documentation et manuel RVT, Zakšek et al. 2011, Hesse 2010 et 2016, Kokalj & Somrak 2019, Kokalj & Hesse 2017, Lindsay et al. 2015) confrontée aux runs du plugin. Ce n'est pas la reproduction d'un tableau publié : les tableaux de Kokalj (2025), plus larges mais sans la densité ni la couverture, se consultent dans la documentation RVT, page « Choosing a visualization »."
+        "source": "Kokalj Ž. 2025, Standardizing Visualization in Ancient Maya Lidar Research: Techniques, Challenges and Recommendations, Archaeological Prospection 32(4), p. 967-988, sous licence CC BY — tableau 1, repris via la documentation RVT, page « Choosing a visualization ». Traduction du plugin ; aucun verdict n'a été modifié. La colonne « Availability » de la source est retirée : elle dit où la technique est disponible (ArcGIS, RVT 1.3, brevet), ce qui est sans objet ici puisque tout ce qui est listé est calculé par le plugin."
       },
       {
-        "titre": "Quel produit pour quelle forme",
+        "titre": "Quel produit pour quel type de forme",
         "colonnes": [
           {
-            "cle": "creux_lin",
-            "libelle": "Creux linéaires",
-            "aide": "Fossés, chemins creux, tranchées."
-          },
-          {
-            "cle": "creux_ponct",
-            "libelle": "Creux ponctuels",
-            "aide": "Fosses, cratères, mardelles, dépressions d'extraction."
-          },
-          {
             "cle": "relief_lin",
-            "libelle": "Reliefs linéaires",
-            "aide": "Talus, murs arasés, limites de parcelles fossiles."
+            "libelle": "Relief linéaire",
+            "aide": "« elevated linear » : structure en relief, allongée — talus, levée, mur arasé."
           },
           {
-            "cle": "relief_ponct",
-            "libelle": "Reliefs ponctuels",
-            "aide": "Tertres, tumulus arasés, charbonnières."
+            "cle": "relief_nonlin",
+            "libelle": "Relief non linéaire",
+            "aide": "« elevated nonlinear » : structure en relief, de contour quelconque — tertre, tumulus, charbonnière."
           },
           {
-            "cle": "formes_larges",
-            "libelle": "Formes larges",
-            "aide": "Enclos, terrasses, organisations de plusieurs dizaines de mètres."
+            "cle": "creux_lin",
+            "libelle": "Creux linéaire",
+            "aide": "« cut linear » : structure en creux, allongée — fossé, chemin creux, tranchée."
           },
           {
-            "cle": "qualite",
-            "libelle": "Qualité de la donnée",
-            "aide": "Dit où la mesure manque, et non ce que le sol porte."
+            "cle": "creux_nonlin",
+            "libelle": "Creux non linéaire",
+            "aide": "« cut nonlinear » : structure en creux, de contour quelconque — fosse, cratère, dépression d'extraction."
+          },
+          {
+            "cle": "plat_rectiligne",
+            "libelle": "Plat rectiligne",
+            "aide": "« flat rectilinear » : forme rectiligne sans dénivelé marqué, qui ne se lit qu'à très faible contraste."
+          },
+          {
+            "cle": "terrasses",
+            "libelle": "Terrasses",
+            "aide": "« terraces » : rupture de pente en marche d'escalier, sur versant."
           }
         ],
         "cases": {
-          "MNT": {
-            "creux_lin": "non",
-            "creux_ponct": "non",
-            "relief_lin": "non",
-            "relief_ponct": "non",
-            "formes_larges": "partiel",
-            "qualite": "non"
-          },
-          "DENSITE": {
-            "creux_lin": "non",
-            "creux_ponct": "non",
-            "relief_lin": "non",
-            "relief_ponct": "non",
-            "formes_larges": "non",
-            "qualite": "oui"
-          },
-          "COUVERTURE": {
-            "creux_lin": "non",
-            "creux_ponct": "non",
-            "relief_lin": "non",
-            "relief_ponct": "non",
-            "formes_larges": "non",
-            "qualite": "oui"
-          },
           "HS": {
-            "creux_lin": "partiel",
-            "creux_ponct": "oui",
-            "relief_lin": "partiel",
-            "relief_ponct": "oui",
-            "formes_larges": "partiel",
-            "qualite": "non"
+            "relief_lin": "-",
+            "relief_nonlin": "+",
+            "creux_lin": "-",
+            "creux_nonlin": "-",
+            "plat_rectiligne": "o",
+            "terrasses": "o"
           },
           "M_HS": {
-            "creux_lin": "oui",
-            "creux_ponct": "oui",
-            "relief_lin": "oui",
-            "relief_ponct": "oui",
-            "formes_larges": "partiel",
-            "qualite": "non"
-          },
-          "SVF": {
-            "creux_lin": "oui",
-            "creux_ponct": "oui",
-            "relief_lin": "partiel",
-            "relief_ponct": "partiel",
-            "formes_larges": "partiel",
-            "qualite": "non"
+            "relief_lin": "o",
+            "relief_nonlin": "+",
+            "creux_lin": "o",
+            "creux_nonlin": "o",
+            "plat_rectiligne": "+",
+            "terrasses": "+"
           },
           "SLO": {
-            "creux_lin": "partiel",
-            "creux_ponct": "partiel",
-            "relief_lin": "partiel",
-            "relief_ponct": "partiel",
-            "formes_larges": "non",
-            "qualite": "non"
+            "relief_lin": "-",
+            "relief_nonlin": "o",
+            "creux_lin": "-",
+            "creux_nonlin": "-",
+            "plat_rectiligne": "o",
+            "terrasses": "+"
           },
-          "LD": {
-            "creux_lin": "oui",
-            "creux_ponct": "oui",
-            "relief_lin": "oui",
-            "relief_ponct": "oui",
-            "formes_larges": "partiel",
-            "qualite": "non"
+          "SVF": {
+            "relief_lin": "+",
+            "relief_nonlin": "o",
+            "creux_lin": "++",
+            "creux_nonlin": "++",
+            "plat_rectiligne": "-",
+            "terrasses": "++"
           },
           "SLRM": {
-            "creux_lin": "oui",
-            "creux_ponct": "oui",
-            "relief_lin": "oui",
-            "relief_ponct": "oui",
-            "formes_larges": "non",
-            "qualite": "non"
+            "relief_lin": "+",
+            "relief_nonlin": "++",
+            "creux_lin": "+",
+            "creux_nonlin": "++",
+            "plat_rectiligne": "o",
+            "terrasses": "+"
           },
-          "VAT": {
-            "creux_lin": "oui",
-            "creux_ponct": "oui",
-            "relief_lin": "oui",
-            "relief_ponct": "oui",
-            "formes_larges": "partiel",
-            "qualite": "non"
+          "LD": {
+            "relief_lin": "++",
+            "relief_nonlin": "++",
+            "creux_lin": "++",
+            "creux_nonlin": "++",
+            "plat_rectiligne": "o",
+            "terrasses": "+"
           },
           "MSTP": {
-            "creux_lin": "partiel",
-            "creux_ponct": "partiel",
-            "relief_lin": "partiel",
-            "relief_ponct": "partiel",
-            "formes_larges": "oui",
-            "qualite": "non"
+            "relief_lin": "-",
+            "relief_nonlin": "++",
+            "creux_lin": "o",
+            "creux_nonlin": "++",
+            "plat_rectiligne": "o",
+            "terrasses": "o"
+          },
+          "VAT": {
+            "relief_lin": "+",
+            "relief_nonlin": "+",
+            "creux_lin": "o",
+            "creux_nonlin": "++",
+            "plat_rectiligne": "o",
+            "terrasses": "+"
           },
           "CVAT": {
-            "creux_lin": "oui",
-            "creux_ponct": "oui",
-            "relief_lin": "oui",
-            "relief_ponct": "oui",
-            "formes_larges": "oui",
-            "qualite": "non"
-          },
-          "PRISM": {
-            "creux_lin": "oui",
-            "creux_ponct": "oui",
-            "relief_lin": "oui",
-            "relief_ponct": "oui",
-            "formes_larges": "partiel",
-            "qualite": "non"
+            "relief_lin": "++",
+            "relief_nonlin": "+",
+            "creux_lin": "++",
+            "creux_nonlin": "++",
+            "plat_rectiligne": "+",
+            "terrasses": "++"
           },
           "CRIM": {
-            "creux_lin": "oui",
-            "creux_ponct": "oui",
-            "relief_lin": "oui",
-            "relief_ponct": "oui",
-            "formes_larges": "partiel",
-            "qualite": "non"
+            "relief_lin": "++",
+            "relief_nonlin": "+",
+            "creux_lin": "++",
+            "creux_nonlin": "+",
+            "plat_rectiligne": "+",
+            "terrasses": "+"
+          },
+          "PRISM": {
+            "relief_lin": "++",
+            "relief_nonlin": "+",
+            "creux_lin": "+",
+            "creux_nonlin": "+",
+            "plat_rectiligne": "++",
+            "terrasses": "++"
           }
         },
-        "source": "Synthèse des sources citées dans chaque fiche (documentation et manuel RVT, Zakšek et al. 2011, Hesse 2010 et 2016, Kokalj & Somrak 2019, Kokalj & Hesse 2017, Lindsay et al. 2015) confrontée aux runs du plugin. Ce n'est pas la reproduction d'un tableau publié : les tableaux de Kokalj (2025), plus larges mais sans la densité ni la couverture, se consultent dans la documentation RVT, page « Choosing a visualization »."
+        "source": "Kokalj Ž. 2025, Standardizing Visualization in Ancient Maya Lidar Research: Techniques, Challenges and Recommendations, Archaeological Prospection 32(4), p. 967-988, sous licence CC BY — tableau 2, repris via la documentation RVT, page « Choosing a visualization ». Traduction du plugin ; aucun verdict n'a été modifié. Les exemples de structures donnés en infobulle de colonne sont ceux du plugin : la source ne définit ces types que par un profil dessiné."
       }
     ]
   }

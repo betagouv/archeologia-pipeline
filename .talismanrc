@@ -12,9 +12,9 @@ fileignoreconfig:
 - filename: .githooks/pre-push
   checksum: b0e75a8b481a83c7a519218d19fa137bfe34752ee3b1f5fbf3fafd19b1d15b03
 - filename: CLAUDE.md
-  checksum: c79e1bd81604761b1f5851b00aac9377baed2dba81c67c1595e8ccd8cada614b
+  checksum: d6edc2d0fcd887075868edeac3de8723849ab63eca3fb82b5998560fb0bf8b4c
 - filename: README.md
-  checksum: b0026d388f399ebb77e1c04cafef464cdc55f581a751039cc8fa4facbcd64b50
+  checksum: 25dbbdf9de6fa00098a26750fea14d206e60f5acdfcd7b0a0b2dbfeeee284682
 - filename: data/third_party/cv_runner_onnx/windows/build_info.json
   ignore_detectors:
   - filecontent
@@ -111,13 +111,13 @@ fileignoreconfig:
 - filename: src/ui/steps/step_4_launch.py
   checksum: 4708f745d0c746a1711696595fdbf33250d63a3544c94d63975dd8cb2bcf0696
 - filename: src/ui/theme/v2.qss
-  checksum: 926af252f6598451d39be86f1438772a45562db7c8e8a34ee4c954294b475116
+  checksum: ff72b6286f9e468a5d3320c51fd4e088fe5269d3f7a7be43d3176d46d1d57daf
 - filename: src/ui/widgets/entity_card.py
   checksum: 222f0ac5f506603794100309fcee03b1e76f523a41172f7322a63e9e98f8141f
 - filename: src/ui/wizard_dialog.py
   checksum: d622f38c4ab3b6b9a688ed46dc0c3b58efed460eccbbcd8138acc83c470b8030
 - filename: tests/TESTS_MANUELS_QGIS.md
-  checksum: 75fb6707bf1fad00cb020e1341862e51e70fe080e51fde393341833876fa5365
+  checksum: fae67bcf8380df37ad6238b42a0b22bac84cf63d0d58658aef0cba9127b08029
 - filename: tests/integration/test_existing_mnt_runner_finalize.py
   checksum: 059625c9d9ebc7107abcbd0339c12957be8c7e56918dcd458ce45f61e1e5f973
 - filename: tests/integration/test_existing_rvt_runner_isolation.py
@@ -209,11 +209,11 @@ fileignoreconfig:
 - filename: dev/fiches/README.md
   checksum: b03b9dada1ba2b522e2410e49fc2a62fca8c1c6836fac281c62f154741dad024
 - filename: tests/unit/test_indice_fiche.py
-  checksum: 2d6a24a14aee7d257c998c5a79258138cb6be863c0fdfc3851ef6644c90dba58
+  checksum: 300d59518677be38ec0dc828e804c100292088c1063ee62f6f10e9f746984706
 - filename: dev/fiches/page_choix.py
   checksum: 8f2fad83b640e15731896149c0dcc00789d4cd7129d0bfce5568d46f05d65999
 - filename: data/indices_fiches.json
-  checksum: 3f959ba01b327cfcef7e778ea5e08b9caec4b698a8d988eaeb2f65009364b03a
+  checksum: 0954ca6d9872b341b9eed296fa9ac49382105d9e2585a987f5c2c1c85db6f61f
 - filename: dev/fiches/page_choix_indices.py
   checksum: d0db0740c3c8e73ff42f7c3aa6fbe8e3b85988ab109ab73864fce2abde670793
 - filename: data/indices_vignettes/VAT.jpg

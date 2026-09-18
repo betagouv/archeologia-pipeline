@@ -590,15 +590,18 @@ QPushButton[role="micro"] {
 }
 #FicheSep { color: #e3e3e3; max-height: 1px; }
 #FicheLegende { color: #5a5a5a; font-size: 10px; }
-/* Tableaux comparatifs des produits (fiche d'indice). Les trois verdicts
-   reprennent les couleurs déjà en service : le vert de « prêt », l'ocre des
-   avertissements, un gris neutre pour l'inadapté. Le point du sans-objet est
-   assez pâle pour ne pas se lire comme un quatrième verdict. */
+/* Tableaux comparatifs des produits (fiche d'indice). La case affiche le
+   symbole publié (``-`` / ``o`` / ``+`` / ``++``) : la couleur ne fait que
+   doubler la lecture, en reprenant celles déjà en service — le vert de
+   « prêt », l'ocre des avertissements, un gris neutre pour l'inadapté, le
+   vert foncé en gras pour le niveau haut. Le point du non-évalué est assez
+   pâle pour ne pas se lire comme un verdict de plus. */
 #FicheColonne { color: #5a5a5a; font-size: 9px; font-weight: bold; }
-#VerdictOui     { color: #2d6a2d; font-size: 13px; }
-#VerdictPartiel { color: #8a5e18; font-size: 13px; }
-#VerdictNon     { color: #a0a0a0; font-size: 13px; }
-#VerdictVide    { color: #d8d8d8; font-size: 13px; }
+#VerdictFort    { color: #1f4d1f; font-size: 12px; font-weight: bold; }
+#VerdictOui     { color: #2d6a2d; font-size: 12px; }
+#VerdictPartiel { color: #8a5e18; font-size: 12px; }
+#VerdictNon     { color: #a0a0a0; font-size: 12px; }
+#VerdictVide    { color: #d8d8d8; font-size: 12px; }
 #FicheCompteur { color: #5a5a5a; font-size: 10px; padding: 0 4px; }
 /* Cadre de l'aperçu : plein = liseré neutre ; vide = attente ocre, même
    langage que la vignette de carte. */

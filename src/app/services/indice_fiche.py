@@ -60,9 +60,18 @@ FICHIER = "indices_fiches.json"
 #: :func:`indices_model.all_products`, elles sont donc ignorées d'office.
 CLE_COMPARAISON = "_comparaison"
 
-#: Valeurs admises dans une case de tableau, de la plus favorable à la moins.
-#: ``""`` = sans objet (une colonne de structure pour un produit de qualité).
-VERDICTS = ("oui", "partiel", "non")
+#: Valeurs admises dans une case de tableau : l'échelle à quatre niveaux des
+#: tableaux publiés (``-`` inadapté, ``o`` indistinct, ``+`` adapté, ``++`` très
+#: adapté), **écrite avec les symboles de la source** plutôt que retraduite en
+#: mots — c'est ce qui permet de recopier un tableau sans l'interpréter. Les
+#: deux formes étoilées sont celles de la colonne « sans saturation subie » :
+#: calculable sans saturation, mais un peu de saturation reste nécessaire pour
+#: obtenir assez de contraste. ``""`` = sans objet ou non évalué par la source.
+#:
+#: ⚠ Le sens d'un symbole dépend de sa COLONNE : ``++`` vaut « excellent »
+#: partout sauf en « Complexité », où il vaut « très complexe », donc un
+#: inconvénient. La légende de chaque colonne vit dans son ``aide``.
+VERDICTS = ("-", "o", "+", "++", "-*", "+*")
 
 
 def default_fiches_path() -> Path:
@@ -126,9 +135,13 @@ class Colonne:
 class Tableau:
     """Un tableau comparatif : des produits en lignes, des critères en colonnes.
 
-    ``cases[cle_produit][cle_colonne]`` vaut ``"oui"``, ``"partiel"``, ``"non"``
-    ou ``""`` (sans objet). Une valeur inconnue est ramenée à ``""`` : mieux
-    vaut une case vide qu'une affirmation inventée.
+    ``cases[cle_produit][cle_colonne]`` vaut l'un des :data:`VERDICTS` ou ``""``
+    (sans objet, ou produit non évalué par la source). Une valeur inconnue est
+    ramenée à ``""`` : mieux vaut une case vide qu'une affirmation inventée.
+
+    ``source`` est **obligatoire** dans le fichier livré : ces verdicts sont
+    recopiés d'une publication, pas produits ici, et une case sans provenance
+    ne se distingue pas d'une case inventée.
     """
     titre: str
     colonnes: Tuple[Colonne, ...] = ()

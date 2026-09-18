@@ -47,9 +47,16 @@ from .class_info_dialog import _label, _puces, _separateur, _titre_bloc
 
 _VIGNETTE_MAX = 320  # côté max de l'aperçu, en px logiques
 
-#: Marque affichée par verdict. Un symbole plein, un demi, un vide : une
-#: colonne se lit alors en diagonale, sans déchiffrer chaque case.
-_MARQUES = {"oui": "\u25cf", "partiel": "\u25d0", "non": "\u25cb"}
+#: Nom d'objet QSS par verdict. La case affiche le symbole de la source
+#: (``-`` / ``o`` / ``+`` / ``++``) et non plus une pastille : c'est la
+#: couleur qui porte la lecture en diagonale. Les formes étoilées se
+#: colorent comme leur forme simple, l'astérisque suffit à dire la nuance.
+_STYLE_VERDICT = {
+    "-": "VerdictNon", "-*": "VerdictNon",
+    "o": "VerdictPartiel",
+    "+": "VerdictOui", "+*": "VerdictOui",
+    "++": "VerdictFort",
+}
 
 
 # ----------------------------------------------------------------------
@@ -280,7 +287,7 @@ class _CorpsComparaison(QWidget):
             lay.addWidget(_label(comparaison.note, "FicheResume"))
         if comparaison.legende:
             lay.addWidget(_label(
-                "    ".join(f"{_MARQUES[k]}  {v}" for k, v in comparaison.legende),
+                "     ".join(f"{k}  {v}" for k, v in comparaison.legende),
                 "FicheLegende",
             ))
 
@@ -305,7 +312,7 @@ class _CorpsComparaison(QWidget):
             tete.setAlignment(
                 Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignBottom
             )
-            tete.setFixedWidth(84)
+            tete.setFixedWidth(76)
             if col.aide:
                 tete.setToolTip(col.aide)
             g.addWidget(tete, 0, j + 1)
@@ -316,15 +323,20 @@ class _CorpsComparaison(QWidget):
             g.addWidget(nom, i, 0)
             for j, col in enumerate(tableau.colonnes):
                 verdict = tableau.verdict(fiche.cle, col.cle)
-                # Case vide = sans objet (une colonne de forme pour un produit
-                # de qualité) : on laisse un point plutôt que d'affirmer « non ».
-                case = _label(_MARQUES.get(verdict, "\u00b7"), wrap=False)
-                case.setObjectName(
-                    f"Verdict{verdict.capitalize()}" if verdict else "VerdictVide"
-                )
+                # Case vide = produit non évalué par la source, ou colonne
+                # sans objet : un point, jamais un « non » qu'on n'a pas lu.
+                case = _label(verdict or "\u00b7", wrap=False)
+                case.setObjectName(_STYLE_VERDICT.get(verdict, "VerdictVide"))
                 case.setAlignment(Qt.AlignmentFlag.AlignCenter)
-                if verdict:
-                    case.setToolTip(f"{fiche.titre} \u2014 {col.libelle} : {verdict}")
+                # L'aide de la colonne est le seul endroit qui donne le sens
+                # du symbole : il change d'une colonne à l'autre (``++`` vaut
+                # « excellent » partout, sauf en Complexité).
+                case.setToolTip(
+                    f"{fiche.titre} \u2014 {col.libelle} : {verdict}\n{col.aide}"
+                    if verdict else
+                    f"{fiche.titre} \u2014 {col.libelle} : "
+                    "non évalué par la source"
+                )
                 g.addWidget(case, i, j + 1)
 
         g.setColumnStretch(0, 1)

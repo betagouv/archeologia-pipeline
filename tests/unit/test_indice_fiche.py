@@ -209,8 +209,8 @@ def test_le_fichier_livre_est_du_json_objet():
 COMPARAISON = {
     "_comparaison": {
         "note": "Lequel prendre.",
-        "legende": {"oui": "adapté", "partiel": "avec réserve", "non": "inadapté",
-                    "bidon": "ignoré"},
+        "legende": {"-": "inadapté", "o": "indistinct", "+": "adapté",
+                    "++": "très adapté", "bidon": "ignoré"},
         "tableaux": [
             {
                 "titre": "Ce que chaque produit sait faire",
@@ -220,8 +220,8 @@ COMPARAISON = {
                     {"libelle": "colonne sans clé"},
                 ],
                 "cases": {
-                    "SVF": {"plat": "partiel", "inconnue": "oui"},
-                    "LD": {"plat": "oui"},
+                    "SVF": {"plat": "o", "inconnue": "+"},
+                    "LD": {"plat": "++"},
                     "MNT": {"plat": "verdict bidon"},
                 },
                 "source": "Synthèse des sources des fiches.",
@@ -248,7 +248,7 @@ def test_comparaison_nettoie_les_cases():
     """Une colonne non déclarée ou un verdict inventé laissent la case vide :
     mieux vaut un blanc qu'un symbole arbitraire."""
     t = build_comparaison(COMPARAISON).tableaux[0]
-    assert t.verdict("SVF", "plat") == "partiel"
+    assert t.verdict("SVF", "plat") == "o"
     assert t.verdict("SVF", "inconnue") == ""      # colonne non déclarée
     assert t.verdict("MNT", "plat") == ""          # verdict hors vocabulaire
     assert t.verdict("CVAT", "plat") == ""         # produit absent du tableau
@@ -256,7 +256,7 @@ def test_comparaison_nettoie_les_cases():
 
 def test_comparaison_legende_limitee_au_vocabulaire():
     c = build_comparaison(COMPARAISON)
-    assert dict(c.legende).keys() == {"oui", "partiel", "non"}
+    assert dict(c.legende).keys() == {"-", "o", "+", "++"}
 
 
 def test_comparaison_absente_ne_leve_pas():
@@ -267,16 +267,28 @@ def test_comparaison_absente_ne_leve_pas():
 
 # ------------------------------------------- contrat du fichier livré
 
+#: Produits que la source des tableaux (Kokalj 2025) n'évalue pas : elle porte
+#: sur des visualisations de relief, pas sur le modèle d'altitude brut ni sur
+#: les deux produits de qualité de la donnée. Leurs lignes restent vides.
+NON_EVALUES = {"MNT", "DENSITE", "COUVERTURE"}
+
+
 def test_comparaison_livree_couvre_tous_les_produits(livrees):
-    """Un produit absent d'un tableau y laisserait une ligne muette."""
+    """Un produit absent d'un tableau y laisserait une ligne muette.
+
+    Sauf les trois que la source n'évalue pas : les nommer ici plutôt que de
+    relacher le test fait échouer l'ajout d'un produit qu'on aurait oublié de
+    documenter, au lieu de le laisser passer en silence.
+    """
     comp = build_comparaison(livrees)
     assert comp.tableaux, "aucun tableau comparatif livré"
     cles = [p.key for p in all_products()]
+    assert NON_EVALUES <= set(cles), "produit disparu du pipeline"
     trous = {
-        t.titre: [k for k in cles if k not in (t.cases or {})]
+        t.titre: sorted(k for k in cles if k not in (t.cases or {}))
         for t in comp.tableaux
     }
-    assert {k: v for k, v in trous.items() if v} == {}
+    assert trous == {t.titre: sorted(NON_EVALUES) for t in comp.tableaux}
 
 
 def test_comparaison_livree_n_a_que_des_verdicts_connus():
@@ -310,6 +322,24 @@ def test_comparaison_livree_ne_cite_pas_de_colonne_fantome():
             fautifs += [(t.get("titre"), produit, col)
                         for col in ligne if col not in declarees]
     assert fautifs == [], f"colonnes non déclarées : {fautifs}"
+
+
+def test_comparaison_livree_ne_laisse_pas_de_case_a_trou(livrees):
+    """Une ligne présente doit être remplie sur TOUTES ses colonnes.
+
+    Une case oubliée s'affiche comme un point, exactement comme un produit que
+    la source n'évalue pas : la transcription perdrait un verdict sans que rien
+    ne le signale. 154 cases ont été recopiées à la main, c'est le genre de
+    faute qui se voit ici et nulle part ailleurs.
+    """
+    trous = [
+        (t.titre, produit, col.cle)
+        for t in build_comparaison(livrees).tableaux
+        for produit in (t.cases or {})
+        for col in t.colonnes
+        if not t.verdict(produit, col.cle)
+    ]
+    assert trous == [], f"cases vides dans une ligne renseignée : {trous}"
 
 
 def test_comparaison_livree_cite_sa_source(livrees):

@@ -35,6 +35,7 @@ PRODUCT_LABELS = {
     "HS": "ombrage simple",
     "M_HS": "ombrage multi-directionnel",
     "SVF": "facteur de vue du ciel (SVF)",
+    "OPNS": "ouverture du relief (openness)",
     "SLO": "carte des pentes",
     "LD": "détection des dépressions locales",
     "SLRM": "résidu local (SLRM)",
@@ -307,6 +308,23 @@ class UserNarrator:
         self._r.user_info(
             f"   • Modèle {run_idx}/{total} : « {model_name} » sur {target_rvt}"
         )
+
+    def cv_run_done(self, model_name: str, n_images: int, seconds: float) -> None:
+        """Durée RÉELLE d'un run CV, chronométrée après coup (2026-09-21) : les
+        images réellement inférées (cache exclu) et le temps mur. Silencieux si
+        aucune image n'a été inférée — on ne dit pas « analysées » pour une
+        analyse qui n'a pas eu lieu. Jamais annoncée à l'avance (règle du projet :
+        pas d'estimation de durée dans l'UI)."""
+        if n_images <= 0:
+            return
+        msg = (
+            f"   ✓ « {model_name} » : "
+            f"{_human_count(n_images, 'image analysée', 'images analysées')} "
+            f"en {_format_duration(seconds)}"
+        )
+        if n_images > 1:
+            msg += f" (≈ {_format_duration(round(seconds / n_images))} par image)"
+        self._r.user_info(msg)
 
     def cv_run_image_progress(
         self, model_name: str, index: int, total: int, image_name: str

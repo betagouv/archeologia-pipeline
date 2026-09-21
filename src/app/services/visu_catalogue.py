@@ -37,6 +37,7 @@ _METIER: Dict[str, tuple] = {
     "MNT":        ("Le relief nu",            FAMILY_BASE),
     "M_HS":       ("Ombrage du relief",       FAMILY_RVT),
     "SVF":        ("Creux & dépressions",     FAMILY_RVT),
+    "OPNS":       ("Saillies ou creux",       FAMILY_RVT),
     "LD":         ("Structures en relief",    FAMILY_RVT),
     "SLRM":       ("Micro-reliefs",           FAMILY_RVT),
     "VAT":        ("Vue archéo optimisée",    FAMILY_RVT),

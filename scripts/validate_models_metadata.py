@@ -420,6 +420,30 @@ def _validate_fiche(
                 _validate_fiche_bloc(dt, classe, "derived_targets", report, model_dir)
 
 
+#: Mots-outils anglais : deux DISTINCTS entre guillemets = une phrase citée en VO.
+#: Un nom propre laissé en VO (un algorithme, un titre de page) n'en atteint pas deux.
+_MOTS_OUTILS_EN = re.compile(
+    r"\b(the|and|is|are|of|it|that|with|for|to|in|does|not|can|be|which|by|as"
+    r"|from|on|you|your|this|these|all|more|than|its|was|were|has|have|but"
+    r"|because|while|such|they|their|an|a)\b",
+    re.IGNORECASE,
+)
+
+
+def _citations_anglaises(bloc: Any) -> list[str]:
+    """Citations restées en anglais dans ``bloc`` (règle utilisateur 2026-09-21).
+
+    Les fiches sont lues par des archéologues francophones : une citation laissée
+    en anglais est un trou dans la lecture. On traduit, on garde les guillemets.
+    """
+    texte = json.dumps(bloc, ensure_ascii=False)
+    return [
+        m.group(1)
+        for m in re.finditer(r"«\s*([^»]{3,}?)\s*»", texte)
+        if len({w.lower() for w in _MOTS_OUTILS_EN.findall(m.group(1))}) >= 2
+    ]
+
+
 def _validate_fiche_bloc(
     bloc: dict[str, Any],
     classe: str,
@@ -461,6 +485,12 @@ def _validate_fiche_bloc(
     if hors_cible is not None and not isinstance(hors_cible, (str, list)):
         report.errors.append(
             f"{rubrique}['{classe}'].fiche.hors_cible doit être une liste de textes"
+        )
+
+    for citation in _citations_anglaises(fiche):
+        report.errors.append(
+            f"{rubrique}['{classe}'].fiche : citation à traduire en français — "
+            f"« {citation} »"
         )
 
     if fiche.get("vignettes") is not None:

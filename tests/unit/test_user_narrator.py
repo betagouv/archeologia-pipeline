@@ -555,3 +555,33 @@ class TestNarratorMetrics:
             def user_info_transient(self, msg, group): self.last = msg
         narrator = UserNarrator(LegacyReporter())
         narrator.tile_progress(1, 2, "T")  # ne doit pas lever
+
+
+# ----------------------------------------------------------------------
+# Fin d'un run CV : durée réelle mesurée (2026-09-21)
+# ----------------------------------------------------------------------
+class TestCvRunDone:
+    def _make(self):
+        reporter = MagicMock()
+        return create_user_narrator(reporter), reporter
+
+    def test_wording_pluriel_avec_moyenne_par_image(self):
+        narrator, reporter = self._make()
+        narrator.cv_run_done("Modèle cratères LD v1", 12, 247.0)
+        msg = reporter.user_info.call_args[0][0]
+        assert msg == (
+            "   ✓ « Modèle cratères LD v1 » : 12 images analysées en 4min 07s "
+            "(≈ 21s par image)"
+        )
+
+    def test_singulier_sans_moyenne(self):
+        narrator, reporter = self._make()
+        narrator.cv_run_done("M", 1, 25.0)
+        assert reporter.user_info.call_args[0][0] == "   ✓ « M » : 1 image analysée en 25s"
+
+    def test_silencieux_sans_image_inferee(self):
+        # Tout servi par le cache : on ne dit pas « analysées » pour une
+        # analyse qui n'a pas eu lieu.
+        narrator, reporter = self._make()
+        narrator.cv_run_done("M", 0, 3.0)
+        reporter.user_info.assert_not_called()

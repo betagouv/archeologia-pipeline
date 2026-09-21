@@ -74,7 +74,7 @@ class FilesConfig:
 # dessus, sinon on réintroduit le bug d'un indice oublié dans une liste codée
 # en dur (HS absent de la validation, SLRM absent de needs_mnt…).
 _VISUALIZATION_PRODUCTS: Tuple[str, ...] = (
-    "HS", "M_HS", "SVF", "SLO", "LD", "SLRM", "VAT", "MSTP", "CVAT",
+    "HS", "M_HS", "SVF", "OPNS", "SLO", "LD", "SLRM", "VAT", "MSTP", "CVAT",
     "PRISM", "CRIM",
 )
 _ALL_PRODUCTS: Tuple[str, ...] = ("MNT", "DENSITE", "COUVERTURE", *_VISUALIZATION_PRODUCTS)
@@ -94,6 +94,7 @@ class ProductsConfig:
     HS: bool = False
     M_HS: bool = False
     SVF: bool = False
+    OPNS: bool = False
     SLO: bool = False
     LD: bool = False
     SLRM: bool = False
@@ -312,6 +313,7 @@ def _build_products_config(products_dict: Dict[str, Any]) -> ProductsConfig:
         HS=bool(products_dict.get("HS", False)),
         M_HS=bool(products_dict.get("M_HS", False)),
         SVF=bool(products_dict.get("SVF", False)),
+        OPNS=bool(products_dict.get("OPNS", False)),
         SLO=bool(products_dict.get("SLO", False)),
         LD=bool(products_dict.get("LD", False)),
         SLRM=bool(products_dict.get("SLRM", False)),

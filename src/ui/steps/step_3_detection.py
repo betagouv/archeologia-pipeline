@@ -37,6 +37,7 @@ from ...app.services.model_orchestrator import (
 )
 from ..widgets.card import build_card
 from ..widgets.entity_card import EntityCard
+from ...app.services.cout_modele import infobulle, libelle_menu
 from ...app.services.reglages_defaut import (
     a_des_surcharges,
     effacer_surcharges,
@@ -283,8 +284,19 @@ class DetectionPage(QWidget):
         implicable = any(
             entity.id in self._models[name].implied_entities for name in cand_names
         )
+        # Coût structurel (fenêtres d'analyse par dalle) : menu « Changer ▾ » et
+        # infobulle du modèle — un fait calculé d'args.yaml, jamais une durée.
+        couts = {
+            name: (
+                libelle_menu(m.display_name, m.sahi_slice_px, m.sahi_overlap),
+                infobulle(m.display_name, m.sahi_slice_px, m.sahi_overlap),
+            )
+            for name in cand_names
+            for m in (self._models[name],)
+        }
         card.set_candidates(
-            candidates, has_cluster=has_cluster, is_derived=is_derived, implicable=implicable
+            candidates, has_cluster=has_cluster, is_derived=is_derived,
+            implicable=implicable, couts=couts,
         )
         vignette, cadrage = self._premiere_vignette(entity.id)
         card.set_fiche(vignette, disponible=bool(cand_names), cadrage=cadrage)

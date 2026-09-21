@@ -57,6 +57,7 @@ class KernelParam:
 # « ldo », pas « ld » (cf. indices.py:192 et step_2_indices.py:462).
 KERNEL_PARAMS: Dict[str, KernelParam] = {
     "SVF": KernelParam("svf", "radius", 10, "Rayon"),
+    "OPNS": KernelParam("opns", "radius", 10, "Rayon"),
     "LD": KernelParam("ldo", "max_radius", 20, "Rayon max"),
     "SLRM": KernelParam("slrm", "radius", 20, "Rayon"),
     "MSTP": KernelParam("mstp", "broad_scale_max", 2023, "Échelle large — rayon max"),

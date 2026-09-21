@@ -62,6 +62,7 @@ class ConfigManager:
                     "HS": False,
                     "M_HS": False,
                     "SVF": False,
+                    "OPNS": False,
                     "SLO": False,
                     "LD": False,
                     "SLRM": False,
@@ -76,6 +77,7 @@ class ConfigManager:
                         "HS": False,
                         "M_HS": False,
                         "SVF": False,
+                        "OPNS": False,
                         "SLO": False,
                         "LD": False,
                         "VAT": False,
@@ -118,6 +120,16 @@ class ConfigManager:
                     "save_as_8bit": True,
                 },
                 "svf": {
+                    "noise_remove": 0,
+                    "num_directions": 16,
+                    "radius": 10,
+                    "ve_factor": 1,
+                    "save_as_8bit": True,
+                },
+                "opns": {
+                    # Bornes DURES de rvt:rvt_opns : rayon 10-50 px,
+                    # directions 8-64. Voir rvt_naming.opns_settings.
+                    "opns_type": 0,
                     "noise_remove": 0,
                     "num_directions": 16,
                     "radius": 10,

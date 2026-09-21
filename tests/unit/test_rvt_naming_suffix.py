@@ -107,6 +107,10 @@ class TestRvtFolderName:
             "CVAT": "CVAT",
             "LD": "LD_A15_Rmin10_Rmax20_H1p7_V1",
             "SVF": "SVF_R10_D16_V1_N0",
+            # Le TYPE ouvre deux images sans rapport (convexites vs
+            # concavites) : il doit etre en tete du suffixe, sinon un
+            # second run ecraserait le premier dans le meme output_dir.
+            "OPNS": "OPNS_Pos_R10_D16_V1_N0",
             "HS": "HS_Az315_E35_V1",
             "M_HS": "M_HS_D16_E35_V1",
             "SLO": "SLO_U0_V1",

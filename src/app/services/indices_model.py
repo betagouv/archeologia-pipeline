@@ -27,6 +27,7 @@ _PRODUCTS: List[ProductInfo] = [
     ProductInfo("HS", "HS", "Hillshade", "Ombrage simple (une direction)", True),
     ProductInfo("M_HS", "M-HS", "Multi-Hillshade", "Ombrage multi-directionnel", True),
     ProductInfo("SVF", "SVF", "Sky-View Factor", "Révèle creux et dépressions", True),
+    ProductInfo("OPNS", "OPNS", "Openness", "Saillies OU creux, au choix", True),
     ProductInfo("SLO", "SLO", "Slope", "Pente du terrain", True),
     ProductInfo("LD", "LD", "Local Dominance", "Structures en relief", True),
     ProductInfo("SLRM", "SLRM", "Simple Local Relief", "Micro-reliefs isolés", True),

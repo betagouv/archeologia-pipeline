@@ -79,7 +79,11 @@ def run_cv_on_folder(
     cancel_check: Optional[CancelCheckFn] = None,
     image_progress: Optional[ImageProgressFn] = None,
     tile_progress: Optional[TileProgressFn] = None,
+    stats: Optional[Dict[str, Any]] = None,
 ) -> Optional[int]:
+    # ``stats`` : mesure du run déposée par le runner externe (images réellement
+    # inférées, secondes) — cf. run_external_cv_runner ; le repli in-process ne
+    # la remplit pas (il ne remonte ni tuiles ni total).
     # Retour : total_detections du run (résumé du runner externe), None si
     # inconnu (fallback in-process, court-circuit, ancien binaire).
     # ``models_dir`` → absolu : indispensable pour que le runner externe
@@ -271,6 +275,7 @@ def run_cv_on_folder(
                 cancel_check=cancel_check,
                 image_progress=image_progress,
                 tile_progress=tile_progress,
+                stats=stats,
             )
             # Générer les shapefiles côté plugin (avec shapely + post-processing)
             if run_shapefile_dedup:

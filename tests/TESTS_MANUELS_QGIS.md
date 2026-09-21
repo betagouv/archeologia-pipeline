@@ -710,3 +710,59 @@ désormais **un produit** (étape 2) ou **une entité** (étape 3).
 - [ ] **34.14 Lecture seule** : pendant un run, rejouer 19.2 — tous les « ↺ » des deux étapes sont inactifs.
 - [ ] **34.15 Qt6** : rejouer 34.3 et 34.10 sous QGIS 4 (Qt6) — aucun `AttributeError` d'énuméré, aucun `ValueError` de dépaquetage dans le journal Python.
 
+
+## 35. Coût de calcul d'un modèle : fenêtres d'analyse et durée réelle (étape 3) ⭐ P0
+
+Aucune durée n'est annoncée avant un run (règle du projet : pas d'estimation
+inventée). L'étape 3 donne un **fait** — le nombre de fenêtres que le modèle
+analyse par dalle, calculé de `sahi.slice` d'`args.yaml` — et le journal donne
+la **durée réelle** de chaque modèle une fois le run terminé.
+
+### Avant le run — étape 3
+
+- [ ] **35.1 Menu « Changer ▾ »** : sur une entité couverte par plusieurs modèles (Cratères), chaque entrée du menu porte son coût : « Modèle cratères LD v1 — 100 fenêtres d'analyse par dalle ». Les modèles à fenêtre 648/672 px affichent 16, le modèle cratères (252 px) affiche 100.
+- [ ] **35.2 Infobulle du nom de modèle** : survoler le nom du modèle sur la carte → une phrase entière : « … analyse une dalle de 1 km en 100 fenêtres de 252 px (196 avec la marge inter-dalles de l'étape 2). À recouvrement égal, deux fois plus de fenêtres = deux fois plus de calcul. Aucune durée n'est annoncée … ». Aucun chiffre de minutes, aucun « ×6 », aucun pictogramme.
+- [ ] **35.3 Comparaison A/B** : cocher deux modèles → l'infobulle porte une phrase par modèle, séparées par une ligne vide.
+- [ ] **35.4 Dialogue ⓘ du modèle** : section ARCHITECTURE, ligne « Fenêtres d'analyse : 252 px, recouvrement 20 % → 100 fenêtres par dalle de 1 km (2 000 px à 0,5 m), 196 avec la marge inter-dalles ». Absente pour un modèle dont l'`args.yaml` n'a pas de bloc `sahi`.
+- [ ] **35.5 Carte inchangée** : aucun widget de plus sur la carte d'entité (pas de nouvelle ligne, largeur des colonnes identique à 125 %).
+
+### Après le run — journal
+
+- [ ] **35.6 Ligne ✓ par modèle** : run `existing_rvt` de 2 dalles avec 2 modèles → après chaque modèle, une ligne « ✓ « Modèle … » : 2 images analysées en 35s (≈ 17s par image) », dans le journal QGIS **et** dans `pipeline_log_*.txt`. Cohérente avec le chrono de la pastille DÉTECTION de la timeline.
+- [ ] **35.7 Cache** : relancer le même run dans le même dossier de sortie → les images sont servies par le cache (« déjà traitée(s) — inférence sautée »), **aucune** ligne ✓ n'apparaît pour ce modèle.
+- [ ] **35.8 Cache partiel** : ajouter une dalle et relancer → la ligne ✓ compte **1 image analysée**, pas 3.
+- [ ] **35.9 Mode LiDAR** : en `ign_laz`/`local_laz`, la ligne ✓ apparaît aussi (même chemin de code) ; les images non rognées font ~36 fenêtres au lieu de 16, la durée par image est donc environ double de 35.6.
+- [ ] **35.10 Qt6** : rejouer 35.1 à 35.4 sous QGIS 4 — aucun `AttributeError` dans le journal Python.
+
+## 36. Produit OPNS : openness, un seul réglage de type (étape 2) ⭐ P0
+
+L'openness était jusqu'ici calculée sept fois par run (dans le VAT, le CVAT, le
+PRISM et le CRIM) sans jamais être écrite. Elle est désormais un produit à part
+entière, avec **un seul réglage de type** — positive ou négative — comme
+l'algorithme `rvt:rvt_opns` de rvt-qgis. Le type figure en tête du suffixe de
+dossier, donc deux runs de types différents cohabitent.
+
+### La carte et l'onglet
+
+- [ ] **36.1 Carte présente** : étape 2, section indices → une carte « OPNS / Openness / Saillies OU creux, au choix », entre SVF et SLO. La cocher force MNT, comme les autres indices RVT.
+- [ ] **36.2 Onglet de réglages** : « Réglages avancés… » → un onglet OPNS, avec Type d'ouverture (combo), Suppression du bruit, Nombre de directions, Rayon, Facteur VE, Export 8 bits. Le bandeau de l'onglet explique le rôle du type.
+- [ ] **36.3 Bornes des champs** : le rayon refuse < 10 et > 50, les directions < 8 et > 64, le bruit > 3 — ce sont les bornes dures de `rvt:rvt_opns`, au-delà l'algorithme échouerait.
+- [ ] **36.4 Réinitialisation ciblée** : modifier deux champs OPNS, cliquer le « ↺ » de l'onglet → seuls les champs OPNS reviennent aux défauts (type Positive, bruit 0, 16 directions, rayon 10, VE 1, 8 bits coché) ; l'onglet SVF est intact.
+- [ ] **36.5 Onglet grisé** : décocher OPNS → l'onglet passe en gris avec le badge « OFF », comme les autres.
+
+### Le calcul
+
+- [ ] **36.6 Run positive** : run `existing_mnt` ou `ign_laz` avec OPNS seul, type Positive → dossier `indices/OPNS_Pos_R10_D16_V1_N0/tif/`, mosaïque `index_OPNS.vrt` chargée dans QGIS sous le nom `index_OPNS`.
+- [ ] **36.7 Lecture positive** : sur l'image 8 bits, les tertres, crêtes et lèvres de cratère sont **clairs**, les fossés sombres, le terrain plan d'un gris uniforme. Aucune ombre portée, aucune direction privilégiée : tourner mentalement la dalle ne change rien.
+- [ ] **36.8 Run négative, même dossier de sortie** : relancer avec le type Négative → un **second** dossier `indices/OPNS_Neg_R10_D16_V1_N0/`, le premier intact. Les deux couches coexistent dans QGIS.
+- [ ] **36.9 Lecture négative** : les creux (chemins creux, fossés, fonds de carrière) sont **sombres**, comme en positive — RVT inverse l'échelle à l'export 8 bits. ⚠ En décochant « Export 8 bits », l'inversion disparaît : un creux y devient clair. C'est écrit dans la fiche.
+- [ ] **36.10 Rayon** : relancer avec un rayon de 40 px → troisième dossier `OPNS_Pos_R40_…`, et des formes plus larges deviennent visibles. Vérifier qu'aucun raccord de dalle n'apparaît (la marge de tuilage doit rester plus large que le rayon : 40 px = 20 m < 200 m par défaut).
+- [ ] **36.11 Valeur hors bornes par la config** : écrire `"radius": 200` à la main dans `config.json`, relancer → le journal dit « RVT OPNS: RADIUS=200 hors des bornes de rvt:rvt_opns, ramené à 50 », le dossier s'appelle `OPNS_Pos_R50_…` (le nom ne ment pas) et le run aboutit.
+- [ ] **36.12 rvt-qgis absent** : désactiver le plugin rvt-qgis, lancer un run avec OPNS → le préflight l'annonce comme indisponible avant de lancer quoi que ce soit, comme pour le SVF.
+
+### La fiche
+
+- [ ] **36.13 Fiche accessible** : cliquer « Fiche » sur la carte OPNS → résumé, lecture, usages, limites, méthode, les six réglages avec leurs défauts, quatre sources cliquables, et **deux vignettes navigables** (1/2, 2/2) : la positive puis la négative sur la même fenêtre. Sur la carte, l'icône 44 px est la positive.
+- [ ] **36.14 Tableaux comparatifs** : les deux tableaux en tête de fiche affichent un point sur la ligne OPNS — la source transcrite (Kokalj 2025) n'évalue pas l'openness seule. Survoler une case donne bien « non évalué par la source ».
+- [ ] **36.15 Fiches voisines** : rouvrir les fiches VAT et PRISM → elles renvoient maintenant à OPNS comme produit cochable, et ne disent plus que l'openness n'existe pas seule.
+- [ ] **36.16 Qt6** : rejouer 36.2, 36.4 et 36.13 sous QGIS 4 (Qt6) — aucun `AttributeError` d'énuméré dans le journal Python (le combo de type est le point à surveiller).

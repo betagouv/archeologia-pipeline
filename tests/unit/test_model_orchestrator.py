@@ -1140,3 +1140,33 @@ class TestEntitesIncluses:
             entity_thresholds={"cratere": {"confidence_threshold": 0.7}},
         )
         assert run["confidence_per_class"]["cratere"] == 0.7
+
+
+# ----------------------------------------------------------------------
+# Découpage SAHI lu d'args.yaml (coût structurel, étape 3 — 2026-09-21)
+# ----------------------------------------------------------------------
+SAHI_ARGS = """
+sahi:
+  slice_width: 252
+  slice_height: 252
+  overlap_ratio: 0.2
+"""
+
+
+class TestSahiDepuisArgsYaml:
+    def test_slice_et_overlap_lus(self, tmp_path):
+        _write_model(tmp_path, "crateres", CRATERE, args_yaml=SAHI_ARGS)
+        m = discover_installed_models(tmp_path)[0]
+        assert m.sahi_slice_px == 252
+        assert m.sahi_overlap == 0.2
+
+    def test_sans_bloc_sahi_vaut_zero(self, tmp_path):
+        # 0 = inconnu → l'UI n'affiche rien (pas de défaut 640 dupliqué ici).
+        _write_model(tmp_path, "crateres", CRATERE, args_yaml=CRATERE_ARGS)
+        m = discover_installed_models(tmp_path)[0]
+        assert (m.sahi_slice_px, m.sahi_overlap) == (0, 0.0)
+
+    def test_valeur_non_numerique_vaut_zero_sans_exception(self, tmp_path):
+        _write_model(tmp_path, "crateres", CRATERE, args_yaml="sahi:\n  slice_width: vite\n")
+        m = discover_installed_models(tmp_path)[0]
+        assert (m.sahi_slice_px, m.sahi_overlap) == (0, 0.0)

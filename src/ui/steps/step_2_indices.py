@@ -87,6 +87,8 @@ _TAB_DESC = {
     "HS": "Ombrage simple depuis une seule direction de lumière.",
     "M_HS": "Combine plusieurs angles d'éclairage simulés pour révéler le micro-relief.",
     "SVF": "Part de ciel visible en chaque point — révèle creux, fossés et dépressions.",
+    "OPNS": "Ouverture du relief : angle d'horizon moyen sur 16 directions. Le type "
+            "choisit ce qui ressort — positive : les saillies ; négative : les creux.",
     "SLO": "Pente du terrain — met en évidence ruptures de pente et talus.",
     "LD": "Dominance locale — fait ressortir les structures en relief positif.",
     "SLRM": "Soustrait le relief général pour isoler les micro-reliefs.",
@@ -453,9 +455,12 @@ class IndicesPage(QWidget):
         ]), "M-HS")
 
         # — SVF (svf) —
-        svf_noise = self._mk_spin(0, 9999, 0)
-        svf_dirs = self._mk_spin(1, 360, 16)
-        svf_radius = self._mk_spin(0, 100000, 10)
+        # Bornes = bornes DURES de rvt:rvt_svf, comme pour OPNS : au-delà,
+        # Processing refuse le paramètre et la dalle échoue (corrigé 2026-09-21,
+        # les champs acceptaient jusqu'à 100 000 px).
+        svf_noise = self._mk_spin(0, 3, 0)
+        svf_dirs = self._mk_spin(8, 64, 16)
+        svf_radius = self._mk_spin(10, 50, 10)
         svf_ve = self._mk_spin(1, 100, 1)
         svf_8 = self._mk_check()
         self._reg(("rvt_params", "svf"), "noise_remove", svf_noise, "int", 0)
@@ -473,6 +478,41 @@ class IndicesPage(QWidget):
             ("Facteur VE", svf_ve, _HELP_VE),
             ("", svf_8, _HELP_8BIT),
         ]), "SVF")
+
+        # — OPNS (opns) : openness, un seul réglage de type comme rvt-qgis —
+        # Bornes des spins = bornes DURES de rvt:rvt_opns (rayon 10-50,
+        # directions 8-64, bruit 0-3) : hors de là, Processing refuse.
+        opns_type = QComboBox()
+        opns_type.addItem("Positive — les saillies", 0)
+        opns_type.addItem("Négative — les creux", 1)
+        opns_type.currentIndexChanged.connect(self._on_changed)
+        opns_noise = self._mk_spin(0, 3, 0)
+        opns_dirs = self._mk_spin(8, 64, 16)
+        opns_radius = self._mk_spin(10, 50, 10)
+        opns_ve = self._mk_spin(1, 100, 1)
+        opns_8 = self._mk_check()
+        self._reg(("rvt_params", "opns"), "opns_type", opns_type, "combo", 0)
+        self._reg(("rvt_params", "opns"), "noise_remove", opns_noise, "int", 0)
+        self._reg(("rvt_params", "opns"), "num_directions", opns_dirs, "int", 16)
+        self._reg(("rvt_params", "opns"), "radius", opns_radius, "int", 10)
+        self._reg(("rvt_params", "opns"), "ve_factor", opns_ve, "int", 1)
+        self._reg(("rvt_params", "opns"), "save_as_8bit", opns_8, "bool", True)
+        self._tab_index["OPNS"] = self._adv_tabs.addTab(self._make_param_tab("OPNS", [
+            ("Type d'ouverture", opns_type,
+             "Positive : ce qui dépasse du voisinage (tertres, crêtes, lèvres de "
+             "cratère). Négative : ce qui s'y enfonce (fossés, chemins creux). "
+             "Un run = un type ; l'autre s'obtient en relançant, dans un dossier "
+             "distinct."),
+            ("Suppression du bruit", opns_noise,
+             "Niveau de lissage du bruit (0 = aucun, 3 = fort)."),
+            ("Nombre de directions", opns_dirs,
+             "Directions d'horizon échantillonnées autour de chaque pixel."),
+            ("Rayon (px)", opns_radius,
+             "Distance de recherche de l'horizon, en pixels. Borne la taille "
+             "des formes vues : 10 px = 5 m au pas de 0,5 m."),
+            ("Facteur VE", opns_ve, _HELP_VE),
+            ("", opns_8, _HELP_8BIT),
+        ]), "OPNS")
 
         # — Slope (slope) —
         slope_unit = QComboBox()

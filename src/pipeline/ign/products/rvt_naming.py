@@ -15,8 +15,8 @@ from typing import Any, Dict, Tuple
 #: (qui ne peut pas l'importer : src/app doit rester importable sans tirer ce
 #: package — un test verrouille la synchronisation des deux tuples).
 PRODUCT_ORDER: Tuple[str, ...] = (
-    "MNT", "DENSITE", "COUVERTURE", "HS", "M_HS", "SVF", "SLO", "LD", "SLRM", "VAT",
-    "MSTP", "CVAT", "PRISM", "CRIM",
+    "MNT", "DENSITE", "COUVERTURE", "HS", "M_HS", "SVF", "OPNS", "SLO", "LD", "SLRM",
+    "VAT", "MSTP", "CVAT", "PRISM", "CRIM",
 )
 
 
@@ -40,6 +40,66 @@ def _as_float(value: Any, default: float) -> float:
         return float(value)
     except Exception:
         return float(default)
+
+
+#: Bornes DURES des deux algorithmes RVT qui balayent l'horizon. ``rvt:rvt_svf``
+#: et ``rvt:rvt_opns`` déclarent exactement les mêmes ``QgsProcessingParameterNumber``
+#: (c'est le même noyau, ``rvt.vis.sky_view_factor``) : hors de ces intervalles,
+#: Processing refuse le paramètre et la dalle échoue.
+HORIZON_RADIUS_RANGE: Tuple[int, int] = (10, 50)
+HORIZON_DIRECTIONS_RANGE: Tuple[int, int] = (8, 64)
+HORIZON_NOISE_RANGE: Tuple[int, int] = (0, 3)  # enum : aucune / faible / moyenne / forte
+
+
+def _clamp(value: int, bornes: Tuple[int, int]) -> int:
+    lo, hi = bornes
+    return max(lo, min(hi, value))
+
+
+def _horizon_settings(rvt_params: Dict[str, Any], section: str) -> Dict[str, int]:
+    """Réglages EFFECTIFS d'un produit à balayage d'horizon, bornes appliquées.
+
+    SOURCE UNIQUE : le suffixe de dossier (ci-dessous) et l'appel à l'algorithme
+    (``indices.py``) lisent tous deux cette fonction. Sans elle, un rayon de
+    200 px serait ramené à 50 au calcul mais écrit ``_R200`` au nom du dossier :
+    le nom mentirait sur l'image qu'il contient.
+
+    ``save_as_8bit`` n'y figure pas : il ne change pas le nom du dossier et se
+    lit côté appelant.
+    """
+    cfg = (rvt_params or {}).get(section) or {}
+    if not isinstance(cfg, dict):
+        cfg = {}
+    return {
+        "radius": _clamp(_as_int(cfg.get("radius", 10), 10), HORIZON_RADIUS_RANGE),
+        "num_directions": _clamp(
+            _as_int(cfg.get("num_directions", 16), 16), HORIZON_DIRECTIONS_RANGE
+        ),
+        "noise_remove": _clamp(
+            _as_int(cfg.get("noise_remove", 0), 0), HORIZON_NOISE_RANGE
+        ),
+        "ve_factor": _as_int(cfg.get("ve_factor", 1), 1),
+    }
+
+
+def svf_settings(rvt_params: Dict[str, Any]) -> Dict[str, int]:
+    """Réglages effectifs du Sky-View Factor (section ``svf``)."""
+    return _horizon_settings(rvt_params, "svf")
+
+
+def opns_settings(rvt_params: Dict[str, Any]) -> Dict[str, int]:
+    """Réglages effectifs de l'openness (section ``opns``) + son type.
+
+    Mêmes bornes que le SVF : c'est le même balayage d'horizon, au signe du
+    modèle d'altitude près.
+    """
+    cfg = (rvt_params or {}).get("opns") or {}
+    if not isinstance(cfg, dict):
+        cfg = {}
+    reglages = _horizon_settings(rvt_params, "opns")
+    # Un seul réglage de type, comme rvt-qgis : 0 = positive, 1 = négative.
+    reglages["opns_type"] = 1 if _as_int(cfg.get("opns_type", 0), 0) == 1 else 0
+    return reglages
 
 
 def get_rvt_param_suffix(product_name: str, rvt_params: Dict[str, Any]) -> str:
@@ -72,15 +132,22 @@ def get_rvt_param_suffix(product_name: str, rvt_params: Dict[str, Any]) -> str:
         return f"_D{num_directions}_E{sun_elevation}_V{ve_factor}"
     
     elif product_name == "SVF":
-        svf = rvt_params.get("svf", {})
-        num_directions = _as_int(svf.get("num_directions", 16), 16)
-        if num_directions < 2:
-            num_directions = 16
-        radius = _as_int(svf.get("radius", 10), 10)
-        ve_factor = _as_int(svf.get("ve_factor", 1), 1)
-        noise_remove = _as_int(svf.get("noise_remove", 0), 0)
-        return f"_R{radius}_D{num_directions}_V{ve_factor}_N{noise_remove}"
+        s = svf_settings(rvt_params)
+        return (
+            f"_R{s['radius']}_D{s['num_directions']}"
+            f"_V{s['ve_factor']}_N{s['noise_remove']}"
+        )
     
+    elif product_name == "OPNS":
+        o = opns_settings(rvt_params)
+        # Le TYPE en tête : positive et négative sont deux images sans
+        # rapport (convexités vs concavités), jamais dans le même dossier.
+        type_token = "Neg" if o["opns_type"] == 1 else "Pos"
+        return (
+            f"_{type_token}_R{o['radius']}_D{o['num_directions']}"
+            f"_V{o['ve_factor']}_N{o['noise_remove']}"
+        )
+
     elif product_name == "SLO":
         slope = rvt_params.get("slope", {})
         unit = _as_int(slope.get("unit", 0), 0)
@@ -196,6 +263,7 @@ def get_rvt_temp_filename(
         "HS": "HS",
         "M_HS": "hillshade",
         "SVF": "SVF",
+        "OPNS": "OPNS",
         "SLO": "Slope",
         "LD": "LD",
         "SLRM": "SLRM",

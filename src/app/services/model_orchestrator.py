@@ -135,6 +135,12 @@ class InstalledModel:
     # ouvrir le dossier dans l'explorateur ou (re)lire ``model_card.yaml`` /
     # ``args.yaml`` à la demande sans relancer ``discover_installed_models``.
     model_dir: Optional[Path] = None
+    # Découpage SAHI d'``args.yaml`` (2026-09-21) : fenêtre (px) et recouvrement,
+    # pour le coût structurel affiché à l'étape 3 (``app.services.cout_modele`` :
+    # fenêtres par dalle, un fait — jamais une durée). 0 = inconnu → rien n'est
+    # affiché ; aucun défaut 640 dupliqué ici.
+    sahi_slice_px: int = 0
+    sahi_overlap: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -258,6 +264,7 @@ def discover_installed_models(models_dir: Any) -> List[InstalledModel]:
         # zone_crateres → « Regroupement de cratères ») ne doit pas aussi proposer
         # une case « regrouper en clusters » sur l'entité source (redondant).
         cluster_options = _strip_derived_outputs(cluster_options, derived_targets)
+        sahi_slice_px, sahi_overlap = _load_args_sahi(sub)
         models.append(
             InstalledModel(
                 name=sub.name,
@@ -284,6 +291,8 @@ def discover_installed_models(models_dir: Any) -> List[InstalledModel]:
                 default_min_area=area,
                 default_iou=iou,
                 model_dir=sub,
+                sahi_slice_px=sahi_slice_px,
+                sahi_overlap=sahi_overlap,
             )
         )
     return models
@@ -411,6 +420,30 @@ def _extract_coverage(
             bucket.append(name)
 
     return {k: tuple(v) for k, v in coverage.items()}, tuple(all_names)
+
+
+def _load_args_sahi(model_dir: Path) -> Tuple[int, float]:
+    """Lit ``args.yaml:sahi`` → ``(slice_px, overlap_ratio)`` ; ``(0, 0.0)`` si
+    absent ou illisible (0 = inconnu, rien n'est affiché). Lecture YAML directe,
+    tolérante, comme ``_load_cluster_defaults`` — jamais d'exception."""
+    args_file = model_dir / "args.yaml"
+    if not args_file.is_file():
+        return 0, 0.0
+    try:
+        import yaml  # import différé
+        data = yaml.safe_load(args_file.read_text(encoding="utf-8"))
+    except Exception as e:  # noqa: BLE001
+        logger.warning("Erreur lecture %s: %s", args_file, e)
+        return 0, 0.0
+    sahi = data.get("sahi") if isinstance(data, dict) else None
+    if not isinstance(sahi, dict):
+        return 0, 0.0
+    try:
+        slice_px = int(sahi.get("slice_width", sahi.get("slice_height", 0)) or 0)
+        overlap = float(sahi.get("overlap_ratio", 0.0) or 0.0)
+    except (TypeError, ValueError):
+        return 0, 0.0
+    return (slice_px, overlap) if slice_px > 0 else (0, 0.0)
 
 
 def _load_args_clustering(model_dir: Path) -> List[Tuple[FrozenSet[str], str]]:

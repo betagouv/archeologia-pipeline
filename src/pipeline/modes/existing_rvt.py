@@ -87,6 +87,9 @@ class ExistingRvtResult:
     # total_detections du résumé du runner externe ; None si inconnu
     # (CV désactivée, fallback in-process, annulation avant le résumé).
     total_detections: Optional[int] = None
+    # Mesure du run CV (2026-09-21) : {"images_inferees", "secondes"} déposée par
+    # le runner externe ; None si CV désactivée, repli in-process ou annulation.
+    cv_stats: Optional[Dict[str, Any]] = None
 
 
 def _classify_rvt_layout(
@@ -442,6 +445,7 @@ def run_existing_rvt(
     # La déduplication shapefile est gérée par run_cv_on_folder (run_shapefile_dedup=True).
     # La création des VRT est déléguée à finalize_pipeline() pour éviter le double travail.
     total_detections: Optional[int] = None
+    cv_stats: Dict[str, Any] = {}
     if cv_enabled and not (cancel_check is not None and cancel_check()):
         from ..cv.runner import run_cv_on_folder
 
@@ -471,9 +475,14 @@ def run_existing_rvt(
                 cancel_check=cancel_check,
                 image_progress=image_progress,
                 tile_progress=tile_progress,
+                stats=cv_stats,
             )
         finally:
             if busy_large:
                 on_busy(False)
 
-    return ExistingRvtResult(total_images=len(jpg_files), total_detections=total_detections)
+    return ExistingRvtResult(
+        total_images=len(jpg_files),
+        total_detections=total_detections,
+        cv_stats=cv_stats or None,
+    )

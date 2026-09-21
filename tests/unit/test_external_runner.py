@@ -124,3 +124,37 @@ class TestParseRunnerStdoutSummary:
             is None
         )
         assert _parse_runner_stdout("[cv_runner_onnx][INFO] divers", lambda _m: None) is None
+
+
+class TestParseRunnerStdoutImageDone:
+    """``image_done`` : fin réelle d'une image (status=done) — c'est ce qui
+    permet de compter les images réellement inférées, cache exclu."""
+
+    def test_done_invokes_image_done(self):
+        calls = []
+        _parse_runner_stdout(
+            "progress=2/5 image=x.png status=done detections=3 mode=sahi",
+            lambda _m: None,
+            image_done=lambda i, t, n: calls.append((i, t, n)),
+        )
+        assert calls == [(2, 5, "x.png")]
+
+    def test_processing_and_skipped_do_not_invoke_image_done(self):
+        calls = []
+        for line in (
+            "progress=2/5 image=x.png status=processing",
+            "progress=3/5 image=y.png status=skipped",
+        ):
+            _parse_runner_stdout(
+                line, lambda _m: None, image_done=lambda i, t, n: calls.append((i, t, n))
+            )
+        assert calls == []
+
+    def test_image_progress_contract_unchanged_on_done(self):
+        calls = []
+        _parse_runner_stdout(
+            "progress=2/5 image=x.png status=done detections=3",
+            lambda _m: None,
+            image_progress=lambda i, t, n: calls.append(1),
+        )
+        assert calls == []

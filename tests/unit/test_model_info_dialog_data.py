@@ -324,3 +324,24 @@ class TestDataclasses:
     def test_row_has_default_mono_false(self):
         r = Row(label="A", value="B")
         assert r.mono is False
+
+
+# ----------------------------------------------------------------------
+# Fenêtres d'analyse (coût structurel, 2026-09-21)
+# ----------------------------------------------------------------------
+class TestFenetresAnalyse:
+    CARD = {"architecture": "RF-DETR-Seg-Large", "task": "instance_segmentation"}
+
+    def test_row_dans_architecture_quand_args_porte_sahi(self):
+        args = {"sahi": {"slice_width": 252, "slice_height": 252, "overlap_ratio": 0.2}}
+        sections = build_sections(self.CARD, args=args)
+        arch = next(s for s in sections if s.title == "ARCHITECTURE")
+        row = next(r for r in arch.rows if r.label == "Fenêtres d'analyse")
+        assert row.value.startswith("252 px, recouvrement 20 % → 100 fenêtres par dalle de 1 km")
+        assert "196 avec la marge inter-dalles" in row.value
+
+    def test_pas_de_row_sans_sahi(self):
+        for args in (None, {}, {"clustering": []}):
+            sections = build_sections(self.CARD, args=args)
+            arch = next(s for s in sections if s.title == "ARCHITECTURE")
+            assert all(r.label != "Fenêtres d'analyse" for r in arch.rows)

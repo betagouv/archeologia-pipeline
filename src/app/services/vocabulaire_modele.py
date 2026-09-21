@@ -14,6 +14,7 @@ from typing import Dict
 _RVT_LONG_NAMES: Dict[str, str] = {
     "LD": "Local Dominance (LD)",
     "SVF": "Sky View Factor (SVF)",
+    "OPNS": "Openness — ouverture du relief (OPNS)",
     "M_HS": "Hillshade multi-directionnel (M-HS)",
     "HS": "Hillshade simple (HS)",
     "SLO": "Pente (SLO)",

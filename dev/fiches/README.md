@@ -169,6 +169,15 @@ couverture sont au pas de densité (1 m) quand les indices sont au pas du modèl
 d'altitude (0,5 m). En pixels, ces deux produits cadreraient deux fois plus de
 terrain et les vignettes ne seraient plus comparables.
 
+⚠️ Le run de référence (`demo_comite`, fenêtre `LHD_FXX_0392_6818` à
+`xmin=392000, ymax=6817352`) date d'avant le produit **OPNS** : il n'a pas de
+dossier `indices/OPNS_*`, et les deux vignettes d'openness ont donc été
+recalculées hors chaîne le 2026-09-21 (paquet `rvt` de rvt-qgis sur le MNT du
+run, même étirement 8 bits, contrôle : le SVF recalculé de la même façon
+retrouve la vignette livrée à 0,995 de corrélation). **À la prochaine
+régénération**, relancer d'abord `demo_comite` avec OPNS coché (un type par run,
+les deux sont attendus) pour que la chaîne le couvre normalement.
+
 Écrit `NN_<CLÉ>.jpg` (douze par fenêtre), `candidats.json` et
 `planche_candidats.png`. **Regarder la planche avant de publier la page** :
 l'algorithme note, il ne juge pas l'intérêt archéologique.

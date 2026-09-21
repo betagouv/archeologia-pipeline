@@ -35,6 +35,7 @@ PRODUCT_LABELS = {
     "HS": "ombrage simple",
     "M_HS": "ombrage multi-directionnel",
     "SVF": "facteur de vue du ciel (SVF)",
+    "OPNS": "ouverture du relief (openness)",
     "SLO": "carte des pentes",
     "LD": "détection des dépressions locales",
     "SLRM": "résidu local (SLRM)",

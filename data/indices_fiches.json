@@ -379,17 +379,123 @@
       }
     ]
   },
+  "OPNS": {
+    "resume": "Angle d'horizon moyen vu depuis chaque point, mesuré sur seize directions jusqu'à un rayon donné : 90° en terrain plan, davantage sur une convexité, moins dans une concavité. Un seul réglage décide de l'image — le **type** : *positive* souligne ce qui dépasse (tertres, crêtes, lèvres de cratère), *négative* ce qui s'enfonce (fossés, chemins creux, fonds de gorge). Ni ombre portée, ni direction d'éclairage, et la pente générale du versant s'efface.",
+    "lire": "Dans les deux types, le fichier 8 bits se lit de la même façon : **clair = ce qui saille, sombre = ce qui creuse**. Ce n'est pas une évidence — l'openness négative est haute dans les creux, mais RVT inverse son échelle à l'export 8 bits, exactement comme pour la pente, afin que les concavités restent sombres partout. Attention : en sortie flottante, **il n'y a pas d'inversion** ; une openness négative de 92° y désigne un creux profond, et une symbologie automatique l'affichera en clair. L'étirement 8 bits est fixe, de 60 à 95° : au-delà, l'image sature. Sur le terrain plan, la valeur tourne autour de 90° et l'image reste d'un gris uniforme — c'est normal, l'openness ne montre que les ruptures.",
+    "usage": [
+      "Séparer un talus de son fossé : lancer une fois en positive, une fois en négative, et comparer. Chaque type isole une des deux moitiés de la structure, là où un ombrage ou un Sky-View Factor les mêle.",
+      "Les structures posées sur un versant : la pente générale disparaît du calcul, donc une même forme garde la même signature en bas de coteau comme en haut.",
+      "Les creux nets, en négative : chemins creux, fossés parcellaires, fonds de carrière, tranchées. C'est l'indice le plus spécifique du plugin pour cela.",
+      "Comprendre ce que montrent le VAT, le PRISM et le CRIM : l'openness est leur ingrédient commun, et la regarder seule explique ce que la composition y ajoute."
+    ],
+    "limites": [
+      "Un run ne produit qu'**un seul type**, comme dans rvt-qgis. Pour avoir les deux, relancer avec l'autre type : le dossier de sortie porte le type en tête de son suffixe (OPNS_Pos_… / OPNS_Neg_…), les deux images ne s'écrasent donc jamais.",
+      "Le rayon borne la taille des formes vues, et il est **plafonné à 50 pixels** par l'algorithme de RVT — soit 25 m au pas de 0,5 m. Une structure plus large n'est révélée que par ses bords. Même contrainte sur le nombre de directions, borné de 8 à 64. Une valeur hors de ces bornes est ramenée, et le journal le dit.",
+      "L'openness ne dit rien de l'amplitude : un fossé de dix centimètres et un de deux mètres, de même largeur, donnent des angles voisins. Pour une profondeur, prendre le SLRM ou le modèle d'altitude.",
+      "L'image sature hors de l'intervalle 60–95° en sortie 8 bits : une rupture de pente très franche y devient un aplat blanc ou noir, sans détail interne. Décocher la sortie 8 bits conserve les angles, mesurables.",
+      "L'openness amplifie le bruit du modèle d'altitude comme le fait le Sky-View Factor : sur une dalle peu dense, monter la suppression du bruit avant de conclure qu'une micro-structure existe.",
+      "En terrain de faible relief, les deux types tournent autour de 90° (médiane mesurée 86° sur la dalle de la vignette) et l'étirement 8 bits fixe de 60 à 95° n'en occupe qu'une part : la positive sort globalement claire (médiane 189 sur 255), la négative globalement sombre (médiane 64), parce que son échelle est inversée. L'information est là, mais resserrer l'étirement dans QGIS (symbologie, min/max sur les percentiles 2-98) la rend bien plus lisible."
+    ],
+    "methode": [
+      "Depuis chaque pixel, on balaye seize directions jusqu'au rayon de recherche et on relève dans chacune l'angle du relief le plus haut ; l'openness est 90° moins la moyenne de ces angles. Elle vaut donc 90° quand rien ne dépasse, plus de 90° quand l'horizon s'abaisse (convexité), moins quand il se relève (concavité).",
+      "L'openness **négative** est exactement le même calcul mené sur le relief inversé : le plugin ne l'approxime pas, c'est l'algorithme de RVT qui multiplie le modèle d'altitude par −1 avant le balayage. Elle mesure donc l'ouverture vers le bas, et non vers le ciel.",
+      "Différence avec le Sky-View Factor : celui-ci ne considère que l'hémisphère céleste, l'openness prend la sphère entière. C'est ce qui lui fait perdre la pente générale du terrain — un atout sur un versant, une perte d'information en terrain de faible relief.",
+      "Le calcul passe par l'algorithme rvt:rvt_opns du plugin rvt-qgis, comme le Sky-View Factor par rvt:rvt_svf — aucun code de calcul dans le plugin, contrairement au CVAT et au CRIM.",
+      "Comme pour le Sky-View Factor, le calcul lit au-delà du bord de la dalle : le plugin le nourrit avec la dalle élargie de la marge de tuilage, faute de quoi RVT fabriquerait le voisinage manquant en repliant l'image sur elle-même.",
+      "Le type, le rayon, les directions, l'exagération verticale et le niveau de bruit figurent tous au nom du dossier de sortie : deux réglages produisent deux dossiers, jamais un écrasement."
+    ],
+    "parametres": [
+      {
+        "cle": "opns.opns_type",
+        "label": "Type d'ouverture",
+        "defaut": "Positive",
+        "sens": "Positive : ce qui dépasse du voisinage. Négative : ce qui s'y enfonce. C'est le réglage qui change l'image, tous les autres ne font que l'ajuster. Un run = un type, comme dans rvt-qgis."
+      },
+      {
+        "cle": "opns.radius",
+        "label": "Rayon (px)",
+        "defaut": "10 px",
+        "sens": "Distance de recherche de l'horizon. Borne la taille des formes vues : 10 px = 5 m au pas de 0,5 m. Plafonné à 50 px par RVT. Vérifier que la marge de tuilage reste plus large que le rayon."
+      },
+      {
+        "cle": "opns.num_directions",
+        "label": "Nombre de directions",
+        "defaut": "16",
+        "sens": "Directions d'horizon échantillonnées autour de chaque pixel. Bornées de 8 à 64 par RVT ; le temps croît linéairement."
+      },
+      {
+        "cle": "opns.noise_remove",
+        "label": "Suppression du bruit",
+        "defaut": "0 (aucune)",
+        "sens": "Ignore les tout premiers pixels du rayon, ce qui gomme l'effet « poivre et sel » venu du nuage de points. 0 aucune, 1 faible, 2 moyenne, 3 forte."
+      },
+      {
+        "cle": "opns.ve_factor",
+        "label": "Facteur VE",
+        "defaut": "1",
+        "sens": "Exagération verticale : multiplie les altitudes avant le calcul."
+      },
+      {
+        "cle": "opns.save_as_8bit",
+        "label": "Export 8 bits",
+        "defaut": "coché",
+        "sens": "Étirement fixe de 60 à 95°, **inversé pour l'openness négative** afin que les creux restent sombres. Décocher conserve les angles en degrés, mesurables — mais sans cette inversion."
+      }
+    ],
+    "references": [
+      {
+        "citation": "Yokoyama R., Shirasawa M., Pike R. J. 2002, Visualizing topography by openness: a new application of image processing to digital elevation models, Photogrammetric Engineering & Remote Sensing 68(3), p. 257-265 (définition de l'openness positive et négative)",
+        "url": "https://www.asprs.org/wp-content/uploads/pers/2002journal/march/2002_mar_257-265.pdf"
+      },
+      {
+        "citation": "Doneus M. 2013, Openness as Visualization Technique for Interpretative Mapping of Airborne Lidar Derived Digital Terrain Models, Remote Sensing 5(12), p. 6427-6442 (usage archéologique, openness négative)",
+        "url": "https://doi.org/10.3390/rs5126427"
+      },
+      {
+        "citation": "Relief Visualization Toolbox, documentation — Openness",
+        "url": "https://rvt-py.readthedocs.io/en/latest/vis_openness.html"
+      },
+      {
+        "citation": "Kokalj Ž., Hesse R. 2017, Airborne laser scanning raster data visualization: A Guide to Good Practice, Založba ZRC",
+        "url": "https://doi.org/10.3986/9789612549848"
+      }
+    ],
+    "vignettes": [
+      {
+        "image": "indices_vignettes/OPNS.jpg",
+        "source": "Dalle LHD_FXX_0392_6818, 324 m de côté, type positive",
+        "licence": "Produite par le plugin sur données IGN LiDAR HD (licence ouverte Etalab)",
+        "legende": "Type positive : le remblai du chemin ressort en blanc, les fossés qui le bordent et les ravines en noir. Les limites de parcelles se lisent comme des fils, sans direction privilégiée.",
+        "cadrage": {
+          "x": 0.1829,
+          "y": 0.1389,
+          "cote": 0.581
+        }
+      },
+      {
+        "image": "indices_vignettes/OPNS_neg.jpg",
+        "source": "Dalle LHD_FXX_0392_6818, 324 m de côté, type négative",
+        "licence": "Produite par le plugin sur données IGN LiDAR HD (licence ouverte Etalab)",
+        "legende": "Type négative, même fenêtre : les creux restent sombres, les saillies claires — mais l'image entière est plus sombre. Les deux types mesurent ici les mêmes 86° en moyenne ; c'est l'inversion d'échelle appliquée à la négative qui la fait basculer dans les tons bas.",
+        "cadrage": {
+          "x": 0.1829,
+          "y": 0.1389,
+          "cote": 0.581
+        }
+      }
+    ]
+  },
   "LD": {
     "resume": "Un observateur de 1,70 m posé sur chaque pixel regarde le terrain entre 5 et 10 m autour de lui, dans vingt-quatre directions : plus il regarde vers le bas, plus il « domine », plus le pixel est clair. Conçu pour les reliefs positifs très faibles en terrain plat, il excelle aussi sur les creux.",
-    "lire": "Clair : un point haut ou un versant — talus, tertre, mur arasé, bord de terrasse. Sombre : un creux — doline, chemin creux, fosse. Le manuel RVT le formule ainsi : « dominance is higher for points on local protrusions as well as on slopes, and lower for points in local depressions ».",
+    "lire": "Clair : un point haut ou un versant — talus, tertre, mur arasé, bord de terrasse. Sombre : un creux — doline, chemin creux, fosse. Le manuel RVT le formule ainsi : « la dominance est plus élevée pour les points situés sur les protubérances locales comme sur les versants, et plus faible pour les points situés dans les dépressions locales ».",
     "usage": [
-      "Les reliefs positifs que rien d'autre ne montre : « well suited for very subtle positive relief features such as former field boundaries or heavily eroded burial mounds » — parcellaire fossile, tumulus arasés, en terrain plat à modéré.",
-      "Les dépressions : « delivers very good results for topographic depressions such as dolines, mining traces, and hollow ways ». C'est l'indice d'entrée des modèles de grandes dépressions du plugin.",
-      "Garder le paysage en tête tout en lisant le détail : il conserve « a (limited) visual impression of the overall landscape forms »."
+      "Les reliefs positifs que rien d'autre ne montre : « bien adapté aux formes en relief positif très ténues, telles que d'anciennes limites de parcelles ou des tumulus fortement érodés » — parcellaire fossile, tumulus arasés, en terrain plat à modéré.",
+      "Les dépressions : « donne de très bons résultats sur les dépressions topographiques : dolines, traces d'extraction, chemins creux ». C'est l'indice d'entrée des modèles de grandes dépressions du plugin.",
+      "Garder le paysage en tête tout en lisant le détail : il conserve « une impression visuelle (limitée) des formes générales du paysage »."
     ],
     "limites": [
       "Cette même sensibilité aux versants est un piège : un flanc de colline naturel est clair lui aussi, comme le serait un talus. La forme, pas la clarté, fait la différence.",
-      "Les deux rayons fixent la taille des structures visées. Manuel RVT : le rayon minimal doit valoir « a bit more than half the size of the features you are interested in », le maximal « a bit more than the size ». À 10–20 pixels, soit 5–10 m, on vise des structures de 5 à 10 m ; un enclos de 40 m demande de monter les deux rayons en proportion.",
+      "Les deux rayons fixent la taille des structures visées. Manuel RVT : le rayon minimal doit valoir « un peu plus de la moitié de la taille des structures qui vous intéressent », le maximal « un peu plus que cette taille ». À 10–20 pixels, soit 5–10 m, on vise des structures de 5 à 10 m ; un enclos de 40 m demande de monter les deux rayons en proportion.",
       "En partie interchangeable avec le Simple Local Relief Model, qui donne des hauteurs relatives plus réalistes là où le Local Dominance donne un meilleur modelé.",
       "Le calcul est plus lent que celui du SVF, la charge croissant avec le rayon maximal et la finesse angulaire."
     ],

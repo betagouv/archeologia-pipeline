@@ -9,7 +9,7 @@ from .crim import compute_crim
 from .cvat import compute_cvat
 from .qgis_processing import run_qgis_algorithm
 from .results import needs_refresh
-from .rvt_naming import get_rvt_temp_filename
+from .rvt_naming import get_rvt_temp_filename, opns_settings, svf_settings
 from ...tilespec import reclass_rvt_nodata
 from ...types import LogFn, format_params_line
 
@@ -135,33 +135,36 @@ def create_visualization_products(
             log(f"M_HS non créé: {out.name}")
 
     if products.get("SVF", False):
-        svf = (rvt_params or {}).get("svf", {})
-        num_directions = _as_int(svf.get("num_directions", 16), 16)
-        if num_directions < 2:
-            log(f"RVT SVF: NUM_DIRECTIONS={num_directions} invalide, utilisation de 16 (minimum=2)")
-            num_directions = 16
-        radius = _as_int(svf.get("radius", 10), 10)
-        ve_factor = _as_int(svf.get("ve_factor", 1), 1)
-        noise_remove = _as_int(svf.get("noise_remove", 0), 0)
-        save_as_8bit = _as_bool(svf.get("save_as_8bit", True), True)
+        # Bornes dures de rvt:rvt_svf (rayon 10-50, directions 8-64, bruit 0-3),
+        # appliquées par ``svf_settings`` — la MÊME fonction que le nom de
+        # dossier, sans quoi le nom mentirait sur l'image.
+        svf = svf_settings(rvt_params)
+        brut = (rvt_params or {}).get("svf", {}) or {}
+        for cle in ("radius", "num_directions", "noise_remove"):
+            if cle in brut and _as_int(brut[cle], svf[cle]) != svf[cle]:
+                log(
+                    f"RVT SVF: {cle.upper()}={brut[cle]} hors des bornes de "
+                    f"rvt:rvt_svf, ramené à {svf[cle]}"
+                )
+        save_as_8bit = _as_bool(brut.get("save_as_8bit", True), True)
         out = temp_dir / get_rvt_temp_filename("SVF", current_tile_name, rvt_params)
         if needs_refresh(input_path, out):
             log(format_params_line("RVT/SVF", {
                 "tile": current_tile_name,
-                "num_directions": num_directions,
-                "radius": radius,
-                "noise_remove": noise_remove,
-                "ve_factor": ve_factor,
+                "num_directions": svf["num_directions"],
+                "radius": svf["radius"],
+                "noise_remove": svf["noise_remove"],
+                "ve_factor": svf["ve_factor"],
                 "save_as_8bit": save_as_8bit,
             }))
             params = {
                 "INPUT": str(input_path),
                 "OUTPUT": str(out),
-                "NOISE_REMOVE": noise_remove,
-                "NUM_DIRECTIONS": num_directions,
-                "RADIUS": radius,
+                "NOISE_REMOVE": svf["noise_remove"],
+                "NUM_DIRECTIONS": svf["num_directions"],
+                "RADIUS": svf["radius"],
                 "SAVE_AS_8BIT": save_as_8bit,
-                "VE_FACTOR": ve_factor,
+                "VE_FACTOR": svf["ve_factor"],
             }
             run_qgis_algorithm("rvt:rvt_svf", params, feedback=feedback, context=context)
         else:
@@ -170,6 +173,49 @@ def create_visualization_products(
             outputs["SVF"] = out
         else:
             log(f"SVF non créé: {out.name}")
+
+    if products.get("OPNS", False):
+        # Un seul produit, un réglage de type (positive / négative), comme
+        # l'algorithme rvt:rvt_opns. Les bornes dures de RVT (rayon 10-50,
+        # directions 8-64) sont appliquées par ``opns_settings`` — la MÊME
+        # fonction que le nom de dossier, sans quoi le nom mentirait.
+        opns = opns_settings(rvt_params)
+        brut = (rvt_params or {}).get("opns", {}) or {}
+        for cle in ("radius", "num_directions", "noise_remove"):
+            if cle in brut and _as_int(brut[cle], opns[cle]) != opns[cle]:
+                log(
+                    f"RVT OPNS: {cle.upper()}={brut[cle]} hors des bornes de "
+                    f"rvt:rvt_opns, ramené à {opns[cle]}"
+                )
+        save_as_8bit = _as_bool(brut.get("save_as_8bit", True), True)
+        out = temp_dir / get_rvt_temp_filename("OPNS", current_tile_name, rvt_params)
+        if needs_refresh(input_path, out):
+            log(format_params_line("RVT/OPNS", {
+                "tile": current_tile_name,
+                "type": "negative" if opns["opns_type"] == 1 else "positive",
+                "radius": opns["radius"],
+                "num_directions": opns["num_directions"],
+                "noise_remove": opns["noise_remove"],
+                "ve_factor": opns["ve_factor"],
+                "save_as_8bit": save_as_8bit,
+            }))
+            params = {
+                "INPUT": str(input_path),
+                "OUTPUT": str(out),
+                "NOISE_REMOVE": opns["noise_remove"],
+                "NUM_DIRECTIONS": opns["num_directions"],
+                "OPNS_TYPE": opns["opns_type"],
+                "RADIUS": opns["radius"],
+                "SAVE_AS_8BIT": save_as_8bit,
+                "VE_FACTOR": opns["ve_factor"],
+            }
+            run_qgis_algorithm("rvt:rvt_opns", params, feedback=feedback, context=context)
+        else:
+            log(f"OPNS réutilisé (cache intermédiaire) : {out.name}")
+        if out.exists():
+            outputs["OPNS"] = out
+        else:
+            log(f"OPNS non créé: {out.name}")
 
     if products.get("SLO", False):
         slope = (rvt_params or {}).get("slope", {})

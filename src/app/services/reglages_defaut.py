@@ -27,6 +27,7 @@ SECTION_PRODUIT = {
     "hs": "HS",
     "mdh": "M_HS",
     "svf": "SVF",
+    "opns": "OPNS",
     "slope": "SLO",
     "ldo": "LD",
     "slrm": "SLRM",

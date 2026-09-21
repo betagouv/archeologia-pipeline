@@ -23,6 +23,7 @@
       "HS": false,
       "M_HS": false,
       "SVF": false,
+      "OPNS": false,
       "SLO": false,
       "LD": false,
       "SLRM": false,
@@ -37,6 +38,7 @@
         "HS": false,
         "M_HS": false,
         "SVF": false,
+        "OPNS": false,
         "SLO": false,
         "LD": false,
         "VAT": false,
@@ -86,6 +88,14 @@
       "save_as_8bit": true
     },
     "svf": {
+      "noise_remove": 0,
+      "num_directions": 16,
+      "radius": 10,
+      "ve_factor": 1,
+      "save_as_8bit": true
+    },
+    "opns": {
+      "opns_type": 0,
       "noise_remove": 0,
       "num_directions": 16,
       "radius": 10,

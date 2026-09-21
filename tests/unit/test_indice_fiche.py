@@ -175,8 +175,8 @@ def test_chaque_parametre_cite_un_reglage_qui_existe(livrees):
     from src.app.services.indices_model import rvt_keys  # noqa: F401
 
     sections = {
-        "processing", "hs", "mdh", "svf", "slope", "ldo", "slrm", "vat", "mstp", "cvat",
-        "prism", "crim",
+        "processing", "hs", "mdh", "svf", "opns", "slope", "ldo", "slrm", "vat",
+        "mstp", "cvat", "prism", "crim",
     }
     fautifs = [
         (f.cle, p.cle)
@@ -267,10 +267,18 @@ def test_comparaison_absente_ne_leve_pas():
 
 # ------------------------------------------- contrat du fichier livré
 
-#: Produits que la source des tableaux (Kokalj 2025) n'évalue pas : elle porte
-#: sur des visualisations de relief, pas sur le modèle d'altitude brut ni sur
-#: les deux produits de qualité de la donnée. Leurs lignes restent vides.
-NON_EVALUES = {"MNT", "DENSITE", "COUVERTURE"}
+#: Produits sans ligne dans les tableaux transcrits, et pourquoi. Les nommer
+#: ici plutôt que relâcher le test fait échouer l'ajout d'un produit qu'on
+#: aurait oublié de documenter.
+NON_EVALUES = {
+    # La source (Kokalj 2025) évalue des visualisations de relief : ni le
+    # modèle d'altitude brut, ni les deux produits de qualité de la donnée.
+    "MNT", "DENSITE", "COUVERTURE",
+    # L'openness seule n'a pas de ligne dans la transcription livrée (la page
+    # RVT « Choosing a visualization » n'en porte pas). À remplir si une
+    # édition ultérieure de la source en donne une — jamais de verdict maison.
+    "OPNS",
+}
 
 
 def test_comparaison_livree_couvre_tous_les_produits(livrees):

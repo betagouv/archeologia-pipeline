@@ -118,6 +118,14 @@ RVT_PARAM_LABELS: Dict[str, Dict[str, str]] = {
         "ve_factor": "Facteur VE",
         "save_as_8bit": "Export 8 bits",
     },
+    "OPNS": {
+        "opns_type": "Type d'ouverture (0 = positive, 1 = négative)",
+        "noise_remove": "Suppression du bruit",
+        "num_directions": "Nombre de directions",
+        "radius": "Rayon (px)",
+        "ve_factor": "Facteur VE",
+        "save_as_8bit": "Export 8 bits",
+    },
     "CVAT": {
         "save_as_8bit": "Export 8 bits",
     },

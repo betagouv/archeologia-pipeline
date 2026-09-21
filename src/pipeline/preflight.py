@@ -25,6 +25,7 @@ RVT_ALGO_BY_PRODUCT: Dict[str, str] = {
     "HS": "rvt_hillshade",
     "M_HS": "rvt_multi_hillshade",
     "SVF": "rvt_svf",
+    "OPNS": "rvt_opns",
     "SLO": "rvt_slope",
     "LD": "rvt_ld",
     "SLRM": "rvt_slrm",

@@ -144,6 +144,25 @@ def _pdal_exe() -> str:
     return p
 
 
+def _partial_path(output_path: Path) -> Path:
+    """Chemin d'écriture, à côté de la cible (même volume → rename atomique).
+
+    Tant que l'écriture n'a pas réussi, rien ne porte le nom final : un run
+    tué en pleine écriture ne laisse qu'un ``.partial`` inerte au lieu d'un
+    LAZ corrompu que la validation d'en-tête déclarerait valide à vie
+    (incident 2026-09-19, dalle LHD_FXX_0821_6327 : 161 Mio de zéros en
+    queue, MNT bloqué 10 h sur une boucle infinie de PDAL).
+    """
+    return output_path.with_name(output_path.name + ".partial")
+
+
+def _discard_partial(partial: Path) -> None:
+    try:
+        partial.unlink()
+    except OSError:
+        pass
+
+
 def crop_neighbor_tile(
     *,
     input_path: Path,
@@ -165,6 +184,7 @@ def crop_neighbor_tile(
             pass
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
+    partial = _partial_path(output_path)
 
     pipeline_config = {
         "pipeline": [
@@ -173,7 +193,7 @@ def crop_neighbor_tile(
                 "type": "filters.crop",
                 "bounds": f"([{bounds['xmin']},{bounds['xmax']}],[{bounds['ymin']},{bounds['ymax']}])",
             },
-            {"type": "writers.las", "filename": str(output_path), "compression": "laszip"},
+            {"type": "writers.las", "filename": str(partial), "compression": "laszip"},
         ]
     }
 
@@ -192,19 +212,21 @@ def crop_neighbor_tile(
                 log(result.stderr.strip())
             return False
 
-        ok, msg = validate_las_or_laz_with_pdal(output_path)
+        ok, msg = validate_las_or_laz_with_pdal(partial)
         if not ok:
             log(f"Fichier voisin rogné invalide via PDAL: {output_path.name}")
             if msg:
                 log(f"PDAL: {msg}")
             return False
 
+        os.replace(str(partial), str(output_path))
         return True
     finally:
         try:
             Path(pipeline_file).unlink()
         except Exception:
             pass
+        _discard_partial(partial)
 
 
 def merged_inputs_sidecar(output_path: Path) -> Path:
@@ -288,29 +310,33 @@ def merge_tiles(
         if ok:
             valid_files.append(p)
 
-    if len(valid_files) <= 1:
-        shutil.copy2(str(central_path), str(output_path))
-        write_merged_inputs_sidecar(output_path, neighbor_paths)
-        return True
+    partial = _partial_path(output_path)
+    try:
+        if len(valid_files) <= 1:
+            shutil.copy2(str(central_path), str(partial))
+        else:
+            cmd = [_pdal_exe(), "merge"] + [str(p) for p in valid_files] + [str(partial)]
+            result = run_pdal_command_cancellable(cmd, cancel=cancel)
+            if result.returncode != 0:
+                log(f"Erreur PDAL merge (code {result.returncode})")
+                log("💡 Conseil: réduisez max_workers dans config.json (ex: max_workers=1 ou 2) pour éviter les crashs mémoire.")
+                if result.returncode in (3221225477, 3221226505):
+                    # 0xC0000005 = ACCESS_VIOLATION, 0xC0000409 = STACK_BUFFER_OVERRUN
+                    log("PDAL a crashé (erreur mémoire).")
+                if result.stderr:
+                    log(result.stderr.strip())
+                return False
 
-    cmd = [_pdal_exe(), "merge"] + [str(p) for p in valid_files] + [str(output_path)]
-    result = run_pdal_command_cancellable(cmd, cancel=cancel)
-    if result.returncode != 0:
-        log(f"Erreur PDAL merge (code {result.returncode})")
-        log("💡 Conseil: réduisez max_workers dans config.json (ex: max_workers=1 ou 2) pour éviter les crashs mémoire.")
-        if result.returncode in (3221225477, 3221226505):
-            # 0xC0000005 = ACCESS_VIOLATION, 0xC0000409 = STACK_BUFFER_OVERRUN
-            log("PDAL a crashé (erreur mémoire).")
-        if result.stderr:
-            log(result.stderr.strip())
-        return False
+            ok_out, msg_out = validate_las_or_laz_with_pdal(partial)
+            if not ok_out:
+                log(f"Fichier fusionné invalide via PDAL: {output_path.name}")
+                if msg_out:
+                    log(f"PDAL: {msg_out}")
+                return False
 
-    ok_out, msg_out = validate_las_or_laz_with_pdal(output_path)
-    if not ok_out:
-        log(f"Fichier fusionné invalide via PDAL: {output_path.name}")
-        if msg_out:
-            log(f"PDAL: {msg_out}")
-        return False
+        os.replace(str(partial), str(output_path))
+    finally:
+        _discard_partial(partial)
 
     write_merged_inputs_sidecar(output_path, neighbor_paths)
     return True

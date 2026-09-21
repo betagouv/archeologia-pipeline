@@ -9,6 +9,7 @@ la description du catalogue, jamais une exception.
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 import pytest
@@ -354,3 +355,123 @@ def test_comparaison_livree_cite_sa_source(livrees):
     sans = [t.titre for t in build_comparaison(livrees).tableaux if not t.source]
     assert sans == []
 
+
+
+# ------------------------------------------- citations traduites (règle utilisateur)
+
+def test_aucune_citation_anglaise_dans_les_fiches_livrees():
+    """Les fiches sont lues par des archéologues francophones : une citation
+    laissée en anglais est un trou dans la lecture, pas une marque d'érudition.
+
+    Le détecteur compte les mots-outils anglais DISTINCTS à l'intérieur d'un
+    couple de guillemets : une phrase citée en atteint toujours deux, un nom
+    propre laissé en VO — l'algorithme QGIS « Export to raster », la page RVT
+    « Choosing a visualization », la colonne « Complexity » d'un tableau —
+    n'en atteint jamais deux. Ce sont des noms, pas des citations : ils restent.
+    """
+    from src.app.services.indice_fiche import default_fiches_path
+
+    brut = Path(default_fiches_path()).read_text(encoding="utf-8")
+    mots_outils = re.compile(
+        r"\b(the|and|is|are|of|it|that|with|for|to|in|does|not|can|be|which|by|as"
+        r"|from|on|you|your|this|these|all|more|than|its|was|were|has|have|but"
+        r"|because|while|such|they|their|an|a)\b",
+        re.IGNORECASE,
+    )
+    anglaises = [
+        m.group(1)
+        for m in re.finditer(r"«\s*([^»]{3,}?)\s*»", brut)
+        if len({w.lower() for w in mots_outils.findall(m.group(1))}) >= 2
+    ]
+    assert anglaises == [], (
+        "citations à traduire dans data/indices_fiches.json : " + " | ".join(anglaises)
+    )
+
+
+# ------------------------------------------- recettes de fusion (contre rvt-qgis)
+
+#: Nom RVT d'une visualisation -> sigle du plugin. Les deux openness ne sont pas
+#: des produits de l'étape 2 : leur sigle est celui des fichiers de RVT
+#: (``rvt/default.py:get_opns_file_name``), pas une invention maison.
+_SIGLE_RVT = {
+    "Sky-View Factor": "SVF",
+    "Openness - Positive": "OPEN-POS",
+    "Openness - Negative": "OPEN-NEG",
+    "Slope gradient": "SLO",
+    "Hillshade": "HS",
+    "Multiple directions hillshade": "M_HS",
+}
+
+
+def _dossier_rvt_qgis():
+    """Le plugin rvt-qgis voisin, ou None (poste sans QGIS, CI)."""
+    plugins = Path(__file__).resolve().parents[2].parent
+    for cand in sorted(plugins.glob("rvt*")):
+        if (cand / "settings" / "blender_VAT.json").is_file():
+            return cand
+    return None
+
+
+def _recette_rvt(couches):
+    """Couches RVT -> [(sigle, mode, opacité)] du FOND vers la SURFACE.
+
+    ``BlenderCombination.render_all_images`` itère ``range(len(layers)-1, -1, -1)``
+    (blend.py) : la dernière couche déclarée initialise l'image, c'est le fond.
+    """
+    return [
+        (_SIGLE_RVT[c["visualization_method"]], c["blend_mode"], int(c["opacity"]))
+        for c in reversed(couches)
+    ]
+
+
+@pytest.mark.parametrize("produit", ["VAT", "PRISM"])
+def test_resume_d_une_composition_donne_mode_et_opacite_de_chaque_couche(livrees, produit):
+    """Le résumé d'un produit composé doit énoncer sa recette exacte.
+
+    Ces deux recettes viennent de fichiers de rvt-qgis, pas de notre code : elles
+    peuvent bouger à une mise à jour du plugin voisin sans que rien ne le signale.
+    Et l'ordre est contre-intuitif (dernière couche déclarée = fond), ce qui a déjà
+    produit une fiche qui annonçait l'empilement à l'envers.
+
+    ``apply_terrain`` ne réécrit que les étirements min/max, jamais le mode de
+    fusion ni l'opacité ni l'ordre : la recette du JSON vaut pour tous les terrains.
+    """
+    rvt_dir = _dossier_rvt_qgis()
+    if rvt_dir is None:
+        pytest.skip("plugin rvt-qgis absent de ce poste")
+
+    if produit == "VAT":
+        brut = json.loads((rvt_dir / "settings" / "blender_VAT.json").read_text("utf-8"))
+        couches = brut["combination"]["layers"]
+    else:
+        brut = json.loads(
+            (rvt_dir / "settings" / "default_blender_combinations.json").read_text("utf-8")
+        )
+        couches = next(
+            c["combination"]["layers"] for c in brut["combinations"]
+            if c["combination"]["name"] == "Prismatic openness"
+        )
+
+    resume = livrees[produit]["resume"]
+    recette = _recette_rvt(couches)
+
+    absents = [
+        f"{sigle} ({mode}, {opacite} %)"
+        for sigle, mode, opacite in recette
+        if not re.search(
+            rf"(?<![A-Z_]){re.escape(sigle)}[^(]{{0,30}}\(\s*{mode},\s*{opacite}\s*%\s*\)",
+            resume,
+        )
+    ]
+    assert absents == [], (
+        f"résumé de {produit} : couches sans leur mode/opacité — {absents}\n{resume}"
+    )
+
+    positions = [
+        re.search(rf"(?<![A-Z_]){re.escape(sigle)}", resume).start()
+        for sigle, _, _ in recette
+    ]
+    assert positions == sorted(positions), (
+        f"résumé de {produit} : couches citées hors de l'ordre fond -> surface "
+        f"({[s for s, _, _ in recette]})"
+    )

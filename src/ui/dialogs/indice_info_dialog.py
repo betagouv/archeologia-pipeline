@@ -233,6 +233,12 @@ class _CorpsFiche(QWidget):
                 lignes.append(f'•&nbsp;&nbsp;<a href="{r.url}">{texte}</a>')
             else:
                 lignes.append(f"•&nbsp;&nbsp;{texte}")
+        # Les citations des fiches sont traduites de l'anglais : le dire une
+        # fois ici plutôt que d'accoler « (traduit) » à chacune d'elles.
+        lignes.append(
+            "<i>Les citations sont traduites de l'anglais par le plugin ; "
+            "les noms d'algorithmes et de réglages restent en version originale.</i>"
+        )
         lab = _label("<br>".join(lignes), "FicheTexte")
         lab.setTextFormat(Qt.TextFormat.RichText)
         lab.setOpenExternalLinks(True)

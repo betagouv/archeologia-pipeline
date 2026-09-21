@@ -7,7 +7,8 @@
     "Les chemins de vignettes sont relatifs à data/. Les rayons RVT sont en PIXELS :",
     "au MNT 0,5 m du plugin, 10 px = 5 m.",
     "tests/unit/test_indice_fiche.py échoue si un produit du pipeline n'a pas sa fiche complète,",
-    "si un paramètre cité n'existe pas dans la config, ou si une vignette déclarée est absente."
+    "si un paramètre cité n'existe pas dans la config, ou si une vignette déclarée est absente.",
+    "Toute citation d'une source anglophone est TRADUITE en français dans les fiches (règle utilisateur) ; seuls les noms d'algorithmes et de réglages restent en VO. tests/unit/test_indice_fiche.py échoue si une citation anglaise réapparaît."
   ],
   "MNT": {
     "resume": "Altitude du sol débarrassé de la végétation, en mètres au-dessus du niveau de la mer (IGN 1969), sur une grille de 0,5 m en Lambert-93. C'est la donnée dont dérivent tous les indices : un défaut du MNT se retrouve dans chacun d'eux.",
@@ -26,7 +27,7 @@
     ],
     "methode": [
       "Nuage IGN LiDAR HD : densité prévisionnelle « d'au moins 10 impulsions au m² et 5 impulsions au m² au-dessus de 3200 m d'altitude », dalles carrées de 1 km calées sur le carroyage kilométrique, format LAZ 1.4, RGF93 / Lambert-93 (EPSG:2154), altitudes IGN 1969 (EPSG:5720).",
-      "Filtre PDAL sur la classification ASPRS, puis triangulation : QGIS « Export to raster (using triangulation) » — « Exports point cloud data to a 2D raster grid using a triangulation of points and then interpolating cell values from triangles », c'est-à-dire un maillage de Delaunay rastérisé (PDAL filters.faceraster). Repli automatique sur « Export to raster » (writers.gdal) si la triangulation échoue.",
+      "Filtre PDAL sur la classification ASPRS, puis triangulation : QGIS « Export to raster (using triangulation) » — « exporte les données du nuage de points vers une grille raster 2D en triangulant les points, puis en interpolant la valeur de chaque cellule à partir des triangles », c'est-à-dire un maillage de Delaunay rastérisé (PDAL filters.faceraster). Repli automatique sur « Export to raster » (writers.gdal) si la triangulation échoue.",
       "Le calcul porte sur la dalle élargie de la marge de tuilage (200 m par défaut), puis le résultat est rogné à la dalle : les indices calculés ensuite disposent ainsi d'un vrai voisinage au lieu d'un bord fabriqué.",
       "Les dalles sont assemblées en une mosaïque virtuelle index_MNT.vrt, qui est le fichier à charger dans QGIS."
     ],
@@ -86,15 +87,15 @@
     "resume": "Éclairage simulé du relief par une seule source lumineuse, placée au nord-ouest à 35° au-dessus de l'horizon. C'est la visualisation la plus immédiatement lisible — et celle qui a le plus d'angles morts.",
     "lire": "Les versants tournés vers la lumière sont clairs, les opposés sombres. Un fossé se lit comme une ligne sombre (sa berge au nord-ouest) doublée d'une ligne claire ; un talus donne l'inverse. La lumière vient du haut à gauche par convention cartographique : avec le nord en haut, elle paraît venir du nord-ouest.",
     "usage": [
-      "Fond de carte, illustration, communication : la documentation RVT le décrit comme donnant « the most 'natural', i.e. intuitively readable, visual impression of all techniques » — lisible sans formation.",
+      "Fond de carte, illustration, communication : la documentation RVT le décrit comme donnant « l'impression visuelle la plus naturelle — c'est-à-dire la plus intuitivement lisible — de toutes les techniques » — lisible sans formation.",
       "Repérage rapide des structures perpendiculaires à la lumière, donc orientées nord-est / sud-ouest avec les réglages par défaut.",
       "Vérifier une hypothèse en changeant l'azimut : une forme qui disparaît sous un éclairage et réapparaît sous un autre est bien du relief, pas un artefact."
     ],
     "limites": [
-      "Une structure linéaire parallèle à la lumière disparaît : « a single light beam also fails to reveal linear structures that lie parallel to it which can be problematic in some applications, especially in archaeology » (manuel RVT). Avec l'azimut par défaut, un fossé nord-ouest / sud-est est invisible.",
-      "Ombres portées et zones surexposées sont vides d'information : « direct illumination restricts the visualization in dark shades and brightly lit areas, where no or very little detail can be perceived ».",
-      "Un éclairage venu du sud produit une illusion de relief inversé — les creux se lisent comme des bosses : « values from southern hemisphere (90 … 270) display inverted shaded relief ».",
-      "Les structures paraissent décalées du côté de leur ombre. Le SVF et l'openness n'ont pas ce défaut : « features visualized by SVF (or by openness) do not contain any horizontal displacements »."
+      "Une structure linéaire parallèle à la lumière disparaît : « un faisceau lumineux unique échoue aussi à révéler les structures linéaires qui lui sont parallèles, ce qui peut poser problème dans certaines applications, en archéologie tout particulièrement » (manuel RVT). Avec l'azimut par défaut, un fossé nord-ouest / sud-est est invisible.",
+      "Ombres portées et zones surexposées sont vides d'information : « l'éclairage direct limite la visualisation dans les ombres et dans les zones fortement éclairées, où l'on ne perçoit aucun détail, ou très peu ».",
+      "Un éclairage venu du sud produit une illusion de relief inversé — les creux se lisent comme des bosses : « les valeurs de l'hémisphère sud (90 … 270) affichent un relief ombré inversé ».",
+      "Les structures paraissent décalées du côté de leur ombre. Le SVF et l'openness n'ont pas ce défaut : « les structures visualisées par le SVF (ou par l'openness) ne subissent aucun déplacement horizontal »."
     ],
     "methode": [
       "Le terrain est traité comme une surface lambertienne éclairée par une source à l'infini : la clarté d'un pixel est le cosinus de l'angle entre la normale au terrain et la direction de la lumière.",
@@ -105,13 +106,13 @@
         "cle": "hs.sun_azimuth",
         "label": "Azimut solaire",
         "defaut": "315°",
-        "sens": "Direction de la lumière : 0 = nord, 90 = est. GDAL note que « the default value, 315, should rarely be changed as it is the value generally used to generate shaded maps »."
+        "sens": "Direction de la lumière : 0 = nord, 90 = est. GDAL note que « la valeur par défaut, 315, ne devrait être changée qu'exceptionnellement : c'est celle qui sert généralement à produire les cartes ombrées »."
       },
       {
         "cle": "hs.sun_elevation",
         "label": "Élévation solaire",
         "defaut": "35°",
-        "sens": "Hauteur du soleil. Le manuel RVT conseille 5 à 45° : « use small values (5, 10) for flat terrain and higher values (45) for steep terrain »."
+        "sens": "Hauteur du soleil. Le manuel RVT conseille 5 à 45° : « employez de petites valeurs (5, 10) en terrain plat et des valeurs plus élevées (45) en terrain pentu »."
       },
       {
         "cle": "hs.ve_factor",
@@ -167,7 +168,7 @@
       "Lire un réseau linéaire complexe — parcellaire, tranchées — sans avoir à tester plusieurs azimuts à la main."
     ],
     "limites": [
-      "Lecture moins immédiate que l'ombrage simple : les couleurs demandent une habitude, et la documentation RVT note que l'approche « increases interpretative complexity ».",
+      "Lecture moins immédiate que l'ombrage simple : les couleurs demandent une habitude, et la documentation RVT note que l'approche « augmente la complexité d'interprétation ».",
       "Le contraste local est plus faible qu'un ombrage bien orienté sur la structure recherchée : ce qui est gagné en couverture est perdu en netteté.",
       "Les creux restent moins nets qu'en Sky-View Factor : combiner plusieurs éclairages ne supprime pas la nature directionnelle de l'ombrage, cela la moyenne.",
       "Zones saturées et décalage visuel des structures subsistent, comme pour tout ombrage."
@@ -181,7 +182,7 @@
         "cle": "mdh.num_directions",
         "label": "Nombre de directions",
         "defaut": "16",
-        "sens": "Manuel RVT : valeurs utiles 4 à 36, « 16 is optimal for most applications ». Le temps de calcul croît linéairement."
+        "sens": "Manuel RVT : valeurs utiles 4 à 36, « 16 est optimal pour la plupart des applications ». Le temps de calcul croît linéairement."
       },
       {
         "cle": "mdh.sun_elevation",
@@ -239,13 +240,13 @@
       "Quantifier une pente réelle, en travaillant sur le fichier flottant plutôt que sur le 8 bits."
     ],
     "limites": [
-      "La pente ne dit pas le sens : « additional information is needed to distinguish between positive/convex (e.g. banks) and negative/concave (e.g. ditches) features, since slopes of the same gradient, regardless of rising or falling, are presented with the same colour » (documentation RVT).",
+      "La pente ne dit pas le sens : « une information supplémentaire est nécessaire pour distinguer les formes positives ou convexes (les talus, par exemple) des formes négatives ou concaves (les fossés), puisque des pentes de même inclinaison sont représentées par la même couleur, qu'elles montent ou qu'elles descendent » (documentation RVT).",
       "Très bruitée sur un modèle à 0,5 m : chaque irrégularité de surface est une pente, y compris le bruit de mesure.",
       "Peu d'information en terrain plat, là où l'archéologie a justement besoin d'aide.",
       "Au-delà de 51° l'image sature en noir : en montagne, les versants raides deviennent une masse uniforme sans détail."
     ],
     "methode": [
-      "« Slope (gradient) represents the maximum rate of change between each cell and its neighbours » : le calcul est fait par différences finies sur le voisinage 3×3.",
+      "« la pente (gradient) représente le taux de variation maximal entre chaque cellule et ses voisines » : le calcul est fait par différences finies sur le voisinage 3×3.",
       "La pente peut être exprimée en degrés ou en pourcentage (100 % = 45°)."
     ],
     "parametres": [
@@ -298,17 +299,17 @@
   },
   "SVF": {
     "resume": "Part du ciel visible depuis chaque point du terrain, l'horizon étant mesuré dans seize directions jusqu'à dix pixels de distance. Un éclairage diffus plutôt qu'un soleil : pas de direction aveugle, pas d'ombre portée, pas de décalage des structures.",
-    "lire": "Le manuel RVT le résume ainsi : « locally flat terrain, ridges and earthworks (e.g. building walls, cultivation ridges, burial mounds) which receive more illumination are highlighted and appear in light to white colours on a SVF image, while depressions (e.g. trenches, moats, ploughing furrows, mining pits) are dark because they receive less illumination ». Un fossé est une ligne sombre continue, quelle que soit son orientation.",
+    "lire": "Le manuel RVT le résume ainsi : « le terrain localement plat, les crêtes et les ouvrages de terre (murs de bâtiments, billons de culture, tumulus…), qui reçoivent davantage de lumière, ressortent et apparaissent en tons clairs à blancs sur une image SVF, tandis que les dépressions (tranchées, douves, sillons de labour, fosses d'extraction…) sont sombres parce qu'elles en reçoivent moins ». Un fossé est une ligne sombre continue, quelle que soit son orientation.",
     "usage": [
       "Les creux, de toute forme et de toute orientation : fossés, chemins creux, cratères, mardelles, fosses d'extraction, trous d'obus.",
       "Cartographier sans biais directionnel : à la différence de l'ombrage, les formes ne sont pas déplacées visuellement, ce qui permet de digitaliser directement dessus.",
-      "Les structures posées sur un versant, que l'ombrage écrase : le SVF donne son meilleur rendu « in moderate to steep topography »."
+      "Les structures posées sur un versant, que l'ombrage écrase : le SVF donne son meilleur rendu « en relief modéré à fort »."
     ],
     "limites": [
-      "En terrain plat, le SVF ne montre presque que les creux et amplifie le bruit : « in areas with flat or very gentle topography, sky-view factor is generally limited to the presentation of negative relief features (…) and becomes very sensitive to DEM noise ». Pour un relief positif faible — talus arasé, tertre — le Local Dominance ou le Simple Local Relief Model valent mieux.",
+      "En terrain plat, le SVF ne montre presque que les creux et amplifie le bruit : « dans les zones à topographie plate ou très douce, le sky-view factor se limite généralement à présenter les formes en relief négatif (…) et devient très sensible au bruit du modèle d'altitude ». Pour un relief positif faible — talus arasé, tertre — le Local Dominance ou le Simple Local Relief Model valent mieux.",
       "Sur les fortes pentes, tout devient sombre et le détail disparaît : c'est pour compenser cette saturation que la visualisation archéologique (VAT) lui adjoint trois autres couches.",
       "Le rayon borne la taille des formes vues. À 10 pixels, soit 5 m au pas de 0,5 m, un enclos de 30 m n'est révélé que par ses bords, jamais comme une forme entière : il faut alors monter le rayon à une trentaine de pixels, en vérifiant que la marge de tuilage reste plus large que le rayon.",
-      "Le manuel RVT cadre l'usage archéologique : « use small search radius (5-10 m; i.e. 5-20 pixels) if you are interested in small features, e.g. archaeology »."
+      "Le manuel RVT cadre l'usage archéologique : « employez un petit rayon de recherche (5-10 m, soit 5-20 pixels) si vous vous intéressez à de petites structures, l'archéologie par exemple »."
     ],
     "methode": [
       "Dans chaque direction, l'algorithme cherche l'angle d'élévation de l'horizon jusqu'à la distance maximale ; le facteur est la moyenne, sur toutes les directions, de la part d'hémisphère céleste non masquée.",
@@ -320,13 +321,13 @@
         "cle": "svf.num_directions",
         "label": "Nombre de directions",
         "defaut": "16",
-        "sens": "Directions d'horizon échantillonnées. Manuel RVT : « 16 is optimal for most applications », le temps croît linéairement."
+        "sens": "Directions d'horizon échantillonnées, bornées de 8 à 64 par l'algorithme de RVT. Manuel RVT : « 16 est optimal pour la plupart des applications », le temps croît linéairement."
       },
       {
         "cle": "svf.radius",
         "label": "Rayon",
         "defaut": "10 px, soit 5 m",
-        "sens": "Distance de recherche de l'horizon, en pixels. C'est le réglage qui fixe la taille des structures visibles : le préréglage « terrain plat » du VAT monte à 20 px."
+        "sens": "Distance de recherche de l'horizon, en pixels. C'est le réglage qui fixe la taille des structures visibles : le préréglage « terrain plat » du VAT monte à 20 px. Borné de 10 à 50 px par l'algorithme de RVT — au-delà, il refuse le paramètre."
       },
       {
         "cle": "svf.noise_remove",
@@ -575,20 +576,20 @@
   },
   "SLRM": {
     "resume": "Le modèle d'altitude moins sa propre version lissée sur vingt pixels, soit dix mètres. Il ne reste que l'écart local, en mètres : positif pour ce qui dépasse la tendance du terrain, négatif pour ce qui s'y enfonce. Version simplifiée du Local Relief Model de Hesse (2010).",
-    "lire": "Gris moyen : le terrain suit sa tendance. Clair : une bosse — talus, tertre, levée. Sombre : un creux. Les valeurs flottantes sont directement des hauteurs relatives en mètres, et la documentation RVT souligne que « local relief model produces more realistic relative elevation values of relief anomalies ».",
+    "lire": "Gris moyen : le terrain suit sa tendance. Clair : une bosse — talus, tertre, levée. Sombre : un creux. Les valeurs flottantes sont directement des hauteurs relatives en mètres, et la documentation RVT souligne que « le modèle de relief local donne des valeurs d'élévation relative plus réalistes pour les anomalies de relief ».",
     "usage": [
-      "Le terrain plat à modéré : « in areas with flat or very gentle to moderate topography, local relief model and local dominance are very helpful to highlight very low relief features such as former field boundaries or levelled burial mounds ».",
+      "Le terrain plat à modéré : « dans les zones à topographie plate, très douce ou modérée, le modèle de relief local et le local dominance sont très utiles pour mettre en évidence des formes de très faible relief, telles que d'anciennes limites de parcelles ou des tumulus arasés ».",
       "Mesurer : la hauteur d'un talus ou la profondeur d'un fossé se lisent directement sur le fichier flottant.",
       "Isoler une micro-structure d'un versant en pente, puisque la pente générale est justement ce qui est retiré."
     ],
     "limites": [
-      "Le rayon borne la taille des structures : « radius should be a bit more than half the size of the features you are interested in » (manuel RVT). Une structure plus large que deux fois le rayon est absorbée dans la tendance et n'apparaît plus que par ses bords.",
+      "Le rayon borne la taille des structures : « le rayon devrait valoir un peu plus de la moitié de la taille des structures qui vous intéressent » (manuel RVT). Une structure plus large que deux fois le rayon est absorbée dans la tendance et n'apparaît plus que par ses bords.",
       "Des halos clairs ou sombres apparaissent autour des grandes ruptures — bord de plateau, talus routier, carrière — parce que le lissage y déborde.",
       "Le bruit du modèle d'altitude est conservé tel quel, sans atténuation.",
-      "« SLRM is computationally the same as the most common version of Topographic Position Index (TPI) » : c'est le même calcul, avec une fenêtre plus large que le 3×3 habituel du TPI."
+      "« le SLRM est, du point de vue du calcul, identique à la version la plus courante du Topographic Position Index (TPI) » : c'est le même calcul, avec une fenêtre plus large que le 3×3 habituel du TPI."
     ],
     "methode": [
-      "Retrait de tendance : « trend removal (…) accomplished by subtracting the smoothed DEM from the original DEM », le lissage étant une moyenne mobile de rayon donné — RVT a remplacé le lissage gaussien par une moyenne simple à partir de sa version 1.2.",
+      "Retrait de tendance : « le retrait de tendance (…) s'obtient en soustrayant le modèle d'altitude lissé du modèle d'altitude d'origine », le lissage étant une moyenne mobile de rayon donné — RVT a remplacé le lissage gaussien par une moyenne simple à partir de sa version 1.2.",
       "Le Local Relief Model complet de Hesse ajoute une seconde passe, qui reconstruit une surface de référence à partir des courbes de niveau zéro ; RVT n'implémente que la version simple, d'où le « simple » du nom."
     ],
     "parametres": [
@@ -640,22 +641,22 @@
     ]
   },
   "VAT": {
-    "resume": "Quatre couches fondues en une seule image : part de ciel visible, openness positive, pente et ombrage. Conçue pour la cartographie archéologique, elle est « intuitive and easy to interpret, does not depend on the orientation or shape of small topographic features, works well in all terrain types, and does not create artifacts ».",
+    "resume": "Quatre indices fondus en une seule image, du fond vers la surface : l'ombrage HS (Normal, 100 %), la pente SLO (Luminosity, 50 %), l'openness positive OPEN-POS (Overlay, 50 %) et la part de ciel visible SVF (Multiply, 25 %). Conçue pour la cartographie archéologique, elle est « intuitive et facile à interpréter, ne dépend ni de l'orientation ni de la forme des petites structures topographiques, fonctionne bien dans tous les types de terrain et ne crée pas d'artefacts ».",
     "lire": "L'image se lit comme un ombrage — le modelé est là — mais sans direction aveugle ni ombre portée. Les creux sont assombris par les couches de ciel visible et d'openness, les pentes par la couche de luminosité, et l'ombrage rend la plasticité générale. Les tons restent comparables d'une région à l'autre.",
     "usage": [
       "La visualisation de référence pour cartographier à l'écran et sur le terrain, telle que proposée par Kokalj et Somrak (2019).",
-      "Fond de carte sous des vecteurs denses : « VAT computed with a setting for general terrain is a good choice for a base map » (documentation RVT).",
+      "Fond de carte sous des vecteurs denses : « le VAT calculé avec un réglage pour terrain général est un bon choix comme fond de carte » (documentation RVT).",
       "Indice d'entrée de modèles de détection du plugin."
     ],
     "limites": [
-      "Le préréglage « terrain général » ne rend pas les formes larges et douces : il « fails to portray the broader, subtle features of flat terrain ».",
-      "Le préréglage « terrain plat » les rend très bien mais « can become oversaturated in areas with very steep slopes ». C'est précisément ce compromis que le VAT combiné résout.",
+      "Le préréglage « terrain général » ne rend pas les formes larges et douces : il « ne parvient pas à rendre les formes larges et ténues du terrain plat ».",
+      "Le préréglage « terrain plat » les rend très bien mais « peut devenir sursaturé dans les zones à très fortes pentes ». C'est précisément ce compromis que le VAT combiné résout.",
       "Quatre visualisations sont calculées pour en produire une : comptez environ quatre fois le temps d'un indice simple.",
-      "L'image est une composition : on ne peut plus y mesurer ni la pente, ni la part de ciel visible. Pour mesurer, il faut l'indice correspondant."
+      "L'image est une composition : on ne peut plus y mesurer ni la pente (SLO), ni la part de ciel visible (SVF). Pour mesurer, il faut l'indice correspondant."
     ],
     "methode": [
-      "Recette de rvt-qgis (fichier blender_VAT.json), du fond vers la surface : part de ciel visible étirée de 0,7 à 1 en mode Multiply à 25 % d'opacité ; openness positive étirée de 68 à 93° en mode Overlay à 50 % ; pente étirée de 0 à 50° en mode Luminosity à 50 % ; ombrage étiré de 0 à 1 en mode Normal à 100 %.",
-      "L'openness positive, qui n'est pas produite seule par le plugin, est l'angle moyen d'horizon vu vers le haut : elle apporte le détail des micro-formes sans dépendre d'une direction d'éclairage.",
+      "Recette de rvt-qgis (fichier blender_VAT.json), du fond vers la surface : ombrage (HS) étiré de 0 à 1 en mode Normal à 100 % ; pente (SLO) étirée de 0 à 50° en mode Luminosity à 50 % ; openness positive (OPEN-POS) étirée de 68 à 93° en mode Overlay à 50 % ; part de ciel visible (SVF) étirée de 0,7 à 1 en mode Multiply à 25 % d'opacité. RVT compose de la dernière couche déclarée vers la première : l'ombrage, déclaré en dernier dans le fichier, est donc le fond.",
+      "L'openness positive est l'angle moyen d'horizon vu vers le haut : elle apporte le détail des micro-formes sans dépendre d'une direction d'éclairage. Elle est aussi cochable seule à l'étape 2 (produit OPNS) — utile pour voir ce que cette couche apporte au VAT.",
       "Le type de terrain ajuste toute la recette : élévation solaire (35° en général, 15° en plat, 55° en pentu), rayon et bruit du SVF (20 px et bruit fort en terrain plat), et les étirements (pente 0–15° en plat, 0–60° en pentu ; SVF 0,9–1 en plat, 0,55–1 en pentu)."
     ],
     "parametres": [
@@ -704,12 +705,12 @@
     ]
   },
   "CVAT": {
-    "resume": "Deux visualisations archéologiques superposées : le préréglage « terrain général » à 50 % d'opacité par-dessus le préréglage « terrain plat ». Le contraste du second sur les formes subtiles, la tenue du premier sur les fortes pentes.",
+    "resume": "Deux VAT superposés, donc huit indices en tout : le VAT « terrain plat » en fond, le VAT « terrain général » par-dessus (Normal, 50 %). Chacun compose HS (Normal, 100 %), SLO (Luminosity, 50 %), OPEN-POS (Overlay, 50 %) et SVF (Multiply, 25 %) avec ses propres réglages : le préréglage plat donne le contraste sur les formes subtiles, le préréglage général la tenue sur les fortes pentes.",
     "lire": "Cela se lit comme le VAT, avec des formes larges et douces mieux rendues en terrain plat et sans la saturation du préréglage plat sur les versants raides. La composition est figée : il n'y a rien à régler hormis la sortie 8 bits.",
     "usage": [
-      "Le choix par défaut pour une carte de prospection ou une publication : la documentation RVT recommande « replacing hillshading and many other techniques in scientific and technical literature with combined VAT because it offers all the benefits (…) but provides much more detail ».",
+      "Le choix par défaut pour une carte de prospection ou une publication : la documentation RVT recommande « de remplacer l'ombrage et bien d'autres techniques, dans la littérature scientifique et technique, par le VAT combiné : il offre tous les mêmes avantages (…) mais donne beaucoup plus de détail ».",
       "Comparer des secteurs éloignés : Kokalj (2025) la retient comme base robuste, lisible intuitivement, sans artefact marqué et adaptée aux comparaisons interrégionales.",
-      "Fond à colorier : « a very suitable base visualisation that can be fused with other techniques to add additional information in the form of colors »."
+      "Fond à colorier : « une visualisation de base très appropriée, qui peut être fusionnée avec d'autres techniques pour ajouter de l'information sous forme de couleurs »."
     ],
     "limites": [
       "Deux visualisations complètes sont calculées, dont chacune en agrège quatre : c'est le plus long des indices du plugin.",
@@ -718,7 +719,7 @@
     ],
     "methode": [
       "rvt-qgis n'expose le VAT combiné que dans sa boîte de dialogue, pas dans son fournisseur Processing : le plugin le calcule donc lui-même, en réutilisant le paquet Python rvt du plugin voisin.",
-      "Il rend deux VAT complets, l'un avec les réglages « general », l'autre « flat », puis les fond en mode Normal aux opacités 50 et 100 — exactement la recette de la branche CVAT de rvt_blender.py."
+      "Il rend deux VAT complets — chacun agrégeant HS, SLO, OPEN-POS et SVF —, l'un avec les réglages « general », l'autre « flat », puis les fond en mode Normal aux opacités 50 et 100 : le VAT « flat », déclaré en dernier, est le fond. C'est exactement la recette de la branche CVAT de rvt_blender.py."
     ],
     "parametres": [
       {
@@ -757,12 +758,12 @@
     ]
   },
   "PRISM": {
-    "resume": "Trois couches fondues en une seule image : un ombrage multidirectionnel en couleurs sert de fond, et les deux openness — positive puis négative — sont posées par-dessus en mode Overlay. Conçue pour le petit relief, elle éclaircit ce qui saille et assombrit ce qui creuse, sans perdre le modelé général du terrain : « Prismatic openness was developed to facilitate detection of small structures by Canuto et al. (2018) » (documentation RVT).",
-    "lire": "Le terrain plan et non perturbé reste gris neutre. Tout ce qui saille — tertre, crête de talus, bord de cratère — s'éclaircit ; tout ce qui creuse — fossé, mardelle, chemin creux — s'assombrit, l'openness négative étant affichée en échelle inversée : « For consistent readability, it is recommended that negative openness is displayed with inverted greyscale (i.e. darker for higher values), so that concave features are always presented by dark tones ». Un talus se lit donc comme une ligne claire bordée de deux lignes sombres, un fossé comme une ligne sombre bordée de deux liserés clairs. La couleur, elle, ne vient pas de l'openness mais du fond : elle dit l'orientation du versant, les trois ombrages composés étant éclairés depuis 315° (canal rouge), 22,5° (vert) et 90° (bleu) — un versant exposé au nord-ouest tire vers l'orange, au nord-est vers le vert, à l'est vers le bleu, et les versants exposés au sud, que n'atteint aucune des trois lumières, restent sombres.",
+    "resume": "Trois indices fondus en une seule image, du fond vers la surface : l'ombrage multidirectionnel M_HS en couleurs (Normal, 100 %), puis les deux openness — négative OPEN-NEG (Overlay, 50 %) et positive OPEN-POS (Overlay, 50 %). Conçue pour le petit relief, elle éclaircit ce qui saille et assombrit ce qui creuse, sans perdre le modelé général du terrain : « l'openness prismatique a été mise au point par Canuto et al. (2018) pour faciliter la détection des petites structures » (documentation RVT).",
+    "lire": "Le terrain plan et non perturbé reste gris neutre. Tout ce qui saille — tertre, crête de talus, bord de cratère — s'éclaircit ; tout ce qui creuse — fossé, mardelle, chemin creux — s'assombrit, l'openness négative étant affichée en échelle inversée : « pour une lecture cohérente, il est recommandé d'afficher l'openness négative en niveaux de gris inversés (c'est-à-dire plus sombre pour les valeurs élevées), de sorte que les formes concaves soient toujours rendues par des tons sombres ». Un talus se lit donc comme une ligne claire bordée de deux lignes sombres, un fossé comme une ligne sombre bordée de deux liserés clairs. La couleur, elle, ne vient pas de l'openness mais du fond : elle dit l'orientation du versant, les trois ombrages composés étant éclairés depuis 315° (canal rouge), 22,5° (vert) et 90° (bleu) — un versant exposé au nord-ouest tire vers l'orange, au nord-est vers le vert, à l'est vers le bleu, et les versants exposés au sud, que n'atteint aucune des trois lumières, restent sombres.",
     "usage": [
       "Le petit relief, positif et négatif à la fois : c'est l'objet même de la méthode, née du relevé LiDAR maya de Canuto et al. (2018) pour repérer des constructions de faible ampleur.",
-      "Distinguer un talus de son fossé sur la même image : la documentation RVT retient de l'openness sa capacité à « differentially highlight positive and negative relief features », donc parcellaire fossoyé, enclos, levées et leurs fossés d'accompagnement se lisent d'un coup, sans changer d'indice.",
-      "Les structures posées sur un versant : l'openness ne sature ni en pente douce ni en pente forte, et la signature d'une forme reste la même où qu'elle se trouve dans le paysage — « it is particularly suitable for targeted detection of these features ».",
+      "Distinguer un talus de son fossé sur la même image : la documentation RVT retient de l'openness sa capacité à « mettre en évidence différemment les formes en relief positif et en relief négatif », donc parcellaire fossoyé, enclos, levées et leurs fossés d'accompagnement se lisent d'un coup, sans changer d'indice.",
+      "Les structures posées sur un versant : l'openness ne sature ni en pente douce ni en pente forte, et la signature d'une forme reste la même où qu'elle se trouve dans le paysage — « elle convient particulièrement à la détection ciblée de ces formes ».",
       "Vue de contrôle après le VAT ou le Sky-View Factor : la même dalle relue avec une couche supplémentaire dédiée aux convexités, utile quand un talus arasé se devine sans se confirmer."
     ],
     "limites": [
@@ -770,14 +771,14 @@
       "Le fond reste un ombrage, et ses trois lumières sont toutes comprises entre le nord-ouest et l'est : les versants exposés au sud restent sombres et y perdent du contraste. Les deux couches d'openness, elles, n'ont aucune direction privilégiée.",
       "La taille des formes vues est bornée par le rayon de recherche d'horizon — 10 px, soit 5 m au pas de 0,5 m, en terrain général ; 20 px en terrain plat. Une forme plus large n'est révélée que par ses bords. Ce rayon vient des valeurs par défaut de RVT et du préréglage de terrain, pas du réglage de rayon du Sky-View Factor du plugin, qui n'a aucun effet ici.",
       "Les étirements sont étroits (68 à 93° en positif, 60 à 95° en négatif) : une rupture de pente franche sature vite vers le blanc ou le noir, et le détail interne d'un fossé profond s'y perd.",
-      "L'image est une composition : on ne peut plus y mesurer ni l'openness, ni la pente. Pour mesurer, il faut l'indice correspondant.",
+      "L'image est une composition : on ne peut plus y mesurer ni l'openness, ni l'ombrage (M_HS) qui lui sert de fond. Les trois couches existent séparément à l'étape 2 — l'ombrage multidirectionnel (M_HS) et l'openness (OPNS, type positive ou négative) : c'est là qu'il faut aller pour mesurer, ou pour voir ce que la composition ajoute.",
       "Deux recherches d'horizon complètes sont nécessaires, une par openness, plus trois ombrages : comptez le double d'un Sky-View Factor, auquel s'ajoute le fond."
     ],
     "methode": [
-      "Recette de rvt-qgis (fichier default_blender_combinations.json, combinaison « Prismatic openness », BLEND_COMBINATION = 1), du fond vers la surface : ombrage multidirectionnel étiré de 0 à 1 en mode Normal à 100 % ; openness négative en mode Overlay à 50 % ; openness positive étirée de 68 à 93° en mode Overlay à 50 %. Le fichier annonce 68 à 93° pour l'openness négative, mais le préréglage de terrain réécrit cet étirement : 60 à 95° en terrain général.",
-      "L'openness est la moyenne des angles d'horizon mesurés dans seize directions jusqu'au rayon de recherche. La positive est la moyenne des angles au zénith : elle est haute sur les convexités. La négative est le même calcul sur le MNT inversé, donc la moyenne des angles au nadir : elle est haute dans les concavités. « Openness considers the whole sphere for calculation, not just the celestial hemisphere as SVF does » — le résultat est débarrassé de la pente générale, et « while positive openness highlights topographic convexities (e.g. ridges between hollow ways and rims of bomb craters), negative openness emphasizes the lowest parts of concavities, (e.g. the actual hollow ways, the lowest parts of gorges and the lower edges of cliffs) ».",
+      "Recette de rvt-qgis (fichier default_blender_combinations.json, combinaison « Prismatic openness », BLEND_COMBINATION = 1), du fond vers la surface : ombrage multidirectionnel (M_HS) étiré de 0 à 1 en mode Normal à 100 % ; openness négative (OPEN-NEG) en mode Overlay à 50 % ; openness positive (OPEN-POS) étirée de 68 à 93° en mode Overlay à 50 %. Le fichier annonce 68 à 93° pour l'openness négative, mais le préréglage de terrain réécrit cet étirement : 60 à 95° en terrain général.",
+      "L'openness est la moyenne des angles d'horizon mesurés dans seize directions jusqu'au rayon de recherche. La positive est la moyenne des angles au zénith : elle est haute sur les convexités. La négative est le même calcul sur le MNT inversé, donc la moyenne des angles au nadir : elle est haute dans les concavités. « l'openness prend en compte la sphère entière dans son calcul, et non le seul hémisphère céleste comme le fait le SVF » — le résultat est débarrassé de la pente générale, et « là où l'openness positive met en évidence les convexités topographiques (les crêtes séparant deux chemins creux, les lèvres des trous d'obus), l'openness négative souligne les parties les plus basses des concavités (les chemins creux eux-mêmes, les fonds de gorges, le pied des falaises) ».",
       "Le fond réintroduit la topographie générale que l'openness efface : c'est la composition RVB de trois ombrages calculés aux azimuts 315°, 22,5° et 90°, à l'élévation solaire du préréglage de terrain (35° en général).",
-      "Filiation : la méthode vient de Canuto et al. (2018) ; Verbovšek et al. (2019) l'ont modifiée en « replacing the three-times vertical exaggeration of terrain to compute hillshading from three directions with an overlay fusion technique (blend mode) for positive and negative openness », ce qui « improves the effectiveness of conveying information because colors are more pronounced and the general topography is well-defined ».",
+      "Filiation : la méthode vient de Canuto et al. (2018) ; Verbovšek et al. (2019) l'ont modifiée en « en remplaçant l'exagération verticale au triple du terrain, qui servait à calculer l'ombrage depuis trois directions, par une fusion en mode Overlay des openness positive et négative », ce qui « améliore l'efficacité de la transmission de l'information, parce que les couleurs sont plus marquées et la topographie générale mieux définie ».",
       "Le calcul passe entièrement par l'algorithme rvt:rvt_blender du plugin rvt-qgis, comme le VAT : à la différence du CVAT, rien n'est recalculé dans le plugin. Et comme pour le Sky-View Factor, le calcul lit au-delà du bord de la dalle : le plugin le nourrit avec la dalle élargie de la marge de tuilage, faute de quoi RVT fabriquerait le voisinage manquant en repliant l'image sur elle-même."
     ],
     "parametres": [
@@ -837,7 +838,7 @@
     ]
   },
   "CRIM": {
-    "resume": "Le relief rendu par la différence entre openness positive et openness négative, posé sur un fond où la couleur code la **pente** : pâle là où le terrain est plat, orange puis rouge sombre là où il se redresse. C'est la généralisation, à d'autres palettes, du Red Relief Image Map de Chiba et al. (2008). Comme toutes les images fondées sur l'openness, elle n'a ni ombre portée ni direction d'éclairage.",
+    "resume": "Deux indices en trois couches, du fond vers la surface : la pente SLO colorée par une palette (Normal, 100 %), puis deux fois la même différence OPEN-POS − OPEN-NEG, en Luminosity (50 %) puis en Overlay (50 %). La couleur code donc la **raideur** — pâle là où le terrain est plat, orange puis rouge sombre là où il se redresse — et le modelé vient de l'openness. C'est la généralisation, à d'autres palettes, du Red Relief Image Map de Chiba et al. (2008). Comme toutes les images fondées sur l'openness, elle n'a ni ombre portée ni direction d'éclairage.",
     "lire": "La couleur ne dit pas l'altitude — c'est le contresens le plus fréquent sur cette image — mais la pente. Avec la colormap OrRd par défaut, qui va du crème très pâle au rouge sombre, un terrain plat sort en crème, une pente moyenne en orange, une pente d'environ 46° ou plus en rouge sombre : un fond de vallée plat et un sommet de plateau plat portent donc exactement la même teinte. Le modelé, lui, ne vient pas de la couleur mais des deux couches d'openness fondues par-dessus : ce qui dépasse son voisinage s'éclaircit, ce qui s'y enfonce s'assombrit. On lit ainsi deux informations superposées — la forme en clair-obscur, la raideur en couleur.",
     "usage": [
       "Lire d'un coup une forme et sa raideur : plateforme aménagée, front de taille, talus de terrasse se distinguent d'emblée du terrain qui les porte, parce qu'ils changent de couleur et pas seulement de nuance.",
@@ -856,7 +857,7 @@
     ],
     "methode": [
       "rvt-qgis n'expose CRIM ni dans son fournisseur Processing — l'enum ``BLEND_COMBINATION`` de ``rvt:rvt_blender`` est construit depuis ``settings/default_blender_combinations.json``, qui ne liste que VAT, Prismatic openness et City — ni dans sa boîte de dialogue. Le plugin l'appelle donc lui-même, en réutilisant le paquet Python ``rvt`` du plugin voisin : ``rvt.blend.color_relief_image_map`` (rvt-qgis 1.0.1). Même dispositif que pour le CVAT, avec un seul point de détection du paquet pour les deux.",
-      "Trois couches. L'image de base est la pente, calculée en radians, étirée de 0 à 0,8 (environ 46°) et colorée par une colormap matplotlib — OrRd par défaut. Par-dessus, deux fois la même différence « openness positive moins openness négative », étirée de −28 à +28° : une fois en mode luminosity à 50 % d'opacité, une fois en mode overlay à 50 %. Le rendu de RVT part de la dernière couche déclarée et remonte, la pente colorée est donc bien le fond.",
+      "Trois couches, tirées de deux indices seulement. L'image de base est la pente (SLO), calculée en radians, étirée de 0 à 0,8 (environ 46°) et colorée par une colormap matplotlib — OrRd par défaut. Par-dessus, deux fois la même différence « openness positive (OPEN-POS) moins openness négative (OPEN-NEG) », étirée de −28 à +28° : une fois en mode luminosity à 50 % d'opacité, une fois en mode overlay à 50 %. Le rendu de RVT part de la dernière couche déclarée et remonte, la pente colorée est donc bien le fond.",
       "L'openness positive est l'angle moyen, sur seize directions, entre le zénith et la ligne d'horizon : grand sur une crête où l'horizon est bas, petit au fond d'un creux. L'openness négative est la même mesure sur le relief inversé, c'est-à-dire vers le bas. Leur différence est positive sur les convexités, négative dans les creux, nulle en terrain plan — c'est elle qui porte tout le modelé de l'image, indépendamment de toute source de lumière.",
       "Les deux openness sont calculées dans un rayon de 10 pixels, valeur écrite en dur par la fonction elle-même : CRIM ne voit donc que le voisinage proche, et sa lecture ne dépend d'aucun réglage de rayon."
     ],
@@ -920,20 +921,20 @@
   },
   "MSTP": {
     "resume": "Pour chaque pixel, de combien il s'écarte de l'altitude moyenne de son entourage, mesuré à trois gammes d'échelles et composé en couleurs : le bleu pour l'échelle locale, le vert pour l'intermédiaire, le rouge pour la large. Une image qui demande de l'apprentissage, et qui dit à quelle échelle une forme existe.",
-    "lire": "La couleur d'un pixel est la somme de sa position topographique relative aux trois échelles. Un point qui domine ou creuse son voisinage proche s'allume en bleu, à moyenne distance en vert, à grande distance en rouge ; un tertre isolé cumule les trois. La documentation RVT prévient : « colours do not have a unique meaning — the same color range can represent a slightly raised embankment or a very shallow dip ».",
+    "lire": "La couleur d'un pixel est la somme de sa position topographique relative aux trois échelles. Un point qui domine ou creuse son voisinage proche s'allume en bleu, à moyenne distance en vert, à grande distance en rouge ; un tertre isolé cumule les trois. La documentation RVT prévient : « les couleurs n'ont pas de signification univoque : une même gamme de teintes peut représenter un léger remblai en relief ou une dépression très peu marquée ».",
     "usage": [
       "Voir en une seule image des formes de tailles très différentes : fosses et tertres d'un côté, enclos, terrasses et plateaux de l'autre.",
       "Replacer un site dans sa géomorphologie, en lisant d'un coup le détail et le contexte.",
       "Repérer une organisation à une échelle qu'on ne cherchait pas : une teinte homogène sur une large zone signale une forme large, même invisible sur les indices à petit rayon."
     ],
     "limites": [
-      "La couleur ne dit pas le sens : « additional information is needed to distinguish between concave and convex features ». Une bosse et une cuvette peuvent porter la même teinte.",
-      "L'image demande un apprentissage — « training is needed to recognize colors » — et un réglage de luminosité adapté, faute de quoi elle paraît sombre.",
+      "La couleur ne dit pas le sens : « une information supplémentaire est nécessaire pour distinguer les formes concaves des formes convexes ». Une bosse et une cuvette peuvent porter la même teinte.",
+      "L'image demande un apprentissage — « un apprentissage est nécessaire pour reconnaître les couleurs » — et un réglage de luminosité adapté, faute de quoi elle paraît sombre.",
       "L'échelle large réclame un contexte considérable. RVT propose 223 à 2023 pixels, soit plus d'un kilomètre au pas de 0,5 m ; le plugin retient 100 à 400 pixels, soit 50 à 200 m, pour rester dans la marge de tuilage de 200 m. Au-delà, le voisinage manquant serait fabriqué par symétrie et la valeur produite n'aurait plus de sens.",
       "C'est le seul indice dont le nom de dossier encode les trois gammes d'échelles : deux réglages différents produisent deux dossiers, ce qui évite de les confondre."
     ],
     "methode": [
-      "L'indicateur de base est l'écart à l'altitude moyenne : altitude du pixel moins moyenne du voisinage, divisée par l'écart-type du voisinage — « essentially equivalent to a local elevation z-score » (Lindsay et al. 2015).",
+      "L'indicateur de base est l'écart à l'altitude moyenne : altitude du pixel moins moyenne du voisinage, divisée par l'écart-type du voisinage — « essentiellement équivalent à un score z local d'altitude » (Lindsay et al. 2015).",
       "Pour chaque gamme d'échelles, définie par un rayon minimal, un rayon maximal et un pas, on retient l'écart de plus grande valeur absolue.",
       "Les trois résultats sont écrits dans les canaux rouge, vert et bleu — large, intermédiaire, locale — avec un facteur de luminosité."
     ],
@@ -978,7 +979,7 @@
         "cle": "mstp.lightness",
         "label": "Luminosité",
         "defaut": "1,2",
-        "sens": "Clarté globale de la composition ; RVT utilise 0,9. « Lightness factor to adjust MSTP visibility »."
+        "sens": "Clarté globale de la composition ; RVT utilise 0,9. « facteur de luminosité pour ajuster la visibilité du MSTP »."
       },
       {
         "cle": "mstp.ve_factor",
@@ -1025,7 +1026,7 @@
     "resume": "Nombre de points LiDAR retenus par le filtre dans chaque cellule d'un mètre : des points par mètre carré. Ce n'est pas un indice de relief mais un contrôle de la donnée qui a servi à construire le modèle d'altitude.",
     "lire": "Clair : beaucoup de points sol. Sombre : peu. Zéro sur les plans d'eau, sous les bâtiments si leur classe n'est pas retenue, et sous un couvert très fermé. Les bandes plus denses correspondent aux recouvrements entre passages de l'avion.",
     "usage": [
-      "Juger localement la fiabilité du modèle d'altitude et des indices qui en découlent. QGIS présente l'algorithme comme « useful for quality checking of point cloud datasets ».",
+      "Juger localement la fiabilité du modèle d'altitude et des indices qui en découlent. QGIS présente l'algorithme comme « utile pour contrôler la qualité des jeux de données de nuages de points ».",
       "Expliquer un artefact : facettes planes, moiré, marche d'escalier entre deux bandes de vol se lisent d'abord ici.",
       "Choisir une résolution de modèle cohérente avec la densité réelle : demander 0,25 m là où il y a un point tous les deux mètres, c'est inventer du relief."
     ],
@@ -1036,8 +1037,8 @@
       "À une cellule d'un mètre, les trous plus petits qu'une cellule sont lissés : c'est le produit Couverture qui répond à la question « le sol est-il mesuré autour d'ici ? »."
     ],
     "methode": [
-      "Algorithme QGIS « Density » (PDAL) : « exports a raster file based on the number of points within each raster cell ».",
-      "Sous le capot, c'est l'écriture GDAL de PDAL avec la statistique count, qui donne à la cellule « the number of points that lie within the given radius ».",
+      "Algorithme QGIS « Density » (PDAL) : « exporte un fichier raster fondé sur le nombre de points contenus dans chaque cellule ».",
+      "Sous le capot, c'est l'écriture GDAL de PDAL avec la statistique count, qui donne à la cellule « le nombre de points situés dans le rayon donné ».",
       "Le calcul porte sur la dalle élargie de la marge de tuilage et applique le même filtre de classification que le modèle d'altitude, pour que les deux produits parlent de la même donnée."
     ],
     "parametres": [

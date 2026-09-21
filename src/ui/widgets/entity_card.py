@@ -11,7 +11,7 @@ son état via :meth:`update_state` ; toute la logique vit dans la page.
 """
 from __future__ import annotations
 
-from typing import Dict, Optional, Sequence, Tuple
+from typing import Dict, Mapping, Optional, Sequence, Tuple
 
 from qgis.PyQt.QtCore import QSize, Qt, pyqtSignal
 from qgis.PyQt.QtGui import QIcon, QPixmap
@@ -382,8 +382,14 @@ class EntityCard(QFrame):
         has_cluster: bool = False,
         is_derived: bool = False,
         implicable: bool = False,
+        couts: Optional[Mapping[str, Tuple[str, str]]] = None,
     ) -> None:
         """``candidates`` = [(model_name, display_name)…] ; couvre l'entité.
+
+        ``couts`` : ``{model_name: (libellé de menu, infobulle)}`` — le coût
+        structurel du modèle (fenêtres d'analyse par dalle, calculé par
+        ``app.services.cout_modele``), affiché là où le choix se fait : entrées
+        du menu « Changer ▾ » et infobulle du nom de modèle. Jamais une durée.
 
         ``has_cluster`` : au moins un modèle candidat propose un regroupement
         pour cette entité → la ligne clustering réserve sa place en permanence.
@@ -395,6 +401,7 @@ class EntityCard(QFrame):
         dans », place réservée aussi.
         """
         self._candidates = {name: disp for name, disp in candidates}
+        self._couts: Dict[str, Tuple[str, str]] = dict(couts or {})
         self._has_model = bool(candidates)
         # Affordance : toute la carte est cliquable quand un modèle la couvre
         # (cf. mousePressEvent) — le curseur doit le dire, comme à l'étape 2.
@@ -506,7 +513,11 @@ class EntityCard(QFrame):
                 disp = disps[0] if disps else ""
                 short = disp if len(disp) <= 28 else disp[:27] + "…"
             self._model_name.setText(short)
-            self._model_name.setToolTip(disp)
+            # Infobulle : le coût structurel de chaque modèle courant (une
+            # phrase par modèle) ; sans coût connu, la liste des noms complets.
+            tips = [self._couts.get(n, ("", ""))[1] for n in self._current_models]
+            tips = [t for t in tips if t]
+            self._model_name.setToolTip("\n\n".join(tips) if tips else disp)
             multi = len(self._candidates) > 1
             self._change_btn.setVisible(multi)
             self._single_hint.setVisible(not multi)
@@ -628,7 +639,7 @@ class EntityCard(QFrame):
         hint.setEnabled(False)
         menu.addSeparator()
         for name, disp in self._candidates.items():
-            act = menu.addAction(disp)
+            act = menu.addAction(self._couts.get(name, (disp, ""))[0] or disp)
             act.setData(name)
             act.setCheckable(True)
             act.setChecked(name in self._current_models)

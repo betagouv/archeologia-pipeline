@@ -251,3 +251,39 @@ class TestExistingRvtRunner:
             prep2(i, 1575, f"dalle_{i}.tif")
         assert reporter.progress_values[before:] == [], "le run 2 ne doit pas faire reculer la barre"
 
+
+
+class TestDureeReelleDuRun:
+    """La durée RÉELLE de chaque run CV (2026-09-21) : ``cv_stats`` mesuré par le
+    runner externe (images inférées, secondes) → ligne « ✓ … analysées en … »
+    du narrateur. Jamais annoncée à l'avance, jamais si le cache a tout servi."""
+
+    def _run(self, tmp_path, monkeypatch, cv_stats):
+        def fake_run_existing_rvt(**kwargs):
+            return SimpleNamespace(total_images=3, total_detections=5, cv_stats=cv_stats)
+
+        monkeypatch.setattr(
+            "pipeline.cv.class_utils.resolve_cv_runs",
+            lambda _cfg: [{"selected_model": "m", "target_rvt": "LD", "enabled": True}],
+        )
+        monkeypatch.setattr("pipeline.modes.existing_rvt.run_existing_rvt", fake_run_existing_rvt)
+        monkeypatch.setattr("app.runners.existing_rvt_runner.finalize_pipeline", lambda **_kwargs: None)
+        reporter = _Reporter()
+        ExistingRvtRunner().run(
+            ctx=_ctx(tmp_path, {"enabled": True, "target_rvt": "LD"}),
+            reporter=reporter,
+            cancel=CancelToken(threading.Event()),
+        )
+        return reporter
+
+    def test_ligne_de_fin_de_run_avec_la_mesure(self, tmp_path, monkeypatch):
+        reporter = self._run(tmp_path, monkeypatch, {"images_inferees": 3, "secondes": 12.3})
+        assert any("3 images analysées en 12s" in m for m in reporter.messages), reporter.messages
+
+    def test_rien_sans_mesure(self, tmp_path, monkeypatch):
+        reporter = self._run(tmp_path, monkeypatch, None)
+        assert not any("analysée" in m for m in reporter.messages)
+
+    def test_rien_si_tout_vient_du_cache(self, tmp_path, monkeypatch):
+        reporter = self._run(tmp_path, monkeypatch, {"images_inferees": 0, "secondes": 0.4})
+        assert not any("analysée" in m for m in reporter.messages)

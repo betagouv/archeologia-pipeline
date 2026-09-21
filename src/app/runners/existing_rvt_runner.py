@@ -154,6 +154,11 @@ class ExistingRvtRunner:
             total_images = max(total_images, res.total_images)
             if res.total_detections is not None:
                 detection_counts.append(res.total_detections)
+            st = getattr(res, "cv_stats", None) or {}
+            if st.get("images_inferees"):
+                narrator.cv_run_done(
+                    model_display, int(st["images_inferees"]), float(st.get("secondes", 0.0))
+                )
 
         def _on_run_failure(run_idx: int, run_cfg: dict, exc: Exception) -> None:
             model_display = _model_display_name(run_cfg.get("selected_model", "?"))

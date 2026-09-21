@@ -103,6 +103,7 @@ def _parse_runner_stdout(
     log: LogFn,
     image_progress: Optional[ImageProgressFn] = None,
     tile_progress: Optional[TileProgressFn] = None,
+    image_done: Optional[ImageProgressFn] = None,
 ) -> Optional[int]:
     """Parse une ligne de stdout du runner externe et la log de façon lisible.
 
@@ -114,6 +115,11 @@ def _parse_runner_stdout(
     ``tile_progress``, si fourni, est invoqué pour chaque ligne
     « SAHI: X/Y tuiles traitées » (sous-progression intra-image, cf.
     :data:`TileProgressFn`). La ligne reste relayée au log à l'identique.
+
+    ``image_done``, si fourni, est invoqué sur ``status=done`` seulement : la
+    fin RÉELLE d'une inférence (les images servies par le cache sortent en
+    ``skipped`` et n'en déclenchent pas). Sert à compter ce qui a vraiment été
+    analysé, pour la durée mesurée de fin de run.
 
     Retourne le ``total_detections`` de la ligne ``summary:`` (None pour
     toute autre ligne) — remonté jusqu'au narrateur pour annoncer
@@ -151,6 +157,11 @@ def _parse_runner_stdout(
             if status == "processing":
                 log(f"Computer Vision: [{current}/{total}] Analyse de {image_name}...")
             elif status == "done":
+                if image_done is not None:
+                    try:
+                        image_done(int(current), int(total), image_name)
+                    except Exception:
+                        pass
                 dets = parts[3].split("=")[1] if len(parts) > 3 else "0"
                 mode = ""
                 for p in parts[4:]:
@@ -219,9 +230,15 @@ def run_external_cv_runner(
     cancel_check: Optional[CancelCheckFn] = None,
     image_progress: Optional[ImageProgressFn] = None,
     tile_progress: Optional[TileProgressFn] = None,
+    stats: Optional[Dict[str, Any]] = None,
 ) -> Optional[int]:
     """
     Exécute le runner ONNX externe via subprocess et parse sa sortie en temps réel.
+
+    ``stats``, si fourni, reçoit la mesure du run : ``images_inferees`` (lignes
+    ``status=done``, cache exclu) et ``secondes`` (temps mur, chargement du
+    modèle compris). ponytail: dict mutable plutôt qu'un nouveau type de retour
+    qui rippellerait sur run_cv_on_folder → run_existing_rvt → runners.
 
     Returns:
         Le ``total_detections`` annoncé par la ligne ``summary:`` du runner,
@@ -282,6 +299,13 @@ def run_external_cv_runner(
 
         cancelled = False
         total_detections: Optional[int] = None
+        t0 = time.monotonic()
+        n_done = 0
+
+        def _on_image_done(_i: int, _t: int, _n: str) -> None:
+            nonlocal n_done
+            n_done += 1
+
         if process.stdout:
             for line in process.stdout:
                 if cancel_check and cancel_check():
@@ -298,10 +322,15 @@ def run_external_cv_runner(
                 if not line:
                     continue
                 parsed = _parse_runner_stdout(
-                    line, log, image_progress=image_progress, tile_progress=tile_progress
+                    line, log, image_progress=image_progress, tile_progress=tile_progress,
+                    image_done=_on_image_done if stats is not None else None,
                 )
                 if parsed is not None:
                     total_detections = parsed
+
+        if stats is not None:
+            stats["images_inferees"] = n_done
+            stats["secondes"] = time.monotonic() - t0
 
         if cancelled:
             raise PipelineCancelled()

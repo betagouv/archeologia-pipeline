@@ -192,7 +192,9 @@ def _unique_class_names(classes: Any) -> List[str]:
 # ----------------------------------------------------------------------
 # Builders de sections
 # ----------------------------------------------------------------------
-def _build_architecture(card: Mapping[str, Any]) -> Optional[Section]:
+def _build_architecture(
+    card: Mapping[str, Any], args: Optional[Mapping[str, Any]] = None
+) -> Optional[Section]:
     rows: List[Row] = []
     arch = card.get("architecture")
     variant = card.get("variant")
@@ -209,6 +211,20 @@ def _build_architecture(card: Mapping[str, Any]) -> Optional[Section]:
             rows.append(Row("Taille d'image", f"{res_inf} px (entr. {res_train})"))
         else:
             rows.append(Row("Taille d'image", f"{res_inf} px"))
+    # Coût structurel (2026-09-21) : fenêtres SAHI par dalle, un FAIT calculé du
+    # découpage d'args.yaml — jamais une durée (règle : pas d'estimation dans l'UI).
+    sahi = args.get("sahi") if isinstance(args, Mapping) else None
+    if isinstance(sahi, Mapping):
+        try:
+            from ...app.services.cout_modele import ligne_dialogue
+        except ImportError:
+            from app.services.cout_modele import ligne_dialogue  # type: ignore[no-redef]
+        ligne = ligne_dialogue(
+            sahi.get("slice_width", sahi.get("slice_height", 0)) or 0,
+            sahi.get("overlap_ratio", 0.2) or 0.0,
+        )
+        if ligne:
+            rows.append(Row("Fenêtres d'analyse", ligne))
     names = _unique_class_names(card.get("classes"))
     if names:
         # Compte dans le label (« Classes (n) »), liste dans la valeur — cohérent
@@ -331,7 +347,8 @@ def build_sections(
     """Construit la liste ordonnée des sections à afficher dans le dialog.
 
     Sections principales (ouvertes par défaut, omises si vides) :
-      1. ARCHITECTURE (architecture, tâche, taille d'image, classes)
+      1. ARCHITECTURE (architecture, tâche, taille d'image, fenêtres d'analyse
+         si ``args["sahi"]``, classes)
       2. INDICE RVT D'ENTRAÎNEMENT — *<nom long>*
       3. MNT D'ENTRAÎNEMENT
       3bis. FIABILITÉ DES DÉTECTIONS — si ``thresholds.fiabilite`` (catégories par classe)
@@ -344,8 +361,12 @@ def build_sections(
     if not isinstance(card, Mapping):
         return []
     sections: List[Section] = []
-    for builder in (_build_architecture, _build_rvt, _build_mnt, _build_fiabilite):
-        s = builder(card)
+    for s in (
+        _build_architecture(card, args),
+        _build_rvt(card),
+        _build_mnt(card),
+        _build_fiabilite(card),
+    ):
         if s is not None:
             sections.append(s)
     cluster = _build_clustering(args)

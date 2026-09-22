@@ -9,7 +9,7 @@ name=Archéolog'IA
 qgisMinimumVersion=3.34
 qgisMaximumVersion=4.99
 description=Détection de sites archéologiques par réseaux de neurones
-version=0.13.0
+version=0.13.1
 author=Valentin VIEUX
 email=valentin.vieux.pro@outlook.com
 about=Plugin pour automatiser la production d'indices de visualisation (à l'aide du plugin Relief Visualization Toolbox) à partir de données LiDAR ou de MNT et pour détecter des sites archéologiques à l'aide de réseaux de neurones (YOLO, RF-DETR détection ou segmentation)
@@ -21,7 +21,9 @@ repository=https://github.com/betagouv/archeologia-pipeline
 #
 
 hasProcessingProvider=no
-changelog=0.13.0 (2026-09-21)
+changelog=0.13.1 (2026-09-22)
+    * Correctif : depuis la 0.13.0, les dalles voisines n'étaient plus prises en compte. Chaque dalle était calculée seule, sans marge, et une couture apparaissait à la frontière entre deux dalles sur les indices de visualisation (ombrage, dominance locale…) ; les détections en bord de dalle perdaient aussi leur marge. Le fichier LiDAR temporaire introduit par la 0.13.0 portait un nom que l'outil de lecture refusait : il garde désormais son extension habituelle.
+0.13.0 (2026-09-21)
     * Un quinzième produit de visualisation : l'ouverture du relief (openness). Un seul réglage décide de l'image — positive pour ce qui dépasse (tertres, crêtes, lèvres de cratère), négative pour ce qui s'enfonce (fossés, chemins creux, fonds de carrière). Les deux images se lisent de la même façon : clair = saillie, sombre = creux. Fiche, vignettes et réglages avancés comme les autres produits.
     * À l'étape 3, chaque modèle annonce le nombre de fenêtres d'analyse qu'il découpe dans une dalle : un fait, pas une estimation de durée. L'information apparaît dans le menu « Changer », dans l'infobulle du nom du modèle et dans sa fiche, pour comparer deux modèles avant de lancer.
     * À la fin du run, le journal donne la durée réellement mesurée de chaque modèle : « 12 images analysées en 4min 07s (≈ 21s par image) ».

@@ -92,3 +92,36 @@ def test_rognage_pdal_echoue_ne_laisse_pas_de_laz_final(tmp_path, pdal_dit_oui, 
         bounds={"xmin": "0", "xmax": "1", "ymin": "0", "ymax": "1"},
     ) is False
     assert not sortie.exists(), "un LAZ rogné corrompu porte le nom final"
+
+
+def test_le_fichier_partiel_garde_une_extension_que_pdal_sait_lire(tmp_path, monkeypatch):
+    """Régression 2026-09-22 : PDAL choisit son lecteur (et son écrivain) sur
+    l'extension. Nommé ``X.laz.partial``, le rognage était validé sur un nom
+    que ``pdal info`` refuse (« Cannot determine reader »), donc jeté : plus
+    aucun voisin fusionné, MNT sans marge, couture visible entre dalles."""
+    entree = _laz(tmp_path / "voisine.laz")
+    sortie = tmp_path / "voisine_crop.laz"
+    valides: list[Path] = []
+
+    def pdal_ecrit(cmd, **kwargs):
+        etapes = json.loads(Path(cmd[-1]).read_text(encoding="utf-8"))["pipeline"]
+        dest = next(e["filename"] for e in etapes if e["type"] == "writers.las")
+        Path(dest).write_bytes(b"LASF-ok")
+        return subprocess.CompletedProcess(cmd, 0, "", "")
+
+    def pdal_info(path, *a, **k):
+        valides.append(Path(path))
+        return (True, "ok")
+
+    monkeypatch.setattr(preprocess, "run_pdal_command_cancellable", pdal_ecrit)
+    monkeypatch.setattr(preprocess, "validate_las_or_laz_with_pdal", pdal_info)
+    monkeypatch.setattr(preprocess, "_pdal_exe", lambda: "pdal")
+
+    assert preprocess.crop_neighbor_tile(
+        input_path=entree,
+        output_path=sortie,
+        bounds={"xmin": "0", "xmax": "1", "ymin": "0", "ymax": "1"},
+    ) is True
+    assert valides, "le rognage doit être validé avant de prendre son nom final"
+    assert all(p.suffix == ".laz" for p in valides), [p.name for p in valides]
+    assert sortie.exists()

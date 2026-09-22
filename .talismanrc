@@ -1,10 +1,10 @@
 fileignoreconfig:
 - filename: tests/unit/test_preprocess_ecriture_atomique.py
-  checksum: 11a4ed3ec527f44283eb8f69f3c192577e6c748fed375769c12fdfec1a503251
+  checksum: 2651ca367523a5a5f0ca87a521447ca103c70d8b6a73ecedba53c16ea5abfae0
 - filename: tests/unit/test_opns.py
   checksum: 0506c8a17e9157f23cf0cbcd449ce4703241b1ed07c051270b39ed4484dfcf4a
 - filename: metadata.txt
-  checksum: a2c954f8208602cefd9382590d075d5aaba8e6ce2f50a9a5d623bb5847e3630d
+  checksum: 81a1ebb9057331ef2babfb796b6ae290efd0abb16bcbd41bbe53d737cc6d527b
 - filename: tests/unit/test_mnt_chien_de_garde.py
   checksum: fbb2c02d82caaf493cc5be4f107d9ad7b9e9b753a835b33de36e913e9ca7f7b5
 - filename: src/pipeline/ign/products/mnt.py
@@ -24,7 +24,7 @@ fileignoreconfig:
 - filename: CLAUDE.md
   checksum: 1f800e8a638c00f6368deb1a8da1b1487444b7360e3917db46f68da94db192d2
 - filename: README.md
-  checksum: a49d24b5b36457c414f0e1e657f11e28d81e739aa7f7ab021d9479190e61c0dc
+  checksum: 111476f324c4569fb3a3e3cbb935d7675f290ac416ee598fe7a746651cde56e3
 - filename: data/third_party/cv_runner_onnx/windows/build_info.json
   ignore_detectors:
   - filecontent
@@ -89,7 +89,7 @@ fileignoreconfig:
 - filename: src/pipeline/ign/pdal_validation.py
   checksum: 8867b41e31232f0047d39a3ed884b5e677848f2269c5e79d9b5cd5217bc6b407
 - filename: src/pipeline/ign/preprocess.py
-  checksum: 2661e522efaf1c4c959752d28e0ac627324bf4182e328d9fcdb137b570e1e2ef
+  checksum: 08fa21666ede0b18131d439187cac2b830e48584eb3df8f5fae710491118344a
 - filename: src/pipeline/ign/products/indices.py
   checksum: 4d7b0fba36cd4a608e0926deb94db04a561a2c5bdd2ba29564d939c73de50ea1
 - filename: src/pipeline/ign/products/results.py

@@ -152,8 +152,13 @@ def _partial_path(output_path: Path) -> Path:
     LAZ corrompu que la validation d'en-tête déclarerait valide à vie
     (incident 2026-09-19, dalle LHD_FXX_0821_6327 : 161 Mio de zéros en
     queue, MNT bloqué 10 h sur une boucle infinie de PDAL).
+
+    L'extension ``.laz`` reste en dernier : PDAL choisit lecteur et écrivain
+    sur l'extension, et ``X.laz.partial`` lui est illisible (« Cannot
+    determine reader ») — régression 2026-09-22, tout voisin rogné rejeté,
+    MNT sans marge, couture visible entre dalles.
     """
-    return output_path.with_name(output_path.name + ".partial")
+    return output_path.with_name(output_path.stem + ".partial" + output_path.suffix)
 
 
 def _discard_partial(partial: Path) -> None:

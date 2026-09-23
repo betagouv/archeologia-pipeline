@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import json
 import unicodedata
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Dict, List, Optional, Sequence
 
@@ -212,3 +212,27 @@ def load_catalogue(path: Path) -> Catalogue:
             featured=bool(d.get("featured", False)),
         ))
     return Catalogue(departments=departments, updated=raw.get("updated") or "")
+
+
+def merge_catalogues(base: Catalogue, local: Catalogue,
+                     local_dir: Optional[Path]) -> Catalogue:
+    """Fusionne un catalogue **local** (flux privés, gitignoré) dans le catalogue livré.
+
+    Par code de département : le local remplace, et passe **devant** — ses
+    entrées sont celles qu'on vient consulter, et son ``featured`` ouvre le
+    mur. Ses vignettes relatives sont rebasées sur ``local_dir`` : l'onglet ne
+    résout qu'un seul dossier (celui du catalogue livré), et les deux fichiers
+    ne vivent pas au même endroit. Une URL n'est jamais rebasée.
+    """
+    def _rebase(item: CatalogItem) -> CatalogItem:
+        t = item.thumbnail
+        if not t or local_dir is None or "://" in t or Path(t).is_absolute():
+            return item
+        return replace(item, thumbnail=str(Path(local_dir) / t))
+
+    locaux = [replace(d, items=[_rebase(it) for it in d.items]) for d in local.departments]
+    codes = {d.code for d in locaux}
+    return Catalogue(
+        departments=locaux + [d for d in base.departments if d.code not in codes],
+        updated=local.updated or base.updated,
+    )

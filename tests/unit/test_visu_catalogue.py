@@ -198,3 +198,40 @@ def test_chaque_produit_du_pipeline_a_un_libelle_metier():
     assert len(attendus) >= 14, "anti-test-creux : catalogue vidé ?"
     manquants = sorted(attendus - set(_METIER))
     assert manquants == [], f"produits sans libellé métier : {manquants}"
+
+
+# ------------------------------------------------------- catalogue local
+
+def test_merge_catalogues_le_local_prime_et_passe_devant(tmp_path):
+    """Le catalogue local (flux privés, gitignoré) remplace un département de
+    même code, passe devant les autres — son ``featured`` ouvre donc le mur —
+    et ses vignettes sont rebasées sur SON dossier : les deux catalogues ne
+    vivent pas au même endroit et l'onglet ne résout qu'un seul dossier."""
+    from src.app.services.visu_catalogue import merge_catalogues
+
+    base = Catalogue(
+        departments=[_dept("21", "Côte-d'Or"), _dept("35", "Ille-et-Vilaine")],
+        updated="2026-07")
+    local = Catalogue(departments=[
+        Department(code="21A", name="21A", featured=True, items=[
+            CatalogItem(key="SVF", source="C:/x/wms/a.xml", thumbnail="thumbs/21A_SVF.png")]),
+        Department(code="35", name="Ille-et-Vilaine (flux)", items=[
+            CatalogItem(key="LD", source="https://x/ld.tif", thumbnail="https://x/ld.png")]),
+    ], updated="2026-09")
+
+    merged = merge_catalogues(base, local, tmp_path)
+    assert [d.code for d in merged.departments] == ["21A", "35", "21"]
+    assert merged.by_code("35").name == "Ille-et-Vilaine (flux)"
+    assert merged.updated == "2026-09"
+    assert merged.by_code("21A").items[0].thumbnail == str(tmp_path / "thumbs" / "21A_SVF.png")
+    assert merged.by_code("35").items[0].thumbnail == "https://x/ld.png"   # une URL reste une URL
+    assert merged.by_code("21").items[0].thumbnail == ""                    # la base n'est pas touchée
+
+
+def test_merge_catalogues_sans_local_rend_la_base():
+    from src.app.services.visu_catalogue import merge_catalogues
+
+    base = Catalogue(departments=[_dept("35")], updated="2026-07")
+    merged = merge_catalogues(base, Catalogue(), None)
+    assert merged.departments == base.departments
+    assert merged.updated == "2026-07"

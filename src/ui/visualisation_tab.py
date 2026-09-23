@@ -14,6 +14,7 @@ carte repasse en « idle » (signal ``layersRemoved``).
 """
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import Dict, Optional
 
@@ -545,10 +546,21 @@ class VisualisationTab(QWidget):
             # QgsTask qui fabrique la couche, mais un QgsTask qui ne fait que
             # valider l'URL, la couche restant construite ici.
             name = f"{item.info.sigle} — {dept.name}" if dept else item.info.sigle
-            layer = QgsRasterLayer(item.source, name, "gdal")
+            erreur = self._sonder_flux(item) if item.streamed else None
+            layer = None if erreur else QgsRasterLayer(item.source, name, "gdal")
         finally:
             QApplication.restoreOverrideCursor()
             self._liseret.setVisible(False)
+
+        if erreur:
+            if card is not None:
+                card.set_state(STATE_IDLE)
+            # Dans l'onglet ET dans QGIS : la barre de messages est derrière
+            # cette fenêtre, une carte qui retombe en « idle » sans un mot
+            # ressemble à un clic perdu.
+            self._banner.setText(f"<b>Flux indisponible</b> · {erreur}")
+            self._warn(f"{item.info.sigle} — {dept.name if dept else ''} : {erreur}")
+            return
 
         if not layer.isValid():
             if card is not None:
@@ -568,6 +580,57 @@ class VisualisationTab(QWidget):
         if self._iface is not None:
             self._iface.mapCanvas().refresh()
         self._sync_footer()
+
+    def _sonder_flux(self, item: CatalogItem) -> Optional[str]:
+        """Lit UN pixel du flux avant d'ajouter la couche ; ``None`` = flux OK.
+
+        Un descripteur GDAL_WMS s'ouvre sans aucune requête : la couche est
+        « valide » même avec une clé fausse, et le 401 n'arrive qu'à la
+        première tuile — QGIS afficherait une couche vide sans un mot (mesuré
+        2026-09-23, QGIS 4.0.3 / GDAL 3.13). Le pixel lu est le centre de
+        l'emprise du catalogue : une tuile que l'affichage réclamera de toute
+        façon, et que GDAL garde en cache.
+
+        ponytail: lecture synchrone sous le curseur occupé. Un hôte injoignable
+        ou hors ligne échoue tout de suite ; un serveur muet attend le délai de
+        connexion (10 s). Passer par un QgsTask le jour où ça traîne.
+        """
+        from osgeo import gdal
+
+        ancien = gdal.GetConfigOption("GDAL_HTTP_CONNECTTIMEOUT")
+        gdal.SetConfigOption("GDAL_HTTP_CONNECTTIMEOUT", "10")
+        gdal.ErrorReset()
+        gdal.PushErrorHandler("CPLQuietErrorHandler")
+        try:
+            ds = gdal.Open(item.source)
+            if ds is None:
+                return None                # QgsRasterLayer dira « impossible d'ouvrir »
+            if item.extent:
+                xmin, ymin, xmax, ymax = (float(v) for v in item.extent)
+                px, py = gdal.ApplyGeoTransform(
+                    gdal.InvGeoTransform(ds.GetGeoTransform()),
+                    (xmin + xmax) / 2, (ymin + ymax) / 2)
+            else:
+                px, py = ds.RasterXSize / 2, ds.RasterYSize / 2
+            px = min(max(int(px), 0), ds.RasterXSize - 1)
+            py = min(max(int(py), 0), ds.RasterYSize - 1)
+            if ds.GetRasterBand(1).ReadRaster(px, py, 1, 1) is not None:
+                return None
+            message = gdal.GetLastErrorMsg()
+        except Exception as exc:               # noqa: BLE001 — GDAL en mode exceptions
+            message = str(exc)
+        finally:
+            gdal.PopErrorHandler()
+            gdal.SetConfigOption("GDAL_HTTP_CONNECTTIMEOUT", ancien)
+
+        trouve = re.search(r"HTTP status code: (\d+)", message or "")
+        code = int(trouve.group(1)) if trouve else 0
+        if code in (401, 403):
+            return (f"accès refusé (HTTP {code}) : clé d'accès absente ou expirée — "
+                    "régénérez le catalogue local.")
+        if code:
+            return f"le serveur répond HTTP {code} — réessayez plus tard."
+        return "le flux ne répond pas — hôte injoignable ou poste hors ligne."
 
     def _zoom_to(self, item: CatalogItem, layer) -> None:
         """Recadre sur la PREMIÈRE couche seulement, jamais ensuite.

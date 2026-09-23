@@ -15,10 +15,11 @@ carte repasse en « idle » (signal ``layersRemoved``).
 from __future__ import annotations
 
 import re
+import time
 from pathlib import Path
 from typing import Dict, Optional
 
-from qgis.PyQt.QtCore import QEvent, Qt, pyqtSignal
+from qgis.PyQt.QtCore import QEvent, Qt, QTimer, pyqtSignal
 from qgis.PyQt.QtGui import QPixmap
 from qgis.PyQt.QtWidgets import (
     QAbstractItemView,
@@ -126,6 +127,10 @@ class VisualisationTab(QWidget):
         # les couches ajoutées par cet onglet : « Tout retirer » ne doit jamais
         # toucher aux autres couches du projet de l'utilisateur.
         self._layers: Dict[str, tuple] = {}
+        # Réparation automatique des tuiles manquées (cf. _on_message_log) :
+        # id de couche -> minuterie de relance, et horodatages des relances.
+        self._repaint_timers: Dict[str, QTimer] = {}
+        self._repaint_log: Dict[str, list] = {}
 
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
@@ -740,8 +745,79 @@ class VisualisationTab(QWidget):
         try:
             from qgis.core import QgsProject
             QgsProject.instance().layersRemoved.connect(self._on_layers_removed)
+            for signal in self._signaux_journal():
+                signal.connect(self._on_message_log)
         except Exception:                        # noqa: BLE001 — hors QGIS (aperçu isolé)
             pass
+
+    @staticmethod
+    def _signaux_journal() -> list:
+        """QGIS 3.x émet ``messageReceived``, QGIS 4 n'émet plus que
+        ``messageReceivedWithFormat`` (mesuré 4.0.3) : on écoute les deux, la
+        minuterie de relance absorbe un éventuel doublon."""
+        from qgis.core import QgsApplication
+        log = QgsApplication.messageLog()
+        return [s for s in (getattr(log, "messageReceived", None),
+                            getattr(log, "messageReceivedWithFormat", None)) if s is not None]
+
+    # ------------------------------------------ réparation des tuiles manquées
+
+    #: Relances automatiques au plus par couche dans la fenêtre glissante.
+    REPARATION_MAX = 3
+    REPARATION_FENETRE_S = 120.0
+
+    def _on_message_log(self, message: str, *_) -> None:
+        """Une tuile refusée par le serveur ne doit pas rester un trou.
+
+        Le point d'accès privé de la Géoplateforme refuse parfois une tuile
+        valide avec une clé valide (HTTP 401/403 « Unauthorized access to the
+        offering », ou requête sans réponse — constat utilisateur 2026-09-23,
+        non reproductible à la demande). Le pilote GDAL_WMS n'a aucune
+        nouvelle tentative et ignore les options de retry de GDAL (mesuré).
+        QGIS de bureau route l'erreur GDAL vers son journal : on la reconnaît,
+        on relance le rendu de la couche concernée 1,5 s après la dernière
+        erreur — bon marché, GDAL garde sur disque les tuiles réussies, seules
+        les manquées sont redemandées. Borné (REPARATION_MAX par fenêtre) : une
+        clé expirée ou un serveur à terre ne doivent pas boucler.
+        """
+        if "Unable to download block" not in (message or ""):
+            return
+        cibles = [lid for lid in self._layers if self._nom_offre(lid) in message]
+        if not cibles:
+            # Délai dépassé ou hôte muet : le message n'a pas le nom de l'offre.
+            cibles = list(self._layers)
+        for lid in cibles:
+            timer = self._repaint_timers.get(lid)
+            if timer is None:
+                timer = QTimer(self)
+                timer.setSingleShot(True)
+                timer.timeout.connect(lambda lid=lid: self._relancer_rendu(lid))
+                self._repaint_timers[lid] = timer
+            timer.start(1500)                    # redémarre : 1,5 s après la DERNIÈRE erreur
+
+    def _nom_offre(self, layer_id: str) -> str:
+        """Nom de l'offre WMTS = nom du descripteur (« ARCHEO_LIDAR_D21C_M_HS »)."""
+        code, key = self._layers.get(layer_id, ("", ""))
+        dept = self._catalogue.by_code(code)
+        for item in (dept.items if dept else []):
+            if item.key == key and item.streamed:
+                return Path(item.source).stem
+        return "\0"                              # ne matche jamais
+
+    def _relancer_rendu(self, layer_id: str) -> None:
+        from qgis.core import QgsProject
+
+        layer = QgsProject.instance().mapLayer(layer_id)
+        if layer is None or layer_id not in self._layers:
+            return
+        maintenant = time.monotonic()
+        recents = [t for t in self._repaint_log.get(layer_id, [])
+                   if maintenant - t < self.REPARATION_FENETRE_S]
+        if len(recents) >= self.REPARATION_MAX:
+            self._repaint_log[layer_id] = recents
+            return
+        self._repaint_log[layer_id] = recents + [maintenant]
+        layer.triggerRepaint()
 
     def _on_layers_removed(self, layer_ids) -> None:
         """Une couche retirée depuis le panneau Couches doit rendre la carte cliquable."""
@@ -787,8 +863,13 @@ class VisualisationTab(QWidget):
     def cleanup(self) -> None:
         """Le plugin est déchargé : on oublie les couches, on n'y touche pas."""
         self._layers.clear()
+        for timer in self._repaint_timers.values():
+            timer.stop()
+        self._repaint_timers.clear()
         try:
             from qgis.core import QgsProject
             QgsProject.instance().layersRemoved.disconnect(self._on_layers_removed)
+            for signal in self._signaux_journal():
+                signal.disconnect(self._on_message_log)
         except Exception:                        # noqa: BLE001
             pass

@@ -197,7 +197,7 @@ fileignoreconfig:
 - filename: tests/unit/test_visu_catalogue.py
   checksum: cc6792cad89c1a9c25c5b3e5d73502084464abd8d6239d85c32bd5ad9f16b198
 - filename: src/ui/visualisation_tab.py
-  checksum: f814211f76fb589f8fb5dc27f4cd52d667750dbd67d8738b0be1484ae737d377
+  checksum: e592aa4efa18767b52a0df25dba67924ae5aae6959ac59f2c97a86ac3a532085
 - filename: src/app/services/visu_catalogue.py
   checksum: bb8781931e7b9fbade9275e296327e0baad8a48b80a616f1084cd2ff7adc5ea5
 - filename: src/ui/widgets/indice_card.py

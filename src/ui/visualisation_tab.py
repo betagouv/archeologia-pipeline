@@ -571,6 +571,15 @@ class VisualisationTab(QWidget):
 
         if item.streamed:
             self._sans_etirement(layer)
+            if item.extent:
+                # Le descripteur GDAL_WMS déclare la fenêtre entière du
+                # TileMatrixSet (33 000 km) : « zoomer sur la couche » ou toute
+                # vue lointaine demandait des tuiles hors de la France, que le
+                # serveur refuse (HTTP 500/401/403 dans le journal, constat
+                # utilisateur 2026-09-23). Bornée à l'emprise du catalogue, la
+                # couche ne réclame plus que ses propres tuiles à toute échelle.
+                from qgis.core import QgsRectangle
+                layer.setExtent(QgsRectangle(*[float(v) for v in item.extent]))
         first = not self._layers
         QgsProject.instance().addMapLayer(layer)
         self._layers[layer.id()] = (dept.code if dept else "", key)

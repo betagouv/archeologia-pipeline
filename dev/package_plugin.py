@@ -44,6 +44,9 @@ EXCLUDE_DIRS = {
     # Traçabilité d'entraînement des modèles (metrics.csv, tfevents, evaluation/,
     # comparaison_*/) — réservée au poste de dev, jamais chez l'archéologue.
     "entrainement",
+    # Flux Géoplateforme privés de l'onglet Visualisation : les descripteurs
+    # GDAL_WMS portent la clé d'accès (gitignoré, cf. .gitignore).
+    "local_catalogue",
 }
 
 EXCLUDE_FILES = {

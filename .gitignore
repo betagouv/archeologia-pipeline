@@ -74,4 +74,13 @@ data/quadrillage_france/
 htpasswd.txt
 .htpasswd
 
+# Flux Géoplateforme privés (onglet Visualisation) — la clé d'accès est dans les
+# descripteurs GDAL_WMS et les vignettes en dérivent : jamais versionnés.
+# data/local_catalogue/ = catalogue local écrit par archeologia-ovh (publish_gpf.py
+# catalogue --catalogue-rel data/local_catalogue/catalogue.json), fusionné au runtime.
+data/local_catalogue/
+data/demo_catalogue/wms/
+data/demo_catalogue/thumbs/21*_*.png
+data/demo_catalogue/*.bak-*
+
 # (Portage de calcul OVH déplacé vers un dépôt privé séparé.)

@@ -44,6 +44,7 @@ from ..app.services.visu_catalogue import (
     Department,
     filter_departments,
     load_catalogue,
+    merge_catalogues,
 )
 from .widgets.indice_card import (
     CARD_W,
@@ -59,6 +60,11 @@ GRID_VSPACING = 16
 
 #: Emplacement du catalogue livré avec le plugin.
 DEFAULT_CATALOGUE = Path("data") / "demo_catalogue" / "catalogue.json"
+#: Catalogue local optionnel, gitignoré et exclu du ZIP : les flux privés de
+#: test (descripteurs GDAL_WMS portant la clé d'accès + vignettes), écrits à
+#: côté par l'outillage OVH (``publish_gpf.py catalogue --catalogue-rel
+#: data/local_catalogue/catalogue.json``) et fusionnés par code de département.
+LOCAL_CATALOGUE = Path("data") / "local_catalogue" / "catalogue.json"
 
 
 class _DeptItem(QWidget):
@@ -292,6 +298,11 @@ class VisualisationTab(QWidget):
         try:
             self._catalogue = load_catalogue(path)
             self._catalogue_dir = path.parent
+            local = self._plugin_root / LOCAL_CATALOGUE
+            if local.is_file():
+                path = local              # un local cassé s'annonce sous SON chemin
+                self._catalogue = merge_catalogues(
+                    self._catalogue, load_catalogue(local), local.parent)
             self._erreur_catalogue = None
             self._cat_stamp.setText(f"catalogue {self._catalogue.updated or '—'}")
         except Exception as exc:                       # noqa: BLE001 — jamais de grille muette

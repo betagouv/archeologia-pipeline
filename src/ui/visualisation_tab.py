@@ -569,6 +569,8 @@ class VisualisationTab(QWidget):
                        "La source est peut-être indisponible.")
             return
 
+        if item.streamed:
+            self._sans_etirement(layer)
         first = not self._layers
         QgsProject.instance().addMapLayer(layer)
         self._layers[layer.id()] = (dept.code if dept else "", key)
@@ -631,6 +633,43 @@ class VisualisationTab(QWidget):
         if code:
             return f"le serveur répond HTTP {code} — réessayez plus tard."
         return "le flux ne répond pas — hôte injoignable ou poste hors ligne."
+
+    def _sans_etirement(self, layer) -> None:
+        """Couche 8 bits en flux : affichée telle quelle, sans étirement min/max.
+
+        QGIS estime le min/max par défaut en échantillonnant l'emprise ENTIÈRE
+        du raster ; pour un GDAL_WMS c'est la fenêtre de 33 000 km du
+        descripteur, lue aux niveaux grossiers où tout est nodata (255) :
+        min = max = 255, et toute donnée réelle sort en **noir** (constat
+        utilisateur 2026-09-23 sur SVF 21A, reproduit par rendu hors interface,
+        QGIS 4.0.3). Les produits 8 bits de RVT sont déjà étirés 0–255 à
+        l'export, il n'y a rien à estimer. Un flottant (futur COG) garde le
+        comportement de QGIS.
+        """
+        from qgis.core import (
+            Qgis,
+            QgsContrastEnhancement,
+            QgsMultiBandColorRenderer,
+            QgsSingleBandGrayRenderer,
+        )
+
+        prov = layer.dataProvider()
+        if prov is None or prov.dataType(1) != Qgis.DataType.Byte:
+            return
+
+        def plein() -> QgsContrastEnhancement:
+            ce = QgsContrastEnhancement(Qgis.DataType.Byte)
+            ce.setContrastEnhancementAlgorithm(
+                QgsContrastEnhancement.ContrastEnhancementAlgorithm.NoEnhancement)
+            return ce
+
+        r = layer.renderer()
+        if isinstance(r, QgsSingleBandGrayRenderer):
+            r.setContrastEnhancement(plein())
+        elif isinstance(r, QgsMultiBandColorRenderer):
+            r.setRedContrastEnhancement(plein())
+            r.setGreenContrastEnhancement(plein())
+            r.setBlueContrastEnhancement(plein())
 
     def _zoom_to(self, item: CatalogItem, layer) -> None:
         """Recadre sur la PREMIÈRE couche seulement, jamais ensuite.

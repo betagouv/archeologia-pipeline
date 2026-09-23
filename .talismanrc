@@ -125,7 +125,7 @@ fileignoreconfig:
 - filename: src/ui/widgets/entity_card.py
   checksum: 22633cf8037d329f6c95caa1bb3c9aa79f76e3f82e1e40d9a6216f78cfa78c46
 - filename: src/ui/wizard_dialog.py
-  checksum: d622f38c4ab3b6b9a688ed46dc0c3b58efed460eccbbcd8138acc83c470b8030
+  checksum: d5b82acaf671d70cfdf825b6c4d458573b15e66be22c66ee1b887d19699d733d
 - filename: tests/TESTS_MANUELS_QGIS.md
   checksum: 4401a4fd2850ffc45e67dcefbbd2b97ee90805b7d27b4a5623f5a404fac79ac7
 - filename: tests/integration/test_existing_mnt_runner_finalize.py
@@ -195,11 +195,11 @@ fileignoreconfig:
 - filename: dev/demo_comite/build_thumbs.py
   checksum: 0359ea8bcbbcacd1720070d74f869b08143bceaebdcca969f37a129ccc233ede
 - filename: tests/unit/test_visu_catalogue.py
-  checksum: a795843798040554f8e88c17c459528cba0df82ac90a1c375d39d1d0b1bd904e
+  checksum: cc6792cad89c1a9c25c5b3e5d73502084464abd8d6239d85c32bd5ad9f16b198
 - filename: src/ui/visualisation_tab.py
-  checksum: afe9a60493ff960b9a72aea2a4f3f339f7866bef977e3b020091a6629ee34a71
+  checksum: a04abbe5933f6d81186e068664a3825d5b7521f17d89ea48b078273a0aca62bc
 - filename: src/app/services/visu_catalogue.py
-  checksum: a8b134f0ba82aedb7b4f49a9bbd9527a2419f644325147689b18247d775c2c0b
+  checksum: bb8781931e7b9fbade9275e296327e0baad8a48b80a616f1084cd2ff7adc5ea5
 - filename: src/ui/widgets/indice_card.py
   checksum: 06132cfabbad865873948a477ad1bf331a7460290d819a73134e7ecacd37d3c6
 - filename: data/demo_catalogue/thumbs/CVAT.png

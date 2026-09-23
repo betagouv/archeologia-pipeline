@@ -43,9 +43,10 @@ from .steps.step_4_launch import LaunchPage, RecapSection
 from .visualisation_tab import VisualisationTab
 from .widgets.stepper_rail import StepperRail
 
-# Onglet « Visualisation » (flux Géoplateforme) : chantier inachevé, masqué en
-# attendant sa reprise. Remettre à True pour retrouver l'onglet et sa largeur.
-VISUALISATION_TAB_ENABLED = False
+# Onglet « Visualisation » (flux Géoplateforme) : rebranché le 2026-09-23 sur
+# les flux WMTS privés de test (catalogue local, cf. visualisation_tab). Le
+# drapeau reste pour pouvoir le masquer d'un mot si le flux tombe.
+VISUALISATION_TAB_ENABLED = True
 
 try:
     from ..app.plugin_metadata import get_plugin_version

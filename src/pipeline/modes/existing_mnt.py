@@ -276,6 +276,7 @@ def run_existing_mnt(
     rvt_params: Dict[str, Any],
     log: LogFn = lambda _: None,
     error_log: LogFn | None = None,
+    warning_log: LogFn | None = None,
     cancel_check: CancelCheckFn | None = None,
     feedback: Optional[Any] = None,
     mnt_progress: Callable[[int, int, str], None] | None = None,
@@ -284,6 +285,11 @@ def run_existing_mnt(
     # émet à INFO=20, filtré par la fenêtre (seuil USER_INFO=25) — un échec
     # routé sur ``log`` n'apparaît que dans le fichier .txt (AUDIT v2 ROB-15).
     err = error_log if error_log is not None else log
+    # Canal AVERTISSEMENT (reporter.user_warning, ⚠) : ce qui mérite l'œil de
+    # l'utilisateur sans être un échec — le run continue. Sur ``err``, ces
+    # messages comptaient comme des ✗ et le bandeau final annonçait « N
+    # erreurs » sur un run réussi. Repli sur ``err`` (visible), jamais ``log``.
+    warn = warning_log if warning_log is not None else err
     if not existing_mnt_dir.exists() or not existing_mnt_dir.is_dir():
         raise FileNotFoundError(f"Dossier MNT inexistant ou invalide: {existing_mnt_dir}")
 
@@ -324,8 +330,8 @@ def run_existing_mnt(
         #    QGIS quasi vides, données réelles invisibles. Détection métadonnées-first.
         spec = TileSpec.from_raster(mnt_path)
         if spec is not None and is_degenerate_tile(spec):
-            err(
-                f"⚠️ MNT {mnt_path.name} ignoré : dalle dégénérée "
+            warn(
+                f"MNT {mnt_path.name} ignoré : dalle dégénérée "
                 "(1×1 px / origine ≈ 0,0), exclue de la mosaïque."
             )
             return
@@ -352,11 +358,13 @@ def run_existing_mnt(
         #    même taille ne doit pas répéter 100 fois la même ligne.
         if spec is not None:
             for msg in raster_context_warnings(
-                products, rvt_params, width_px=spec.width_px, height_px=spec.height_px
+                products, rvt_params,
+                width_px=spec.width_px, height_px=spec.height_px,
+                in_batch=total > 1,
             ):
                 if msg not in warned_context:
                     warned_context.add(msg)
-                    err(f"⚠️ {mnt_path.name} : {msg}")
+                    warn(f"{mnt_path.name} : {msg}")
 
         # 2) Cas LARGE: PAS de pré-découpage. On calcule les indices RVT sur
         #    le raster complet, puis le CV (SAHI) ira découper à l'inférence

@@ -185,11 +185,18 @@ def raster_context_warnings(
     *,
     width_px: int,
     height_px: int,
+    in_batch: bool = False,
 ) -> List[str]:
     """Produits dont le noyau rend un raster isolé majoritairement fabriqué.
 
     Critère souple (:data:`MIN_FULL_CONTEXT_RATIO`) : sur un raster sans voisin,
     une bordure approximative est inévitable. On ne signale que la dégénérescence.
+
+    ``in_batch`` : le raster fait partie d'un lot. Le réglage vaut alors pour
+    tous les rasters, et « réduisez le rayon » conseillé pour un lambeau de bord
+    de zone dégraderait les autres : le message dit que CE raster n'est pas
+    fiable et ne conseille la réduction que si le lot est fait de rasters de
+    cette taille.
     """
     messages: List[str] = []
     for product, param in KERNEL_PARAMS.items():
@@ -202,11 +209,20 @@ def raster_context_warnings(
         if ratio >= MIN_FULL_CONTEXT_RATIO:
             continue
         target = max_radius_for_ratio(width_px, height_px, MIN_FULL_CONTEXT_RATIO)
+        field = f"« {param.ui_label} (px) » à ≤ {target} px"
+        if in_batch:
+            advice = (
+                f"Le {product} de ce raster n'est pas fiable. Le réglage vaut pour "
+                f"tout le lot : ne réduisez {field} que si la plupart des rasters "
+                f"ont cette taille."
+            )
+        else:
+            advice = f"Réduisez {field}."
         messages.append(
             f"{product} : le noyau atteint {radius} px sur un raster de "
             f"{width_px}×{height_px} px — {round(ratio * 100)} % de l'emprise "
             f"seulement aura un voisinage complet, le reste est reconstruit par "
-            f"symétrie. Réduisez « {param.ui_label} (px) » à ≤ {target} px."
+            f"symétrie. {advice}"
         )
     return messages
 

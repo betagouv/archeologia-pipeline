@@ -43,13 +43,18 @@ def test_degenerate_tile_skipped_and_reported(tmp_path, monkeypatch):
     )
 
     logs: list[str] = []
+    warnings: list[str] = []
     errors: list[str] = []
     res = run_existing_mnt(
         existing_mnt_dir=mnt_dir,
         output_dir=tmp_path / "out",
         products={}, output_structure={}, output_formats={}, rvt_params={},
-        log=logs.append, error_log=errors.append,
+        log=logs.append, warning_log=warnings.append, error_log=errors.append,
     )
 
     assert res.total == 0  # dalle dégénérée non comptée comme produite
-    assert any("placeholder.tif" in e and "dégénér" in e for e in errors)
+    # Écartée volontairement, le run continue : un ⚠, pas un ✗.
+    assert any("placeholder.tif" in w and "dégénér" in w for w in warnings)
+    assert errors == []
+    # Le journal préfixe déjà « ⚠ » : pas de second glyphe dans le texte.
+    assert not warnings[0].startswith("⚠")

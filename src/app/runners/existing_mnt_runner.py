@@ -91,6 +91,7 @@ class ExistingMntRunner:
                 rvt_params=rvt_params,
                 log=lambda m: reporter.info(m),
                 error_log=lambda m: reporter.error(m),
+                warning_log=lambda m: reporter.user_warning(m),
                 cancel_check=cancel.is_cancelled,
                 feedback=feedback,
                 mnt_progress=_on_mnt_progress,

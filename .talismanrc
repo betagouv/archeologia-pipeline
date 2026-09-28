@@ -55,7 +55,7 @@ fileignoreconfig:
 - filename: src/app/services/proxy_config.py
   checksum: cb7fe5903254aafead5171c65d9fcb148a9c5bd0ec4caeadc0a035ed83bc13fa
 - filename: src/app/services/rvt_kernel_context.py
-  checksum: 99a7342f2aca0e732bb65a871248813f75d0819c238466ed72c39991b880b828
+  checksum: 12c10b21f54ea685cf6511e857dee538e35d59424b3e75ff1febe57bff0c3804
 - filename: src/app/services/source_modes.py
   checksum: 3552e4b79f37aaf1f2ffde751f47050d1c293d80b1f03e5d804513f27a2878b9
 - filename: src/config/config_manager.py
@@ -129,7 +129,7 @@ fileignoreconfig:
 - filename: tests/TESTS_MANUELS_QGIS.md
   checksum: 4401a4fd2850ffc45e67dcefbbd2b97ee90805b7d27b4a5623f5a404fac79ac7
 - filename: tests/integration/test_existing_mnt_runner_finalize.py
-  checksum: 059625c9d9ebc7107abcbd0339c12957be8c7e56918dcd458ce45f61e1e5f973
+  checksum: e67c2e4c83cea0937bdfb39e8eec7aa7476f30648d4d858589e2308ad0565d63
 - filename: tests/integration/test_existing_rvt_runner_isolation.py
   checksum: e2afe699b2ec6df1f97f99b790b1c5fc3e31f64237422927db109ed0cfab96d6
 - filename: tests/integration/test_ign_runner_finalize.py
@@ -149,7 +149,7 @@ fileignoreconfig:
 - filename: tests/unit/test_download_url_guard.py
   checksum: a739af571447332b59b50293e351f6cbd25f375182e78321aa5db724fa00d6d4
 - filename: tests/unit/test_existing_mnt_kernel_context.py
-  checksum: e3cf8c5ff6455a0383ca417d6755c7fdddeb4fbb812e7ef5532d406e544ab4ee
+  checksum: 95007a595389998a91ab14b606d69078208e67d01cc6ef0e1ff38fd041ee9955
 - filename: tests/unit/test_existing_rvt_halo.py
   checksum: 21590d38295aa1e1f2b4da3c0748665b024f4f77bfc60d48cdffbfa7c9b7ee35
 - filename: tests/unit/test_existing_rvt_png_consistency.py

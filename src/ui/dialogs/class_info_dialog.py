@@ -19,7 +19,7 @@ Compatible Qt5/Qt6 : tous les énumérés sont scopés (``Qt.AlignmentFlag…``)
 from __future__ import annotations
 
 from pathlib import Path
-from typing import List, Optional, Sequence
+from typing import Callable, List, Optional, Sequence
 
 from qgis.PyQt.QtCore import Qt
 from qgis.PyQt.QtGui import QPixmap
@@ -39,7 +39,7 @@ from qgis.PyQt.QtWidgets import (
 
 from ...app.services.class_fiche import ClassFiche
 from ...app.services.fiabilite import pct
-from ..widgets.vignette import pixmap_ajuste
+from ..widgets.vignette import FicheButton, pixmap_ajuste
 
 _VIGNETTE_MAX = 320  # côté max de l'aperçu, en px logiques
 
@@ -220,7 +220,8 @@ class _Apercu(QWidget):
 # Le corps d'une fiche
 # ----------------------------------------------------------------------
 class _CorpsFiche(QWidget):
-    def __init__(self, fiche: ClassFiche, model_dir: Optional[Path], parent=None):
+    def __init__(self, fiche: ClassFiche, model_dir: Optional[Path], parent=None,
+                 ouvrir_modele: Optional[Callable[[], None]] = None):
         super().__init__(parent)
         lay = QVBoxLayout(self)
         lay.setContentsMargins(18, 16, 18, 18)
@@ -248,6 +249,11 @@ class _CorpsFiche(QWidget):
             colonne.addWidget(_label(fiche.reconnaitre, "FicheTexte"))
         colonne.addWidget(_titre_bloc("Contexte technique"))
         colonne.addWidget(_label(self._contexte(fiche), "FicheTexte"))
+        if ouvrir_modele is not None:
+            lien = FicheButton(f"Architecture, entraînement et métriques d'évaluation de « {fiche.modele} »")
+            lien.setText("Fiche du modèle")
+            lien.clicked.connect(lambda *_: ouvrir_modele())
+            colonne.addWidget(lien, 0, Qt.AlignmentFlag.AlignLeft)
         if fiche.fiabilite:
             colonne.addWidget(_titre_bloc("Fiabilité mesurée au banc"))
             colonne.addWidget(_label(self._fiabilite(fiche), "FicheTexte"))
@@ -362,10 +368,12 @@ class ClassInfoDialog(QDialog):
         model_dirs: Optional[dict] = None,
         titre: str = "",
         parent=None,
+        models: Optional[dict] = None,
     ):
         super().__init__(parent)
         self._fiches = list(fiches)
         self._dirs = dict(model_dirs or {})
+        self._models = dict(models or {})  # nom → InstalledModel, pour « Fiche du modèle »
         self.setObjectName("ClassInfoDialog")
         self.setWindowTitle(titre or "Structure détectable")
         self.setMinimumSize(760, 560)
@@ -422,7 +430,14 @@ class ClassInfoDialog(QDialog):
         if not (0 <= row < len(self._fiches)):
             return
         f = self._fiches[row]
-        self._zone.setWidget(_CorpsFiche(f, self._dirs.get(f.modele_id)))
+        model = self._models.get(f.modele_id)
+        ouvrir = (lambda: self._ouvrir_modele(model)) if model is not None else None
+        self._zone.setWidget(_CorpsFiche(f, self._dirs.get(f.modele_id), ouvrir_modele=ouvrir))
+
+    def _ouvrir_modele(self, model) -> None:
+        """Fiche ⓘ du modèle de la classe affichée, par-dessus celle-ci."""
+        from .model_info_dialog import ModelInfoDialog  # différé, comme à l'étape 3
+        ModelInfoDialog(model, parent=self).exec()
 
 
 def ouvrir_fiche_entite(
@@ -430,8 +445,10 @@ def ouvrir_fiche_entite(
     model_dirs: Optional[dict],
     titre: str,
     parent=None,
+    models: Optional[dict] = None,
 ) -> None:
-    """Ouvre la fiche en modal. Rien à afficher → rien ne s'ouvre."""
+    """Ouvre la fiche en modal. Rien à afficher → rien ne s'ouvre. ``models``
+    (nom → ``InstalledModel``) active le lien « Fiche du modèle »."""
     if not fiches:
         return
-    ClassInfoDialog(fiches, model_dirs, titre, parent=parent).exec()
+    ClassInfoDialog(fiches, model_dirs, titre, parent=parent, models=models).exec()

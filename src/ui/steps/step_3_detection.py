@@ -721,7 +721,7 @@ class DetectionPage(QWidget):
         }
         couverture = self._coverage.get(entity_id)
         titre = couverture.entity.label if couverture else entity_id
-        ouvrir_fiche_entite(fiches, dirs, titre, parent=self)
+        ouvrir_fiche_entite(fiches, dirs, titre, parent=self, models=self._models)
 
     # ------------------------------------------------------------------
     def _open_model_info(self, model) -> None:

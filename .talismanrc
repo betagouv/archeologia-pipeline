@@ -117,7 +117,7 @@ fileignoreconfig:
 - filename: src/ui/steps/step_2_indices.py
   checksum: 5ec00269f0324ef96fd4c373275115c14f074f7f66944814d641fe7015d884f7
 - filename: src/ui/steps/step_3_detection.py
-  checksum: 8121e46f8c2a19f3cf3c4de2ecf2b118bb35d5495e1fac3bb0214ac88e4f058d
+  checksum: 750e67a47661ffe9b8381b92b338e7b1f3f452b3feeb27bd4167325658a711c7
 - filename: src/ui/steps/step_4_launch.py
   checksum: 4708f745d0c746a1711696595fdbf33250d63a3544c94d63975dd8cb2bcf0696
 - filename: src/ui/theme/v2.qss
@@ -127,7 +127,7 @@ fileignoreconfig:
 - filename: src/ui/wizard_dialog.py
   checksum: d5b82acaf671d70cfdf825b6c4d458573b15e66be22c66ee1b887d19699d733d
 - filename: tests/TESTS_MANUELS_QGIS.md
-  checksum: ceab55f46f9365e663a467fa6f320420a65df5e6a352cc2f623edf351f11b04d
+  checksum: 1cb9da1a8a2a308966fb262e48e16331a15c7538618a7bc590d5cb6895688d88
 - filename: tests/integration/test_existing_mnt_runner_finalize.py
   checksum: 059625c9d9ebc7107abcbd0339c12957be8c7e56918dcd458ce45f61e1e5f973
 - filename: tests/integration/test_existing_rvt_runner_isolation.py

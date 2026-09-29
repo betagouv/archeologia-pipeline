@@ -345,3 +345,90 @@ class TestFenetresAnalyse:
             sections = build_sections(self.CARD, args=args)
             arch = next(s for s in sections if s.title == "ARCHITECTURE")
             assert all(r.label != "Fenêtres d'analyse" for r in arch.rows)
+
+
+# ----------------------------------------------------------------------
+# Métriques d'évaluation (entrainement/evaluation*/, 2026-09-29)
+# ----------------------------------------------------------------------
+_G = {"seuil_f1max": 0.37, "P": 0.7379, "R": 0.6531, "F1": 0.6929, "AP50": 0.6515}
+
+
+def _eval(model_dir, dossier="evaluation", modeles=None, critere="iou",
+          images=("courbes_seuils_pr.png",)):
+    import json
+
+    d = model_dir / "entrainement" / dossier
+    d.mkdir(parents=True)
+    (d / "metriques_eval.json").write_text(json.dumps({
+        "critere": critere,
+        "iou": {"type": "masque", "seuil": 0.5},
+        "dataset": {"splits": ["valid", "test"], "n_images": 2187, "n_gt": 238394},
+        "modeles": modeles if modeles is not None else {model_dir.name: {"global": _G}},
+    }), encoding="utf-8")
+    for nom in images:
+        (d / nom).write_bytes(b"png")
+    return d
+
+
+def _metriques(sections):
+    return [s for s in sections if s.title.startswith("MÉTRIQUES D'ÉVALUATION")]
+
+
+class TestMetriquesEvaluation:
+    def test_sans_evaluation_pas_de_section(self, tmp_path):
+        assert _metriques(build_sections({"architecture": "x"}, model_dir=tmp_path)) == []
+        assert _metriques(build_sections({"architecture": "x"})) == []
+
+    def test_section_pliee_avec_resume_et_courbes(self, tmp_path):
+        d = _eval(tmp_path, images=("zones_et_masques.png", "courbes_seuils_pr.png",
+                                    "courbes_seuils_pr_3modeles.png", "f1_par_classe.png"))
+        (s,) = _metriques(build_sections({"architecture": "x"}, model_dir=tmp_path))
+        assert s.title == "MÉTRIQUES D'ÉVALUATION"
+        assert s.collapsed is True
+        texte = " | ".join(f"{r.label} : {r.value}" for r in s.rows)
+        assert "2 187 images" in texte.replace("\u202f", " ")
+        assert "238 394 objets" in texte.replace("\u202f", " ")
+        assert "0.37" in texte and "précision 0.74" in texte and "rappel 0.65" in texte
+        assert "F1 0.69" in texte and "AP50 0.65" in texte
+        # Ordre fixe, images connues seulement (pas les comparaisons *_3modeles).
+        assert [p for _, p in s.images] == [
+            str(d / "courbes_seuils_pr.png"), str(d / "f1_par_classe.png"),
+            str(d / "zones_et_masques.png")]
+        assert all(t for t, _ in s.images)
+
+    def test_bloc_du_modele_nomme_comme_le_dossier(self, tmp_path):
+        autre = {"P": 0.11, "R": 0.22, "F1": 0.15, "AP50": 0.1, "seuil_f1max": 0.5}
+        _eval(tmp_path, modeles={"ancien": {"global": autre}, tmp_path.name: {"global": _G}})
+        (s,) = _metriques(build_sections({}, model_dir=tmp_path))
+        assert "précision 0.74" in " ".join(r.value for r in s.rows)
+
+    def test_sinon_premier_bloc(self, tmp_path):
+        # ponctuelles_2cl_det_ld_v1 : le bloc s'appelle « …_ep34 ».
+        _eval(tmp_path, modeles={"mon_modele_ep34": {"global": _G}, "rival": {"global": {}}})
+        (s,) = _metriques(build_sections({}, model_dir=tmp_path))
+        assert "précision 0.74" in " ".join(r.value for r in s.rows)
+
+    def test_critere_couverture_en_seconde_section(self, tmp_path):
+        _eval(tmp_path)
+        _eval(tmp_path, dossier="evaluation_couverture", critere="couverture")
+        s1, s2 = _metriques(build_sections({}, model_dir=tmp_path))
+        assert s1.title == "MÉTRIQUES D'ÉVALUATION"
+        assert s2.title == "MÉTRIQUES D'ÉVALUATION — CRITÈRE COUVERTURE"
+        assert "couverture" in " ".join(r.value for r in s2.rows)
+
+    def test_json_illisible_garde_les_courbes(self, tmp_path):
+        d = _eval(tmp_path)
+        (d / "metriques_eval.json").write_text("{pas du json", encoding="utf-8")
+        (s,) = _metriques(build_sections({}, model_dir=tmp_path))
+        assert s.rows == ()
+        assert [p for _, p in s.images] == [str(d / "courbes_seuils_pr.png")]
+
+    def test_dossier_vide_pas_de_section(self, tmp_path):
+        (tmp_path / "entrainement" / "evaluation").mkdir(parents=True)
+        assert _metriques(build_sections({}, model_dir=tmp_path)) == []
+
+    def test_placee_apres_la_fiabilite_avant_les_notes(self, tmp_path):
+        _eval(tmp_path)
+        titres = [s.title for s in build_sections(
+            {"architecture": "x", "recommended_use": "y"}, model_dir=tmp_path)]
+        assert titres.index("MÉTRIQUES D'ÉVALUATION") == titres.index("NOTES & LIMITES") - 1

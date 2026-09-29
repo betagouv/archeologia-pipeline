@@ -766,3 +766,19 @@ dossier, donc deux runs de types différents cohabitent.
 - [ ] **36.14 Tableaux comparatifs** : les deux tableaux en tête de fiche affichent un point sur la ligne OPNS — la source transcrite (Kokalj 2025) n'évalue pas l'openness seule. Survoler une case donne bien « non évalué par la source ».
 - [ ] **36.15 Fiches voisines** : rouvrir les fiches VAT et PRISM → elles renvoient maintenant à OPNS comme produit cochable, et ne disent plus que l'openness n'existe pas seule.
 - [ ] **36.16 Qt6** : rejouer 36.2, 36.4 et 36.13 sous QGIS 4 (Qt6) — aucun `AttributeError` d'énuméré dans le journal Python (le combo de type est le point à surveiller).
+
+## 37. Métriques d'évaluation dans la fiche ⓘ d'un modèle (étape 3) ⭐ P0
+
+La fiche ⓘ d'un modèle montre désormais son évaluation : un résumé chiffré tiré
+de `entrainement/evaluation*/metriques_eval.json` et les courbes PNG produites par
+`courbes_eval.py`. Le ZIP embarque ces seuls fichiers de `entrainement/` —
+jamais `appariements.json`, les tfevents, les journaux ni les `comparaison_*/`.
+
+- [ ] **37.1 Section pliée** : étape 3, ⓘ du modèle tranchées → une section « ▸ MÉTRIQUES D'ÉVALUATION » **fermée**, entre « Fiabilité des détections » (ou « Regroupement ») et « Notes & limites ».
+- [ ] **37.2 Résumé** : la déplier → « Jeu d'évaluation : 294 images, 5 271 objets annotés (valid + test) », « Critère : recouvrement IoU ≥ 0.5 avec un objet annoté (masque) », « Au seuil F1-max (0.34) : précision 0.55 · rappel 0.51 · F1 0.53 · AP50 0.49 ».
+- [ ] **37.3 Courbes** : sous le résumé, « Précision, rappel et F1 selon le seuil de confiance » puis « Rappel par zone et qualité de la localisation », à la largeur de la fenêtre, **nettes** à 125 % / 150 % d'échelle d'écran (pas floues, pas de liseré).
+- [ ] **37.4 Taille réelle** : cliquer une courbe → elle s'ouvre dans la visionneuse d'images du système, en pleine résolution ; le curseur est une main au survol, l'infobulle dit « Cliquer pour ouvrir l'image en taille réelle ».
+- [ ] **37.5 Critère couverture** : tranchées et linéaires ont une **seconde** section « MÉTRIQUES D'ÉVALUATION — CRITÈRE COUVERTURE » (« couverture ≥ 0.5 des objets annotés : tolère une détection fragmentée ou décalée »). Les autres modèles n'en ont qu'une.
+- [ ] **37.6 Multi-classes** : ponctuelles et linéaires montrent aussi « F1 par classe », entre les deux autres courbes. Les ponctuelles affichent les chiffres de leur propre bloc (précision 0.70 · rappel 0.59), pas ceux du modèle comparé.
+- [ ] **37.7 Installation par ZIP** : installer le ZIP produit par `dev/package_plugin.py` dans un profil vierge → les sections et les courbes sont présentes ; le dossier `entrainement/` installé ne contient que `evaluation*/` avec des `.png` et `metriques_eval.json`.
+- [ ] **37.8 Qt6** : rejouer 37.1 à 37.4 sous QGIS 4 — aucun `AttributeError` dans le journal Python.

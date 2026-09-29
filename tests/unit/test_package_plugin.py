@@ -199,3 +199,51 @@ class TestZipSizeGuard:
         z = tmp_path / "main.zip"
         z.write_bytes(b"0" * 2048)
         pkg.enforce_zip_size_guard(z, max_mb=1)
+
+
+class TestEntrainementEvaluation:
+    # 2026-09-29 : la fiche ⓘ d'un modèle affiche ses courbes d'évaluation, donc le
+    # ZIP embarque entrainement/evaluation*/ (*.png + metriques_eval.json) et rien
+    # d'autre de entrainement/ — surtout pas appariements.json (jusqu'à 46 Mo).
+    _BASE = "data/models/m/entrainement"
+
+    def _chemin(self, tmp_path, rel, dossier=False):
+        p = tmp_path / rel
+        if dossier:
+            p.mkdir(parents=True, exist_ok=True)
+        else:
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_bytes(b"x")
+        return p
+
+    @pytest.mark.parametrize("rel", ["", "/evaluation", "/evaluation_couverture"])
+    def test_descend_dans_les_dossiers_d_evaluation(self, pkg, tmp_path, rel):
+        p = self._chemin(tmp_path, self._BASE + rel, dossier=True)
+        assert pkg.should_exclude(p, self._BASE + rel) is False
+
+    @pytest.mark.parametrize("rel", ["/comparaison_seg_v1", "/evaluation/sous_dossier"])
+    def test_ne_descend_pas_ailleurs(self, pkg, tmp_path, rel):
+        p = self._chemin(tmp_path, self._BASE + rel, dossier=True)
+        assert pkg.should_exclude(p, self._BASE + rel) is True
+
+    @pytest.mark.parametrize("rel", [
+        "/evaluation/courbes_seuils_pr.png",
+        "/evaluation/metriques_eval.json",
+        "/evaluation_couverture/zones_et_masques.png",
+    ])
+    def test_embarque_courbes_et_resume(self, pkg, tmp_path, rel):
+        p = self._chemin(tmp_path, self._BASE + rel)
+        assert pkg.should_exclude(p, self._BASE + rel) is False
+
+    @pytest.mark.parametrize("rel", [
+        "/evaluation/appariements.json",
+        "/evaluation/provenance_outils.txt",
+        "/evaluation/desktop.ini",
+        "/metrics.csv",
+        "/hparams.yaml",
+        "/events.out.tfevents.1789048309.x.0",
+        "/courbe_hors_evaluation.png",
+    ])
+    def test_exclut_le_reste(self, pkg, tmp_path, rel):
+        p = self._chemin(tmp_path, self._BASE + rel)
+        assert pkg.should_exclude(p, self._BASE + rel) is True

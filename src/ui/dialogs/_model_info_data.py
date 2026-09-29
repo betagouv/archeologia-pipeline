@@ -1,13 +1,16 @@
 """Logique pure du dialog d'info modèle — testable hors-QGIS.
 
-Pas d'import Qt, pas d'I/O. Le builder prend un ``model_card.yaml`` déjà
-parsé (et optionnellement un ``args.yaml`` pour les règles de clustering) et
-produit une liste de :class:`Section` à afficher. Cela isole tout ce qui peut
+Pas d'import Qt. Le builder prend un ``model_card.yaml`` déjà parsé (et
+optionnellement un ``args.yaml`` pour les règles de clustering) et produit une
+liste de :class:`Section` à afficher. Seule I/O : la lecture des métriques
+d'évaluation sous ``<model_dir>/entrainement/evaluation*/`` (testée sur tmp_path). Cela isole tout ce qui peut
 être testé sans QGIS et garde le widget Qt (``model_info_dialog.py``) minimal.
 """
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Dict, List, Mapping, Optional, Tuple
 
 
@@ -28,6 +31,7 @@ class Section:
     title: str
     rows: Tuple[Row, ...]
     collapsed: bool = False  # ouvert par défaut
+    images: Tuple[Tuple[str, str], ...] = ()  # (titre, chemin absolu), sous les lignes
 
 
 # ----------------------------------------------------------------------
@@ -337,12 +341,81 @@ def _build_notes(card: Mapping[str, Any]) -> Optional[Section]:
     return Section(title="NOTES & LIMITES", rows=tuple(rows), collapsed=True)
 
 
+# Évaluations canoniques produites par ``tools/courbes_eval.py`` (training-models) :
+# ``(dossier, suffixe de titre)``. Les ``comparaison_*/`` sont de l'historique de dev.
+_EVALUATIONS = (
+    ("evaluation", ""),
+    ("evaluation_couverture", " — CRITÈRE COUVERTURE"),
+)
+
+# Courbes affichées, dans cet ordre ; les autres PNG du dossier (``*_3modeles.png``…) non.
+_COURBES = (
+    ("courbes_seuils_pr.png", "Précision, rappel et F1 selon le seuil de confiance"),
+    ("f1_par_classe.png", "F1 par classe"),
+    ("zones_et_masques.png", "Rappel par zone et qualité de la localisation"),
+)
+
+
+def _nombre(n: Any) -> str:
+    """``238394`` → ``238 394`` (espace fine insécable, typographie française)."""
+    return f"{n:,}".replace(",", "\u202f") if isinstance(n, int) else str(n)
+
+
+def _lignes_metriques(m: Mapping[str, Any], model_name: str) -> List[Row]:
+    rows: List[Row] = []
+    ds = m.get("dataset") if isinstance(m.get("dataset"), Mapping) else {}
+    if ds.get("n_images") is not None:
+        splits = " + ".join(str(x) for x in ds.get("splits") or [])
+        rows.append(Row("Jeu d'évaluation",
+                        f"{_nombre(ds['n_images'])} images, {_nombre(ds.get('n_gt'))} objets annotés"
+                        + (f" ({splits})" if splits else "")))
+    iou = m.get("iou") if isinstance(m.get("iou"), Mapping) else {}
+    if m.get("critere") == "couverture":
+        rows.append(Row("Critère", f"couverture ≥ {iou.get('seuil', 0.5)} des objets annotés : "
+                                   "tolère une détection fragmentée ou décalée"))
+    elif iou:
+        rows.append(Row("Critère", f"recouvrement IoU ≥ {iou.get('seuil')} avec un objet annoté "
+                                   f"({iou.get('type')})"))
+    # Même règle que scripts/validate_models_metadata.py : le bloc nommé comme le
+    # dossier du modèle, sinon le premier publié (« …_ep34 » pour les ponctuelles).
+    modeles = m.get("modeles") if isinstance(m.get("modeles"), Mapping) else {}
+    bloc = modeles.get(model_name) or next(iter(modeles.values()), {})
+    g = bloc.get("global") if isinstance(bloc, Mapping) else None
+    if isinstance(g, Mapping) and all(isinstance(g.get(k), (int, float))
+                                      for k in ("seuil_f1max", "P", "R", "F1", "AP50")):
+        rows.append(Row(f"Au seuil F1-max ({g['seuil_f1max']:.2f})",
+                        f"précision {g['P']:.2f} · rappel {g['R']:.2f} · "
+                        f"F1 {g['F1']:.2f} · AP50 {g['AP50']:.2f}"))
+    return rows
+
+
+def _build_metriques(model_dir: Optional[Path]) -> List[Section]:
+    """MÉTRIQUES D'ÉVALUATION : une section pliée par évaluation canonique présente
+    (résumé de ``metriques_eval.json`` + courbes PNG). Absent ou illisible → omis."""
+    if model_dir is None:
+        return []
+    sections: List[Section] = []
+    for dossier, suffixe in _EVALUATIONS:
+        d = Path(model_dir) / "entrainement" / dossier
+        try:
+            m = json.loads((d / "metriques_eval.json").read_text(encoding="utf-8-sig"))
+        except (OSError, ValueError):
+            m = None
+        rows = _lignes_metriques(m, Path(model_dir).name) if isinstance(m, Mapping) else []
+        images = tuple((titre, str(d / nom)) for nom, titre in _COURBES if (d / nom).is_file())
+        if rows or images:
+            sections.append(Section(title="MÉTRIQUES D'ÉVALUATION" + suffixe,
+                                    rows=tuple(rows), collapsed=True, images=images))
+    return sections
+
+
 # ----------------------------------------------------------------------
 # API publique
 # ----------------------------------------------------------------------
 def build_sections(
     card: Mapping[str, Any],
     args: Optional[Mapping[str, Any]] = None,
+    model_dir: Optional[Path] = None,
 ) -> List[Section]:
     """Construit la liste ordonnée des sections à afficher dans le dialog.
 
@@ -355,7 +428,9 @@ def build_sections(
 
     Sections secondaires (fermées par défaut, conditionnelles) :
       4. REGROUPEMENT (DBSCAN)  — si ``args["clustering"]`` n'est pas vide
-      5. NOTES & LIMITES         — si ``recommended_use`` / ``known_limitations``
+      5. MÉTRIQUES D'ÉVALUATION  — si ``model_dir/entrainement/evaluation*/``
+         (résumé + courbes ; une section par critère)
+      6. NOTES & LIMITES         — si ``recommended_use`` / ``known_limitations``
          / ``inference_choices`` sont présents
     """
     if not isinstance(card, Mapping):
@@ -372,6 +447,7 @@ def build_sections(
     cluster = _build_clustering(args)
     if cluster is not None:
         sections.append(cluster)
+    sections.extend(_build_metriques(model_dir))
     notes = _build_notes(card)
     if notes is not None:
         sections.append(notes)

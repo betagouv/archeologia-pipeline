@@ -2,7 +2,8 @@
 
 Affiche le contenu du ``model_card.yaml`` (et le clustering du ``args.yaml``)
 sous forme de sections pliables : ARCHITECTURE, INDICE RVT D'ENTRAÎNEMENT,
-MNT D'ENTRAÎNEMENT, REGROUPEMENT (DBSCAN), NOTES & LIMITES. Un bouton
+MNT D'ENTRAÎNEMENT, REGROUPEMENT (DBSCAN), MÉTRIQUES D'ÉVALUATION (résumé +
+courbes de ``entrainement/evaluation*/``), NOTES & LIMITES. Un bouton
 « Ouvrir le dossier » lance l'explorateur de fichiers sur ``model_dir``.
 
 La logique de présentation (humanisation, alias non-canoniques, builders de
@@ -29,7 +30,13 @@ from qgis.PyQt.QtWidgets import (
 
 from ...app.services.model_orchestrator import InstalledModel, load_model_card
 
+from ..widgets.vignette import pixmap_ajuste
 from ._model_info_data import Section, build_sections
+
+# Largeur des courbes : celle du corps de section dans le dialog de 620 px.
+# ponytail: fixée à l'ouverture, ne suit pas un redimensionnement — le clic ouvre
+# l'image en taille réelle.
+_LARGEUR_COURBE = 540
 
 
 # ----------------------------------------------------------------------
@@ -96,6 +103,24 @@ class _SectionHeader(QFrame):
         super().mousePressEvent(ev)
 
 
+class _Courbe(QLabel):
+    """Courbe d'évaluation à la largeur du dialog, nette à toute densité d'écran ;
+    un clic l'ouvre en taille réelle dans la visionneuse du système (quatre
+    graphes sur 540 px restent petits)."""
+
+    def __init__(self, chemin: str, parent: Optional[QWidget] = None):
+        super().__init__(parent)
+        self._chemin = chemin
+        self.setPixmap(pixmap_ajuste(chemin, _LARGEUR_COURBE, dpr=self.devicePixelRatioF()))
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.setToolTip("Cliquer pour ouvrir l'image en taille réelle")
+
+    def mousePressEvent(self, ev):  # noqa: N802 (signature Qt)
+        if ev.button() == Qt.MouseButton.LeftButton:
+            QDesktopServices.openUrl(QUrl.fromLocalFile(self._chemin))
+        super().mousePressEvent(ev)
+
+
 class _SectionWidget(QFrame):
     """Section pliable : header + corps (lignes label/valeur)."""
 
@@ -134,6 +159,12 @@ class _SectionWidget(QFrame):
             rl.addWidget(label)
             rl.addWidget(value, 1)
             body_lay.addWidget(row_frame)
+        for titre, chemin in section.images:
+            t = QLabel(titre)
+            t.setObjectName("ModelInfoRowLabel")
+            t.setContentsMargins(0, 8, 0, 2)
+            body_lay.addWidget(t)
+            body_lay.addWidget(_Courbe(chemin))
         lay.addWidget(self._body)
         self._body.setVisible(self._expanded)
 
@@ -193,7 +224,7 @@ class ModelInfoDialog(QDialog):
         content_lay = QVBoxLayout(content)
         content_lay.setContentsMargins(20, 4, 20, 12)
         content_lay.setSpacing(6)
-        for section in build_sections(card, args):
+        for section in build_sections(card, args, model.model_dir):
             content_lay.addWidget(_SectionWidget(section))
         content_lay.addStretch(1)
         scroll.setWidget(content)

@@ -41,9 +41,8 @@ EXCLUDE_DIRS = {
     "output",
     "output_test",
     "temp",
-    # Traçabilité d'entraînement des modèles (metrics.csv, tfevents, evaluation/,
-    # comparaison_*/) — réservée au poste de dev, jamais chez l'archéologue.
-    "entrainement",
+    # (entrainement/ des modèles : règle à part dans should_exclude, qui n'en garde
+    # que les courbes d'évaluation.)
 }
 
 EXCLUDE_FILES = {
@@ -93,6 +92,18 @@ def should_exclude(path: Path, relative_path: str) -> bool:
     # (≠ .venv), .ruff_cache, .superpowers, .mypy_cache… (cf. AUDIT PKG-01/03/05).
     if path.is_dir() and (name.startswith(".") or name in EXCLUDE_DIRS):
         return True
+
+    # Traçabilité d'entraînement des modèles (metrics.csv, tfevents, comparaison_*/,
+    # appariements.json jusqu'à 46 Mo) : réservée au poste de dev, SAUF les courbes et
+    # le résumé des évaluations canoniques (evaluation/, evaluation_couverture/), que la
+    # fiche ⓘ du modèle affiche (_model_info_data._build_metriques, 2026-09-29).
+    parts = Path(relative_path).parts
+    if "entrainement" in parts:
+        sous = parts[parts.index("entrainement") + 1:]
+        if path.is_dir():
+            return len(sous) > 1 or (len(sous) == 1 and not sous[0].startswith("evaluation"))
+        return not (len(sous) == 2 and sous[0].startswith("evaluation")
+                    and (path.suffix == ".png" or name == "metriques_eval.json"))
 
     # Exclure les fichiers spécifiques
     if path.is_file() and name in EXCLUDE_FILES:

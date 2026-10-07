@@ -14,8 +14,9 @@ source de vérité, l'index est juste posé à côté.
 > LiDAR HD complète). Le ``.qix`` apporte le même R-tree pour ~2 Mo, sans toucher
 > au format livré par l'IGN.
 
-Outil **one-shot** de maintenance (sous ``dev/`` → exclu du ZIP). À relancer
-quand l'IGN livre une nouvelle version du shapefile. L'index est détecté au
+Outil **one-shot** de maintenance (sous ``dev/`` → exclu du ZIP), appelé en fin de
+``build_quadrillage_from_wfs.py`` (qui régénère le shapefile depuis le WFS IGN — le
+zip IGN d'origine n'existe plus). L'index est détecté au
 runtime via :func:`pipeline.ign.quadrillage_paths.resolve_quadrillage_path`
 (qui renvoie le shapefile).
 

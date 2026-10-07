@@ -756,8 +756,8 @@ data/                               # Ressources statiques (gitignored sauf icon
 │   └── cv_runner_onnx/
 │       ├── windows/cv_runner_onnx.exe
 │       └── linux/cv_runner_onnx
-└── quadrillage_france/             #   Grille IGN LiDAR HD (gitignored, ~180 MB)
-    ├── TA_diff_pkk_lidarhd_classe.shp   # shapefile des dalles (nom_pkk + url_telech)
+└── quadrillage_france/             #   Grille IGN LiDAR HD (gitignored, ~190 MB) — régénérée par dev/build_quadrillage_from_wfs.py
+    ├── TA_diff_pkk_lidarhd_classe.shp   # shapefile des dalles (nom_pkk + url_telech), depuis le WFS IGNF_LIDAR-HD_METADONNEE
     └── TA_diff_pkk_lidarhd_classe.qix   # index spatial R-tree (dev/build_quadrillage_index.py)
 
 dev/                                # Outillage développeur (exclu du ZIP distribué)
@@ -767,7 +767,8 @@ dev/                                # Outillage développeur (exclu du ZIP distr
 │   ├── export.txt                  #   ultralytics, torch, onnx (export modèles)
 │   └── build.txt                   #   pyinstaller, onnxruntime (compilation runner)
 ├── package_plugin.py               #   Packaging plugin → ZIP (PLUGIN_NAME="archeologia")
-├── build_quadrillage_index.py      #   Index spatial .qix du quadrillage IGN (one-shot)
+├── build_quadrillage_from_wfs.py   #   Quadrillage IGN à jour depuis le WFS Géoplateforme (avant chaque release)
+├── build_quadrillage_index.py      #   Index spatial .qix du quadrillage IGN (appelé par le précédent)
 ├── docs/
 │   ├── generate_doc.py             #   Générateur de la doc utilisateur (.docx)
 │   └── documentation_utilisateur_v1.docx

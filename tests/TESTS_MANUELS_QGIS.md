@@ -783,3 +783,18 @@ jamais `appariements.json`, les tfevents, les journaux ni les `comparaison_*/`.
 - [ ] **37.7 Installation par ZIP** : installer le ZIP produit par `dev/package_plugin.py` dans un profil vierge → les sections et les courbes sont présentes ; le dossier `entrainement/` installé ne contient que `evaluation*/` avec des `.png` et `metriques_eval.json`.
 - [ ] **37.8 Depuis la fiche de classe** : étape 3, « Fiche » d'une entité → sous « Contexte technique », un lien « Fiche du modèle » ouvre la fiche ⓘ du modèle **de la classe affichée** par-dessus ; la fermer ramène à la fiche de classe. En comparaison A/B (deux modèles cochés sur Cratères), chaque classe de la liste de gauche mène à son propre modèle.
 - [ ] **37.9 Qt6** : rejouer 37.1 à 37.4 et 37.8 sous QGIS 4 — aucun `AttributeError` dans le journal Python.
+
+## 38. Manuel intégré et aide contextuelle ⭐ P0
+
+Le manuel (`aide/*.md`) remplace la notice Word. Il est non modal : on le garde ouvert à côté de l'assistant.
+
+- [ ] **38.1 Menu** : Extensions → Archéolog'IA → **Manuel** ouvre la fenêtre « Manuel d'Archéolog'IA — v<version> » sur « Installer et mettre à jour » ; sommaire à gauche (10 chapitres, le dernier « Nouveautés »), texte à droite avec titres, tableaux et listes rendus.
+- [ ] **38.2 Bouton « ? »** : dans l'assistant, le bouton **?** de l'en-tête (et **F1**) ouvre le chapitre de l'étape affichée — étape 2 → « Étape 2 · Produits », étape 3 → « Étape 3 · Détection », étape 4 (y compris pendant un run) → « Étape 4 · Lancer et suivre ». Rouvrir depuis une autre étape change le chapitre sans ouvrir une seconde fenêtre.
+- [ ] **38.3 Sommaire** : cliquer une section (ex. Étape 2 › « Tuilage et marge ») fait défiler le texte jusqu'au titre ; cliquer un chapitre revient en haut.
+- [ ] **38.4 Liens internes** : dans « Dépannage › Le dépôt ne s'affiche pas connecté », le lien « le proxy » ouvre « Installer et mettre à jour » sur la section « Réseau d'entreprise : le proxy » et le sommaire suit. Dans « Dépannage › Signaler un problème », le lien GitHub s'ouvre dans le navigateur.
+- [ ] **38.5 Recherche** : chapitre « Vos résultats dans QGIS », taper `fiabilite_pct` puis Entrée sélectionne l'occurrence ; Entrée à nouveau passe à la suivante et reboucle en fin de chapitre.
+- [ ] **38.6 Nouveautés** : le chapitre liste les versions du changelog de `metadata.txt`, la plus récente en tête, une puce par ligne.
+- [ ] **38.7 Export PDF** : « Exporter en PDF » propose `manuel-archeologia-v<version>.pdf` ; le fichier s'ouvre et contient tous les chapitres, tableaux compris.
+- [ ] **38.8 Renvoi du journal** : lancer un run MNT existant sur un petit raster avec un rayon LD trop grand → la ligne ⚠ du journal se termine par « · voir Manuel › Dépannage › « Le noyau atteint N pixels » », et cette rubrique existe dans le manuel.
+- [ ] **38.9 Installation par ZIP** : dans un profil vierge, le ZIP produit par `dev/package_plugin.py` contient `aide/*.md` (et pas `docs/`) ; le Manuel s'ouvre et affiche les 10 chapitres.
+- [ ] **38.10 Qt6** : rejouer 38.1 à 38.5 et 38.7 sous QGIS 4 — aucun `AttributeError` dans le journal Python ; fenêtre, sommaire et rendu identiques.

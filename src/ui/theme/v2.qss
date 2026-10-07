@@ -733,3 +733,17 @@ QTabWidget::pane { border: none; background: #f0f0f0; }
 #VisuRailList QScrollBar::sub-line:vertical { height: 0; }
 #VisuRailList QScrollBar::add-page:vertical,
 #VisuRailList QScrollBar::sub-page:vertical { background: transparent; }
+
+/* ---- Manuel intégré (aide_dialog) ---- */
+#HelpButton { background: transparent; border: 1px solid #c4c4c4; color: #2c2c2c; font-weight: bold; }
+#HelpButton:hover { background: #e8e8e8; border: 1px solid #a0a0a0; }
+#AideBarre { background: #ffffff; border-bottom: 1px solid #c4c4c4; }
+#AideRecherche { padding: 3px 6px; border: 1px solid #c4c4c4; border-radius: 3px; background: #ffffff; }
+#AideSommaire {
+    background: #f5f5f5; border: none; border-right: 1px solid #c4c4c4;
+    font-size: 11px; color: #2c2c2c; outline: none;
+}
+#AideSommaire::item { padding: 5px 6px; }
+#AideSommaire::item:selected { background: #d6e6f4; color: #1d5a96; }
+#AideSommaire::item:hover { background: #e8e8e8; }
+#AideTexte { background: #ffffff; padding: 12px 18px; }

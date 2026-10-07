@@ -11,7 +11,13 @@ import json
 from pathlib import Path
 
 from qgis.PyQt.QtCore import QSize, Qt, QTimer
-from qgis.PyQt.QtGui import QIcon
+from qgis.PyQt.QtGui import QIcon, QKeySequence
+
+# QShortcut a changé de module entre Qt5 (QtWidgets) et Qt6 (QtGui).
+try:
+    from qgis.PyQt.QtGui import QShortcut
+except ImportError:  # pragma: no cover - Qt5
+    from qgis.PyQt.QtWidgets import QShortcut
 from qgis.PyQt.QtWidgets import (
     QDialog,
     QFileDialog,
@@ -34,6 +40,8 @@ from ..app.services.indices_model import product, rvt_keys
 from ..app.services.source_modes import mode_info
 from ..app.services.config_store import ConfigStore
 from ..config.config_manager import ConfigManager
+from ..app.services.aide import AIDE_DIRNAME, CHAPITRE_PAR_ETAPE
+from .dialogs.aide_dialog import ouvrir_aide
 from .dialogs.config_dialogs import ConfigsDialog, demander_nom
 from .icons import colored_icon, colored_pixmap
 from .steps.step_1_source import SourcePage
@@ -256,12 +264,31 @@ class WizardDialog(QDialog):
         pl.addWidget(pill_text)
         self._review_pill.setVisible(False)
 
+        # Manuel intégré : ouvre le chapitre de l'étape courante (F1 aussi).
+        # Un « ? » plutôt qu'un libellé : la barre est déjà pleine à 980 px.
+        aide_btn = QPushButton("?")
+        aide_btn.setObjectName("HelpButton")
+        aide_btn.setToolTip("Aide sur cette étape (F1)")
+        aide_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        aide_btn.setFixedWidth(28)
+        aide_btn.clicked.connect(self._ouvrir_aide)
+        QShortcut(QKeySequence(QKeySequence.StandardKey.HelpContents), self, self._ouvrir_aide)
+
         layout.addLayout(titles)
         layout.addStretch(1)
         layout.addWidget(self._review_pill)
+        layout.addWidget(aide_btn)
         layout.addWidget(load_btn)
         layout.addWidget(save_btn)
         return bar
+
+    def _ouvrir_aide(self) -> None:
+        """Le manuel, ouvert sur le chapitre de l'étape affichée."""
+        ouvrir_aide(
+            self._plugin_root / AIDE_DIRNAME,
+            parent=self,
+            cle=CHAPITRE_PAR_ETAPE.get(self._current_step, ""),
+        )
 
     def _build_progress_liseret(self) -> QWidget:
         self._progress = QProgressBar()

@@ -35,6 +35,7 @@ from qgis.PyQt.QtWidgets import (
 
 from ..app.progress_reporter import USER_INFO
 from ..app.progress_stages import STAGE_LABELS, build_stage_sequence
+from ..app.services.aide import rubrique_depannage
 from .icons import colored_icon
 from .layer_loader import load_result_layers, purge_output_dir_layers
 from .log_bridge import QtLogEmitter, QtLogHandler
@@ -595,6 +596,14 @@ class RunView(QWidget):
         color = _LOG_LINE_COLORS.get(cat)
         if color:
             body = f'<span style="color:{color};">{body}</span>'
+            # Renvoi vers le manuel intégré (bouton « ? » / F1 → Dépannage) :
+            # un QPlainTextEdit n'a pas de lien cliquable, le titre suffit.
+            rubrique = rubrique_depannage(msg)
+            if rubrique:
+                body += (
+                    '<span style="color:#7d786c;">&nbsp;&nbsp;· voir Manuel › Dépannage › '
+                    f"« {html.escape(rubrique)} »</span>"
+                )
         stamp = f'<span style="color:#7d786c;">{ts}</span>&nbsp;&nbsp;' if ts else ""
         self._journal.appendHtml(stamp + body)
 

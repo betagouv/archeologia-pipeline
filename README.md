@@ -4,6 +4,7 @@ Plugin QGIS pour exécuter un pipeline de traitement LiDAR et produire des raste
 
 - Nom du plugin : **ArchéologIA**
 - Version : **0.13.1**
+- Documentation utilisateur : le **manuel intégré** (menu Extensions → Archéolog'IA → Manuel, bouton « ? » ou F1 dans l'assistant), dont la source est `aide/*.md`, livrée avec le plugin. Ce README est la documentation développeur.
 - QGIS : **3.34+ (Qt5) ou 4.x (Qt6)** — base de code unique
 
 ## Fonctionnalités
@@ -97,7 +98,7 @@ Ces dépendances sont disponibles dans l'environnement QGIS standard.
    - `Profils utilisateurs` → `Ouvrir le dossier du profil actif`
 3. Ouvrir le dossier :
    - `python/plugins`
-4. Dézipper le ZIP `ArcheologIA_v<version>.zip` (ex. `ArcheologIA_v0.7.0.zip`) : on obtient le dossier :
+4. Dézipper le ZIP `archeologia.<version>.zip` : on obtient le dossier :
    - `archeologia`
 5. Copier le dossier `archeologia` dans `python/plugins`.
 6. Fermer puis relancer QGIS.
@@ -760,6 +761,8 @@ data/                               # Ressources statiques (gitignored sauf icon
     ├── TA_diff_pkk_lidarhd_classe.shp   # shapefile des dalles (nom_pkk + url_telech)
     └── TA_diff_pkk_lidarhd_classe.qix   # index spatial R-tree (dev/build_quadrillage_index.py)
 
+aide/                               # Manuel intégré : un chapitre Markdown par écran (livré dans le ZIP, tests de contrat dans tests/unit/test_aide.py)
+
 dev/                                # Outillage développeur (exclu du ZIP distribué)
 ├── requirements.txt                #   Chapeau : inclut les 3 fichiers ci-dessous
 ├── requirements/
@@ -768,9 +771,6 @@ dev/                                # Outillage développeur (exclu du ZIP distr
 │   └── build.txt                   #   pyinstaller, onnxruntime (compilation runner)
 ├── package_plugin.py               #   Packaging plugin → ZIP (PLUGIN_NAME="archeologia")
 ├── build_quadrillage_index.py      #   Index spatial .qix du quadrillage IGN (one-shot)
-├── docs/
-│   ├── generate_doc.py             #   Générateur de la doc utilisateur (.docx)
-│   └── documentation_utilisateur_v1.docx
 └── runner_onnx/
     ├── build.py                    #   Compilation runner ONNX (PyInstaller)
     ├── export_to_onnx.py           #   Export modèles → ONNX
@@ -1007,7 +1007,7 @@ Le script :
 
 ### Tâche 4 — Packager le plugin (ZIP)
 
-Crée un fichier `ArcheologIA_v<version>.zip` (le nom reflète la version lue dans `metadata.txt`, ex. `ArcheologIA_v0.7.0.zip`) prêt à être installé dans QGIS via *Installer depuis un ZIP*.
+Crée un fichier `archeologia.<version>.zip` (le nom reflète la version lue dans `metadata.txt`) prêt à être installé dans QGIS via *Installer depuis un ZIP* ou déposé sur le dépôt.
 
 ```bash
 python dev/package_plugin.py

@@ -9,6 +9,7 @@ class ArcheologiaPipelinePlugin:
     def __init__(self, iface):
         self.iface = iface
         self.action = None
+        self.help_action = None
         self.dialog = None
 
     def initGui(self):
@@ -17,12 +18,19 @@ class ArcheologiaPipelinePlugin:
         self.action.triggered.connect(self.run)
         self.iface.addPluginToMenu(self.tr("Archéolog'IA"), self.action)
         self.iface.addToolBarIcon(self.action)
+        # Manuel intégré (aide/*.md), aussi accessible par « ? » / F1 dans l'assistant.
+        self.help_action = QAction(self.tr("Manuel"), self.iface.mainWindow())
+        self.help_action.triggered.connect(self.open_help)
+        self.iface.addPluginToMenu(self.tr("Archéolog'IA"), self.help_action)
 
     def unload(self):
         if self.action is not None:
             self.iface.removeToolBarIcon(self.action)
             self.iface.removePluginMenu(self.tr("Archéolog'IA"), self.action)
             self.action = None
+        if self.help_action is not None:
+            self.iface.removePluginMenu(self.tr("Archéolog'IA"), self.help_action)
+            self.help_action = None
         if self.dialog is not None:
             # Rechargement/désinstallation pendant un run : sans annulation,
             # le thread orphelin continuerait d'écrire avec l'ancien code
@@ -44,6 +52,12 @@ class ArcheologiaPipelinePlugin:
         self.dialog.show()
         self.dialog.raise_()
         self.dialog.activateWindow()
+
+    def open_help(self):
+        from pathlib import Path
+        from .src.ui.dialogs.aide_dialog import ouvrir_aide
+
+        ouvrir_aide(Path(plugin_dir) / "aide", parent=self.iface.mainWindow())
 
     def tr(self, message):
         return QCoreApplication.translate('ArcheologiaPipelinePlugin', message)

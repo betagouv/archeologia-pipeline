@@ -268,7 +268,10 @@ class ProfilScoresWidget(QWidget):
         # est écrit sous l'axe. Un seuil mobile ne change pas l'échelle (la
         # figure ne saute pas quand on règle).
         au_dessus = [b.total for b in bandes if b.hi > self._p.seuil + 1e-9]
-        maximum = max(au_dessus or [b.total for b in bandes]) or 1
+        maximum = max(au_dessus) if au_dessus and max(au_dessus) > 0 else max(b.total for b in bandes)
+        # Rien au-dessus du seuil (zone sans objet, ou tout écarté) : l'échelle se cale
+        # alors sur toutes les bandes, sinon un axe à « 1 » rognait tout.
+        maximum = maximum or 1
         largeur_trace = w - gauche - droite
         hauteur_trace = self.height() - haut - bas
 

@@ -22,6 +22,7 @@ from src.app.services.profil_scores import (
     profil_pour_classe,
     profils_par_zone,
     seuil_f1max,
+    zones_sans_objet,
 )
 
 CATS = (
@@ -299,6 +300,12 @@ def test_rappel_par_zone_au_critere_objet(tmp_path):
     (d / "entrainement" / "evaluation" / "metriques_eval.json").write_text(json.dumps(ev), encoding="utf-8")
     zones = profils_par_zone(d, "cratere", CATS)
     assert [(z.zone, z.n_gt, z.critere) for z in zones] == [("a/1_x", 50, "iou"), ("b/2_y", 20, "iou")]
+    # une zone sans objet annoté (n_gt = 0) n'est pas un petit multiple, la fiche la nomme
+    ev2 = json.loads((d / "entrainement" / "evaluation" / "metriques_eval.json").read_text(encoding="utf-8"))
+    ev2["modeles"]["cr"]["par_zone_classe"]["c/3_vide"] = {"cratere": {"n_gt": 0, "bandes": _bandes([(0.1, 0, 30)])}}
+    (d / "entrainement" / "evaluation" / "metriques_eval.json").write_text(json.dumps(ev2), encoding="utf-8")
+    assert [z.zone for z in profils_par_zone(d, "cratere", CATS)] == ["a/1_x", "b/2_y"]
+    assert zones_sans_objet(d, "cratere") == ["c/3_vide"]
     assert precision_rappel(zones[0], 0.5) == (5 / 6, 5 / 50)      # au-dessus de 0,5 : 5 vraies, 1 fausse
     # équilibre F1 de la zone : à 0,30 F1 = 2·45/(45+11+50) = 0,85, à 0,60 F1 = 2·5/(5+1+50) = 0,18
     assert zones[0].seuil_f1max == 0.3 and zones[1].seuil_f1max == 0.3

@@ -549,19 +549,28 @@ def profil_pour_classe(
                    n_gt=sum(ngt.values()) if ngt else None, critere=critere_evaluation(model_dir, source))
 
 
+def zones_sans_objet(model_dir: Path, classe: str) -> List[str]:
+    """Les zones d'évaluation où ``classe`` n'a **aucun objet annoté** (``n_gt`` = 0) :
+    on n'y mesure que des fausses détections, ni rappel ni fiabilité — elles ne
+    figurent pas parmi les petits multiples, la fiche dit lesquelles."""
+    source, zones = _source_et_zones(model_dir, classe)
+    return [z for z, n in charger_ngt_par_zone(model_dir, classe, source, zones).items() if n == 0]
+
+
 def profils_par_zone(
     model_dir: Path, classe: str, categories: Sequence[Categorie], pas: float = PAS_DEFAUT
 ) -> List[Profil]:
     """Un profil par zone d'évaluation (petits multiples), avec les coupures de la
-    classe ; vide s'il y a moins de deux zones — une seule n'apprend rien de plus
-    que le profil global."""
+    classe ; sans les zones où la classe n'a aucun objet annoté (``n_gt`` = 0 :
+    rien à mesurer, cf. :func:`zones_sans_objet`) ; vide s'il reste moins de deux
+    zones — une seule n'apprend rien de plus que le profil global."""
     if not categories:
         return []
     source, zones = _source_et_zones(model_dir, classe)
-    par_zone = charger_bandes_par_zone(model_dir, classe, source, zones)
+    ngt = charger_ngt_par_zone(model_dir, classe, source, zones)
+    par_zone = [(z, b) for z, b in charger_bandes_par_zone(model_dir, classe, source, zones) if ngt.get(z) != 0]
     if len(par_zone) < 2:
         return []
-    ngt = charger_ngt_par_zone(model_dir, classe, source, zones)
     critere = critere_evaluation(model_dir, source)
     # Point d'équilibre F1 de la zone : recalculé depuis ses bandes et ses objets annotés
     # (critère objet seulement — le fichier ne le donne pas par zone).

@@ -41,6 +41,7 @@ from qgis.PyQt.QtWidgets import (
 from ...app.services.class_fiche import ClassFiche
 from ...app.services.fiabilite import pct
 from ..widgets.vignette import FicheButton, pixmap_ajuste
+from ...app.services.profil_scores import libelle_zone, zones_sans_objet
 from ..widgets.profil_scores import figure_profil, figures_par_zone, ligne_essai_seuil
 
 _VIGNETTE_MAX = 320  # côté max de l'aperçu, en px logiques
@@ -298,6 +299,15 @@ class _CorpsFiche(QWidget):
             lay.addWidget(ligne_essai_seuil(figure, [f for _n, f in zones], seuil))
             if zones:
                 lay.addWidget(_titre_bloc("Par zone d'évaluation"))
+                exclues = zones_sans_objet(model_dir, fiche.nom) if model_dir is not None else []
+                if exclues:
+                    noms = ", ".join(libelle_zone(z) for z in exclues)
+                    lay.addWidget(_label(
+                        f"{len(exclues)} zone{'s' if len(exclues) > 1 else ''} sans objet annoté de cette classe "
+                        f"({noms}) : on n'y compte que des fausses détections, rien à mesurer — non affichée"
+                        f"{'s' if len(exclues) > 1 else ''}.",
+                        "FicheLegende",
+                    ))
                 grille = QGridLayout()
                 grille.setHorizontalSpacing(14)
                 grille.setVerticalSpacing(6)

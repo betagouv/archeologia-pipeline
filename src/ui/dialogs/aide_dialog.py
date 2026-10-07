@@ -33,7 +33,14 @@ from qgis.PyQt.QtWidgets import (
     QVBoxLayout,
 )
 
-from ...app.services.aide import Chapitre, charger_chapitres, chapitre, resoudre_cible, slug
+from ...app.services.aide import (
+    Chapitre,
+    charger_chapitres,
+    chapitre,
+    est_image,
+    resoudre_cible,
+    slug,
+)
 
 try:
     from ...app.plugin_metadata import get_plugin_version
@@ -190,13 +197,18 @@ class AideDialog(QDialog):
             self._texte.verticalScrollBar().setValue(0)
 
     def _ajuster_images(self) -> None:
-        """Ramène chaque image à la largeur de la zone de lecture.
+        """Ramène chaque image à la largeur de lecture, lissée et nette.
 
-        Le Markdown ne sait pas dimensionner une image et Qt l'affiche à sa
-        taille en pixels : une capture de l'assistant (980 px) déborderait avec
-        une barre horizontale. Une image plus étroite garde sa taille.
+        Qt affiche une image Markdown à sa taille en pixels et la redimensionne
+        au dessin sans lissage : une capture de 980 px débordait, puis, ramenée
+        à la largeur, pixelisait. Même discipline que ``pixmap_ajuste`` des
+        vignettes : on rastérise nous-mêmes à ``largeur × dpr`` pixels physiques
+        avec lissage, on pose le ratio d'écran et on enregistre le résultat comme
+        ressource du document sous le nom de l'image. Un clic sur l'image l'ouvre
+        en taille réelle (cf. ``_sur_lien``).
         """
         doc = self._texte.document()
+        dpr = self.devicePixelRatioF()
         # Largeur disponible = zone de lecture moins le padding QSS (18 px de
         # chaque côté), les marges du document et le retrait d'une image placée
         # dans une liste (un niveau = indentWidth, 40 px) — sinon une barre
@@ -214,10 +226,20 @@ class AideDialog(QDialog):
                 fmt = frag.charFormat()
                 if fmt.isImageFormat():
                     img_fmt = fmt.toImageFormat()
-                    image = QImage(str(self._dossier / img_fmt.name()))
-                    if not image.isNull() and image.width() > largeur_max:
-                        img_fmt.setWidth(largeur_max)
-                        img_fmt.setHeight(image.height() * largeur_max / image.width())
+                    nom = img_fmt.name()
+                    image = QImage(str(self._dossier / nom))
+                    if not image.isNull():
+                        largeur = min(image.width(), largeur_max)
+                        rendu = image.scaledToWidth(
+                            max(1, round(largeur * dpr)),
+                            Qt.TransformationMode.SmoothTransformation,
+                        )
+                        rendu.setDevicePixelRatio(dpr)
+                        doc.addResource(
+                            QTextDocument.ResourceType.ImageResource, QUrl(nom), rendu
+                        )
+                        img_fmt.setWidth(largeur)
+                        img_fmt.setHeight(image.height() * largeur / image.width())
                         curseur = QTextCursor(doc)
                         curseur.setPosition(frag.position())
                         curseur.setPosition(
@@ -269,7 +291,13 @@ class AideDialog(QDialog):
             return
         # setOpenLinks(False) : l'URL arrive telle qu'écrite dans le Markdown
         # (« etape-2-produits.md#reglages » ou « #reglages »), sans résolution.
-        cle, ancre = resoudre_cible(url.toString())
+        cible = url.toString()
+        if est_image(cible):
+            # Une capture liée à elle-même : taille réelle dans la visionneuse
+            # du système, comme les courbes de la fiche ⓘ d'un modèle.
+            QDesktopServices.openUrl(QUrl.fromLocalFile(str(self._dossier / cible)))
+            return
+        cle, ancre = resoudre_cible(cible)
         self.ouvrir(cle or self._cle, ancre)
 
     def _chercher(self) -> None:

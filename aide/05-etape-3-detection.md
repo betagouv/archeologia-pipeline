@@ -14,7 +14,7 @@ Les entités sont groupées par morphologie. Les pastilles de filtre, au-dessus,
 
 La liste dépend des modèles installés : une entité n'apparaît que si un modèle la couvre.
 
-![Étape 3 : les entités par morphologie, avec vignette, fiche et indice requis](img/etape3-detection.png)
+[![Étape 3 : les entités par morphologie, avec vignette, fiche et indice requis](img/etape3-detection.png)](img/etape3-detection.png)
 
 ## La carte d'une entité
 

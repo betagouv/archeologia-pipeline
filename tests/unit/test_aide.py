@@ -102,9 +102,10 @@ def test_nouveautes_echappe_le_texte_brut_du_changelog(tmp_path):
 
 def test_liens_internes_et_images():
     md = ("[a](etape-2-produits.md#reglages) [b](#ici) [c](glossaire.md) "
-          "[ext](https://x.y/z) ![img](img/capture.png) [m](mailto:a@b.c)")
+          "[ext](https://x.y/z) ![img](img/capture.png) [m](mailto:a@b.c) "
+          "[![agrandir](img/grande.png)](img/grande.png)")
     assert liens_internes(md) == [("etape-2-produits", "reglages"), ("", "ici"), ("glossaire", "")]
-    assert images(md) == ["img/capture.png"]
+    assert images(md) == ["img/capture.png", "img/grande.png"]
     assert resoudre_cible("x.md#y") == ("x", "y")
 
 

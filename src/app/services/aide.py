@@ -147,11 +147,20 @@ def nouveautes_markdown(metadata_path: Path) -> str:
     return "\n".join(lignes).rstrip() + "\n" if len(lignes) > 2 else ""
 
 
+def est_image(cible: str) -> bool:
+    return cible.lower().endswith((".png", ".jpg", ".jpeg", ".gif"))
+
+
 def liens_internes(markdown: str) -> List[Tuple[str, str]]:
-    """``(cle_chapitre, ancre)`` de chaque lien interne ; ``cle`` vide = même chapitre."""
+    """``(cle_chapitre, ancre)`` de chaque lien interne ; ``cle`` vide = même chapitre.
+
+    Une image liée à elle-même (``[![…](img/x.png)](img/x.png)``, ouverture en
+    taille réelle) n'est pas un lien de chapitre : elle est contrôlée par
+    :func:`images`.
+    """
     out: List[Tuple[str, str]] = []
     for cible in _LIEN.findall(markdown):
-        if re.match(r"^[a-z]+:", cible):   # http:, https:, mailto: → externe
+        if re.match(r"^[a-z]+:", cible) or est_image(cible):   # externe, ou image
             continue
         out.append(resoudre_cible(cible))
     return out

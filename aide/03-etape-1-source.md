@@ -2,7 +2,7 @@
 
 La frise du haut représente la chaîne de traitement. Cliquez le point d'entrée qui correspond à vos données : il fixe le **mode**, rappelé dans un bandeau, et le champ **Source** s'adapte. Il n'y a pas de liste déroulante de modes.
 
-![Étape 1 : la frise des points d'entrée, le bandeau du mode, la source et le dossier de sortie](img/etape1-source.png)
+[![Étape 1 : la frise des points d'entrée, le bandeau du mode, la source et le dossier de sortie](img/etape1-source.png)](img/etape1-source.png)
 
 ## Les quatre modes
 

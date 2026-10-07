@@ -36,6 +36,8 @@ from qgis.PyQt.QtWidgets import (
 from ..app.progress_reporter import USER_INFO
 from ..app.progress_stages import STAGE_LABELS, build_stage_sequence
 from ..app.services.aide import AIDE_DIRNAME, CLE_DEPANNAGE, resoudre_cible, rubrique_depannage, slug
+from ..app.services.bilan_fiabilite import collecter as collecter_bilan
+from .widgets.bilan_fiabilite import BilanFiabiliteWidget, legende_niveaux
 from .icons import colored_icon
 from .layer_loader import load_result_layers, purge_output_dir_layers
 from .log_bridge import QtLogEmitter, QtLogHandler
@@ -249,6 +251,9 @@ class RunView(QWidget):
         # bandeau de fin (écrite par le thread worker, lue à run_enabled).
         self._level_counts = {"warn": 0, "err": 0}
         self._run_outcome = "ok"
+        # Bilan de fiabilité du run (lignes pures), lu au chargement des couches,
+        # affiché en barres sous le bandeau de fin.
+        self._bilan: list = []
 
         # ── Logger + pont Qt ──
         self._logger = logging.getLogger("archeologia_pipeline")
@@ -296,6 +301,20 @@ class RunView(QWidget):
         self._end_banner.setWordWrap(True)
         self._end_banner.setVisible(False)
         root.addWidget(self._end_banner)
+        # Bilan de fiabilité (2026-10-08) : « par où commencer » — une barre par
+        # entité, du plus sûr au plus douteux. Visible seulement à la fin d'un run
+        # qui a produit des détections avec fiabilité.
+        self._bilan_box = QFrame()
+        self._bilan_box.setObjectName("RunBilanBox")
+        bl = QVBoxLayout(self._bilan_box)
+        bl.setContentsMargins(10, 6, 10, 8)
+        bl.setSpacing(4)
+        bilan_titre = QLabel("Bilan de fiabilité — par où commencer")
+        bilan_titre.setObjectName("RunJournalTitle")
+        bl.addWidget(bilan_titre)
+        self._bilan_layout = bl
+        self._bilan_box.setVisible(False)
+        root.addWidget(self._bilan_box)
 
         # En-tête : point d'activité pulsé + « Étape N/M · <étape> » + sous-ligne
         # (sous-étape courante) + chrono total à droite. Le compteur live
@@ -557,6 +576,8 @@ class RunView(QWidget):
         self._run_elapsed_label.setText("")
         self._elapsed_caption.setVisible(False)
         self._end_banner.setVisible(False)
+        self._bilan = []
+        self._afficher_bilan()
         self._update_header()
         self._clear_journal()
         self._step_started = [None] * len(self._stage_ids)
@@ -805,6 +826,28 @@ class RunView(QWidget):
         self._end_banner.style().unpolish(self._end_banner)
         self._end_banner.style().polish(self._end_banner)
         self._end_banner.setVisible(True)
+        self._afficher_bilan()
+
+    def _afficher_bilan(self) -> None:
+        """Reconstruit les barres du bilan (ou cache le cadre s'il n'y a rien)."""
+        lay = self._bilan_layout
+        while lay.count() > 1:                      # garde le titre
+            item = lay.takeAt(1)
+            w = item.widget()
+            if w is not None:
+                w.setParent(None)
+                w.deleteLater()
+        if not self._bilan:
+            self._bilan_box.setVisible(False)
+            return
+        lay.addWidget(BilanFiabiliteWidget(self._bilan))
+        niveaux = " · ".join(lab for _c, lab in legende_niveaux(self._bilan))
+        legende = QLabel(f"Segments du plus sûr au plus douteux : {niveaux.lower()} — "
+                         "survolez une barre pour les effectifs ; même bilan dans le journal et metadata.json.")
+        legende.setObjectName("RunHeaderSub")
+        legende.setWordWrap(True)
+        lay.addWidget(legende)
+        self._bilan_box.setVisible(True)
 
     def _on_run_enabled(self, enabled: bool) -> None:
         if not enabled:
@@ -882,6 +925,12 @@ class RunView(QWidget):
             )
         finally:
             QApplication.restoreOverrideCursor()
+        # Bilan de fiabilité du run (sidecars, lecture pure) pour la vue de fin.
+        out_dir = self._output_dir()
+        try:
+            self._bilan = collecter_bilan(out_dir / "detections", cv.get("runs")) if out_dir else []
+        except Exception:  # noqa: BLE001 — jamais bloquant
+            self._bilan = []
         # Écriture du .qgs différée d'un tick d'event-loop : l'UI repeint les
         # couches chargées avant la seconde passe (UIX-04).
         QTimer.singleShot(

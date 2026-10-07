@@ -365,6 +365,17 @@ class UserNarrator:
                 f"{_human_count(n_detections, 'zone détectée', 'zones détectées')}"
             )
 
+    def bilan_fiabilite(self, phrases) -> None:
+        """Bilan de fiabilité de fin de run (2026-10-08) : une ligne par entité,
+        effectifs par niveau du plus sûr au plus douteux — « par où je commence ? ».
+        Silencieux sans ligne (pas de détection, ou modèle sans fiabilité)."""
+        phrases = [p for p in (phrases or []) if p]
+        if not phrases:
+            return
+        self._r.user_info("📊 Bilan de fiabilité — par où commencer :")
+        for p in phrases:
+            self._r.user_info(f"   • {p}")
+
     # ------------------------------------------------------------------
     # Finalisation
     # ------------------------------------------------------------------

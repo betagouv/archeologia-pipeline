@@ -266,8 +266,26 @@ def journal(app, sortie: Path, log) -> int:
     n_liens = html_journal.count('href="manuel:')
     log("journal : lignes =", v._journal.document().blockCount(), "| liens vers le manuel =", n_liens, "(attendu 2)")
     log("  texte copié :", v._journal.toPlainText().replace("\n", " ¶ ")[:300])
+    # Bilan de fiabilité de fin de run, sur des lignes fabriquées.
+    from archeo.src.app.services.bilan_fiabilite import LigneBilan
+    from archeo.src.app.services.fiabilite import Categorie
+
+    cats = (Categorie("douteux", 0.29, 0.0, 0.26, 100), Categorie("possible", 0.35, 0.35, 0.45, 100),
+            Categorie("probable", 0.5, 0.6, 0.72, 100), Categorie("quasi_certain", 0.65, 0.85, 0.92, 100))
+    v._bilan = [
+        LigneBilan("parcellaire", "Parcellaire", "parcellaire", "parcellaire", "m", cats,
+                   {"quasi_certain": 12, "probable": 30, "possible": 41, "douteux": 20}),
+        LigneBilan("crateres", "Cratères", "cratere", "cratere", "m", cats,
+                   {"quasi_certain": 240, "probable": 90, "possible": 35, "douteux": 60}),
+        LigneBilan("charbonnieres", "Charbonnières", "charbonniere", "charbonniere", "m", cats,
+                   {"probable": 3, "possible": 1}),
+    ]
+    v._run_started_at = __import__("time").monotonic() - 125
+    v._show_end_banner()
+    app.processEvents()
+    log("bilan : cadre visible =", v._bilan_box.isVisible(), "| phrases :", [ligne.phrase() for ligne in v._bilan])
     v.grab().save(str(sortie / "journal.png"))
-    return 0 if n_liens == 2 else 1
+    return 0 if n_liens == 2 and v._bilan_box.isVisible() else 1
 
 
 def main(argv=None) -> int:

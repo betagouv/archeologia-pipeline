@@ -82,6 +82,11 @@ def _teinte(base: RGB, categorie: str) -> QColor:
         return c.darker(100 + int((repr_ - 0.5) * 80)) if repr_ >= 0.5 else c.lighter(100 + int((0.5 - repr_) * 120))
 
 
+#: Couleur d'un niveau à partir de la couleur de base d'une couche — partagé avec
+#: le bilan de fin de run (``ui/widgets/bilan_fiabilite``).
+teinte_niveau = _teinte
+
+
 def _pas_grille(maximum: int) -> int:
     """Un pas « rond » qui donne 2 à 4 lignes de grille."""
     if maximum <= 0:

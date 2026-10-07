@@ -821,3 +821,13 @@ La figure derrière les quatre niveaux de fiabilité : barres par bande de score
 - [ ] **39.10 Par zone d'évaluation** : fiche de Parcellaire → bloc « PAR ZONE D'ÉVALUATION » avec deux petites figures « Foret de haye — N détections » et « Blois — N détections » (les zones déclarées pour la fiabilité) ; fiche de Cratères (une seule zone) → pas de bloc.
 - [ ] **39.11 Export** : clic droit sur une figure → « Enregistrer l'image… » propose `profil_<classe>.png` dans le dossier personnel ; le PNG est net (double résolution), fond blanc. « Copier l'image » → coller dans un document.
 - [ ] **39.12 Comparaison A/B** : cocher deux modèles sur une entité (comparaison) → le mini-profil de la carte et la figure de la fiche sont dans la couleur de la couche « classe — Modèle » du run (la même que la légende après le run), pas dans celle de la classe seule.
+
+## 40. Bilan de fiabilité en fin de run ⭐ P1
+
+Une ligne par entité, effectifs par niveau du plus sûr au plus douteux : dans le journal, dans `metadata.json` et en barres sous le bandeau de fin (2026-10-08).
+
+- [ ] **40.1 Journal** : run avec détection (Cratères + Parcellaire) → avant « ✅ Traitement terminé », un bloc « 📊 Bilan de fiabilité — par où commencer : » puis « • Cratères : N détections — n très probables, n probables, n possibles, n douteuses » et la ligne de Parcellaire ; les effectifs sont ceux de la table attributaire (filtrer `fiabilite` dans QGIS pour vérifier un niveau).
+- [ ] **40.2 Barres** : sous le bandeau « ✓ Pipeline terminé », un cadre « Bilan de fiabilité — par où commencer » avec une barre par entité, longueur proportionnelle au nombre de détections, segments du plus sûr au plus douteux dans la couleur de la couche (les teintes de la légende), total à droite ; survoler une barre → la phrase du 40.1. Le cadre disparaît au lancement du run suivant et n'apparaît pas pour un run sans détection ni pour un modèle sans fiabilité mesurée.
+- [ ] **40.3 metadata.json** : clé `bilan_fiabilite`, une entrée par couche (`slug`, `label`, `couche`, `total`, `effectifs` par catégorie) ; vide (`[]`) pour un run sans CV.
+- [ ] **40.4 Comparaison A/B et dérivées** : deux lignes « Parcellaire — Modèle A » / « — Modèle B » ; une entité à plusieurs classes a une ligne par couche (« Entité · classe ») ; un regroupement de cratères n'a pas de ligne (sortie de synthèse sans fiabilité), ses cratères sources en ont une.
+

@@ -472,6 +472,7 @@ QPushButton[role="micro"] {
     background: #e3e3e3; text-align: center; min-height: 18px; color: #000000;
 }
 #RunProgress::chunk { background: #2b79c2; border-radius: 2px; }
+#RunBilanBox { background: #ffffff; border: 1px solid #c4c4c4; border-radius: 6px; }
 #RunJournal {
     background: #1c1b18; color: #d8d4cc;
     border: 1px solid #c4c4c4; border-radius: 6px;

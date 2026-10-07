@@ -416,6 +416,19 @@ def finalize_pipeline(
     # thread principal, par ui/qgs_writer.write_validation_project, déclenché depuis
     # run_view._on_load_layers (même chemin que le chargement live, qui fonctionne).
 
+    # 3c. Bilan de fiabilité (2026-10-08) : effectifs par niveau lus dans les
+    # sidecars fiabilite.json — une ligne par entité, du plus sûr au plus douteux,
+    # dans le journal, metadata.json et la vue de fin (par où commencer).
+    from .bilan_fiabilite import collecter as _collecter_bilan
+
+    try:
+        # Libellés : runs résolus, puis runs bruts de la config (un modèle non
+        # résolu garde quand même son libellé d'entité).
+        bilan = _collecter_bilan(det_dir, list(cv_runs or []) + list((cv_cfg or {}).get("runs") or []))
+    except Exception as _bilan_e:  # noqa: BLE001 — jamais bloquant
+        reporter.info(f"Note: bilan de fiabilité non calculé ({_bilan_e})")
+        bilan = []
+
     # 4. Génération du fichier metadata.json
     try:
         import json as _json
@@ -450,6 +463,9 @@ def finalize_pipeline(
                 for r in cv_runs
                 for ent in (r.get("entities") or [])
             ],
+            # Bilan de fiabilité par entité (effectifs par niveau, du plus sûr au
+            # plus douteux) — vide sans détection ou pour un modèle sans fiabilité.
+            "bilan_fiabilite": [ligne.to_dict() for ligne in bilan],
             "structure": {
                 "indices": str(idx_dir),
                 # detections/ n'est créé que si la CV a produit un livrable :
@@ -477,6 +493,8 @@ def finalize_pipeline(
     if success and all_tiles_failed:
         success = False
 
+    if bilan:
+        narrator.bilan_fiabilite([ligne.phrase() for ligne in bilan])
     if slog:
         slog.end_pipeline(
             success=success,

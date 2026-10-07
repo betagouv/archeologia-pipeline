@@ -115,7 +115,7 @@ def _reglages():
 def nouveautes_non_lues() -> bool:
     """Vrai tant que les Nouveautés de la version installée n'ont pas été affichées."""
     version = get_plugin_version() or ""
-    if not version:
+    if not version or version == "?":          # metadata.txt illisible : pas de pastille
         return False
     try:
         return str(_reglages().value(_REGLAGE_NOUVEAUTES, "") or "") != version
@@ -125,7 +125,7 @@ def nouveautes_non_lues() -> bool:
 
 def marquer_nouveautes_lues() -> None:
     version = get_plugin_version() or ""
-    if version:
+    if version and version != "?":
         try:
             _reglages().setValue(_REGLAGE_NOUVEAUTES, version)
         except Exception:  # noqa: BLE001

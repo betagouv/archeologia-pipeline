@@ -17,13 +17,13 @@ Une bonne connexion est utile : le plugin est volumineux, car il embarque les mo
 1. Dans QGIS : **Extensions → Installer/Gérer les extensions…**, onglet **Paramètres**.
 2. Section **Dépôts de plugins** → **Ajouter…**. Nom : `Archéolog'IA`, URL : l'adresse communiquée.
 
-   [![Détail du dépôt : nom, adresse et authentification](img/installer-depot.png)](img/installer-depot.png)
-
 3. Zone **Authentification** : bouton **+** (nouvelle configuration), méthode **Basic authentication**, puis le nom d'utilisateur et le mot de passe communiqués. **Enregistrer**.
    - À la première utilisation, QGIS demande de créer un **mot de passe principal**. C'est un coffre local à votre ordinateur qui protège les identifiants enregistrés ; choisissez-en un et conservez-le, il n'a aucun rapport avec celui du dépôt. En QGIS 4, le coffre s'ouvre tout seul à la session suivante ; en QGIS 3, il peut vous le redemander.
-   [![Configuration d'authentification de type Basic authentication](img/installer-authentification.png)](img/installer-authentification.png)
-
 4. **OK** : le dépôt doit afficher **connecté**.
+
+[![Détail du dépôt : nom, adresse et authentification](img/installer-depot.png)](img/installer-depot.png)
+
+[![Configuration d'authentification de type Basic authentication](img/installer-authentification.png)](img/installer-authentification.png)
 
 Si le dépôt refuse les identifiants ou reste muet, voir [Dépannage](depannage.md#le-depot-ne-s-affiche-pas-connecte).
 

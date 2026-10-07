@@ -18,6 +18,13 @@ from typing import Optional, Sequence
 
 from qgis.PyQt.QtCore import Qt, QUrl
 from qgis.PyQt.QtGui import QColor, QDesktopServices, QImage, QTextCursor, QTextDocument
+from qgis.PyQt.QtGui import QKeySequence
+
+# QShortcut a changé de module entre Qt5 (QtWidgets) et Qt6 (QtGui).
+try:
+    from qgis.PyQt.QtGui import QShortcut
+except ImportError:  # pragma: no cover - Qt5
+    from qgis.PyQt.QtWidgets import QShortcut
 from qgis.PyQt.QtWidgets import (
     QDialog,
     QFileDialog,
@@ -123,6 +130,10 @@ class AideDialog(QDialog):
         corps.addWidget(self._texte, 1)
         root.addLayout(corps, 1)
 
+        # Comme dans un navigateur : Ctrl+F va au champ de recherche, F3 à l'occurrence suivante.
+        QShortcut(QKeySequence(QKeySequence.StandardKey.Find), self, self._focus_recherche)
+        QShortcut(QKeySequence(QKeySequence.StandardKey.FindNext), self, self._chercher)
+
         self._remplir_sommaire()
         if self._chapitres:
             self.ouvrir(self._chapitres[0].cle)
@@ -146,14 +157,14 @@ class AideDialog(QDialog):
         lay.addStretch(1)
         self._recherche = QLineEdit()
         self._recherche.setObjectName("AideRecherche")
-        self._recherche.setPlaceholderText("Rechercher dans ce chapitre…")
+        self._recherche.setPlaceholderText("Rechercher dans ce chapitre… (Ctrl+F)")
         self._recherche.setClearButtonEnabled(True)
         self._recherche.setFixedWidth(240)
         self._recherche.returnPressed.connect(self._chercher)
         lay.addWidget(self._recherche)
         suivant = QPushButton("Suivant")
         suivant.setObjectName("GhostButton")
-        suivant.setToolTip("Occurrence suivante (Entrée dans le champ)")
+        suivant.setToolTip("Occurrence suivante (Entrée dans le champ, ou F3)")
         suivant.clicked.connect(self._chercher)
         lay.addWidget(suivant)
         pdf = QPushButton("Exporter en PDF")
@@ -301,6 +312,10 @@ class AideDialog(QDialog):
             return
         cle, ancre = resoudre_cible(cible)
         self.ouvrir(cle or self._cle, ancre)
+
+    def _focus_recherche(self) -> None:
+        self._recherche.setFocus()
+        self._recherche.selectAll()
 
     def _chercher(self) -> None:
         texte = self._recherche.text().strip()

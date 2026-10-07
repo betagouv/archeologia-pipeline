@@ -8,6 +8,9 @@ __pycache__/
 .claude/skills/*
 !.claude/skills/installer-modele-plugin/
 !.claude/skills/fiche-classe-plugin/
+!.claude/skills/manuel-integre/
+# Runbooks du projet (aucun secret : l'adresse du dépôt vit dans deploy.config.json)
+!.claude/commands/
 .superpowers/
 
 # PyInstaller (dev/runner_onnx build artifacts)

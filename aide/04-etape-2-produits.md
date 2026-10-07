@@ -26,6 +26,8 @@ Cochez les produits à calculer pour chaque dalle. Chaque carte porte une vignet
 
 Les détails de calcul et de lecture sont dans la fiche de chaque produit, pas ici.
 
+[![La fiche d'un produit : ce que montre l'image, dans quelle optique l'utiliser, et la liste des autres produits à gauche](img/etape2-fiche-produit.png)](img/etape2-fiche-produit.png)
+
 ## Ce qu'il faut savoir avant de cocher
 
 - **Le MNT est requis** tant qu'un indice de relief est coché : il en est la source. Pour le décocher, décochez d'abord les indices.

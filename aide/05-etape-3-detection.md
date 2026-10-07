@@ -23,6 +23,8 @@ La liste dépend des modèles installés : une entité n'apparaît que si un mod
 - **Modèle** : « seul disponible », ou un menu **Changer ▾** quand plusieurs modèles couvrent l'entité. Chaque entrée du menu indique le nombre de **fenêtres d'analyse** que le modèle découpe dans une dalle : c'est un fait sur le volume de calcul, pas une estimation de durée. Le bouton **ⓘ** ouvre la fiche du modèle : architecture, seuils, métriques d'évaluation et courbes.
 - **Regrouper en zones** : pour certaines entités, une case regroupe les détections proches en zones. Le **Regroupement de cratères** est une entité à part entière, avec le badge **regroupement automatique** : la cocher produit les zones et les cratères qui les composent.
 
+[![La fiche d'une classe : vignette du corpus avec bascule relief seul / vérité terrain, fiabilité mesurée, ce que le modèle a appris](img/etape3-fiche-classe.png)](img/etape3-fiche-classe.png)
+
 ## Comparer deux modèles
 
 Quand deux modèles couvrent une entité, cochez-les tous les deux dans le menu **Changer ▾**. L'entité est détectée deux fois, une fois par modèle ; les sorties portent le nom du modèle et QGIS les charge dans un même groupe marqué « comparaison », pour les superposer.

@@ -45,6 +45,8 @@ Chaque couche de détections est catégorisée en quatre niveaux : **douteux**, 
 
 Le dessin : contour seul, sans remplissage, pour laisser lire la structure détectée dessous ; une couleur par classe, déclinée du plus foncé (très probable) au plus clair (douteux). L'infobulle de la couche et son résumé, dans les propriétés, donnent la part mesurée pour chaque niveau et le nombre de détections sur lequel elle a été mesurée.
 
+[![Dans QGIS : une couche par entité, quatre niveaux de fiabilité, contours sur l'indice](img/resultats-legende-fiabilite.jpg)](img/resultats-legende-fiabilite.jpg)
+
 Une couche issue d'un modèle sans fiabilité mesurée est catégorisée par tranches de score.
 
 ## Les attributs d'une détection

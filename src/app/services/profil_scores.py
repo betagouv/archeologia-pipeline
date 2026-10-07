@@ -164,9 +164,30 @@ def agreger(
         i = max(k for k, lim in enumerate(limites[:-1]) if b.lo >= lim - 1e-9)
         tp, fp = acc.get(i, (0, 0))
         acc[i] = (tp + b.tp, fp + b.fp)
-    return [
-        Bande(limites[i], limites[i + 1], tp, fp) for i, (tp, fp) in sorted(acc.items())
-    ]
+    bins = [Bande(limites[i], limites[i + 1], tp, fp) for i, (tp, fp) in sorted(acc.items())]
+    return _fusionner_eclats(bins, pas, coupures)
+
+
+def _fusionner_eclats(bins: List[Bande], pas: float, coupures: Sequence[float]) -> List[Bande]:
+    """Une bande plus étroite qu'une demi-case, coincée entre la grille et une coupure
+    (0,25–0,26 pour un seuil à 0,26), se dessinait en puce flottante : elle rejoint
+    la bande voisine **du même côté de la coupure**, jamais de l'autre côté."""
+    coupes = {round(float(c), 6) for c in coupures}
+    out: List[Bande] = []
+    i = 0
+    while i < len(bins):
+        b = bins[i]
+        eclat = (b.hi - b.lo) < pas / 2 - 1e-9
+        if eclat and round(b.hi, 6) in coupes and out and round(out[-1].hi, 6) == round(b.lo, 6):
+            prev = out.pop()                     # éclat à gauche d'une coupure → bande précédente
+            out.append(Bande(prev.lo, b.hi, prev.tp + b.tp, prev.fp + b.fp))
+        elif eclat and round(b.lo, 6) in coupes and i + 1 < len(bins):
+            nxt = bins[i + 1]                    # éclat à droite d'une coupure → bande suivante
+            bins[i + 1] = Bande(b.lo, nxt.hi, b.tp + nxt.tp, b.fp + nxt.fp)
+        else:
+            out.append(b)
+        i += 1
+    return out
 
 
 def _source_et_zones(model_dir: Path, classe: str) -> Tuple[Optional[str], Optional[List[str]]]:

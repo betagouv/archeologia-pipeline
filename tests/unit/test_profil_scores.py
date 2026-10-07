@@ -118,3 +118,12 @@ def test_agregation_coupee_aux_seuils():
     assert (agg[0].tp, agg[0].fp) == (1, 10) and (agg[1].tp, agg[1].fp) == (2 + 3 + 4 + 5, 40)
     # sans coupure : une seule bande de 0,05
     assert [(b.lo, b.hi) for b in agreger(fines, 0.05)] == [(0.25, 0.3)]
+
+
+def test_eclats_fusionnes_du_meme_cote_de_la_coupure():
+    """0,20–0,26 d'un seul tenant sous le seuil 0,26 ; 0,29–0,35 d'un seul tenant au niveau douteux."""
+    fines = [Bande(round(0.20 + i * 0.01, 2), round(0.21 + i * 0.01, 2), 1, 1) for i in range(15)]  # 0,20 → 0,35
+    assert [(b.lo, b.hi) for b in agreger(fines, 0.05, coupures=[0.26, 0.30])] == [(0.2, 0.26), (0.26, 0.3), (0.3, 0.35)]
+    assert [(b.lo, b.hi) for b in agreger(fines, 0.05, coupures=[0.29, 0.35])] == [(0.2, 0.25), (0.25, 0.29), (0.29, 0.35)]
+    # les effectifs sont conservés
+    assert sum(b.tp for b in agreger(fines, 0.05, coupures=[0.26, 0.30])) == 15

@@ -41,7 +41,7 @@ from qgis.PyQt.QtWidgets import (
 from ...app.services.class_fiche import ClassFiche
 from ...app.services.fiabilite import pct
 from ..widgets.vignette import FicheButton, pixmap_ajuste
-from ..widgets.profil_scores import figure_profil, figures_par_zone
+from ..widgets.profil_scores import figure_profil, figures_par_zone, ligne_essai_seuil
 
 _VIGNETTE_MAX = 320  # côté max de l'aperçu, en px logiques
 
@@ -292,6 +292,9 @@ class _CorpsFiche(QWidget):
             # Petits multiples par zone d'évaluation : une classe sûre ici et
             # faible là se voit d'un coup d'œil (les linéaires surtout).
             zones = figures_par_zone(model_dir, fiche.nom, fiche.fiabilite, couleur=couleur)
+            # « Tester un seuil » : la figure (et les zones) suivent, précision et
+            # rappel au banc s'affichent — sans toucher au seuil du traitement.
+            lay.addWidget(ligne_essai_seuil(figure, [f for _n, f in zones], seuil))
             if zones:
                 lay.addWidget(_titre_bloc("Par zone d'évaluation"))
                 grille = QGridLayout()

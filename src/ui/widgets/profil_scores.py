@@ -4,22 +4,30 @@ Barres empilées par bande de score (pas de 0,05) : les fausses détections de
 l'évaluation en gris, les vraies dans la couleur de la classe déclinée par niveau
 — exactement les teintes de la légende de QGIS (``fiabilite.STYLE_SPEC`` +
 ``color_palette.apply_confidence``). Les coupures des niveaux sont tracées, chaque
-niveau est nommé sous l'axe avec sa part de vrais objets mesurée et son effectif.
-On voit ainsi d'où viennent les coupures : sous le seuil presque tout est faux,
-au-dessus de la dernière coupure presque tout est vrai.
+niveau est nommé sous l'axe (avec sa part de vrais objets mesurée et son effectif
+en mode complet). On voit ainsi d'où viennent les coupures : sous le seuil presque
+tout est faux, au-dessus de la dernière coupure presque tout est vrai.
 
 Depuis 2026-10-08 :
 
-- le **seuil est mobile** (:meth:`ProfilScoresWidget.set_seuil`) : la ligne suit le
-  seuil réglé par l'utilisateur, les niveaux se recalculent comme au run
-  (``categories_effectives``) et :meth:`~ProfilScoresWidget.bilan` dit ce que ce
-  seuil garde et écarte sur le banc ;
+- le **seuil est mobile** (:meth:`ProfilScoresWidget.set_seuil`) : la ligne — orange,
+  sur halo blanc, jamais une couleur de classe — suit le seuil réglé par
+  l'utilisateur, les niveaux se recalculent comme au run (``categories_effectives``),
+  **précision et rappel au banc** pour ce seuil s'écrivent en haut à droite de la
+  figure (``profil_scores.precision_rappel``) et :meth:`~ProfilScoresWidget.phrase_bilan`
+  dit ce que ce seuil change sur le banc (première ligne de l'infobulle) ;
 - une **ligne pointillée** marque le point d'équilibre précision-rappel de
-  l'évaluation (``seuil_f1max``) : on voit que le seuil déployé est en dessous ;
+  l'évaluation (« équilibre (F1) ») : on voit que le seuil déployé est en dessous ;
 - **survoler une barre** donne ses vraies et ses fausses ;
 - **clic droit** : enregistrer ou copier l'image (rapport, présentation) ;
-- un mode **mini** (``mini=True``) sans libellés de niveau, pour la carte d'entité
-  (étape 3) et les petits multiples par zone d'évaluation.
+- un mode **mini** (``mini=True``), niveaux nommés sous l'axe sans mesure, pour la
+  carte d'entité (étape 3) et les petits multiples par zone d'évaluation ;
+- les **libellés sous l'axe ne se chevauchent jamais** : rangés par
+  ``profil_scores.disposer_etiquettes`` (pur : première rangée où l'étiquette tient à
+  droite de la précédente), la hauteur du widget suit le nombre de rangées
+  (``resizeEvent``) et une étiquette décalée reçoit un tiret vers sa bande ;
+- :func:`ligne_essai_seuil` : la ligne « Tester un seuil » des fiches (classe et ⓘ),
+  qui déplace la ligne de la figure **sans toucher au seuil du traitement**.
 
 Données : module pur :mod:`app.services.profil_scores`. Dessin au pinceau, aucune
 dépendance ; net à toute densité d'écran (QPainter dessine en pixels logiques).
@@ -31,11 +39,14 @@ from pathlib import Path
 from typing import List, Optional, Sequence, Tuple
 
 from qgis.PyQt.QtCore import QEvent, QRectF, Qt
-from qgis.PyQt.QtGui import QColor, QFont, QPainter, QPen, QPixmap
+from qgis.PyQt.QtGui import QColor, QFont, QFontMetrics, QPainter, QPen, QPixmap
 from qgis.PyQt.QtWidgets import (
     QApplication,
     QFileDialog,
+    QHBoxLayout,
+    QLabel,
     QMenu,
+    QPushButton,
     QSizePolicy,
     QToolTip,
     QWidget,
@@ -53,10 +64,14 @@ from ...app.services.profil_scores import (
     Bilan,
     Profil,
     bilan_au_seuil,
+    disposer_etiquettes,
     libelle_zone,
+    phrase_precision_rappel,
+    precision_rappel,
     profil_pour_classe,
     profils_par_zone,
 )
+from .no_wheel import NoWheelDoubleSpinBox
 
 RGB = Tuple[int, int, int]
 _BLEU_DEFAUT: RGB = (42, 120, 214)
@@ -65,10 +80,16 @@ _GRIS_SOUS_SEUIL = QColor("#9a9a9a")
 _ENCRE = QColor("#2c2c2c")
 _ENCRE_DOUCE = QColor("#5a5a5a")
 _GRILLE = QColor("#e6e6e6")
+_TIRET = QColor("#c4c4c4")
 _SEUIL = QColor("#e8590c")            # ligne du seuil appliqué : jamais une couleur de classe
 _COUPURE = QColor("#8a8a8a")          # les autres coupures, discrètes
-_HAUTEUR = 224
-_HAUTEUR_MINI = 120
+
+# Géométrie : marges (gauche, droite, haut), hauteur du tracé, puis sous l'axe une
+# marge de 14 px et des rangées de libellés (nom + mesure en complet, nom seul en mini).
+_MARGES = {False: (44, 8, 36), True: (30, 6, 14)}
+_TRACE = {False: 116, True: 64}
+_RANGEE = {False: 28, True: 12}
+_BAS_FIXE = 16
 
 
 def _teinte(base: RGB, categorie: str) -> QColor:
@@ -110,6 +131,16 @@ def _v(x: float) -> str:
     return f"{x:g}".replace(".", ",")
 
 
+class _Etiquette:
+    """Un libellé sous l'axe : nom (+ détail en complet), centre de sa bande, rangée."""
+
+    __slots__ = ("nom", "detail", "cx", "largeur", "rangee", "gauche", "couleur")
+
+    def __init__(self, nom: str, detail: str, cx: float, largeur: float, couleur: QColor):
+        self.nom, self.detail, self.cx, self.largeur, self.couleur = nom, detail, cx, largeur, couleur
+        self.rangee, self.gauche = 0, 0.0
+
+
 class ProfilScoresWidget(QWidget):
     """Barres vraies/fausses par bande de score, coupures et niveaux de la classe."""
 
@@ -127,15 +158,14 @@ class ProfilScoresWidget(QWidget):
         self._mini = bool(mini)
         self._seuil: Optional[float] = None          # seuil mobile ; None = celui du modèle
         self._cats: Tuple[Categorie, ...] = profil.categories
+        self._rangees = 1
         self.setObjectName("ProfilScoresMini" if mini else "ProfilScores")
-        h = _HAUTEUR_MINI if mini else _HAUTEUR
-        self.setMinimumHeight(h)
-        self.setMaximumHeight(h)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        self._fixer_hauteur(2)
         self._maj_infobulle()
 
     # ------------------------------------------------------------------
-    # Seuil mobile et bilan
+    # Seuil mobile, bilan, précision et rappel
     # ------------------------------------------------------------------
     @property
     def profil(self) -> Profil:
@@ -154,6 +184,7 @@ class ProfilScoresWidget(QWidget):
             else categories_effectives(self._p.categories, self._seuil)
         )
         self._maj_infobulle()
+        self._ajuster_rangees()
         self.update()
 
     def bilan(self) -> Bilan:
@@ -169,9 +200,17 @@ class ProfilScoresWidget(QWidget):
             return reference.phrase()
         return self.bilan().phrase(reference)
 
+    def phrase_precision_rappel(self) -> str:
+        """« précision 65 % · rappel 72 % » au seuil courant, sur le banc ; ``""`` sans donnée."""
+        return phrase_precision_rappel(*precision_rappel(self._p, self.seuil))
+
     def _maj_infobulle(self) -> None:
         p = self._p
         lignes = [f"{_nb(p.total)} détections de l'évaluation, par bande de score de 0,05."]
+        pr = self.phrase_precision_rappel()
+        if pr:
+            lignes.insert(0, f"Au seuil {_v(round(self.seuil, 3))} : {pr} (précision comptée sur les bandes, "
+                             "rappel lu dans la table de l'évaluation).")
         if p.fines:
             lignes.insert(0, self.phrase_bilan())   # ce que le seuil courant garde et écarte sur le banc
         if p.zone:
@@ -188,15 +227,30 @@ class ProfilScoresWidget(QWidget):
         self.setToolTip("\n".join(lignes))
 
     # ------------------------------------------------------------------
-    # Géométrie partagée entre le dessin et l'infobulle
+    # Géométrie partagée entre le dessin, l'infobulle et la hauteur
     # ------------------------------------------------------------------
+    def _polices(self) -> Tuple[QFont, QFont]:
+        police = QFont(self.font())
+        police.setPointSizeF(max(7.0, self.font().pointSizeF() - 1))
+        petite = QFont(police)
+        petite.setPointSizeF(max(6.5, police.pointSizeF() - 1))
+        return police, petite
+
+    def _hauteur(self, rangees: int) -> int:
+        _g, _d, haut = _MARGES[self._mini]
+        return haut + _TRACE[self._mini] + _BAS_FIXE + max(1, rangees) * _RANGEE[self._mini]
+
+    def _fixer_hauteur(self, rangees: int) -> None:
+        self._rangees = max(1, rangees)
+        h = self._hauteur(self._rangees)
+        self.setMinimumHeight(h)
+        self.setMaximumHeight(h)
+
     def _cadre(self):
         bandes = self._p.bandes
-        w, h = self.width(), self.height()
-        if self._mini:
-            gauche, droite, haut, bas = 30, 6, 14, 42   # deux rangées de niveaux sous l'axe (bande étroite décalée)
-        else:
-            gauche, droite, haut, bas = 44, 8, 36, 72   # trois rangées d'étiquettes en haut
+        w = self.width()
+        gauche, droite, haut = _MARGES[self._mini]
+        bas = _BAS_FIXE + self._rangees * _RANGEE[self._mini]
         xmin, xmax = bandes[0].lo, bandes[-1].hi
         seuil = self.seuil
         # L'échelle se règle sur les bandes AU-DESSUS du seuil du MODÈLE : sous le
@@ -208,7 +262,7 @@ class ProfilScoresWidget(QWidget):
         au_dessus = [b.total for b in bandes if b.hi > self._p.seuil + 1e-9]
         maximum = max(au_dessus or [b.total for b in bandes]) or 1
         largeur_trace = w - gauche - droite
-        hauteur_trace = h - haut - bas
+        hauteur_trace = self.height() - haut - bas
 
         def x(v: float) -> float:
             return gauche + (v - xmin) / (xmax - xmin) * largeur_trace
@@ -217,6 +271,47 @@ class ProfilScoresWidget(QWidget):
             return haut + hauteur_trace * (1 - c / maximum)
 
         return gauche, droite, haut, bas, xmin, xmax, seuil, maximum, largeur_trace, hauteur_trace, x, y
+
+    def _etiquettes(self) -> List[_Etiquette]:
+        """Les libellés sous l'axe, rangés sans chevauchement (``disposer_etiquettes``)."""
+        if not self._p.bandes or self.width() < 120:
+            return []
+        gauche, _d, _h, _b, xmin, xmax, seuil, _m, _lt, _ht, x, _y = self._cadre()
+        police, petite = self._polices()
+        fm, fm_petite = QFontMetrics(police), QFontMetrics(petite)
+        mini = self._mini
+        cats = self._cats
+        etiquettes: List[_Etiquette] = []
+        if x(seuil) - x(xmin) > 24:
+            n_ecartees = sum(b.total for b in (self._p.fines or self._p.bandes) if b.hi <= seuil + 1e-9)
+            etiquettes.append(_Etiquette("écartées", "" if mini else _nb(n_ecartees),
+                                         (x(xmin) + x(seuil)) / 2, 0.0, _ENCRE_DOUCE))
+        for i, c in enumerate(cats):
+            fin = cats[i + 1].seuil if i + 1 < len(cats) else xmax
+            mesure = pct(c.mesure)
+            detail = "" if mini else (f"{mesure} % · {_nb(c.n)}" if mesure is not None else f"{_nb(c.n)} dét.")
+            etiquettes.append(_Etiquette(c.label.lower() if mini else c.label, detail,
+                                         (x(c.seuil) + x(min(fin, xmax))) / 2, 0.0, _ENCRE))
+        for e in etiquettes:
+            l_nom = (fm_petite if mini else fm).horizontalAdvance(e.nom)
+            l_detail = fm_petite.horizontalAdvance(e.detail) if e.detail else 0
+            e.largeur = max(l_nom, l_detail) + (4 if mini else 6)
+        for e, (rangee, gauche_x) in zip(etiquettes, disposer_etiquettes(
+            [(e.cx, e.largeur) for e in etiquettes], float(self.width()), ecart=4.0,
+        )):
+            e.rangee, e.gauche = rangee, gauche_x
+        return etiquettes
+
+    def _ajuster_rangees(self) -> None:
+        """La hauteur suit le nombre de rangées nécessaires à la largeur courante."""
+        etiquettes = self._etiquettes()
+        rangees = max((e.rangee for e in etiquettes), default=0) + 1
+        if rangees != self._rangees:
+            self._fixer_hauteur(rangees)
+
+    def resizeEvent(self, ev) -> None:  # noqa: N802 (signature Qt)
+        super().resizeEvent(ev)
+        self._ajuster_rangees()
 
     def _bande_sous(self, px: float) -> Optional[Bande]:
         if not self._p.bandes or self.width() < 120:
@@ -277,11 +372,8 @@ class ProfilScoresWidget(QWidget):
     def paintEvent(self, _ev) -> None:  # noqa: N802 (signature Qt)
         p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
-        police = QFont(self.font())
-        police.setPointSizeF(max(7.0, self.font().pointSizeF() - 1))
+        police, petite = self._polices()
         p.setFont(police)
-        petite = QFont(police)
-        petite.setPointSizeF(max(6.5, police.pointSizeF() - 1))
 
         prof = self._p
         bandes = prof.bandes
@@ -293,7 +385,6 @@ class ProfilScoresWidget(QWidget):
 
         gauche, droite, haut, bas, xmin, xmax, seuil, maximum, largeur_trace, hauteur_trace, x, y = self._cadre()
         cats = self._cats
-        n_ecartees = sum(b.total for b in (prof.fines or bandes) if b.hi <= seuil + 1e-9)
         mini = self._mini
 
         # — grille et axe des effectifs —
@@ -337,15 +428,13 @@ class ProfilScoresWidget(QWidget):
             if xmin <= v <= xmax:
                 p.drawText(QRectF(x(v) - 20, y(0) + 2, 40, 12), Qt.AlignmentFlag.AlignHCenter, _v(v))
 
-        # — point d'équilibre précision-rappel : pointillé, libellé à gauche de la
-        #   ligne (les coupures sont libellées à droite de la leur) —
+        # — point d'équilibre précision-rappel (F1) : pointillé, libellé sur la
+        #   rangée du haut, à gauche de la ligne s'il y a la place —
         if prof.seuil_f1max is not None and xmin <= prof.seuil_f1max <= xmax:
             xe = x(prof.seuil_f1max)
             p.setPen(QPen(_ENCRE_DOUCE, 1, Qt.PenStyle.DashLine))
             p.drawLine(QRectF(xe, haut - 4, 0, y(0) - haut + 4).topLeft(), QRectF(xe, haut - 4, 0, y(0) - haut + 4).bottomLeft())
             if not mini:
-                # Rangée du haut, à elle seule : à gauche de sa ligne s'il y a la place,
-                # sinon à droite (les coupures occupent les deux rangées suivantes).
                 p.setFont(petite)
                 texte = f"équilibre (F1) {_v(prof.seuil_f1max)}"
                 if xe - gauche > 104:
@@ -380,60 +469,36 @@ class ProfilScoresWidget(QWidget):
                 p.setPen(_COUPURE)
             p.drawText(rect, Qt.AlignmentFlag.AlignLeft, texte)
             p.setFont(petite if mini else police)
-        if mini:
-            # Niveaux sous l'axe, nom seul (la part mesurée est dans l'infobulle) ;
-            # une bande trop étroite pour son nom descend d'une rangée, avec un tiret.
+
+        # — précision et rappel au seuil courant, en haut à droite du tracé, sur un
+        #   fond blanc translucide pour rester lisibles au-dessus des barres —
+        pr = self.phrase_precision_rappel()
+        if pr:
             p.setFont(petite)
             fm = p.fontMetrics()
-            for i, c in enumerate(cats):
-                fin = cats[i + 1].seuil if i + 1 < len(cats) else xmax
-                x0, x1 = x(c.seuil), x(min(fin, xmax))
-                largeur_texte = fm.horizontalAdvance(c.label) + 4
-                etroite = (x1 - x0) < largeur_texte
-                cx = (x0 + x1) / 2
-                largeur = max(x1 - x0, largeur_texte)
-                rect_x = min(max(cx - largeur / 2, 0.0), w - largeur)
-                decal = 11 if etroite else 0
-                p.setPen(_SEUIL if i == 0 else _ENCRE_DOUCE)
-                p.drawText(QRectF(rect_x, y(0) + 13 + decal, largeur, 11), Qt.AlignmentFlag.AlignHCenter, c.label.lower())
-                if etroite:
-                    p.setPen(QPen(QColor("#c4c4c4"), 1))
-                    p.drawLine(QRectF(cx, y(0) + 12, 0, 10).topLeft(), QRectF(cx, y(0) + 12, 0, 10).bottomLeft())
-            if x(seuil) - x(xmin) > 44:
-                p.setPen(_ENCRE_DOUCE)
-                p.drawText(QRectF(x(xmin), y(0) + 13, x(seuil) - x(xmin), 11), Qt.AlignmentFlag.AlignHCenter, "écartées")
-            p.end()
-            return
-
-        # — niveaux sous l'axe : nom, puis part mesurée et effectif. Une bande
-        #   étroite (douteux 0,29–0,35) reçoit un rectangle de 76 px centré sur
-        #   elle et descend d'une rangée, pour ne rien rogner ni chevaucher. —
-        p.setFont(police)
-        for i, c in enumerate(cats):
-            fin = cats[i + 1].seuil if i + 1 < len(cats) else xmax
-            x0, x1 = x(c.seuil), x(min(fin, xmax))
-            etroite = (x1 - x0) < 76
-            cx = (x0 + x1) / 2
-            largeur = max(x1 - x0, 76.0)
-            rect_x = min(max(cx - largeur / 2, 0.0), w - largeur)
-            decal = 26 if etroite else 0
+            largeur_pr = fm.horizontalAdvance(pr) + 8
+            rect_pr = QRectF(gauche + largeur_trace - largeur_pr - 2, haut + 1, largeur_pr, 13)
+            p.setPen(Qt.PenStyle.NoPen)
+            p.setBrush(QColor(255, 255, 255, 215))
+            p.drawRoundedRect(rect_pr, 3, 3)
             p.setPen(_ENCRE)
-            p.setFont(police)
-            p.drawText(QRectF(rect_x, y(0) + 14 + decal, largeur, 14), Qt.AlignmentFlag.AlignHCenter, c.label)
-            p.setPen(_ENCRE_DOUCE)
-            p.setFont(petite)
-            mesure = pct(c.mesure)
-            detail = f"{mesure} % · {_nb(c.n)}" if mesure is not None else f"{_nb(c.n)} dét."
-            p.drawText(QRectF(rect_x, y(0) + 28 + decal, largeur, 12), Qt.AlignmentFlag.AlignHCenter, detail)
-            if etroite:
-                p.setPen(QPen(QColor("#c4c4c4"), 1))
-                p.drawLine(QRectF(cx, y(0) + 12, 0, 14).topLeft(), QRectF(cx, y(0) + 12, 0, 14).bottomLeft())
-        if x(seuil) - x(xmin) > 40:
-            p.setPen(_ENCRE_DOUCE)
-            p.setFont(police)
-            p.drawText(QRectF(x(xmin), y(0) + 14, x(seuil) - x(xmin), 14), Qt.AlignmentFlag.AlignHCenter, "écartées")
-            p.setFont(petite)
-            p.drawText(QRectF(x(xmin), y(0) + 28, x(seuil) - x(xmin), 12), Qt.AlignmentFlag.AlignHCenter, _nb(n_ecartees))
+            p.drawText(rect_pr, Qt.AlignmentFlag.AlignCenter, pr)
+
+        # — libellés sous l'axe, rangés sans chevauchement ; une étiquette décalée
+        #   d'une rangée reçoit un tiret vers le centre de sa bande —
+        rangee_h = _RANGEE[mini]
+        for e in self._etiquettes():
+            y0 = y(0) + 14 + e.rangee * rangee_h
+            if e.rangee > 0:
+                p.setPen(QPen(_TIRET, 1))
+                p.drawLine(QRectF(e.cx, y(0) + 12, 0, y0 - y(0) - 13).topLeft(), QRectF(e.cx, y(0) + 12, 0, y0 - y(0) - 13).bottomLeft())
+            p.setPen(e.couleur)
+            p.setFont(petite if mini else police)
+            p.drawText(QRectF(e.gauche, y0, e.largeur, 14 if not mini else 11), Qt.AlignmentFlag.AlignHCenter, e.nom)
+            if e.detail:
+                p.setPen(_ENCRE_DOUCE)
+                p.setFont(petite)
+                p.drawText(QRectF(e.gauche, y0 + 14, e.largeur, 12), Qt.AlignmentFlag.AlignHCenter, e.detail)
         p.end()
 
 
@@ -499,3 +564,56 @@ def figures_par_zone(
         (libelle_zone(p.zone), ProfilScoresWidget(p, base, parent, mini=True))
         for p in profils_par_zone(Path(model_dir), classe, categories)
     ]
+
+
+def ligne_essai_seuil(
+    figure: ProfilScoresWidget,
+    autres: Sequence[ProfilScoresWidget] = (),
+    seuil_initial: Optional[float] = None,
+    parent=None,
+) -> QWidget:
+    """« Tester un seuil » : une case qui déplace la ligne de ``figure`` (et des
+    ``autres``, p. ex. les petits multiples par zone), affiche précision et rappel au
+    banc pour ce seuil, et un « ↺ » qui revient à ``seuil_initial`` (le seuil réglé à
+    l'étape 3, ou celui du modèle). **Aucun effet sur le seuil du traitement** :
+    c'est un essai, dans la fiche de classe comme dans la fiche ⓘ du modèle."""
+    depart = float(seuil_initial if seuil_initial is not None else figure.profil.seuil)
+    ligne = QWidget(parent)
+    ligne.setObjectName("ProfilEssaiSeuil")
+    lay = QHBoxLayout(ligne)
+    lay.setContentsMargins(0, 2, 0, 0)
+    lay.setSpacing(8)
+    titre = QLabel("Tester un seuil")
+    titre.setObjectName("FicheTexte")
+    spin = NoWheelDoubleSpinBox()
+    spin.setRange(0.0, 1.0)
+    spin.setSingleStep(0.05)
+    spin.setDecimals(2)
+    spin.setFixedWidth(64)
+    spin.setValue(depart)
+    spin.setToolTip("Déplace la ligne du seuil sur la figure — sans changer le seuil du traitement")
+    retour = QPushButton("↺")
+    retour.setObjectName("EntityResetBtn")
+    retour.setFlat(True)
+    retour.setCursor(Qt.CursorShape.PointingHandCursor)
+    retour.setToolTip(f"Revenir au seuil {_v(round(depart, 3))}")
+    mesure = QLabel("")
+    mesure.setObjectName("FicheTexte")
+    note = QLabel("essai sans effet sur le seuil du traitement")
+    note.setObjectName("FicheLegende")
+
+    def _appliquer(v: float) -> None:
+        figure.set_seuil(v)
+        for f in autres:
+            f.set_seuil(v)
+        mesure.setText(figure.phrase_precision_rappel())
+        retour.setEnabled(abs(v - depart) > 1e-9)
+
+    spin.valueChanged.connect(_appliquer)
+    retour.clicked.connect(lambda *_: spin.setValue(depart))
+    _appliquer(depart)
+    for w in (titre, spin, retour, mesure):
+        lay.addWidget(w)
+    lay.addStretch(1)
+    lay.addWidget(note)
+    return ligne

@@ -14,7 +14,10 @@ from src.app.services.profil_scores import (
     bilan_au_seuil,
     charger_bandes,
     charger_bandes_par_zone,
+    disposer_etiquettes,
     libelle_zone,
+    phrase_precision_rappel,
+    precision_rappel,
     profil_pour_classe,
     profils_par_zone,
     seuil_f1max,
@@ -227,6 +230,54 @@ def test_profils_par_zone_restreints_et_libelles(tmp_path):
     assert libelle_zone("verdun") == "Verdun"
 
 
+def test_disposer_etiquettes_sans_chevauchement():
+    """Première rangée où l'étiquette tient ; rangée de plus sinon ; jamais hors cadre."""
+    # écartées (large), possible (étroite), probable, très probable : possible descend
+    elements = [(60.0, 50.0), (110.0, 46.0), (150.0, 50.0), (260.0, 70.0)]
+    assert disposer_etiquettes(elements, 300.0) == [(0, 35.0), (1, 87.0), (0, 125.0), (0, 225.0)]
+    # deux étroites côte à côte → trois rangées
+    assert [r for r, _g in disposer_etiquettes([(100.0, 40.0), (110.0, 40.0), (120.0, 40.0)], 300.0)] == [0, 1, 2]
+    # ramenée dans le cadre : à gauche comme à droite
+    assert disposer_etiquettes([(5.0, 40.0), (298.0, 40.0)], 300.0) == [(0, 0.0), (0, 260.0)]
+    # rien ne se chevauche sur une même rangée, quelles que soient les largeurs
+    import random
+    rnd = random.Random(7)
+    for _ in range(200):
+        els = sorted((rnd.uniform(0, 500), rnd.uniform(20, 90)) for _ in range(6))
+        dispo = disposer_etiquettes(els, 500.0)
+        par_rangee: dict = {}
+        for (_cx, l), (r, g) in zip(els, dispo):
+            assert 0.0 <= g and g + l <= 500.0 + 1e-6
+            for g2, l2 in par_rangee.get(r, []):
+                assert g >= g2 + l2 + 4.0 - 1e-9 or g2 >= g + l + 4.0 - 1e-9
+            par_rangee.setdefault(r, []).append((g, l))
+    assert disposer_etiquettes([], 100.0) == []
+
+
+def test_precision_et_rappel_au_seuil(tmp_path):
+    """Précision comptée sur les bandes, rappel interpolé dans la table de l'évaluation."""
+    bloc = {
+        "global": {"etude_seuil": {
+            "bandes": _bandes([(0.2, 10, 90), (0.3, 30, 20), (0.4, 50, 5)]),
+            "tableau": [{"seuil": 0.2, "P": 0.4, "R": 0.9}, {"seuil": 0.3, "P": 0.7, "R": 0.8},
+                        {"seuil": 0.4, "P": 0.9, "R": 0.5}],
+        }},
+    }
+    d = _modele(tmp_path, bloc=bloc)
+    p = profil_pour_classe(d, "c", CATS)
+    assert p is not None and p.tableau == ((0.2, 0.4, 0.9), (0.3, 0.7, 0.8), (0.4, 0.9, 0.5))
+    assert precision_rappel(p, 0.3) == (80 / 105, 0.8)               # bandes ≥ 0,30 : 80 vraies, 25 fausses
+    prec, rap = precision_rappel(p, 0.35)
+    assert prec == 50 / 55 and abs(rap - 0.65) < 1e-9                 # rappel interpolé entre 0,30 et 0,40
+    assert precision_rappel(p, 0.1) == (90 / 205, 0.9) and precision_rappel(p, 0.9)[1] == 0.5
+    assert precision_rappel(p, 0.99) == (None, 0.5)                   # plus rien de gardé
+    assert phrase_precision_rappel(0.761, 0.8) == "précision 76 % · rappel 80 %"
+    assert phrase_precision_rappel(0.5, None) == "précision 50 %" and phrase_precision_rappel(None, None) == ""
+    # un profil par zone n'a pas de table : précision seule
+    zone = Profil("c", p.bandes, CATS, fines=p.fines, zone="z")
+    assert precision_rappel(zone, 0.3)[1] is None
+
+
 def test_couleur_de_la_couche_qualifiee_en_comparaison():
     """A9 : la figure prend la clé du registre de la COUCHE — « classe — Modèle » en A/B."""
     from src.app.services.model_orchestrator import InstalledModel, layer_name_for_class
@@ -248,10 +299,15 @@ def test_le_widget_suit_le_seuil_et_les_fiches_posent_les_zones():
     racine = Path(__file__).resolve().parents[2]
     widget = (racine / "src/ui/widgets/profil_scores.py").read_text(encoding="utf-8")
     for motif in ("def set_seuil", "categories_effectives", "def bilan", "seuil_f1max", "DashLine",
-                  "QToolTip.showText", "def contextMenuEvent", "def figures_par_zone"):
+                  "QToolTip.showText", "def contextMenuEvent", "def figures_par_zone",
+                  "disposer_etiquettes(", "def resizeEvent"):
         assert motif in widget, motif
     carte = (racine / "src/ui/widgets/entity_card.py").read_text(encoding="utf-8")
     assert "fig.set_seuil(seuil)" in carte and "phrase_bilan" not in carte      # bilan dans l'infobulle seulement
     assert "self.phrase_bilan()" in widget
     fiche = (racine / "src/ui/dialogs/class_info_dialog.py").read_text(encoding="utf-8")
     assert "figures_par_zone(" in fiche and "figure.set_seuil(seuil)" in fiche
+    # « Tester un seuil » dans les deux fiches, précision/rappel dans le widget
+    assert "ligne_essai_seuil(" in fiche
+    assert "ligne_essai_seuil(" in (racine / "src/ui/dialogs/model_info_dialog.py").read_text(encoding="utf-8")
+    assert "def phrase_precision_rappel" in widget and "def ligne_essai_seuil" in widget

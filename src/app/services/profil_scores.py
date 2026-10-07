@@ -63,6 +63,7 @@ class Profil:
     n_sous_seuil: int = 0                  # détections écartées, comptées sur les bandes fines
     fines: Tuple[Bande, ...] = ()          # bandes de l'évaluation (pas fin) : bilan à un seuil
     seuil_f1max: Optional[float] = None    # point d'équilibre précision-rappel de l'évaluation
+    tableau: Tuple[Tuple[float, float, float], ...] = ()   # (seuil, précision, rappel) de l'évaluation, pas de 0,05
     zone: str = ""                         # identifiant de zone (profil par zone), "" = toutes
 
     @property
@@ -267,6 +268,63 @@ def seuil_f1max(model_dir: Path, classe: str, source_rel: Optional[str] = None) 
     return None
 
 
+def tableau_precision_rappel(
+    model_dir: Path, classe: str, source_rel: Optional[str] = None
+) -> List[Tuple[float, float, float]]:
+    """``[(seuil, P, R), …]`` de ``etude_seuil.tableau`` (pas de 0,05) — par classe,
+    sinon global — dans la **même évaluation que les bandes** (``fiabilite.source``) :
+    le rappel y est celui du critère de la classe (couverture pour les linéaires)."""
+    bloc = _charger_bloc(model_dir, source_rel)
+    for conteneur in ((bloc.get("par_classe") or {}).get(classe) or {}, bloc.get("global") or {}):
+        if not isinstance(conteneur, Mapping):
+            continue
+        lignes = (conteneur.get("etude_seuil") or {}).get("tableau")
+        out: List[Tuple[float, float, float]] = []
+        for ligne in lignes or []:
+            try:
+                out.append((float(ligne["seuil"]), float(ligne["P"]), float(ligne["R"])))
+            except (KeyError, TypeError, ValueError):
+                continue
+        if out:
+            return sorted(out)
+    return []
+
+
+def _interpoler_rappel(tableau: Sequence[Tuple[float, float, float]], seuil: float) -> Optional[float]:
+    if not tableau:
+        return None
+    if seuil <= tableau[0][0]:
+        return tableau[0][2]
+    if seuil >= tableau[-1][0]:
+        return tableau[-1][2]
+    for (s0, _p0, r0), (s1, _p1, r1) in zip(tableau, tableau[1:]):
+        if s0 <= seuil <= s1:
+            return r0 if s1 == s0 else r0 + (r1 - r0) * (seuil - s0) / (s1 - s0)
+    return None
+
+
+def precision_rappel(profil: Profil, seuil: float) -> Tuple[Optional[float], Optional[float]]:
+    """``(précision, rappel)`` au banc pour ``seuil`` : la précision est comptée sur
+    les bandes fines (vraies / gardées, même provenance que la figure), le rappel lu
+    dans la table de l'évaluation par interpolation linéaire entre deux pas de 0,05
+    (les bandes ne connaissent pas les objets manqués). ``None`` quand la donnée
+    manque — un profil par zone n'a pas de table, donc pas de rappel."""
+    b = bilan_au_seuil(profil.fines or profil.bandes, seuil)
+    gardees = b.vrais_gardes + b.fausses_gardees
+    precision = b.vrais_gardes / gardees if gardees else None
+    return precision, _interpoler_rappel(profil.tableau, float(seuil))
+
+
+def phrase_precision_rappel(precision: Optional[float], rappel: Optional[float]) -> str:
+    """« précision 65 % · rappel 72 % » ; une seule partie si l'autre manque ; ``""`` sans rien."""
+    morceaux = []
+    if precision is not None:
+        morceaux.append(f"précision {round(precision * 100)} %")
+    if rappel is not None:
+        morceaux.append(f"rappel {round(rappel * 100)} %")
+    return " · ".join(morceaux)
+
+
 _PREFIXE_ZONE = re.compile(r"^(\d+|ie)_")
 
 
@@ -278,6 +336,35 @@ def libelle_zone(zone: str) -> str:
     nom = zone.rsplit("/", 1)[-1]
     nom = _PREFIXE_ZONE.sub("", nom).replace("_", " ").strip()
     return nom[:1].upper() + nom[1:] if nom else zone
+
+
+def disposer_etiquettes(
+    elements: Sequence[Tuple[float, float]], largeur_totale: float, ecart: float = 4.0
+) -> List[Tuple[int, float]]:
+    """Range des étiquettes ``(centre, largeur)``, données de gauche à droite, sur le
+    moins de rangées possible **sans chevauchement** : chacune prend la première
+    rangée où elle tient à droite de la précédente (``ecart`` de marge), sinon une
+    rangée de plus. Une étiquette est d'abord centrée sur sa bande, puis ramenée dans
+    ``[0, largeur_totale]``. Renvoie ``(rangée, x gauche)`` par étiquette.
+
+    C'est ce qui empêche « possible » et « probable » de se superposer sous le
+    profil des scores quand deux niveaux sont étroits (constat utilisateur
+    2026-10-08), en mini comme en complet.
+    """
+    fins: List[float] = []
+    out: List[Tuple[int, float]] = []
+    for cx, largeur in elements:
+        gauche = min(max(cx - largeur / 2, 0.0), max(0.0, largeur_totale - largeur))
+        droite = gauche + largeur
+        for r, fin in enumerate(fins):
+            if gauche >= fin + ecart:
+                fins[r] = droite
+                out.append((r, gauche))
+                break
+        else:
+            fins.append(droite)
+            out.append((len(fins) - 1, gauche))
+    return out
 
 
 def agreger(
@@ -350,7 +437,8 @@ def _source_et_zones(model_dir: Path, classe: str) -> Tuple[Optional[str], Optio
 
 
 def _profil(classe: str, bandes: Sequence[Bande], categories: Sequence[Categorie], pas: float,
-            seuil_eq: Optional[float], zone: str = "") -> Profil:
+            seuil_eq: Optional[float], zone: str = "",
+            tableau: Sequence[Tuple[float, float, float]] = ()) -> Profil:
     cats = tuple(sorted(categories, key=lambda c: c.seuil))
     seuil = cats[0].seuil
     return Profil(
@@ -361,6 +449,7 @@ def _profil(classe: str, bandes: Sequence[Bande], categories: Sequence[Categorie
         fines=tuple(bandes),
         seuil_f1max=seuil_eq,
         zone=zone,
+        tableau=tuple(tableau),
     )
 
 
@@ -374,7 +463,8 @@ def profil_pour_classe(
     bandes = charger_bandes(model_dir, classe, source, zones)
     if not bandes:
         return None
-    return _profil(classe, bandes, categories, pas, seuil_f1max(model_dir, classe))
+    return _profil(classe, bandes, categories, pas, seuil_f1max(model_dir, classe),
+                   tableau=tableau_precision_rappel(model_dir, classe, source))
 
 
 def profils_par_zone(

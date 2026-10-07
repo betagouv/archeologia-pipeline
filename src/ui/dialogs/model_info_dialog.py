@@ -31,7 +31,7 @@ from qgis.PyQt.QtWidgets import (
 from ...app.services.model_orchestrator import InstalledModel, load_model_card
 
 from ...app.services.fiabilite import parse_fiabilite
-from ..widgets.profil_scores import figure_profil
+from ..widgets.profil_scores import figure_profil, ligne_essai_seuil
 from ..widgets.vignette import pixmap_ajuste
 from ._model_info_data import Section, build_sections
 
@@ -254,7 +254,9 @@ class ModelInfoDialog(QDialog):
             titre = QLabel(f"Profil des scores — {classe}")
             titre.setObjectName("ModelInfoRowLabel")
             titre.setContentsMargins(0, 10, 0, 2)
-            out.extend([titre, fig])
+            # Essai de seuil (sans effet sur le traitement) : ligne, niveaux,
+            # précision et rappel au banc suivent la case.
+            out.extend([titre, fig, ligne_essai_seuil(fig)])
         return out
 
     def _build_header(self, card: Dict[str, Any]) -> QWidget:

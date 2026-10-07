@@ -28,7 +28,7 @@ from typing import Dict, List, Optional, Sequence, Tuple
 AIDE_DIRNAME = "aide"
 CLE_NOUVEAUTES = "nouveautes"
 
-#: Étape de l'assistant → clé du chapitre ouvert par le « ? » (et F1).
+#: Étape de l'assistant → clé du chapitre ouvert par le bouton « Aide » (et F1).
 CHAPITRE_PAR_ETAPE: Dict[int, str] = {
     1: "etape-1-source",
     2: "etape-2-produits",

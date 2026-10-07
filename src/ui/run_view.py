@@ -596,7 +596,7 @@ class RunView(QWidget):
         color = _LOG_LINE_COLORS.get(cat)
         if color:
             body = f'<span style="color:{color};">{body}</span>'
-            # Renvoi vers le manuel intégré (bouton « ? » / F1 → Dépannage) :
+            # Renvoi vers le manuel intégré (bouton « Aide » / F1 → Dépannage) :
             # un QPlainTextEdit n'a pas de lien cliquable, le titre suffit.
             rubrique = rubrique_depannage(msg)
             if rubrique:

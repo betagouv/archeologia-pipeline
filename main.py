@@ -18,7 +18,7 @@ class ArcheologiaPipelinePlugin:
         self.action.triggered.connect(self.run)
         self.iface.addPluginToMenu(self.tr("Archéolog'IA"), self.action)
         self.iface.addToolBarIcon(self.action)
-        # Manuel intégré (aide/*.md), aussi accessible par « ? » / F1 dans l'assistant.
+        # Manuel intégré (aide/*.md), aussi accessible par le bouton « Aide » / F1 de l'assistant.
         self.help_action = QAction(self.tr("Manuel"), self.iface.mainWindow())
         self.help_action.triggered.connect(self.open_help)
         self.iface.addPluginToMenu(self.tr("Archéolog'IA"), self.help_action)

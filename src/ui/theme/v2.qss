@@ -735,8 +735,6 @@ QTabWidget::pane { border: none; background: #f0f0f0; }
 #VisuRailList QScrollBar::sub-page:vertical { background: transparent; }
 
 /* ---- Manuel intégré (aide_dialog) ---- */
-#HelpButton { background: transparent; border: 1px solid #c4c4c4; color: #2c2c2c; font-weight: bold; }
-#HelpButton:hover { background: #e8e8e8; border: 1px solid #a0a0a0; }
 #AideBarre { background: #ffffff; border-bottom: 1px solid #c4c4c4; }
 #AideRecherche { padding: 3px 6px; border: 1px solid #c4c4c4; border-radius: 3px; background: #ffffff; }
 #AideSommaire {

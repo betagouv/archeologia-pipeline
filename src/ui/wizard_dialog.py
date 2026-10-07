@@ -265,12 +265,14 @@ class WizardDialog(QDialog):
         self._review_pill.setVisible(False)
 
         # Manuel intégré : ouvre le chapitre de l'étape courante (F1 aussi).
-        # Un « ? » plutôt qu'un libellé : la barre est déjà pleine à 980 px.
-        aide_btn = QPushButton("?")
-        aide_btn.setObjectName("HelpButton")
-        aide_btn.setToolTip("Aide sur cette étape (F1)")
+        # Même style que ses deux voisins, icône « info » du thème : un « ? »
+        # seul rendait mal et ne disait pas ce qu'il ouvrait.
+        aide_btn = QPushButton("Aide")
+        aide_btn.setObjectName("GhostButton")
+        aide_btn.setToolTip("Manuel : le chapitre de cette étape (F1)")
         aide_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        aide_btn.setFixedWidth(28)
+        aide_btn.setIcon(colored_icon("info", "#2c2c2c", 14, dpr=self.devicePixelRatioF()))
+        aide_btn.setIconSize(QSize(14, 14))
         aide_btn.clicked.connect(self._ouvrir_aide)
         QShortcut(QKeySequence(QKeySequence.StandardKey.HelpContents), self, self._ouvrir_aide)
 

@@ -310,7 +310,13 @@ class ProfilScoresWidget(QWidget):
         par pas de 0,05) à la largeur courante, pas au seuil courant : sinon la figure
         grandissait et rétrécissait en réglant le seuil, et tout ce qui est dessous
         (la ligne « Tester un seuil ») sautait (constat utilisateur 2026-10-08)."""
+        # Pire cas = un niveau réduit à une bande de 0,01 (seuil juste sous une coupure :
+        # 0,49 pour une coupure à 0,50) : son libellé, centré sur presque rien, repousse
+        # ses voisins. D'où, en plus des pas de 0,05, les seuils à ±0,01 de chaque coupure.
         candidats = [self._p.seuil, self.seuil] + [round(0.05 * k, 2) for k in range(1, 20)]
+        for c in self._p.categories:
+            candidats += [round(c.seuil - 0.01, 3), round(c.seuil + 0.01, 3)]
+        candidats = [s for s in candidats if 0.0 < s < 1.0]
         rangees = 1
         for s in candidats:
             cats = self._p.categories if abs(s - self._p.seuil) < 1e-9 else categories_effectives(self._p.categories, s)

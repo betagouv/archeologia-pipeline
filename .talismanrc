@@ -103,7 +103,7 @@ fileignoreconfig:
 - filename: src/pipeline/types.py
   checksum: cc071751349938091505bf7c7cbe20240ae757e05677e4184c939ccc2edca6d9
 - filename: src/ui/dialogs/_model_info_data.py
-  checksum: 0d3925659fb2f6d21fde38b0c9266a15c4405da1393dd40ca5356cfd2fdcebde
+  checksum: a0c51aee06532ba630d115906c703a7079f1ee7c25c02da6eafd0ee6b05160cb
 - filename: src/ui/icons.py
   checksum: df0d068fd896cf1361d0a6286e537fc015e473c5bc58924f9d79c3813df543b0
 - filename: src/ui/layer_loader.py
@@ -117,7 +117,7 @@ fileignoreconfig:
 - filename: src/ui/steps/step_2_indices.py
   checksum: 5ec00269f0324ef96fd4c373275115c14f074f7f66944814d641fe7015d884f7
 - filename: src/ui/steps/step_3_detection.py
-  checksum: 8121e46f8c2a19f3cf3c4de2ecf2b118bb35d5495e1fac3bb0214ac88e4f058d
+  checksum: 750e67a47661ffe9b8381b92b338e7b1f3f452b3feeb27bd4167325658a711c7
 - filename: src/ui/steps/step_4_launch.py
   checksum: 4708f745d0c746a1711696595fdbf33250d63a3544c94d63975dd8cb2bcf0696
 - filename: src/ui/theme/v2.qss
@@ -127,7 +127,7 @@ fileignoreconfig:
 - filename: src/ui/wizard_dialog.py
   checksum: d622f38c4ab3b6b9a688ed46dc0c3b58efed460eccbbcd8138acc83c470b8030
 - filename: tests/TESTS_MANUELS_QGIS.md
-  checksum: 4401a4fd2850ffc45e67dcefbbd2b97ee90805b7d27b4a5623f5a404fac79ac7
+  checksum: 1cb9da1a8a2a308966fb262e48e16331a15c7538618a7bc590d5cb6895688d88
 - filename: tests/integration/test_existing_mnt_runner_finalize.py
   checksum: e67c2e4c83cea0937bdfb39e8eec7aa7476f30648d4d858589e2308ad0565d63
 - filename: tests/integration/test_existing_rvt_runner_isolation.py
@@ -169,7 +169,7 @@ fileignoreconfig:
 - filename: tests/unit/test_models_connectivity.py
   checksum: 4bf50a0f98e8b61f3ad99d1e822b6873cb2fc918e2847c2bc12d95f4f690e9c9
 - filename: tests/unit/test_package_plugin.py
-  checksum: 9a4d1dd48a34e3cf8404af0eebff50fd54f13d059ad4c5b2eb9707c0b5a109f4
+  checksum: f0b0f3fd1e812827b1b5c37538c4c164ac94051f6fbd9c918f89a863a429d576
 - filename: tests/unit/test_preflight.py
   checksum: 6b37b99281e06942557dfc506ad8e2b04f1925eaeaeaf2bf140659437505c6c4
 - filename: tests/unit/test_preflight_output_dir.py

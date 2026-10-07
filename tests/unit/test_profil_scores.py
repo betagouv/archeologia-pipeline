@@ -127,3 +127,20 @@ def test_eclats_fusionnes_du_meme_cote_de_la_coupure():
     assert [(b.lo, b.hi) for b in agreger(fines, 0.05, coupures=[0.29, 0.35])] == [(0.2, 0.25), (0.25, 0.29), (0.29, 0.35)]
     # les effectifs sont conservés
     assert sum(b.tp for b in agreger(fines, 0.05, coupures=[0.26, 0.30])) == 15
+
+
+def test_la_figure_decline_la_couleur_comme_la_legende():
+    """Garde-fou sans QGIS : même registre de couleur, même table STYLE_SPEC et même
+    ``apply_confidence`` que la légende de QGIS (ui/layer_loader) — la teinte reste la
+    même par classe, seules saturation et clarté changent d'un niveau à l'autre."""
+    racine = Path(__file__).resolve().parents[2]
+    widget = (racine / "src/ui/widgets/profil_scores.py").read_text(encoding="utf-8")
+    legende = (racine / "src/ui/layer_loader.py").read_text(encoding="utf-8")
+    for motif in ("color_for_class", "apply_confidence", "STYLE_SPEC"):
+        assert motif in widget and motif in legende, motif
+    import colorsys
+    from src.pipeline.cv.color_palette import apply_confidence
+    base = (148, 249, 6)
+    teintes = {round(colorsys.rgb_to_hsv(*[c / 255 for c in apply_confidence(base, r)])[0] * 360)
+               for r in (0.3, 0.5, 0.7, 0.9)}
+    assert len(teintes) == 1, teintes      # une seule teinte pour les quatre niveaux

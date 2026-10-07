@@ -281,7 +281,8 @@ class _CorpsFiche(QWidget):
                 "Vraies détections en couleur, fausses en gris, par bande de score de 0,05. "
                 "Les niveaux commencent là où la part de vrais objets atteint 35, 60 et 85 %. "
                 "La ligne pointillée est le point d'équilibre entre précision et rappel (F1) ; "
-                "le seuil déployé est choisi en dessous."
+                "le seuil déployé est choisi en dessous. La case « Tester un seuil » est un essai, "
+                "sans effet sur le seuil du traitement."
             )
             if seuil is not None:
                 figure.set_seuil(seuil)

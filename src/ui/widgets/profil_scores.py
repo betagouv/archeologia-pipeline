@@ -601,7 +601,7 @@ def ligne_essai_seuil(
     spin.setDecimals(2)
     spin.setFixedWidth(64)
     spin.setValue(depart)
-    spin.setToolTip("Déplace la ligne du seuil sur la figure — sans changer le seuil du traitement")
+    spin.setToolTip("Essai : déplace la ligne du seuil sur la figure, sans changer le seuil du traitement")
     retour = QPushButton("↺")
     retour.setObjectName("EntityResetBtn")
     retour.setFlat(True)
@@ -609,10 +609,13 @@ def ligne_essai_seuil(
     retour.setToolTip(f"Revenir au seuil {_v(round(depart, 3))}")
     mesure = QLabel("")
     mesure.setObjectName("FicheTexte")
-    # Largeur fixe : le texte ne fait pas glisser la note quand les chiffres changent.
-    mesure.setMinimumWidth(QFontMetrics(mesure.font()).horizontalAdvance("précision 100 % · rappel 100 %") + 6)
-    note = QLabel("essai sans effet sur le seuil du traitement")
-    note.setObjectName("FicheLegende")
+    # Largeur constante et modeste : la ligne ne doit imposer AUCUNE largeur au
+    # contenu de la fiche (une largeur minimale calculée sur la police, avant que
+    # le QSS ne s'applique, faisait déborder le contenu : barre horizontale, et la
+    # légende se re-coupait à chaque changement de seuil — constat utilisateur).
+    mesure.setMinimumWidth(170)
+    mesure.setToolTip("Précision comptée sur les bandes du banc, rappel lu dans la table de l'évaluation, "
+                      "pour le seuil testé — essai sans effet sur le seuil du traitement")
 
     def _appliquer(v: float) -> None:
         figure.set_seuil(v)
@@ -627,5 +630,4 @@ def ligne_essai_seuil(
     for w in (titre, spin, retour, mesure):
         lay.addWidget(w)
     lay.addStretch(1)
-    lay.addWidget(note)
     return ligne

@@ -47,6 +47,8 @@ Le dessin : contour seul, sans remplissage, pour laisser lire la structure déte
 
 [![Dans QGIS : une couche par entité, quatre niveaux de fiabilité, contours sur l'indice](img/resultats-legende-fiabilite.jpg)](img/resultats-legende-fiabilite.jpg)
 
+Pour voir d'où viennent les coupures d'une classe, ouvrez sa fiche à l'étape 3 : le **profil des scores** range les détections de l'évaluation par score, vraies en couleur et fausses en gris, et trace les coupures. Sous le seuil, presque tout est faux ; au-dessus de la dernière coupure, presque tout est vrai.
+
 Une couche issue d'un modèle sans fiabilité mesurée est catégorisée par tranches de score.
 
 ## Les attributs d'une détection

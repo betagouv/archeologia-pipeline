@@ -799,3 +799,14 @@ Le manuel (`aide/*.md`) remplace la notice Word. Il est non modal : on le garde 
 - [ ] **38.8 Renvoi du journal** : lancer un run MNT existant sur un petit raster avec un rayon LD trop grand → la ligne ⚠ du journal se termine par « · voir Manuel › Dépannage › « Le noyau atteint N pixels » », et cette rubrique existe dans le manuel.
 - [ ] **38.9 Installation par ZIP** : dans un profil vierge, le ZIP produit par `dev/package_plugin.py` contient `aide/*.md` (et pas `docs/`) ; le Manuel s'ouvre et affiche les 10 chapitres.
 - [ ] **38.10 Qt6** : rejouer 38.1 à 38.5 et 38.7 sous QGIS 4 — aucun `AttributeError` dans le journal Python ; fenêtre, sommaire et rendu identiques.
+
+## 39. Profil des scores dans les fiches ⭐ P1
+
+La figure derrière les quatre niveaux de fiabilité : barres par bande de score (0,05), fausses détections en gris, vraies dans la couleur de la classe déclinée par niveau (les teintes de la légende), coupures tracées, niveau nommé sous l'axe avec sa part mesurée et son effectif.
+
+- [ ] **39.1 Fiche de classe** : étape 3, « Fiche » de Cratères → sous l'aperçu, un bloc « PROFIL DES SCORES À L'ÉVALUATION » : barres grises sous « seuil 0,29 », barres rouges (couleur de la classe) au-dessus, de plus en plus foncées de « Douteux » à « Très probable » ; sous l'axe « écartées · 136 486 », puis « Possible 45 % · 69 893 », « Probable 72 % · 61 613 », « Très probable 92 % · 90 087 » ; « Douteux 26 % · 34 318 » décalé d'une rangée (bande étroite). Graduation 20 k à gauche.
+- [ ] **39.2 Échelle** : fiche d'Enclos (corpus français) → les barres au-dessus du seuil restent lisibles (graduation 20) ; les barres écartées dépassent et sont rognées en haut, leur effectif « 5 656 » sous « écartées ».
+- [ ] **39.3 Fiche ⓘ du modèle** : ⓘ du modèle de formes linéaires → sous la section « Fiabilité des détections », trois figures « Profil des scores — parcellaire / talus_fosse / chemin_creux », chacune dans la couleur de sa classe. Un modèle sans évaluation livrée n'a pas de figure, et rien d'autre ne change.
+- [ ] **39.4 Infobulle** : survoler une figure → la liste des niveaux avec coupure, part mesurée et effectif.
+- [ ] **39.5 Densité d'écran** : à 125 % / 150 %, traits et textes nets, rien de rogné en bas (rangée décalée comprise).
+- [ ] **39.6 Qt6** : rejouer 39.1 et 39.3 sous QGIS 4 — aucun `AttributeError` dans le journal Python.

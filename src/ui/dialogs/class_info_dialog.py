@@ -40,6 +40,7 @@ from qgis.PyQt.QtWidgets import (
 from ...app.services.class_fiche import ClassFiche
 from ...app.services.fiabilite import pct
 from ..widgets.vignette import FicheButton, pixmap_ajuste
+from ..widgets.profil_scores import figure_profil
 
 _VIGNETTE_MAX = 320  # côté max de l'aperçu, en px logiques
 
@@ -260,6 +261,18 @@ class _CorpsFiche(QWidget):
         colonne.addStretch(1)
         haut.addLayout(colonne, 1)
         lay.addLayout(haut)
+
+        # — profil des scores : la figure derrière les niveaux de fiabilité —
+        figure = figure_profil(model_dir, fiche.nom, fiche.fiabilite) if fiche.fiabilite else None
+        if figure is not None:
+            lay.addWidget(_separateur())
+            lay.addWidget(_titre_bloc("Profil des scores à l'évaluation"))
+            lay.addWidget(figure)
+            lay.addWidget(_label(
+                "Vraies détections en couleur, fausses en gris, par bande de score de 0,05. "
+                "Les niveaux commencent là où la part de vrais objets atteint 35, 60 et 85 %.",
+                "FicheLegende",
+            ))
 
         # — blocs textuels —
         for titre_bloc, contenu in self._blocs(fiche):

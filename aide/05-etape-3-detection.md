@@ -18,7 +18,7 @@ La liste dépend des modèles installés : une entité n'apparaît que si un mod
 
 ## La carte d'une entité
 
-- **Vignette** et lien **Fiche** : à quoi ressemble la structure sur le relief, dans quel corpus et sur quel terrain le modèle l'a apprise, sa fiabilité mesurée, ce qu'il ne détecte pas, ses limites. Depuis la fiche, un lien ouvre la fiche du modèle.
+- **Vignette** et lien **Fiche** : à quoi ressemble la structure sur le relief, dans quel corpus et sur quel terrain le modèle l'a apprise, sa fiabilité mesurée, ce qu'il ne détecte pas, ses limites. La fiche montre aussi le **profil des scores** : les détections de l'évaluation rangées par score, les vraies en couleur et les fausses en gris, avec les coupures des quatre niveaux de fiabilité. Depuis la fiche, un lien ouvre la fiche du modèle.
 - **Indice requis** : le sigle de l'indice sur lequel le modèle travaille. S'il n'est pas coché à l'étape 2, le sigle passe en orange et un bouton **+ Activer** l'ajoute.
 - **Modèle** : « seul disponible », ou un menu **Changer ▾** quand plusieurs modèles couvrent l'entité. Chaque entrée du menu indique le nombre de **fenêtres d'analyse** que le modèle découpe dans une dalle : c'est un fait sur le volume de calcul, pas une estimation de durée. Le bouton **ⓘ** ouvre la fiche du modèle : architecture, seuils, métriques d'évaluation et courbes.
 - **Regrouper en zones** : pour certaines entités, une case regroupe les détections proches en zones. Le **Regroupement de cratères** est une entité à part entière, avec le badge **regroupement automatique** : la cocher produit les zones et les cratères qui les composent.

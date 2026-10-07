@@ -13,7 +13,7 @@ module se contente de fabriquer les widgets Qt et de gérer les interactions.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Sequence
 
 from qgis.PyQt.QtCore import Qt, QUrl, pyqtSignal
 from qgis.PyQt.QtGui import QDesktopServices
@@ -30,6 +30,8 @@ from qgis.PyQt.QtWidgets import (
 
 from ...app.services.model_orchestrator import InstalledModel, load_model_card
 
+from ...app.services.fiabilite import parse_fiabilite
+from ..widgets.profil_scores import figure_profil
 from ..widgets.vignette import pixmap_ajuste
 from ._model_info_data import Section, build_sections
 
@@ -124,7 +126,8 @@ class _Courbe(QLabel):
 class _SectionWidget(QFrame):
     """Section pliable : header + corps (lignes label/valeur)."""
 
-    def __init__(self, section: Section, parent: Optional[QWidget] = None):
+    def __init__(self, section: Section, parent: Optional[QWidget] = None,
+                 extras: Sequence[QWidget] = ()):
         super().__init__(parent)
         self.setObjectName("ModelInfoSection")
         self._expanded = not section.collapsed
@@ -165,6 +168,8 @@ class _SectionWidget(QFrame):
             t.setContentsMargins(0, 8, 0, 2)
             body_lay.addWidget(t)
             body_lay.addWidget(_Courbe(chemin))
+        for w in extras:          # figures construites par le dialog (profil des scores)
+            body_lay.addWidget(w)
         lay.addWidget(self._body)
         self._body.setVisible(self._expanded)
 
@@ -225,7 +230,8 @@ class ModelInfoDialog(QDialog):
         content_lay.setContentsMargins(20, 4, 20, 12)
         content_lay.setSpacing(6)
         for section in build_sections(card, args, model.model_dir):
-            content_lay.addWidget(_SectionWidget(section))
+            extras = self._figures_fiabilite(section, card, model.model_dir)
+            content_lay.addWidget(_SectionWidget(section, extras=extras))
         content_lay.addStretch(1)
         scroll.setWidget(content)
         root.addWidget(scroll, 1)
@@ -233,6 +239,24 @@ class ModelInfoDialog(QDialog):
         root.addWidget(self._build_footer())
 
     # ------------------------------------------------------------------
+    @staticmethod
+    def _figures_fiabilite(section: Section, card: Dict[str, Any], model_dir: Optional[Path]) -> list:
+        """Sous FIABILITÉ DES DÉTECTIONS : le profil des scores de chaque classe
+        (bandes de l'évaluation livrée avec le modèle) — rien si elle ne l'est pas."""
+        if model_dir is None or not section.title.startswith("FIABILITÉ"):
+            return []
+        par_classe, _provenance = parse_fiabilite((card or {}).get("thresholds"))
+        out: list = []
+        for classe, cats in par_classe.items():
+            fig = figure_profil(model_dir, classe, cats)
+            if fig is None:
+                continue
+            titre = QLabel(f"Profil des scores — {classe}")
+            titre.setObjectName("ModelInfoRowLabel")
+            titre.setContentsMargins(0, 10, 0, 2)
+            out.extend([titre, fig])
+        return out
+
     def _build_header(self, card: Dict[str, Any]) -> QWidget:
         header = QFrame()
         header.setObjectName("ModelInfoHeader")

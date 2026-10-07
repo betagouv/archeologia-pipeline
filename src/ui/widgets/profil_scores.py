@@ -86,7 +86,7 @@ _COUPURE = QColor("#8a8a8a")          # les autres coupures, discrètes
 
 # Géométrie : marges (gauche, droite, haut), hauteur du tracé, puis sous l'axe une
 # marge de 14 px et des rangées de libellés (nom + mesure en complet, nom seul en mini).
-_MARGES = {False: (44, 8, 36), True: (30, 6, 14)}
+_MARGES = {False: (44, 8, 36), True: (30, 6, 26)}   # mini : deux rangées en haut (équilibre, seuil)
 _TRACE = {False: 116, True: 64}
 _RANGEE = {False: 28, True: 12}
 _BAS_FIXE = 16
@@ -209,8 +209,16 @@ class ProfilScoresWidget(QWidget):
         lignes = [f"{_nb(p.total)} détections de l'évaluation, par bande de score de 0,05."]
         pr = self.phrase_precision_rappel()
         if pr:
-            lignes.insert(0, f"Au seuil {_v(round(self.seuil, 3))} : {pr} (précision comptée sur les bandes, "
-                             "rappel lu dans la table de l'évaluation).")
+            if p.tableau:
+                origine = "rappel lu dans la table de l'évaluation"
+            elif p.n_gt and p.critere == "iou":
+                origine = (f"rappel = vraies gardées sur {_nb(p.n_gt)} objets annotés ; "
+                           "équilibre (F1) de la zone recalculé sur ses bandes")
+            elif p.critere == "couverture":
+                origine = "pas de rappel par zone au critère de couverture : les vraies sont des fragments, pas des objets"
+            else:
+                origine = "rappel indisponible dans l'évaluation"
+            lignes.insert(0, f"Au seuil {_v(round(self.seuil, 3))} : {pr} (précision comptée sur les bandes, {origine}).")
         if p.fines:
             lignes.insert(0, self.phrase_bilan())   # ce que le seuil courant garde et écarte sur le banc
         if p.zone:
@@ -450,13 +458,13 @@ class ProfilScoresWidget(QWidget):
             xe = x(prof.seuil_f1max)
             p.setPen(QPen(_ENCRE_DOUCE, 1, Qt.PenStyle.DashLine))
             p.drawLine(QRectF(xe, haut - 4, 0, y(0) - haut + 4).topLeft(), QRectF(xe, haut - 4, 0, y(0) - haut + 4).bottomLeft())
-            if not mini:
-                p.setFont(petite)
-                texte = f"équilibre (F1) {_v(prof.seuil_f1max)}"
-                if xe - gauche > 104:
-                    p.drawText(QRectF(xe - 103, haut - 30, 100, 12), Qt.AlignmentFlag.AlignRight, texte)
-                else:
-                    p.drawText(QRectF(xe + 3, haut - 30, 100, 12), Qt.AlignmentFlag.AlignLeft, texte)
+            p.setFont(petite)
+            texte = f"équilibre (F1) {_v(prof.seuil_f1max)}"
+            y_eq = haut - (24 if mini else 30)
+            if xe - gauche > 104:
+                p.drawText(QRectF(xe - 103, y_eq, 100, 12), Qt.AlignmentFlag.AlignRight, texte)
+            else:
+                p.drawText(QRectF(xe + 3, y_eq, 100, 12), Qt.AlignmentFlag.AlignLeft, texte)
 
         # — coupures des niveaux en gris, étiquettes en quinconce (0,29 et 0,35 se
         #   touchent) ; le SEUIL APPLIQUÉ (première coupure) dans sa couleur propre,
@@ -486,19 +494,15 @@ class ProfilScoresWidget(QWidget):
             p.drawText(rect, Qt.AlignmentFlag.AlignLeft, texte)
             p.setFont(petite if mini else police)
 
-        # — précision et rappel au seuil courant, en haut à droite du tracé, sur un
-        #   fond blanc translucide pour rester lisibles au-dessus des barres —
+        # — précision, rappel et F1 au seuil courant : en haut à droite, dans la marge
+        #   au-dessus du tracé (rangée de l'équilibre), jamais sur les barres —
         pr = self.phrase_precision_rappel()
         if pr:
             p.setFont(petite)
-            fm = p.fontMetrics()
-            largeur_pr = fm.horizontalAdvance(pr) + 8
-            rect_pr = QRectF(gauche + largeur_trace - largeur_pr - 2, haut + 1, largeur_pr, 13)
-            p.setPen(Qt.PenStyle.NoPen)
-            p.setBrush(QColor(255, 255, 255, 215))
-            p.drawRoundedRect(rect_pr, 3, 3)
+            largeur_pr = p.fontMetrics().horizontalAdvance(pr) + 4
+            rect_pr = QRectF(gauche + largeur_trace - largeur_pr, haut - (24 if mini else 30), largeur_pr, 12)
             p.setPen(_ENCRE)
-            p.drawText(rect_pr, Qt.AlignmentFlag.AlignCenter, pr)
+            p.drawText(rect_pr, Qt.AlignmentFlag.AlignRight, pr)
 
         # — libellés sous l'axe, rangés sans chevauchement ; une étiquette décalée
         #   d'une rangée reçoit un tiret vers le centre de sa bande —

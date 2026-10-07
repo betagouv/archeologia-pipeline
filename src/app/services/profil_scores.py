@@ -31,7 +31,7 @@ import math
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, List, Mapping, Optional, Sequence, Tuple
+from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 
 from .fiabilite import Categorie
 
@@ -64,6 +64,8 @@ class Profil:
     fines: Tuple[Bande, ...] = ()          # bandes de l'évaluation (pas fin) : bilan à un seuil
     seuil_f1max: Optional[float] = None    # point d'équilibre précision-rappel de l'évaluation
     tableau: Tuple[Tuple[float, float, float], ...] = ()   # (seuil, précision, rappel) de l'évaluation, pas de 0,05
+    n_gt: Optional[int] = None             # objets annotés (zone ou classe) : rappel = vraies gardées / n_gt…
+    critere: str = ""                      # … seulement au critère objet (« iou ») ; « couverture » = fragments
     zone: str = ""                         # identifiant de zone (profil par zone), "" = toutes
 
     @property
@@ -189,18 +191,67 @@ def _sommer(listes: Sequence[Sequence[Bande]]) -> List[Bande]:
     return [Bande(lo, hi, tp, fp) for (lo, hi), (tp, fp) in sorted(acc.items())]
 
 
-def _charger_bloc(model_dir: Path, source_rel: Optional[str]) -> Mapping[str, Any]:
-    """Le bloc ``modeles[<id>]`` de l'évaluation livrée ; ``{}`` si rien de lisible."""
-    model_dir = Path(model_dir)
-    chemin = model_dir / (source_rel or EVAL_DEFAUT)
+def _charger_eval(model_dir: Path, source_rel: Optional[str]) -> Mapping[str, Any]:
+    """L'évaluation livrée entière (``critere`` en tête, ``modeles``) ; ``{}`` si illisible."""
+    chemin = Path(model_dir) / (source_rel or EVAL_DEFAUT)
     try:
         evaluation = json.loads(chemin.read_text(encoding="utf-8-sig"))
     except (OSError, ValueError):
         return {}
-    if not isinstance(evaluation, Mapping):
+    return evaluation if isinstance(evaluation, Mapping) else {}
+
+
+def _charger_bloc(model_dir: Path, source_rel: Optional[str]) -> Mapping[str, Any]:
+    """Le bloc ``modeles[<id>]`` de l'évaluation livrée ; ``{}`` si rien de lisible."""
+    evaluation = _charger_eval(model_dir, source_rel)
+    if not evaluation:
         return {}
-    bloc = _bloc_modele(evaluation, model_dir.name)
+    bloc = _bloc_modele(evaluation, Path(model_dir).name)
     return bloc if isinstance(bloc, Mapping) else {}
+
+
+def critere_evaluation(model_dir: Path, source_rel: Optional[str] = None) -> str:
+    """``critere`` en tête de l'évaluation : « iou » (objets appariés un à un) ou
+    « couverture » (linéaires : les vraies sont des fragments, pas des objets) ; ``""`` inconnu.
+
+    Les évaluations antérieures à l'ajout du champ (enclos, dépressions, ponctuelles)
+    ne l'écrivent pas : on le déduit alors du nom de l'évaluation (« couverture » dans
+    le chemin) ou de la présence d'un appariement IoU (``iou`` / ``appariement`` en tête).
+    """
+    evaluation = _charger_eval(model_dir, source_rel)
+    explicite = str(evaluation.get("critere") or "").strip().lower()
+    if explicite:
+        return explicite
+    if "couverture" in (source_rel or "").lower():
+        return "couverture"
+    if evaluation and ("iou" in evaluation or "appariement" in evaluation):
+        return "iou"
+    return ""
+
+
+def _ngt_zone(bloc: Mapping[str, Any], zone: str, classe: str) -> Optional[int]:
+    v = ((bloc.get("par_zone_classe") or {}).get(zone) or {}).get(classe) or {}
+    try:
+        return int(v["n_gt"]) if isinstance(v, Mapping) and v.get("n_gt") is not None else None
+    except (TypeError, ValueError):
+        return None
+
+
+def charger_ngt_par_zone(
+    model_dir: Path, classe: str, source_rel: Optional[str] = None, zones: Optional[Sequence[str]] = None
+) -> Dict[str, int]:
+    """``{zone: n_gt}`` (objets annotés de ``classe``), zones déclarées ou toutes."""
+    bloc = _charger_bloc(model_dir, source_rel)
+    pzc = bloc.get("par_zone_classe") or {}
+    if not isinstance(pzc, Mapping):
+        return {}
+    cles = [z for z in zones if z in pzc] if zones else list(pzc.keys())
+    out: Dict[str, int] = {}
+    for z in cles:
+        n = _ngt_zone(bloc, str(z), classe)
+        if n is not None:
+            out[str(z)] = n
+    return out
 
 
 def _bandes_zone(bloc: Mapping[str, Any], zone: str, classe: str) -> List[Bande]:
@@ -307,21 +358,47 @@ def precision_rappel(profil: Profil, seuil: float) -> Tuple[Optional[float], Opt
     """``(précision, rappel)`` au banc pour ``seuil`` : la précision est comptée sur
     les bandes fines (vraies / gardées, même provenance que la figure), le rappel lu
     dans la table de l'évaluation par interpolation linéaire entre deux pas de 0,05
-    (les bandes ne connaissent pas les objets manqués). ``None`` quand la donnée
-    manque — un profil par zone n'a pas de table, donc pas de rappel."""
+    (les bandes ne connaissent pas les objets manqués). Sans table — un profil par
+    zone — le rappel est **vraies gardées / objets annotés** (``n_gt``), exact au
+    critère objet (« iou » : une vraie = un objet apparié) et impossible au critère
+    de couverture (une vraie = un fragment, il y en a plus que d'objets) → ``None``."""
     b = bilan_au_seuil(profil.fines or profil.bandes, seuil)
     gardees = b.vrais_gardes + b.fausses_gardees
     precision = b.vrais_gardes / gardees if gardees else None
-    return precision, _interpoler_rappel(profil.tableau, float(seuil))
+    rappel = _interpoler_rappel(profil.tableau, float(seuil))
+    if rappel is None and profil.n_gt and profil.critere == "iou":
+        rappel = min(1.0, b.vrais_gardes / profil.n_gt)
+    return precision, rappel
+
+
+def f1max_depuis_bandes(bandes: Sequence[Bande], n_gt: Optional[int]) -> Optional[float]:
+    """Le seuil qui maximise F1 sur des bandes fines, au critère objet : à chaque borne
+    basse ``s``, F1(s) = 2·TP(s) / (TP(s) + FP(s) + n_gt) (les manqués valent n_gt − TP).
+    C'est le « équilibre (F1) » d'une zone d'évaluation, que le fichier ne donne pas
+    par zone. ``None`` sans bandes ni objets annotés ; au critère de couverture,
+    l'appelant ne doit pas s'en servir (les vraies sont des fragments)."""
+    if not bandes or not n_gt:
+        return None
+    meilleur, f1_max = None, -1.0
+    for b in sorted(bandes, key=lambda x: x.lo):
+        tp = sum(x.tp for x in bandes if x.lo >= b.lo - 1e-9)
+        fp = sum(x.fp for x in bandes if x.lo >= b.lo - 1e-9)
+        f1 = 2 * tp / (tp + fp + n_gt) if (tp + fp + n_gt) else 0.0
+        if f1 > f1_max + 1e-12:
+            meilleur, f1_max = b.lo, f1
+    return meilleur
 
 
 def phrase_precision_rappel(precision: Optional[float], rappel: Optional[float]) -> str:
-    """« précision 65 % · rappel 72 % » ; une seule partie si l'autre manque ; ``""`` sans rien."""
+    """« précision 65 % · rappel 72 % · F1 68 % » ; le F1 dès que les deux existent, une
+    seule partie si l'autre manque ; ``""`` sans rien."""
     morceaux = []
     if precision is not None:
         morceaux.append(f"précision {round(precision * 100)} %")
     if rappel is not None:
         morceaux.append(f"rappel {round(rappel * 100)} %")
+    if precision is not None and rappel is not None and (precision + rappel) > 0:
+        morceaux.append(f"F1 {round(2 * precision * rappel / (precision + rappel) * 100)} %")
     return " · ".join(morceaux)
 
 
@@ -438,7 +515,8 @@ def _source_et_zones(model_dir: Path, classe: str) -> Tuple[Optional[str], Optio
 
 def _profil(classe: str, bandes: Sequence[Bande], categories: Sequence[Categorie], pas: float,
             seuil_eq: Optional[float], zone: str = "",
-            tableau: Sequence[Tuple[float, float, float]] = ()) -> Profil:
+            tableau: Sequence[Tuple[float, float, float]] = (),
+            n_gt: Optional[int] = None, critere: str = "") -> Profil:
     cats = tuple(sorted(categories, key=lambda c: c.seuil))
     seuil = cats[0].seuil
     return Profil(
@@ -450,6 +528,8 @@ def _profil(classe: str, bandes: Sequence[Bande], categories: Sequence[Categorie
         seuil_f1max=seuil_eq,
         zone=zone,
         tableau=tuple(tableau),
+        n_gt=n_gt,
+        critere=critere,
     )
 
 
@@ -463,8 +543,10 @@ def profil_pour_classe(
     bandes = charger_bandes(model_dir, classe, source, zones)
     if not bandes:
         return None
+    ngt = charger_ngt_par_zone(model_dir, classe, source, zones) if zones else {}
     return _profil(classe, bandes, categories, pas, seuil_f1max(model_dir, classe),
-                   tableau=tableau_precision_rappel(model_dir, classe, source))
+                   tableau=tableau_precision_rappel(model_dir, classe, source),
+                   n_gt=sum(ngt.values()) if ngt else None, critere=critere_evaluation(model_dir, source))
 
 
 def profils_par_zone(
@@ -479,4 +561,11 @@ def profils_par_zone(
     par_zone = charger_bandes_par_zone(model_dir, classe, source, zones)
     if len(par_zone) < 2:
         return []
-    return [_profil(classe, bandes, categories, pas, None, zone=z) for z, bandes in par_zone]
+    ngt = charger_ngt_par_zone(model_dir, classe, source, zones)
+    critere = critere_evaluation(model_dir, source)
+    # Point d'équilibre F1 de la zone : recalculé depuis ses bandes et ses objets annotés
+    # (critère objet seulement — le fichier ne le donne pas par zone).
+    return [_profil(classe, bandes, categories, pas,
+                    f1max_depuis_bandes(bandes, ngt.get(z)) if critere == "iou" else None,
+                    zone=z, n_gt=ngt.get(z), critere=critere)
+            for z, bandes in par_zone]

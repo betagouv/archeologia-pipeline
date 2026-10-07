@@ -15,6 +15,7 @@ from src.app.services.profil_scores import (
     charger_bandes,
     charger_bandes_par_zone,
     disposer_etiquettes,
+    f1max_depuis_bandes,
     libelle_zone,
     phrase_precision_rappel,
     precision_rappel,
@@ -219,6 +220,7 @@ def test_profils_par_zone_restreints_et_libelles(tmp_path):
     assert [(p.zone, p.total, p.seuil_f1max) for p in profils] == [
         ("grand_est/54_foret_de_haye", 12, None), ("centre_val_de_loire/41_blois", 6, None),
     ]
+    assert [p.n_gt for p in profils] == [None, None] and profils[0].critere == ""   # pas de n_gt ni de critère ici
     assert profils[0].coupures == (0.29, 0.35, 0.5, 0.65)   # les coupures de la classe, pas de la zone
     # sans restriction : toutes les zones du fichier ; une seule zone → rien
     d2 = _modele(tmp_path, nom="tout", bloc=bloc)
@@ -271,11 +273,58 @@ def test_precision_et_rappel_au_seuil(tmp_path):
     assert prec == 50 / 55 and abs(rap - 0.65) < 1e-9                 # rappel interpolé entre 0,30 et 0,40
     assert precision_rappel(p, 0.1) == (90 / 205, 0.9) and precision_rappel(p, 0.9)[1] == 0.5
     assert precision_rappel(p, 0.99) == (None, 0.5)                   # plus rien de gardé
-    assert phrase_precision_rappel(0.761, 0.8) == "précision 76 % · rappel 80 %"
+    assert phrase_precision_rappel(0.761, 0.8) == "précision 76 % · rappel 80 % · F1 78 %"
     assert phrase_precision_rappel(0.5, None) == "précision 50 %" and phrase_precision_rappel(None, None) == ""
-    # un profil par zone n'a pas de table : précision seule
+    # un profil par zone n'a pas de table : rappel = vraies gardées / objets annotés au
+    # critère objet, rien au critère de couverture (fragments), rien sans effectif
     zone = Profil("c", p.bandes, CATS, fines=p.fines, zone="z")
     assert precision_rappel(zone, 0.3)[1] is None
+    assert precision_rappel(Profil("c", p.bandes, CATS, fines=p.fines, zone="z", n_gt=100, critere="iou"), 0.3)[1] == 0.8
+    assert precision_rappel(Profil("c", p.bandes, CATS, fines=p.fines, zone="z", n_gt=100, critere="couverture"), 0.3)[1] is None
+    assert precision_rappel(Profil("c", p.bandes, CATS, fines=p.fines, zone="z", n_gt=10, critere="iou"), 0.3)[1] == 1.0   # plafonné
+
+
+def test_rappel_par_zone_au_critere_objet(tmp_path):
+    """n_gt et critère lus dans l'évaluation ; le profil de la classe (zones sommées) les porte aussi."""
+    bloc = {
+        "par_classe": {"cratere": {"etude_seuil": {"bandes": _bandes([(0.3, 100, 100)])}}},
+        "par_zone_classe": {
+            "a/1_x": {"cratere": {"n_gt": 50, "bandes": _bandes([(0.3, 40, 10), (0.6, 5, 1)])}},
+            "b/2_y": {"cratere": {"n_gt": 20, "bandes": _bandes([(0.3, 5, 5)])}},
+        },
+    }
+    d = _modele(tmp_path, nom="cr", bloc=bloc)
+    ev = json.loads((d / "entrainement" / "evaluation" / "metriques_eval.json").read_text(encoding="utf-8"))
+    ev["critere"] = "iou"
+    (d / "entrainement" / "evaluation" / "metriques_eval.json").write_text(json.dumps(ev), encoding="utf-8")
+    zones = profils_par_zone(d, "cratere", CATS)
+    assert [(z.zone, z.n_gt, z.critere) for z in zones] == [("a/1_x", 50, "iou"), ("b/2_y", 20, "iou")]
+    assert precision_rappel(zones[0], 0.5) == (5 / 6, 5 / 50)      # au-dessus de 0,5 : 5 vraies, 1 fausse
+    # équilibre F1 de la zone : à 0,30 F1 = 2·45/(45+11+50) = 0,85, à 0,60 F1 = 2·5/(5+1+50) = 0,18
+    assert zones[0].seuil_f1max == 0.3 and zones[1].seuil_f1max == 0.3
+    assert f1max_depuis_bandes([], 10) is None and f1max_depuis_bandes(zones[0].fines, None) is None
+    fines = [Bande(0.2, 0.21, 1, 50), Bande(0.4, 0.41, 20, 2), Bande(0.6, 0.61, 5, 0)]
+    assert f1max_depuis_bandes(fines, 30) == 0.4           # 0,2 : 52/108 ; 0,4 : 50/57 ; 0,6 : 10/35
+    assert precision_rappel(zones[0], 0.3) == (45 / 56, 45 / 50)
+    # profil de la classe restreint à des zones déclarées : n_gt = somme des zones
+    card = {"thresholds": {"fiabilite": {"provenance": "x", "zones": {"cratere": ["a/1_x", "b/2_y"]}}}}
+    (d / "model_card.yaml").write_text(yaml.safe_dump(card), encoding="utf-8")
+    p = profil_pour_classe(d, "cratere", CATS)
+    assert p is not None and p.n_gt == 70 and p.critere == "iou" and p.tableau == ()
+    assert precision_rappel(p, 0.3)[1] == 50 / 70
+    # critère déduit quand le champ manque (évaluations anciennes) : « iou » si appariement IoU en tête,
+    # « couverture » si c'est l'évaluation de couverture, sinon inconnu
+    from src.app.services.profil_scores import critere_evaluation
+    del ev["critere"]
+    ev["iou"] = 0.5
+    (d / "entrainement" / "evaluation" / "metriques_eval.json").write_text(json.dumps(ev), encoding="utf-8")
+    assert critere_evaluation(d) == "iou"
+    autre = d / "entrainement" / "evaluation_couverture"
+    autre.mkdir()
+    (autre / "metriques_eval.json").write_text(json.dumps({"modeles": {}}), encoding="utf-8")
+    assert critere_evaluation(d, "entrainement/evaluation_couverture/metriques_eval.json") == "couverture"
+    (d / "entrainement" / "evaluation" / "metriques_eval.json").write_text(json.dumps({"modeles": {}}), encoding="utf-8")
+    assert critere_evaluation(d) == ""
 
 
 def test_couleur_de_la_couche_qualifiee_en_comparaison():

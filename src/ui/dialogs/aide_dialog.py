@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import Optional, Sequence
 
 from qgis.PyQt.QtCore import Qt, QUrl
-from qgis.PyQt.QtGui import QDesktopServices, QTextCursor, QTextDocument
+from qgis.PyQt.QtGui import QDesktopServices, QImage, QTextCursor, QTextDocument
 from qgis.PyQt.QtWidgets import (
     QDialog,
     QFileDialog,
@@ -182,11 +182,50 @@ class AideDialog(QDialog):
             # est déjà GitHub (tableaux, listes à cocher, liens, images).
             self._texte.setMarkdown(c.markdown)
             self._texte.document().setDefaultStyleSheet(_CSS)
+        self._ajuster_images()
         self._selectionner(cle, ancre)
         if ancre:
             self._defiler_vers(ancre)
         else:
             self._texte.verticalScrollBar().setValue(0)
+
+    def _ajuster_images(self) -> None:
+        """Ramène chaque image à la largeur de la zone de lecture.
+
+        Le Markdown ne sait pas dimensionner une image et Qt l'affiche à sa
+        taille en pixels : une capture de l'assistant (980 px) déborderait avec
+        une barre horizontale. Une image plus étroite garde sa taille.
+        """
+        doc = self._texte.document()
+        # Largeur disponible = zone de lecture moins le padding QSS (18 px de
+        # chaque côté), les marges du document et le retrait d'une image placée
+        # dans une liste (un niveau = indentWidth, 40 px) — sinon une barre
+        # horizontale apparaît pour quelques pixels.
+        base = self._texte.viewport().width() - 36 - 2 * doc.documentMargin() - 8
+        bloc = doc.begin()
+        while bloc.isValid():
+            niveau = bloc.blockFormat().indent()
+            if bloc.textList() is not None:
+                niveau += bloc.textList().format().indent()
+            largeur_max = max(200, int(base - niveau * doc.indentWidth()))
+            it = bloc.begin()
+            while not it.atEnd():
+                frag = it.fragment()
+                fmt = frag.charFormat()
+                if fmt.isImageFormat():
+                    img_fmt = fmt.toImageFormat()
+                    image = QImage(str(self._dossier / img_fmt.name()))
+                    if not image.isNull() and image.width() > largeur_max:
+                        img_fmt.setWidth(largeur_max)
+                        img_fmt.setHeight(image.height() * largeur_max / image.width())
+                        curseur = QTextCursor(doc)
+                        curseur.setPosition(frag.position())
+                        curseur.setPosition(
+                            frag.position() + frag.length(), QTextCursor.MoveMode.KeepAnchor
+                        )
+                        curseur.setCharFormat(img_fmt)
+                it += 1
+            bloc = bloc.next()
 
     def _selectionner(self, cle: str, ancre: str) -> None:
         """Met le sommaire en phase sans redéclencher ``ouvrir``."""

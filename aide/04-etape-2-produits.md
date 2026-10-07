@@ -2,6 +2,8 @@
 
 Cochez les produits à calculer pour chaque dalle. Chaque carte porte une vignette et un lien **Fiche** : ce que montre l'image, dans quelle optique s'en servir, ce qu'elle ne montre pas, comment elle est calculée, ses réglages et ses sources. Avant de choisir entre deux indices, ouvrez **Comparer les produits**, en tête de la liste des fiches : deux tableaux issus de la documentation de Relief Visualization Toolbox disent quel produit convient à quel type de forme.
 
+![Étape 2 : le modèle de base, les cartes de qualité et les indices de visualisation, chacun avec sa vignette et sa fiche](img/etape2-produits.png)
+
 ## Les produits
 
 | Famille | Sigle | Ce que c'est |

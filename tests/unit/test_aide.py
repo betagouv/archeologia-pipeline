@@ -82,6 +82,24 @@ def test_nouveautes_depuis_le_changelog(tmp_path):
     assert nouveautes_markdown(tmp_path / "absent.txt") == ""
 
 
+def test_nouveautes_echappe_le_texte_brut_du_changelog(tmp_path):
+    """« archeologia.<version>.zip » faisait une balise HTML (puces vides ensuite),
+    « max_workers » une italique : le changelog est du texte, pas du Markdown."""
+    from src.app.services.aide import echapper_markdown
+
+    meta = tmp_path / "metadata.txt"
+    meta.write_text(
+        "[general]\nchangelog=0.7.1 (2026-06-18)\n"
+        "    * nom du ZIP conforme (archeologia.<version>.zip) ; max_workers=2 [x]\n",
+        encoding="utf-8",
+    )
+    md = nouveautes_markdown(meta)
+    assert r"archeologia.\<version\>.zip" in md
+    assert r"max\_workers=2 \[x\]" in md
+    assert echapper_markdown("a*b_c<d>e#f|g") == r"a\*b\_c\<d\>e\#f\|g"
+    assert echapper_markdown("sans ponctuation, 0.5 m (ok)") == "sans ponctuation, 0.5 m (ok)"
+
+
 def test_liens_internes_et_images():
     md = ("[a](etape-2-produits.md#reglages) [b](#ici) [c](glossaire.md) "
           "[ext](https://x.y/z) ![img](img/capture.png) [m](mailto:a@b.c)")

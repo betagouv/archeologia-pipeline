@@ -16,8 +16,13 @@ Une bonne connexion est utile : le plugin est volumineux, car il embarque les mo
 
 1. Dans QGIS : **Extensions → Installer/Gérer les extensions…**, onglet **Paramètres**.
 2. Section **Dépôts de plugins** → **Ajouter…**. Nom : `Archéolog'IA`, URL : l'adresse communiquée.
+
+   ![Détail du dépôt : nom, adresse et authentification](img/installer-depot.png)
+
 3. Zone **Authentification** : bouton **+** (nouvelle configuration), méthode **Basic authentication**, puis le nom d'utilisateur et le mot de passe communiqués. **Enregistrer**.
    - À la première utilisation, QGIS demande de créer un **mot de passe principal**. C'est un coffre local à votre ordinateur qui protège les identifiants enregistrés ; choisissez-en un et conservez-le, il n'a aucun rapport avec celui du dépôt. En QGIS 4, le coffre s'ouvre tout seul à la session suivante ; en QGIS 3, il peut vous le redemander.
+   ![Configuration d'authentification de type Basic authentication](img/installer-authentification.png)
+
 4. **OK** : le dépôt doit afficher **connecté**.
 
 Si le dépôt refuse les identifiants ou reste muet, voir [Dépannage](depannage.md#le-depot-ne-s-affiche-pas-connecte).
@@ -37,6 +42,8 @@ Si le dépôt n'est pas utilisable sur votre poste :
 1. Téléchargez `archeologia.<version>.zip` depuis l'adresse du dépôt, dans un navigateur, avec les mêmes identifiants.
 2. **Extensions → Installer/Gérer les extensions… → Installer depuis un ZIP**, choisissez le fichier, **Installer l'extension**.
 
+![Installer depuis un ZIP](img/installer-zip.png)
+
 Une installation par ZIP ne reçoit pas les mises à jour automatiques : il faut recommencer à chaque version.
 
 Le dossier des extensions, si vous devez y aller à la main : **Préférences → Profils utilisateurs → Ouvrir le dossier du profil actif**, puis `python\plugins`. C'est le bon dossier quelle que soit la version de QGIS.
@@ -49,6 +56,8 @@ Si votre poste accède à Internet par un proxy (ministère, collectivité…), 
 2. Cochez **Utiliser un proxy pour l'accès Internet**.
 3. Type **HttpProxy**, hôte et port fournis par votre service informatique (les mêmes que dans votre navigateur), identifiants si le proxy en demande.
 4. **OK**.
+
+![Préférences → Options → Réseau : proxy de type HttpProxy](img/installer-proxy.png)
 
 Le plugin lit cette configuration pour télécharger les dalles. À défaut, il essaie aussi les variables d'environnement `HTTP_PROXY` et `HTTPS_PROXY`.
 

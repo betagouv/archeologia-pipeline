@@ -40,6 +40,15 @@ _TITRE = re.compile(r"^(#{1,3})\s+(.+?)\s*#*\s*$")
 _LIEN = re.compile(r"(?<!!)\[[^\]]*\]\(([^)\s]+)\)")
 _IMAGE = re.compile(r"!\[[^\]]*\]\(([^)\s]+)\)")
 _VERSION_CHANGELOG = re.compile(r"^(\d+\.\d+\.\d+)\s*(\(.*\))?\s*$")
+# Le changelog est du texte brut : « archeologia.<version>.zip » y est une balise
+# HTML pour le rendu Markdown (tout ce qui suit disparaît), « max_workers » une
+# italique. On échappe la ponctuation que CommonMark interprète.
+_PONCTUATION_MD = re.compile(r"([\\*_<>\[\]{}#|~])")
+
+
+def echapper_markdown(texte: str) -> str:
+    """Texte brut → texte Markdown qui s'affiche tel quel."""
+    return _PONCTUATION_MD.sub(r"\\\1", texte)
 
 
 def slug(titre: str) -> str:
@@ -132,9 +141,9 @@ def nouveautes_markdown(metadata_path: Path) -> str:
             lignes.append(f"## {m.group(1)} {m.group(2) or ''}".rstrip())
             lignes.append("")
         elif ligne.startswith(("*", "-")):
-            lignes.append("- " + ligne[1:].strip())
+            lignes.append("- " + echapper_markdown(ligne[1:].strip()))
         else:
-            lignes.append(ligne)
+            lignes.append(echapper_markdown(ligne))
     return "\n".join(lignes).rstrip() + "\n" if len(lignes) > 2 else ""
 
 

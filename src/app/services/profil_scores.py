@@ -21,6 +21,7 @@ Tout est tolérant : fichier absent, clé manquante, modèle absent de ``modeles
 from __future__ import annotations
 
 import json
+import math
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, List, Mapping, Optional, Sequence, Tuple
@@ -141,17 +142,30 @@ def charger_bandes(
     return _bandes_depuis(((bloc.get("global") or {}).get("etude_seuil") or {}).get("bandes"))
 
 
-def agreger(bandes: Sequence[Bande], pas: float = PAS_DEFAUT) -> List[Bande]:
-    """Regroupe des bandes fines en bandes de largeur ``pas`` alignées sur 0."""
+def agreger(
+    bandes: Sequence[Bande], pas: float = PAS_DEFAUT, coupures: Sequence[float] = ()
+) -> List[Bande]:
+    """Regroupe des bandes fines en bandes de largeur ``pas``, **coupées aussi aux
+    coupures** des niveaux : aucune barre n'est à cheval sur un seuil, sinon la
+    barre [0,25 ; 0,30[ mélangeait des détections écartées (sous 0,26) et des
+    détections gardées au niveau possible. Une bande fine va dans l'intervalle
+    qui contient son ``lo``."""
     if not bandes:
         return []
+    lo_min = min(b.lo for b in bandes)
+    hi_max = max(b.hi for b in bandes)
+    plancher = round(math.floor(lo_min / pas + 1e-9) * pas, 6)   # case de la grille qui contient lo_min
+    plafond = round(math.ceil(hi_max / pas - 1e-9) * pas, 6)     # … et celle qui contient hi_max
+    bornes = {round(plancher + i * pas, 6) for i in range(int(round((plafond - plancher) / pas)) + 1)}
+    bornes |= {round(float(c), 6) for c in coupures if plancher < c < plafond}
+    limites = sorted(bornes)
     acc: dict = {}
     for b in bandes:
-        i = int((b.lo + 1e-9) // pas)   # 0,29 → 5 : bande [0,25 ; 0,30[
-        acc[i] = (acc.get(i, (0, 0))[0] + b.tp, acc.get(i, (0, 0))[1] + b.fp)
+        i = max(k for k, lim in enumerate(limites[:-1]) if b.lo >= lim - 1e-9)
+        tp, fp = acc.get(i, (0, 0))
+        acc[i] = (tp + b.tp, fp + b.fp)
     return [
-        Bande(round(i * pas, 4), round((i + 1) * pas, 4), tp, fp)
-        for i, (tp, fp) in sorted(acc.items())
+        Bande(limites[i], limites[i + 1], tp, fp) for i, (tp, fp) in sorted(acc.items())
     ]
 
 
@@ -189,4 +203,9 @@ def profil_pour_classe(
     cats = tuple(sorted(categories, key=lambda c: c.seuil))
     seuil = cats[0].seuil
     n_sous = sum(b.total for b in bandes if b.hi <= seuil + 1e-9)
-    return Profil(classe=classe, bandes=tuple(agreger(bandes, pas)), categories=cats, n_sous_seuil=n_sous)
+    return Profil(
+        classe=classe,
+        bandes=tuple(agreger(bandes, pas, [c.seuil for c in cats])),
+        categories=cats,
+        n_sous_seuil=n_sous,
+    )

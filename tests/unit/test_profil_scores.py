@@ -108,3 +108,13 @@ def test_les_deux_fiches_posent_la_figure():
     racine = Path(__file__).resolve().parents[2]
     for rel in ("src/ui/dialogs/class_info_dialog.py", "src/ui/dialogs/model_info_dialog.py"):
         assert "figure_profil(" in (racine / rel).read_text(encoding="utf-8"), rel
+
+
+def test_agregation_coupee_aux_seuils():
+    """La barre [0,25 ; 0,30[ ne chevauche plus le seuil 0,26 : elle est scindée."""
+    fines = [Bande(round(0.25 + i * 0.01, 2), round(0.26 + i * 0.01, 2), i + 1, 10) for i in range(5)]
+    agg = agreger(fines, 0.05, coupures=[0.26, 0.30])
+    assert [(b.lo, b.hi) for b in agg] == [(0.25, 0.26), (0.26, 0.3)]
+    assert (agg[0].tp, agg[0].fp) == (1, 10) and (agg[1].tp, agg[1].fp) == (2 + 3 + 4 + 5, 40)
+    # sans coupure : une seule bande de 0,05
+    assert [(b.lo, b.hi) for b in agreger(fines, 0.05)] == [(0.25, 0.3)]

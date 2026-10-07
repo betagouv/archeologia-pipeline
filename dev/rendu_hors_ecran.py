@@ -4,7 +4,7 @@
 À lancer avec le **Python de QGIS** (le plugin importe ``qgis.PyQt``) :
 
     C:/OSGeo4W/bin/python-qgis.bat dev/rendu_hors_ecran.py captures            # aide/img/etape{1,2,3}-*.png (2×)
-    C:/OSGeo4W/bin/python-qgis.bat dev/rendu_hors_ecran.py manuel [--chapitre etape-2-produits --ancre tuilage-et-marge]
+    C:/OSGeo4W/bin/python-qgis.bat dev/rendu_hors_ecran.py manuel [--chapitre etape-2-produits --ancre tuilage-et-marge] [--recherche mot]
     C:/OSGeo4W/bin/python-qgis.bat dev/rendu_hors_ecran.py profil [--modele crateres_seg_ld_v1]
 
 Monte un ``QgsApplication`` en ``QT_QPA_PLATFORM=offscreen`` avec le thème QSS du plugin, puis :
@@ -116,7 +116,7 @@ def captures(app, sortie: Path, log) -> int:
     return 0 if n else 1
 
 
-def manuel(app, sortie: Path, log, chapitre: str, ancre: str) -> int:
+def manuel(app, sortie: Path, log, chapitre: str, ancre: str, recherche: str = "") -> int:
     from archeo.src.ui.dialogs.aide_dialog import ouvrir_aide
 
     dlg = ouvrir_aide(RACINE / "aide", metadata_path=RACINE / "metadata.txt")
@@ -125,6 +125,12 @@ def manuel(app, sortie: Path, log, chapitre: str, ancre: str) -> int:
     if chapitre:
         dlg.ouvrir(chapitre, ancre)
         app.processEvents()
+    if recherche:
+        dlg._recherche.setText(recherche)
+        dlg._chercher()
+        app.processEvents()
+        log(f"recherche « {recherche} » : {len(dlg._texte.extraSelections())} occurrence(s) surlignée(s), "
+            f"sélection = « {dlg._texte.textCursor().selectedText()} »")
     barre = dlg._texte.horizontalScrollBar().maximum()
     log(f"chapitre {dlg._cle} / ancre {ancre or '-'} : barre horizontale {barre} px",
         "(doit être 0)", "| défilement", dlg._texte.verticalScrollBar().value(), "px")
@@ -186,6 +192,7 @@ def main(argv=None) -> int:
                         help="dossier des PNG de contrôle (gitignoré par défaut)")
     parser.add_argument("--chapitre", default="", help="manuel : clé du chapitre (ex. etape-2-produits)")
     parser.add_argument("--ancre", default="", help="manuel : slug du titre (ex. tuilage-et-marge)")
+    parser.add_argument("--recherche", default="", help="manuel : mot à chercher et surligner")
     parser.add_argument("--modele", default="crateres_seg_ld_v1", help="profil : dossier du modèle")
     parser.add_argument("--echelle", type=float, default=None,
                         help="facteur d'échelle Qt (défaut : 2 pour captures, 1 sinon)")
@@ -197,7 +204,7 @@ def main(argv=None) -> int:
         if args.commande == "captures":
             code = captures(app, args.sortie, log)
         elif args.commande == "manuel":
-            code = manuel(app, args.sortie, log, args.chapitre, args.ancre)
+            code = manuel(app, args.sortie, log, args.chapitre, args.ancre, args.recherche)
         else:
             code = profil(app, args.sortie, log, args.modele)
     except Exception as exc:  # noqa: BLE001 — le .bat n'affiche rien : tout va dans le journal

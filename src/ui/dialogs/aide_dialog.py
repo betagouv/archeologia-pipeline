@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import Optional, Sequence
 
 from qgis.PyQt.QtCore import Qt, QUrl
-from qgis.PyQt.QtGui import QDesktopServices, QImage, QTextCursor, QTextDocument
+from qgis.PyQt.QtGui import QColor, QDesktopServices, QImage, QTextCursor, QTextDocument
 from qgis.PyQt.QtWidgets import (
     QDialog,
     QFileDialog,
@@ -28,6 +28,7 @@ from qgis.PyQt.QtWidgets import (
     QMessageBox,
     QPushButton,
     QTextBrowser,
+    QTextEdit,
     QTreeWidget,
     QTreeWidgetItem,
     QVBoxLayout,
@@ -188,6 +189,7 @@ class AideDialog(QDialog):
             # QTextEdit.setMarkdown n'a pas d'argument de dialecte : le défaut
             # est déjà GitHub (tableaux, listes à cocher, liens, images).
             self._texte.setMarkdown(c.markdown)
+            self._texte.setExtraSelections([])
             self._texte.document().setDefaultStyleSheet(_CSS)
         self._ajuster_images()
         self._selectionner(cle, ancre)
@@ -303,15 +305,51 @@ class AideDialog(QDialog):
     def _chercher(self) -> None:
         texte = self._recherche.text().strip()
         if not texte:
+            self._texte.setExtraSelections([])
             return
-        if self._texte.find(texte):
-            return
-        # Fin du chapitre : on repart du début (une seule fois).
-        curseur = self._texte.textCursor()
-        curseur.movePosition(QTextCursor.MoveOperation.Start)
-        self._texte.setTextCursor(curseur)
-        if not self._texte.find(texte):
+        trouve = self._texte.find(texte)
+        if not trouve:
+            # Fin du chapitre : on repart du début (une seule fois).
+            curseur = self._texte.textCursor()
+            curseur.movePosition(QTextCursor.MoveOperation.Start)
+            self._texte.setTextCursor(curseur)
+            trouve = self._texte.find(texte)
+        if not trouve:
             self._recherche.setToolTip(f"« {texte} » n'apparaît pas dans ce chapitre")
+            self._texte.setExtraSelections([])
+            return
+        self._surligner(texte)
+        # La sélection du curseur se peint PAR-DESSUS le surlignage (en bleu si le
+        # widget a le focus, en gris pâle sinon) : on la retire, le jaune franc
+        # marque seul l'occurrence courante ; la position reste à sa fin pour que
+        # « Suivant » enchaîne.
+        curseur = self._texte.textCursor()
+        curseur.clearSelection()
+        self._texte.setTextCursor(curseur)
+        self._texte.ensureCursorVisible()
+
+    def _surligner(self, texte: str) -> None:
+        """Toutes les occurrences en jaune clair, la courante en jaune franc.
+
+        La sélection seule ne se voit presque pas : le champ de recherche garde le
+        focus et le widget peint alors sa sélection « inactive », gris pâle
+        (constat utilisateur).
+        """
+        doc = self._texte.document()
+        courant = self._texte.textCursor()
+        selections = []
+        curseur = QTextCursor(doc)
+        while True:
+            curseur = doc.find(texte, curseur)
+            if curseur.isNull():
+                break
+            sel = QTextEdit.ExtraSelection()
+            sel.cursor = curseur
+            meme = (curseur.selectionStart() == courant.selectionStart()
+                    and curseur.selectionEnd() == courant.selectionEnd())
+            sel.format.setBackground(QColor("#ffd54a" if meme else "#fff3b0"))
+            selections.append(sel)
+        self._texte.setExtraSelections(selections)
 
     # ------------------------------------------------------------------
     # Export

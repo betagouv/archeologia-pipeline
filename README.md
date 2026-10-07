@@ -772,6 +772,7 @@ dev/                                # Outillage développeur (exclu du ZIP distr
 ├── package_plugin.py               #   Packaging plugin → ZIP (PLUGIN_NAME="archeologia")
 ├── build_quadrillage_from_wfs.py   #   Quadrillage IGN à jour depuis le WFS Géoplateforme (avant chaque release)
 ├── build_quadrillage_index.py      #   Index spatial .qix du quadrillage IGN (appelé par le précédent)
+├── rendu_hors_ecran.py             #   Captures et contrôles de l'UI sans QGIS de bureau (python-qgis.bat)
 └── runner_onnx/
     ├── build.py                    #   Compilation runner ONNX (PyInstaller)
     ├── export_to_onnx.py           #   Export modèles → ONNX

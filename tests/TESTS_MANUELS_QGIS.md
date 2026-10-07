@@ -831,3 +831,12 @@ Une ligne par entité, effectifs par niveau du plus sûr au plus douteux : dans 
 - [ ] **40.3 metadata.json** : clé `bilan_fiabilite`, une entrée par couche (`slug`, `label`, `couche`, `total`, `effectifs` par catégorie) ; vide (`[]`) pour un run sans CV.
 - [ ] **40.4 Comparaison A/B et dérivées** : deux lignes « Parcellaire — Modèle A » / « — Modèle B » ; une entité à plusieurs classes a une ligne par couche (« Entité · classe ») ; un regroupement de cratères n'a pas de ligne (sortie de synthèse sans fiabilité), ses cratères sources en ont une.
 
+## 41. Rapport de traitement (rapport.html) ⭐ P1
+
+Un HTML à la racine du dossier de sortie, écrit par la finalisation, ouvert d'un clic (2026-10-08).
+
+- [ ] **41.1 Bouton** : pendant le run, « Rapport » (à côté de « Log complet ») est grisé ; à la fin, actif ; un clic ouvre `rapport.html` dans le navigateur. Le journal porte « 📄 Rapport du traitement : rapport.html — bouton « Rapport » ou dossier de sortie ».
+- [ ] **41.2 Contenu** (run IGN, 2 dalles, SVF + LD, Cratères) : en-tête « Rapport de traitement — Archéolog'IA v<version> — date — Téléchargement IGN », « Traitement terminé en <durée mesurée> » ; « Zone traitée » avec la vignette de la mosaïque SVF (pas le MNT) et « 2 dalles traitées. 0873-6506, 0874-6506 » ; « Produits et réglages » avec les sections de réglages ; « Détection automatique » : une ligne par modèle avec « N images en <durée> (≈ … par image) » — la même durée que le journal ; « Bilan de fiabilité » : la table et les barres du §40 ; « Avertissements du journal » : les ⚠/✗ du run avec « voir le manuel › Dépannage › … » quand une rubrique existe.
+- [ ] **41.3 Sans CV / annulé** : run MNT seul → « Pas de détection automatique », « Aucune détection avec fiabilité mesurée » ; run annulé → « Traitement annulé » en ambre, rapport quand même écrit avec les dalles faites.
+- [ ] **41.4 Hors ligne** : copier `rapport.html` + `rapport_vignette.png` sur une clé → s'ouvre et s'imprime sans réseau ; `metadata.json` porte `"rapport": "rapport.html"`.
+

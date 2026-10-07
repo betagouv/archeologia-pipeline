@@ -37,6 +37,7 @@ from ..app.progress_reporter import USER_INFO
 from ..app.progress_stages import STAGE_LABELS, build_stage_sequence
 from ..app.services.aide import AIDE_DIRNAME, CLE_DEPANNAGE, resoudre_cible, rubrique_depannage, slug
 from ..app.services.bilan_fiabilite import collecter as collecter_bilan
+from ..app.services.rapport_run import NOM_RAPPORT
 from .widgets.bilan_fiabilite import BilanFiabiliteWidget, legende_niveaux
 from .icons import colored_icon
 from .layer_loader import load_result_layers, purge_output_dir_layers
@@ -433,8 +434,18 @@ class RunView(QWidget):
         self._open_log_btn.setIconSize(QSize(14, 14))
         self._open_log_btn.setEnabled(False)
         self._open_log_btn.clicked.connect(self._open_log)
+        # Rapport de traitement (rapport.html, 2026-10-08) : actif à la fin du run
+        # s'il a été écrit.
+        self._open_report_btn = QPushButton("Rapport")
+        self._open_report_btn.setObjectName("GhostButton")
+        self._open_report_btn.setIcon(colored_icon("file-text", "#2c2c2c", 14, dpr=dpr))
+        self._open_report_btn.setIconSize(QSize(14, 14))
+        self._open_report_btn.setToolTip("Le rapport du traitement, dans le navigateur (rapport.html du dossier de sortie)")
+        self._open_report_btn.setEnabled(False)
+        self._open_report_btn.clicked.connect(self._open_report)
         actions.addWidget(self._open_dir_btn)
         actions.addWidget(self._open_log_btn)
+        actions.addWidget(self._open_report_btn)
         actions.addStretch(1)
         self._cancel_btn = QPushButton("Annuler")
         self._cancel_btn.setObjectName("RunCancelBtn")
@@ -522,6 +533,7 @@ class RunView(QWidget):
         # Le dossier de sortie (et le log) existent dès le démarrage du run.
         self._open_dir_btn.setEnabled(True)
         self._open_log_btn.setEnabled(True)
+        self._open_report_btn.setEnabled(False)
         # Indicateur d'activité (point pulsé) + chrono total.
         self._activity_dot.setVisible(True)
         self._dot_anim.start()
@@ -862,6 +874,8 @@ class RunView(QWidget):
             )
         self._dot_anim.stop()
         self._activity_dot.setVisible(False)
+        out_dir = self._output_dir()
+        self._open_report_btn.setEnabled(bool(out_dir and (out_dir / NOM_RAPPORT).is_file()))
         self._show_end_banner()
         self._cancel_event.clear()
         # Filet de sécurité : ne jamais rester bloqué en barre indéterminée.
@@ -995,6 +1009,11 @@ class RunView(QWidget):
         cle, ancre = resoudre_cible(url.toString()[len("manuel:"):])
         racine = Path(__file__).resolve().parents[2]
         ouvrir_aide(racine / AIDE_DIRNAME, parent=self.window(), cle=cle or CLE_DEPANNAGE, ancre=ancre)
+
+    def _open_report(self) -> None:
+        d = self._output_dir()
+        if d and (d / NOM_RAPPORT).is_file():
+            QDesktopServices.openUrl(QUrl.fromLocalFile(str(d / NOM_RAPPORT)))
 
     def _open_log(self) -> None:
         d = self._output_dir()

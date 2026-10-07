@@ -50,6 +50,8 @@ Un **⚠** signale quelque chose qui n'arrête pas le traitement mais mérite d'
 
 Quand la détection a tourné, le journal se termine par un **bilan de fiabilité** : pour chaque entité, le nombre de détections par niveau, du plus sûr au plus douteux, et le même bilan s'affiche en barres sous le bandeau de fin, dans la couleur de chaque couche. C'est la réponse à « par où commencer ? » : les **très probables** d'abord. Le bilan est aussi écrit dans le fichier de métadonnées du dossier de sortie.
 
+Un **rapport** du traitement (`rapport.html`) est écrit à la racine du dossier de sortie et s'ouvre dans le navigateur avec le bouton **Rapport** : mode et dalles, produits et réglages, modèles avec le nombre d'images analysées et la durée mesurée, bilan de fiabilité, avertissements du journal avec leur renvoi au manuel, et une vignette de la zone rendue depuis la mosaïque. Il se lit hors ligne et s'imprime : c'est le document à joindre au dossier de prospection.
+
 Le bandeau de fin donne la durée totale et le nombre d'avertissements. Les couches sont chargées dans QGIS, le projet de validation est écrit. **Ouvrir le dossier** ouvre le dossier de sortie, **Log complet** le journal détaillé.
 
 Ce que contient le dossier et comment lire les couches : [Vos résultats dans QGIS](resultats.md).

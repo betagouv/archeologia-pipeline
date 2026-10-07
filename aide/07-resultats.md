@@ -5,6 +5,7 @@
 ```
 dossier_de_sortie/
 ├── metadata.json                      résumé du traitement et configuration complète
+├── rapport.html                       rapport du traitement, à ouvrir dans le navigateur
 ├── pipeline_log_AAAAMMJJ_HHMMSS.txt   journal détaillé, un par lancement
 ├── sources/                           dalles LiDAR téléchargées ou copiées
 ├── intermediaires/                    fichiers techniques par dalle, supprimables

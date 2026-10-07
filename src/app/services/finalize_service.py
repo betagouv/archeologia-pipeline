@@ -311,6 +311,71 @@ def _collect_shapefiles(det_dir: Path) -> List[str]:
     return shapefile_paths
 
 
+def _ecrire_rapport_run(
+    *, output_dir: Path, vrt_paths: List[str], cv_runs: Any, cv_cfg: Any, cv_stats: List[Dict[str, Any]],
+    bilan: Any, rvt_params: Dict[str, Any], active_products: List[str], ui_config: Dict[str, Any],
+    outcome: str, start_time: float, tiles_processed: int, tiles_total: Optional[int], meta_date: str,
+) -> str:
+    """Assemble et écrit ``rapport.html`` ; renvoie son nom. Thread worker (GDAL pour
+    la vignette, aucun Qt)."""
+    import datetime as _dt
+    import time as _time
+
+    from ..plugin_metadata import get_plugin_version
+    from ..user_narrator import PRODUCT_LABELS
+    from .rapport_run import (
+        NOM_VIGNETTE,
+        DonneesRapport,
+        choisir_vrt_vignette,
+        dalles_depuis_vrt,
+        ecrire_rapport,
+        extraire_avertissements,
+        vignette_depuis_vrt,
+    )
+    from .source_modes import mode_info
+
+    mode = str(((ui_config.get("app") or {}).get("files") or {}).get("data_mode") or "")
+    # Modèles : les durées mesurées si on les a, sinon les runs résolus (sans durée).
+    entites_par_modele: Dict[str, List[str]] = {}
+    for r in list(cv_runs or []) + list((cv_cfg or {}).get("runs") or []):
+        if isinstance(r, dict) and r.get("selected_model"):
+            entites_par_modele.setdefault(str(r["selected_model"]), [
+                e.get("label") or e.get("slug") or "" for e in (r.get("entities") or []) if isinstance(e, dict)
+            ])
+    runs_rapport: List[Dict[str, Any]] = [
+        dict(x, entites=x.get("entites") or entites_par_modele.get(str(x.get("model")), [])) for x in cv_stats
+    ]
+    if not runs_rapport:
+        for modele, entites in entites_par_modele.items():
+            runs_rapport.append({"modele": modele, "model": modele, "target_rvt": "", "entites": entites,
+                                 "images": None, "secondes": None})
+    journaux = sorted(Path(output_dir).glob("pipeline_log_*.txt"))
+    avertissements: list = []
+    if journaux:
+        try:
+            avertissements = extraire_avertissements(journaux[-1].read_text(encoding="utf-8", errors="replace"))
+        except OSError:
+            avertissements = []
+    vrt = choisir_vrt_vignette(vrt_paths)
+    vignette = vignette_depuis_vrt(vrt, Path(output_dir) / NOM_VIGNETTE) if vrt else None
+    try:
+        date = _dt.datetime.fromisoformat(meta_date).strftime("%d/%m/%Y à %H:%M")
+    except ValueError:
+        date = meta_date
+    donnees = DonneesRapport(
+        version=get_plugin_version(), date=date,
+        mode=mode_info(mode).banner_label if mode else "", output_dir=str(output_dir),
+        issue=outcome, duree_s=max(0.0, _time.time() - start_time),
+        tiles_processed=tiles_processed, tiles_total=tiles_total,
+        dalles=tuple(dalles_depuis_vrt(vrt_paths)),
+        produits=tuple((p, PRODUCT_LABELS.get(p, p)) for p in active_products),
+        rvt_params=rvt_params, cv_runs=tuple(runs_rapport),
+        bilan=tuple(ligne.to_dict() for ligne in bilan),
+        avertissements=tuple(avertissements), vignette=vignette,
+    )
+    return ecrire_rapport(Path(output_dir), donnees).name
+
+
 def finalize_pipeline(
     *,
     output_dir: Path,
@@ -326,6 +391,7 @@ def finalize_pipeline(
     coverage_threshold_percent: float = 30.0,
     ui_config: Optional[Dict[str, Any]] = None,
     outcome: str = "success",
+    cv_stats: Optional[List[Dict[str, Any]]] = None,
 ) -> bool:
     """
     Finalisation commune à tous les runners :
@@ -340,7 +406,9 @@ def finalize_pipeline(
     fonction annonçait inconditionnellement « ✅ TERMINÉ AVEC SUCCÈS » même
     quand une exception fatale était en vol (AUDIT v2 ROB-14).
     ``tiles_total`` permet un décompte honnête (réussies/total) quand des
-    éléments ont échoué ; défaut = ``tiles_processed``.
+    éléments ont échoué ; défaut = ``tiles_processed``. ``cv_stats`` (2026-10-08) :
+    une entrée par run CV (``modele``, ``target_rvt``, ``entites``, ``images``,
+    ``secondes``, chronométrées), pour le rapport de traitement ``rapport.html``.
 
     Renvoie le verdict final (``True`` = succès annoncé ✅), remonté par les
     runners jusqu'au bandeau de fin de l'UI — sans quoi un run conclu « ❌ »
@@ -474,9 +542,24 @@ def finalize_pipeline(
             },
             "ui_config": ui_config or {},
         }
+        # 4b. Rapport de traitement (2026-10-08) : HTML à la racine du dossier de
+        # sortie, ouvert d'un clic depuis la vue d'exécution — tout vient du run
+        # (journal, métadonnées, bilan, durées chronométrées) + une vignette GDAL.
+        try:
+            meta["rapport"] = _ecrire_rapport_run(
+                output_dir=output_dir, vrt_paths=vrt_paths, cv_runs=cv_runs, cv_cfg=cv_cfg,
+                cv_stats=cv_stats or [], bilan=bilan, rvt_params=rvt_params or {},
+                active_products=active_products or [], ui_config=ui_config or {},
+                outcome=outcome, start_time=start_time, tiles_processed=tiles_processed,
+                tiles_total=tiles_total, meta_date=meta["date"],
+            )
+        except Exception as _rap_e:  # noqa: BLE001 — jamais bloquant
+            reporter.info(f"Note: rapport non écrit ({_rap_e})")
         meta_path = output_dir / "metadata.json"
         meta_path.write_text(_json.dumps(meta, indent=2, ensure_ascii=False), encoding="utf-8")
         reporter.info(f"Métadonnées enregistrées: {meta_path.name}")
+        if meta.get("rapport"):
+            narrator.rapport_ecrit(meta["rapport"])
     except Exception as _meta_e:
         reporter.info(f"Note: métadonnées non écrites ({_meta_e})")
 

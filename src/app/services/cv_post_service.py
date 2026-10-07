@@ -104,6 +104,7 @@ def run_cv_post_loop(
     slog: Optional["StructuredLogger"],
     cv_band: Tuple[int, int] = (90, 95),
     halo_source_dir: Optional[Path] = None,
+    stats_out: Optional[list] = None,
 ) -> None:
     """Lance la Computer Vision sur les RVT générés par le pipeline.
 
@@ -230,6 +231,13 @@ def run_cv_post_loop(
             narrator.cv_run_done(
                 model_display, int(st["images_inferees"]), float(st.get("secondes", 0.0))
             )
+        if stats_out is not None:   # durée mesurée par modèle, pour le rapport de run
+            stats_out.append({
+                "modele": model_display, "model": run_model, "target_rvt": run_rvt,
+                "entites": [e.get("label") or e.get("slug") or "" for e in (run_cfg.get("entities") or [])
+                            if isinstance(e, dict)],
+                "images": int(st.get("images_inferees") or 0), "secondes": float(st.get("secondes") or 0.0),
+            })
 
     def _on_run_failure(run_idx: int, run_cfg: Dict[str, Any], exc: Exception) -> None:
         model_display = _model_display_name(run_cfg.get("selected_model", "?"))

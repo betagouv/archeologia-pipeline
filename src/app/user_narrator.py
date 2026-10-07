@@ -365,6 +365,10 @@ class UserNarrator:
                 f"{_human_count(n_detections, 'zone détectée', 'zones détectées')}"
             )
 
+    def rapport_ecrit(self, nom: str) -> None:
+        """Le rapport de traitement est dans le dossier de sortie (bouton « Rapport »)."""
+        self._r.user_info(f"📄 Rapport du traitement : {nom} — bouton « Rapport » ou dossier de sortie")
+
     def bilan_fiabilite(self, phrases) -> None:
         """Bilan de fiabilité de fin de run (2026-10-08) : une ligne par entité,
         effectifs par niveau du plus sûr au plus douteux — « par où je commence ? ».

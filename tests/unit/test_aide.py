@@ -22,9 +22,11 @@ from src.app.services.aide import (
     images,
     liens_internes,
     nouveautes_markdown,
+    rechercher,
     resoudre_cible,
     sections,
     slug,
+    texte_brut,
 )
 from src.app.services.citations import citations_anglaises
 from src.app.services.indices_model import all_products
@@ -199,6 +201,32 @@ def test_rubriques_de_depannage_existent(chapitres):
 
 
 def test_ui_branche_le_manuel():
-    """Garde-fou sans QGIS : les deux points d'entrée appellent bien ``ouvrir_aide``."""
+    """Garde-fou sans QGIS : les deux points d'entrée appellent bien ``ouvrir_aide``,
+    en demandant les Nouveautés non lues (A2) ; le journal est un navigateur de texte
+    dont les lignes ⚠/✗ portent un lien « manuel:depannage#… » (A1) ; la fenêtre
+    a l'historique, le zoom et la recherche dans tout le manuel (A3, A10)."""
     for rel in ("src/ui/wizard_dialog.py", "main.py"):
-        assert "ouvrir_aide" in (RACINE / rel).read_text(encoding="utf-8"), rel
+        src = (RACINE / rel).read_text(encoding="utf-8")
+        assert "ouvrir_aide" in src and "nouveautes_si_non_lues=True" in src, rel
+    run_view = (RACINE / "src/ui/run_view.py").read_text(encoding="utf-8")
+    assert "QTextBrowser()" in run_view and "QPlainTextEdit()" not in run_view
+    assert 'href="manuel:' in run_view and "anchorClicked.connect" in run_view
+    dlg = (RACINE / "src/ui/dialogs/aide_dialog.py").read_text(encoding="utf-8")
+    for motif in ("rechercher(", "_remplir_resultats", "_historique", "StandardKey.Back",
+                  "zoom_demande", "StandardKey.ZoomIn", "nouveautes_non_lues", "marquer_nouveautes_lues"):
+        assert motif in dlg, motif
+
+
+def test_rechercher_dans_tout_le_manuel():
+    """Casse et accents ignorés, forme exacte restituée, section et extrait, code ignoré."""
+    a = Chapitre("a", "Chapitre A", "# Chapitre A\n\nIntro sur la **fiabilité**.\n\n## Réglages\n\n- la fiabilité ici\n\n```\nfiabilite dans du code\n```\n")
+    b = Chapitre("b", "Chapitre B", "# Chapitre B\n\nRien.\n")
+    res = rechercher([a, b], "fiabilite")
+    assert [(r.cle, r.ancre, r.section, r.motif) for r in res] == [
+        ("a", "", "", "fiabilité"), ("a", "reglages", "Réglages", "fiabilité"),
+    ]
+    assert res[0].extrait == "Intro sur la fiabilité." and res[1].extrait == "la fiabilité ici"
+    assert rechercher([a, b], "RÉGLAGES")[0].motif == "Réglages"
+    assert rechercher([a, b], "  ") == [] and rechercher([a, b], "absent") == []
+    assert texte_brut("- **Seuil** : voir [la fiche](x.md#y) et `code` | a | b |") == "Seuil : voir la fiche et code · a · b"
+    assert texte_brut("### Titre ![img](img/x.png)") == "Titre"

@@ -35,9 +35,14 @@ le dépôt est déposé par l'utilisateur (FTP), le runbook s'arrête au ZIP et 
    (quelques minutes ; l'IGN ajoute ~2 500 dalles toutes les 1 à 3 semaines). Noter le nombre de dalles
    pour le changelog.
 4. **Manuel** : `python run_tests.py -k test_aide` vert ; chaque fonctionnalité de la version a son
-   chapitre à jour (skill `manuel-integre`) ; captures de l'assistant refaites si l'interface a changé
-   (`python-qgis.bat dev/rendu_hors_ecran.py captures`). Le chapitre Nouveautés se remplit tout seul
-   depuis le changelog.
+   chapitre à jour (skill `manuel-integre`). Puis, **à chaque livraison**, les deux rendus hors écran
+   (Python de QGIS, `C:/OSGeo4W/bin/python-qgis.bat`) :
+   `dev/rendu_hors_ecran.py captures` refait les captures de l'assistant dans `aide/img/` (à commiter
+   si l'interface a changé, à vérifier d'un coup d'œil sinon), et
+   `dev/rendu_hors_ecran.py manuel --tous` rend chaque chapitre et doit finir sur `RESULTAT : OK`
+   dans `dev/docs/_local/rendu/controles.txt` (barre horizontale à 0 px partout, historique, zoom) —
+   un `ECHEC` est une image qui déborde ou un chapitre cassé, à corriger avant le bump. Le chapitre
+   Nouveautés se remplit tout seul depuis le changelog.
 5. **Binaire CV** : `python run_tests.py -k binaire_a_jour` doit être **vert**. Rouge →
    `python dev/runner_onnx/build.py` (venv dans `dev/runner_onnx/.venv_onnx`), puis smoke run de
    l'exe sur un PNG avec un modèle installé. Un test rouge au moment d'une livraison n'est jamais hors

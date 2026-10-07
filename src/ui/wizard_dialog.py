@@ -41,7 +41,7 @@ from ..app.services.source_modes import mode_info
 from ..app.services.config_store import ConfigStore
 from ..config.config_manager import ConfigManager
 from ..app.services.aide import AIDE_DIRNAME, CHAPITRE_PAR_ETAPE
-from .dialogs.aide_dialog import ouvrir_aide
+from .dialogs.aide_dialog import nouveautes_non_lues, ouvrir_aide
 from .dialogs.config_dialogs import ConfigsDialog, demander_nom
 from .icons import colored_icon, colored_pixmap
 from .steps.step_1_source import SourcePage
@@ -274,6 +274,10 @@ class WizardDialog(QDialog):
         aide_btn.setIcon(colored_icon("info", "#2c2c2c", 14, dpr=self.devicePixelRatioF()))
         aide_btn.setIconSize(QSize(14, 14))
         aide_btn.clicked.connect(self._ouvrir_aide)
+        self._aide_btn = aide_btn
+        self._aide_connectee = None
+        # Pastille « nouveautés » tant que celles de la version n'ont pas été lues.
+        self._rafraichir_badge_aide()
         QShortcut(QKeySequence(QKeySequence.StandardKey.HelpContents), self, self._ouvrir_aide)
 
         layout.addLayout(titles)
@@ -285,12 +289,29 @@ class WizardDialog(QDialog):
         return bar
 
     def _ouvrir_aide(self) -> None:
-        """Le manuel, ouvert sur le chapitre de l'étape affichée."""
-        ouvrir_aide(
+        """Le manuel, ouvert sur le chapitre de l'étape affichée — ou, une fois
+        après une mise à jour, sur les Nouveautés."""
+        dlg = ouvrir_aide(
             self._plugin_root / AIDE_DIRNAME,
             parent=self,
             cle=CHAPITRE_PAR_ETAPE.get(self._current_step, ""),
+            nouveautes_si_non_lues=True,
         )
+        if self._aide_connectee is not dlg:
+            dlg.chapitre_affiche.connect(lambda _cle: self._rafraichir_badge_aide())
+            self._aide_connectee = dlg
+        self._rafraichir_badge_aide()
+
+    def _rafraichir_badge_aide(self) -> None:
+        non_lues = nouveautes_non_lues()
+        self._aide_btn.setText("Aide •" if non_lues else "Aide")
+        self._aide_btn.setProperty("nouveautes", "true" if non_lues else "false")
+        self._aide_btn.setToolTip(
+            "Nouveautés de cette version non lues — le manuel s'ouvrira dessus (F1)"
+            if non_lues else "Manuel : le chapitre de cette étape (F1)"
+        )
+        self._aide_btn.style().unpolish(self._aide_btn)
+        self._aide_btn.style().polish(self._aide_btn)
 
     def _build_progress_liseret(self) -> QWidget:
         self._progress = QProgressBar()

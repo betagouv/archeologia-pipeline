@@ -181,6 +181,79 @@ def chapitre(chapitres: Sequence[Chapitre], cle: str) -> Optional[Chapitre]:
     return next((c for c in chapitres if c.cle == cle), None)
 
 
+# ----------------------------------------------------------------------
+# Recherche dans tout le manuel (2026-10-08)
+# ----------------------------------------------------------------------
+_MD_GRAS = re.compile(r"(\*\*|__|`)")
+_MD_IMAGE = re.compile(r"!\[[^\]]*\]\([^)]*\)")
+_MD_LIEN = re.compile(r"\[([^\]]*)\]\([^)]*\)")
+_MD_TETE = re.compile(r"^\s*(#{1,6}\s+|>\s?|[-*]\s+|\d+\.\s+|\|)")
+
+
+def texte_brut(ligne: str) -> str:
+    """Une ligne Markdown sans sa syntaxe : pour l'extrait d'un résultat."""
+    ligne = _MD_IMAGE.sub("", ligne)
+    ligne = _MD_LIEN.sub(r"\1", ligne)
+    ligne = _MD_TETE.sub("", ligne)
+    ligne = _MD_GRAS.sub("", ligne)
+    return re.sub(r"\s*\|\s*", " · ", ligne).strip(" ·").strip()
+
+
+def _sans_accents(texte: str) -> str:
+    """Même longueur que ``texte`` (un caractère → sa base), pour retrouver la forme
+    exacte dans la ligne d'origine."""
+    return "".join((unicodedata.normalize("NFKD", ch) or ch)[0] for ch in texte).lower()
+
+
+@dataclass(frozen=True)
+class Resultat:
+    cle: str            # chapitre
+    chapitre: str       # titre du chapitre
+    ancre: str          # slug de la section (## ou ###) qui contient la ligne, "" = en tête
+    section: str        # titre de la section
+    extrait: str        # la ligne, sans syntaxe Markdown, raccourcie autour du motif
+    motif: str          # la forme exacte trouvée dans le texte (accents compris)
+
+
+def rechercher(chapitres: Sequence[Chapitre], texte: str, max_par_chapitre: int = 30) -> List[Resultat]:
+    """Toutes les lignes de tous les chapitres qui contiennent ``texte``, sans tenir
+    compte de la casse ni des accents (« fiabilite » trouve « fiabilité »). Une
+    occurrence par ligne, les blocs de code ignorés, dans l'ordre du manuel."""
+    cible = _sans_accents(texte.strip())
+    if not cible:
+        return []
+    out: List[Resultat] = []
+    for c in chapitres:
+        ancre, section, n = "", "", 0
+        dans_code = False
+        for ligne in c.markdown.splitlines():
+            if ligne.lstrip().startswith("```"):
+                dans_code = not dans_code
+                continue
+            if dans_code:
+                continue
+            m = _TITRE.match(ligne)
+            if m and len(m.group(1)) >= 2:
+                section = m.group(2).strip()
+                ancre = slug(section)
+            i = _sans_accents(ligne).find(cible)
+            if i < 0:
+                continue
+            motif = ligne[i:i + len(cible)]
+            debut = max(0, i - 60)
+            fenetre = ligne[debut:i + len(cible) + 80]
+            extrait = texte_brut(fenetre)
+            if debut > 0:
+                extrait = "… " + extrait
+            if i + len(cible) + 80 < len(ligne):
+                extrait += " …"
+            out.append(Resultat(c.cle, c.titre, ancre, section, extrait, motif))
+            n += 1
+            if n >= max_par_chapitre:
+                break
+    return out
+
+
 CLE_DEPANNAGE = "depannage"
 
 #: Message du journal (⚠ / ✗) → titre de la rubrique de Dépannage qui en parle.

@@ -57,7 +57,7 @@ class ArcheologiaPipelinePlugin:
         from pathlib import Path
         from .src.ui.dialogs.aide_dialog import ouvrir_aide
 
-        ouvrir_aide(Path(plugin_dir) / "aide", parent=self.iface.mainWindow())
+        ouvrir_aide(Path(plugin_dir) / "aide", parent=self.iface.mainWindow(), nouveautes_si_non_lues=True)
 
     def tr(self, message):
         return QCoreApplication.translate('ArcheologiaPipelinePlugin', message)

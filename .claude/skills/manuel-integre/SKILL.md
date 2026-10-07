@@ -35,6 +35,7 @@ retard, qu'il a remplacée le 2026-10-07.
 | Préflight, workers, vue d'exécution, journal, relance | `06-etape-4-lancer.md` |
 | Dossier de sortie, couches QGIS, légende, attributs | `07-resultats.md` |
 | Nouveau message ⚠/✗ du narrateur avec une cause connue | `08-depannage.md` + une ligne dans `_RUBRIQUES_DEPANNAGE` (`aide.py`) |
+| Manuel lui-même (recherche, historique, zoom, nouveautés) | `02-premier-traitement.md` › « Ce manuel » |
 | Terme nouveau pour l'utilisateur | `09-glossaire.md` |
 | Ce qui a changé dans la version | rien : le chapitre Nouveautés est rendu depuis `changelog=` de `metadata.txt` |
 
@@ -66,7 +67,8 @@ retard, qu'il a remplacée le 2026-10-07.
 1. `python run_tests.py -k test_aide` et `ruff check src/`.
 2. Rendu hors écran si une image ou un tableau a changé :
    `python-qgis.bat dev/rendu_hors_ecran.py manuel --chapitre <cle> [--ancre <slug>]` → PNG à regarder,
-   barre horizontale à 0 px.
+   barre horizontale à 0 px ; `manuel --tous` rend chaque chapitre (c'est le contrôle du runbook
+   `/livraison`), `manuel --recherche <mot>` vérifie la recherche globale, `journal` le renvoi cliquable.
 3. Ajouter ou mettre à jour le point de recette dans `tests/TESTS_MANUELS_QGIS.md` (§38 pour le manuel).
 4. Rappeler à l'utilisateur de recharger le plugin : les chapitres sont relus à chaque ouverture du
    manuel, mais le code de la fenêtre ne l'est pas.

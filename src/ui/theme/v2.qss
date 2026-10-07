@@ -60,6 +60,8 @@ QPushButton:disabled { color: #909090; border-color: #b0b0b0; }
    (bordure discrète) — sans elle, le bouton ressemblait à un simple QLabel. */
 #GhostButton { background: transparent; border: 1px solid #c4c4c4; color: #2c2c2c; }
 #GhostButton:hover { background: #e8e8e8; border: 1px solid #a0a0a0; }
+/* Bouton « Aide » tant que les Nouveautés de la version n'ont pas été lues. */
+#GhostButton[nouveautes="true"] { border-color: #2b79c2; color: #1d5a96; }
 
 /* ---- En-tête ---- */
 #WizardTitleBar { background: #ffffff; border-bottom: 1px solid #c4c4c4; }

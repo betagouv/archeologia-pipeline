@@ -26,16 +26,16 @@ from qgis.PyQt.QtWidgets import (
     QGraphicsOpacityEffect,
     QHBoxLayout,
     QLabel,
-    QPlainTextEdit,
     QProgressBar,
     QPushButton,
+    QTextBrowser,
     QVBoxLayout,
     QWidget,
 )
 
 from ..app.progress_reporter import USER_INFO
 from ..app.progress_stages import STAGE_LABELS, build_stage_sequence
-from ..app.services.aide import rubrique_depannage
+from ..app.services.aide import AIDE_DIRNAME, CLE_DEPANNAGE, resoudre_cible, rubrique_depannage, slug
 from .icons import colored_icon
 from .layer_loader import load_result_layers, purge_output_dir_layers
 from .log_bridge import QtLogEmitter, QtLogHandler
@@ -383,10 +383,16 @@ class RunView(QWidget):
         jhead.addWidget(clear_btn)
         root.addLayout(jhead)
 
-        self._journal = QPlainTextEdit()
+        # Navigateur de texte en lecture seule (2026-10-08) : une ligne ⚠/✗ porte
+        # un lien vers sa rubrique de Dépannage du manuel (un QPlainTextEdit n'a
+        # pas de lien cliquable). Même QSS, même journal texte au « Copier ».
+        self._journal = QTextBrowser()
         self._journal.setObjectName("RunJournal")
         self._journal.setReadOnly(True)
-        self._journal.setMaximumBlockCount(5000)
+        self._journal.setOpenLinks(False)
+        self._journal.setOpenExternalLinks(False)
+        self._journal.document().setMaximumBlockCount(5000)
+        self._journal.anchorClicked.connect(self._sur_lien_journal)
         root.addWidget(self._journal, 1)
 
         actions = QHBoxLayout()
@@ -596,16 +602,19 @@ class RunView(QWidget):
         color = _LOG_LINE_COLORS.get(cat)
         if color:
             body = f'<span style="color:{color};">{body}</span>'
-            # Renvoi vers le manuel intégré (bouton « Aide » / F1 → Dépannage) :
-            # un QPlainTextEdit n'a pas de lien cliquable, le titre suffit.
+            # Renvoi vers le manuel intégré : un lien « manuel:depannage#<slug> »
+            # qui ouvre la rubrique (cf. _sur_lien_journal) ; le titre reste lisible
+            # au « Copier » (texte brut).
             rubrique = rubrique_depannage(msg)
             if rubrique:
                 body += (
-                    '<span style="color:#7d786c;">&nbsp;&nbsp;· voir Manuel › Dépannage › '
-                    f"« {html.escape(rubrique)} »</span>"
+                    f'&nbsp;&nbsp;<a href="manuel:{CLE_DEPANNAGE}#{slug(rubrique)}" '
+                    'style="color:#9c9686;">· voir Manuel › Dépannage › '
+                    f"« {html.escape(rubrique)} »</a>"
                 )
         stamp = f'<span style="color:#7d786c;">{ts}</span>&nbsp;&nbsp;' if ts else ""
-        self._journal.appendHtml(stamp + body)
+        # append() interprète le texte comme HTML s'il commence par une balise.
+        self._journal.append(f"<span>{stamp}{body}</span>")
 
     def _render_journal(self) -> None:
         """Reconstruit le journal filtré depuis le modèle d'entrées."""
@@ -927,6 +936,16 @@ class RunView(QWidget):
         d = self._output_dir()
         if d and d.is_dir():
             QDesktopServices.openUrl(QUrl.fromLocalFile(str(d)))
+
+    def _sur_lien_journal(self, url: QUrl) -> None:
+        """Lien d'une ligne ⚠/✗ → le manuel, sur la rubrique de Dépannage."""
+        if url.scheme() != "manuel":
+            return
+        from .dialogs.aide_dialog import ouvrir_aide
+
+        cle, ancre = resoudre_cible(url.toString()[len("manuel:"):])
+        racine = Path(__file__).resolve().parents[2]
+        ouvrir_aide(racine / AIDE_DIRNAME, parent=self.window(), cle=cle or CLE_DEPANNAGE, ancre=ancre)
 
     def _open_log(self) -> None:
         d = self._output_dir()

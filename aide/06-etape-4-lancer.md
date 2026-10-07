@@ -44,7 +44,7 @@ Pendant le traitement, les étapes 1 à 3 restent consultables mais en lecture s
 - **Détection** : une ligne par modèle, puis par image analysée ; à la fin de chaque modèle, le nombre d'images et la durée mesurée.
 - **Assemblage** : mosaïques, GeoPackages, projet QGIS, puis le nombre de couches ajoutées.
 
-Un **⚠** signale quelque chose qui n'arrête pas le traitement mais mérite d'être lu : un raster trop petit pour le rayon d'un indice, une dalle écartée. Un **✗** est une erreur ; si le traitement s'interrompt, le message en donne la cause et le journal complet du dossier de sortie le détail.
+Un **⚠** signale quelque chose qui n'arrête pas le traitement mais mérite d'être lu : un raster trop petit pour le rayon d'un indice, une dalle écartée. Un **✗** est une erreur ; si le traitement s'interrompt, le message en donne la cause et le journal complet du dossier de sortie le détail. Quand ce manuel a une rubrique pour le message, la ligne se termine par « voir Manuel › Dépannage › … » : un clic l'ouvre directement.
 
 ## À la fin
 

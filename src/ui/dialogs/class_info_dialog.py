@@ -280,7 +280,7 @@ class _CorpsFiche(QWidget):
             legende = (
                 "Vraies détections en couleur, fausses en gris, par bande de score de 0,05. "
                 "Les niveaux commencent là où la part de vrais objets atteint 35, 60 et 85 %. "
-                "La ligne pointillée est le point d'équilibre entre précision et rappel ; "
+                "La ligne pointillée est le point d'équilibre entre précision et rappel (F1) ; "
                 "le seuil déployé est choisi en dessous."
             )
             if seuil is not None:
@@ -289,9 +289,6 @@ class _CorpsFiche(QWidget):
                     legende += (f" Seuil réglé à {seuil:.2f} (modèle : "
                                 f"{figure.profil.seuil:g}).").replace(".", ",")
             lay.addWidget(_label(legende, "FicheLegende"))
-            bilan = figure.phrase_bilan()
-            if bilan:
-                lay.addWidget(_label(bilan, "FicheTexte"))
             # Petits multiples par zone d'évaluation : une classe sûre ici et
             # faible là se voit d'un coup d'œil (les linéaires surtout).
             zones = figures_par_zone(model_dir, fiche.nom, fiche.fiabilite, couleur=couleur)

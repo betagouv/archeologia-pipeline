@@ -287,7 +287,6 @@ QPushButton:disabled { color: #909090; border-color: #b0b0b0; }
 #EntityFiabHint { color: #5a5a5a; font-size: 10px; }
 /* Aide au choix du seuil : mini-profil + bilan sur le banc (mode avancé). */
 #EntityProfil { background: transparent; border: none; }
-#EntityProfilBilan { color: #5a5a5a; font-size: 10px; }
 #EntityNoModel { color: #8a5e18; font-size: 11px; font-style: italic; }
 #EntityRvtWarn { color: #8a5e18; font-size: 11px; }
 #EntityActivateBtn { padding: 1px 8px; min-height: 16px; font-size: 10px; }

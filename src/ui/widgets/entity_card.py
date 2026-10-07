@@ -644,7 +644,9 @@ class EntityCard(QFrame):
     def set_profils(self, profils: Sequence[tuple]) -> None:
         """``[(classe, Profil, couleur RGB ou None), …]`` — un mini-profil par
         classe de l'entité dont l'évaluation est livrée ; vide = rien d'affiché.
-        Les widgets ne sont reconstruits que si la liste change."""
+        Les widgets ne sont reconstruits que si la liste change. Pas de texte sous
+        la figure (demande utilisateur 2026-10-08) : les niveaux sont écrits sous
+        l'axe, le bilan du seuil est dans l'infobulle."""
         cle = tuple((c, id(p), couleur) for c, p, couleur in profils)
         if cle == self._profils_cle:
             return
@@ -663,29 +665,29 @@ class EntityCard(QFrame):
                 titre.setObjectName("EntityModelLabel")
                 lay.addWidget(titre)
             fig = ProfilScoresWidget(profil, couleur, mini=True)
-            bilan = QLabel("")
-            bilan.setObjectName("EntityProfilBilan")
-            bilan.setWordWrap(True)
             lay.addWidget(fig)
-            lay.addWidget(bilan)
-            self._profils.append((fig, bilan))
+            self._profils.append(fig)
         self._maj_profils()
         self._maj_visibilite_profils()
 
     def _maj_profils(self, *_args) -> None:
         """La ligne du seuil suit la case « Confiance » ; le bilan est recalculé."""
         seuil = float(self._conf_spin.value())
-        for fig, bilan in getattr(self, "_profils", []):
-            fig.set_seuil(seuil)
-            bilan.setText(fig.phrase_bilan())
+        for fig in getattr(self, "_profils", []):
+            fig.set_seuil(seuil)   # la ligne suit la case ; le bilan est dans l'infobulle
 
     def _maj_visibilite_profils(self) -> None:
         box = getattr(self, "_profil_box", None)
         if box is not None:
-            box.setVisible(bool(
+            visible = bool(
                 self._advanced and self._selected and self._has_model
                 and self._profils and not self._implique
-            ))
+            )
+            box.setVisible(visible)
+            if visible:
+                # La figure nomme les niveaux sous son axe : l'aide textuelle
+                # « Fiabilité affichée — douteux dès 0,29 · … » ferait doublon.
+                self._fiab_hint.setVisible(False)
 
     def _on_thresholds_changed(self, *_args) -> None:
         if not self._loading:

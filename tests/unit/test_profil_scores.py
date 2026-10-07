@@ -251,6 +251,7 @@ def test_le_widget_suit_le_seuil_et_les_fiches_posent_les_zones():
                   "QToolTip.showText", "def contextMenuEvent", "def figures_par_zone"):
         assert motif in widget, motif
     carte = (racine / "src/ui/widgets/entity_card.py").read_text(encoding="utf-8")
-    assert "fig.set_seuil(seuil)" in carte and "fig.phrase_bilan()" in carte
+    assert "fig.set_seuil(seuil)" in carte and "phrase_bilan" not in carte      # bilan dans l'infobulle seulement
+    assert "self.phrase_bilan()" in widget
     fiche = (racine / "src/ui/dialogs/class_info_dialog.py").read_text(encoding="utf-8")
     assert "figures_par_zone(" in fiche and "figure.set_seuil(seuil)" in fiche

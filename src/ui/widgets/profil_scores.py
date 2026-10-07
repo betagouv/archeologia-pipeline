@@ -68,7 +68,7 @@ _GRILLE = QColor("#e6e6e6")
 _SEUIL = QColor("#e8590c")            # ligne du seuil appliqué : jamais une couleur de classe
 _COUPURE = QColor("#8a8a8a")          # les autres coupures, discrètes
 _HAUTEUR = 224
-_HAUTEUR_MINI = 96
+_HAUTEUR_MINI = 120
 
 
 def _teinte(base: RGB, categorie: str) -> QColor:
@@ -172,13 +172,15 @@ class ProfilScoresWidget(QWidget):
     def _maj_infobulle(self) -> None:
         p = self._p
         lignes = [f"{_nb(p.total)} détections de l'évaluation, par bande de score de 0,05."]
+        if p.fines:
+            lignes.insert(0, self.phrase_bilan())   # ce que le seuil courant garde et écarte sur le banc
         if p.zone:
             lignes.insert(0, f"Zone d'évaluation : {p.zone}")
         for c in self._cats:
             lignes.append(f"{c.label} : score ≥ {_v(c.seuil)} — {phrase_mesure(c)}".replace(".", ","))
         if p.seuil_f1max is not None:
             lignes.append(
-                f"Point d'équilibre précision-rappel de l'évaluation : {_v(p.seuil_f1max)} "
+                f"Point d'équilibre précision-rappel (F1 maximal) de l'évaluation : {_v(p.seuil_f1max)} "
                 "(ligne pointillée) — le seuil déployé est choisi en dessous : en prospection, "
                 "une structure manquée ne se rattrape pas."
             )
@@ -192,7 +194,7 @@ class ProfilScoresWidget(QWidget):
         bandes = self._p.bandes
         w, h = self.width(), self.height()
         if self._mini:
-            gauche, droite, haut, bas = 30, 6, 14, 18
+            gauche, droite, haut, bas = 30, 6, 14, 42   # deux rangées de niveaux sous l'axe (bande étroite décalée)
         else:
             gauche, droite, haut, bas = 44, 8, 36, 72   # trois rangées d'étiquettes en haut
         xmin, xmax = bandes[0].lo, bandes[-1].hi
@@ -345,11 +347,11 @@ class ProfilScoresWidget(QWidget):
                 # Rangée du haut, à elle seule : à gauche de sa ligne s'il y a la place,
                 # sinon à droite (les coupures occupent les deux rangées suivantes).
                 p.setFont(petite)
-                texte = f"équilibre {_v(prof.seuil_f1max)}"
-                if xe - gauche > 84:
-                    p.drawText(QRectF(xe - 83, haut - 30, 80, 12), Qt.AlignmentFlag.AlignRight, texte)
+                texte = f"équilibre (F1) {_v(prof.seuil_f1max)}"
+                if xe - gauche > 104:
+                    p.drawText(QRectF(xe - 103, haut - 30, 100, 12), Qt.AlignmentFlag.AlignRight, texte)
                 else:
-                    p.drawText(QRectF(xe + 3, haut - 30, 80, 12), Qt.AlignmentFlag.AlignLeft, texte)
+                    p.drawText(QRectF(xe + 3, haut - 30, 100, 12), Qt.AlignmentFlag.AlignLeft, texte)
 
         # — coupures des niveaux en gris, étiquettes en quinconce (0,29 et 0,35 se
         #   touchent) ; le SEUIL APPLIQUÉ (première coupure) dans sa couleur propre,
@@ -379,6 +381,27 @@ class ProfilScoresWidget(QWidget):
             p.drawText(rect, Qt.AlignmentFlag.AlignLeft, texte)
             p.setFont(petite if mini else police)
         if mini:
+            # Niveaux sous l'axe, nom seul (la part mesurée est dans l'infobulle) ;
+            # une bande trop étroite pour son nom descend d'une rangée, avec un tiret.
+            p.setFont(petite)
+            fm = p.fontMetrics()
+            for i, c in enumerate(cats):
+                fin = cats[i + 1].seuil if i + 1 < len(cats) else xmax
+                x0, x1 = x(c.seuil), x(min(fin, xmax))
+                largeur_texte = fm.horizontalAdvance(c.label) + 4
+                etroite = (x1 - x0) < largeur_texte
+                cx = (x0 + x1) / 2
+                largeur = max(x1 - x0, largeur_texte)
+                rect_x = min(max(cx - largeur / 2, 0.0), w - largeur)
+                decal = 11 if etroite else 0
+                p.setPen(_SEUIL if i == 0 else _ENCRE_DOUCE)
+                p.drawText(QRectF(rect_x, y(0) + 13 + decal, largeur, 11), Qt.AlignmentFlag.AlignHCenter, c.label.lower())
+                if etroite:
+                    p.setPen(QPen(QColor("#c4c4c4"), 1))
+                    p.drawLine(QRectF(cx, y(0) + 12, 0, 10).topLeft(), QRectF(cx, y(0) + 12, 0, 10).bottomLeft())
+            if x(seuil) - x(xmin) > 44:
+                p.setPen(_ENCRE_DOUCE)
+                p.drawText(QRectF(x(xmin), y(0) + 13, x(seuil) - x(xmin), 11), Qt.AlignmentFlag.AlignHCenter, "écartées")
             p.end()
             return
 

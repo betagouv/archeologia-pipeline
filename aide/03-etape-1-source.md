@@ -25,6 +25,8 @@ Le plugin identifie les dalles LiDAR HD de l'IGN qui couvrent votre zone, les t�
 - **Zone d'étude** : un fichier vectoriel (`.shp`, `.gpkg`, `.geojson`), polygone ou points, dans n'importe quelle projection. Toutes les dalles qui touchent l'emprise sont retenues.
 - **Liste de dalles** : un fichier `.txt`, une dalle par ligne au format `nom,url`, tel que l'écrit la sélection sur carte ou tel que le fournit le site de téléchargement de l'IGN.
 
+[![La grille des dalles sur le canevas de QGIS, avec la barre de messages de la sélection](img/etape1-selection-dalles.png)](img/etape1-selection-dalles.png)
+
 La grille des dalles est livrée avec le plugin et remise à jour à chaque version : les dalles publiées par l'IGN depuis la version installée n'y figurent pas encore.
 
 Chaque dalle couvre un kilomètre carré. Les dalles voisines sont fusionnées avant le calcul des indices, avec une marge, pour que les indices se raccordent sans couture : voir [Tuilage et marge](etape-2-produits.md#tuilage-et-marge).

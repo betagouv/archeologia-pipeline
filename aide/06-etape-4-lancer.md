@@ -17,6 +17,8 @@ Le panneau vérifie en tâche de fond ce dont le traitement a besoin :
 
 Chaque contrôle affiche son état et son détail. Un élément manquant bloque le lancement et dit quoi installer : voir [Dépannage](depannage.md#les-verifications-prealables-ont-echoue).
 
+[![Étape 4 : configuration valide, état du système au vert, récapitulatif du run](img/etape4-lancer.png)](img/etape4-lancer.png)
+
 ### Paramètres avancés
 
 **Workers parallèles** : le nombre de dalles traitées en même temps. Plus de workers accélère le traitement sur une machine à plusieurs cœurs mais consomme plus de mémoire. Sur un poste à 16 Go, restez à deux ou trois.
@@ -28,6 +30,8 @@ Chaque contrôle affiche son état et son détail. Un élément manquant bloque 
 - une **frise** des phases, selon le mode : Téléchargement, Produits, Détection, Finalisation, avec un chronomètre par phase ;
 - une **barre de progression**, qui passe en mouvement continu quand une phase n'a pas de fin prévisible, par exemple le calcul d'un grand raster ;
 - le **journal** : un message par événement, dans le vocabulaire de cette aide. Les pastilles **⚠** et **✗** comptent les avertissements et les erreurs et filtrent l'affichage ; **Copier** et **Effacer** agissent sur le texte affiché.
+
+[![La vue d'exécution pendant un téléchargement : frise des phases, progression et journal](img/run-journal.png)](img/run-journal.png)
 
 Pendant le traitement, les étapes 1 à 3 restent consultables mais en lecture seule, signalé par une pastille dans l'en-tête. **Annuler** arrête proprement à la fin de la dalle en cours.
 

@@ -624,6 +624,13 @@ class EntityCard(QFrame):
 
         self._repolish()
 
+    def set_reinit_possible(self, on: bool) -> None:
+        """Active le « ↺ » dès qu'un réglage est saisi : sans ça il restait grisé
+        jusqu'au prochain rafraîchissement de la page (cocher une autre carte…),
+        et la réinitialisation semblait ne « revenir qu'après coup » (constat
+        utilisateur 2026-10-08)."""
+        self._reinit_btn.setEnabled(bool(on))
+
     def set_advanced(self, on: bool) -> None:
         """Affiche/masque les champs avancés. Leur place est réservée en
         permanence (retainSizeWhenHidden) → la hauteur ne change pas."""

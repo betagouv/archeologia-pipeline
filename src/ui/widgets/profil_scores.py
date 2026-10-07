@@ -65,6 +65,8 @@ _GRIS_SOUS_SEUIL = QColor("#9a9a9a")
 _ENCRE = QColor("#2c2c2c")
 _ENCRE_DOUCE = QColor("#5a5a5a")
 _GRILLE = QColor("#e6e6e6")
+_SEUIL = QColor("#e8590c")            # ligne du seuil appliqué : jamais une couleur de classe
+_COUPURE = QColor("#8a8a8a")          # les autres coupures, discrètes
 _HAUTEUR = 224
 _HAUTEUR_MINI = 96
 
@@ -349,16 +351,33 @@ class ProfilScoresWidget(QWidget):
                 else:
                     p.drawText(QRectF(xe + 3, haut - 30, 80, 12), Qt.AlignmentFlag.AlignLeft, texte)
 
-        # — coupures des niveaux, étiquettes en quinconce (0,29 et 0,35 se touchent) —
+        # — coupures des niveaux en gris, étiquettes en quinconce (0,29 et 0,35 se
+        #   touchent) ; le SEUIL APPLIQUÉ (première coupure) dans sa couleur propre,
+        #   plus épais, sur un halo blanc : il doit se voir quelle que soit la
+        #   couleur de la classe (constat utilisateur 2026-10-08). —
         p.setFont(petite if mini else police)
         for i, c in enumerate(cats):
             xc = x(c.seuil)
-            p.setPen(QPen(_ENCRE, 1))
+            if i == 0:
+                p.setPen(QPen(QColor("#ffffff"), 5))
+                p.drawLine(QRectF(xc, haut - 4, 0, y(0) - haut + 4).topLeft(), QRectF(xc, haut - 4, 0, y(0) - haut + 4).bottomLeft())
+                p.setPen(QPen(_SEUIL, 2))
+            else:
+                p.setPen(QPen(_COUPURE, 1))
             p.drawLine(QRectF(xc, haut - 4, 0, y(0) - haut + 4).topLeft(), QRectF(xc, haut - 4, 0, y(0) - haut + 4).bottomLeft())
-            texte = ("seuil " if i == 0 else "") + _v(c.seuil)
             if mini and i > 0:
                 continue  # en mini, seule la ligne du seuil est libellée
-            p.drawText(QRectF(xc + 3, haut - (12 if mini else 18) + (0 if mini else (i % 2) * 11), 70, 12), Qt.AlignmentFlag.AlignLeft, texte)
+            texte = ("seuil " if i == 0 else "") + _v(c.seuil)
+            rect = QRectF(xc + 3, haut - (12 if mini else 18) + (0 if mini else (i % 2) * 11), 70, 12)
+            if i == 0:
+                grasse = QFont(p.font())
+                grasse.setBold(True)
+                p.setFont(grasse)
+                p.setPen(_SEUIL)
+            else:
+                p.setPen(_COUPURE)
+            p.drawText(rect, Qt.AlignmentFlag.AlignLeft, texte)
+            p.setFont(petite if mini else police)
         if mini:
             p.end()
             return

@@ -402,13 +402,21 @@ class DetectionPage(QWidget):
             "confidence_threshold": float(confidence),
             "min_area_m2": float(min_area),
         }
+        self._armer_reinit(entity_id)
         if not self._loading:
             self.changed.emit()
 
     def _on_cluster_params_changed(self, entity_id: str, params: dict) -> None:
         self._entity_cluster_params[entity_id] = dict(params or {})
+        self._armer_reinit(entity_id)
         if not self._loading:
             self.changed.emit()
+
+    def _armer_reinit(self, entity_id: str) -> None:
+        """Le « ↺ » de la carte s'active au moment même où une surcharge apparaît."""
+        card = self._cards.get(entity_id)
+        if card is not None and not self._readonly:
+            card.set_reinit_possible(True)
 
     def _cle_surcharge(self, entity_id: str) -> str:
         """Entité sous laquelle les surcharges de ``entity_id`` sont rangées.

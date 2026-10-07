@@ -237,7 +237,24 @@ def build_detection_vector_layer(
             _apply_fiabilite_notices(layer, entree, cats, logger)
         else:
             _apply_confidence_style(layer, base_color, confidence_threshold, logger)
+    _apply_verdict_form(layer)
     return layer
+
+
+def _apply_verdict_form(layer) -> None:
+    """Le champ « validation » propose le vocabulaire FIXE des verdicts (oui / non /
+    peut-être) aussi sur les couches chargées en direct, pas seulement dans le .qgs :
+    c'est ce que lit la fiabilité observée (``app.services.fiabilite_observee``)."""
+    try:
+        from qgis.core import QgsEditorWidgetSetup
+
+        i = layer.fields().indexFromName("validation")
+        if i >= 0:
+            layer.setEditorWidgetSetup(i, QgsEditorWidgetSetup(
+                "ValueMap", {"map": [{"oui": "oui"}, {"non": "non"}, {"peut-être": "peut-être"}]},
+            ))
+    except Exception:  # noqa: BLE001 — confort de saisie, jamais bloquant
+        pass
 
 
 def apply_coverage_raster_symbology(layer, threshold_percent: float, logger: logging.Logger) -> None:

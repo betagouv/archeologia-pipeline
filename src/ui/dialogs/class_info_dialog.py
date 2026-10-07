@@ -224,7 +224,7 @@ class _Apercu(QWidget):
 class _CorpsFiche(QWidget):
     def __init__(self, fiche: ClassFiche, model_dir: Optional[Path], parent=None,
                  ouvrir_modele: Optional[Callable[[], None]] = None,
-                 couleur=None, seuil: Optional[float] = None):
+                 couleur=None, seuil: Optional[float] = None, observe=None):
         """``couleur`` : couleur de base de la COUCHE (qualifiée en A/B), sinon celle
         du registre pour la classe ; ``seuil`` : seuil effectif réglé à l'étape 3,
         pour que la figure et son bilan montrent ce que le run appliquera."""
@@ -262,7 +262,10 @@ class _CorpsFiche(QWidget):
             colonne.addWidget(lien, 0, Qt.AlignmentFlag.AlignLeft)
         if fiche.fiabilite:
             colonne.addWidget(_titre_bloc("Fiabilité mesurée au banc"))
-            colonne.addWidget(_label(self._fiabilite(fiche), "FicheTexte"))
+            colonne.addWidget(_label(self._fiabilite(fiche, observe), "FicheTexte"))
+            note = self._note_observation(observe)
+            if note:
+                colonne.addWidget(_label(note, "FicheLegende"))
         colonne.addStretch(1)
         haut.addLayout(colonne, 1)
         lay.addLayout(haut)
@@ -336,13 +339,32 @@ class _CorpsFiche(QWidget):
         return "\n".join(lignes)
 
     @staticmethod
-    def _fiabilite(f: ClassFiche) -> str:
+    def _fiabilite(f: ClassFiche, observe=None) -> str:
+        """Une ligne par niveau : la mesure du banc, puis « chez vous : … » dès
+        qu'un verdict a été saisi à ce niveau (fiabilité observée, 2026-10-08)."""
+        comptes = getattr(observe, "par_categorie", None) or {}
         lignes = []
         for c in f.fiabilite:
             mesure = pct(c.mesure)
             suffixe = f" — {mesure} % de vrais objets mesurés sur {c.n}" if mesure is not None else ""
-            lignes.append(f"{c.label} : score ≥ {c.seuil:g}{suffixe}".replace(".", ","))
+            ligne = f"{c.label} : score ≥ {c.seuil:g}{suffixe}".replace(".", ",")
+            compte = comptes.get(c.categorie)
+            if compte is not None and compte.phrase():
+                ligne += f" · chez vous : {compte.phrase()}"
+            lignes.append(ligne)
         return "\n".join(lignes)
+
+    @staticmethod
+    def _note_observation(observe) -> str:
+        if observe is None or not getattr(observe, "n_runs", 0):
+            return ""
+        n = observe.total_verifies
+        if not n and not observe.total_a_revoir:
+            return (f"Aucun verdict pour cette classe dans vos {observe.n_runs} run(s) connus : "
+                    "renseignez le champ « validation » (oui / non / peut-être) dans QGIS.")
+        return (f"« Chez vous » = vos verdicts (champ « validation » : oui / non / peut-être) sur "
+                f"{observe.n_runs} run(s) connus, {n} vérification(s). Le banc est un plancher annoncé ; "
+                "le terrain dit ce qu'il vaut ici.")
 
     @staticmethod
     def _entrainement(f: ClassFiche) -> str:
@@ -420,6 +442,7 @@ class ClassInfoDialog(QDialog):
         models: Optional[dict] = None,
         couleurs: Optional[dict] = None,
         seuils: Optional[dict] = None,
+        observes: Optional[dict] = None,
     ):
         super().__init__(parent)
         self._fiches = list(fiches)
@@ -427,6 +450,7 @@ class ClassInfoDialog(QDialog):
         self._models = dict(models or {})  # nom → InstalledModel, pour « Fiche du modèle »
         self._couleurs = dict(couleurs or {})  # (modèle, classe) → couleur de la couche
         self._seuils = dict(seuils or {})      # (modèle, classe) → seuil effectif (étape 3)
+        self._observes = dict(observes or {})  # (modèle, classe) → Observation (vos verdicts)
         self.setObjectName("ClassInfoDialog")
         self.setWindowTitle(titre or "Structure détectable")
         self.setMinimumSize(760, 560)
@@ -489,6 +513,7 @@ class ClassInfoDialog(QDialog):
             f, self._dirs.get(f.modele_id), ouvrir_modele=ouvrir,
             couleur=self._couleurs.get((f.modele_id, f.nom)),
             seuil=self._seuils.get((f.modele_id, f.nom)),
+            observe=self._observes.get((f.modele_id, f.nom)),
         ))
 
     def _ouvrir_modele(self, model) -> None:
@@ -505,6 +530,7 @@ def ouvrir_fiche_entite(
     models: Optional[dict] = None,
     couleurs: Optional[dict] = None,
     seuils: Optional[dict] = None,
+    observes: Optional[dict] = None,
 ) -> None:
     """Ouvre la fiche en modal. Rien à afficher → rien ne s'ouvre. ``models``
     (nom → ``InstalledModel``) active le lien « Fiche du modèle » ; ``couleurs`` et
@@ -514,5 +540,5 @@ def ouvrir_fiche_entite(
         return
     ClassInfoDialog(
         fiches, model_dirs, titre, parent=parent, models=models,
-        couleurs=couleurs, seuils=seuils,
+        couleurs=couleurs, seuils=seuils, observes=observes,
     ).exec()

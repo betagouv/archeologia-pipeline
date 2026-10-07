@@ -37,6 +37,7 @@ from ..app.progress_reporter import USER_INFO
 from ..app.progress_stages import STAGE_LABELS, build_stage_sequence
 from ..app.services.aide import AIDE_DIRNAME, CLE_DEPANNAGE, resoudre_cible, rubrique_depannage, slug
 from ..app.services.bilan_fiabilite import collecter as collecter_bilan
+from ..app.services.fiabilite_observee import enregistrer_run
 from ..app.services.rapport_run import NOM_RAPPORT
 from .widgets.bilan_fiabilite import BilanFiabiliteWidget, legende_niveaux
 from .icons import colored_icon
@@ -212,6 +213,16 @@ class _Timeline(QWidget):
             step.set_count("")
         for i in range(len(self._lines)):
             self._set_line_state(i, "pending")
+
+
+def profil_archeologia() -> Path:
+    """``<profil QGIS>/archeologia`` — même dossier que le registre des couleurs."""
+    try:
+        from qgis.core import QgsApplication
+
+        return Path(QgsApplication.qgisSettingsDirPath()) / "archeologia"
+    except Exception:  # noqa: BLE001 — hors QGIS : à côté du plugin
+        return Path(__file__).resolve().parents[2] / "data" / "temp_zones"   # gitignoré
 
 
 class RunView(QWidget):
@@ -525,6 +536,12 @@ class RunView(QWidget):
         # qui détient toujours l'ancien dataset, réécrit sa version périmée par-dessus
         # le VRT régénéré → les dalles ajoutées resteraient invisibles. Thread principal.
         purge_output_dir_layers(ctx.output_dir, self._logger)
+        # Registre des runs connus (profil QGIS) : la fiche de classe y lira vos
+        # verdicts (fiabilité observée, 2026-10-08). Jamais bloquant.
+        try:
+            enregistrer_run(profil_archeologia(), ctx.output_dir)
+        except Exception:  # noqa: BLE001
+            pass
 
         self._running = True
         self._run_started_at = time.monotonic()

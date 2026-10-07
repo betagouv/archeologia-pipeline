@@ -840,3 +840,12 @@ Un HTML à la racine du dossier de sortie, écrit par la finalisation, ouvert d'
 - [ ] **41.3 Sans CV / annulé** : run MNT seul → « Pas de détection automatique », « Aucune détection avec fiabilité mesurée » ; run annulé → « Traitement annulé » en ambre, rapport quand même écrit avec les dalles faites.
 - [ ] **41.4 Hors ligne** : copier `rapport.html` + `rapport_vignette.png` sur une clé → s'ouvre et s'imprime sans réseau ; `metadata.json` porte `"rapport": "rapport.html"`.
 
+## 42. Fiabilité observée sur vos runs ⭐ P1
+
+Vos verdicts (champ `validation` : oui / non / peut-être) agrégés par modèle, classe et niveau sur les runs lancés depuis ce poste, affichés dans la fiche de classe à côté de la mesure du banc (2026-10-08).
+
+- [ ] **42.1 Vocabulaire** : sur une couche de détections chargée en direct (fin de run) comme dans le projet `.qgs`, le champ `validation` est une liste déroulante oui / non / peut-être (pas un texte libre).
+- [ ] **42.2 Registre** : après un lancement, `<profil QGIS>/archeologia/runs_connus.json` contient le dossier de sortie (un dossier relancé remonte en fin, 50 derniers conservés).
+- [ ] **42.3 Chez vous** : saisir dans QGIS une dizaine de verdicts sur Parcellaire (oui/non, quelques peut-être, un `corr_pred` vers chemin_creux), enregistrer la couche ; étape 3 › Fiche de Parcellaire → sous « FIABILITÉ MESURÉE AU BANC », les niveaux concernés portent « · chez vous : 3 vraies sur 4 vérifiées, 1 à revoir » (pourcentage à partir de 20 vérifications) ; le « oui » corrigé vers chemin_creux compte comme faux pour Parcellaire ; en dessous, la note « « Chez vous » = vos verdicts … sur N run(s) connus, n vérification(s) ».
+- [ ] **42.4 Sans verdict** : une classe jamais vérifiée affiche « Aucun verdict pour cette classe dans vos N run(s) connus : renseignez le champ « validation » … » ; sans registre (poste neuf), rien de plus que le banc.
+

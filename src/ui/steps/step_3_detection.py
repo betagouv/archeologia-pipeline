@@ -39,6 +39,7 @@ from ...app.services.model_orchestrator import (
 from ..widgets.card import build_card
 from ..widgets.entity_card import EntityCard
 from ..widgets.profil_scores import couleur_de_classe
+from ...app.services.fiabilite_observee import observer
 from ...app.services.profil_scores import profil_pour_classe
 from ...app.services.cout_modele import infobulle, libelle_menu
 from ...app.services.reglages_defaut import (
@@ -770,9 +771,18 @@ class DetectionPage(QWidget):
             seuils[(f.modele_id, f.nom)] = (
                 float(conf) if conf is not None else float(pc.get(f.nom, model.default_confidence))
             )
+        # Fiabilité observée : vos verdicts (champ validation) sur les runs connus.
+        from ..run_view import profil_archeologia
+
+        observes = {}
+        for f in fiches:
+            try:
+                observes[(f.modele_id, f.nom)] = observer(profil_archeologia(), f.modele_id, f.nom)
+            except Exception:  # noqa: BLE001 — jamais bloquant
+                continue
         ouvrir_fiche_entite(
             fiches, dirs, titre, parent=self, models=self._models,
-            couleurs=couleurs, seuils=seuils,
+            couleurs=couleurs, seuils=seuils, observes=observes,
         )
 
     # ------------------------------------------------------------------

@@ -27,7 +27,7 @@ Le plugin identifie les dalles LiDAR HD de l'IGN qui couvrent votre zone, les t�
 
 [![La grille des dalles sur le canevas de QGIS, avec la barre de messages de la sélection](img/etape1-selection-dalles.jpg)](img/etape1-selection-dalles.jpg)
 
-La grille des dalles est livrée avec le plugin et remise à jour à chaque version : les dalles publiées par l'IGN depuis la version installée n'y figurent pas encore.
+La grille des dalles est livrée avec le plugin et remise à jour à chaque version. Le bandeau du mode indique sa date et son nombre de dalles : les dalles publiées par l'IGN depuis cette date n'y figurent pas encore.
 
 Chaque dalle couvre un kilomètre carré. Les dalles voisines sont fusionnées avant le calcul des indices, avec une marge, pour que les indices se raccordent sans couture : voir [Tuilage et marge](etape-2-produits.md#tuilage-et-marge).
 

@@ -272,15 +272,18 @@ class ProfilScoresWidget(QWidget):
 
         return gauche, droite, haut, bas, xmin, xmax, seuil, maximum, largeur_trace, hauteur_trace, x, y
 
-    def _etiquettes(self) -> List[_Etiquette]:
-        """Les libellés sous l'axe, rangés sans chevauchement (``disposer_etiquettes``)."""
+    def _etiquettes(self, cats: Optional[Sequence[Categorie]] = None, seuil: Optional[float] = None) -> List[_Etiquette]:
+        """Les libellés sous l'axe, rangés sans chevauchement (``disposer_etiquettes``) —
+        pour les niveaux courants, ou pour ``cats``/``seuil`` donnés (calcul de hauteur)."""
         if not self._p.bandes or self.width() < 120:
             return []
-        gauche, _d, _h, _b, xmin, xmax, seuil, _m, _lt, _ht, x, _y = self._cadre()
+        gauche, _d, _h, _b, xmin, xmax, seuil_courant, _m, _lt, _ht, x, _y = self._cadre()
+        if seuil is None:
+            seuil = seuil_courant
         police, petite = self._polices()
         fm, fm_petite = QFontMetrics(police), QFontMetrics(petite)
         mini = self._mini
-        cats = self._cats
+        cats = tuple(cats) if cats is not None else self._cats
         etiquettes: List[_Etiquette] = []
         if x(seuil) - x(xmin) > 24:
             n_ecartees = sum(b.total for b in (self._p.fines or self._p.bandes) if b.hi <= seuil + 1e-9)
@@ -303,9 +306,16 @@ class ProfilScoresWidget(QWidget):
         return etiquettes
 
     def _ajuster_rangees(self) -> None:
-        """La hauteur suit le nombre de rangées nécessaires à la largeur courante."""
-        etiquettes = self._etiquettes()
-        rangees = max((e.rangee for e in etiquettes), default=0) + 1
+        """La hauteur = le nombre de rangées nécessaires au PIRE seuil possible (balayage
+        par pas de 0,05) à la largeur courante, pas au seuil courant : sinon la figure
+        grandissait et rétrécissait en réglant le seuil, et tout ce qui est dessous
+        (la ligne « Tester un seuil ») sautait (constat utilisateur 2026-10-08)."""
+        candidats = [self._p.seuil, self.seuil] + [round(0.05 * k, 2) for k in range(1, 20)]
+        rangees = 1
+        for s in candidats:
+            cats = self._p.categories if abs(s - self._p.seuil) < 1e-9 else categories_effectives(self._p.categories, s)
+            etiquettes = self._etiquettes(cats, s)
+            rangees = max(rangees, max((e.rangee for e in etiquettes), default=0) + 1)
         if rangees != self._rangees:
             self._fixer_hauteur(rangees)
 
@@ -599,6 +609,8 @@ def ligne_essai_seuil(
     retour.setToolTip(f"Revenir au seuil {_v(round(depart, 3))}")
     mesure = QLabel("")
     mesure.setObjectName("FicheTexte")
+    # Largeur fixe : le texte ne fait pas glisser la note quand les chiffres changent.
+    mesure.setMinimumWidth(QFontMetrics(mesure.font()).horizontalAdvance("précision 100 % · rappel 100 %") + 6)
     note = QLabel("essai sans effet sur le seuil du traitement")
     note.setObjectName("FicheLegende")
 

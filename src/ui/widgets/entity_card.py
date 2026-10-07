@@ -26,6 +26,7 @@ from qgis.PyQt.QtWidgets import (
 )
 
 from .no_wheel import NoWheelDoubleSpinBox
+from .profil_scores import ProfilScoresWidget
 from .vignette import pixmap_ajuste
 
 
@@ -124,6 +125,9 @@ class EntityCard(QFrame):
         self._candidates: Dict[str, str] = {}  # name -> display_name
         self._current_models: list = []  # modèles effectifs (1..n ; ≥2 = comparaison)
         self._active_cluster_keys: set = set()  # params de cluster effectivement édités
+        self._implique = False                  # incluse par une dérivée : seuils ailleurs
+        self._profils: list = []                # [(figure mini, libellé du bilan), …]
+        self._profils_cle = None
         self.setObjectName("EntityCard")
         self.setProperty("state", "off")
 
@@ -252,6 +256,7 @@ class EntityCard(QFrame):
         self._conf_spin.setDecimals(2)
         self._conf_spin.setFixedWidth(58)
         self._conf_spin.valueChanged.connect(self._on_thresholds_changed)
+        self._conf_spin.valueChanged.connect(self._maj_profils)
         area_lbl = QLabel("Aire min m²")
         area_lbl.setObjectName("EntityModelLabel")
         area_lbl.setWordWrap(True)
@@ -291,6 +296,19 @@ class EntityCard(QFrame):
         self._fiab_hint.setWordWrap(True)
         self._fiab_hint.setVisible(False)
         layout.addWidget(self._fiab_hint)
+        # Aide au choix du seuil (mode avancé, 2026-10-08) : le profil des scores
+        # de chaque classe de l'entité, en mini, dont la ligne du seuil suit la
+        # case « Confiance », et une phrase calculée sur le banc : ce que ce seuil
+        # garde des vrais objets et écarte des fausses détections. Place NON
+        # réservée (comme les paramètres de regroupement) : seules les entités
+        # dont le modèle livre son évaluation l'affichent.
+        self._profil_box = QFrame()
+        self._profil_box.setObjectName("EntityProfil")
+        pv = QVBoxLayout(self._profil_box)
+        pv.setContentsMargins(0, 2, 0, 0)
+        pv.setSpacing(2)
+        self._profil_box.setVisible(False)
+        layout.addWidget(self._profil_box)
 
         # Paramètres du regroupement (DBSCAN) : éditables en mode avancé pour une
         # entité dérivée / clusterisée. Place NON réservée (apparaît seulement pour
@@ -573,6 +591,8 @@ class EntityCard(QFrame):
                 self._loading = False
         self._fiab_hint.setText(fiabilite_hint or "")
         self._fiab_hint.setVisible(bool(show_adv and fiabilite_hint))
+        self._implique = bool(implique_par)
+        self._maj_visibilite_profils()
 
         # Paramètres du regroupement (DBSCAN) — en mode avancé, pour une entité
         # dérivée ou clusterisée disposant de défauts. Pré-remplis (override sinon
@@ -609,6 +629,56 @@ class EntityCard(QFrame):
         permanence (retainSizeWhenHidden) → la hauteur ne change pas."""
         self._advanced = bool(on)
         self._adv_row.setVisible(self._advanced and self._selected and self._has_model)
+        self._maj_visibilite_profils()
+
+    # ------------------------------------------------------------------
+    # Aide au choix du seuil : profils mini + bilan sur le banc
+    # ------------------------------------------------------------------
+    def set_profils(self, profils: Sequence[tuple]) -> None:
+        """``[(classe, Profil, couleur RGB ou None), …]`` — un mini-profil par
+        classe de l'entité dont l'évaluation est livrée ; vide = rien d'affiché.
+        Les widgets ne sont reconstruits que si la liste change."""
+        cle = tuple((c, id(p), couleur) for c, p, couleur in profils)
+        if cle == self._profils_cle:
+            return
+        self._profils_cle = cle
+        lay = self._profil_box.layout()
+        while lay.count():
+            item = lay.takeAt(0)
+            w = item.widget()
+            if w is not None:
+                w.setParent(None)
+                w.deleteLater()
+        self._profils = []
+        for classe, profil, couleur in profils:
+            if len(profils) > 1:
+                titre = QLabel(classe)
+                titre.setObjectName("EntityModelLabel")
+                lay.addWidget(titre)
+            fig = ProfilScoresWidget(profil, couleur, mini=True)
+            bilan = QLabel("")
+            bilan.setObjectName("EntityProfilBilan")
+            bilan.setWordWrap(True)
+            lay.addWidget(fig)
+            lay.addWidget(bilan)
+            self._profils.append((fig, bilan))
+        self._maj_profils()
+        self._maj_visibilite_profils()
+
+    def _maj_profils(self, *_args) -> None:
+        """La ligne du seuil suit la case « Confiance » ; le bilan est recalculé."""
+        seuil = float(self._conf_spin.value())
+        for fig, bilan in getattr(self, "_profils", []):
+            fig.set_seuil(seuil)
+            bilan.setText(fig.phrase_bilan())
+
+    def _maj_visibilite_profils(self) -> None:
+        box = getattr(self, "_profil_box", None)
+        if box is not None:
+            box.setVisible(bool(
+                self._advanced and self._selected and self._has_model
+                and self._profils and not self._implique
+            ))
 
     def _on_thresholds_changed(self, *_args) -> None:
         if not self._loading:

@@ -24,6 +24,7 @@ from typing import Callable, List, Optional, Sequence
 from qgis.PyQt.QtCore import Qt
 from qgis.PyQt.QtGui import QPixmap
 from qgis.PyQt.QtWidgets import (
+    QGridLayout,
     QDialog,
     QFrame,
     QHBoxLayout,
@@ -40,7 +41,7 @@ from qgis.PyQt.QtWidgets import (
 from ...app.services.class_fiche import ClassFiche
 from ...app.services.fiabilite import pct
 from ..widgets.vignette import FicheButton, pixmap_ajuste
-from ..widgets.profil_scores import figure_profil
+from ..widgets.profil_scores import figure_profil, figures_par_zone
 
 _VIGNETTE_MAX = 320  # côté max de l'aperçu, en px logiques
 
@@ -222,7 +223,11 @@ class _Apercu(QWidget):
 # ----------------------------------------------------------------------
 class _CorpsFiche(QWidget):
     def __init__(self, fiche: ClassFiche, model_dir: Optional[Path], parent=None,
-                 ouvrir_modele: Optional[Callable[[], None]] = None):
+                 ouvrir_modele: Optional[Callable[[], None]] = None,
+                 couleur=None, seuil: Optional[float] = None):
+        """``couleur`` : couleur de base de la COUCHE (qualifiée en A/B), sinon celle
+        du registre pour la classe ; ``seuil`` : seuil effectif réglé à l'étape 3,
+        pour que la figure et son bilan montrent ce que le run appliquera."""
         super().__init__(parent)
         lay = QVBoxLayout(self)
         lay.setContentsMargins(18, 16, 18, 18)
@@ -263,16 +268,47 @@ class _CorpsFiche(QWidget):
         lay.addLayout(haut)
 
         # — profil des scores : la figure derrière les niveaux de fiabilité —
-        figure = figure_profil(model_dir, fiche.nom, fiche.fiabilite) if fiche.fiabilite else None
+        figure = (figure_profil(model_dir, fiche.nom, fiche.fiabilite, couleur=couleur)
+                  if fiche.fiabilite else None)
         if figure is not None:
             lay.addWidget(_separateur())
             lay.addWidget(_titre_bloc("Profil des scores à l'évaluation"))
             lay.addWidget(figure)
-            lay.addWidget(_label(
+            legende = (
                 "Vraies détections en couleur, fausses en gris, par bande de score de 0,05. "
-                "Les niveaux commencent là où la part de vrais objets atteint 35, 60 et 85 %.",
-                "FicheLegende",
-            ))
+                "Les niveaux commencent là où la part de vrais objets atteint 35, 60 et 85 %. "
+                "La ligne pointillée est le point d'équilibre entre précision et rappel ; "
+                "le seuil déployé est choisi en dessous."
+            )
+            if seuil is not None:
+                figure.set_seuil(seuil)
+                if abs(seuil - figure.profil.seuil) > 1e-9:
+                    legende += (f" Seuil réglé à {seuil:.2f} (modèle : "
+                                f"{figure.profil.seuil:g}).").replace(".", ",")
+            lay.addWidget(_label(legende, "FicheLegende"))
+            bilan = figure.phrase_bilan()
+            if bilan:
+                lay.addWidget(_label(bilan, "FicheTexte"))
+            # Petits multiples par zone d'évaluation : une classe sûre ici et
+            # faible là se voit d'un coup d'œil (les linéaires surtout).
+            zones = figures_par_zone(model_dir, fiche.nom, fiche.fiabilite, couleur=couleur)
+            if zones:
+                lay.addWidget(_titre_bloc("Par zone d'évaluation"))
+                grille = QGridLayout()
+                grille.setHorizontalSpacing(14)
+                grille.setVerticalSpacing(6)
+                for i, (nom_zone, fig) in enumerate(zones):
+                    if seuil is not None:
+                        fig.set_seuil(seuil)
+                    cellule = QVBoxLayout()
+                    cellule.setSpacing(1)
+                    cellule.addWidget(_label(
+                        f"{nom_zone} — {fig.profil.total:,} détections".replace(",", " "),
+                        "FicheLegende",
+                    ))
+                    cellule.addWidget(fig)
+                    grille.addLayout(cellule, i // 2, i % 2)
+                lay.addLayout(grille)
 
         # — blocs textuels —
         for titre_bloc, contenu in self._blocs(fiche):
@@ -382,11 +418,15 @@ class ClassInfoDialog(QDialog):
         titre: str = "",
         parent=None,
         models: Optional[dict] = None,
+        couleurs: Optional[dict] = None,
+        seuils: Optional[dict] = None,
     ):
         super().__init__(parent)
         self._fiches = list(fiches)
         self._dirs = dict(model_dirs or {})
         self._models = dict(models or {})  # nom → InstalledModel, pour « Fiche du modèle »
+        self._couleurs = dict(couleurs or {})  # (modèle, classe) → couleur de la couche
+        self._seuils = dict(seuils or {})      # (modèle, classe) → seuil effectif (étape 3)
         self.setObjectName("ClassInfoDialog")
         self.setWindowTitle(titre or "Structure détectable")
         self.setMinimumSize(760, 560)
@@ -445,7 +485,11 @@ class ClassInfoDialog(QDialog):
         f = self._fiches[row]
         model = self._models.get(f.modele_id)
         ouvrir = (lambda: self._ouvrir_modele(model)) if model is not None else None
-        self._zone.setWidget(_CorpsFiche(f, self._dirs.get(f.modele_id), ouvrir_modele=ouvrir))
+        self._zone.setWidget(_CorpsFiche(
+            f, self._dirs.get(f.modele_id), ouvrir_modele=ouvrir,
+            couleur=self._couleurs.get((f.modele_id, f.nom)),
+            seuil=self._seuils.get((f.modele_id, f.nom)),
+        ))
 
     def _ouvrir_modele(self, model) -> None:
         """Fiche ⓘ du modèle de la classe affichée, par-dessus celle-ci."""
@@ -459,9 +503,16 @@ def ouvrir_fiche_entite(
     titre: str,
     parent=None,
     models: Optional[dict] = None,
+    couleurs: Optional[dict] = None,
+    seuils: Optional[dict] = None,
 ) -> None:
     """Ouvre la fiche en modal. Rien à afficher → rien ne s'ouvre. ``models``
-    (nom → ``InstalledModel``) active le lien « Fiche du modèle »."""
+    (nom → ``InstalledModel``) active le lien « Fiche du modèle » ; ``couleurs`` et
+    ``seuils`` (clé ``(modèle, classe)``) alignent la figure sur la couche et le
+    seuil du run."""
     if not fiches:
         return
-    ClassInfoDialog(fiches, model_dirs, titre, parent=parent, models=models).exec()
+    ClassInfoDialog(
+        fiches, model_dirs, titre, parent=parent, models=models,
+        couleurs=couleurs, seuils=seuils,
+    ).exec()

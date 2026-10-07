@@ -15,6 +15,12 @@ annotation exhaustive, en sommant ``par_zone_classe[zone][classe].bandes`` — c
 cas des classes linéaires, calibrées sur le critère de couverture. Sinon
 ``par_classe[classe].etude_seuil.bandes``, sinon ``global.etude_seuil.bandes``.
 
+Depuis 2026-10-08 le profil porte aussi ses **bandes fines** (pour le bilan à un seuil
+quelconque : ce que ce seuil garde des vrais objets et écarte des fausses détections,
+cf. :func:`bilan_au_seuil`), le **seuil d'équilibre précision-rappel** de l'évaluation
+(``seuil_f1max``, par classe sinon global — le seuil déployé est choisi en dessous,
+règle 2026-09-09) et peut être calculé **par zone d'évaluation** (:func:`profils_par_zone`).
+
 Tout est tolérant : fichier absent, clé manquante, modèle absent de ``modeles`` →
 ``None`` / liste vide, jamais d'exception (le texte de la fiche reste affiché seul).
 """
@@ -22,6 +28,7 @@ from __future__ import annotations
 
 import json
 import math
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, List, Mapping, Optional, Sequence, Tuple
@@ -54,6 +61,9 @@ class Profil:
     bandes: Tuple[Bande, ...]              # agrégées (pas de 0,05), croissantes
     categories: Tuple[Categorie, ...]      # niveaux de la classe, seuils croissants
     n_sous_seuil: int = 0                  # détections écartées, comptées sur les bandes fines
+    fines: Tuple[Bande, ...] = ()          # bandes de l'évaluation (pas fin) : bilan à un seuil
+    seuil_f1max: Optional[float] = None    # point d'équilibre précision-rappel de l'évaluation
+    zone: str = ""                         # identifiant de zone (profil par zone), "" = toutes
 
     @property
     def seuil(self) -> float:
@@ -74,6 +84,74 @@ class Profil:
             if score >= c.seuil - 1e-9:
                 courante = c
         return courante
+
+
+@dataclass(frozen=True)
+class Bilan:
+    """Ce qu'un seuil garde sur le banc (bandes fines de l'évaluation).
+
+    La phrase se dit **par rapport au seuil du modèle**, jamais en part d'un total :
+    sur une classe linéaire évaluée au critère de couverture, les bandes sous le
+    seuil comptent des milliers de fragments « corrects » (parcellaire : 26 000 sur
+    29 000), et « garde 11 % des vrais objets » aurait été un contresens. Ce que
+    l'on achète en montant ou en baissant le seuil, lui, se lit pareil pour tous.
+    """
+    seuil: float
+    vrais_gardes: int
+    fausses_gardees: int
+    vrais_total: int
+    fausses_total: int
+
+    @property
+    def ecartees(self) -> int:
+        return self.vrais_total + self.fausses_total - self.vrais_gardes - self.fausses_gardees
+
+    def phrase(self, reference: Optional["Bilan"] = None) -> str:
+        """Au seuil du modèle (ou sans référence) : les effectifs gardés et écartés ;
+        à un autre seuil : la différence avec le seuil du modèle, en nombre et en
+        pour cent. Chiffres du banc, dits comme tels : sur le terrain ils varient."""
+        if not (self.vrais_total or self.fausses_total):
+            return ""
+        if reference is None or abs(reference.seuil - self.seuil) < 1e-9:
+            return (
+                f"Au seuil {_v(self.seuil)}, le banc garde {_nb(self.vrais_gardes)} détections "
+                f"correctes et {_nb(self.fausses_gardees)} fausses ; {_nb(self.ecartees)} sont écartées."
+            )
+        sens = "En montant" if self.seuil > reference.seuil else "En baissant"
+        dv = self.vrais_gardes - reference.vrais_gardes
+        df = self.fausses_gardees - reference.fausses_gardees
+        return (
+            f"{sens} le seuil à {_v(self.seuil)} : {_signe(dv)} détections correctes"
+            f"{_pct(dv, reference.vrais_gardes)} et {_signe(df)} fausses{_pct(df, reference.fausses_gardees)} "
+            f"par rapport au seuil du modèle ({_v(reference.seuil)}), sur le banc."
+        )
+
+
+def _nb(n: int) -> str:
+    return f"{n:,}".replace(",", " ")
+
+
+def _v(x: float) -> str:
+    return f"{x:g}".replace(".", ",")
+
+
+def _signe(d: int) -> str:
+    return f"{'+' if d >= 0 else '−'}{_nb(abs(d))}"
+
+
+def _pct(d: int, reference: int) -> str:
+    return f" ({'+' if d >= 0 else '−'}{round(abs(d) / reference * 100)} %)" if reference else ""
+
+
+def bilan_au_seuil(bandes: Sequence[Bande], seuil: float) -> Bilan:
+    """Bilan d'un seuil sur des bandes (fines de préférence : exact au pas de
+    l'évaluation). Une bande à cheval sur le seuil compte avec son ``lo``."""
+    s = float(seuil)
+    gardees = [b for b in bandes if b.lo >= s - 1e-9]
+    return Bilan(
+        s, sum(b.tp for b in gardees), sum(b.fp for b in gardees),
+        sum(b.tp for b in bandes), sum(b.fp for b in bandes),
+    )
 
 
 # ----------------------------------------------------------------------
@@ -110,6 +188,25 @@ def _sommer(listes: Sequence[Sequence[Bande]]) -> List[Bande]:
     return [Bande(lo, hi, tp, fp) for (lo, hi), (tp, fp) in sorted(acc.items())]
 
 
+def _charger_bloc(model_dir: Path, source_rel: Optional[str]) -> Mapping[str, Any]:
+    """Le bloc ``modeles[<id>]`` de l'évaluation livrée ; ``{}`` si rien de lisible."""
+    model_dir = Path(model_dir)
+    chemin = model_dir / (source_rel or EVAL_DEFAUT)
+    try:
+        evaluation = json.loads(chemin.read_text(encoding="utf-8-sig"))
+    except (OSError, ValueError):
+        return {}
+    if not isinstance(evaluation, Mapping):
+        return {}
+    bloc = _bloc_modele(evaluation, model_dir.name)
+    return bloc if isinstance(bloc, Mapping) else {}
+
+
+def _bandes_zone(bloc: Mapping[str, Any], zone: str, classe: str) -> List[Bande]:
+    pzc = bloc.get("par_zone_classe") or {}
+    return _bandes_depuis(((pzc.get(zone) or {}).get(classe) or {}).get("bandes"))
+
+
 def charger_bandes(
     model_dir: Path,
     classe: str,
@@ -117,22 +214,11 @@ def charger_bandes(
     zones: Optional[Sequence[str]] = None,
 ) -> List[Bande]:
     """Bandes (pas de l'évaluation) de ``classe`` ; liste vide si rien de lisible."""
-    model_dir = Path(model_dir)
-    chemin = model_dir / (source_rel or EVAL_DEFAUT)
-    try:
-        evaluation = json.loads(chemin.read_text(encoding="utf-8-sig"))
-    except (OSError, ValueError):
+    bloc = _charger_bloc(model_dir, source_rel)
+    if not bloc:
         return []
-    if not isinstance(evaluation, Mapping):
-        return []
-    bloc = _bloc_modele(evaluation, model_dir.name)
     if zones:
-        pzc = bloc.get("par_zone_classe") or {}
-        listes = [
-            _bandes_depuis(((pzc.get(z) or {}).get(classe) or {}).get("bandes"))
-            for z in zones
-        ]
-        somme = _sommer([liste for liste in listes if liste])
+        somme = _sommer([liste for liste in (_bandes_zone(bloc, z, classe) for z in zones) if liste])
         if somme:
             return somme
     par_classe = ((bloc.get("par_classe") or {}).get(classe) or {}).get("etude_seuil") or {}
@@ -140,6 +226,58 @@ def charger_bandes(
     if bandes:
         return bandes
     return _bandes_depuis(((bloc.get("global") or {}).get("etude_seuil") or {}).get("bandes"))
+
+
+def charger_bandes_par_zone(
+    model_dir: Path,
+    classe: str,
+    source_rel: Optional[str] = None,
+    zones: Optional[Sequence[str]] = None,
+) -> List[Tuple[str, List[Bande]]]:
+    """``[(zone, bandes), …]`` de ``classe``, une entrée par zone d'évaluation qui
+    porte des bandes — restreint aux ``zones`` déclarées quand il y en a (même
+    périmètre que la mesure de fiabilité), dans l'ordre du fichier."""
+    bloc = _charger_bloc(model_dir, source_rel)
+    pzc = bloc.get("par_zone_classe") or {}
+    if not isinstance(pzc, Mapping):
+        return []
+    cles = [z for z in zones if z in pzc] if zones else list(pzc.keys())
+    out = []
+    for z in cles:
+        bandes = _bandes_zone(bloc, str(z), classe)
+        if bandes:
+            out.append((str(z), bandes))
+    return out
+
+
+def seuil_f1max(model_dir: Path, classe: str, source_rel: Optional[str] = None) -> Optional[float]:
+    """Seuil d'équilibre précision-rappel : par classe, sinon global — lu dans
+    l'évaluation de **référence** (``EVAL_DEFAUT``), celle où le seuil déployé est
+    choisi (fenêtre [bas du plateau 95 % ; F1-max], règle 2026-09-09), et non dans
+    l'évaluation de couverture des linéaires, dont le F1-max (0,185) est sous le
+    seuil déployé (0,26) et contredirait la légende « choisi en dessous »."""
+    bloc = _charger_bloc(model_dir, source_rel or EVAL_DEFAUT)
+    for conteneur in ((bloc.get("par_classe") or {}).get(classe) or {}, bloc.get("global") or {}):
+        v = conteneur.get("seuil_f1max") if isinstance(conteneur, Mapping) else None
+        try:
+            if v is not None:
+                return float(v)
+        except (TypeError, ValueError):
+            continue
+    return None
+
+
+_PREFIXE_ZONE = re.compile(r"^(\d+|ie)_")
+
+
+def libelle_zone(zone: str) -> str:
+    """Un libellé lisible depuis l'identifiant de zone de l'évaluation :
+    ``grand_est/54_foret_de_haye`` → « Foret de haye », ``irlande/ie_galway_01`` →
+    « Galway 01 ». Les accents ne sont pas restitués (l'identifiant ne les porte
+    pas) ; l'identifiant complet reste en infobulle."""
+    nom = zone.rsplit("/", 1)[-1]
+    nom = _PREFIXE_ZONE.sub("", nom).replace("_", " ").strip()
+    return nom[:1].upper() + nom[1:] if nom else zone
 
 
 def agreger(
@@ -211,6 +349,21 @@ def _source_et_zones(model_dir: Path, classe: str) -> Tuple[Optional[str], Optio
     return (str(source) if source else None), zones
 
 
+def _profil(classe: str, bandes: Sequence[Bande], categories: Sequence[Categorie], pas: float,
+            seuil_eq: Optional[float], zone: str = "") -> Profil:
+    cats = tuple(sorted(categories, key=lambda c: c.seuil))
+    seuil = cats[0].seuil
+    return Profil(
+        classe=classe,
+        bandes=tuple(agreger(bandes, pas, [c.seuil for c in cats])),
+        categories=cats,
+        n_sous_seuil=sum(b.total for b in bandes if b.hi <= seuil + 1e-9),
+        fines=tuple(bandes),
+        seuil_f1max=seuil_eq,
+        zone=zone,
+    )
+
+
 def profil_pour_classe(
     model_dir: Path, classe: str, categories: Sequence[Categorie], pas: float = PAS_DEFAUT
 ) -> Optional[Profil]:
@@ -221,12 +374,19 @@ def profil_pour_classe(
     bandes = charger_bandes(model_dir, classe, source, zones)
     if not bandes:
         return None
-    cats = tuple(sorted(categories, key=lambda c: c.seuil))
-    seuil = cats[0].seuil
-    n_sous = sum(b.total for b in bandes if b.hi <= seuil + 1e-9)
-    return Profil(
-        classe=classe,
-        bandes=tuple(agreger(bandes, pas, [c.seuil for c in cats])),
-        categories=cats,
-        n_sous_seuil=n_sous,
-    )
+    return _profil(classe, bandes, categories, pas, seuil_f1max(model_dir, classe))
+
+
+def profils_par_zone(
+    model_dir: Path, classe: str, categories: Sequence[Categorie], pas: float = PAS_DEFAUT
+) -> List[Profil]:
+    """Un profil par zone d'évaluation (petits multiples), avec les coupures de la
+    classe ; vide s'il y a moins de deux zones — une seule n'apprend rien de plus
+    que le profil global."""
+    if not categories:
+        return []
+    source, zones = _source_et_zones(model_dir, classe)
+    par_zone = charger_bandes_par_zone(model_dir, classe, source, zones)
+    if len(par_zone) < 2:
+        return []
+    return [_profil(classe, bandes, categories, pas, None, zone=z) for z, bandes in par_zone]

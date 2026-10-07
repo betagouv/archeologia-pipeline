@@ -11,8 +11,13 @@ from src.app.services.profil_scores import (
     Bande,
     Profil,
     agreger,
+    bilan_au_seuil,
     charger_bandes,
+    charger_bandes_par_zone,
+    libelle_zone,
     profil_pour_classe,
+    profils_par_zone,
+    seuil_f1max,
 )
 
 CATS = (
@@ -144,3 +149,108 @@ def test_la_figure_decline_la_couleur_comme_la_legende():
     teintes = {round(colorsys.rgb_to_hsv(*[c / 255 for c in apply_confidence(base, r)])[0] * 360)
                for r in (0.3, 0.5, 0.7, 0.9)}
     assert len(teintes) == 1, teintes      # une seule teinte pour les quatre niveaux
+
+
+# ------------------------------------------------------------------ lot 1 (2026-10-08)
+def test_bilan_au_seuil_et_phrase():
+    """Ce qu'un seuil garde des vrais objets et écarte des fausses, sur les bandes fines."""
+    fines = [Bande(0.20, 0.21, 1, 50), Bande(0.29, 0.30, 4, 9), Bande(0.30, 0.31, 20, 5), Bande(0.60, 0.61, 75, 1)]
+    ref = bilan_au_seuil(fines, 0.29)          # seuil du modèle
+    assert (ref.vrais_gardes, ref.fausses_gardees, ref.vrais_total, ref.fausses_total, ref.ecartees) == (99, 15, 100, 65, 51)
+    assert ref.phrase() == "Au seuil 0,29, le banc garde 99 détections correctes et 15 fausses ; 51 sont écartées."
+    assert ref.phrase(ref) == ref.phrase()
+    # relatif au seuil du modèle, jamais en part d'un total (critère de couverture des linéaires)
+    assert bilan_au_seuil(fines, 0.30).phrase(ref) == (
+        "En montant le seuil à 0,3 : −4 détections correctes (−4 %) et −9 fausses (−60 %) "
+        "par rapport au seuil du modèle (0,29), sur le banc."
+    )
+    assert bilan_au_seuil(fines, 0.20).phrase(ref) == (
+        "En baissant le seuil à 0,2 : +1 détections correctes (+1 %) et +50 fausses (+333 %) "
+        "par rapport au seuil du modèle (0,29), sur le banc."
+    )
+    # une bande à cheval compte avec son lo ; sans donnée : phrase vide
+    assert bilan_au_seuil(fines, 0.295).vrais_gardes == 95
+    assert bilan_au_seuil([], 0.3).phrase() == ""
+
+
+def test_seuil_f1max_par_classe_puis_global_et_porte_par_le_profil(tmp_path):
+    bloc = {
+        "global": {"seuil_f1max": 0.37, "etude_seuil": {"bandes": _bandes([(0.3, 5, 1)])}},
+        "par_classe": {"four": {"seuil_f1max": 0.41, "etude_seuil": {"bandes": _bandes([(0.3, 9, 1)])}}},
+    }
+    d = _modele(tmp_path, bloc=bloc)
+    assert seuil_f1max(d, "four") == 0.41
+    assert seuil_f1max(d, "charbonniere") == 0.37      # repli global
+    assert seuil_f1max(tmp_path / "absent", "x") is None
+    p = profil_pour_classe(d, "four", CATS)
+    assert p is not None and p.seuil_f1max == 0.41 and p.fines == (Bande(0.3, 0.31, 9, 1),)
+    assert p.zone == ""
+    # l'équilibre vient de l'évaluation de RÉFÉRENCE, même quand la fiabilité est
+    # mesurée ailleurs (couverture des linéaires : F1-max 0,185 < seuil déployé 0,26)
+    autre = d / "entrainement" / "evaluation_couverture"
+    autre.mkdir()
+    (autre / "metriques_eval.json").write_text(json.dumps({"modeles": {"m1": {
+        "global": {"seuil_f1max": 0.185, "etude_seuil": {"bandes": _bandes([(0.1, 7, 3)])}}}}}), encoding="utf-8")
+    card = {"thresholds": {"fiabilite": {"provenance": "x", "source": "entrainement/evaluation_couverture/metriques_eval.json"}}}
+    (d / "model_card.yaml").write_text(yaml.safe_dump(card), encoding="utf-8")
+    p2 = profil_pour_classe(d, "four", CATS)
+    assert p2 is not None and p2.fines == (Bande(0.1, 0.11, 7, 3),) and p2.seuil_f1max == 0.41
+
+
+def test_profils_par_zone_restreints_et_libelles(tmp_path):
+    bloc = {
+        "par_classe": {"parcellaire": {"etude_seuil": {"bandes": _bandes([(0.3, 100, 100)])}}},
+        "par_zone_classe": {
+            "grand_est/54_foret_de_haye": {"parcellaire": {"bandes": _bandes([(0.3, 10, 2)])}},
+            "centre_val_de_loire/41_blois": {"parcellaire": {"bandes": _bandes([(0.5, 5, 1)])}},
+            "irlande/ie_galway_01": {"parcellaire": {"bandes": _bandes([(0.3, 1000, 1000)])}},
+        },
+    }
+    # zones déclarées : seules celles-là (même périmètre que la mesure de fiabilité)
+    fiab = {"provenance": "x", "zones": {"parcellaire": ["grand_est/54_foret_de_haye", "centre_val_de_loire/41_blois"]}}
+    d = _modele(tmp_path, nom="lin", fiabilite=fiab, bloc=bloc)
+    assert [z for z, _b in charger_bandes_par_zone(d, "parcellaire", None, fiab["zones"]["parcellaire"])] == [
+        "grand_est/54_foret_de_haye", "centre_val_de_loire/41_blois",
+    ]
+    profils = profils_par_zone(d, "parcellaire", CATS)
+    assert [(p.zone, p.total, p.seuil_f1max) for p in profils] == [
+        ("grand_est/54_foret_de_haye", 12, None), ("centre_val_de_loire/41_blois", 6, None),
+    ]
+    assert profils[0].coupures == (0.29, 0.35, 0.5, 0.65)   # les coupures de la classe, pas de la zone
+    # sans restriction : toutes les zones du fichier ; une seule zone → rien
+    d2 = _modele(tmp_path, nom="tout", bloc=bloc)
+    assert len(profils_par_zone(d2, "parcellaire", CATS)) == 3
+    une = {"par_zone_classe": {"a/1_x": {"c": {"bandes": _bandes([(0.3, 1, 1)])}}}}
+    assert profils_par_zone(_modele(tmp_path, nom="une", bloc=une), "c", CATS) == []
+    assert libelle_zone("grand_est/54_foret_de_haye") == "Foret de haye"
+    assert libelle_zone("irlande/ie_galway_01") == "Galway 01"
+    assert libelle_zone("verdun") == "Verdun"
+
+
+def test_couleur_de_la_couche_qualifiee_en_comparaison():
+    """A9 : la figure prend la clé du registre de la COUCHE — « classe — Modèle » en A/B."""
+    from src.app.services.model_orchestrator import InstalledModel, layer_name_for_class
+
+    m = InstalledModel(
+        name="lin_v3", display_name="Modèle linéaires", weights_path=None, target_rvt="LD",
+        status="production", coverage={"parcellaire": ("parcellaire",)}, class_names=("parcellaire",),
+    )
+    assert layer_name_for_class(m, "parcellaire", "parcellaire") == "parcellaire"
+    assert layer_name_for_class(m, "parcellaire", "parcellaire", compared=True) == "parcellaire — Modèle linéaires"
+    racine = Path(__file__).resolve().parents[2]
+    etape3 = (racine / "src/ui/steps/step_3_detection.py").read_text(encoding="utf-8")
+    assert etape3.count("layer_name_for_class(") >= 2      # carte (mini-profil) ET fiche
+    assert "card.set_profils(" in etape3
+
+
+def test_le_widget_suit_le_seuil_et_les_fiches_posent_les_zones():
+    """Garde-fou sans QGIS : seuil mobile + bilan dans la carte, zones dans la fiche."""
+    racine = Path(__file__).resolve().parents[2]
+    widget = (racine / "src/ui/widgets/profil_scores.py").read_text(encoding="utf-8")
+    for motif in ("def set_seuil", "categories_effectives", "def bilan", "seuil_f1max", "DashLine",
+                  "QToolTip.showText", "def contextMenuEvent", "def figures_par_zone"):
+        assert motif in widget, motif
+    carte = (racine / "src/ui/widgets/entity_card.py").read_text(encoding="utf-8")
+    assert "fig.set_seuil(seuil)" in carte and "fig.phrase_bilan()" in carte
+    fiche = (racine / "src/ui/dialogs/class_info_dialog.py").read_text(encoding="utf-8")
+    assert "figures_par_zone(" in fiche and "figure.set_seuil(seuil)" in fiche

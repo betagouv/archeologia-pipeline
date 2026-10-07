@@ -14,7 +14,8 @@ Monte un ``QgsApplication`` en ``QT_QPA_PLATFORM=offscreen`` avec le thème QSS 
   l'application) → ``aide/img/``. L'étape 4 n'est pas capturée : le préflight échoue hors QGIS.
 - ``manuel`` : la fenêtre du manuel sur un chapitre (et une ancre), PNG dans ``--sortie`` + contrôle
   que la barre horizontale est à 0 px (une image trop large la ferait apparaître).
-- ``profil`` : la fiche de classe et la fiche ⓘ d'un modèle, avec la figure du profil des scores.
+- ``profil`` : la fiche de classe et la fiche ⓘ d'un modèle, avec la figure du profil des scores,
+  puis l'étape 3 en réglages avancés (mini-profil et bilan sur les cartes des entités du modèle).
 
 Ce qu'il faut savoir (appris le 2026-10-07) : l'écran virtuel fait 800×600, d'où ``resize()`` après
 ``show()`` ; le ``.bat`` avale stdout, les contrôles sont écrits dans ``<sortie>/controles.txt`` ;
@@ -182,6 +183,29 @@ def profil(app, sortie: Path, log, modele: str) -> int:
             zone.ensureWidgetVisible(figures_modele[0], 0, 80)
         app.processEvents()
     md.grab().save(str(sortie / f"profil_modele_{modele}.png"))
+    # Étape 3 en réglages avancés : le mini-profil et son bilan sur la carte de
+    # chaque entité du modèle (aide au choix du seuil).
+    from archeo.src.ui.wizard_dialog import WizardDialog
+
+    w = WizardDialog()
+    w.show()
+    w.resize(980, 900)
+    page = w._detection_page
+    page._enable_check.setChecked(True)
+    for eid in m.coverage:
+        page._on_entity_toggled(eid, True)
+    page._adv_check.setChecked(True)
+    w._goto_step(3)
+    app.processEvents()
+    minis = [f for f in page.findChildren(ProfilScoresWidget) if f.objectName() == "ProfilScoresMini" and f.isVisible()]
+    log(modele, "étape 3 avancée : mini-profils visibles =", len(minis))
+    if minis:
+        zone = page.findChild(QScrollArea)
+        if zone is not None:
+            zone.ensureWidgetVisible(minis[0], 0, 120)
+        app.processEvents()
+        log("  bilan :", minis[0].phrase_bilan())
+    w.grab().save(str(sortie / f"carte_{modele}.png"))
     return 0 if figures else 1
 
 

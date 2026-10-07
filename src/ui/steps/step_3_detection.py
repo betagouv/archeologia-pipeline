@@ -31,12 +31,15 @@ from ...app.services.model_orchestrator import (
     discover_installed_models,
     effective_model_names,
     group_entities_by_morphology,
+    layer_name_for_class,
     load_entities_catalog,
     load_model_card,
     resolve_runs_from_entities,
 )
 from ..widgets.card import build_card
 from ..widgets.entity_card import EntityCard
+from ..widgets.profil_scores import couleur_de_classe
+from ...app.services.profil_scores import profil_pour_classe
 from ...app.services.cout_modele import infobulle, libelle_menu
 from ...app.services.reglages_defaut import (
     a_des_surcharges,
@@ -64,6 +67,7 @@ class DetectionPage(QWidget):
         }
         self._models = {m.name: m for m in self._installed}
         self._model_cards: dict = {}  # nom de modèle -> model_card.yaml parsé (à la demande)
+        self._profils_cache: dict = {}  # (modèle, classe) -> Profil ou None (évaluation lue une fois)
 
         self._enabled = False
         self._advanced = False
@@ -543,6 +547,12 @@ class DetectionPage(QWidget):
                     if oc in model.cluster_defaults:
                         cluster_default_params = model.cluster_defaults[oc]
                         break
+            # Aide au choix du seuil (mode avancé) : mini-profils des classes de
+            # l'entité sur le modèle primaire, lus une fois par (modèle, classe).
+            card.set_profils(
+                self._profils_entite(model, eid, len(model_names) > 1)
+                if (model is not None and self._advanced and not par) else []
+            )
             card.update_state(
                 selected=bool(self._selected.get(eid) or par),
                 implique_par=label_par,
@@ -693,6 +703,26 @@ class DetectionPage(QWidget):
             out.extend(fiches_par_entite(card, model.coverage.get(entity_id, ())))
         return out
 
+    def _profils_entite(self, model, eid: str, compared: bool) -> list:
+        """``[(classe, Profil, couleur), …]`` des classes de ``eid`` dont le modèle
+        livre son évaluation. La couleur est celle de la **couche** (qualifiée
+        par le modèle en comparaison A/B), comme dans la légende."""
+        out = []
+        if model is None or model.model_dir is None:
+            return out
+        for classe in model.coverage.get(eid, ()):
+            cats = (getattr(model, "fiabilite_per_class", None) or {}).get(classe)
+            if not cats:
+                continue
+            cle = (model.name, classe)
+            if cle not in self._profils_cache:
+                self._profils_cache[cle] = profil_pour_classe(Path(model.model_dir), classe, cats)
+            profil = self._profils_cache[cle]
+            if profil is not None:
+                couleur = couleur_de_classe(layer_name_for_class(model, eid, classe, compared))
+                out.append((classe, profil, couleur))
+        return out
+
     def _premiere_vignette(self, entity_id: str):
         """``(chemin absolu, cadrage)`` de la vignette d'icône, ou ``(None, None)``.
 
@@ -721,7 +751,29 @@ class DetectionPage(QWidget):
         }
         couverture = self._coverage.get(entity_id)
         titre = couverture.entity.label if couverture else entity_id
-        ouvrir_fiche_entite(fiches, dirs, titre, parent=self, models=self._models)
+        # Couleur de la COUCHE (qualifiée par le modèle en comparaison A/B) et
+        # seuil effectif de chaque classe (surcharge UI, sinon seuil du modèle) :
+        # la figure de la fiche montre la même couleur et le même seuil que le run.
+        noms = effective_model_names(couverture, self._overrides) if couverture else []
+        compared = len(noms) > 1
+        ov = self._entity_thresholds.get(self._incluses().get(entity_id) or entity_id, {})
+        couleurs, seuils = {}, {}
+        for f in fiches:
+            model = self._models.get(f.modele_id)
+            if model is None:
+                continue
+            couleurs[(f.modele_id, f.nom)] = couleur_de_classe(
+                layer_name_for_class(model, entity_id, f.nom, compared)
+            )
+            conf = ov.get("confidence_threshold")
+            pc = getattr(model, "default_confidence_per_class", None) or {}
+            seuils[(f.modele_id, f.nom)] = (
+                float(conf) if conf is not None else float(pc.get(f.nom, model.default_confidence))
+            )
+        ouvrir_fiche_entite(
+            fiches, dirs, titre, parent=self, models=self._models,
+            couleurs=couleurs, seuils=seuils,
+        )
 
     # ------------------------------------------------------------------
     def _open_model_info(self, model) -> None:

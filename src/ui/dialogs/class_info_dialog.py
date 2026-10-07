@@ -245,7 +245,14 @@ class _CorpsFiche(QWidget):
         if fiche.resume:
             lay.addWidget(_label(fiche.resume, "FicheResume"))
 
-        # — aperçu + fiabilité côte à côte —
+        # Ordre de lecture (demande utilisateur 2026-10-08), celui de quelqu'un qui
+        # hésite à cocher l'entité : ce que c'est (vignette, reconnaître) → est-ce
+        # que je la veux (dans quelle optique, ne détecte pas) → sur quoi elle a été
+        # apprise → ce qu'elle vaut (fiabilité : texte, figure, essai de seuil,
+        # zones, d'un seul tenant) → limites → contexte technique et fiche du modèle.
+        blocs = dict(self._blocs(fiche))
+
+        # — aperçu + reconnaître côte à côte —
         haut = QHBoxLayout()
         haut.setSpacing(18)
         haut.addWidget(_Apercu(fiche, model_dir))
@@ -254,29 +261,39 @@ class _CorpsFiche(QWidget):
         if fiche.reconnaitre:
             colonne.addWidget(_titre_bloc("Reconnaître"))
             colonne.addWidget(_label(fiche.reconnaitre, "FicheTexte"))
-        colonne.addWidget(_titre_bloc("Contexte technique"))
-        colonne.addWidget(_label(self._contexte(fiche), "FicheTexte"))
-        if ouvrir_modele is not None:
-            lien = FicheButton(f"Architecture, entraînement et métriques d'évaluation de « {fiche.modele} »")
-            lien.setText("Fiche du modèle")
-            lien.clicked.connect(lambda *_: ouvrir_modele())
-            colonne.addWidget(lien, 0, Qt.AlignmentFlag.AlignLeft)
-        if fiche.fiabilite:
-            colonne.addWidget(_titre_bloc("Fiabilité mesurée au banc"))
-            colonne.addWidget(_label(self._fiabilite(fiche, observe), "FicheTexte"))
-            note = self._note_observation(observe)
-            if note:
-                colonne.addWidget(_label(note, "FicheLegende"))
+        # « Dans quelle optique » et « Ne détecte pas » occupent la colonne à côté de
+        # la vignette : c'est la suite de la lecture, et la colonne ne reste pas vide.
+        for titre_bloc in ("Dans quelle optique l'utiliser", "Ne détecte pas"):
+            contenu = blocs.pop(titre_bloc, None)
+            if contenu is not None:
+                colonne.addWidget(_titre_bloc(titre_bloc))
+                colonne.addWidget(contenu)
         colonne.addStretch(1)
         haut.addLayout(colonne, 1)
         lay.addLayout(haut)
 
-        # — profil des scores : la figure derrière les niveaux de fiabilité —
+        def _bloc(titre_bloc: str) -> None:
+            contenu = blocs.pop(titre_bloc, None)
+            if contenu is not None:
+                lay.addWidget(_separateur())
+                lay.addWidget(_titre_bloc(titre_bloc))
+                lay.addWidget(contenu)
+
+        _bloc("Ce que le modèle a appris")
+
+        # — fiabilité : texte, puis la figure qui l'explique, l'essai de seuil et les
+        #   zones, d'un seul tenant —
+        if fiche.fiabilite:
+            lay.addWidget(_separateur())
+            lay.addWidget(_titre_bloc("Fiabilité mesurée au banc"))
+            lay.addWidget(_label(self._fiabilite(fiche, observe), "FicheTexte"))
+            note = self._note_observation(observe)
+            if note:
+                lay.addWidget(_label(note, "FicheLegende"))
         figure = (figure_profil(model_dir, fiche.nom, fiche.fiabilite, couleur=couleur)
                   if fiche.fiabilite else None)
         if figure is not None:
-            lay.addWidget(_separateur())
-            lay.addWidget(_titre_bloc("Profil des scores à l'évaluation"))
+            lay.addWidget(_label("Profil des scores à l'évaluation", "FicheSousTitre"))
             lay.addWidget(figure)
             legende = (
                 "Vraies détections en couleur, fausses en gris, par bande de score de 0,05. "
@@ -298,7 +315,7 @@ class _CorpsFiche(QWidget):
             # rappel au banc s'affichent — sans toucher au seuil du traitement.
             lay.addWidget(ligne_essai_seuil(figure, [f for _n, f in zones], seuil))
             if zones:
-                lay.addWidget(_titre_bloc("Par zone d'évaluation"))
+                lay.addWidget(_label("Par zone d'évaluation", "FicheSousTitre"))
                 exclues = zones_sans_objet(model_dir, fiche.nom) if model_dir is not None else []
                 if exclues:
                     noms = ", ".join(libelle_zone(z) for z in exclues)
@@ -324,11 +341,19 @@ class _CorpsFiche(QWidget):
                     grille.addLayout(cellule, i // 2, i % 2)
                 lay.addLayout(grille)
 
-        # — blocs textuels —
-        for titre_bloc, contenu in self._blocs(fiche):
-            lay.addWidget(_separateur())
-            lay.addWidget(_titre_bloc(titre_bloc))
-            lay.addWidget(contenu)
+        _bloc("Limites connues du modèle")
+        for titre_bloc in list(blocs):          # un bloc inattendu n'est jamais perdu
+            _bloc(titre_bloc)
+
+        # — contexte technique et fiche du modèle, en fin —
+        lay.addWidget(_separateur())
+        lay.addWidget(_titre_bloc("Contexte technique"))
+        lay.addWidget(_label(self._contexte(fiche), "FicheTexte"))
+        if ouvrir_modele is not None:
+            lien = FicheButton(f"Architecture, entraînement et métriques d'évaluation de « {fiche.modele} »")
+            lien.setText("Fiche du modèle")
+            lien.clicked.connect(lambda *_: ouvrir_modele())
+            lay.addWidget(lien, 0, Qt.AlignmentFlag.AlignLeft)
 
         lay.addStretch(1)
 

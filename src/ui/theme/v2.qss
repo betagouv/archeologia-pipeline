@@ -595,6 +595,7 @@ QPushButton[role="micro"] {
 }
 #FicheSep { color: #e3e3e3; max-height: 1px; }
 #FicheLegende { color: #5a5a5a; font-size: 10px; }
+#FicheSousTitre { color: #2c2c2c; font-size: 11px; font-weight: bold; margin-top: 4px; }
 /* Tableaux comparatifs des produits (fiche d'indice). La case affiche le
    symbole publié (``-`` / ``o`` / ``+`` / ``++``) : la couleur ne fait que
    doubler la lecture, en reprenant celles déjà en service — le vert de

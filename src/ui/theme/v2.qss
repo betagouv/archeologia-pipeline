@@ -429,28 +429,25 @@ QPushButton[role="micro"] {
 #RunStepTiming { font-size: 10px; color: #5a5a5a; font-weight: 600; }
 #RunStep[state="active"] #RunStepTiming { color: #1d5a96; }
 #RunStep[state="done"]   #RunStepTiming { color: #2d6a2d; }
-#RunStepLine { background: #c4c4c4; border: none; }
 /* Fil vert derrière les étapes faites, comme le fil du rail latéral. */
-#RunStepLine[state="done"] { background: #418141; }
 
 /* ---- Run view : progression + journal ---- */
 #RunStageLabel { color: #1d5a96; font-weight: bold; font-size: 11px; }
 #RunJournalTitle { color: #2c2c2c; font-weight: bold; font-size: 11px; }
 
 /* ---- Run view : en-tête (étape courante + sous-étape + chrono total) ---- */
-#RunHeader { background: #d6e6f4; border: 1px solid #2b79c2; border-radius: 6px; }
-#RunHeaderStep { color: #1d5a96; font-weight: bold; font-size: 12px; }
-#RunHeaderSub { color: #5a5a5a; font-size: 10px; }
 /* 12px max : le chrono ne doit pas dominer le titre d'étape (12px gras). */
-#RunHeaderMetric { color: #1d5a96; font-weight: bold; font-size: 12px; }
 /* Point d'activité pulsé (opacité animée côté Python). */
+#RunHeaderSub { color: #5a5a5a; font-size: 10px; }
 #RunActivityDot { color: #2b79c2; font-size: 13px; font-weight: bold; }
+/* ---- Fil d'état de la vue d'exécution (V2, 2026-10-08) : les choix, puis la synthèse ---- */
+#RunFil { color: #2c2c2c; font-size: 11px; }
+#RunFil[kind="ok"]     { color: #2d6a2d; font-weight: bold; }
+#RunFil[kind="cancel"] { color: #5a5a5a; font-weight: bold; }
+#RunFil[kind="err"]    { color: #7a2727; font-weight: bold; }
+#RunFilEtat { color: #1d5a96; font-weight: bold; font-size: 11px; }
 
 /* ---- Run view : bandeau de fin de run ---- */
-#RunEndBanner { border-radius: 6px; padding: 8px 12px; font-size: 11px; font-weight: bold; }
-#RunEndBanner[kind="ok"]     { background: #e6f2e6; border: 1px solid #418141; color: #2d6a2d; }
-#RunEndBanner[kind="err"]    { background: #fbe7e7; border: 1px solid #a83838; color: #7a2727; }
-#RunEndBanner[kind="cancel"] { background: #e3e3e3; border: 1px solid #a0a0a0; color: #2c2c2c; }
 
 /* ---- Run view : compteurs ⚠/✗ du journal (chips filtrantes, checkables) ---- */
 #JournalChipWarn, #JournalChipErr {
@@ -466,11 +463,6 @@ QPushButton[role="micro"] {
 #JournalChipErr:checked { background: #a83838; border-color: #7a2727; color: #ffffff; }
 
 /* ---- Run view : progression ---- */
-#RunProgress {
-    border: 1px solid #b0b0b0; border-radius: 2px;
-    background: #e3e3e3; text-align: center; min-height: 18px; color: #000000;
-}
-#RunProgress::chunk { background: #2b79c2; border-radius: 2px; }
 #RunBilanBox { background: #ffffff; border: 1px solid #c4c4c4; border-radius: 6px; }
 #RunJournal {
     background: #1c1b18; color: #d8d4cc;

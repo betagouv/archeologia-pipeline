@@ -281,9 +281,9 @@ def journal(app, sortie: Path, log) -> int:
                    {"probable": 3, "possible": 1}),
     ]
     v._run_started_at = __import__("time").monotonic() - 125
-    v._show_end_banner()
+    v._on_run_enabled(True)          # V2 : synthèse dans le fil + cadre « Par où commencer »
     app.processEvents()
-    log("bilan : cadre visible =", v._bilan_box.isVisible(), "| phrases :", [ligne.phrase() for ligne in v._bilan])
+    log("bilan : cadre visible =", v._bilan_box.isVisible(), "| fil :", v._fil_gauche.text(), "| phrases :", [ligne.phrase() for ligne in v._bilan])
     v.grab().save(str(sortie / "journal.png"))
     return 0 if n_liens == 2 and v._bilan_box.isVisible() else 1
 

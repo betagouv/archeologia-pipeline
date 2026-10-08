@@ -221,6 +221,7 @@ class IgnOrLocalRunner:
         # La FUSION est DANS le try/finally (AUDIT v2 ROB-12) : un échec de
         # fusion ne saute plus la finalisation des produits déjà sur disque.
         cancelled = False
+        cv_stats: list = []   # durée mesurée par modèle (rapport de run)
         final_ok: Optional[bool] = None
         fatal = False
         try:
@@ -366,6 +367,7 @@ class IgnOrLocalRunner:
                             # Option B (halo inter-dalles) : les TIF non rognés
                             # d'intermediaires/ servent de source d'inférence.
                             halo_source_dir=intermediaires_dir(ctx.output_dir),
+                            stats_out=cv_stats,
                         )
                     except PipelineCancelled:
                         raise
@@ -393,6 +395,7 @@ class IgnOrLocalRunner:
             final_ok = finalize_pipeline(
                 output_dir=ctx.output_dir,
                 cv_cfg=ctx.cv.raw,
+                cv_stats=cv_stats,
                 rvt_params=ctx.rvt_params,
                 reporter=reporter,
                 slog=slog,

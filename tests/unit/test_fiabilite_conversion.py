@@ -72,6 +72,8 @@ def test_champs_et_sidecar(env):
     assert entree["classe"] == "obj" and entree["modele"] == "Modèle test"
     assert entree["provenance"] == "banc synthétique"
     assert [c["categorie"] for c in entree["categories"]] == ["douteux", "probable", "quasi_certain"]
+    # effectifs par niveau des détections ÉCRITES (bilan de fin de run) : 0,25 filtré n'y est pas
+    assert entree["effectifs"] == {"Douteux": 1, "Probable": 1, "Très probable": 1}
     assert json.loads((env["out"].parent / "fiabilite.json").read_text(encoding="utf-8"))["obj"]["classe"] == "obj"
 
 

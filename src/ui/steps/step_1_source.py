@@ -225,7 +225,16 @@ class SourcePage(QWidget):
         )
         self._banner_title.setText(info.banner_label)
         self._banner_sub.setText(f"· {info.banner_sub}")
-        self._banner_desc.setText(info.description)
+        description = info.description
+        if self._mode == "ign_laz":
+            # Fraîcheur de la grille livrée (A8, 2026-10-08) : lue dans le fichier.
+            from ...pipeline.ign.quadrillage_paths import (
+                phrase_quadrillage, quadrillage_info, resolve_quadrillage_path,
+            )
+            phrase = phrase_quadrillage(quadrillage_info(resolve_quadrillage_path(self._plugin_root())))
+            if phrase:
+                description = f"{description} {phrase} Les dalles publiées depuis n'y sont pas encore."
+        self._banner_desc.setText(description)
         self._source_label.setText(info.source_label)
         self._source_edit.setPlaceholderText(info.placeholder)
         self._qgis_btn.setVisible(self._mode == "ign_laz")

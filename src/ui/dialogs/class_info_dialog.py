@@ -24,6 +24,7 @@ from typing import Callable, List, Optional, Sequence
 from qgis.PyQt.QtCore import Qt
 from qgis.PyQt.QtGui import QPixmap
 from qgis.PyQt.QtWidgets import (
+    QGridLayout,
     QDialog,
     QFrame,
     QHBoxLayout,
@@ -39,7 +40,29 @@ from qgis.PyQt.QtWidgets import (
 
 from ...app.services.class_fiche import ClassFiche
 from ...app.services.fiabilite import pct
-from ..widgets.vignette import FicheButton, pixmap_ajuste
+from ..icons import colored_icon
+from ..widgets.vignette import (
+    ARDOISE,
+    FicheButton,
+    couleur_texte,
+    pastille,
+    pixmap_ajuste,
+    vignette_annotee_recoloree,
+)
+from ...app.services.profil_scores import libelle_zone, zones_sans_objet
+from ..widgets.profil_scores import couleur_de_classe, figure_profil, figures_par_zone, ligne_essai_seuil
+from ...app.services.carte_zones import charger as charger_zones_corpus
+from ..widgets.carte_zones import bandeau_appris_sur
+
+_ZONES_CORPUS: Optional[dict] = None
+
+
+def _zones_corpus() -> dict:
+    """``data/zones_corpus.json`` (emprises des zones, contours), lu une fois."""
+    global _ZONES_CORPUS
+    if _ZONES_CORPUS is None:
+        _ZONES_CORPUS = charger_zones_corpus(Path(__file__).resolve().parents[3])
+    return _ZONES_CORPUS
 
 _VIGNETTE_MAX = 320  # côté max de l'aperçu, en px logiques
 
@@ -102,10 +125,13 @@ class _Apercu(QWidget):
     exception ni une image cassée.
     """
 
-    def __init__(self, fiche: ClassFiche, model_dir: Optional[Path], parent=None):
+    def __init__(self, fiche: ClassFiche, model_dir: Optional[Path], parent=None, couleur=None):
         super().__init__(parent)
         self._fiche = fiche
         self._dir = Path(model_dir) if model_dir else None
+        # Couleur de la couche : les contours de la vérité terrain la prennent
+        # (au lieu du jaune des fichiers, demande utilisateur 2026-10-08).
+        self._couleur = couleur
         self._i = 0
         self._annote = bool(fiche.vignettes and fiche.vignettes[0].annote)
 
@@ -197,8 +223,12 @@ class _Apercu(QWidget):
         else:
             # −2 px : le cadre du QSS prend 1 px de chaque côté, viser la
             # taille du widget ferait rogner l'image d'autant.
+            v = self._fiche.vignettes[self._i]
+            source = str(chemin)
+            if self._annote and v.annote and v.brut and self._couleur is not None and self._dir is not None:
+                source = vignette_annotee_recoloree(str(self._dir / v.brut), str(chemin), self._couleur)
             pix = pixmap_ajuste(
-                str(chemin), _VIGNETTE_MAX - 2, dpr=self.devicePixelRatioF()
+                source, _VIGNETTE_MAX - 2, dpr=self.devicePixelRatioF()
             )
             self._image.setProperty("state", "plein")
             if pix.isNull():
@@ -221,13 +251,30 @@ class _Apercu(QWidget):
 # ----------------------------------------------------------------------
 class _CorpsFiche(QWidget):
     def __init__(self, fiche: ClassFiche, model_dir: Optional[Path], parent=None,
-                 ouvrir_modele: Optional[Callable[[], None]] = None):
+                 ouvrir_modele: Optional[Callable[[], None]] = None,
+                 couleur=None, seuil: Optional[float] = None, observe=None):
+        """``couleur`` : couleur de base de la COUCHE (qualifiée en A/B), sinon celle
+        du registre pour la classe ; ``seuil`` : seuil effectif réglé à l'étape 3,
+        pour que la figure et son bilan montrent ce que le run appliquera."""
         super().__init__(parent)
         lay = QVBoxLayout(self)
         lay.setContentsMargins(18, 16, 18, 18)
         lay.setSpacing(12)
 
-        # — en-tête —
+        # — en-tête : étiquette de nature dans la couleur de la classe (celle de sa
+        #   couche dans QGIS), puis le titre (option A, 2026-10-08) —
+        base = couleur or couleur_de_classe(fiche.nom) or (42, 120, 214)
+        nature = QHBoxLayout()
+        nature.setSpacing(6)
+        point = QLabel()
+        point.setPixmap(pastille(base, 10, self.devicePixelRatioF()))
+        etiquette = QLabel("STRUCTURE DÉTECTABLE")
+        etiquette.setObjectName("FicheNature")
+        etiquette.setStyleSheet(f"color: {couleur_texte(base)};")   # couleur de la classe : dynamique
+        nature.addWidget(point)
+        nature.addWidget(etiquette)
+        nature.addStretch(1)
+        lay.addLayout(nature)
         titre = QHBoxLayout()
         titre.setSpacing(10)
         titre.addWidget(_label(fiche.label, "FicheTitre", wrap=False))
@@ -238,34 +285,117 @@ class _CorpsFiche(QWidget):
         if fiche.resume:
             lay.addWidget(_label(fiche.resume, "FicheResume"))
 
-        # — aperçu + fiabilité côte à côte —
+        # Ordre de lecture (demande utilisateur 2026-10-08), celui de quelqu'un qui
+        # hésite à cocher l'entité : ce que c'est (vignette, reconnaître) → est-ce
+        # que je la veux (dans quelle optique, ne détecte pas) → sur quoi elle a été
+        # apprise → ce qu'elle vaut (fiabilité : texte, figure, essai de seuil,
+        # zones, d'un seul tenant) → limites → contexte technique et fiche du modèle.
+        blocs = dict(self._blocs(fiche, base))
+
+        # — aperçu + reconnaître côte à côte —
         haut = QHBoxLayout()
         haut.setSpacing(18)
-        haut.addWidget(_Apercu(fiche, model_dir))
+        haut.addWidget(_Apercu(fiche, model_dir, couleur=base))
         colonne = QVBoxLayout()
         colonne.setSpacing(8)
         if fiche.reconnaitre:
             colonne.addWidget(_titre_bloc("Reconnaître"))
             colonne.addWidget(_label(fiche.reconnaitre, "FicheTexte"))
-        colonne.addWidget(_titre_bloc("Contexte technique"))
-        colonne.addWidget(_label(self._contexte(fiche), "FicheTexte"))
-        if ouvrir_modele is not None:
-            lien = FicheButton(f"Architecture, entraînement et métriques d'évaluation de « {fiche.modele} »")
-            lien.setText("Fiche du modèle")
-            lien.clicked.connect(lambda *_: ouvrir_modele())
-            colonne.addWidget(lien, 0, Qt.AlignmentFlag.AlignLeft)
-        if fiche.fiabilite:
-            colonne.addWidget(_titre_bloc("Fiabilité mesurée au banc"))
-            colonne.addWidget(_label(self._fiabilite(fiche), "FicheTexte"))
+        # « Dans quelle optique » et « Ne détecte pas » occupent la colonne à côté de
+        # la vignette : c'est la suite de la lecture, et la colonne ne reste pas vide.
+        for titre_bloc in ("Dans quelle optique l'utiliser", "Ne détecte pas"):
+            contenu = blocs.pop(titre_bloc, None)
+            if contenu is not None:
+                colonne.addWidget(_titre_bloc(titre_bloc))
+                colonne.addWidget(contenu)
         colonne.addStretch(1)
         haut.addLayout(colonne, 1)
         lay.addLayout(haut)
 
-        # — blocs textuels —
-        for titre_bloc, contenu in self._blocs(fiche):
+        def _bloc(titre_bloc: str) -> None:
+            contenu = blocs.pop(titre_bloc, None)
+            if contenu is not None:
+                lay.addWidget(_separateur())
+                lay.addWidget(_titre_bloc(titre_bloc))
+                lay.addWidget(contenu)
+
+        _bloc("Ce que le modèle a appris")
+
+        # — fiabilité : texte, puis la figure qui l'explique, l'essai de seuil et les
+        #   zones, d'un seul tenant —
+        if fiche.fiabilite:
             lay.addWidget(_separateur())
-            lay.addWidget(_titre_bloc(titre_bloc))
-            lay.addWidget(contenu)
+            lay.addWidget(_titre_bloc("Fiabilité mesurée au banc"))
+            lay.addWidget(_label(self._fiabilite(fiche, observe), "FicheTexte"))
+            note = self._note_observation(observe)
+            if note:
+                lay.addWidget(_label(note, "FicheLegende"))
+        figure = (figure_profil(model_dir, fiche.nom, fiche.fiabilite, couleur=couleur)
+                  if fiche.fiabilite else None)
+        if figure is not None:
+            lay.addWidget(_label("Profil des scores à l'évaluation", "FicheSousTitre"))
+            lay.addWidget(figure)
+            legende = (
+                "Vraies détections en couleur, fausses en gris, par bande de score de 0,05. "
+                "Les niveaux commencent là où la part de vrais objets atteint 35, 60 et 85 %. "
+                "La ligne pointillée est le point d'équilibre entre précision et rappel (F1) ; "
+                "le seuil déployé est choisi en dessous. La case « Tester un seuil » est un essai, "
+                "sans effet sur le seuil du traitement."
+            )
+            if seuil is not None:
+                figure.set_seuil(seuil)
+                if abs(seuil - figure.profil.seuil) > 1e-9:
+                    legende += (f" Seuil réglé à {seuil:.2f} (modèle : "
+                                f"{figure.profil.seuil:g}).").replace(".", ",")
+            lay.addWidget(_label(legende, "FicheLegende"))
+            # Petits multiples par zone d'évaluation : une classe sûre ici et
+            # faible là se voit d'un coup d'œil (les linéaires surtout).
+            zones = figures_par_zone(model_dir, fiche.nom, fiche.fiabilite, couleur=couleur)
+            # « Tester un seuil » : la figure (et les zones) suivent, précision et
+            # rappel au banc s'affichent — sans toucher au seuil du traitement.
+            lay.addWidget(ligne_essai_seuil(figure, [f for _n, f in zones], seuil))
+            if zones:
+                lay.addWidget(_label("Par zone d'évaluation", "FicheSousTitre"))
+                exclues = zones_sans_objet(model_dir, fiche.nom) if model_dir is not None else []
+                if exclues:
+                    noms = ", ".join(libelle_zone(z) for z in exclues)
+                    lay.addWidget(_label(
+                        f"{len(exclues)} zone{'s' if len(exclues) > 1 else ''} sans objet annoté de cette classe "
+                        f"({noms}) : on n'y compte que des fausses détections, rien à mesurer — non affichée"
+                        f"{'s' if len(exclues) > 1 else ''}.",
+                        "FicheLegende",
+                    ))
+                grille = QGridLayout()
+                grille.setHorizontalSpacing(14)
+                grille.setVerticalSpacing(6)
+                for i, (nom_zone, fig) in enumerate(zones):
+                    if seuil is not None:
+                        fig.set_seuil(seuil)
+                    cellule = QVBoxLayout()
+                    cellule.setSpacing(1)
+                    cellule.addWidget(_label(
+                        f"{nom_zone} — {fig.profil.total:,} détections".replace(",", " "),
+                        "FicheLegende",
+                    ))
+                    cellule.addWidget(fig)
+                    grille.addLayout(cellule, i // 2, i % 2)
+                lay.addLayout(grille)
+
+        _bloc("Limites connues du modèle")
+        for titre_bloc in list(blocs):          # un bloc inattendu n'est jamais perdu
+            _bloc(titre_bloc)
+
+        # — contexte technique et fiche du modèle, en fin —
+        lay.addWidget(_separateur())
+        lay.addWidget(_titre_bloc("Contexte technique"))
+        lay.addWidget(_label(self._contexte(fiche), "FicheTexte"))
+        if ouvrir_modele is not None:
+            lien = FicheButton(f"Architecture, entraînement et métriques d'évaluation de « {fiche.modele} »")
+            lien.setText("Fiche du modèle")
+            lien.setObjectName("FicheLienModele")    # ardoise : la couleur des fiches de modèle
+            lien.setIcon(colored_icon("modele", ARDOISE, 14, dpr=self.devicePixelRatioF()))
+            lien.clicked.connect(lambda *_: ouvrir_modele())
+            lay.addWidget(lien, 0, Qt.AlignmentFlag.AlignLeft)
 
         lay.addStretch(1)
 
@@ -287,16 +417,35 @@ class _CorpsFiche(QWidget):
         return "\n".join(lignes)
 
     @staticmethod
-    def _fiabilite(f: ClassFiche) -> str:
+    def _fiabilite(f: ClassFiche, observe=None) -> str:
+        """Une ligne par niveau : la mesure du banc, puis « chez vous : … » dès
+        qu'un verdict a été saisi à ce niveau (fiabilité observée, 2026-10-08)."""
+        comptes = getattr(observe, "par_categorie", None) or {}
         lignes = []
         for c in f.fiabilite:
             mesure = pct(c.mesure)
             suffixe = f" — {mesure} % de vrais objets mesurés sur {c.n}" if mesure is not None else ""
-            lignes.append(f"{c.label} : score ≥ {c.seuil:g}{suffixe}".replace(".", ","))
+            ligne = f"{c.label} : score ≥ {c.seuil:g}{suffixe}".replace(".", ",")
+            compte = comptes.get(c.categorie)
+            if compte is not None and compte.phrase():
+                ligne += f" · chez vous : {compte.phrase()}"
+            lignes.append(ligne)
         return "\n".join(lignes)
 
     @staticmethod
-    def _entrainement(f: ClassFiche) -> str:
+    def _note_observation(observe) -> str:
+        if observe is None or not getattr(observe, "n_runs", 0):
+            return ""
+        n = observe.total_verifies
+        if not n and not observe.total_a_revoir:
+            return (f"Aucun verdict pour cette classe dans vos {observe.n_runs} run(s) connus : "
+                    "renseignez le champ « validation » (oui / non / peut-être) dans QGIS.")
+        return (f"« Chez vous » = vos verdicts (champ « validation » : oui / non / peut-être) sur "
+                f"{observe.n_runs} run(s) connus, {n} vérification(s). Le banc est un plancher annoncé ; "
+                "le terrain dit ce qu'il vaut ici.")
+
+    @staticmethod
+    def _entrainement(f: ClassFiche, avec_zones: bool = True) -> str:
         e = f.entrainement
         if e is None:
             return ""
@@ -305,7 +454,7 @@ class _CorpsFiche(QWidget):
             lignes.extend(_lignes_liste("Corpus", e.corpus))
         if e.annotation:
             lignes.extend(_lignes_liste("Annotation", e.annotation))
-        if e.zones:
+        if e.zones and avec_zones:
             lignes.append("")
             lignes.append("Zones d'apprentissage :")
             for z in e.zones:
@@ -330,10 +479,24 @@ class _CorpsFiche(QWidget):
             )
         return "\n".join(lignes)
 
-    def _blocs(self, f: ClassFiche):
+    def _blocs(self, f: ClassFiche, couleur=None):
         out = []
-        txt = self._entrainement(f)
-        if txt:
+        # Bandeau « Appris sur » (carte + zones, 2026-10-08) en tête du bloc : il
+        # remplace la liste des zones en texte ; sans zone située, la liste reste.
+        bandeau = None
+        if f.entrainement is not None and f.entrainement.zones:
+            bandeau = bandeau_appris_sur(f.entrainement.zones, _zones_corpus(), couleur or (42, 120, 214))
+        txt = self._entrainement(f, avec_zones=bandeau is None)
+        if bandeau is not None:
+            contenu = QWidget()
+            pile = QVBoxLayout(contenu)
+            pile.setContentsMargins(0, 0, 0, 0)
+            pile.setSpacing(8)
+            pile.addWidget(bandeau)
+            if txt.strip():
+                pile.addWidget(_label(txt.strip("\n"), "FicheTexte"))
+            out.append(("Ce que le modèle a appris", contenu))
+        elif txt:
             out.append(("Ce que le modèle a appris", _label(txt, "FicheTexte")))
         elif not f.est_complete:
             out.append((
@@ -369,19 +532,33 @@ class ClassInfoDialog(QDialog):
         titre: str = "",
         parent=None,
         models: Optional[dict] = None,
+        couleurs: Optional[dict] = None,
+        seuils: Optional[dict] = None,
+        observes: Optional[dict] = None,
     ):
         super().__init__(parent)
         self._fiches = list(fiches)
         self._dirs = dict(model_dirs or {})
         self._models = dict(models or {})  # nom → InstalledModel, pour « Fiche du modèle »
+        self._couleurs = dict(couleurs or {})  # (modèle, classe) → couleur de la couche
+        self._seuils = dict(seuils or {})      # (modèle, classe) → seuil effectif (étape 3)
+        self._observes = dict(observes or {})  # (modèle, classe) → Observation (vos verdicts)
         self.setObjectName("ClassInfoDialog")
-        self.setWindowTitle(titre or "Structure détectable")
+        # Nature dans le titre de la fenêtre : utile dans la barre des tâches, et quand
+        # la fiche du modèle s'ouvre par-dessus (option A, 2026-10-08).
+        self.setWindowTitle(f"Structure · {titre}" if titre else "Structure détectable")
         self.setMinimumSize(760, 560)
         self.resize(900, 640)
 
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(0)
+        # Liseré de 4 px dans la couleur de la classe affichée (recoloré à chaque
+        # changement de classe dans la liste) ; la fiche du modèle a le sien, ardoise.
+        self._liseré = QFrame()
+        self._liseré.setObjectName("FicheLisere")
+        self._liseré.setFixedHeight(4)
+        root.addWidget(self._liseré)
 
         corps = QHBoxLayout()
         corps.setContentsMargins(0, 0, 0, 0)
@@ -430,9 +607,16 @@ class ClassInfoDialog(QDialog):
         if not (0 <= row < len(self._fiches)):
             return
         f = self._fiches[row]
+        base = self._couleurs.get((f.modele_id, f.nom)) or couleur_de_classe(f.nom) or (42, 120, 214)
+        self._liseré.setStyleSheet("background: rgb(%d, %d, %d);" % tuple(int(v) for v in base))
         model = self._models.get(f.modele_id)
         ouvrir = (lambda: self._ouvrir_modele(model)) if model is not None else None
-        self._zone.setWidget(_CorpsFiche(f, self._dirs.get(f.modele_id), ouvrir_modele=ouvrir))
+        self._zone.setWidget(_CorpsFiche(
+            f, self._dirs.get(f.modele_id), ouvrir_modele=ouvrir,
+            couleur=self._couleurs.get((f.modele_id, f.nom)),
+            seuil=self._seuils.get((f.modele_id, f.nom)),
+            observe=self._observes.get((f.modele_id, f.nom)),
+        ))
 
     def _ouvrir_modele(self, model) -> None:
         """Fiche ⓘ du modèle de la classe affichée, par-dessus celle-ci."""
@@ -446,9 +630,17 @@ def ouvrir_fiche_entite(
     titre: str,
     parent=None,
     models: Optional[dict] = None,
+    couleurs: Optional[dict] = None,
+    seuils: Optional[dict] = None,
+    observes: Optional[dict] = None,
 ) -> None:
     """Ouvre la fiche en modal. Rien à afficher → rien ne s'ouvre. ``models``
-    (nom → ``InstalledModel``) active le lien « Fiche du modèle »."""
+    (nom → ``InstalledModel``) active le lien « Fiche du modèle » ; ``couleurs`` et
+    ``seuils`` (clé ``(modèle, classe)``) alignent la figure sur la couche et le
+    seuil du run."""
     if not fiches:
         return
-    ClassInfoDialog(fiches, model_dirs, titre, parent=parent, models=models).exec()
+    ClassInfoDialog(
+        fiches, model_dirs, titre, parent=parent, models=models,
+        couleurs=couleurs, seuils=seuils, observes=observes,
+    ).exec()

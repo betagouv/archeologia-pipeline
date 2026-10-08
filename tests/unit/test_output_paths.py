@@ -23,7 +23,7 @@ OUT = Path("/out")
 
 
 def _gpkg(slug: str) -> str:
-    return str(OUT / "detections" / slug / f"{slug}.gpkg")
+    return str(OUT / "livrable" / "detections" / slug / f"{slug}.gpkg")
 
 
 class TestIndexVrtFilename:
@@ -45,24 +45,25 @@ class TestIndexVrtFilename:
 
 class TestEntityPaths:
     def test_entity_dir_under_detections(self):
-        assert detection_entity_dir(OUT, "parcellaire") == OUT / "detections" / "parcellaire"
+        assert detection_entity_dir(OUT, "parcellaire") == OUT / "livrable" / "detections" / "parcellaire"
 
     def test_technique_dir_isolated_under_detections(self):
         d = detection_technique_dir(OUT, "cratere_circulaire_2")
-        assert d == OUT / "detections" / "_technique" / "cratere_circulaire_2"
+        assert d == OUT / "technique" / "detection" / "cratere_circulaire_2"
 
     def test_technique_raw_and_annotated_nested(self):
         m = "formes_lineaires_x"
         assert detection_technique_raw_dir(OUT, m) == (
-            OUT / "detections" / "_technique" / m / "raw_detections"
+            OUT / "technique" / "detection" / m / "raw_detections"
         )
         assert detection_technique_annotated_dir(OUT, m) == (
-            OUT / "detections" / "_technique" / m / "annotated_images"
+            OUT / "technique" / "detection" / m / "annotated_images"
         )
 
     def test_technique_lives_inside_detections_root(self):
-        # _technique est un sous-dossier de detections/ (pas un sibling)
-        assert detections_dir(OUT) in detection_technique_dir(OUT, "m").parents
+        # v3 : la technique vit sous technique/, jamais sous livrable/detections/
+        assert detections_dir(OUT) not in detection_technique_dir(OUT, "m").parents
+        assert OUT / "technique" in detection_technique_dir(OUT, "m").parents
 
 
 def _ent(eid, slug, classes, *, layer_names=None):
@@ -170,7 +171,7 @@ class TestSelectStaleEntityVariantDirs:
 
     def _mk(self, tmp_path, *slugs):
         for s in slugs:
-            (tmp_path / "detections" / s).mkdir(parents=True)
+            (tmp_path / "livrable" / "detections" / s).mkdir(parents=True)
         return tmp_path
 
     def _runs(self, *slugs):

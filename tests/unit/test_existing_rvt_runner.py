@@ -121,7 +121,7 @@ class TestExistingRvtRunner:
         monkeypatch.setattr("app.runners.existing_rvt_runner.finalize_pipeline", lambda **_kwargs: None)
 
         ctx = _ctx(tmp_path, {"enabled": True, "target_rvt": "LD"})
-        (ctx.output_dir / "intermediaires").mkdir()
+        (ctx.output_dir / "technique" / "intermediaires").mkdir(parents=True)
 
         resolved = tmp_path / "source_non_rognee.tif"
         seen = {}
@@ -141,7 +141,7 @@ class TestExistingRvtRunner:
         resolver = captured.get("inference_tif_resolver")
         assert callable(resolver)
         assert resolver(Path("LHD_FXX_0390_6818_LD.tif")) == resolved
-        assert seen["src"] == ctx.output_dir / "intermediaires"
+        assert seen["src"] == ctx.output_dir / "technique" / "intermediaires"
         assert seen["rvt"] == "LD"
 
     def test_no_halo_resolver_without_intermediaires(self, tmp_path: Path, monkeypatch):

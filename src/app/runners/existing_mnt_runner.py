@@ -77,6 +77,7 @@ class ExistingMntRunner:
         # Annulation = arrêt rapide du travail lourd, puis finalisation légère
         # (VRT + projet QGIS + chargement des couches déjà produites).
         cancelled = False
+        cv_stats: list = []   # durée mesurée par modèle (rapport de run)
         fatal = False
         tiles_processed = 0
         tiles_total = 0
@@ -112,6 +113,7 @@ class ExistingMntRunner:
                         cancel=cancel,
                         slog=slog,
                         cv_band=plan.cv,
+                        stats_out=cv_stats,
                     )
                 except PipelineCancelled:
                     raise
@@ -138,6 +140,7 @@ class ExistingMntRunner:
             final_ok = finalize_pipeline(
                 output_dir=ctx.output_dir,
                 cv_cfg=ctx.cv.raw,
+                cv_stats=cv_stats,
                 rvt_params=rvt_params,
                 reporter=reporter,
                 slog=slog,

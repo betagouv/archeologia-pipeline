@@ -21,11 +21,77 @@ from qgis.PyQt.QtCore import QSize, Qt
 from qgis.PyQt.QtGui import QIcon, QPixmap
 from qgis.PyQt.QtWidgets import QPushButton
 
+#: Ardoise des fiches de MODÈLE (liseré, étiquette, lien) — jamais une couleur de classe :
+#: la couleur d'une classe est réservée à sa fiche, qui reprend celle de sa couche
+#: (option A « liseré et étiquette de nature », validée par l'utilisateur le 2026-10-08).
+ARDOISE = "#3d4b5c"
+
+
+def couleur_texte(rgb) -> str:
+    """La couleur ``rgb`` assombrie jusqu'à rester lisible en texte sur fond blanc
+    (luminance < 0,33) : une classe cyan ou vert vif garde sa teinte en étiquette."""
+    r, g, b = (int(v) for v in rgb)
+    for t in (0.0, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7):
+        m = [round(v * (1 - t)) for v in (r, g, b)]
+        if (0.2126 * m[0] + 0.7152 * m[1] + 0.0722 * m[2]) / 255 < 0.33:
+            return "#%02x%02x%02x" % tuple(m)
+    return "#%02x%02x%02x" % tuple(round(v * 0.3) for v in (r, g, b))
+
+
+def pastille(rgb, cote: int = 10, dpr: float = 1.0):
+    """Un disque plein de la couleur ``rgb`` (liseré assombri), net à la densité d'écran."""
+    from qgis.PyQt.QtCore import QRectF, Qt
+    from qgis.PyQt.QtGui import QColor, QPainter, QPen, QPixmap
+
+    pm = QPixmap(round(cote * dpr), round(cote * dpr))
+    pm.setDevicePixelRatio(dpr)
+    pm.fill(Qt.GlobalColor.transparent)
+    p = QPainter(pm)
+    p.setRenderHint(QPainter.RenderHint.Antialiasing)
+    p.setPen(QPen(QColor(couleur_texte(rgb)), 1))
+    p.setBrush(QColor(*[int(v) for v in rgb]))
+    p.drawEllipse(QRectF(0.5, 0.5, cote - 1, cote - 1))
+    p.end()
+    return pm
+
+
 #: Côté de la vignette de carte, en px logiques.
 TAILLE = 44
 
 #: Marge intérieure : laisse respirer le liseré du cadre.
 _MARGE = 2
+
+
+def vignette_annotee_recoloree(chemin_brut: str, chemin_annote: str, rgb) -> QPixmap:
+    """L'image « Vérité terrain » avec ses contours dans la couleur ``rgb`` de la classe
+    (``app.services.recolorer_annotation``). Image brute absente, tailles différentes ou
+    numpy indisponible → l'image annotée telle quelle, contours jaunes."""
+    from qgis.PyQt.QtGui import QImage
+
+    annote = QImage(chemin_annote)
+    brut = QImage(chemin_brut)
+    if annote.isNull():
+        return QPixmap()
+    if brut.isNull() or brut.size() != annote.size() or rgb is None:
+        return QPixmap.fromImage(annote)
+    try:
+        import numpy as np
+
+        from ...app.services.recolorer_annotation import recolorer
+
+        def tableau(img):
+            img = img.convertToFormat(QImage.Format.Format_RGB888)
+            w, h, ligne = img.width(), img.height(), img.bytesPerLine()
+            ptr = img.bits()
+            ptr.setsize(h * ligne)
+            return np.frombuffer(ptr, np.uint8).reshape(h, ligne)[:, : w * 3].reshape(h, w, 3).copy()
+
+        out = np.ascontiguousarray(recolorer(tableau(brut), tableau(annote), rgb))
+        h, w = out.shape[:2]
+        img = QImage(out.data, w, h, 3 * w, QImage.Format.Format_RGB888).copy()   # copie : out est local
+        return QPixmap.fromImage(img)
+    except Exception:  # noqa: BLE001 — confort visuel, jamais bloquant
+        return QPixmap.fromImage(annote)
 
 
 def pixmap_ajuste(

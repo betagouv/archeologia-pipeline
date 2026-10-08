@@ -11,7 +11,13 @@ import json
 from pathlib import Path
 
 from qgis.PyQt.QtCore import QSize, Qt, QTimer
-from qgis.PyQt.QtGui import QIcon
+from qgis.PyQt.QtGui import QIcon, QKeySequence
+
+# QShortcut a changé de module entre Qt5 (QtWidgets) et Qt6 (QtGui).
+try:
+    from qgis.PyQt.QtGui import QShortcut
+except ImportError:  # pragma: no cover - Qt5
+    from qgis.PyQt.QtWidgets import QShortcut
 from qgis.PyQt.QtWidgets import (
     QDialog,
     QFileDialog,
@@ -34,6 +40,8 @@ from ..app.services.indices_model import product, rvt_keys
 from ..app.services.source_modes import mode_info
 from ..app.services.config_store import ConfigStore
 from ..config.config_manager import ConfigManager
+from ..app.services.aide import AIDE_DIRNAME, CHAPITRE_PAR_ETAPE
+from .dialogs.aide_dialog import nouveautes_non_lues, ouvrir_aide
 from .dialogs.config_dialogs import ConfigsDialog, demander_nom
 from .icons import colored_icon, colored_pixmap
 from .steps.step_1_source import SourcePage
@@ -256,12 +264,54 @@ class WizardDialog(QDialog):
         pl.addWidget(pill_text)
         self._review_pill.setVisible(False)
 
+        # Manuel intégré : ouvre le chapitre de l'étape courante (F1 aussi).
+        # Même style que ses deux voisins, icône « info » du thème : un « ? »
+        # seul rendait mal et ne disait pas ce qu'il ouvrait.
+        aide_btn = QPushButton("Aide")
+        aide_btn.setObjectName("GhostButton")
+        aide_btn.setToolTip("Manuel : le chapitre de cette étape (F1)")
+        aide_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        aide_btn.setIcon(colored_icon("info", "#2c2c2c", 14, dpr=self.devicePixelRatioF()))
+        aide_btn.setIconSize(QSize(14, 14))
+        aide_btn.clicked.connect(self._ouvrir_aide)
+        self._aide_btn = aide_btn
+        self._aide_connectee = None
+        # Pastille « nouveautés » tant que celles de la version n'ont pas été lues.
+        self._rafraichir_badge_aide()
+        QShortcut(QKeySequence(QKeySequence.StandardKey.HelpContents), self, self._ouvrir_aide)
+
         layout.addLayout(titles)
         layout.addStretch(1)
         layout.addWidget(self._review_pill)
+        layout.addWidget(aide_btn)
         layout.addWidget(load_btn)
         layout.addWidget(save_btn)
         return bar
+
+    def _ouvrir_aide(self) -> None:
+        """Le manuel, ouvert sur le chapitre de l'étape affichée — ou, une fois
+        après une mise à jour, sur les Nouveautés."""
+        dlg = ouvrir_aide(
+            self._plugin_root / AIDE_DIRNAME,
+            parent=self,
+            cle=CHAPITRE_PAR_ETAPE.get(self._current_step, ""),
+            nouveautes_si_non_lues=True,
+        )
+        if self._aide_connectee is not dlg:
+            dlg.chapitre_affiche.connect(lambda _cle: self._rafraichir_badge_aide())
+            self._aide_connectee = dlg
+        self._rafraichir_badge_aide()
+
+    def _rafraichir_badge_aide(self) -> None:
+        non_lues = nouveautes_non_lues()
+        self._aide_btn.setText("Aide •" if non_lues else "Aide")
+        self._aide_btn.setProperty("nouveautes", "true" if non_lues else "false")
+        self._aide_btn.setToolTip(
+            "Nouveautés de cette version non lues — le manuel s'ouvrira dessus (F1)"
+            if non_lues else "Manuel : le chapitre de cette étape (F1)"
+        )
+        self._aide_btn.style().unpolish(self._aide_btn)
+        self._aide_btn.style().polish(self._aide_btn)
 
     def _build_progress_liseret(self) -> QWidget:
         self._progress = QProgressBar()
@@ -411,7 +461,10 @@ class WizardDialog(QDialog):
         self._launch_page.update_recap(sections)
         self._launch_page.set_step_subtitles(self._step_subtitles())
         self._launch_page.refresh_preflight(self._config)
-        if not self._launch_page.is_running():
+        # Avant le premier run, l'étape 4 arrive sur le récap ; ensuite elle garde
+        # sa vue (le journal du dernier traitement restait inaccessible dès qu'on
+        # passait par une étape 1-3, constat utilisateur 2026-10-08).
+        if not self._launch_page.is_running() and not self._launch_page.has_run():
             self._launch_page.show_recap()
 
     def _step_subtitles(self) -> dict:

@@ -25,6 +25,11 @@ from ..progress_stages import Stage
 from ..structured_logger import log_section
 from ..user_narrator import create_user_narrator
 
+try:
+    from ...pipeline.output_paths import dalles_urls_path
+except ImportError:  # standalone (tests)
+    from pipeline.output_paths import dalles_urls_path  # type: ignore[no-redef]
+
 if TYPE_CHECKING:
     from ..cancel_token import CancelToken
     from ..progress_reporter import ProgressReporter
@@ -47,13 +52,13 @@ def persist_resolved_dalles_list(input_file: Path, output_dir: Path) -> Path:
     fichier) — ``shutil`` lèverait sinon ``SameFileError``. Retourne le chemin
     persistant.
     """
-    dest = output_dir / "dalles_urls.txt"
+    dest = dalles_urls_path(output_dir)
     try:
         same = input_file.resolve() == dest.resolve()
     except OSError:  # chemin illisible : on tente la copie quand même
         same = False
     if not same:
-        output_dir.mkdir(parents=True, exist_ok=True)
+        dest.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(input_file, dest)
     return dest
 
@@ -151,7 +156,8 @@ class IgnDownloadStrategy:
             reporter.progress(self._plan.download[0])
             narrator.tiles_resolution_start()
 
-            urls_file = ctx.output_dir / "dalles_urls.txt"
+            urls_file = dalles_urls_path(ctx.output_dir)
+            urls_file.parent.mkdir(parents=True, exist_ok=True)
             n_tiles = resolve_tiles_from_polygon(
                 polygon_path=input_path,
                 output_file=urls_file,

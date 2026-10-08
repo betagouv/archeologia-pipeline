@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from typing import Dict, Mapping, Optional, Sequence, Tuple
 
-from qgis.PyQt.QtCore import QSize, Qt, pyqtSignal
+from qgis.PyQt.QtCore import QPoint, QSize, Qt, pyqtSignal
 from qgis.PyQt.QtGui import QIcon, QPixmap
 from qgis.PyQt.QtWidgets import (
     QCheckBox,
@@ -26,6 +26,7 @@ from qgis.PyQt.QtWidgets import (
 )
 
 from .no_wheel import NoWheelDoubleSpinBox
+from .profil_scores import ProfilScoresWidget
 from .vignette import pixmap_ajuste
 
 
@@ -124,6 +125,9 @@ class EntityCard(QFrame):
         self._candidates: Dict[str, str] = {}  # name -> display_name
         self._current_models: list = []  # modèles effectifs (1..n ; ≥2 = comparaison)
         self._active_cluster_keys: set = set()  # params de cluster effectivement édités
+        self._implique = False                  # incluse par une dérivée : seuils ailleurs
+        self._profils: list = []                # [(figure mini, libellé du bilan), …]
+        self._profils_cle = None
         self.setObjectName("EntityCard")
         self.setProperty("state", "off")
 
@@ -140,9 +144,10 @@ class EntityCard(QFrame):
         self._thumb.setObjectName("EntityThumb")
         self._thumb.setFixedSize(_THUMB, _THUMB)
         self._thumb.setFlat(True)
-        self._thumb.setCursor(Qt.CursorShape.PointingHandCursor)
-        self._thumb.setToolTip("Voir la fiche de la structure")
-        self._thumb.clicked.connect(lambda: self.fiche_requested.emit(self._id))
+        # Vignette inerte (demande utilisateur 2026-10-08) : un clic dessus coche ou
+        # décoche la carte comme le reste du haut de la carte ; seul le lien
+        # « Fiche » ouvre la fiche. Transparente aux clics, ils vont à la carte.
+        self._thumb.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
         outer.addWidget(self._thumb, 0, Qt.AlignmentFlag.AlignTop)
 
         layout = QVBoxLayout()
@@ -252,6 +257,7 @@ class EntityCard(QFrame):
         self._conf_spin.setDecimals(2)
         self._conf_spin.setFixedWidth(58)
         self._conf_spin.valueChanged.connect(self._on_thresholds_changed)
+        self._conf_spin.valueChanged.connect(self._maj_profils)
         area_lbl = QLabel("Aire min m²")
         area_lbl.setObjectName("EntityModelLabel")
         area_lbl.setWordWrap(True)
@@ -291,6 +297,19 @@ class EntityCard(QFrame):
         self._fiab_hint.setWordWrap(True)
         self._fiab_hint.setVisible(False)
         layout.addWidget(self._fiab_hint)
+        # Aide au choix du seuil (mode avancé, 2026-10-08) : le profil des scores
+        # de chaque classe de l'entité, en mini, dont la ligne du seuil suit la
+        # case « Confiance », et une phrase calculée sur le banc : ce que ce seuil
+        # garde des vrais objets et écarte des fausses détections. Place NON
+        # réservée (comme les paramètres de regroupement) : seules les entités
+        # dont le modèle livre son évaluation l'affichent.
+        self._profil_box = QFrame()
+        self._profil_box.setObjectName("EntityProfil")
+        pv = QVBoxLayout(self._profil_box)
+        pv.setContentsMargins(0, 2, 0, 0)
+        pv.setSpacing(2)
+        self._profil_box.setVisible(False)
+        layout.addWidget(self._profil_box)
 
         # Paramètres du regroupement (DBSCAN) : éditables en mode avancé pour une
         # entité dérivée / clusterisée. Place NON réservée (apparaît seulement pour
@@ -573,6 +592,8 @@ class EntityCard(QFrame):
                 self._loading = False
         self._fiab_hint.setText(fiabilite_hint or "")
         self._fiab_hint.setVisible(bool(show_adv and fiabilite_hint))
+        self._implique = bool(implique_par)
+        self._maj_visibilite_profils()
 
         # Paramètres du regroupement (DBSCAN) — en mode avancé, pour une entité
         # dérivée ou clusterisée disposant de défauts. Pré-remplis (override sinon
@@ -604,11 +625,70 @@ class EntityCard(QFrame):
 
         self._repolish()
 
+    def set_reinit_possible(self, on: bool) -> None:
+        """Active le « ↺ » dès qu'un réglage est saisi : sans ça il restait grisé
+        jusqu'au prochain rafraîchissement de la page (cocher une autre carte…),
+        et la réinitialisation semblait ne « revenir qu'après coup » (constat
+        utilisateur 2026-10-08)."""
+        self._reinit_btn.setEnabled(bool(on))
+
     def set_advanced(self, on: bool) -> None:
         """Affiche/masque les champs avancés. Leur place est réservée en
         permanence (retainSizeWhenHidden) → la hauteur ne change pas."""
         self._advanced = bool(on)
         self._adv_row.setVisible(self._advanced and self._selected and self._has_model)
+        self._maj_visibilite_profils()
+
+    # ------------------------------------------------------------------
+    # Aide au choix du seuil : profils mini + bilan sur le banc
+    # ------------------------------------------------------------------
+    def set_profils(self, profils: Sequence[tuple]) -> None:
+        """``[(classe, Profil, couleur RGB ou None), …]`` — un mini-profil par
+        classe de l'entité dont l'évaluation est livrée ; vide = rien d'affiché.
+        Les widgets ne sont reconstruits que si la liste change. Pas de texte sous
+        la figure (demande utilisateur 2026-10-08) : les niveaux sont écrits sous
+        l'axe, le bilan du seuil est dans l'infobulle."""
+        cle = tuple((c, id(p), couleur) for c, p, couleur in profils)
+        if cle == self._profils_cle:
+            return
+        self._profils_cle = cle
+        lay = self._profil_box.layout()
+        while lay.count():
+            item = lay.takeAt(0)
+            w = item.widget()
+            if w is not None:
+                w.setParent(None)
+                w.deleteLater()
+        self._profils = []
+        for classe, profil, couleur in profils:
+            if len(profils) > 1:
+                titre = QLabel(classe)
+                titre.setObjectName("EntityModelLabel")
+                lay.addWidget(titre)
+            fig = ProfilScoresWidget(profil, couleur, mini=True)
+            lay.addWidget(fig)
+            self._profils.append(fig)
+        self._maj_profils()
+        self._maj_visibilite_profils()
+
+    def _maj_profils(self, *_args) -> None:
+        """La ligne du seuil suit la case « Confiance » ; le bilan est recalculé."""
+        seuil = float(self._conf_spin.value())
+        for fig in getattr(self, "_profils", []):
+            fig.set_seuil(seuil)   # la ligne suit la case ; le bilan est dans l'infobulle
+
+    def _maj_visibilite_profils(self) -> None:
+        box = getattr(self, "_profil_box", None)
+        if box is not None:
+            visible = bool(
+                self._advanced and self._selected and self._has_model
+                and self._profils and not self._implique
+            )
+            box.setVisible(visible)
+            if visible:
+                # La figure nomme les niveaux sous son axe : l'aide textuelle
+                # « Fiabilité affichée — douteux dès 0,29 · … » ferait doublon.
+                self._fiab_hint.setVisible(False)
 
     def _on_thresholds_changed(self, *_args) -> None:
         if not self._loading:
@@ -666,11 +746,28 @@ class EntityCard(QFrame):
             w.style().unpolish(w)
             w.style().polish(w)
 
+    def _bande_reglages(self) -> Tuple[int, int]:
+        """``(haut, bas)``, en px de la carte, de la bande des réglages visibles :
+        case ou badge de regroupement, réglages avancés, profil, paramètres du
+        regroupement. Un clic dans cette bande règle, il ne coche pas (demande
+        utilisateur 2026-10-08) ; partout ailleurs, il coche ou décoche, y compris
+        dans le vide d'une carte (toute la carte, décochée, n'a pas de réglage).
+        ``(0, -1)`` : aucune bande."""
+        ys = []
+        for w in (self._cluster_check, self._derived_badge, self._adv_row,
+                  self._fiab_hint, self._profil_box, self._cluster_params_box):
+            if w.isVisible():
+                haut = w.mapTo(self, QPoint(0, 0)).y()
+                ys += [haut, haut + w.height()]
+        return (min(ys), max(ys)) if ys else (0, -1)
+
     def mousePressEvent(self, event):  # noqa: N802 (signature Qt)
-        # Bascule la sélection si l'entité a un modèle. Les widgets interactifs
-        # (combo, checkbox cluster, bouton activer) consomment leurs propres
-        # clics et ne déclenchent donc pas ce handler.
-        if self._has_model:
+        # Bascule la sélection si l'entité a un modèle ET que le clic tombe hors de
+        # la bande des réglages. Les widgets interactifs (bouton Fiche, Changer ▾,
+        # + Activer) consomment leurs propres clics.
+        pos = event.position().toPoint() if hasattr(event, "position") else event.pos()
+        haut, bas = self._bande_reglages()
+        if self._has_model and not (haut - 3 <= pos.y() <= bas + 3):
             self.toggled.emit(self._id, not self._selected)
         super().mousePressEvent(event)
 

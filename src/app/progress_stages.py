@@ -16,7 +16,8 @@ Module **pur-Python** (aucun import QGIS) → unit-testable hors QGIS.
 """
 from __future__ import annotations
 
-from typing import List
+import time
+from typing import Callable, List, Optional, Tuple
 
 
 class Stage:
@@ -64,3 +65,27 @@ def build_stage_sequence(mode: str, cv_enabled: bool) -> List[str]:
         return [Stage.DETECTION, Stage.FINALIZE]
 
     raise ValueError(f"Mode inconnu pour la séquence d'étapes : {mode!r}")
+
+
+class ChronoEtapes:
+    """Marques de début d'étape (posées par ``report_stage_id``) → durées par étape,
+    pour le rapport de traitement (2026-10-08). Une étape re-marquée garde sa
+    première marque ; la dernière étape dure jusqu'à ``fin`` (défaut : maintenant)."""
+
+    def __init__(self, horloge: Callable[[], float] = time.time):
+        self._horloge = horloge
+        self.marques: List[Tuple[str, float]] = []
+
+    def marquer(self, stage: str, t: Optional[float] = None) -> None:
+        stage = str(stage)
+        if any(s == stage for s, _ in self.marques):
+            return
+        self.marques.append((stage, self._horloge() if t is None else float(t)))
+
+    def durees(self, fin: Optional[float] = None) -> List[Tuple[str, float]]:
+        fin = self._horloge() if fin is None else float(fin)
+        out: List[Tuple[str, float]] = []
+        for i, (stage, debut) in enumerate(self.marques):
+            suivant = self.marques[i + 1][1] if i + 1 < len(self.marques) else fin
+            out.append((stage, max(0.0, suivant - debut)))
+        return out

@@ -51,9 +51,10 @@ class TestShouldExcludeDirs:
         d = _mkdir(tmp_path, name)
         assert pkg.should_exclude(d, name) is True
 
-    @pytest.mark.parametrize("name", ["src", "data", "quadrillage_france", "models", "third_party"])
+    @pytest.mark.parametrize("name", ["src", "data", "quadrillage_france", "models", "third_party", "aide"])
     def test_keeps_runtime_dirs(self, pkg, tmp_path, name):
         # PKG-02 : quadrillage_france est REQUIS au runtime → ne pas exclure.
+        # aide/ : le manuel intégré (Markdown) est lu au runtime, à la différence de docs/.
         d = _mkdir(tmp_path, name)
         assert pkg.should_exclude(d, name) is False
 

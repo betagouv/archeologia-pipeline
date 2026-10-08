@@ -451,29 +451,40 @@ def _placer_glouton(
     ecart: float,
     marge: float,
     premier_a_gauche: bool,
-) -> List[Optional[Tuple[int, float, str, int]]]:
+    lignes: Sequence[float],
+) -> List[Optional[Tuple[int, float, str, int, int]]]:
     occupe: List[List[Tuple[float, float]]] = [[] for _ in range(max(0, nb_rangees))]
-    out: List[Optional[Tuple[int, float, str, int]]] = []
+    x_premier = libelles[0][0] if libelles else None
+    out: List[Optional[Tuple[int, float, str, int, int]]] = []
     for k, (x_ligne, variantes, rangees) in enumerate(libelles):
-        place: Optional[Tuple[int, float, str, int]] = None
+        autres = [lx for lx in lignes if abs(lx - x_ligne) > 1e-6]
+        meilleur = None                                  # (clé, place)
         for iv, (texte, largeur) in enumerate(variantes):
-            cotes = (x_ligne + marge, x_ligne - marge - largeur)
+            cotes = [x_ligne + marge, x_ligne - marge - largeur]
             if k == 0 and premier_a_gauche:
-                cotes = cotes[::-1]
-            for r in rangees:
+                cotes.reverse()
+            for ordre_r, r in enumerate(rangees):
                 if not 0 <= r < len(occupe):
                     continue
-                for gauche in cotes:
-                    if gauche < 0 or gauche + largeur > largeur_totale:
+                for ordre_c, gauche in enumerate(cotes):
+                    droite = gauche + largeur
+                    if gauche < 0 or droite > largeur_totale:
                         continue
-                    if all(gauche + largeur + ecart <= a or b + ecart <= gauche for a, b in occupe[r]):
-                        place = (r, gauche, texte, iv)
-                        occupe[r].append((gauche, gauche + largeur))
-                        break
-                if place:
-                    break
-            if place:
-                break
+                    if not all(droite + ecart <= a or b + ecart <= gauche for a, b in occupe[r]):
+                        continue
+                    # La ligne du seuil (premier libellé) ne se traverse jamais ; les
+                    # autres lignes peuvent l'être, mais le moins possible.
+                    if k > 0 and x_premier is not None and gauche - 2 < x_premier < droite + 2:
+                        continue
+                    traverse = sum(1 for lx in autres if gauche - 1 < lx < droite + 1)
+                    cle = (traverse, ordre_r, ordre_c)
+                    if meilleur is None or cle < meilleur[0]:
+                        meilleur = (cle, (r, gauche, texte, iv, traverse))
+            if meilleur is not None:
+                break                                    # la variante la plus longue qui tient
+        place = meilleur[1] if meilleur else None
+        if place:
+            occupe[place[0]].append((place[1], place[1] + variantes[place[3]][1]))
         out.append(place)
     return out
 
@@ -484,16 +495,19 @@ def placer_libelles_lignes(
     largeur_totale: float,
     ecart: float = 6.0,
     marge: float = 3.0,
+    lignes: Sequence[float] = (),
 ) -> List[Optional[Tuple[int, float, str]]]:
     """Place les libellés attachés à une ligne verticale (seuil, coupures, équilibre),
     donnés **par ordre de priorité** : ``(x de la ligne, [(texte, largeur), …] variantes
-    de la plus longue à la plus courte, rangées essayées)``. Chacun prend la première
-    variante qui tient, sur la première rangée essayée libre, à droite de sa ligne
-    sinon à gauche, sans toucher un libellé déjà posé (``ecart``) ni sortir du cadre ;
-    sinon il est omis (``None``) — sa ligne reste, son nom est dans l'infobulle.
-    Le premier libellé (le seuil) passe à **gauche** de sa ligne quand cela permet de
-    placer davantage de libellés, ou des formes moins abrégées : à 0,29, « seuil 0,29 »
-    à droite de sa ligne occupait toute la place de « équilibre (F1) 0,37 ».
+    de la plus longue à la plus courte, rangées essayées)``. Chacun prend la variante la
+    plus longue qui tient, sans toucher un libellé déjà posé (``ecart``) ni sortir du
+    cadre ; parmi les places possibles, celle qui traverse le moins de ``lignes``
+    (toutes les lignes verticales de la figure), puis la première rangée, puis à droite
+    de sa ligne. La ligne du **premier** libellé (le seuil) ne se traverse jamais : en
+    fiche, « équilibre (F1) 0,28 » se posait à cheval sur la ligne orange du seuil 0,26.
+    Sans place, un libellé est omis (``None``) — sa ligne reste, son nom est dans
+    l'infobulle. Le premier libellé passe à **gauche** de sa ligne quand cela place
+    davantage de libellés, moins abrégés, ou traversant moins de lignes.
     Renvoie ``(rangée, x gauche, texte)`` par libellé, dans l'ordre d'entrée.
 
     Option A retenue par l'utilisateur (2026-10-08) : la rangée du haut porte les
@@ -504,8 +518,9 @@ def placer_libelles_lignes(
     def score(res):
         return (res[0] is None if res else False,          # le seuil d'abord
                 sum(1 for r in res if r is None),            # puis le moins d'omis
-                sum(r[3] for r in res if r is not None))     # puis le moins d'abrégés
-    essais = [_placer_glouton(libelles, nb_rangees, largeur_totale, ecart, marge, a_gauche)
+                sum(r[3] for r in res if r is not None),     # puis le moins d'abrégés
+                sum(r[4] for r in res if r is not None))     # puis le moins de lignes traversées
+    essais = [_placer_glouton(libelles, nb_rangees, largeur_totale, ecart, marge, a_gauche, lignes)
               for a_gauche in (False, True)]
     meilleur = min(essais, key=score)                        # à égalité : seuil à droite
     return [None if r is None else (r[0], r[1], r[2]) for r in meilleur]

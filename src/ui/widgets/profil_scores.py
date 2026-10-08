@@ -84,13 +84,18 @@ _GRILLE = QColor("#e6e6e6")
 _TIRET = QColor("#c4c4c4")
 _SEUIL = QColor("#e8590c")            # ligne du seuil appliqué : jamais une couleur de classe
 _COUPURE = QColor("#8a8a8a")          # les autres coupures, discrètes
+_GRIS_BARRE = QColor("#b5b5b5")       # segment « écartées » de la barre des niveaux
 
 # Géométrie : marges (gauche, droite, haut), hauteur du tracé, puis sous l'axe une
 # marge de 14 px et des rangées de libellés (nom + mesure en complet, nom seul en mini).
-_MARGES = {False: (44, 8, 36), True: (30, 6, 26)}   # mini : deux rangées en haut (équilibre, seuil)
+# Haut : mesures, puis une (mini) ou deux (complet) rangées de libellés de lignes, au-dessus
+# du tracé — jamais sur les barres (une rangée à « haut - 7 » chevauchait les barres hautes).
+_MARGES = {False: (44, 8, 44), True: (30, 6, 26)}
 _TRACE = {False: 116, True: 64}
 _RANGEE = {False: 28, True: 12}
-_BAS_FIXE = 16
+_BAS_FIXE = 24          # graduations, barre segmentée des niveaux, marge
+_BARRE_Y, _BARRE_H = 16, 3   # barre des niveaux : sous les graduations
+_NOMS_Y = 22                 # premiers noms de niveau, sous la barre
 
 
 def _teinte(base: RGB, categorie: str) -> QColor:
@@ -135,11 +140,12 @@ def _v(x: float) -> str:
 class _Etiquette:
     """Un libellé sous l'axe : nom (+ détail en complet), centre de sa bande, rangée."""
 
-    __slots__ = ("nom", "detail", "cx", "largeur", "rangee", "gauche", "couleur")
+    __slots__ = ("nom", "detail", "cx", "largeur", "rangee", "gauche", "couleur", "x0", "x1", "teinte")
 
-    def __init__(self, nom: str, detail: str, cx: float, largeur: float, couleur: QColor):
-        self.nom, self.detail, self.cx, self.largeur, self.couleur = nom, detail, cx, largeur, couleur
-        self.rangee, self.gauche = 0, 0.0
+    def __init__(self, nom: str, detail: str, x0: float, x1: float, couleur: QColor, teinte: QColor):
+        self.nom, self.detail, self.couleur, self.teinte = nom, detail, couleur, teinte
+        self.x0, self.x1, self.cx = x0, x1, (x0 + x1) / 2      # étendue de la bande en abscisse
+        self.largeur, self.rangee, self.gauche = 0.0, 0, 0.0
 
 
 class ProfilScoresWidget(QWidget):
@@ -300,13 +306,14 @@ class ProfilScoresWidget(QWidget):
         if x(seuil) - x(xmin) > 24:
             n_ecartees = sum(b.total for b in (self._p.fines or self._p.bandes) if b.hi <= seuil + 1e-9)
             etiquettes.append(_Etiquette("écartées", "" if mini else _nb(n_ecartees),
-                                         (x(xmin) + x(seuil)) / 2, 0.0, _ENCRE_DOUCE))
+                                         x(xmin), x(seuil), _ENCRE_DOUCE, _GRIS_BARRE))
         for i, c in enumerate(cats):
             fin = cats[i + 1].seuil if i + 1 < len(cats) else xmax
             mesure = pct(c.mesure)
             detail = "" if mini else (f"{mesure} % · {_nb(c.n)}" if mesure is not None else f"{_nb(c.n)} dét.")
             etiquettes.append(_Etiquette(c.label.lower() if mini else c.label, detail,
-                                         (x(c.seuil) + x(min(fin, xmax))) / 2, 0.0, _ENCRE))
+                                         x(c.seuil), x(min(fin, xmax)), _ENCRE,
+                                         _teinte(self._base, c.categorie)))
         for e in etiquettes:
             l_nom = (fm_petite if mini else fm).horizontalAdvance(e.nom)
             l_detail = fm_petite.horizontalAdvance(e.detail) if e.detail else 0
@@ -483,14 +490,14 @@ class ProfilScoresWidget(QWidget):
         if pr:
             p.setFont(petite)
             largeur_pr = p.fontMetrics().horizontalAdvance(pr) + 4
-            rect_pr = QRectF(gauche + largeur_trace - largeur_pr, haut - (24 if mini else 30), largeur_pr, 14)
+            rect_pr = QRectF(gauche + largeur_trace - largeur_pr, haut - (24 if mini else 42), largeur_pr, 14)
             p.setPen(_ENCRE)
             p.drawText(rect_pr, Qt.AlignmentFlag.AlignRight, pr)
 
         police_coupure = petite if mini else police
         police_seuil = QFont(police_coupure)
         police_seuil.setBold(True)
-        rangees_y = [haut - 12] if mini else [haut - 18, haut - 7]
+        rangees_y = [haut - 12] if mini else [haut - 29, haut - 16]
         toutes = list(range(len(rangees_y)))
         libelles, styles = [], []
         if cats:
@@ -509,7 +516,9 @@ class ProfilScoresWidget(QWidget):
             libelles.append((xe, variantes, toutes))
             styles.append((petite, _ENCRE_DOUCE))
         for place, (fonte, couleur), (x_ligne, variantes, _r) in zip(
-            placer_libelles_lignes(libelles, len(rangees_y), float(w)), styles, libelles
+            placer_libelles_lignes(libelles, len(rangees_y), float(w),
+                                   lignes=[x(c.seuil) for c in cats] + ([xe] if xe is not None else [])),
+            styles, libelles,
         ):
             if place is None:
                 if couleur is not _SEUIL:
@@ -523,14 +532,25 @@ class ProfilScoresWidget(QWidget):
             p.drawText(QRectF(g, rangees_y[rangee], w - g, 14), Qt.AlignmentFlag.AlignLeft, texte)
         p.setFont(police)
 
-        # — libellés sous l'axe, rangés sans chevauchement ; une étiquette décalée
-        #   d'une rangée reçoit un tiret vers le centre de sa bande —
+        # — sous les graduations, une barre segmentée : un segment par niveau, de sa
+        #   coupure à la suivante, dans la teinte du niveau (celle de la légende ; gris
+        #   pour les écartées). On voit à quelle plage de scores chaque nom correspond —
+        #   un nom centré sous une bande large (très probable : 0,5 → 0,9) ne le disait
+        #   pas (constat utilisateur 2026-10-08). Puis les noms, rangés sans
+        #   chevauchement ; un nom décalé d'une rangée reçoit un tiret vers son segment. —
         rangee_h = _RANGEE[mini]
-        for e in self._etiquettes():
-            y0 = y(0) + 14 + e.rangee * rangee_h
+        etiquettes = self._etiquettes()
+        p.setPen(Qt.PenStyle.NoPen)
+        for e in etiquettes:
+            if e.x1 - e.x0 > 3:
+                p.setBrush(e.teinte)
+                p.drawRoundedRect(QRectF(e.x0 + 1, y(0) + _BARRE_Y, e.x1 - e.x0 - 2, _BARRE_H), 1.5, 1.5)
+        for e in etiquettes:
+            y0 = y(0) + _NOMS_Y + e.rangee * rangee_h
             if e.rangee > 0:
                 p.setPen(QPen(_TIRET, 1))
-                p.drawLine(QRectF(e.cx, y(0) + 12, 0, y0 - y(0) - 13).topLeft(), QRectF(e.cx, y(0) + 12, 0, y0 - y(0) - 13).bottomLeft())
+                y_haut = y(0) + _BARRE_Y + _BARRE_H + 1
+                p.drawLine(QRectF(e.cx, y_haut, 0, y0 - y_haut - 1).topLeft(), QRectF(e.cx, y_haut, 0, y0 - y_haut - 1).bottomLeft())
             p.setPen(e.couleur)
             p.setFont(petite if mini else police)
             # 14 px de haut aussi en mini : à 11 px les jambages (« p » de possible) étaient rognés.

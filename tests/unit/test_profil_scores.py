@@ -357,6 +357,16 @@ def test_placer_libelles_lignes_option_a():
     # pour laisser l'équilibre entier à droite de la sienne
     res = placer_libelles_lignes([(105.0, [("seuil 0,29", 50.0)], [0]), eq(130.0)], 1, 320.0)
     assert res == [(0, 52.0, "seuil 0,29"), (0, 133.0, "équilibre (F1) 0,37")]
+    # la ligne du seuil ne se traverse jamais : l'équilibre (0,28, juste après le seuil
+    # 0,26) ne se pose pas à gauche de sa ligne en travers du seuil, même sur une autre rangée
+    seuil26 = (100.0, [("seuil 0,26", 50.0)], [0, 1])
+    eq28 = (110.0, [("équilibre (F1) 0,28", 90.0)], [0, 1])
+    res = placer_libelles_lignes([seuil26, eq28], 2, 400.0, lignes=[100.0, 110.0])
+    assert res[1] is not None and not (res[1][1] - 2 < 100.0 < res[1][1] + 90.0 + 2)
+    # à variante égale, la place qui ne traverse pas de ligne est préférée
+    res = placer_libelles_lignes([(300.0, [("seuil 0,8", 40.0)], [0]), (100.0, [("0,35", 20.0)], [0, 1])],
+                                 2, 400.0, lignes=[300.0, 100.0, 112.0])
+    assert res[1] == (0, 77.0, "0,35")            # à gauche : à droite elle traversait la ligne en 112
 
 
 def test_couleur_de_la_couche_qualifiee_en_comparaison():

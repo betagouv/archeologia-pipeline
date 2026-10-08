@@ -283,4 +283,6 @@ fileignoreconfig:
   checksum: 342b477c612265f7d798d7e3a7e1a4ac7fe852d413369d4b29a4e2ed93419872
 - filename: aide/img/etape3-fiche-classe.png
   checksum: 1a97c92ef4706ca8219e2e241931127733237e1eefbc64c34ba9bf1367502183
+- filename: data/third_party/cv_runner_onnx/windows/build_info.json
+  checksum: 45011b4d0aad06531d94d7f21b30a4df2e89c60bfc0c3d170162d814c1ae2b32
 version: '1.0'

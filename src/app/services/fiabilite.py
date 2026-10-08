@@ -260,7 +260,7 @@ def hint_etape3(par_classe: Mapping[str, Sequence[Categorie]]) -> str:
     for classe, cats in par_classe.items():
         if not cats:
             continue
-        coupures = " · ".join(f"{c.label.lower()} dès {c.seuil:.2f}" for c in sorted(cats, key=lambda x: x.seuil))
+        coupures = " · ".join(f"{c.label.lower()} dès {c.seuil:.2f}".replace(".", ",") for c in sorted(cats, key=lambda x: x.seuil))
         parties.append(f"{classe} : {coupures}" if len(par_classe) > 1 else coupures)
     if not parties:
         return ""

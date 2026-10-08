@@ -209,3 +209,20 @@ elles la fiche reste valide, l'outil dit lesquelles manquent.
 
 Pas de chirurgie textuelle ici, contrairement aux `model_card.yaml` :
 `indices_fiches.json` est du JSON pur, sans commentaires à préserver.
+
+## Situer les zones d'apprentissage — `zones_corpus.py`
+
+Le bandeau « Appris sur » de la fiche de classe (bloc « Ce que le modèle a appris ») place chaque zone
+d'entraînement sur une carte. `zones_corpus.py` écrit `data/zones_corpus.json` (versionné, livré) :
+l'emprise de chaque zone (union des tuiles de ses `split_manifest.yaml` dans training-models), le
+rapprochement nom de fiche → zone (département, puis mots du nom) et les contours de la France et de
+l'Irlande (Natural Earth via la carte du monde de QGIS, simplifiés). À relancer **après l'installation
+d'un modèle** dont une fiche cite une zone nouvelle ; `tests/unit/test_carte_zones.py` échoue tant
+qu'une zone d'une fiche installée n'est pas située. Python de QGIS (GDAL) :
+
+```
+C:/OSGeo4W/bin/python-qgis.bat dev/fiches/zones_corpus.py --training-models C:/projets/Archeologia/training-models --sortie data/zones_corpus.json
+```
+
+Rapport (noms situés, non situés) : `dev/docs/_local/zones_corpus.log`.
+

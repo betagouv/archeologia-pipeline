@@ -601,6 +601,8 @@ QPushButton[role="micro"] {
 }
 #FicheSep { color: #e3e3e3; max-height: 1px; }
 #FicheLegende { color: #5a5a5a; font-size: 10px; }
+/* Bandeau « Appris sur » (carte des zones d'apprentissage, 2026-10-08). */
+#CarteZonesBandeau { background: #fafafa; border: 1px solid #e3e3e3; border-radius: 4px; }
 #FicheSousTitre { color: #2c2c2c; font-size: 11px; font-weight: bold; margin-top: 4px; }
 /* Tableaux comparatifs des produits (fiche d'indice). La case affiche le
    symbole publié (``-`` / ``o`` / ``+`` / ``++``) : la couleur ne fait que

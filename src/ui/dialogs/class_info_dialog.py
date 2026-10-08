@@ -44,6 +44,18 @@ from ..icons import colored_icon
 from ..widgets.vignette import ARDOISE, FicheButton, couleur_texte, pastille, pixmap_ajuste
 from ...app.services.profil_scores import libelle_zone, zones_sans_objet
 from ..widgets.profil_scores import couleur_de_classe, figure_profil, figures_par_zone, ligne_essai_seuil
+from ...app.services.carte_zones import charger as charger_zones_corpus
+from ..widgets.carte_zones import bandeau_appris_sur
+
+_ZONES_CORPUS: Optional[dict] = None
+
+
+def _zones_corpus() -> dict:
+    """``data/zones_corpus.json`` (emprises des zones, contours), lu une fois."""
+    global _ZONES_CORPUS
+    if _ZONES_CORPUS is None:
+        _ZONES_CORPUS = charger_zones_corpus(Path(__file__).resolve().parents[3])
+    return _ZONES_CORPUS
 
 _VIGNETTE_MAX = 320  # côté max de l'aperçu, en px logiques
 
@@ -264,7 +276,7 @@ class _CorpsFiche(QWidget):
         # que je la veux (dans quelle optique, ne détecte pas) → sur quoi elle a été
         # apprise → ce qu'elle vaut (fiabilité : texte, figure, essai de seuil,
         # zones, d'un seul tenant) → limites → contexte technique et fiche du modèle.
-        blocs = dict(self._blocs(fiche))
+        blocs = dict(self._blocs(fiche, base))
 
         # — aperçu + reconnaître côte à côte —
         haut = QHBoxLayout()
@@ -419,7 +431,7 @@ class _CorpsFiche(QWidget):
                 "le terrain dit ce qu'il vaut ici.")
 
     @staticmethod
-    def _entrainement(f: ClassFiche) -> str:
+    def _entrainement(f: ClassFiche, avec_zones: bool = True) -> str:
         e = f.entrainement
         if e is None:
             return ""
@@ -428,7 +440,7 @@ class _CorpsFiche(QWidget):
             lignes.extend(_lignes_liste("Corpus", e.corpus))
         if e.annotation:
             lignes.extend(_lignes_liste("Annotation", e.annotation))
-        if e.zones:
+        if e.zones and avec_zones:
             lignes.append("")
             lignes.append("Zones d'apprentissage :")
             for z in e.zones:
@@ -453,10 +465,24 @@ class _CorpsFiche(QWidget):
             )
         return "\n".join(lignes)
 
-    def _blocs(self, f: ClassFiche):
+    def _blocs(self, f: ClassFiche, couleur=None):
         out = []
-        txt = self._entrainement(f)
-        if txt:
+        # Bandeau « Appris sur » (carte + zones, 2026-10-08) en tête du bloc : il
+        # remplace la liste des zones en texte ; sans zone située, la liste reste.
+        bandeau = None
+        if f.entrainement is not None and f.entrainement.zones:
+            bandeau = bandeau_appris_sur(f.entrainement.zones, _zones_corpus(), couleur or (42, 120, 214))
+        txt = self._entrainement(f, avec_zones=bandeau is None)
+        if bandeau is not None:
+            contenu = QWidget()
+            pile = QVBoxLayout(contenu)
+            pile.setContentsMargins(0, 0, 0, 0)
+            pile.setSpacing(8)
+            pile.addWidget(bandeau)
+            if txt.strip():
+                pile.addWidget(_label(txt.strip("\n"), "FicheTexte"))
+            out.append(("Ce que le modèle a appris", contenu))
+        elif txt:
             out.append(("Ce que le modèle a appris", _label(txt, "FicheTexte")))
         elif not f.est_complete:
             out.append((

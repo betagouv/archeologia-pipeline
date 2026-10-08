@@ -2,41 +2,41 @@
 
 ## Le dossier de sortie
 
+Deux dossiers, une règle : `livrable/` se garde et se transmet, `technique/` se supprime.
+
 ```
 dossier_de_sortie/
-├── metadata.json                      résumé du traitement et configuration complète
-├── rapport.html                       rapport du traitement, à ouvrir dans le navigateur
-├── pipeline_log_AAAAMMJJ_HHMMSS.txt   journal détaillé, un par lancement
-├── sources/                           dalles LiDAR téléchargées ou copiées
-├── intermediaires/                    fichiers techniques par dalle, supprimables
-├── indices/
-│   ├── MNT/tif/                       le modèle de terrain, dalle par dalle
-│   │   └── index_MNT.vrt              la mosaïque, chargée dans QGIS
-│   ├── SVF_R10_D16_V1_N0/tif/         un indice, avec ses réglages dans le nom
-│   │   └── index_SVF.vrt
-│   └── …/png/                         images préparées pour la détection
-└── detections/
-    ├── detections_validation.qgs      le projet QGIS, tout regroupé et stylé
-    ├── parcellaire/parcellaire.gpkg   un GeoPackage par entité
-    ├── parcellaire/fiabilite.json     les coupures de fiabilité de cette couche
-    └── _technique/<modèle>/           sorties brutes et images annotées
+├── livrable/                          ce que vous gardez et transmettez
+│   ├── projet.qgs                     le projet QGIS, tout regroupé et stylé : le point d'entrée
+│   ├── rapport.html                   le rapport du traitement, à ouvrir dans le navigateur
+│   ├── traitement.json                résumé du dernier traitement, sans chemin de votre poste
+│   ├── indices/
+│   │   ├── MNT/tif/                   le modèle de terrain, dalle par dalle
+│   │   │   └── index_MNT.vrt          la mosaïque, chargée dans QGIS
+│   │   └── SVF_R10_D16_V1_N0/tif/     un indice, avec ses réglages dans le nom
+│   │       └── index_SVF.vrt
+│   └── detections/
+│       ├── parcellaire/parcellaire.gpkg   un GeoPackage par entité
+│       └── parcellaire/fiabilite.json     les coupures de fiabilité de cette couche
+└── technique/                         ce que vous pouvez supprimer
+    ├── sources/dalles/                dalles LiDAR téléchargées, re-téléchargeables
+    ├── intermediaires/                fichiers de calcul par dalle
+    ├── png/                           images préparées pour la détection
+    ├── detection/<modèle>/            sorties brutes et images annotées
+    └── journaux/                      un journal et une trace complète par lancement
 ```
 
-Trois familles :
-
-- **sources** : vos données d'entrée, telles que reçues ;
-- **intermédiaire** : `intermediaires/` et `detections/_technique/`, régénérables, utiles seulement pour comprendre un problème ;
-- **résultat** : `indices/…/tif/`, les mosaïques `index_<PRODUIT>.vrt`, les GeoPackages de `detections/` et le projet `.qgs`.
+Copier `livrable/` suffit à transmettre un traitement : le projet QGIS y retrouve ses couches par des chemins relatifs. Supprimer `technique/` libère la place ; un traitement relancé re-télécharge ou recalcule ce qui manque.
 
 ### Le nom d'un dossier d'indice
 
-Le dossier d'un indice porte ses réglages : `SVF_R10_D16_V1_N0` est un facteur de vue du ciel à rayon 10 pixels, 16 directions, exagération 1, sans suppression de bruit ; `LD_A15_Rmin10_Rmax20_H1p7_V1` une dominance locale avec ses rayons et sa hauteur d'observation. Relancer avec d'autres réglages crée un autre dossier au lieu d'écraser le premier. Le MNT, la densité et la couverture n'ont pas de réglage : leur dossier porte le nom seul. En mode Indices existants, tout va sous `indices/RVT/`.
+Le dossier d'un indice porte ses réglages : `SVF_R10_D16_V1_N0` est un facteur de vue du ciel à rayon 10 pixels, 16 directions, exagération 1, sans suppression de bruit ; `LD_A15_Rmin10_Rmax20_H1p7_V1` une dominance locale avec ses rayons et sa hauteur d'observation. Relancer avec d'autres réglages crée un autre dossier au lieu d'écraser le premier. Le MNT, la densité et la couverture n'ont pas de réglage : leur dossier porte le nom seul. En mode Indices existants, tout va sous `livrable/indices/RVT/`.
 
 Dans chaque dossier `tif/`, la mosaïque `index_<PRODUIT>.vrt` assemble toutes les dalles : c'est elle que QGIS charge, sous le même nom. Chargée à la main, elle reste reconnaissable.
 
 ## Le projet de validation
 
-`detections/detections_validation.qgs` est écrit à la fin de chaque traitement et constitue le point d'entrée pour valider les détections. Il contient les mosaïques des indices et, par entité, un groupe avec sa couche de détections stylée. Deux modèles comparés sur une même entité donnent deux couches dans un groupe marqué « comparaison ».
+`livrable/projet.qgs` est écrit à la fin de chaque traitement et constitue le point d'entrée pour valider les détections. Il contient les mosaïques des indices et, par entité, un groupe avec sa couche de détections stylée. Deux modèles comparés sur une même entité donnent deux couches dans un groupe marqué « comparaison ».
 
 Les mêmes couches sont chargées directement dans votre projet QGIS courant à la fin du traitement.
 
@@ -73,16 +73,18 @@ Ouvrez le projet de validation, parcourez une couche de détections avec l'indic
 
 Pour une dalle, les détections de toutes les entités se superposent sans doublon aux bords : chaque dalle ne rapporte que les objets dont le centre est chez elle.
 
-## Le fichier metadata.json
+## Les traces d'un traitement
 
-À la racine du dossier de sortie, il documente le traitement : version du plugin, date, nombre de dalles traitées, produits et leurs réglages, modèles lancés, entités produites avec le chemin de leur GeoPackage, le bilan de fiabilité par entité (effectifs par niveau) et la configuration complète de l'assistant. Il sert de trace pour l'archivage. Il porte des chemins de votre poste : pour transmettre un traitement, préférez le rapport.
+`livrable/traitement.json` résume le dernier traitement : version du plugin, date, nombre de dalles, produits et leurs réglages, modèles lancés, entités produites avec le chemin de leur GeoPackage, le bilan de fiabilité par entité. Il ne porte aucun chemin de votre poste et se transmet avec le livrable.
+
+`technique/journaux/` garde, pour chaque lancement, le journal détaillé `pipeline_log_<date>.txt` et la trace complète `metadata_<date>.json`, avec la configuration entière de l'assistant, chemins de votre poste compris. C'est ce qu'il faut joindre à une demande d'aide.
 
 ## Faire de la place
 
-Une fois le traitement validé, vous pouvez supprimer sans perdre de résultat :
+Une fois le traitement validé, supprimez `technique/` : rien du livrable n'en dépend. Si vous voulez garder les nuages de points téléchargés, déplacez d'abord `technique/sources/`. Un traitement relancé dans le même dossier re-télécharge ou recalcule ce qui manque.
 
-- `intermediaires/` en entier ;
-- `detections/_technique/` ;
-- les dossiers `png/` des indices, régénérables depuis les `tif/`.
+Sur Windows, un dossier de sortie très profond peut dépasser la limite de 260 caractères d'un chemin : choisissez un dossier de sortie court.
 
-Gardez `indices/…/tif/` avec leurs mosaïques, les GeoPackages, le projet `.qgs` et `metadata.json`. Sur Windows, un dossier de sortie très profond peut dépasser la limite de 260 caractères d'un chemin : choisissez un dossier de sortie court.
+## Un dossier d'une version précédente
+
+Un dossier de sortie écrit avant cette organisation garde ses anciens dossiers à la racine : `indices/`, `detections/`, `intermediaires/`, `sources/`, les journaux et `metadata.json`. Au lancement d'un traitement dans ce dossier, le plugin propose de le réorganiser et attend votre accord : il montre ce qui sera déplacé, déplace sans copier, et retire du projet QGIS les couches chargées depuis les anciens emplacements, rechargées en fin de traitement. Ce qu'il ne reconnaît pas, par exemple un dossier que vous avez posé vous-même, ne bouge pas et vous est indiqué. Refusez, et le traitement n'est pas lancé : choisissez alors un autre dossier de sortie.

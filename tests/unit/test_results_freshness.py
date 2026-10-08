@@ -102,7 +102,7 @@ class TestFreshPublication:
         # Cache invalidé → intermédiaire recalculé (plus récent que le publié)
         src.unlink()
         src = self._write_source(tmp_path)
-        published = next((tmp_path / "out" / "indices" / "MNT" / "tif").glob("*.tif"))
+        published = next((tmp_path / "out" / "livrable" / "indices" / "MNT" / "tif").glob("*.tif"))
         t = published.stat().st_mtime
         os.utime(src, (t + 10, t + 10))
 
@@ -143,7 +143,7 @@ class TestFreshPublication:
             output_formats={"tif": True},
             rvt_params={},
         )
-        published = next((tmp_path / "out" / "indices" / "MNT" / "tif").glob("*.tif"))
+        published = next((tmp_path / "out" / "livrable" / "indices" / "MNT" / "tif").glob("*.tif"))
         assert published.stat().st_mtime == pytest.approx(src.stat().st_mtime)
 
 

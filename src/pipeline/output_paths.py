@@ -1,27 +1,29 @@
 """
 Centralise toutes les résolutions de chemins du dossier de sortie du pipeline.
 
-Nouvelle arborescence (v2) :
+Arborescence v3 (2026-10-08) — deux racines, une règle : ``livrable/`` se garde et
+se transmet, ``technique/`` se supprime.
+
     <output_dir>/
-    ├── indices/            # ex-results/ – rasters finaux (MNT, SVF, LD…)
-    │   ├── MNT/tif/                    # MNT/DENSITE : pas de paramètres → code brut
-    │   ├── SVF_R10_D16_V1_N0/tif/      # nom = code indice + suffixe de paramètres RVT
-    │   └── LD_A15_Rmin10_Rmax20_H1p7_V1/
-    │       ├── tif/
-    │       └── png/        # images PNG pour l'inférence
-    ├── detections/         # résultats CV, organisés par ENTITÉ (vocabulaire utilisateur)
-    │   ├── detections_validation.qgs   # projet consolidé (point d'entrée), couches groupées par entité
-    │   ├── <entity_slug>/              # ex. parcellaire/, chemins_creux/…
-    │   │   └── <entity_slug>.gpkg      # détections de l'entité
-    │   └── _technique/                 # échafaudage non-livrable (traçabilité/debug)
-    │       └── <model_slug>/
-    │           ├── raw_detections/     # JSON/TXT inférence
-    │           └── annotated_images/   # images annotées (si option activée)
-    ├── sources/            # données d'entrée (dalles LAZ, urls…)
-    │   ├── dalles/
-    │   └── dalles_urls.txt
-    ├── intermediaires/     # fichiers temporaires
-    └── metadata.json
+    ├── livrable/
+    │   ├── projet.qgs                  # projet QGIS consolidé : le point d'entrée
+    │   ├── rapport.html (+ rapport_vignette.png)
+    │   ├── traitement.json             # trace du dernier traitement, sans chemin de poste
+    │   ├── indices/
+    │   │   ├── MNT/tif/                # MNT/DENSITE/COUVERTURE : pas de paramètres → code brut
+    │   │   └── SVF_R10_D16_V1_N0/tif/  # nom = code indice + suffixe de paramètres RVT
+    │   └── detections/                 # par ENTITÉ (vocabulaire utilisateur)
+    │       └── <entity_slug>/<entity_slug>.gpkg + fiabilite.json
+    └── technique/
+        ├── sources/dalles/ + dalles_urls.txt   # LAZ reçus, re-téléchargeables
+        ├── intermediaires/             # LAZ fusionnés, TIF non rognés (halo), fichiers de calcul
+        ├── png/<PRODUIT>/              # images d'inférence
+        ├── detection/<modèle>/         # raw_detections/, annotated_images/ (traçabilité)
+        └── journaux/                   # pipeline_log_<ts>.txt + metadata_<ts>.json par lancement
+
+La migration d'un dossier v2 (``indices/``, ``detections/``… à la racine) est dans
+``app/services/arborescence.py`` ; ``select_stale_entity_variant_dirs`` et
+``build_entity_class_targets`` restent ici.
 """
 from __future__ import annotations
 
@@ -34,11 +36,43 @@ from typing import Any, Dict
 #  Constantes – noms de dossiers racine                                #
 # ------------------------------------------------------------------ #
 
+VERSION_ARBORESCENCE = 3
+DIR_LIVRABLE = "livrable"
+DIR_TECHNIQUE = "technique"
 DIR_INDICES = "indices"
 DIR_DETECTIONS = "detections"
-DIR_TECHNIQUE = "_technique"   # sous-dossier de detections/ : échafaudage non-livrable
 DIR_SOURCES = "sources"
 DIR_INTERMEDIAIRES = "intermediaires"
+DIR_PNG = "png"
+DIR_DETECTION = "detection"      # technique/detection/<modèle>/ : sorties brutes, images annotées
+DIR_JOURNAUX = "journaux"
+NOM_PROJET = "projet.qgs"
+NOM_TRAITEMENT = "traitement.json"
+
+
+def livrable_dir(output_dir: Path) -> Path:
+    """Ce que l'utilisateur garde et transmet : ``<output>/livrable/``."""
+    return output_dir / DIR_LIVRABLE
+
+
+def technique_dir(output_dir: Path) -> Path:
+    """Ce que l'utilisateur peut supprimer : ``<output>/technique/``."""
+    return output_dir / DIR_TECHNIQUE
+
+
+def projet_qgs_path(output_dir: Path) -> Path:
+    """Le projet QGIS consolidé : ``<output>/livrable/projet.qgs``."""
+    return livrable_dir(output_dir) / NOM_PROJET
+
+
+def traitement_json_path(output_dir: Path) -> Path:
+    """La trace du dernier traitement, sans chemin de poste : ``<output>/livrable/traitement.json``."""
+    return livrable_dir(output_dir) / NOM_TRAITEMENT
+
+
+def journaux_dir(output_dir: Path) -> Path:
+    """Journaux et métadonnées complètes, un couple par lancement : ``<output>/technique/journaux/``."""
+    return technique_dir(output_dir) / DIR_JOURNAUX
 
 
 # ------------------------------------------------------------------ #
@@ -46,8 +80,8 @@ DIR_INTERMEDIAIRES = "intermediaires"
 # ------------------------------------------------------------------ #
 
 def indices_dir(output_dir: Path) -> Path:
-    """Racine des indices raster : ``<output>/indices/``."""
-    return output_dir / DIR_INDICES
+    """Racine des indices raster : ``<output>/livrable/indices/``."""
+    return livrable_dir(output_dir) / DIR_INDICES
 
 
 def indice_tif_dir(output_dir: Path, product_name: str) -> Path:
@@ -56,8 +90,8 @@ def indice_tif_dir(output_dir: Path, product_name: str) -> Path:
 
 
 def indice_png_dir(output_dir: Path, product_name: str) -> Path:
-    """Dossier PNG pour un indice (images d'inférence) : ``<output>/indices/<PRODUCT>/png/``."""
-    return indices_dir(output_dir) / product_name / "png"
+    """Images d'inférence d'un indice : ``<output>/technique/png/<PRODUCT>/``."""
+    return technique_dir(output_dir) / DIR_PNG / product_name
 
 
 def indice_jpg_dir(output_dir: Path, product_name: str) -> Path:
@@ -86,13 +120,13 @@ def index_vrt_filename(product_name: str) -> str:
 # ------------------------------------------------------------------ #
 
 def detections_dir(output_dir: Path) -> Path:
-    """Racine des détections CV : ``<output>/detections/``."""
-    return output_dir / DIR_DETECTIONS
+    """Racine des détections CV : ``<output>/livrable/detections/``."""
+    return livrable_dir(output_dir) / DIR_DETECTIONS
 
 
 def detection_model_dir(output_dir: Path, model_slug: str) -> Path:
-    """Dossier d'un modèle de détection : ``<output>/detections/<model>/``."""
-    return detections_dir(output_dir) / model_slug
+    """Dossier technique d'un modèle (alias de ``detection_technique_dir``)."""
+    return detection_technique_dir(output_dir, model_slug)
 
 
 def detection_shapefiles_dir(output_dir: Path, model_slug: str) -> Path:
@@ -139,7 +173,7 @@ def detection_technique_dir(output_dir: Path, model_slug: str) -> Path:
     Regroupe le **non-livrable** (dumps d'inférence, images annotées) hors de la
     vue entité-centrée, sans le perdre (traçabilité / debug).
     """
-    return detections_dir(output_dir) / DIR_TECHNIQUE / model_slug
+    return technique_dir(output_dir) / DIR_DETECTION / model_slug
 
 
 def detection_technique_raw_dir(output_dir: Path, model_slug: str) -> Path:
@@ -182,7 +216,7 @@ def select_stale_entity_variant_dirs(output_dir: Path, cv_runs: Any) -> list:
     # Base = tronc avant le séparateur « -- » (un slug de base, issu de
     # slugify, ne contient jamais de tiret : « -- » est donc bien le nôtre).
     bases = {s.split("--", 1)[0] for s in current}
-    det_dir = output_dir / "detections"
+    det_dir = detections_dir(output_dir)
     if not det_dir.is_dir():
         return []
     stale = []
@@ -259,8 +293,8 @@ def build_entity_class_targets(output_dir: Path, entities: Any):
 # ------------------------------------------------------------------ #
 
 def sources_dir(output_dir: Path) -> Path:
-    """Racine des données source : ``<output>/sources/``."""
-    return output_dir / DIR_SOURCES
+    """Racine des données source : ``<output>/technique/sources/``."""
+    return technique_dir(output_dir) / DIR_SOURCES
 
 
 def dalles_dir(output_dir: Path) -> Path:
@@ -268,13 +302,18 @@ def dalles_dir(output_dir: Path) -> Path:
     return sources_dir(output_dir) / "dalles"
 
 
+def dalles_urls_path(output_dir: Path) -> Path:
+    """La liste des dalles résolues : ``<output>/technique/sources/dalles_urls.txt``."""
+    return sources_dir(output_dir) / "dalles_urls.txt"
+
+
 # ------------------------------------------------------------------ #
 #  Intermédiaires                                                       #
 # ------------------------------------------------------------------ #
 
 def intermediaires_dir(output_dir: Path) -> Path:
-    """Racine des fichiers intermédiaires : ``<output>/intermediaires/``."""
-    return output_dir / DIR_INTERMEDIAIRES
+    """Racine des fichiers intermédiaires : ``<output>/technique/intermediaires/``."""
+    return technique_dir(output_dir) / DIR_INTERMEDIAIRES
 
 
 # ------------------------------------------------------------------ #

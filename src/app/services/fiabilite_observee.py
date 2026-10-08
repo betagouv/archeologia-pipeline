@@ -161,7 +161,8 @@ def agreger(dossiers: Sequence[Path]) -> Dict[Tuple[str, str], Dict[str, Compte]
     par_label = {lab.lower(): cat for cat, lab in LABELS_FR.items()}
     out: Dict[Tuple[str, str], Dict[str, Compte]] = {}
     for dossier in dossiers:
-        for gpkg in sorted(Path(dossier).glob("detections/*/*.gpkg")):
+        # v3 (livrable/detections/) et v2 (detections/) : les runs du registre ont pu être écrits par l'une ou l'autre.
+        for gpkg in sorted([*Path(dossier).glob("livrable/detections/*/*.gpkg"), *Path(dossier).glob("detections/*/*.gpkg")]):
             for modele, classe, fiab, validation, corr in lire_verdicts_gpkg(gpkg):
                 cat = par_label.get(fiab.lower())
                 if cat is None or not classe:

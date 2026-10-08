@@ -39,11 +39,14 @@ from ..app.progress_stages import STAGE_LABELS, build_stage_sequence
 from ..app.services.aide import AIDE_DIRNAME, CLE_DEPANNAGE, resoudre_cible, rubrique_depannage, slug
 from ..app.services.bilan_fiabilite import collecter as collecter_bilan
 from ..app.services.fiabilite_observee import enregistrer_run
+from ..app.services.arborescence import appliquer, decrire, non_reconnus, plan_migration
 from ..app.services.rapport_run import NOM_RAPPORT
+from ..pipeline.output_paths import detections_dir, journaux_dir, livrable_dir, projet_qgs_path
 from .widgets.bilan_fiabilite import BilanFiabiliteWidget, legende_niveaux
 from .icons import colored_icon
 from .layer_loader import load_result_layers, purge_output_dir_layers
 from .log_bridge import QtLogEmitter, QtLogHandler
+from qgis.PyQt.QtWidgets import QMessageBox
 
 # Couleurs par niveau dans le journal sombre (#1c1b18) : warnings ambre,
 # erreurs rouges — le texte info garde la couleur par défaut du QSS (#d8d4cc).
@@ -556,6 +559,29 @@ class RunView(QWidget):
         # chargées (run précédent) AVANT que le worker régénère les VRT. Sinon QGIS,
         # qui détient toujours l'ancien dataset, réécrit sa version périmée par-dessus
         # le VRT régénéré → les dalles ajoutées resteraient invisibles. Thread principal.
+        # Dossier écrit par une version précédente (arborescence v2) : proposer la
+        # réorganisation en livrable/ + technique/ (2026-10-08), jamais en silence.
+        plan = plan_migration(ctx.output_dir)
+        if plan:
+            texte = decrire(plan, ctx.output_dir, non_reconnus(ctx.output_dir, plan))
+            rep = QMessageBox.question(
+                self, "Réorganiser le dossier de sortie ?", texte,
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel,
+                QMessageBox.StandardButton.Yes,
+            )
+            if rep != QMessageBox.StandardButton.Yes:
+                self._reset_view()
+                self._append_log("INFO", "Lancement annulé : le dossier de sortie garde son ancienne organisation. "
+                                         "Choisissez un autre dossier de sortie, ou acceptez la réorganisation.")
+                return
+            purge_output_dir_layers(ctx.output_dir, self._logger)   # couches sur les anciens chemins
+            erreurs = appliquer(plan, log=lambda m: self._logger.log(USER_INFO, m))
+            if erreurs:
+                self._reset_view()
+                self._append_log("ERROR", "❌ Réorganisation incomplète — fermez les couches QGIS chargées depuis ce dossier, puis relancez :")
+                for e in erreurs:
+                    self._append_log("ERROR", f"   • {e}")
+                return
         purge_output_dir_layers(ctx.output_dir, self._logger)
         # Registre des runs connus (profil QGIS) : la fiche de classe y lira vos
         # verdicts (fiabilité observée, 2026-10-08). Jamais bloquant.
@@ -913,7 +939,7 @@ class RunView(QWidget):
         self._dot_anim.stop()
         self._activity_dot.setVisible(False)
         out_dir = self._output_dir()
-        self._open_report_btn.setEnabled(bool(out_dir and (out_dir / NOM_RAPPORT).is_file()))
+        self._open_report_btn.setEnabled(bool(out_dir and (livrable_dir(out_dir) / NOM_RAPPORT).is_file()))
         self._show_end_banner()
         self._cancel_event.clear()
         # Filet de sécurité : ne jamais rester bloqué en barre indéterminée.
@@ -980,7 +1006,7 @@ class RunView(QWidget):
         # Bilan de fiabilité du run (sidecars, lecture pure) pour la vue de fin.
         out_dir = self._output_dir()
         try:
-            self._bilan = collecter_bilan(out_dir / "detections", cv.get("runs")) if out_dir else []
+            self._bilan = collecter_bilan(detections_dir(out_dir), cv.get("runs")) if out_dir else []
         except Exception:  # noqa: BLE001 — jamais bloquant
             self._bilan = []
         # Écriture du .qgs différée d'un tick d'event-loop : l'UI repeint les
@@ -1009,7 +1035,7 @@ class RunView(QWidget):
                 all_classes = sorted({
                     s.split("|layername=")[-1] for s in shapefile_paths if s
                 })
-                qgs_path = out_dir / "detections" / "detections_validation.qgs"
+                qgs_path = projet_qgs_path(out_dir)
                 qgs_path.parent.mkdir(parents=True, exist_ok=True)
                 write_validation_project(
                     qgs_path, list(vrt_paths), list(shapefile_paths),
@@ -1050,13 +1076,13 @@ class RunView(QWidget):
 
     def _open_report(self) -> None:
         d = self._output_dir()
-        if d and (d / NOM_RAPPORT).is_file():
-            QDesktopServices.openUrl(QUrl.fromLocalFile(str(d / NOM_RAPPORT)))
+        if d and (livrable_dir(d) / NOM_RAPPORT).is_file():
+            QDesktopServices.openUrl(QUrl.fromLocalFile(str(livrable_dir(d) / NOM_RAPPORT)))
 
     def _open_log(self) -> None:
         d = self._output_dir()
         if not (d and d.is_dir()):
             return
-        logs = sorted(d.glob("pipeline_log_*.txt"))
+        logs = sorted(journaux_dir(d).glob("pipeline_log_*.txt")) or sorted(d.glob("pipeline_log_*.txt"))
         if logs:
             QDesktopServices.openUrl(QUrl.fromLocalFile(str(logs[-1])))

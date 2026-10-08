@@ -164,7 +164,8 @@ def test_finalize_ecrit_le_rapport_sans_rien_situer(tmp_path, monkeypatch):
     monkeypatch.setattr(finalize_service, "_collect_vrt_paths_and_build", lambda *a, **k: [])
     monkeypatch.setattr(finalize_service, "_build_coverage_polygons", lambda *a, **k: None)
     raster = tmp_path / "indices" / "LHD_FXX_0988_6872_LD.tif"
-    (tmp_path / "pipeline_log_20261008_104200.txt").write_text(
+    (tmp_path / "technique" / "journaux").mkdir(parents=True)
+    (tmp_path / "technique" / "journaux" / "pipeline_log_20261008_104200.txt").write_text(
         "2026-10-08 10:42:00,000 - WARNING - Dalle 3 abandonnée après 2 tentatives\n"
         f"2026-10-08 10:42:01,000 - WARNING - Erreur rasterio pour {raster}: x\n", encoding="utf-8")
     cv_cfg = {"enabled": True, "runs": [{
@@ -181,7 +182,7 @@ def test_finalize_ecrit_le_rapport_sans_rien_situer(tmp_path, monkeypatch):
         cv_stats=[{"modele": "M", "model": "M", "target_rvt": "LD", "images": 4, "secondes": 9.0}],
     )
     assert ok is True
-    h = (tmp_path / NOM_RAPPORT).read_text(encoding="utf-8")
+    h = (tmp_path / "livrable" / NOM_RAPPORT).read_text(encoding="utf-8")
     assert "Nuages locaux" in h and "2 dalles traitées, sur 3 prévues." in h
     assert "rayon de 10 à 20 px, résolution angulaire 15°, hauteur d'observateur 1,7 m" in h
     assert "Modèle test (LD), sur LD" in h and "0,29" in h and "4 images en 9s" in h and "Parcellaire" in h
@@ -190,8 +191,8 @@ def test_finalize_ecrit_le_rapport_sans_rien_situer(tmp_path, monkeypatch):
     assert "Durées par étape" in h and "Finalisation" in h          # marque posée par report_stage_id
     assert "nuages de points LiDAR fournis" in h and "Relief Visualization Toolbox" in h
     assert any(NOM_RAPPORT in m for m in r.users)
-    meta = json.loads((tmp_path / "metadata.json").read_text(encoding="utf-8"))
-    assert meta["rapport"] == NOM_RAPPORT
+    meta = json.loads((tmp_path / "livrable" / "traitement.json").read_text(encoding="utf-8"))
+    assert meta["rapport"] == f"livrable/{NOM_RAPPORT}"
 
 
 def test_la_vue_ouvre_le_rapport():

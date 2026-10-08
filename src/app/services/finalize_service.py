@@ -337,6 +337,12 @@ def _ecrire_rapport_run(
     )
     from .source_modes import mode_info
 
+    try:
+        from ...pipeline.output_paths import DIR_LIVRABLE, journaux_dir, livrable_dir
+    except ImportError:  # standalone (tests)
+        from pipeline.output_paths import DIR_LIVRABLE, journaux_dir, livrable_dir  # type: ignore[no-redef]
+    from .rapport_run import NOM_RAPPORT
+
     mode = str(((ui_config.get("app") or {}).get("files") or {}).get("data_mode") or "")
     # Par modèle (slug) : son nom (model_card, via ``fiabilite.modele`` posé par
     # l'orchestrateur), le seuil réglé à l'étape 3, ses entités.
@@ -361,7 +367,7 @@ def _ecrire_rapport_run(
         for slug, info in infos.items():
             runs_rapport.append({"modele": info["modele"], "model": slug, "target_rvt": "", "seuil": info["seuil"],
                                  "entites": info["entites"], "images": None, "secondes": None})
-    journaux = sorted(Path(output_dir).glob("pipeline_log_*.txt"))
+    journaux = sorted(journaux_dir(Path(output_dir)).glob("pipeline_log_*.txt"))
     avertissements: list = []
     if journaux:
         try:
@@ -369,7 +375,7 @@ def _ecrire_rapport_run(
         except OSError:
             avertissements = []
     vrt = choisir_vrt_vignette(vrt_paths)
-    vignette = vignette_depuis_vrt(vrt, Path(output_dir) / NOM_VIGNETTE) if vrt else None
+    vignette = vignette_depuis_vrt(vrt, livrable_dir(Path(output_dir)) / NOM_VIGNETTE) if vrt else None
     etapes: List[tuple] = []
     chrono = getattr(reporter, "chrono", None)
     if chrono is not None:
@@ -400,7 +406,8 @@ def _ecrire_rapport_run(
         bilan=tuple(ligne.to_dict() for ligne in bilan), etapes=tuple(etapes),
         avertissements=tuple(avertissements), vignette=vignette,
     )
-    return ecrire_rapport(Path(output_dir), donnees).name
+    ecrire_rapport(livrable_dir(Path(output_dir)), donnees)
+    return f"{DIR_LIVRABLE}/{NOM_RAPPORT}"
 
 def finalize_pipeline(
     *,
@@ -528,8 +535,22 @@ def finalize_pipeline(
         import json as _json
         import datetime as _dt
 
+        try:
+            from ...pipeline.output_paths import (
+                DIR_DETECTIONS, DIR_INDICES, DIR_JOURNAUX, DIR_LIVRABLE, DIR_TECHNIQUE, NOM_TRAITEMENT,
+                VERSION_ARBORESCENCE, journaux_dir, livrable_dir,
+            )
+        except ImportError:  # standalone (tests)
+            from pipeline.output_paths import (  # type: ignore[no-redef]
+                DIR_DETECTIONS, DIR_INDICES, DIR_JOURNAUX, DIR_LIVRABLE, DIR_TECHNIQUE, NOM_TRAITEMENT,
+                VERSION_ARBORESCENCE, journaux_dir, livrable_dir,
+            )
+        from ..plugin_metadata import get_plugin_version
+
         meta = {
             "pipeline_version": "2.0",
+            "plugin_version": get_plugin_version(),
+            "arborescence": VERSION_ARBORESCENCE,
             "date": _dt.datetime.now().isoformat(timespec="seconds"),
             "tiles_processed": tiles_processed,
             "active_products": active_products or [],
@@ -549,8 +570,8 @@ def finalize_pipeline(
                     "entity": ent.get("id", ""),
                     "label": ent.get("label", ""),
                     "slug": ent.get("slug", ""),
-                    "folder": f"detections/{ent.get('slug', '')}",
-                    "gpkg": f"detections/{ent.get('slug', '')}/{ent.get('slug', '')}.gpkg",
+                    "folder": f"{DIR_LIVRABLE}/{DIR_DETECTIONS}/{ent.get('slug', '')}",
+                    "gpkg": f"{DIR_LIVRABLE}/{DIR_DETECTIONS}/{ent.get('slug', '')}/{ent.get('slug', '')}.gpkg",
                     "is_derived": bool(ent.get("is_derived", False)),
                     "model": r.get("selected_model", ""),
                 }
@@ -560,11 +581,15 @@ def finalize_pipeline(
             # Bilan de fiabilité par entité (effectifs par niveau, du plus sûr au
             # plus douteux) — vide sans détection ou pour un modèle sans fiabilité.
             "bilan_fiabilite": [ligne.to_dict() for ligne in bilan],
+            # Chemins RELATIFS au dossier de sortie (arborescence v3) : la trace se
+            # déplace avec lui et ne porte pas le poste.
             "structure": {
-                "indices": str(idx_dir),
+                "livrable": DIR_LIVRABLE,
+                "technique": DIR_TECHNIQUE,
+                "indices": f"{DIR_LIVRABLE}/{DIR_INDICES}",
                 # detections/ n'est créé que si la CV a produit un livrable :
                 # ne pas enregistrer de chemin fantôme quand la CV est inactive.
-                **({"detections": str(det_dir)} if Path(det_dir).is_dir() else {}),
+                **({"detections": f"{DIR_LIVRABLE}/{DIR_DETECTIONS}"} if Path(det_dir).is_dir() else {}),
             },
             "ui_config": ui_config or {},
         }
@@ -581,9 +606,20 @@ def finalize_pipeline(
             )
         except Exception as _rap_e:  # noqa: BLE001 — jamais bloquant
             reporter.info(f"Note: rapport non écrit ({_rap_e})")
-        meta_path = output_dir / "metadata.json"
+        # Deux traces (arborescence v3, 2026-10-08) : la complète, avec la configuration
+        # de l'assistant et ses chemins de poste, dans technique/journaux/ à côté du
+        # journal du même lancement ; et livrable/traitement.json, sans ui_config.
+        journaux = journaux_dir(output_dir)
+        journaux.mkdir(parents=True, exist_ok=True)
+        logs = sorted(journaux.glob("pipeline_log_*.txt"))
+        ts = logs[-1].stem[len("pipeline_log_"):] if logs else meta["date"].replace("-", "").replace(":", "").replace("T", "_")
+        meta_path = journaux / f"metadata_{ts}.json"
         meta_path.write_text(_json.dumps(meta, indent=2, ensure_ascii=False), encoding="utf-8")
-        reporter.info(f"Métadonnées enregistrées: {meta_path.name}")
+        trace = {k: v for k, v in meta.items() if k != "ui_config"}
+        livrable = livrable_dir(output_dir)
+        livrable.mkdir(parents=True, exist_ok=True)
+        (livrable / NOM_TRAITEMENT).write_text(_json.dumps(trace, indent=2, ensure_ascii=False), encoding="utf-8")
+        reporter.info(f"Métadonnées enregistrées: {DIR_TECHNIQUE}/{DIR_JOURNAUX}/{meta_path.name} ; {DIR_LIVRABLE}/{NOM_TRAITEMENT}")
         if meta.get("rapport"):
             narrator.rapport_ecrit(meta["rapport"])
     except Exception as _meta_e:

@@ -51,7 +51,7 @@ Chaque raster est calculé seul, sans voisin : sur un lot de petites dalles, les
 
 ## Indices existants
 
-Vous avez déjà les indices de visualisation, par exemple produits par un run précédent ou par un autre outil. Le dossier est lu tel quel, les images sont préparées pour les modèles et la détection s'exécute. Même exigence de projection : Lambert-93. Les résultats sont rangés sous `indices/RVT/`, le plugin ne connaissant pas les réglages qui ont produit ces images.
+Vous avez déjà les indices de visualisation, par exemple produits par un run précédent ou par un autre outil. Le dossier est lu tel quel, les images sont préparées pour les modèles et la détection s'exécute. Même exigence de projection : Lambert-93. Les résultats sont rangés sous `livrable/indices/RVT/`, le plugin ne connaissant pas les réglages qui ont produit ces images.
 
 Pour que les objets à cheval sur deux dalles soient vus entiers, le plugin fabrique une marge à partir des dalles voisines présentes dans le dossier. Une dalle isolée n'en a pas.
 

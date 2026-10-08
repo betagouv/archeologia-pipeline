@@ -53,6 +53,6 @@ Détail dans [Étape 4 · Lancer et suivre](etape-4-lancer.md).
 
 ## À la fin
 
-Les couches sont chargées dans QGIS : les mosaïques des indices et, par entité, un GeoPackage de détections avec sa légende de fiabilité. Le projet `detections/detections_validation.qgs` dans le dossier de sortie regroupe tout, déjà stylé : c'est le point d'entrée pour valider les détections.
+Les couches sont chargées dans QGIS : les mosaïques des indices et, par entité, un GeoPackage de détections avec sa légende de fiabilité. Le projet `livrable/projet.qgs` dans le dossier de sortie regroupe tout, déjà stylé : c'est le point d'entrée pour valider les détections.
 
 Ce qu'il y a dans le dossier de sortie et comment le lire : [Vos résultats dans QGIS](resultats.md).

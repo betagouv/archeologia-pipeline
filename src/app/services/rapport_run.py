@@ -498,5 +498,6 @@ def construire_html(d: DonneesRapport) -> str:
 
 def ecrire_rapport(output_dir: Path, d: DonneesRapport) -> Path:
     chemin = Path(output_dir) / NOM_RAPPORT
+    chemin.parent.mkdir(parents=True, exist_ok=True)
     chemin.write_text(construire_html(d), encoding="utf-8")
     return chemin

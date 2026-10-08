@@ -216,7 +216,7 @@ Cette grille indique, pour chaque vague livrée, **quelles sections de tests son
 >
 > **V1** : tester les 3 régimes (idem §10).
 
-- [ ] **11.1** RVT valide → copie TIF, nettoyage orphelins. ⚠️ La conversion PNG+PGW n'a lieu **que si une détection est cochée** (les PNG ne servent qu'à l'inférence) : sans CV, aucun `indices/RVT/png/` ne doit apparaître.
+- [ ] **11.1** RVT valide → copie TIF, nettoyage orphelins. ⚠️ La conversion PNG+PGW n'a lieu **que si une détection est cochée** (les PNG ne servent qu'à l'inférence) : sans CV, aucun `livrable/indices/RVT/png/` ne doit apparaître.
 - [ ] **11.2 Avec détection activée** → inférence ONNX sur les JPG, shapefiles
   - Régime large : SAHI doit slicer en mémoire (pas de pré-découpage)
 
@@ -282,7 +282,7 @@ Cette grille indique, pour chaque vague livrée, **quelles sections de tests son
 
 ## 14. Finalisation
 
-- [ ] **14.1** VRT générés dans chaque `indices/<PRODUIT>/tif/`
+- [ ] **14.1** VRT générés dans chaque `livrable/indices/<PRODUIT>/tif/`
   - [ ] **14.1.a Nom distinctif** : le fichier s'appelle `index_<PRODUIT>.vrt` (ex. `index_MNT.vrt`, `index_CVAT.vrt`, `index_SLO_U0_V1.vrt`) — **pas** le générique `index.vrt` — et correspond au nom de la couche dans QGIS (`index_<PRODUIT>`). Au chargement manuel d'un `.vrt` depuis l'explorateur, le nom de couche est donc immédiatement identifiable.
 - [ ] **14.2 Shapefiles collectés et chargés dans QGIS**
   - Vérifier le style par confiance (couleurs par bin)
@@ -292,7 +292,7 @@ Cette grille indique, pour chaque vague livrée, **quelles sections de tests son
   - [ ] **14.3.c** Re-run avec la **même** sortie (couches déjà présentes dans le projet) : les logs indiquent « Couche … déjà présente », et le zoom doit **quand même** se déclencher sur l'étendue cumulée.
 - [ ] **14.4** Logs de fin de pipeline (`StructuredLogger.end_pipeline`)
 - [ ] **14.5 CRS des sorties = EPSG:2154 (pas de « unnamed »)**
-  - Après un run `local_laz`/`ign_laz` sur dalle(s) LiDAR HD : `gdalsrsinfo -o epsg <output>/indices/MNT/tif/index_MNT.vrt` → **EPSG:2154** (et non `EPSG:-1`)
+  - Après un run `local_laz`/`ign_laz` sur dalle(s) LiDAR HD : `gdalsrsinfo -o epsg <output>/livrable/indices/MNT/tif/index_MNT.vrt` → **EPSG:2154** (et non `EPSG:-1`)
   - Vérifier qu'aucun message **« Pas de transformation disponible entre unnamed et EPSG:2154 / Point outside of projection domain »** n'apparaît au chargement/zoom
   - Cas où le MNT sortait en CRS local : log attendu `CRS absent/local sur le MNT → affecté EPSG:2154` (côté pipeline) ou `CRS absent/local sur « … » → affecté EPSG:2154` (garde-fou chargement)
   - Les couches chargées s'affichent bien en Lambert-93 et le zoom se centre sur la zone (cf. §14.3)
@@ -345,7 +345,7 @@ Cette grille indique, pour chaque vague livrée, **quelles sections de tests son
 
 ## 18. Logs fichier
 
-- [ ] **18.1** Fichier `pipeline_log_*.txt` créé dans le dossier de sortie
+- [ ] **18.1** Fichier `pipeline_log_*.txt` créé dans `technique/journaux/` du dossier de sortie
 - [ ] **18.2** Contenu du fichier cohérent avec les logs affichés dans l'UI
 
 ---
@@ -386,16 +386,16 @@ Cette grille indique, pour chaque vague livrée, **quelles sections de tests son
   - Réglages avancés > onglet **Couverture** : « Seuil zones mal couvertes (%) » (défaut 30, bornes 5–95), persisté entre sessions
 - [ ] **20.2 Run avec Couverture seule (sans Densité)**
   - La passe densité tourne quand même (sert de source au calcul)
-  - `indices/COUVERTURE/tif/*.tif` créés, **pas** de dossier `indices/DENSITE/`
+  - `livrable/indices/COUVERTURE/tif/*.tif` créés, **pas** de dossier `livrable/indices/DENSITE/`
 - [ ] **20.3 Run avec Couverture + Densité**
   - La passe densité ne tourne qu'**une** fois par dalle (vérifier le journal)
-  - Les deux dossiers `indices/DENSITE/` et `indices/COUVERTURE/` existent
+  - Les deux dossiers `livrable/indices/DENSITE/` et `livrable/indices/COUVERTURE/` existent
 - [ ] **20.4 Polygones et couches QGIS**
-  - `indices/COUVERTURE/zones_mal_couvertes.gpkg` créé s'il existe des zones sous le seuil
+  - `livrable/indices/COUVERTURE/zones_mal_couvertes.gpkg` créé s'il existe des zones sous le seuil
   - Couche « Zones mal couvertes (<30 %) » hachurée rouge **tout en haut** de l'arbre
   - Raster `index_COUVERTURE` en pseudo-couleur : 0 % rouge → seuil orange → 100 % transparent
 - [ ] **20.5 Projet de validation**
-  - Rouvrir `detections/detections_validation.qgs` : mêmes couches, mêmes styles (vecteur QA + raster COUVERTURE)
+  - Rouvrir `livrable/projet.qgs` : mêmes couches, mêmes styles (vecteur QA + raster COUVERTURE)
 - [ ] **20.6 Mode MNT existant avec config résiduelle**
   - Éditer `last_ui_config.json` pour forcer `COUVERTURE: true` puis lancer en mode MNT existant
   - Warning « Produit Couverture indisponible… » dans le journal, pas d'erreur
@@ -429,7 +429,7 @@ Cette grille indique, pour chaque vague livrée, **quelles sections de tests son
 - [ ] **21.13 Fermeture / rechargement pendant la sélection** : fermer le dialogue (croix) ou recharger le plugin pendant une sélection active → pas de crash, pas d'outil-carte ni de couche orphelins.
 - [ ] **21.14 Quadrillage absent** : renommer le `.shp` → clic sur le bouton affiche un message clair, l'outil ne s'active pas.
 - [ ] **21.15 Persistance de la liste (reprise après interruption)** : lancer un run `ign_laz` à partir d'une **sélection sur carte**. Dès le début du téléchargement, `<output_dir>/dalles_urls.txt` est créé (lignes `nom,url`, en-tête `#`) et le journal indique « Liste des dalles enregistrée: dalles_urls.txt ». **Interrompre** le run après quelques dalles → le fichier est toujours présent et complet (toutes les dalles sélectionnées, pas seulement celles téléchargées).
-- [ ] **21.16 Reprise** : relancer en mode `ign_laz` avec ce `dalles_urls.txt` comme source et le **même** `output_dir` → les dalles déjà présentes dans `sources/dalles/` sont **sautées** (« déjà téléchargé »), seules les manquantes sont récupérées.
+- [ ] **21.16 Reprise** : relancer en mode `ign_laz` avec ce `dalles_urls.txt` comme source et le **même** `output_dir` → les dalles déjà présentes dans `technique/sources/dalles/` sont **sautées** (« déjà téléchargé »), seules les manquantes sont récupérées.
 
 > **Consolidation affichage (anti-« grille absente, réparée par redémarrage »)** — ⭐ P0
 
@@ -452,10 +452,10 @@ Cette grille indique, pour chaque vague livrée, **quelles sections de tests son
 
 - [ ] **22.1 Premier run** : lancer un run `ign_laz`/`local_laz` sur ≥ 2 dalles contiguës dans un `output_dir` neuf → couches `index_*` chargées, mosaïque complète. **Ne pas fermer QGIS.**
 - [ ] **22.2 Re-run avec dalle ajoutée** : relancer dans **le même** `output_dir` en ajoutant 1 dalle (distante de préférence). Au lancement, le journal indique « N couche(s) périmée(s) … retirée(s) avant régénération ». À la fin, les couches `index_*` affichent **toutes** les dalles (ancienne(s) + nouvelle).
-- [ ] **22.3 Vérif disque** : dans `indices/<PRODUIT>/tif/index_<PRODUIT>.vrt`, le nombre de `<SourceFilename>` = nombre de TIF présents (toutes dalles incluses), **sans** bloc `STATISTICS_*` parasite (signature d'une réécriture QGIS périmée). ⚠️ Une balise `<OverviewList>` seule est **normale** : `gdalbuildvrt` (GDAL ≥ 3.11) la dérive des pyramides `.ovr` des sources — seul `STATISTICS_` discrimine.
+- [ ] **22.3 Vérif disque** : dans `livrable/indices/<PRODUIT>/tif/index_<PRODUIT>.vrt`, le nombre de `<SourceFilename>` = nombre de TIF présents (toutes dalles incluses), **sans** bloc `STATISTICS_*` parasite (signature d'une réécriture QGIS périmée). ⚠️ Une balise `<OverviewList>` seule est **normale** : `gdalbuildvrt` (GDAL ≥ 3.11) la dérive des pyramides `.ovr` des sources — seul `STATISTICS_` discrimine.
 - [ ] **22.4 Persistance** : sauvegarder le projet QGIS puis le rouvrir → toujours toutes les dalles visibles.
 - [ ] **22.5 Dossier différent (non-régression)** : relancer dans un `output_dir` **différent** → aucune couche du premier run n'est retirée ; fonds de carte, polygone d'emprise (étape 1) et couche quadrillage restent **intacts** (jamais purgés).
-- [ ] **22.6 Détections** : si des détections existent, le re-run rafraîchit aussi les couches `detections/<entité>/*.gpkg` (pas de doublon, données à jour).
+- [ ] **22.6 Détections** : si des détections existent, le re-run rafraîchit aussi les couches `livrable/detections/<entité>/*.gpkg` (pas de doublon, données à jour).
 
 ## 23. Brique enclos (entité dérivée « Enclos ») ⭐ P0
 
@@ -515,32 +515,32 @@ Cette grille indique, pour chaque vague livrée, **quelles sections de tests son
 
 ## 26. Halo inter-dalles : détections non coupées aux frontières (mode `ign_laz`) ⭐ P0
 
-> **Contexte** : l'inférence CV tourne sur les TIF **non rognés** d'`intermediaires/`
+> **Contexte** : l'inférence CV tourne sur les TIF **non rognés** d'`technique/intermediaires/`
 > (dalle + marge `tile_overlap`). Un objet à cheval sur la frontière entre deux
 > dalles du run doit sortir **entier et une seule fois** dans le `.gpkg` ; le halo
 > extérieur au périmètre (NoData) ne doit produire aucune détection.
 
 - [ ] **26.1 Source non rognée** : run `ign_laz` ≥ 2 dalles adjacentes + CV active → le journal montre `Conversion TIF->PNG (existing_rvt): LHD_FXX_…_PTS_C_LAMB93_IGN69_<RVT>….tif -> …` (nom **source non rogné**, pas le nom `…_A_LAMB93`).
-- [ ] **26.2 PNG à marge** : dans `indices/<RVT…>/png/`, les PNG font ~2800×2800 px (marge 20 % @ 0,5 m) et s'alignent sur le VRT quand on les charge via leur `.pgw`.
+- [ ] **26.2 PNG à marge** : dans `livrable/indices/<RVT…>/png/`, les PNG font ~2800×2800 px (marge 20 % @ 0,5 m) et s'alignent sur le VRT quand on les charge via leur `.pgw`.
 - [ ] **26.3 Objet à cheval** : une structure traversant la frontière entre deux dalles ressort **continue** (pas de coupure rectiligne à x/y multiple de 1000 m) et **sans doublon** superposé dans la bande de recouvrement.
 - [ ] **26.4 Pas de bruit hors périmètre** : aucune détection au-delà de l'union des dalles commandées (halo extérieur clippé).
 - [ ] **26.5 Cache invalidé** : relancer dans un `output_dir` d'un run antérieur → journal `cache(s) de détection plus ancien(s) que leur PNG — purgé(s), ré-inférence` au premier passage ; résultats stables au second.
-- [ ] **26.6 VRT intact** : `indices/<X>/tif/` ne contient que des TIF 1 km rognés ; le VRT `index_<X>` s'affiche sans recouvrements ni doublons.
+- [ ] **26.6 VRT intact** : `livrable/indices/<X>/tif/` ne contient que des TIF 1 km rognés ; le VRT `index_<X>` s'affiche sans recouvrements ni doublons.
 - [ ] **26.7 Autres modes** : un run `existing_rvt` / `existing_mnt` fabrique son halo depuis les dalles voisines — voir §29.
 
 ## 27. Comparaison A/B : deux modèles pour une même entité ⭐ P0
 
 > **Contexte** : le menu « Changer ▾ » d'une carte d'entité (étape 3) est à cases
 > non exclusives — cocher 2 modèles lance un run **par modèle**, avec des sorties
-> **qualifiées par modèle** (dossiers `detections/<slug>--<modèle>/`, couches
+> **qualifiées par modèle** (dossiers `livrable/detections/<slug>--<modèle>/`, couches
 > `<classe> — <modèle>`, groupe QGIS commun « <Entité> (comparaison) »).
 
 - [ ] **27.1 Menu multi-coche** : étape 3, cocher « Parcellaire », menu « Changer ▾ » → cocher les DEUX modèles → la carte affiche « 2 modèles (comparaison) » (tooltip : les deux noms) ; le récap montre 2 runs, chacun avec la pastille « Parcellaire — <modèle> ».
-- [ ] **27.2 Dossiers séparés** : après le run, `detections/` contient `parcellaire--<modele_A>/` **et** `parcellaire--<modele_B>/`, chacun avec son `.gpkg` propre ; aucun dossier `parcellaire/` nu ; nombre d'entités différent entre les deux (modèles différents).
+- [ ] **27.2 Dossiers séparés** : après le run, `livrable/detections/` contient `parcellaire--<modele_A>/` **et** `parcellaire--<modele_B>/`, chacun avec son `.gpkg` propre ; aucun dossier `parcellaire/` nu ; nombre d'entités différent entre les deux (modèles différents).
 - [ ] **27.3 Groupe QGIS** : l'arbre de couches (live **et** `detections_validation.qgs`) montre un groupe « Parcellaire (comparaison) » contenant les 2 couches `parcellaire — <modèle>`, de **couleurs différentes**.
 - [ ] **27.4 model_name** : ouvrir la table d'attributs de chaque couche → `model_name` = le modèle de SA variante (pas le même sur les deux).
 - [ ] **27.5 Symbologie par variante** : avec des seuils par défaut différents entre les deux modèles, chaque couche affiche toutes ses tranches `conf_bin` (aucune tranche basse invisible).
-- [ ] **27.6 Retour au mono-modèle** : décocher l'un des deux dans le menu → la carte réaffiche un seul nom ; re-run → sorties dans `detections/parcellaire/` (non qualifié), comme avant.
+- [ ] **27.6 Retour au mono-modèle** : décocher l'un des deux dans le menu → la carte réaffiche un seul nom ; re-run → sorties dans `livrable/detections/parcellaire/` (non qualifié), comme avant.
 - [ ] **27.7 Persistance** : fermer/rouvrir l'assistant → la sélection 2 modèles est restaurée (`last_ui_config.json` : `entity_model_overrides` en liste).
 - [ ] **27.8 Non-régression** : une entité à un seul modèle coché (ex. Enclos) garde slug/dossier/couches/groupes identiques à avant.
 
@@ -553,19 +553,19 @@ Cette grille indique, pour chaque vague livrée, **quelles sections de tests son
 > re-run dans le même `output_dir` après changement de résolution MNT/densité
 > réutilisait silencieusement les TIF du run 1 (« Terminé en 0.0s »). Parades :
 > vérification réelle du registre Processing (bloquante) ; sidecar
-> `intermediaires/run_params.json` + purge du seul cache `intermediaires/` ;
+> `technique/intermediaires/run_params.json` + purge du seul cache `technique/intermediaires/` ;
 > **publication par fraîcheur** dans `results.py` (un intermédiaire recalculé,
-> plus récent, écrase le TIF final de même nom — `indices/` n'est jamais
+> plus récent, écrase le TIF final de même nom — `livrable/indices/` n'est jamais
 > supprimé, c'est le livrable accumulé multi-zones, cf. §22).
 
 - [ ] **28.1 Préflight rvt-qgis absent** : désactiver (décocher) le plugin « Relief Visualization Toolbox » dans le gestionnaire d'extensions, cocher un indice RVT (ex. LD) à l'étape 2 → le panneau « État du système » de l'étape 4 affiche un ✗ **critique** « Algorithmes RVT (Processing) » mentionnant l'installation/mise à jour via Extensions ; **▶ Lancer** refuse de démarrer le pipeline (préflight KO **avant** tout téléchargement).
 - [ ] **28.2 Préflight rvt-qgis présent** : réactiver rvt-qgis, redémarrer QGIS → le même check passe au ✓ (« N algorithme(s) rvt:* disponibles ») et le run démarre normalement.
-- [ ] **28.3 Re-run, paramètre changé** : run 1 `ign_laz` (1 dalle suffit) avec résolution MNT 0,5 m ; puis étape 2 → résolution MNT 2 m et re-run dans le **même** `output_dir` → la **fenêtre du wizard** affiche « ⚠️ Paramètres de traitement modifiés → cache des intermédiaires invalidé » ; la dalle est **réellement recalculée** (durée non nulle, pas de « Terminé en 0.0s »), le fichier de log montre « TIF rogné copié » et le TIF de `indices/MNT/tif/` a la nouvelle résolution (propriétés de la couche : taille de pixel 2 m — le fichier existant a bien été **écrasé**). Si la CV est active : le PNG d'inférence est régénéré (« PNG plus ancien que sa source, régénération ») et l'inférence re-tourne (pas de « déjà traité »).
+- [ ] **28.3 Re-run, paramètre changé** : run 1 `ign_laz` (1 dalle suffit) avec résolution MNT 0,5 m ; puis étape 2 → résolution MNT 2 m et re-run dans le **même** `output_dir` → la **fenêtre du wizard** affiche « ⚠️ Paramètres de traitement modifiés → cache des intermédiaires invalidé » ; la dalle est **réellement recalculée** (durée non nulle, pas de « Terminé en 0.0s »), le fichier de log montre « TIF rogné copié » et le TIF de `livrable/indices/MNT/tif/` a la nouvelle résolution (propriétés de la couche : taille de pixel 2 m — le fichier existant a bien été **écrasé**). Si la CV est active : le PNG d'inférence est régénéré (« PNG plus ancien que sa source, régénération ») et l'inférence re-tourne (pas de « déjà traité »).
 - [ ] **28.4 Re-run, paramètres identiques (reprise)** : relancer une 3e fois **sans rien changer** → pas de purge, reprise rapide sur le cache — dans le **fichier de log** (`*.txt`, canal technique, pas la fenêtre), chercher « (cache intermédiaire) » : une ligne par produit (« MNT réutilisé… », « Densité réutilisée… », « LD réutilisé… », « LAZ fusionné réutilisé… » — accord au féminin pour Densité/COUVERTURE), pas de « TIF rogné copié », « PNG déjà présent » si PNG activés, et **aucune** ré-inférence CV (cache de détections conservé) — le comportement §22 (ajout de dalle) reste intact.
-- [ ] **28.5 Bornes de la purge** : après 28.3, vérifier que `sources/dalles/*.laz` (pas de re-téléchargement) et `detections/` (si présents) n'ont **pas** été supprimés ; `intermediaires/run_params.json` existe et reflète les derniers paramètres.
-- [ ] **28.6 Multi-zones (livrables préservés)** : run 1 zone A (dalle A) à 0,5 m, puis run 2 zone B (dalle B, autre liste) à 2 m dans le **même** `output_dir` → après le run 2, `indices/MNT/tif/` contient **encore** le TIF de la dalle A (à 0,5 m, non recalculée — anciens paramètres, c'est documenté) **et** celui de la dalle B (2 m) ; le VRT `index_MNT.vrt` mosaïque les deux. Aucun livrable détruit.
-- [ ] **28.7 Purge verrouillée (Windows)** : après un run, charger dans QGIS un TIF de `intermediaires/` (cf. §26), changer la résolution MNT et relancer → le run s'arrête avec un message actionnable « … est verrouillé — fermez les couches QGIS chargées depuis ce dossier… » (pas de traceback WinError brut) ; retirer la couche et relancer → la purge passe.
-- [ ] **28.8 Extension de zone (halo re-fusionné)** : run 1 sur la dalle A seule (CV active), puis run 2 même `output_dir`, mêmes paramètres, sélection élargie {A, B} (B contiguë) → le fichier de log montre « Jeu de voisins modifié → re-fusion : A…_merged.laz » ; A est **recalculée** (MNT/RVT/PNG régénérés, ré-inférence de A) — sa marge vers B est désormais de la vraie donnée ; aucune détection « fantôme » de A (bruit de l'ancienne marge fabriquée) n'apparaît dans la cellule de B ; `intermediaires/A…_merged.inputs.json` liste le voisin. Run 3 identique → « LAZ fusionné réutilisé » (pas de re-fusion).
+- [ ] **28.5 Bornes de la purge** : après 28.3, vérifier que `technique/sources/dalles/*.laz` (pas de re-téléchargement) et `livrable/detections/` (si présents) n'ont **pas** été supprimés ; `technique/intermediaires/run_params.json` existe et reflète les derniers paramètres.
+- [ ] **28.6 Multi-zones (livrables préservés)** : run 1 zone A (dalle A) à 0,5 m, puis run 2 zone B (dalle B, autre liste) à 2 m dans le **même** `output_dir` → après le run 2, `livrable/indices/MNT/tif/` contient **encore** le TIF de la dalle A (à 0,5 m, non recalculée — anciens paramètres, c'est documenté) **et** celui de la dalle B (2 m) ; le VRT `index_MNT.vrt` mosaïque les deux. Aucun livrable détruit.
+- [ ] **28.7 Purge verrouillée (Windows)** : après un run, charger dans QGIS un TIF de `technique/intermediaires/` (cf. §26), changer la résolution MNT et relancer → le run s'arrête avec un message actionnable « … est verrouillé — fermez les couches QGIS chargées depuis ce dossier… » (pas de traceback WinError brut) ; retirer la couche et relancer → la purge passe.
+- [ ] **28.8 Extension de zone (halo re-fusionné)** : run 1 sur la dalle A seule (CV active), puis run 2 même `output_dir`, mêmes paramètres, sélection élargie {A, B} (B contiguë) → le fichier de log montre « Jeu de voisins modifié → re-fusion : A…_merged.laz » ; A est **recalculée** (MNT/RVT/PNG régénérés, ré-inférence de A) — sa marge vers B est désormais de la vraie donnée ; aucune détection « fantôme » de A (bruit de l'ancienne marge fabriquée) n'apparaît dans la cellule de B ; `technique/intermediaires/A…_merged.inputs.json` liste le voisin. Run 3 identique → « LAZ fusionné réutilisé » (pas de re-fusion).
 
 ## 30. Fiabilité affichée : catégories par classe (légende, infobulles, étape 3) ⭐ P0
 
@@ -581,7 +581,7 @@ ponctuelle (charbonnières / fours) pour vérifier les coupures par classe.
       « score ≥ 0.65 : ≥ 85 % de vrais objets sur le banc (mesuré : 95 % sur 1 045 détections) », et la
       provenance. Charbonnières / fours : deux jeux de lignes, un par classe.
 - [ ] Journal du run : une ligne « Computer Vision: fiabilité <classe> : douteux dès … » par classe.
-- [ ] Sortie : `detections/<slug>/fiabilite.json` à côté du GeoPackage ; la table attributaire porte
+- [ ] Sortie : `livrable/detections/<slug>/fiabilite.json` à côté du GeoPackage ; la table attributaire porte
       `fiabilité` (Douteux / Possible / Probable / Très probable) et `fiabilité mesurée au banc (%)`
       (NULL pour une catégorie sous 30 détections au banc, ex. enclos FR).
 - [ ] Légende (chargement live ET `detections_validation.qgs` rouvert) : quatre entrées, de « Très
@@ -604,18 +604,18 @@ ponctuelle (charbonnières / fours) pour vérifier les coupures par classe.
 
 ## 29. Halo inter-dalles fabriqué depuis les voisins (modes `existing_rvt` / `existing_mnt`) ⭐ P0
 
-> **Contexte** : sans `intermediaires/`, l'inférence découpe **dalle + 50 m** dans la
-> mosaïque des dalles fournies (`intermediaires/halo/<indice>/`). Un objet à cheval sur
+> **Contexte** : sans `technique/intermediaires/`, l'inférence découpe **dalle + 50 m** dans la
+> mosaïque des dalles fournies (`technique/intermediaires/halo/<indice>/`). Un objet à cheval sur
 > deux dalles du run doit sortir **entier et une seule fois** ; la bande noire du halo
 > extérieur au périmètre ne doit produire aucune détection.
 
-- [ ] **29.1 Halo fabriqué** : run `existing_rvt` sur ≥ 2 dalles 1 km adjacentes + CV → journal `Halo inter-dalles depuis les voisins (marge 50 m) : N fabriqué(s), 0 réutilisé(s), K dalle(s) sans voisin` ; `intermediaires/halo/RVT/` contient un `.tif` + `.inputs.json` par dalle ayant un voisin.
-- [ ] **29.2 PNG à marge** : `indices/RVT/png/*.png` font 2200×2200 px (dalles 2000 px @ 0,5 m) et s'alignent sur les TIF via leur `.pgw` (origine décalée de 50 m).
+- [ ] **29.1 Halo fabriqué** : run `existing_rvt` sur ≥ 2 dalles 1 km adjacentes + CV → journal `Halo inter-dalles depuis les voisins (marge 50 m) : N fabriqué(s), 0 réutilisé(s), K dalle(s) sans voisin` ; `technique/intermediaires/halo/RVT/` contient un `.tif` + `.inputs.json` par dalle ayant un voisin.
+- [ ] **29.2 PNG à marge** : `livrable/indices/RVT/png/*.png` font 2200×2200 px (dalles 2000 px @ 0,5 m) et s'alignent sur les TIF via leur `.pgw` (origine décalée de 50 m).
 - [ ] **29.3 Objet à cheval** : Fénétrange (`tif_test`, 43 dalles LD), dépression GT `train:12785` (48.838776, 6.920619) à cheval sur y = 6 867 000 → **un seul** polygone entier (IoU ≥ 0,7 avec le masque SAM), plus de coupure rectiligne à y = 6 867 000 ; charbonnière à 48.883707, 6.922291 → boîte non tronquée à y = 6 872 000.
 - [ ] **29.4 Pas de bruit hors périmètre** : aucune détection au-delà de l'union des dalles ; pas de polygones le long des bords extérieurs.
 - [ ] **29.5 Reprise** : relancer dans le même `output_dir` → `N réutilisé(s)`, PNG non régénérés, cache CV conservé (pas de ré-inférence). Ajouter une dalle voisine → seuls les halos des dalles touchées sont re-fabriqués et ré-inférés.
 - [ ] **29.6 Dalle seule / raster large** : 1 seule dalle ou raster > 1 km → pas de ligne « Halo inter-dalles », comportement historique.
-- [ ] **29.7 `existing_mnt`** : même comportement via `run_cv_post_loop` (halo sous `intermediaires/halo/<LD_…>/`).
+- [ ] **29.7 `existing_mnt`** : même comportement via `run_cv_post_loop` (halo sous `technique/intermediaires/halo/<LD_…>/`).
 - [ ] **29.8 Règle du centroïde** : journal `Halo inter-dalles : N détection(s) centrée(s) hors de la cellule de leur image écartée(s)` à la conversion ; aucune détection dont un bord tombe à ± 50 m d'une ligne de dalle (bord du halo) et aucun doublon superposé dans la bande de recouvrement — y compris en `ign_laz` (§26.3).
 
 ## 31. Fiche d'une structure détectable (étape 3) ⭐ P0
@@ -681,7 +681,7 @@ Pendant, côté produits, de la recette § 31. Les textes viennent de
 pentu = noir, saturation au-delà de 51°. La fiche le dit maintenant sans détour
 et aucune symbologie n'est à poser au chargement.
 
-- [ ] Charger `indices/SLO_U0_V1/tif/index_SLO_U0_V1.vrt` dans QGIS, sans style particulier, et vérifier d'un coup d'œil sur un talus franc que le pentu est bien **sombre** — si ce n'était pas le cas, c'est que rvt-qgis a changé de convention et la fiche SLO serait à reprendre.
+- [ ] Charger `livrable/indices/SLO_U0_V1/tif/index_SLO_U0_V1.vrt` dans QGIS, sans style particulier, et vérifier d'un coup d'œil sur un talus franc que le pentu est bien **sombre** — si ce n'était pas le cas, c'est que rvt-qgis a changé de convention et la fiche SLO serait à reprendre.
 
 ---
 
@@ -753,9 +753,9 @@ dossier, donc deux runs de types différents cohabitent.
 
 ### Le calcul
 
-- [ ] **36.6 Run positive** : run `existing_mnt` ou `ign_laz` avec OPNS seul, type Positive → dossier `indices/OPNS_Pos_R10_D16_V1_N0/tif/`, mosaïque `index_OPNS.vrt` chargée dans QGIS sous le nom `index_OPNS`.
+- [ ] **36.6 Run positive** : run `existing_mnt` ou `ign_laz` avec OPNS seul, type Positive → dossier `livrable/indices/OPNS_Pos_R10_D16_V1_N0/tif/`, mosaïque `index_OPNS.vrt` chargée dans QGIS sous le nom `index_OPNS`.
 - [ ] **36.7 Lecture positive** : sur l'image 8 bits, les tertres, crêtes et lèvres de cratère sont **clairs**, les fossés sombres, le terrain plan d'un gris uniforme. Aucune ombre portée, aucune direction privilégiée : tourner mentalement la dalle ne change rien.
-- [ ] **36.8 Run négative, même dossier de sortie** : relancer avec le type Négative → un **second** dossier `indices/OPNS_Neg_R10_D16_V1_N0/`, le premier intact. Les deux couches coexistent dans QGIS.
+- [ ] **36.8 Run négative, même dossier de sortie** : relancer avec le type Négative → un **second** dossier `livrable/indices/OPNS_Neg_R10_D16_V1_N0/`, le premier intact. Les deux couches coexistent dans QGIS.
 - [ ] **36.9 Lecture négative** : les creux (chemins creux, fossés, fonds de carrière) sont **sombres**, comme en positive — RVT inverse l'échelle à l'export 8 bits. ⚠ En décochant « Export 8 bits », l'inversion disparaît : un creux y devient clair. C'est écrit dans la fiche.
 - [ ] **36.10 Rayon** : relancer avec un rayon de 40 px → troisième dossier `OPNS_Pos_R40_…`, et des formes plus larges deviennent visibles. Vérifier qu'aucun raccord de dalle n'apparaît (la marge de tuilage doit rester plus large que le rayon : 40 px = 20 m < 200 m par défaut).
 - [ ] **36.11 Valeur hors bornes par la config** : écrire `"radius": 200` à la main dans `config.json`, relancer → le journal dit « RVT OPNS: RADIUS=200 hors des bornes de rvt:rvt_opns, ramené à 50 », le dossier s'appelle `OPNS_Pos_R50_…` (le nom ne ment pas) et le run aboutit.
@@ -837,17 +837,17 @@ Une ligne par entité, effectifs par niveau du plus sûr au plus douteux : dans 
 - [ ] **40.1 Journal** : run avec détection (Cratères + Parcellaire) → avant « ✅ Traitement terminé », un bloc « 📊 Bilan de fiabilité — par où commencer : » puis « • Cratères : N détections — n très probables, n probables, n possibles, n douteuses » et la ligne de Parcellaire ; les effectifs sont ceux de la table attributaire (filtrer `fiabilite` dans QGIS pour vérifier un niveau).
 - [ ] **40.2 Barres** : sous le bandeau « ✓ Pipeline terminé », un cadre « Bilan de fiabilité — par où commencer » avec une barre par entité, longueur proportionnelle au nombre de détections, segments du plus sûr au plus douteux dans la couleur de la couche (les teintes de la légende), total à droite ; survoler une barre → la phrase du 40.1. Le cadre disparaît au lancement du run suivant et n'apparaît pas pour un run sans détection ni pour un modèle sans fiabilité mesurée.
 - [ ] **40.2 bis Taille de la fenêtre** (2026-10-08) : à la fin d'un run à quatre entités, l'apparition du bilan **n'agrandit pas** la fenêtre (elle ne passe plus sous la barre des tâches) ; si la place manque, la vue défile (bandeau et bilan en haut, journal en dessous) et les boutons « Ouvrir le dossier », « Log complet », « Rapport », « Annuler » restent visibles en bas sans défiler.
-- [ ] **40.3 metadata.json** : clé `bilan_fiabilite`, une entrée par couche (`slug`, `label`, `couche`, `total`, `effectifs` par catégorie) ; vide (`[]`) pour un run sans CV.
+- [ ] **40.3 traitement.json** : dans `livrable/traitement.json` (et dans la trace complète `technique/journaux/metadata_<date>.json`), clé `bilan_fiabilite`, une entrée par couche (`slug`, `label`, `couche`, `total`, `effectifs` par catégorie) ; vide (`[]`) pour un run sans CV.
 - [ ] **40.4 Comparaison A/B et dérivées** : deux lignes « Parcellaire — Modèle A » / « — Modèle B » ; une entité à plusieurs classes a une ligne par couche (« Entité · classe ») ; un regroupement de cratères n'a pas de ligne (sortie de synthèse sans fiabilité), ses cratères sources en ont une.
 
 ## 41. Rapport de traitement (rapport.html) ⭐ P1
 
 Un HTML à la racine du dossier de sortie, écrit par la finalisation, ouvert d'un clic (2026-10-08).
 
-- [ ] **41.1 Bouton** : pendant le run, « Rapport » (à côté de « Log complet ») est grisé ; à la fin, actif ; un clic ouvre `rapport.html` dans le navigateur. Le journal porte « 📄 Rapport du traitement : rapport.html — bouton « Rapport » ou dossier de sortie ».
+- [ ] **41.1 Bouton** : pendant le run, « Rapport » (à côté de « Log complet ») est grisé ; à la fin, actif ; un clic ouvre `rapport.html` dans le navigateur. Le journal porte « 📄 Rapport du traitement : livrable/rapport.html — bouton « Rapport » ou dossier de sortie ».
 - [ ] **41.2 Contenu** (run IGN, 2 dalles, SVF + LD, Cratères ; révisé 2026-10-08) : en-tête « Rapport de traitement — Archéolog'IA v<version> — date — Téléchargement IGN », une mise en garde encadrée (les détections sont des hypothèses à vérifier sur le relief, le rapport ne localise rien), « Traitement terminé en <durée mesurée> » **sans** chemin de dossier ; « Zone traitée » : la vignette de la mosaïque SVF (pas le MNT), 720 px de plus grand côté, puis « 2 km² couverts, en 2 dalles. » et **aucun nom de dalle** ; « Produits » : une ligne par produit lancé avec ses réglages en mots (« facteur de vue du ciel (SVF) : rayon 10 px, 16 directions, sans suppression du bruit », « modèle de terrain (MNT) : sans réglage »), jamais un produit non lancé ; « Détection automatique » : Entités | Modèle (son nom, « sur LD ») | Seuil (0,29) | Analyse « N images en <durée> (≈ … par image) » — la même durée que le journal ; « Bilan de fiabilité » : la table du §40 avec une colonne « Par km² » et la légende « très probable : au moins 85 % de vrais objets · probable : au moins 60 % · possible : au moins 35 % · douteux : moins de 35 % » ; « Durées par étape » : Téléchargement, Produits, Détection, Finalisation, chacune avec son détail et sa durée mesurée ; « Avertissements du journal » : les ⚠/✗ du run, « (×N) » quand un message se répète, avec « voir le manuel › Dépannage › … » quand une rubrique existe ; « Sources » : LiDAR HD de l'IGN Licence Ouverte 2.0, Relief Visualization Toolbox, les modèles sous leur nom.
 - [ ] **41.3 Sans CV / annulé** : run MNT seul → « Pas de détection automatique », « Aucune détection avec fiabilité mesurée » ; run annulé → « Traitement annulé » en ambre, rapport quand même écrit avec les dalles faites.
-- [ ] **41.4 Hors ligne** : copier `rapport.html` + `rapport_vignette.png` sur une clé → s'ouvre et s'imprime sans réseau ; `metadata.json` porte `"rapport": "rapport.html"`.
+- [ ] **41.4 Hors ligne** : copier `livrable/rapport.html` + `livrable/rapport_vignette.png` sur une clé → s'ouvre et s'imprime sans réseau ; `livrable/traitement.json` porte `"rapport": "livrable/rapport.html"`.
 - [ ] **41.5 Rien ne situe la zone** (2026-10-08) : run MNT existant dont un raster est trop petit pour le rayon LD → l'avertissement du rapport ne contient ni le chemin du raster ni ses coordonnées (le nom de fichier seul, coordonnées remplacées par « … ») ; Ctrl+F dans le rapport sur « \\ », « :/ » et le début d'une coordonnée de dalle : rien. En mode Indices existants : « Produits » dit que les indices sont fournis et leurs réglages inconnus, « Sources » ne cite pas la Relief Visualization Toolbox. Avec un run sans détection : la mise en garde se réduit à « ne localise pas la zone ».
 
 ## 42. Fiabilité observée sur vos runs ⭐ P1
@@ -859,3 +859,16 @@ Vos verdicts (champ `validation` : oui / non / peut-être) agrégés par modèle
 - [ ] **42.3 Chez vous** : saisir dans QGIS une dizaine de verdicts sur Parcellaire (oui/non, quelques peut-être, un `corr_pred` vers chemin_creux), enregistrer la couche ; étape 3 › Fiche de Parcellaire → sous « FIABILITÉ MESURÉE AU BANC », les niveaux concernés portent « · chez vous : 3 vraies sur 4 vérifiées, 1 à revoir » (pourcentage à partir de 20 vérifications) ; le « oui » corrigé vers chemin_creux compte comme faux pour Parcellaire ; en dessous, la note « « Chez vous » = vos verdicts … sur N run(s) connus, n vérification(s) ».
 - [ ] **42.4 Sans verdict** : une classe jamais vérifiée affiche « Aucun verdict pour cette classe dans vos N run(s) connus : renseignez le champ « validation » … » ; sans registre (poste neuf), rien de plus que le banc.
 
+## 43. Arborescence du dossier de sortie : livrable/ et technique/ ⭐ P0
+
+Deux racines (2026-10-08) : `livrable/` se garde et se transmet (projet.qgs, rapport.html, traitement.json, indices/, detections/), `technique/` se supprime (sources/, intermediaires/, png/, detection/, journaux/). Chemins : `src/pipeline/output_paths.py` ; migration : `src/app/services/arborescence.py`.
+
+- [ ] **43.1 Dossier neuf** : run IGN (2 dalles, SVF + LD, Cratères) dans un dossier vide → à la racine, exactement `livrable/` et `technique/` ; `livrable/projet.qgs`, `livrable/rapport.html`, `livrable/traitement.json`, `livrable/indices/MNT/tif/index_MNT.vrt`, `livrable/indices/SVF_…/tif/`, `livrable/detections/crateres/crateres.gpkg` + `fiabilite.json` ; `technique/sources/dalles/*.laz`, `technique/sources/dalles_urls.txt`, `technique/intermediaires/`, `technique/png/SVF_…/` et `technique/png/LD_…/`, `technique/detection/<modèle>/raw_detections/`, `technique/journaux/pipeline_log_<date>.txt` **et** `metadata_<date>.json` (même `<date>`). Aucun `png/` sous `livrable/indices/`, aucun `metadata.json` ni `pipeline_log_*.txt` à la racine.
+- [ ] **43.2 traitement.json** : `plugin_version` = la version du titre de la fenêtre, `arborescence` = 3, `structure` en chemins relatifs (`livrable/indices`, `livrable/detections`), `detections_entities[].gpkg` en `livrable/detections/…`, **pas** de clé `ui_config` ; `technique/journaux/metadata_<date>.json` porte tout, `ui_config` compris.
+- [ ] **43.3 Livrable transmissible** : copier `livrable/` seul sur une clé, ouvrir `projet.qgs` depuis la clé → toutes les couches (mosaïques et GeoPackages) se chargent, styles compris ; « Rapport » s'ouvre.
+- [ ] **43.4 Boutons de la vue** : « Rapport » ouvre `livrable/rapport.html`, « Log complet » ouvre le dernier `technique/journaux/pipeline_log_*.txt`, « Ouvrir le dossier » ouvre la racine.
+- [ ] **43.5 Migration proposée** : relancer un run dans un dossier de sortie d'avant (ex. une copie de `output_pipeline_plugin_fenetrange`) → un dialogue « Réorganiser le dossier de sortie ? » liste `indices → livrable/indices`, `detections → livrable/detections`, `intermediaires → technique/intermediaires`, les journaux, `metadata.json → technique/journaux/metadata_<date>.json`, et « Non déplacé, inconnu du plugin : MNT, RVT, … » ; **Annuler** → rien ne bouge, le journal dit « Lancement annulé », le dossier est intact ; **Oui** → le journal porte une ligne « Réorganisation : … » par déplacement, les anciennes couches QGIS du dossier sont retirées puis rechargées en fin de run, l'ancien `detections_validation.qgs` est sous `livrable/detections/` et s'ouvre encore (chemins relatifs valides), `MNT/` et `RVT/` n'ont pas bougé, un second lancement ne propose plus rien.
+- [ ] **43.6 Migration bloquée** : charger dans QGIS un TIF de `intermediaires/` d'un dossier ancien, lancer → après **Oui**, « ❌ Réorganisation incomplète — fermez les couches QGIS… » avec le déplacement en cause ; fermer la couche, relancer → la migration finit (destination déjà faite : ignorée, le reste déplacé).
+- [ ] **43.7 Entrée et sortie imbriquées** : mode Indices existants avec un dossier de sortie **dans** le dossier source → l'étape 4 refuse (« Le dossier de sortie est dans le dossier source ») ; dossier source dans le dossier de sortie → avertissement dans le journal, le run part, le dossier source n'est jamais déplacé par la migration.
+- [ ] **43.8 Fiabilité observée** : les verdicts saisis dans un GeoPackage de `livrable/detections/` d'un run v3 **et** ceux d'un run ancien (`detections/`) du registre comptent tous les deux dans la fiche (§42.3).
+- [ ] **43.9 Qt6** : rejouer 43.1 et 43.5 sous QGIS 4 — aucun `AttributeError`.

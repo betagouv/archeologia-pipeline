@@ -83,7 +83,7 @@ def test_collecter_dans_l_ordre_des_runs_puis_le_reste(tmp_path):
 def test_finalize_ecrit_le_bilan_et_le_narre(tmp_path, monkeypatch):
     monkeypatch.setattr(finalize_service, "_collect_vrt_paths_and_build", lambda *a, **k: [])
     monkeypatch.setattr(finalize_service, "_build_coverage_polygons", lambda *a, **k: None)
-    det = tmp_path / "detections"
+    det = tmp_path / "livrable" / "detections"
     _sidecar(det, "parcellaire", {"parcellaire": {"classe": "parcellaire", "modele": "M", "categories": CATS,
                                                   "effectifs": {"Très probable": 2, "Douteux": 5}}})
     cv_cfg = {"enabled": True, "runs": [{"selected_model": "M", "target_rvt": "LD",
@@ -95,7 +95,7 @@ def test_finalize_ecrit_le_bilan_et_le_narre(tmp_path, monkeypatch):
         ui_config={}, outcome="success",
     )
     assert ok is True
-    meta = json.loads((tmp_path / "metadata.json").read_text(encoding="utf-8"))
+    meta = json.loads((tmp_path / "livrable" / "traitement.json").read_text(encoding="utf-8"))
     assert meta["bilan_fiabilite"] == [{
         "slug": "parcellaire", "label": "Parcellaire", "couche": "parcellaire", "classe": "parcellaire",
         "modele": "M", "total": 7, "effectifs": {"quasi_certain": 2, "douteux": 5},
@@ -112,7 +112,7 @@ def test_finalize_ecrit_le_bilan_et_le_narre(tmp_path, monkeypatch):
         start_time=time.time(), tiles_processed=1, tiles_total=1, active_products=["MNT"],
         ui_config={}, outcome="success",
     )
-    assert json.loads((out2 / "metadata.json").read_text(encoding="utf-8"))["bilan_fiabilite"] == []
+    assert json.loads((out2 / "livrable" / "traitement.json").read_text(encoding="utf-8"))["bilan_fiabilite"] == []
     assert not any("Bilan de fiabilité" in m for m in r2.users)
 
 

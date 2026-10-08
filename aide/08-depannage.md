@@ -71,7 +71,7 @@ Une erreur de PDAL pendant le découpage ou la fusion des dalles, en particulier
 
 ## Les couches ne se chargent pas dans QGIS
 
-Tout est dans le dossier de sortie : ouvrez `detections/detections_validation.qgs`, ou ajoutez les mosaïques `index_<PRODUIT>.vrt` et les GeoPackages à la main.
+Tout est dans le dossier de sortie : ouvrez `livrable/projet.qgs`, ou ajoutez les mosaïques `index_<PRODUIT>.vrt` et les GeoPackages à la main.
 
 ## Le traitement s'est interrompu
 

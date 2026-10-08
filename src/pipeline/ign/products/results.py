@@ -11,7 +11,7 @@ from ...cancellation import PipelineCancelled, check_cancelled
 from ...coords import extract_xy_from_tile_name as _extract_xy_from_tile_name
 from ...coords import get_raster_bounds
 from ...geo_utils import extract_tif_transform_data
-from ...output_paths import indices_dir, indice_tif_dir, indice_base_dir
+from ...output_paths import indices_dir, indice_tif_dir, indice_base_dir, indice_png_dir
 from ...subprocess_utils import run_subprocess_cancellable, subprocess_kwargs_no_window
 from ...tilespec import TileSpec, assign_crs_if_missing, is_degenerate_tile, tag_byte_nodata
 from .rvt_naming import PRODUCT_ORDER, get_rvt_source_and_dest_filenames, get_rvt_folder_name
@@ -363,7 +363,7 @@ def copy_final_products_to_results(
 
         should_jpg = bool(jpg_cfg.get(product_name, False))
         if should_jpg:
-            jpg_dir = base_dir / "png"
+            jpg_dir = indice_png_dir(output_dir, folder_name)
             jpg_dir.mkdir(parents=True, exist_ok=True)
             jpg_path = jpg_dir / f"{output_base}.png"
             if not input_path_uncropped.exists():

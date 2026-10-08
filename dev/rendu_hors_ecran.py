@@ -76,12 +76,55 @@ class _Journal:
 
 
 # ----------------------------------------------------------------------
+def _journal_en_cours(app, img: Path, log) -> None:
+    """aide/img/run-journal.png : la vue d'exécution V2 pendant une détection (états posés à la
+    main, sans worker ni préflight — la frise porte l'état, le journal raconte)."""
+    import time
+
+    from archeo.src.ui.run_view import RunView, _fmt_hms
+
+    cfg = {"app": {"files": {"data_mode": "ign_laz", "output_dir": "C:/Temp/archeologia_demo/sortie"}},
+           "processing": {"products": {"MNT": True, "SVF": True, "LD": True}},
+           "computer_vision": {"enabled": True, "runs": [{"selected_model": "crateres_seg_ld_v1", "target_rvt": "LD"}]}}
+    v = RunView(cfg)
+    v.show()
+    v.resize(880, 520)
+    v._apply_stage_sequence()
+    v._running = True
+    v._run_started_at = time.monotonic() - 1575
+    v._activity_dot.setVisible(True)
+    v._cancel_btn.setEnabled(True)
+    v._open_log_btn.setEnabled(True)
+    for ligne in ("▶ Démarrage du traitement — Téléchargement IGN", "📍 Zone : 12 dalles à télécharger",
+                  "      ↳ Dalle 12/12 : 174 Mo", "✓ 12 dalles téléchargées", "✓ MNT et indices : 12 dalles, 3 produits",
+                  "🔍 « Modèle cratères LD v1 » sur LD : 43 images", "      ↳ Image 31/43 : préparation"):
+        v._append_log("INFO", ligne)
+    v._on_stage_id("download")
+    v._on_metric(12, 12, "dalles")
+    v._on_stage_id("products")
+    v._step_elapsed[0] = 61
+    v._timeline.set_timing(0, _fmt_hms(61))
+    v._on_metric(12, 12, "dalles")
+    v._on_stage_id("detection")
+    v._step_elapsed[1] = 1202
+    v._timeline.set_timing(1, _fmt_hms(1202))
+    v._active_started = time.monotonic() - 312
+    v._on_metric(31, 43, "images")
+    v._tick_active()
+    v._update_header()
+    app.processEvents()
+    v.grab().save(str(img / "run-journal.png"))
+    log("run-journal :", v.width(), "x", v.height(), "| fil :", v._fil_gauche.text(), "|", v._fil_droite.text())
+
+
 def captures(app, sortie: Path, log) -> int:
-    """Étapes 1 à 3 de l'assistant → aide/img/, chemins neutres, SVF + LD cochés, détection activée."""
+    """Étapes 1 à 3 de l'assistant et la vue d'exécution en cours → aide/img/, chemins neutres,
+    SVF + LD cochés, détection activée."""
     from archeo.src.ui.wizard_dialog import WizardDialog
 
     img = RACINE / "aide" / "img"
     img.mkdir(exist_ok=True)
+    _journal_en_cours(app, img, log)
     w = WizardDialog()
     w.show()
     w.resize(980, 760)
@@ -285,7 +328,29 @@ def journal(app, sortie: Path, log) -> int:
     app.processEvents()
     log("bilan : cadre visible =", v._bilan_box.isVisible(), "| fil :", v._fil_gauche.text(), "| phrases :", [ligne.phrase() for ligne in v._bilan])
     v.grab().save(str(sortie / "journal.png"))
-    return 0 if n_liens == 2 and v._bilan_box.isVisible() else 1
+    # Étape 4 après un run : le journal reste la vue d'arrivée, bascule récap ↔ journal
+    # (constat utilisateur 2026-10-08). Sans préflight ni worker : run simulé.
+    from archeo.src.ui.steps.step_4_launch import LaunchPage
+
+    p = LaunchPage(RACINE, {})
+    p.show()
+    p.resize(900, 560)
+    avant = (p.has_run(), p._vers_journal_btn.isVisible())
+    p._has_run = True
+    p._vers_journal_btn.setVisible(True)
+    p.show_recap()
+    app.processEvents()
+    p.grab().save(str(sortie / "etape4_recap_apres_run.png"))
+    p._vers_journal_btn.click()
+    app.processEvents()
+    vers_journal = p._stack.currentIndex()
+    p._vers_recap_btn.click()
+    app.processEvents()
+    vers_recap = p._stack.currentIndex()
+    bascule_ok = avant == (False, False) and vers_journal == 1 and vers_recap == 0
+    log("étape 4 : avant run (has_run, bouton journal) =", avant, "| clic journal → page", vers_journal,
+        "| clic récap → page", vers_recap, "| attendu (False, False), 1, 0")
+    return 0 if n_liens == 2 and v._bilan_box.isVisible() and bascule_ok else 1
 
 
 def main(argv=None) -> int:

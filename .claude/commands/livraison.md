@@ -37,12 +37,15 @@ le dépôt est déposé par l'utilisateur (FTP), le runbook s'arrête au ZIP et 
 4. **Manuel** : `python run_tests.py -k test_aide` vert ; chaque fonctionnalité de la version a son
    chapitre à jour (skill `manuel-integre`). Puis, **à chaque livraison**, les deux rendus hors écran
    (Python de QGIS, `C:/OSGeo4W/bin/python-qgis.bat`) :
-   `dev/rendu_hors_ecran.py captures` refait les captures de l'assistant dans `aide/img/` (à commiter
-   si l'interface a changé, à vérifier d'un coup d'œil sinon), et
-   `dev/rendu_hors_ecran.py manuel --tous` rend chaque chapitre et doit finir sur `RESULTAT : OK`
-   dans `dev/docs/_local/rendu/controles.txt` (barre horizontale à 0 px partout, historique, zoom) —
-   un `ECHEC` est une image qui déborde ou un chapitre cassé, à corriger avant le bump. Le chapitre
-   Nouveautés se remplit tout seul depuis le changelog.
+   `dev/rendu_hors_ecran.py captures` refait les captures de l'assistant dans `aide/img/` (étapes 1 à 3
+   et la vue d'exécution en cours de run ; à commiter si l'interface a changé, à vérifier d'un coup
+   d'œil sinon), `dev/rendu_hors_ecran.py manuel --tous` rend chaque chapitre et doit finir sur
+   `RESULTAT : OK` dans `dev/docs/_local/rendu/controles.txt` (barre horizontale à 0 px partout,
+   historique, zoom), `dev/rendu_hors_ecran.py journal` (fin de run : cadre « Par où commencer »,
+   renvoi cliquable du journal, bascule récap ↔ journal de l'étape 4) et
+   `dev/rendu_hors_ecran.py profil --modele <id>` (fiche de classe et fiche de modèle : profil des
+   scores, bandeau « Appris sur ») — un `ECHEC` est une image qui déborde ou un écran cassé, à corriger
+   avant le bump. Le chapitre Nouveautés se remplit tout seul depuis le changelog.
 5. **Binaire CV** : `python run_tests.py -k binaire_a_jour` doit être **vert**. Rouge →
    `python dev/runner_onnx/build.py` (venv dans `dev/runner_onnx/.venv_onnx`), puis smoke run de
    l'exe sur un PNG avec un modèle installé. Un test rouge au moment d'une livraison n'est jamais hors
@@ -65,15 +68,20 @@ le dépôt est déposé par l'utilisateur (FTP), le runbook s'arrête au ZIP et 
     `git push origin v$1`.
 11. **Packager depuis le dossier principal** : y extraire `main` (`git switch main && git pull`), puis
     `python dev/package_plugin.py` (ZIP + `plugins.xml` dans `_local/depot`). Vérifier dans le ZIP :
-    dossier racine `archeologia`, `version=` attendu, `aide/` avec ses images, **pas** de `docs/`, de
-    `dev/`, de `tests/` ni de `local_catalogue/`, `build_info.json` du binaire au bon commit, grille
-    `.shp` + `.qix`.
+    dossier racine `archeologia`, `version=` attendu, `aide/` avec ses images, `data/zones_corpus.json`
+    et `data/indices_fiches.json` (le bandeau « Appris sur » et les fiches de produits en dépendent),
+    **pas** de `docs/`, de `dev/`, de `tests/` ni de `local_catalogue/`, `build_info.json` du binaire au
+    bon commit, grille `.shp` + `.qix`.
 12. **Dépôt OVH** : l'utilisateur dépose le ZIP et `plugins.xml` (FTP, cf. `dev/docs/DEPLOIEMENT_DEPOT_OVH.md`),
     puis vérifie la pastille de mise à jour dans un QGIS. Le guide d'installation privé de
     `dev/docs/_local/` est à relire si l'installation a changé (menu Manuel, nouvelle dépendance).
 13. **Retour dans les branches en cours** : fusionner `dev` (ou `main`) dans chaque branche de
     fonctionnalité vivante (ex. `feat/visu-flux-gpf`) pour qu'elle reparte de la version livrée ;
     remettre le dossier principal sur la branche de travail de l'utilisateur.
+13bis. **Dépôt archeologia-ovh** : si la version touche `src/pipeline/` ou `src/app/` (chemins de
+    sortie, finalisation, stratégie d'entrée…), le dire à l'utilisateur — ce dépôt privé vendorise une
+    copie de `src/` et la resynchronise lui-même (puis ré-applique son patch v2). Rien à faire ici,
+    jamais de copie depuis ce dépôt : le signaler, c'est tout (cf. CLAUDE.md § Trois dépôts).
 14. **Mémoire** : noter la version livrée, ce qui reste (recettes non jouées, captures), et mettre à
     jour les mémoires de projet concernées.
 

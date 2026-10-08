@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from typing import Dict, Mapping, Optional, Sequence, Tuple
 
-from qgis.PyQt.QtCore import QSize, Qt, pyqtSignal
+from qgis.PyQt.QtCore import QPoint, QSize, Qt, pyqtSignal
 from qgis.PyQt.QtGui import QIcon, QPixmap
 from qgis.PyQt.QtWidgets import (
     QCheckBox,
@@ -144,9 +144,10 @@ class EntityCard(QFrame):
         self._thumb.setObjectName("EntityThumb")
         self._thumb.setFixedSize(_THUMB, _THUMB)
         self._thumb.setFlat(True)
-        self._thumb.setCursor(Qt.CursorShape.PointingHandCursor)
-        self._thumb.setToolTip("Voir la fiche de la structure")
-        self._thumb.clicked.connect(lambda: self.fiche_requested.emit(self._id))
+        # Vignette inerte (demande utilisateur 2026-10-08) : un clic dessus coche ou
+        # décoche la carte comme le reste du haut de la carte ; seul le lien
+        # « Fiche » ouvre la fiche. Transparente aux clics, ils vont à la carte.
+        self._thumb.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
         outer.addWidget(self._thumb, 0, Qt.AlignmentFlag.AlignTop)
 
         layout = QVBoxLayout()
@@ -745,11 +746,23 @@ class EntityCard(QFrame):
             w.style().unpolish(w)
             w.style().polish(w)
 
+    def _bas_zone_selection(self) -> int:
+        """Bas, en px de la carte, de la zone qui coche/décoche : vignette, titre,
+        description et ligne du modèle. En dessous (réglages avancés, regroupement,
+        figure du profil) un clic ne change plus la sélection — on y règle, on n'y
+        coche pas (demande utilisateur 2026-10-08)."""
+        bas = 0
+        for w in (self._thumb, self._label, self._desc, self._nomodel, self._rvt_row, self._model_row):
+            if w.isVisible():
+                bas = max(bas, w.mapTo(self, QPoint(0, w.height())).y())
+        return bas
+
     def mousePressEvent(self, event):  # noqa: N802 (signature Qt)
-        # Bascule la sélection si l'entité a un modèle. Les widgets interactifs
-        # (combo, checkbox cluster, bouton activer) consomment leurs propres
-        # clics et ne déclenchent donc pas ce handler.
-        if self._has_model:
+        # Bascule la sélection si l'entité a un modèle ET que le clic tombe dans le
+        # haut de la carte. Les widgets interactifs (bouton Fiche, Changer ▾, case
+        # cluster, + Activer) consomment leurs propres clics.
+        pos = event.position().toPoint() if hasattr(event, "position") else event.pos()
+        if self._has_model and pos.y() <= self._bas_zone_selection() + 4:
             self.toggled.emit(self._id, not self._selected)
         super().mousePressEvent(event)
 

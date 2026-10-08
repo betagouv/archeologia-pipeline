@@ -309,7 +309,7 @@ QPushButton:disabled { color: #909090; border-color: #b0b0b0; }
     background: #ffffff; border: 1px solid #c4c4c4; border-radius: 3px;
     padding: 0; color: #b07a20; font-size: 15px;
 }
-#EntityThumb:hover, #FicheThumb:hover { border-color: #2b79c2; }
+#FicheThumb:hover { border-color: #2b79c2; }   /* la vignette d'entité (étape 3) est inerte */
 #EntityThumb[state="vide"], #FicheThumb[state="vide"] {
     border: 1px dashed #b07a20; background: #f6efdc;
 }

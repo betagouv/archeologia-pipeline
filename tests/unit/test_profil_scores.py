@@ -367,3 +367,12 @@ def test_le_widget_suit_le_seuil_et_les_fiches_posent_les_zones():
     assert "ligne_essai_seuil(" in fiche
     assert "ligne_essai_seuil(" in (racine / "src/ui/dialogs/model_info_dialog.py").read_text(encoding="utf-8")
     assert "def phrase_precision_rappel" in widget and "def ligne_essai_seuil" in widget
+
+
+def test_carte_entite_selection_par_le_haut_et_vignette_inerte():
+    """Garde-fou sans QGIS : la vignette n'ouvre plus la fiche et le clic ne coche que
+    dans le haut de la carte (vignette, titre, description, ligne du modèle)."""
+    carte = (Path(__file__).resolve().parents[2] / "src/ui/widgets/entity_card.py").read_text(encoding="utf-8")
+    assert "self._thumb.clicked.connect" not in carte
+    assert "WA_TransparentForMouseEvents" in carte
+    assert "_bas_zone_selection()" in carte

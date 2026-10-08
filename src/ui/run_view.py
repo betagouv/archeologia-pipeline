@@ -395,7 +395,7 @@ class RunView(QWidget):
         haut.addWidget(self._timeline)
 
         # ── Fin de run : « Par où commencer » (barres du bilan) + les actions qui
-        # vont avec : ouvrir le projet QGIS (au clic seulement), le rapport.
+        # vont avec : ouvrir le projet QGIS (au clic seulement), le dossier, le rapport.
         self._bilan_box = QFrame()
         self._bilan_box.setObjectName("RunBilanBox")
         bl = QVBoxLayout(self._bilan_box)
@@ -424,6 +424,17 @@ class RunView(QWidget):
         )
         self._open_project_btn.setEnabled(False)
         self._open_project_btn.clicked.connect(self._ouvrir_projet_qgis)
+        # Le dossier de sortie, à côté du projet (demande utilisateur 2026-10-08).
+        # Icônes SVG du thème (teintées, nettes) plutôt que des émojis couleur au
+        # rendu hétérogène ; iconSize = taille de rendu (14 px), sinon upscale
+        # pixelisé du pixmap. Désactivés tant que le dossier/log n'existent pas.
+        self._open_dir_btn = QPushButton("Ouvrir le dossier")
+        self._open_dir_btn.setObjectName("GhostButton")
+        self._open_dir_btn.setIcon(colored_icon("folder-open", "#2c2c2c", 14, dpr=dpr))
+        self._open_dir_btn.setIconSize(QSize(14, 14))
+        self._open_dir_btn.setToolTip("Le dossier de sortie, dans l'explorateur de fichiers")
+        self._open_dir_btn.setEnabled(False)
+        self._open_dir_btn.clicked.connect(self._open_output_dir)
         # Rapport de traitement (rapport.html, 2026-10-08) : actif à la fin du run
         # s'il a été écrit.
         self._open_report_btn = QPushButton("Rapport")
@@ -437,6 +448,7 @@ class RunView(QWidget):
         self._bilan_legende.setObjectName("RunHeaderSub")
         self._bilan_legende.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         actions_fin.addWidget(self._open_project_btn)
+        actions_fin.addWidget(self._open_dir_btn)
         actions_fin.addWidget(self._open_report_btn)
         actions_fin.addWidget(self._bilan_legende, 1)
         bl.addLayout(actions_fin)
@@ -494,24 +506,12 @@ class RunView(QWidget):
         zone.setMinimumWidth(contenu.minimumSizeHint().width() + zone.verticalScrollBar().sizeHint().width())
 
         actions = QHBoxLayout()
-        # Icônes SVG du thème (teintées, nettes) plutôt que des émojis couleur
-        # au rendu hétérogène. Désactivés tant que le dossier/log n'existent pas
-        # (le clic était un no-op silencieux).
-        self._open_dir_btn = QPushButton("Ouvrir le dossier")
-        self._open_dir_btn.setObjectName("GhostButton")
-        self._open_dir_btn.setIcon(colored_icon("folder-open", "#2c2c2c", 14, dpr=dpr))
-        # iconSize = taille de rendu (14 px) : la taille par défaut du bouton
-        # (16 px) ferait un upscale pixelisé du pixmap.
-        self._open_dir_btn.setIconSize(QSize(14, 14))
-        self._open_dir_btn.setEnabled(False)
-        self._open_dir_btn.clicked.connect(self._open_output_dir)
         self._open_log_btn = QPushButton("Log complet")
         self._open_log_btn.setObjectName("GhostButton")
         self._open_log_btn.setIcon(colored_icon("file-text", "#2c2c2c", 14, dpr=dpr))
         self._open_log_btn.setIconSize(QSize(14, 14))
         self._open_log_btn.setEnabled(False)
         self._open_log_btn.clicked.connect(self._open_log)
-        actions.addWidget(self._open_dir_btn)
         actions.addWidget(self._open_log_btn)
         actions.addStretch(1)
         self._cancel_btn = QPushButton("Annuler")

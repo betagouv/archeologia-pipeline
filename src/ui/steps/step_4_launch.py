@@ -8,6 +8,10 @@ Deux phases dans un ``QStackedWidget`` interne :
   pas de façon fiable).
 - **Exécution** : le :class:`RunView` (timeline + journal). Le bouton « Lancer »
   de la barre d'actions appelle :meth:`start_run`, qui bascule sur cette vue.
+
+Une fois qu'un run a eu lieu, le journal reste la vue d'arrivée de l'étape 4
+(revenir d'une étape 1-3 ne le cache plus, constat utilisateur 2026-10-08) ;
+« Récapitulatif » et « Journal du traitement » basculent entre les deux.
 """
 from __future__ import annotations
 
@@ -128,6 +132,7 @@ class LaunchPage(QWidget):
         # Le bandeau ne doit pas dire « prêt à lancer » (vert) au-dessus d'un
         # préflight rouge — les deux signaux doivent raconter la même histoire.
         self._preflight_status = "pending"
+        self._has_run = False
         self._pf_emitter = _PreflightEmitter(self)
         self._pf_emitter.done.connect(self._on_preflight_done)
         self._build(config_ref)
@@ -161,6 +166,14 @@ class LaunchPage(QWidget):
         v = QVBoxLayout(content)
         v.setContentsMargins(16, 16, 16, 16)
         v.setSpacing(12)
+
+        # Retour au journal du dernier traitement : n'existe qu'après un run.
+        self._vers_journal_btn = QPushButton("Journal du traitement  →")
+        self._vers_journal_btn.setObjectName("GhostButton")
+        self._vers_journal_btn.setToolTip("Revenir à la frise et au journal du dernier traitement")
+        self._vers_journal_btn.setVisible(False)
+        self._vers_journal_btn.clicked.connect(self.show_run)
+        v.addWidget(self._vers_journal_btn, 0, Qt.AlignmentFlag.AlignRight)
 
         # Bandeau de validation : rouge si la config est inexécutable, vert sinon.
         self._banner = QLabel("")
@@ -270,6 +283,12 @@ class LaunchPage(QWidget):
         v = QVBoxLayout(page)
         v.setContentsMargins(16, 16, 16, 16)
         v.setSpacing(12)
+        # Retour à l'écran d'avant lancement (état du système, récap, workers).
+        self._vers_recap_btn = QPushButton("←  Récapitulatif")
+        self._vers_recap_btn.setObjectName("GhostButton")
+        self._vers_recap_btn.setToolTip("Revoir l'état du système, le récapitulatif et les paramètres avancés")
+        self._vers_recap_btn.clicked.connect(self.show_recap)
+        v.addWidget(self._vers_recap_btn, 0, Qt.AlignmentFlag.AlignRight)
         run_card, xv = build_card("Exécution")
         self._run_view = RunView(config_ref)
         self._run_view.run_started.connect(self.run_started)
@@ -535,15 +554,24 @@ class LaunchPage(QWidget):
     def show_recap(self) -> None:
         self._stack.setCurrentWidget(self._recap_page)
 
+    def show_run(self) -> None:
+        self._stack.setCurrentWidget(self._run_page)
+
     def set_step_subtitles(self, subs: Dict[str, str]) -> None:
         self._run_view.set_step_subtitles(subs)
 
     def start_run(self, config: dict) -> None:
-        self._stack.setCurrentWidget(self._run_page)
+        self._has_run = True
+        self._vers_journal_btn.setVisible(True)
+        self.show_run()
         self._run_view.start_run(config)
 
     def is_running(self) -> bool:
         return self._run_view.is_running()
+
+    def has_run(self) -> bool:
+        """Un run a été lancé dans cette fenêtre : le journal existe."""
+        return self._has_run
 
     def request_cancel(self) -> None:
         """Relaye la demande d'annulation au RunView (fermeture pendant un

@@ -57,7 +57,9 @@ Les couches **ne sont pas chargées dans QGIS automatiquement**. Le bouton **Ouv
 
 Un **rapport** du traitement (`rapport.html`) est écrit dans `livrable/` et s'ouvre dans le navigateur avec le bouton **Rapport** du même cadre : une mise en garde d'usage, le mode, la surface couverte et le nombre de dalles, les produits avec leurs réglages en mots, chaque modèle sous son nom avec le seuil appliqué, le nombre d'images analysées et la durée mesurée, le bilan de fiabilité avec ce que garantit chaque niveau et la densité de détections au km², les durées par étape, les avertissements du journal avec leur renvoi au manuel, les sources des données et des outils, et une vignette de la zone. Il ne situe pas la zone : aucun nom de dalle, aucune coordonnée, aucun chemin de votre poste, et les avertissements sont débarrassés de leurs chemins. Il se lit hors ligne et s'imprime : c'est le document à joindre au dossier de prospection.
 
-En bas, **Ouvrir le dossier** ouvre le dossier de sortie et **Log complet** le journal détaillé.
+**Ouvrir le dossier**, dans le même cadre, ouvre le dossier de sortie dans l'explorateur de fichiers. En bas, **Log complet** ouvre le journal détaillé.
+
+Le journal reste là : revenir sur une autre étape puis sur l'étape 4 le retrouve tel quel. **Récapitulatif**, en haut à droite, ramène à l'écran d'avant lancement, et **Journal du traitement** fait le chemin inverse.
 
 Ce que contient le dossier et comment lire les couches : [Vos résultats dans QGIS](resultats.md).
 

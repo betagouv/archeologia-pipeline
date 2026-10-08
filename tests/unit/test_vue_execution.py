@@ -27,6 +27,21 @@ def test_le_projet_qgis_ne_s_ouvre_qu_au_clic():
     assert "load_result_layers(" in ouvrir and "_open_project_btn.setEnabled(False)" in ouvrir
     assert 'QPushButton("Ouvrir le projet QGIS")' in vue
     assert vue.count("load_result_layers(") == 1     # un seul appel, celui du clic
+    # « Ouvrir le dossier » est dans le cadre de fin, à côté du projet (2026-10-08).
+    assert "actions_fin.addWidget(self._open_dir_btn)" in vue
+    assert "actions.addWidget(self._open_dir_btn)" not in vue
+
+
+def test_le_journal_reste_accessible_apres_le_run():
+    # Revenir d'une étape 1-3 sur l'étape 4 ne doit plus remplacer le journal
+    # par le récap (constat utilisateur 2026-10-08) : le récap ne s'impose
+    # qu'avant le premier run, et chaque sous-page a sa bascule.
+    wizard = (RACINE / "src/ui/wizard_dialog.py").read_text(encoding="utf-8")
+    assert "not self._launch_page.is_running() and not self._launch_page.has_run()" in wizard
+    page = (RACINE / "src/ui/steps/step_4_launch.py").read_text(encoding="utf-8")
+    assert "def has_run(" in page and "def show_run(" in page
+    assert "_vers_journal_btn.clicked.connect(self.show_run)" in page
+    assert "_vers_recap_btn.clicked.connect(self.show_recap)" in page
 
 
 def test_un_seul_format_de_duree_et_la_synthese_dans_le_fil():

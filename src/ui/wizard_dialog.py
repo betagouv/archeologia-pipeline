@@ -461,7 +461,10 @@ class WizardDialog(QDialog):
         self._launch_page.update_recap(sections)
         self._launch_page.set_step_subtitles(self._step_subtitles())
         self._launch_page.refresh_preflight(self._config)
-        if not self._launch_page.is_running():
+        # Avant le premier run, l'étape 4 arrive sur le récap ; ensuite elle garde
+        # sa vue (le journal du dernier traitement restait inaccessible dès qu'on
+        # passait par une étape 1-3, constat utilisateur 2026-10-08).
+        if not self._launch_page.is_running() and not self._launch_page.has_run():
             self._launch_page.show_recap()
 
     def _step_subtitles(self) -> dict:

@@ -105,8 +105,8 @@ def ensure_cache_matches(
             raise RuntimeError(
                 f"Purge du cache impossible : « {locked} » est verrouillé — "
                 "fermez les couches QGIS chargées depuis ce dossier de sortie "
-                "(intermediaires/, indices/) et tout projet "
-                "detections_validation.qgs ouvert dans une autre instance, "
+                "(technique/intermediaires/, livrable/indices/) et tout projet "
+                "livrable/projet.qgs ouvert dans une autre instance, "
                 "puis relancez."
             ) from e
         purged = True

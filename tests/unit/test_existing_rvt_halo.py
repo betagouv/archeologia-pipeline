@@ -32,12 +32,12 @@ _TRANSFORM_CROPPED = (0.5, -0.5, 872000.0, 6904000.0)
 
 @pytest.fixture
 def env(tmp_path, monkeypatch):
-    tif_dir = tmp_path / "indices" / "LD_TEST" / "tif"
+    tif_dir = tmp_path / "livrable" / "indices" / "LD_TEST" / "tif"
     tif_dir.mkdir(parents=True)
     cropped = tif_dir / _CROPPED
     cropped.write_bytes(b"tif")
-    uncropped = tmp_path / "intermediaires" / _UNCROPPED
-    uncropped.parent.mkdir()
+    uncropped = tmp_path / "technique" / "intermediaires" / _UNCROPPED
+    uncropped.parent.mkdir(parents=True, exist_ok=True)
     uncropped.write_bytes(b"tif")
 
     calls = {"convert": [], "consistent": [], "cv": []}
@@ -99,7 +99,7 @@ class TestInferenceTifResolver:
     def test_geo03_compare_le_png_au_tif_resolu(self, env, monkeypatch):
         # Un PNG rogné préexistant (2000 px) doit être détecté incohérent
         # avec le TIF résolu (2800 px) et régénéré depuis ce dernier.
-        jpg_dir = env["output_dir"] / "indices" / "LD_TEST" / "png"
+        jpg_dir = env["output_dir"] / "technique" / "png" / "LD_TEST"
         jpg_dir.mkdir(parents=True)
         stale = jpg_dir / (env["cropped"].stem + ".png")
         stale.write_bytes(b"old png")
@@ -169,7 +169,7 @@ class TestRunCvPostLoopHalo:
         import app.services.cv_post_service as cps
         import pipeline.output_paths as op
 
-        tif_dir = tmp_path / "indices" / "LD_X" / "tif"
+        tif_dir = tmp_path / "livrable" / "indices" / "LD_X" / "tif"
         tif_dir.mkdir(parents=True)
         (tif_dir / _CROPPED).write_bytes(b"t")
         monkeypatch.setattr(op, "resolve_rvt_tif_dir", lambda *a, **k: tif_dir)
@@ -209,14 +209,14 @@ class TestRunCvPostLoopHalo:
         cps.run_cv_post_loop(
             ctx=loop_env["ctx"], output_structure={}, rvt_params={"svf": {"radius": 12}},
             reporter=_Stub(), cancel=loop_env["cancel"], slog=None,
-            halo_source_dir=tmp_path / "intermediaires",
+            halo_source_dir=tmp_path / "technique" / "intermediaires",
         )
 
         resolver = loop_env["captured"].get("inference_tif_resolver")
         assert resolver is not None
         assert resolver(Path("a.tif")) == sentinel
         assert rec["args"] == (
-            Path("a.tif"), tmp_path / "intermediaires", "LD", {"svf": {"radius": 12}},
+            Path("a.tif"), tmp_path / "technique" / "intermediaires", "LD", {"svf": {"radius": 12}},
         )
 
     def test_sans_halo_source_dir_pas_de_resolveur(self, loop_env):
@@ -246,7 +246,7 @@ class TestNeighborHaloFallback:
     def env2(self, tmp_path, monkeypatch):
         import pipeline.modes.neighbor_halo as nh
 
-        tif_dir = tmp_path / "indices" / "LD_TEST" / "tif"
+        tif_dir = tmp_path / "livrable" / "indices" / "LD_TEST" / "tif"
         tif_dir.mkdir(parents=True)
         (tif_dir / _A).write_bytes(b"tif")
         (tif_dir / _B).write_bytes(b"tif")
@@ -285,7 +285,7 @@ class TestNeighborHaloFallback:
         self._run(env2)
 
         srcs = [s for s, _d in env2["calls"]["convert"]]
-        halo_dir = env2["output_dir"] / "intermediaires" / "halo" / "LD_TEST"
+        halo_dir = env2["output_dir"] / "technique" / "intermediaires" / "halo" / "LD_TEST"
         assert srcs == [halo_dir / _A, halo_dir / _B]
         # Les stems des PNG restent ceux des dalles (cache, couches).
         assert [d.stem for _s, d in env2["calls"]["convert"]] == [Path(_A).stem, Path(_B).stem]
@@ -295,7 +295,7 @@ class TestNeighborHaloFallback:
         assert cv["cell_bounds_by_stem"] == {Path(_A).stem: _CELL_A, Path(_B).stem: _CELL_B}
 
     def test_resolveur_explicite_prioritaire(self, env2, tmp_path):
-        uncropped = tmp_path / "intermediaires" / _UNCROPPED
+        uncropped = tmp_path / "technique" / "intermediaires" / _UNCROPPED
         uncropped.parent.mkdir(parents=True)
         uncropped.write_bytes(b"tif")
 
@@ -391,7 +391,7 @@ class TestAnnulationPendantLaPreparation:
     def test_les_png_deja_en_cache_survivent(self, env):
         """Un run annulé ne doit pas jeter le cache : la reprise repart de là."""
         noms = self._trois_dalles(env)
-        jpg_dir = env["output_dir"] / "indices" / "LD_TEST" / "png"
+        jpg_dir = env["output_dir"] / "technique" / "png" / "LD_TEST"
         jpg_dir.mkdir(parents=True)
         cache = jpg_dir / (pathlib.Path(noms[2]).stem + ".png")
         cache.write_bytes(b"png deja converti")
@@ -418,7 +418,7 @@ class TestPreparationParallele:
 
     def test_resultat_et_ordre_identiques_au_sequentiel(self, env):
         noms = self._dalles(env, 8)
-        png_dir = env["output_dir"] / "indices" / "LD_TEST" / "png"
+        png_dir = env["output_dir"] / "technique" / "png" / "LD_TEST"
 
         vus_seq = []
         seq = _run(env, max_workers=1, prep_progress=lambda i, n, nom: vus_seq.append(nom))

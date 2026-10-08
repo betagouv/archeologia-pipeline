@@ -373,14 +373,14 @@ class TestValidateProductsRule:
         d.mkdir(exist_ok=True)
         files = FilesConfig(
             data_mode=mode,
-            output_dir=tmp_path,
+            output_dir=tmp_path / "sortie",   # à part de la source : pas d'avertissement d'imbrication
             input_file=f if mode == "ign_laz" else None,
             local_laz_dir=d if mode == "local_laz" else None,
             existing_mnt_dir=d if mode == "existing_mnt" else None,
             existing_rvt_dir=d if mode == "existing_rvt" else None,
         )
         return RunContext(
-            mode=mode, output_dir=tmp_path, files=files,
+            mode=mode, output_dir=tmp_path / "sortie", files=files,
             processing=ProcessingConfig(products=products),
             cv=CvConfig(), rvt_params={}, ui_config={},
         )
@@ -807,3 +807,22 @@ class TestNeedsTileProcessing:
         # sauter silencieusement la boucle dalles.
         assert ProductsConfig(MNT=False, DENSITE=True).needs_tile_processing() is True
         assert ProductsConfig(MNT=False, COUVERTURE=True).needs_tile_processing() is True
+
+
+def test_sortie_dans_la_source_refusee_source_dans_la_sortie_signalee(tmp_path: Path):
+    """Arborescence v3 (2026-10-08) : la réorganisation déplacerait les données."""
+    from app.run_context import build_run_context, chemin_dans, validate_run_context
+
+    source = tmp_path / "rvt"
+    source.mkdir()
+    cfg = {"app": {"files": {"data_mode": "existing_rvt", "existing_rvt_dir": str(source),
+                             "output_dir": str(source / "sortie")}}}
+    errors, _w = validate_run_context(build_run_context(cfg))
+    assert any("dans le dossier source" in e for e in errors)
+    cfg["app"]["files"]["output_dir"] = str(tmp_path)
+    errors, warnings = validate_run_context(build_run_context(cfg))
+    assert errors == [] and any("source est dans le dossier de sortie" in w for w in warnings)
+    cfg["app"]["files"]["output_dir"] = str(tmp_path / "ailleurs")
+    errors, warnings = validate_run_context(build_run_context(cfg))
+    assert errors == [] and not any("dossier de sortie" in w for w in warnings)
+    assert chemin_dans(Path("C:/a/B/c"), Path("c:/A/b")) and not chemin_dans(Path("C:/ab"), Path("C:/a"))

@@ -12,6 +12,11 @@ from .run_context import RunContext, validate_run_context
 from .structured_logger import create_structured_logger
 from .user_narrator import create_user_narrator
 
+try:
+    from ..pipeline.output_paths import journaux_dir
+except ImportError:  # standalone (tests) : src/ sur sys.path
+    from pipeline.output_paths import journaux_dir  # type: ignore[no-redef]
+
 
 def _files_as_dict(ctx: RunContext) -> dict:
     """Adapte ``ctx.files`` au contrat dict-only de ``preflight``.
@@ -54,9 +59,10 @@ def file_logging(output_dir: Optional[Path], reporter: ProgressReporter) -> Iter
 
     try:
         if output_dir is not None:
-            output_dir.mkdir(parents=True, exist_ok=True)
+            journaux = journaux_dir(output_dir)
+            journaux.mkdir(parents=True, exist_ok=True)
             ts = time.strftime("%Y%m%d_%H%M%S")
-            log_path = output_dir / f"pipeline_log_{ts}.txt"
+            log_path = journaux / f"pipeline_log_{ts}.txt"
             file_handler = logging.FileHandler(str(log_path), encoding="utf-8")
             # INFO pour avoir tous les logs techniques dans le fichier
             # (alors que l'UI filtre à USER_INFO=25 et n'en voit que les

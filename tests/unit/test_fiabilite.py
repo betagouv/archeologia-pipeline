@@ -150,9 +150,9 @@ class TestTextes:
 
     def test_hint_etape3(self):
         assert hint_etape3({"c": _cats()}) == (
-            "Fiabilité affichée — douteux dès 0.29 · possible dès 0.35 · probable dès 0.45 · très probable dès 0.65")
+            "Fiabilité affichée — douteux dès 0,29 · possible dès 0,35 · probable dès 0,45 · très probable dès 0,65")
         deux = hint_etape3({"a": _cats()[:2], "b": _cats()[2:]})
-        assert deux.startswith("Fiabilité affichée — a : douteux dès 0.29 · possible dès 0.35 ; b : probable dès 0.45")
+        assert deux.startswith("Fiabilité affichée — a : douteux dès 0,29 · possible dès 0,35 ; b : probable dès 0,45")
         assert hint_etape3({}) == "" and hint_etape3({"a": ()}) == ""
 
 

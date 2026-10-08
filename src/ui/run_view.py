@@ -19,25 +19,36 @@ from pathlib import Path
 from typing import Dict, List, Optional
 
 from qgis.PyQt.QtCore import QPropertyAnimation, QSize, Qt, QTimer, QUrl, pyqtSignal
-from qgis.PyQt.QtGui import QDesktopServices, QTextCursor
+from qgis.PyQt.QtGui import QColor, QDesktopServices, QPainter, QTextCursor
 from qgis.PyQt.QtWidgets import (
     QApplication,
     QFrame,
     QGraphicsOpacityEffect,
     QHBoxLayout,
     QLabel,
-    QPlainTextEdit,
-    QProgressBar,
     QPushButton,
+    QScrollArea,
+    QSizePolicy,
+    QTextBrowser,
     QVBoxLayout,
     QWidget,
 )
 
 from ..app.progress_reporter import USER_INFO
+from ..app.user_narrator import PRODUCT_LABELS, _format_duration
 from ..app.progress_stages import STAGE_LABELS, build_stage_sequence
+from ..app.services.aide import AIDE_DIRNAME, CLE_DEPANNAGE, resoudre_cible, rubrique_depannage, slug
+from ..app.services.bilan_fiabilite import collecter as collecter_bilan
+from ..app.services.fiabilite_observee import enregistrer_run
+from ..app.services.arborescence import appliquer, decrire, non_reconnus, plan_migration
+from ..app.services.rapport_run import NOM_RAPPORT
+from ..app.services.source_modes import mode_info
+from ..pipeline.output_paths import detections_dir, journaux_dir, livrable_dir, projet_qgs_path
+from .widgets.bilan_fiabilite import BilanFiabiliteWidget, legende_niveaux
 from .icons import colored_icon
 from .layer_loader import load_result_layers, purge_output_dir_layers
 from .log_bridge import QtLogEmitter, QtLogHandler
+from qgis.PyQt.QtWidgets import QMessageBox
 
 # Couleurs par niveau dans le journal sombre (#1c1b18) : warnings ambre,
 # erreurs rouges — le texte info garde la couleur par défaut du QSS (#d8d4cc).
@@ -46,10 +57,9 @@ _LOG_LINE_COLORS = {"warn": "#e6c07b", "err": "#e06c75"}
 
 
 def _fmt_hms(seconds: float) -> str:
-    """Durée en h:mm:ss (ex. 134 → « 0:02:14 », 3722 → « 1:02:02 », 0 → « 0:00:00 »)."""
-    h, rem = divmod(int(max(0.0, seconds)), 3600)
-    m, s = divmod(rem, 60)
-    return f"{h}:{m:02d}:{s:02d}"
+    """Durée dans le format du journal et du rapport (« 4min 07s », « 1h 02min », « 7s ») :
+    un seul format partout (V2, 2026-10-08)."""
+    return _format_duration(max(0.0, seconds))
 
 
 def _level_category(levelname: str) -> str:
@@ -92,7 +102,7 @@ class _TimelineStep(QFrame):
         self._timing = QLabel("")
         self._timing.setObjectName("RunStepTiming")
         self._timing.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._timing.setFixedWidth(64)  # ~"9:59:59" → pas de reflow quand ça défile
+        self._timing.setFixedWidth(72)  # ~"59min 59s" → pas de reflow quand ça défile
         lay.addWidget(self._circle, 0, Qt.AlignmentFlag.AlignHCenter)
         lay.addWidget(self._caption, 0, Qt.AlignmentFlag.AlignHCenter)
         lay.addWidget(self._subtitle, 0, Qt.AlignmentFlag.AlignHCenter)
@@ -122,6 +132,42 @@ class _TimelineStep(QFrame):
         self._timing.setText(text or "")
 
 
+class _StepLine(QWidget):
+    """Fil entre deux pastilles : gris en attente, bleu rempli à proportion du compteur
+    de l'étape active (``set_ratio``), vert une fois l'étape faite. C'est la seule
+    progression affichée (V2, 2026-10-08) : rien qui ne soit mesuré."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setFixedHeight(6)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        self._state = "pending"
+        self._ratio = 0.0
+
+    def set_state(self, state: str) -> None:
+        if state != self._state:
+            self._state = state
+            if state != "active":
+                self._ratio = 0.0
+            self.update()
+
+    def set_ratio(self, ratio: float) -> None:
+        ratio = max(0.0, min(1.0, float(ratio)))
+        if abs(ratio - self._ratio) > 0.002:
+            self._ratio = ratio
+            self.update()
+
+    def paintEvent(self, _ev) -> None:  # noqa: N802 (signature Qt)
+        p = QPainter(self)
+        w, y = self.width(), self.height() // 2 - 1
+        p.fillRect(0, y, w, 2, QColor("#c4c4c4"))
+        if self._state == "done":
+            p.fillRect(0, y, w, 2, QColor("#418141"))
+        elif self._state == "active" and self._ratio > 0:
+            p.fillRect(0, y - 1, int(w * self._ratio), 4, QColor("#2b79c2"))
+        p.end()
+
+
 class _Timeline(QWidget):
     """Bandeau d'étapes reconstruit selon le mode (``set_stages``).
 
@@ -137,7 +183,7 @@ class _Timeline(QWidget):
         self._lay.setContentsMargins(0, 0, 0, 0)
         self._lay.setSpacing(0)
         self._steps: List[_TimelineStep] = []
-        self._lines: List[QFrame] = []
+        self._lines: List[_StepLine] = []
         self._stage_ids: List[str] = []
 
     def set_stages(self, stage_ids: List[str], labels: Dict[str, str]) -> None:
@@ -156,19 +202,17 @@ class _Timeline(QWidget):
             self._steps.append(step)
             self._lay.addWidget(step)
             if i < len(self._stage_ids) - 1:
-                line = QFrame()
-                line.setObjectName("RunStepLine")
-                line.setProperty("state", "pending")
-                line.setFixedHeight(2)
+                line = _StepLine()
                 self._lay.addWidget(line, 1)
                 self._lines.append(line)
 
     def _set_line_state(self, i: int, state: str) -> None:
-        line = self._lines[i]
-        if line.property("state") != state:
-            line.setProperty("state", state)
-            line.style().unpolish(line)
-            line.style().polish(line)
+        self._lines[i].set_state(state)
+
+    def set_fill(self, bucket: int, ratio: float) -> None:
+        """Remplit le fil qui suit la pastille active, à proportion de son compteur."""
+        if 0 <= bucket < len(self._lines):
+            self._lines[bucket].set_ratio(ratio)
 
     def set_active(self, bucket: int) -> None:
         for i, step in enumerate(self._steps):
@@ -178,9 +222,10 @@ class _Timeline(QWidget):
                 step.set_state("active")
             else:
                 step.set_state("pending")
-        # Fil vert derrière les étapes faites, comme le fil du rail latéral.
+        # Fil vert derrière les étapes faites ; le fil qui suit la pastille active se
+        # remplit avec son compteur (set_fill).
         for i in range(len(self._lines)):
-            self._set_line_state(i, "done" if i < bucket else "pending")
+            self._set_line_state(i, "done" if i < bucket else ("active" if i == bucket else "pending"))
 
     def set_timing(self, i: int, text: str) -> None:
         if 0 <= i < len(self._steps):
@@ -208,6 +253,16 @@ class _Timeline(QWidget):
             step.set_count("")
         for i in range(len(self._lines)):
             self._set_line_state(i, "pending")
+
+
+def profil_archeologia() -> Path:
+    """``<profil QGIS>/archeologia`` — même dossier que le registre des couleurs."""
+    try:
+        from qgis.core import QgsApplication
+
+        return Path(QgsApplication.qgisSettingsDirPath()) / "archeologia"
+    except Exception:  # noqa: BLE001 — hors QGIS : à côté du plugin
+        return Path(__file__).resolve().parents[2] / "data" / "temp_zones"   # gitignoré
 
 
 class RunView(QWidget):
@@ -248,6 +303,12 @@ class RunView(QWidget):
         # bandeau de fin (écrite par le thread worker, lue à run_enabled).
         self._level_counts = {"warn": 0, "err": 0}
         self._run_outcome = "ok"
+        # Bilan de fiabilité du run (lignes pures), lu au chargement des couches,
+        # affiché en barres dans le cadre « Par où commencer » de fin de run.
+        self._bilan: list = []
+        # Couches du run, à charger dans le projet QGIS courant SEULEMENT au clic sur
+        # « Ouvrir le projet QGIS » (V2, 2026-10-08 : plus de chargement automatique).
+        self._couches_a_charger: Optional[tuple] = None
 
         # ── Logger + pont Qt ──
         self._logger = logging.getLogger("archeologia_pipeline")
@@ -286,24 +347,32 @@ class RunView(QWidget):
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(10)
+        # Tout sauf la rangée d'actions défile en hauteur (2026-10-08) : le cadre de
+        # fin de run ajoutait ~200 px à la hauteur minimale de la vue, et Qt
+        # agrandissait la fenêtre jusqu'à la faire passer sous la barre des tâches.
+        contenu = QWidget()
+        haut = QVBoxLayout(contenu)
+        haut.setContentsMargins(0, 0, 0, 0)
+        haut.setSpacing(10)
+        zone = QScrollArea()
+        zone.setObjectName("LaunchScroll")
+        zone.setWidgetResizable(True)
+        zone.setFrameShape(QFrame.Shape.NoFrame)
+        zone.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        zone.setWidget(contenu)
+        root.addWidget(zone, 1)
 
-        # Bandeau de fin de run (succès / échec / annulation) — chiffres réels
-        # uniquement (durée mesurée, compteurs ⚠/✗). Caché pendant le run.
-        self._end_banner = QLabel("")
-        self._end_banner.setObjectName("RunEndBanner")
-        self._end_banner.setProperty("kind", "ok")
-        self._end_banner.setWordWrap(True)
-        self._end_banner.setVisible(False)
-        root.addWidget(self._end_banner)
-
-        # En-tête : point d'activité pulsé + « Étape N/M · <étape> » + sous-ligne
-        # (sous-étape courante) + chrono total à droite. Le compteur live
-        # (« 8/12 dalles ») ne vit QUE dans la pastille active de la timeline.
-        header = QFrame()
-        header.setObjectName("RunHeader")
-        hl = QHBoxLayout(header)
-        hl.setContentsMargins(10, 6, 10, 6)
-        hl.setSpacing(8)
+        # ── Fil d'état (V2, 2026-10-08) : une ligne au-dessus de la frise. À gauche ce
+        # qui a été choisi, puis la synthèse de fin (vert / gris / rouge) ; à droite
+        # l'état et le chrono total. Plus de carte d'étape, plus de bandeau, plus de
+        # barre : la frise porte l'état, le journal raconte.
+        fil = QHBoxLayout()
+        fil.setContentsMargins(2, 0, 2, 0)
+        fil.setSpacing(8)
+        self._fil_gauche = QLabel("")
+        self._fil_gauche.setObjectName("RunFil")
+        self._fil_gauche.setProperty("kind", "info")
+        self._fil_gauche.setWordWrap(True)
         self._activity_dot = QLabel("●")
         self._activity_dot.setObjectName("RunActivityDot")
         self._activity_dot.setVisible(False)
@@ -315,40 +384,76 @@ class RunView(QWidget):
         self._dot_anim.setKeyValueAt(0.5, 0.25)
         self._dot_anim.setEndValue(1.0)
         self._dot_anim.setLoopCount(-1)  # pulse tant que le run tourne
-        hl.addWidget(self._activity_dot, 0, Qt.AlignmentFlag.AlignVCenter)
-        titles = QVBoxLayout()
-        titles.setSpacing(1)
-        self._run_step_label = QLabel("En attente")
-        self._run_step_label.setObjectName("RunHeaderStep")
-        self._run_sub_label = QLabel("")
-        self._run_sub_label.setObjectName("RunHeaderSub")
-        titles.addWidget(self._run_step_label)
-        titles.addWidget(self._run_sub_label)
-        right = QVBoxLayout()
-        right.setSpacing(0)
-        self._run_elapsed_label = QLabel("")
-        self._run_elapsed_label.setObjectName("RunHeaderMetric")
-        self._run_elapsed_label.setAlignment(Qt.AlignmentFlag.AlignRight)
-        self._elapsed_caption = QLabel("écoulé")
-        self._elapsed_caption.setObjectName("RunHeaderSub")
-        self._elapsed_caption.setAlignment(Qt.AlignmentFlag.AlignRight)
-        self._elapsed_caption.setVisible(False)
-        right.addWidget(self._run_elapsed_label)
-        right.addWidget(self._elapsed_caption)
-        hl.addLayout(titles, 1)
-        hl.addLayout(right)
-        root.addWidget(header)
+        self._fil_droite = QLabel("")
+        self._fil_droite.setObjectName("RunFilEtat")
+        fil.addWidget(self._fil_gauche, 1)
+        fil.addWidget(self._activity_dot, 0, Qt.AlignmentFlag.AlignVCenter)
+        fil.addWidget(self._fil_droite, 0, Qt.AlignmentFlag.AlignVCenter)
+        haut.addLayout(fil)
 
         self._timeline = _Timeline()
-        root.addWidget(self._timeline)
+        haut.addWidget(self._timeline)
 
-        self._progress = QProgressBar()
-        self._progress.setObjectName("RunProgress")
-        self._progress.setRange(0, 100)
-        self._progress.setValue(0)
-        self._progress.setTextVisible(True)
-        self._progress.setFormat("%p %")
-        root.addWidget(self._progress)
+        # ── Fin de run : « Par où commencer » (barres du bilan) + les actions qui
+        # vont avec : ouvrir le projet QGIS (au clic seulement), le dossier, le rapport.
+        self._bilan_box = QFrame()
+        self._bilan_box.setObjectName("RunBilanBox")
+        bl = QVBoxLayout(self._bilan_box)
+        bl.setContentsMargins(10, 6, 10, 8)
+        bl.setSpacing(4)
+        tete = QHBoxLayout()
+        tete.setSpacing(8)
+        self._bilan_titre = QLabel("Par où commencer")
+        self._bilan_titre.setObjectName("RunJournalTitle")
+        self._bilan_sous = QLabel("")
+        self._bilan_sous.setObjectName("RunHeaderSub")
+        tete.addWidget(self._bilan_titre)
+        tete.addWidget(self._bilan_sous, 1)
+        bl.addLayout(tete)
+        self._bilan_conteneur = QVBoxLayout()
+        self._bilan_conteneur.setSpacing(2)
+        bl.addLayout(self._bilan_conteneur)
+        self._bilan_layout = bl
+        dpr = self.devicePixelRatioF()
+        actions_fin = QHBoxLayout()
+        actions_fin.setSpacing(6)
+        self._open_project_btn = QPushButton("Ouvrir le projet QGIS")
+        self._open_project_btn.setObjectName("WizardPrimaryButton")
+        self._open_project_btn.setToolTip(
+            "Charge les mosaïques et les couches de détections dans le projet QGIS courant"
+        )
+        self._open_project_btn.setEnabled(False)
+        self._open_project_btn.clicked.connect(self._ouvrir_projet_qgis)
+        # Le dossier de sortie, à côté du projet (demande utilisateur 2026-10-08).
+        # Icônes SVG du thème (teintées, nettes) plutôt que des émojis couleur au
+        # rendu hétérogène ; iconSize = taille de rendu (14 px), sinon upscale
+        # pixelisé du pixmap. Désactivés tant que le dossier/log n'existent pas.
+        self._open_dir_btn = QPushButton("Ouvrir le dossier")
+        self._open_dir_btn.setObjectName("GhostButton")
+        self._open_dir_btn.setIcon(colored_icon("folder-open", "#2c2c2c", 14, dpr=dpr))
+        self._open_dir_btn.setIconSize(QSize(14, 14))
+        self._open_dir_btn.setToolTip("Le dossier de sortie, dans l'explorateur de fichiers")
+        self._open_dir_btn.setEnabled(False)
+        self._open_dir_btn.clicked.connect(self._open_output_dir)
+        # Rapport de traitement (rapport.html, 2026-10-08) : actif à la fin du run
+        # s'il a été écrit.
+        self._open_report_btn = QPushButton("Rapport")
+        self._open_report_btn.setObjectName("GhostButton")
+        self._open_report_btn.setIcon(colored_icon("file-text", "#2c2c2c", 14, dpr=dpr))
+        self._open_report_btn.setIconSize(QSize(14, 14))
+        self._open_report_btn.setToolTip("Le rapport du traitement, dans le navigateur (livrable/rapport.html)")
+        self._open_report_btn.setEnabled(False)
+        self._open_report_btn.clicked.connect(self._open_report)
+        self._bilan_legende = QLabel("")
+        self._bilan_legende.setObjectName("RunHeaderSub")
+        self._bilan_legende.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        actions_fin.addWidget(self._open_project_btn)
+        actions_fin.addWidget(self._open_dir_btn)
+        actions_fin.addWidget(self._open_report_btn)
+        actions_fin.addWidget(self._bilan_legende, 1)
+        bl.addLayout(actions_fin)
+        self._bilan_box.setVisible(False)
+        haut.addWidget(self._bilan_box)
 
         jhead = QHBoxLayout()
         jhead.setSpacing(8)
@@ -380,34 +485,33 @@ class RunView(QWidget):
         jhead.addStretch(1)
         jhead.addWidget(copy_btn)
         jhead.addWidget(clear_btn)
-        root.addLayout(jhead)
+        haut.addLayout(jhead)
 
-        self._journal = QPlainTextEdit()
+        # Navigateur de texte en lecture seule (2026-10-08) : une ligne ⚠/✗ porte
+        # un lien vers sa rubrique de Dépannage du manuel (un QPlainTextEdit n'a
+        # pas de lien cliquable). Même QSS, même journal texte au « Copier ».
+        self._journal = QTextBrowser()
         self._journal.setObjectName("RunJournal")
         self._journal.setReadOnly(True)
-        self._journal.setMaximumBlockCount(5000)
-        root.addWidget(self._journal, 1)
+        self._journal.setOpenLinks(False)
+        self._journal.setOpenExternalLinks(False)
+        self._journal.document().setMaximumBlockCount(5000)
+        self._journal.anchorClicked.connect(self._sur_lien_journal)
+        # Hauteur plancher : quand le cadre de fin prend la place, la vue défile
+        # plutôt que d'écraser le journal à quatre lignes.
+        self._journal.setMinimumHeight(140)
+        self._journal.setPlaceholderText("Le journal s'écrira ici, ligne par ligne, dès le lancement.")
+        haut.addWidget(self._journal, 1)
+        # Largeur minimale du contenu reportée sur la zone : rien de rogné à droite.
+        zone.setMinimumWidth(contenu.minimumSizeHint().width() + zone.verticalScrollBar().sizeHint().width())
 
         actions = QHBoxLayout()
-        # Icônes SVG du thème (teintées, nettes) plutôt que des émojis couleur
-        # au rendu hétérogène. Désactivés tant que le dossier/log n'existent pas
-        # (le clic était un no-op silencieux).
-        dpr = self.devicePixelRatioF()
-        self._open_dir_btn = QPushButton("Ouvrir le dossier")
-        self._open_dir_btn.setObjectName("GhostButton")
-        self._open_dir_btn.setIcon(colored_icon("folder-open", "#2c2c2c", 14, dpr=dpr))
-        # iconSize = taille de rendu (14 px) : la taille par défaut du bouton
-        # (16 px) ferait un upscale pixelisé du pixmap.
-        self._open_dir_btn.setIconSize(QSize(14, 14))
-        self._open_dir_btn.setEnabled(False)
-        self._open_dir_btn.clicked.connect(self._open_output_dir)
         self._open_log_btn = QPushButton("Log complet")
         self._open_log_btn.setObjectName("GhostButton")
         self._open_log_btn.setIcon(colored_icon("file-text", "#2c2c2c", 14, dpr=dpr))
         self._open_log_btn.setIconSize(QSize(14, 14))
         self._open_log_btn.setEnabled(False)
         self._open_log_btn.clicked.connect(self._open_log)
-        actions.addWidget(self._open_dir_btn)
         actions.addWidget(self._open_log_btn)
         actions.addStretch(1)
         self._cancel_btn = QPushButton("Annuler")
@@ -451,6 +555,7 @@ class RunView(QWidget):
         self._timeline.set_stages(stage_ids, STAGE_LABELS)
         self._timeline.set_step_subtitles(self._subtitles)
         self._step_started = [None] * len(stage_ids)
+        self._update_header()      # le fil d'état reflète la config dès l'ouverture
         self._step_elapsed = [None] * len(stage_ids)
         self._bucket = -1
 
@@ -487,7 +592,36 @@ class RunView(QWidget):
         # chargées (run précédent) AVANT que le worker régénère les VRT. Sinon QGIS,
         # qui détient toujours l'ancien dataset, réécrit sa version périmée par-dessus
         # le VRT régénéré → les dalles ajoutées resteraient invisibles. Thread principal.
+        # Dossier écrit par une version précédente (arborescence v2) : proposer la
+        # réorganisation en livrable/ + technique/ (2026-10-08), jamais en silence.
+        plan = plan_migration(ctx.output_dir)
+        if plan:
+            texte = decrire(plan, ctx.output_dir, non_reconnus(ctx.output_dir, plan))
+            rep = QMessageBox.question(
+                self, "Réorganiser le dossier de sortie ?", texte,
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel,
+                QMessageBox.StandardButton.Yes,
+            )
+            if rep != QMessageBox.StandardButton.Yes:
+                self._reset_view()
+                self._append_log("INFO", "Lancement annulé : le dossier de sortie garde son ancienne organisation. "
+                                         "Choisissez un autre dossier de sortie, ou acceptez la réorganisation.")
+                return
+            purge_output_dir_layers(ctx.output_dir, self._logger)   # couches sur les anciens chemins
+            erreurs = appliquer(plan, log=lambda m: self._logger.log(USER_INFO, m))
+            if erreurs:
+                self._reset_view()
+                self._append_log("ERROR", "❌ Réorganisation incomplète — fermez les couches QGIS chargées depuis ce dossier, puis relancez :")
+                for e in erreurs:
+                    self._append_log("ERROR", f"   • {e}")
+                return
         purge_output_dir_layers(ctx.output_dir, self._logger)
+        # Registre des runs connus (profil QGIS) : la fiche de classe y lira vos
+        # verdicts (fiabilité observée, 2026-10-08). Jamais bloquant.
+        try:
+            enregistrer_run(profil_archeologia(), ctx.output_dir)
+        except Exception:  # noqa: BLE001
+            pass
 
         self._running = True
         self._run_started_at = time.monotonic()
@@ -496,11 +630,12 @@ class RunView(QWidget):
         # Le dossier de sortie (et le log) existent dès le démarrage du run.
         self._open_dir_btn.setEnabled(True)
         self._open_log_btn.setEnabled(True)
+        self._open_report_btn.setEnabled(False)
         # Indicateur d'activité (point pulsé) + chrono total.
         self._activity_dot.setVisible(True)
         self._dot_anim.start()
-        self._run_elapsed_label.setText("0:00:00")
-        self._elapsed_caption.setVisible(True)
+        self._fil_droite.setText("en cours · 0s")
+        self._update_header()
         self.run_started.emit()
         threading.Thread(target=self._worker, args=(ctx,), daemon=True).start()
 
@@ -542,14 +677,15 @@ class RunView(QWidget):
         self._bucket = -1
         self._last_stage_text = ""
         self._timeline.reset()  # états + chronos + compteurs (garde les sous-libellés)
-        # Barre : retour en mode déterminé, remise à zéro.
-        self._indeterminate = False
-        self._progress.setRange(0, 100)
         self._last_progress = 0
-        self._progress.setValue(0)
-        self._run_elapsed_label.setText("")
-        self._elapsed_caption.setVisible(False)
-        self._end_banner.setVisible(False)
+        self._bilan = []
+        self._couches_a_charger = None
+        self._bilan_box.setVisible(False)
+        self._afficher_bilan()
+        self._fil_droite.setText("")
+        self._fil_gauche.setProperty("kind", "info")
+        self._fil_gauche.style().unpolish(self._fil_gauche)
+        self._fil_gauche.style().polish(self._fil_gauche)
         self._update_header()
         self._clear_journal()
         self._step_started = [None] * len(self._stage_ids)
@@ -595,8 +731,19 @@ class RunView(QWidget):
         color = _LOG_LINE_COLORS.get(cat)
         if color:
             body = f'<span style="color:{color};">{body}</span>'
+            # Renvoi vers le manuel intégré : un lien « manuel:depannage#<slug> »
+            # qui ouvre la rubrique (cf. _sur_lien_journal) ; le titre reste lisible
+            # au « Copier » (texte brut).
+            rubrique = rubrique_depannage(msg)
+            if rubrique:
+                body += (
+                    f'&nbsp;&nbsp;<a href="manuel:{CLE_DEPANNAGE}#{slug(rubrique)}" '
+                    'style="color:#9c9686;">· voir Manuel › Dépannage › '
+                    f"« {html.escape(rubrique)} »</a>"
+                )
         stamp = f'<span style="color:#7d786c;">{ts}</span>&nbsp;&nbsp;' if ts else ""
-        self._journal.appendHtml(stamp + body)
+        # append() interprète le texte comme HTML s'il commence par une balise.
+        self._journal.append(f"<span>{stamp}{body}</span>")
 
     def _render_journal(self) -> None:
         """Reconstruit le journal filtré depuis le modèle d'entrées."""
@@ -672,15 +819,11 @@ class RunView(QWidget):
         self._maybe_scroll()
 
     def _set_progress(self, value: int) -> None:
-        # Garde monotone : en mode indéterminé on ignore les valeurs ; sinon on
-        # borne à [0,100] et on ne redescend jamais (plus de recul de la barre).
-        if self._indeterminate:
-            return
+        # Progression globale du plan : gardée pour mémoire, plus affichée (V2) —
+        # la frise montre les compteurs mesurés, pas un pourcentage composé.
         v = max(0, min(100, int(value)))
-        if v < self._last_progress:
-            return
-        self._last_progress = v
-        self._progress.setValue(v)
+        if v >= self._last_progress:
+            self._last_progress = v
 
     def _set_stage(self, text: str) -> None:
         # ``stage(text)`` ne porte plus que l'étiquette descriptive du header ;
@@ -695,33 +838,50 @@ class RunView(QWidget):
         self._update_header()
 
     def _on_busy(self, active: bool) -> None:
-        """Bascule barre indéterminée (phase sans signal fin) / déterminée."""
-        if active and not self._indeterminate:
-            self._indeterminate = True
-            self._progress.setRange(0, 0)  # marquee animé
-        elif not active and self._indeterminate:
-            self._indeterminate = False
-            self._progress.setRange(0, 100)
-            self._progress.setValue(self._last_progress)
+        """Phase sans fin prévisible : plus de barre animée (V2) ; le chrono de la
+        pastille active suffit, et la pastille garde son fil non rempli."""
+        self._indeterminate = bool(active)
 
     def _on_metric(self, current: int, total: int, label: str) -> None:
         if self._bucket < 0:
             return
-        # Une seule occurrence du compteur : la pastille active de la timeline
-        # (l'en-tête porte le chrono total, pas un doublon du compteur).
+        # Une seule occurrence du compteur : la pastille active de la timeline ;
+        # et son fil se remplit à proportion (la seule progression affichée).
         self._timeline.set_count(self._bucket, f"{current}/{total} {label}")
+        if total:
+            self._timeline.set_fill(self._bucket, current / float(total))
+
+    def _resume_config(self) -> str:
+        """Ce qui a été choisi aux étapes 1 à 3, en une ligne : mode, produits, modèles."""
+        files = (self._config.get("app") or {}).get("files") or {}
+        mode = files.get("data_mode") or ""
+        morceaux = []
+        try:
+            morceaux.append(mode_info(mode).banner_label if mode else "")
+        except Exception:  # noqa: BLE001 — mode inconnu : rien
+            pass
+        produits = ((self._config.get("processing") or {}).get("products") or {})
+        actifs = [PRODUCT_LABELS.get(code, code) for code, on in produits.items() if on] if isinstance(produits, dict) else []
+        if actifs:
+            morceaux.append(", ".join(actifs) if len(actifs) <= 3 else f"{len(actifs)} produits")
+        cv = self._config.get("computer_vision") or {}
+        if cv.get("enabled"):
+            n = len(cv.get("runs") or [])
+            morceaux.append(f"{n} modèle{'s' if n > 1 else ''}" if n else "détection")
+        return " · ".join(m for m in morceaux if m)
 
     def _update_header(self) -> None:
-        if self._bucket < 0:
-            self._run_step_label.setText("Préparation…" if self._running else "En attente")
-            self._run_sub_label.setText("")
-            return
-        label = STAGE_LABELS.get(self._stage_ids[self._bucket], "") if self._stage_ids else ""
-        self._run_step_label.setText(
-            f"Étape {self._bucket + 1}/{len(self._stage_ids)} · {label}"
-        )
-        # « démarré il y a X » est devenu redondant avec le chrono « écoulé ».
-        self._run_sub_label.setText(self._last_stage_text or "")
+        """Le fil d'état au-dessus de la frise (V2) : à gauche les choix, à droite l'état."""
+        if self._fil_gauche.property("kind") in ("ok", "cancel", "err"):
+            return                                       # la synthèse de fin reste affichée
+        self._fil_gauche.setText(self._resume_config())
+        if not self._running:
+            self._fil_droite.setText("prêt à lancer")
+        elif self._bucket < 0:
+            self._fil_droite.setText("préparation…")
+        else:
+            total = _fmt_hms(time.monotonic() - self._run_started_at) if self._run_started_at else ""
+            self._fil_droite.setText(f"en cours · {total}" if total else "en cours")
 
     def _enter_bucket(self, bucket: int) -> None:
         """Transition d'étape : fige le chrono de la précédente, démarre la
@@ -734,7 +894,7 @@ class RunView(QWidget):
         self._step_started[bucket] = now
         self._active_started = now
         self._timeline.set_active(bucket)
-        self._timeline.set_timing(bucket, "0:00:00")
+        self._timeline.set_timing(bucket, "0s")
         self._ensure_timer()
 
     def _ensure_timer(self) -> None:
@@ -753,12 +913,10 @@ class RunView(QWidget):
                 self._bucket, _fmt_hms(time.monotonic() - self._active_started)
             )
         if self._run_started_at is not None:
-            self._run_elapsed_label.setText(
-                _fmt_hms(time.monotonic() - self._run_started_at)
-            )
+            self._fil_droite.setText(f"en cours · {_fmt_hms(time.monotonic() - self._run_started_at)}")
 
     def _show_end_banner(self) -> None:
-        """Bandeau de synthèse de fin de run — uniquement des mesures réelles
+        """Synthèse de fin dans le fil d'état — uniquement des mesures réelles
         (durée chronométrée, compteurs ⚠/✗), jamais d'estimation."""
         if self._run_started_at is None:
             return
@@ -775,39 +933,50 @@ class RunView(QWidget):
             parts.append(f"{n_warn} avertissement{'s' if n_warn > 1 else ''}")
         if n_err:
             parts.append(f"{n_err} erreur{'s' if n_err > 1 else ''}")
-        suffix = (" — " + " · ".join(parts)) if parts else ""
+        suffix = " · " + " · ".join(parts) if parts else " · aucun avertissement"
         if outcome == "ok":
-            text = f"✓  Pipeline terminé en {elapsed}{suffix}"
+            text = f"✓ Terminé en {elapsed}{suffix}"
         elif outcome == "cancel":
-            text = f"Pipeline annulé après {elapsed}{suffix}"
+            text = f"Annulé après {elapsed}{suffix}"
         else:
-            text = f"✗  Pipeline en échec après {elapsed}{suffix} — voir le journal"
-        self._end_banner.setText(text)
-        self._end_banner.setProperty("kind", outcome)
-        self._end_banner.style().unpolish(self._end_banner)
-        self._end_banner.style().polish(self._end_banner)
-        self._end_banner.setVisible(True)
+            text = f"✗ En échec après {elapsed}{suffix} — voir le journal"
+        self._fil_gauche.setText(text)
+        self._fil_gauche.setProperty("kind", outcome)
+        self._fil_gauche.style().unpolish(self._fil_gauche)
+        self._fil_gauche.style().polish(self._fil_gauche)
+        self._fil_droite.setText("")
+
+    def _afficher_bilan(self) -> None:
+        """Reconstruit les barres du bilan dans le cadre de fin (titre, sous-titre et
+        légende suivent ; le cadre lui-même s'affiche à la fin du run)."""
+        lay = self._bilan_conteneur
+        while lay.count():
+            item = lay.takeAt(0)
+            w = item.widget()
+            if w is not None:
+                w.setParent(None)
+                w.deleteLater()
+        if self._bilan:
+            total = sum(int(getattr(ligne, "total", 0) or 0) for ligne in self._bilan)
+            lay.addWidget(BilanFiabiliteWidget(self._bilan))
+            self._bilan_titre.setText("Par où commencer")
+            self._bilan_sous.setText(f"{total:,}".replace(",", " ") + " détections, du plus sûr au plus douteux")
+            self._bilan_legende.setText(" · ".join(lab.lower() for _c, lab in legende_niveaux(self._bilan)))
+            self._bilan_legende.setToolTip("Survolez une barre pour les effectifs par niveau ; même bilan dans le journal et le rapport.")
+        else:
+            cv = (self._config or {}).get("computer_vision") or {}
+            self._bilan_titre.setText("Résultats")
+            self._bilan_sous.setText("aucune détection avec fiabilité mesurée" if cv.get("enabled") else "")
+            self._bilan_legende.setText("")
+            self._bilan_legende.setToolTip("")
 
     def _on_run_enabled(self, enabled: bool) -> None:
         if not enabled:
             return
         self._running = False
         self._cancel_btn.setEnabled(False)
-        # Fige le chrono total, arrête le point d'activité, affiche la synthèse
-        # (avant le clear de _cancel_event, qui porte l'info « annulé »).
-        if self._run_started_at is not None:
-            self._run_elapsed_label.setText(
-                _fmt_hms(time.monotonic() - self._run_started_at)
-            )
         self._dot_anim.stop()
         self._activity_dot.setVisible(False)
-        self._show_end_banner()
-        self._cancel_event.clear()
-        # Filet de sécurité : ne jamais rester bloqué en barre indéterminée.
-        if self._indeterminate:
-            self._indeterminate = False
-            self._progress.setRange(0, 100)
-            self._progress.setValue(self._last_progress)
         # Fige le chrono de l'étape active courante puis arrête le rafraîchissement.
         if 0 <= self._bucket < len(self._stage_ids) and self._active_started is not None:
             self._step_elapsed[self._bucket] = time.monotonic() - self._active_started
@@ -817,6 +986,15 @@ class RunView(QWidget):
             self._ui_timer.stop()
         if self._stage_ids and self._bucket >= len(self._stage_ids) - 1:
             self._timeline.mark_all_done()
+        # Synthèse dans le fil (avant le clear de _cancel_event, qui porte « annulé »),
+        # puis le cadre de fin : bilan, projet QGIS au clic, rapport.
+        self._show_end_banner()
+        self._cancel_event.clear()
+        out_dir = self._output_dir()
+        self._open_report_btn.setEnabled(bool(out_dir and (livrable_dir(out_dir) / NOM_RAPPORT).is_file()))
+        self._open_project_btn.setEnabled(bool(self._couches_a_charger))
+        self._afficher_bilan()
+        self._bilan_box.setVisible(True)
         self.run_finished.emit()
 
     def _on_load_layers(self, vrt_paths: list, shapefile_paths: list, class_colors: list, qa_paths: list) -> None:
@@ -845,14 +1023,42 @@ class RunView(QWidget):
         # global cv.confidence_threshold, sinon les libellés de catégories
         # ([0.3:0.4[) ne matchent pas les conf_bin et la tranche basse est invisible.
         min_conf_by_slug = build_min_confidence_by_slug(cv.get("runs"))
-        # Le chargement + l'écriture du .qgs DOIVENT rester sur le thread
-        # principal (API QGIS) : prévenir AVANT et afficher un curseur
-        # d'attente, sinon « QGIS ne répond pas » sans explication au moment
-        # où l'utilisateur croit que tout est fini (AUDIT v2 UIX-04).
+        # V2 (2026-10-08) : plus de chargement automatique dans le projet QGIS courant.
+        # Les couches se chargent au clic sur « Ouvrir le projet QGIS » ; le .qgs du
+        # livrable, lui, est écrit tout de suite (projet dédié, pas le singleton).
+        self._couches_a_charger = (
+            (vrt_paths, shapefile_paths, class_colors, conf, entity_labels, derived_slugs,
+             min_conf_by_slug, qa_paths, cov_thr)
+            if (vrt_paths or shapefile_paths or qa_paths) else None
+        )
+        # Bilan de fiabilité du run (sidecars, lecture pure) pour la vue de fin.
+        out_dir = self._output_dir()
+        try:
+            self._bilan = collecter_bilan(detections_dir(out_dir), cv.get("runs")) if out_dir else []
+        except Exception:  # noqa: BLE001 — jamais bloquant
+            self._bilan = []
+        # Écriture du .qgs différée d'un tick d'event-loop : l'UI repeint les
+        # couches chargées avant la seconde passe (UIX-04).
+        QTimer.singleShot(
+            0,
+            lambda: self._write_validation_project(
+                vrt_paths, shapefile_paths, class_colors, qa_paths, conf,
+                entity_labels, derived_slugs, min_conf_by_slug, cov_thr,
+            ),
+        )
+
+    def _ouvrir_projet_qgis(self) -> None:
+        """Charge les couches du run dans le projet QGIS courant (thread principal,
+        API QGIS) : au clic seulement, jamais à la fin du run (V2, 2026-10-08)."""
+        if not self._couches_a_charger:
+            return
+        (vrt_paths, shapefile_paths, class_colors, conf, entity_labels, derived_slugs,
+         min_conf_by_slug, qa_paths, cov_thr) = self._couches_a_charger
+        # Prévenir AVANT et afficher un curseur d'attente, sinon « QGIS ne répond
+        # pas » sans explication (AUDIT v2 UIX-04).
         self._logger.log(
             25,  # USER_INFO : visible dans le journal de la fenêtre
-            "⏳ Chargement des couches dans QGIS — l'interface peut se figer "
-            "quelques instants…",
+            "⏳ Chargement des couches dans QGIS — l'interface peut se figer quelques instants…",
         )
         QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
         try:
@@ -864,15 +1070,9 @@ class RunView(QWidget):
             )
         finally:
             QApplication.restoreOverrideCursor()
-        # Écriture du .qgs différée d'un tick d'event-loop : l'UI repeint les
-        # couches chargées avant la seconde passe (UIX-04).
-        QTimer.singleShot(
-            0,
-            lambda: self._write_validation_project(
-                vrt_paths, shapefile_paths, class_colors, qa_paths, conf,
-                entity_labels, derived_slugs, min_conf_by_slug, cov_thr,
-            ),
-        )
+        self._couches_a_charger = None
+        self._open_project_btn.setEnabled(False)
+        self._open_project_btn.setToolTip("Les couches de ce traitement sont déjà dans le projet QGIS")
 
     def _write_validation_project(
         self, vrt_paths, shapefile_paths, class_colors, qa_paths, conf,
@@ -890,7 +1090,7 @@ class RunView(QWidget):
                 all_classes = sorted({
                     s.split("|layername=")[-1] for s in shapefile_paths if s
                 })
-                qgs_path = out_dir / "detections" / "detections_validation.qgs"
+                qgs_path = projet_qgs_path(out_dir)
                 qgs_path.parent.mkdir(parents=True, exist_ok=True)
                 write_validation_project(
                     qgs_path, list(vrt_paths), list(shapefile_paths),
@@ -919,10 +1119,25 @@ class RunView(QWidget):
         if d and d.is_dir():
             QDesktopServices.openUrl(QUrl.fromLocalFile(str(d)))
 
+    def _sur_lien_journal(self, url: QUrl) -> None:
+        """Lien d'une ligne ⚠/✗ → le manuel, sur la rubrique de Dépannage."""
+        if url.scheme() != "manuel":
+            return
+        from .dialogs.aide_dialog import ouvrir_aide
+
+        cle, ancre = resoudre_cible(url.toString()[len("manuel:"):])
+        racine = Path(__file__).resolve().parents[2]
+        ouvrir_aide(racine / AIDE_DIRNAME, parent=self.window(), cle=cle or CLE_DEPANNAGE, ancre=ancre)
+
+    def _open_report(self) -> None:
+        d = self._output_dir()
+        if d and (livrable_dir(d) / NOM_RAPPORT).is_file():
+            QDesktopServices.openUrl(QUrl.fromLocalFile(str(livrable_dir(d) / NOM_RAPPORT)))
+
     def _open_log(self) -> None:
         d = self._output_dir()
         if not (d and d.is_dir()):
             return
-        logs = sorted(d.glob("pipeline_log_*.txt"))
+        logs = sorted(journaux_dir(d).glob("pipeline_log_*.txt")) or sorted(d.glob("pipeline_log_*.txt"))
         if logs:
             QDesktopServices.openUrl(QUrl.fromLocalFile(str(logs[-1])))

@@ -4,7 +4,7 @@ Quand l'entrée est une liste ``.txt`` déjà résolue (sélection des dalles su
 carte, ou fichier pré-établi), elle vit dans un dossier temporaire écrasé à chaque
 sélection. Si le run est interrompu, l'utilisateur perd la liste et ne peut pas
 reprendre. ``persist_resolved_dalles_list`` la recopie dans le dossier de sortie
-(``<output_dir>/dalles_urls.txt``) dès le début, AVANT tout téléchargement — au
+(``<output_dir>/technique/sources/dalles_urls.txt``) dès le début, AVANT tout téléchargement — au
 même emplacement que la branche polygone (``resolve_tiles_from_polygon``).
 """
 from __future__ import annotations
@@ -29,7 +29,7 @@ def test_copies_txt_to_output_dir_dalles_urls(tmp_path):
 
     dest = persist_resolved_dalles_list(src, out)
 
-    assert dest == out / "dalles_urls.txt"
+    assert dest == out / "technique" / "sources" / "dalles_urls.txt"
     assert dest.read_text(encoding="utf-8") == _CONTENT
 
 
@@ -48,8 +48,8 @@ def test_noop_when_source_is_already_the_destination(tmp_path):
     # Re-run pointant directement sur <output_dir>/dalles_urls.txt : pas d'auto-copie
     # (shutil lèverait SameFileError), le contenu reste intact.
     out = tmp_path / "sortie"
-    out.mkdir()
-    dest_existing = out / "dalles_urls.txt"
+    (out / "technique" / "sources").mkdir(parents=True)
+    dest_existing = out / "technique" / "sources" / "dalles_urls.txt"
     dest_existing.write_text(_CONTENT, encoding="utf-8")
 
     dest = persist_resolved_dalles_list(dest_existing, out)
@@ -60,8 +60,8 @@ def test_noop_when_source_is_already_the_destination(tmp_path):
 
 def test_overwrites_stale_dalles_urls_with_new_selection(tmp_path):
     out = tmp_path / "sortie"
-    out.mkdir()
-    (out / "dalles_urls.txt").write_text("# ancienne sélection\nVIEUX,url\n", encoding="utf-8")
+    (out / "technique" / "sources").mkdir(parents=True)
+    (out / "technique" / "sources" / "dalles_urls.txt").write_text("# ancienne sélection\nVIEUX,url\n", encoding="utf-8")
     src = tmp_path / "dalles_selection.txt"
     src.write_text(_CONTENT, encoding="utf-8")
 

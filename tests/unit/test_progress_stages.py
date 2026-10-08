@@ -77,3 +77,34 @@ class TestBuildStageSequence:
     def test_detection_present_iff_cv(self, mode):
         assert Stage.DETECTION in build_stage_sequence(mode, cv_enabled=True)
         assert Stage.DETECTION not in build_stage_sequence(mode, cv_enabled=False)
+
+
+def test_chrono_etapes_durees_et_marque_unique():
+    """Rapport de traitement (2026-10-08) : durées par étape depuis les marques."""
+    from app.progress_stages import ChronoEtapes, Stage
+
+    t = iter([100.0, 130.0, 131.0])
+    c = ChronoEtapes(horloge=lambda: next(t))
+    c.marquer(Stage.DOWNLOAD)          # 100
+    c.marquer(Stage.PRODUCTS)          # 130
+    c.marquer(Stage.PRODUCTS)          # re-marquée : ignorée, sans consulter l'horloge
+    c.marquer(Stage.FINALIZE)          # 131
+    assert c.durees(fin=190.0) == [("download", 30.0), ("products", 1.0), ("finalize", 59.0)]
+    assert ChronoEtapes().durees(fin=5.0) == []
+
+
+def test_report_stage_id_pose_le_chrono_sur_le_reporter():
+    from app.progress_reporter import NullProgressReporter, report_stage_id
+
+    r = NullProgressReporter()
+    report_stage_id(r, "products")
+    report_stage_id(r, "finalize")
+    assert [s for s, _ in r.chrono.marques] == ["products", "finalize"]
+
+    class Sans:
+        __slots__ = ()
+
+        def stage_id(self, s):
+            pass
+
+    report_stage_id(Sans(), "x")       # pas d'attribut assignable : n'explose pas

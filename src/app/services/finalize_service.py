@@ -311,6 +311,104 @@ def _collect_shapefiles(det_dir: Path) -> List[str]:
     return shapefile_paths
 
 
+def _ecrire_rapport_run(
+    *, output_dir: Path, vrt_paths: List[str], cv_runs: Any, cv_cfg: Any, cv_stats: List[Dict[str, Any]],
+    bilan: Any, rvt_params: Dict[str, Any], active_products: List[str], ui_config: Dict[str, Any],
+    outcome: str, start_time: float, tiles_processed: int, tiles_total: Optional[int], meta_date: str,
+    reporter: Any = None,
+) -> str:
+    """Assemble et écrit ``rapport.html`` ; renvoie son nom. Thread worker (GDAL pour
+    la vignette et la surface, aucun Qt). Rien ne situe la zone : ni nom de dalle, ni
+    chemin ; les durées par étape viennent du chronomètre posé sur le reporter."""
+    import datetime as _dt
+    import time as _time
+
+    from ..plugin_metadata import get_plugin_version
+    from ..progress_stages import STAGE_LABELS, Stage
+    from ..user_narrator import PRODUCT_LABELS
+    from .rapport_run import (
+        NOM_VIGNETTE,
+        DonneesRapport,
+        choisir_vrt_vignette,
+        ecrire_rapport,
+        extraire_avertissements,
+        surface_km2_depuis_vrt,
+        vignette_depuis_vrt,
+    )
+    from .source_modes import mode_info
+
+    try:
+        from ...pipeline.output_paths import DIR_LIVRABLE, journaux_dir, livrable_dir
+    except ImportError:  # standalone (tests)
+        from pipeline.output_paths import DIR_LIVRABLE, journaux_dir, livrable_dir  # type: ignore[no-redef]
+    from .rapport_run import NOM_RAPPORT
+
+    mode = str(((ui_config.get("app") or {}).get("files") or {}).get("data_mode") or "")
+    # Par modèle (slug) : son nom (model_card, via ``fiabilite.modele`` posé par
+    # l'orchestrateur), le seuil réglé à l'étape 3, ses entités.
+    infos: Dict[str, Dict[str, Any]] = {}
+    for r in list(cv_runs or []) + list((cv_cfg or {}).get("runs") or []):
+        if isinstance(r, dict) and (r.get("selected_model") or r.get("model")):
+            slug = str(r.get("selected_model") or r.get("model"))   # résolu / config UI
+            fiab = r.get("fiabilite") if isinstance(r.get("fiabilite"), dict) else {}
+            infos.setdefault(slug, {
+                "modele": str(fiab.get("modele") or slug), "seuil": r.get("confidence_threshold"),
+                "entites": [e.get("label") or e.get("slug") or "" for e in (r.get("entities") or [])
+                            if isinstance(e, dict)],
+            })
+    runs_rapport: List[Dict[str, Any]] = []
+    for x in cv_stats:                       # durées mesurées, enrichies du nom et du seuil
+        info = infos.get(str(x.get("model")), {})
+        runs_rapport.append(dict(
+            x, modele=info.get("modele") or x.get("modele") or x.get("model"), seuil=info.get("seuil"),
+            entites=x.get("entites") or info.get("entites", []),
+        ))
+    if not runs_rapport:                      # runs résolus, sans durée
+        for slug, info in infos.items():
+            runs_rapport.append({"modele": info["modele"], "model": slug, "target_rvt": "", "seuil": info["seuil"],
+                                 "entites": info["entites"], "images": None, "secondes": None})
+    journaux = sorted(journaux_dir(Path(output_dir)).glob("pipeline_log_*.txt"))
+    avertissements: list = []
+    if journaux:
+        try:
+            avertissements = extraire_avertissements(journaux[-1].read_text(encoding="utf-8", errors="replace"))
+        except OSError:
+            avertissements = []
+    vrt = choisir_vrt_vignette(vrt_paths)
+    vignette = vignette_depuis_vrt(vrt, livrable_dir(Path(output_dir)) / NOM_VIGNETTE) if vrt else None
+    etapes: List[tuple] = []
+    chrono = getattr(reporter, "chrono", None)
+    if chrono is not None:
+        images = sum(int(x.get("images") or 0) for x in runs_rapport)
+        n_modeles = len(runs_rapport)
+        details = {
+            Stage.DOWNLOAD: f"{tiles_processed} dalle{'s' if tiles_processed > 1 else ''}",
+            Stage.PRODUCTS: ", ".join(PRODUCT_LABELS.get(p, p) for p in active_products) or "—",
+            Stage.DETECTION: (f"{n_modeles} modèle{'s' if n_modeles > 1 else ''}, "
+                              + (f"{images} image{'s' if images > 1 else ''} analysée{'s' if images > 1 else ''}"
+                                 if images else "images reprises du run précédent")),
+            Stage.FINALIZE: "mosaïques, bilan, rapport",
+        }
+        for stage, secondes in chrono.durees():
+            etapes.append((STAGE_LABELS.get(stage, stage), details.get(stage, ""), float(secondes)))
+    try:
+        date = _dt.datetime.fromisoformat(meta_date).strftime("%d/%m/%Y à %H:%M")
+    except ValueError:
+        date = meta_date
+    donnees = DonneesRapport(
+        version=get_plugin_version(), date=date,
+        mode=mode_info(mode).banner_label if mode else "", data_mode=mode,
+        issue=outcome, duree_s=max(0.0, _time.time() - start_time),
+        tiles_processed=tiles_processed, tiles_total=tiles_total,
+        surface_km2=surface_km2_depuis_vrt(vrt_paths),
+        produits=tuple((p, PRODUCT_LABELS.get(p, p)) for p in active_products),
+        rvt_params=rvt_params, cv_runs=tuple(runs_rapport),
+        bilan=tuple(ligne.to_dict() for ligne in bilan), etapes=tuple(etapes),
+        avertissements=tuple(avertissements), vignette=vignette,
+    )
+    ecrire_rapport(livrable_dir(Path(output_dir)), donnees)
+    return f"{DIR_LIVRABLE}/{NOM_RAPPORT}"
+
 def finalize_pipeline(
     *,
     output_dir: Path,
@@ -326,6 +424,7 @@ def finalize_pipeline(
     coverage_threshold_percent: float = 30.0,
     ui_config: Optional[Dict[str, Any]] = None,
     outcome: str = "success",
+    cv_stats: Optional[List[Dict[str, Any]]] = None,
 ) -> bool:
     """
     Finalisation commune à tous les runners :
@@ -340,7 +439,9 @@ def finalize_pipeline(
     fonction annonçait inconditionnellement « ✅ TERMINÉ AVEC SUCCÈS » même
     quand une exception fatale était en vol (AUDIT v2 ROB-14).
     ``tiles_total`` permet un décompte honnête (réussies/total) quand des
-    éléments ont échoué ; défaut = ``tiles_processed``.
+    éléments ont échoué ; défaut = ``tiles_processed``. ``cv_stats`` (2026-10-08) :
+    une entrée par run CV (``modele``, ``target_rvt``, ``entites``, ``images``,
+    ``secondes``, chronométrées), pour le rapport de traitement ``rapport.html``.
 
     Renvoie le verdict final (``True`` = succès annoncé ✅), remonté par les
     runners jusqu'au bandeau de fin de l'UI — sans quoi un run conclu « ❌ »
@@ -416,13 +517,40 @@ def finalize_pipeline(
     # thread principal, par ui/qgs_writer.write_validation_project, déclenché depuis
     # run_view._on_load_layers (même chemin que le chargement live, qui fonctionne).
 
+    # 3c. Bilan de fiabilité (2026-10-08) : effectifs par niveau lus dans les
+    # sidecars fiabilite.json — une ligne par entité, du plus sûr au plus douteux,
+    # dans le journal, metadata.json et la vue de fin (par où commencer).
+    from .bilan_fiabilite import collecter as _collecter_bilan
+
+    try:
+        # Libellés : runs résolus, puis runs bruts de la config (un modèle non
+        # résolu garde quand même son libellé d'entité).
+        bilan = _collecter_bilan(det_dir, list(cv_runs or []) + list((cv_cfg or {}).get("runs") or []))
+    except Exception as _bilan_e:  # noqa: BLE001 — jamais bloquant
+        reporter.info(f"Note: bilan de fiabilité non calculé ({_bilan_e})")
+        bilan = []
+
     # 4. Génération du fichier metadata.json
     try:
         import json as _json
         import datetime as _dt
 
+        try:
+            from ...pipeline.output_paths import (
+                DIR_DETECTIONS, DIR_INDICES, DIR_JOURNAUX, DIR_LIVRABLE, DIR_TECHNIQUE, NOM_TRAITEMENT,
+                VERSION_ARBORESCENCE, journaux_dir, livrable_dir,
+            )
+        except ImportError:  # standalone (tests)
+            from pipeline.output_paths import (  # type: ignore[no-redef]
+                DIR_DETECTIONS, DIR_INDICES, DIR_JOURNAUX, DIR_LIVRABLE, DIR_TECHNIQUE, NOM_TRAITEMENT,
+                VERSION_ARBORESCENCE, journaux_dir, livrable_dir,
+            )
+        from ..plugin_metadata import get_plugin_version
+
         meta = {
             "pipeline_version": "2.0",
+            "plugin_version": get_plugin_version(),
+            "arborescence": VERSION_ARBORESCENCE,
             "date": _dt.datetime.now().isoformat(timespec="seconds"),
             "tiles_processed": tiles_processed,
             "active_products": active_products or [],
@@ -442,25 +570,58 @@ def finalize_pipeline(
                     "entity": ent.get("id", ""),
                     "label": ent.get("label", ""),
                     "slug": ent.get("slug", ""),
-                    "folder": f"detections/{ent.get('slug', '')}",
-                    "gpkg": f"detections/{ent.get('slug', '')}/{ent.get('slug', '')}.gpkg",
+                    "folder": f"{DIR_LIVRABLE}/{DIR_DETECTIONS}/{ent.get('slug', '')}",
+                    "gpkg": f"{DIR_LIVRABLE}/{DIR_DETECTIONS}/{ent.get('slug', '')}/{ent.get('slug', '')}.gpkg",
                     "is_derived": bool(ent.get("is_derived", False)),
                     "model": r.get("selected_model", ""),
                 }
                 for r in cv_runs
                 for ent in (r.get("entities") or [])
             ],
+            # Bilan de fiabilité par entité (effectifs par niveau, du plus sûr au
+            # plus douteux) — vide sans détection ou pour un modèle sans fiabilité.
+            "bilan_fiabilite": [ligne.to_dict() for ligne in bilan],
+            # Chemins RELATIFS au dossier de sortie (arborescence v3) : la trace se
+            # déplace avec lui et ne porte pas le poste.
             "structure": {
-                "indices": str(idx_dir),
+                "livrable": DIR_LIVRABLE,
+                "technique": DIR_TECHNIQUE,
+                "indices": f"{DIR_LIVRABLE}/{DIR_INDICES}",
                 # detections/ n'est créé que si la CV a produit un livrable :
                 # ne pas enregistrer de chemin fantôme quand la CV est inactive.
-                **({"detections": str(det_dir)} if Path(det_dir).is_dir() else {}),
+                **({"detections": f"{DIR_LIVRABLE}/{DIR_DETECTIONS}"} if Path(det_dir).is_dir() else {}),
             },
             "ui_config": ui_config or {},
         }
-        meta_path = output_dir / "metadata.json"
+        # 4b. Rapport de traitement (2026-10-08) : HTML à la racine du dossier de
+        # sortie, ouvert d'un clic depuis la vue d'exécution — tout vient du run
+        # (journal, métadonnées, bilan, durées chronométrées) + une vignette GDAL.
+        try:
+            meta["rapport"] = _ecrire_rapport_run(
+                output_dir=output_dir, vrt_paths=vrt_paths, cv_runs=cv_runs, cv_cfg=cv_cfg,
+                cv_stats=cv_stats or [], bilan=bilan, rvt_params=rvt_params or {},
+                active_products=active_products or [], ui_config=ui_config or {},
+                outcome=outcome, start_time=start_time, tiles_processed=tiles_processed,
+                tiles_total=tiles_total, meta_date=meta["date"], reporter=reporter,
+            )
+        except Exception as _rap_e:  # noqa: BLE001 — jamais bloquant
+            reporter.info(f"Note: rapport non écrit ({_rap_e})")
+        # Deux traces (arborescence v3, 2026-10-08) : la complète, avec la configuration
+        # de l'assistant et ses chemins de poste, dans technique/journaux/ à côté du
+        # journal du même lancement ; et livrable/traitement.json, sans ui_config.
+        journaux = journaux_dir(output_dir)
+        journaux.mkdir(parents=True, exist_ok=True)
+        logs = sorted(journaux.glob("pipeline_log_*.txt"))
+        ts = logs[-1].stem[len("pipeline_log_"):] if logs else meta["date"].replace("-", "").replace(":", "").replace("T", "_")
+        meta_path = journaux / f"metadata_{ts}.json"
         meta_path.write_text(_json.dumps(meta, indent=2, ensure_ascii=False), encoding="utf-8")
-        reporter.info(f"Métadonnées enregistrées: {meta_path.name}")
+        trace = {k: v for k, v in meta.items() if k != "ui_config"}
+        livrable = livrable_dir(output_dir)
+        livrable.mkdir(parents=True, exist_ok=True)
+        (livrable / NOM_TRAITEMENT).write_text(_json.dumps(trace, indent=2, ensure_ascii=False), encoding="utf-8")
+        reporter.info(f"Métadonnées enregistrées: {DIR_TECHNIQUE}/{DIR_JOURNAUX}/{meta_path.name} ; {DIR_LIVRABLE}/{NOM_TRAITEMENT}")
+        if meta.get("rapport"):
+            narrator.rapport_ecrit(meta["rapport"])
     except Exception as _meta_e:
         reporter.info(f"Note: métadonnées non écrites ({_meta_e})")
 
@@ -477,6 +638,8 @@ def finalize_pipeline(
     if success and all_tiles_failed:
         success = False
 
+    if bilan:
+        narrator.bilan_fiabilite([ligne.phrase() for ligne in bilan])
     if slog:
         slog.end_pipeline(
             success=success,

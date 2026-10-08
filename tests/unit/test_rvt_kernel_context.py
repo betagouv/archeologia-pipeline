@@ -195,3 +195,31 @@ class TestDefaultConfigIsSelfConsistent:
 
     def test_default_mstp_scales_are_accepted_by_rvt(self):
         assert mstp_scale_errors({"MSTP": True}, self._defaults()["rvt_params"]) == []
+
+
+class TestRasterContextWarningsInABatch:
+    """Dans un lot, le conseil ne doit pas pousser tout le run vers le bas.
+
+    Cas réel (2026-09-22, 621 MNT découpés sur un polygone) : quatre lambeaux
+    de 20 m en bord de zone recevaient « Réduisez Rayon max à ≤ 5 px ». Le
+    réglage vaut pour tout le lot : le suivre dégradait le LD des 617 autres.
+    """
+
+    def test_batch_advice_scopes_the_damage_to_this_raster(self):
+        (msg,) = raster_context_warnings(
+            {"LD": True}, {}, width_px=40, height_px=40, in_batch=True
+        )
+        assert "Réduisez" not in msg
+        assert "pas fiable" in msg
+        assert "tout le lot" in msg
+
+    def test_batch_advice_still_names_the_field_and_the_bound(self):
+        (msg,) = raster_context_warnings(
+            {"LD": True}, {}, width_px=40, height_px=40, in_batch=True
+        )
+        assert "Rayon max" in msg
+        assert "≤ 5 px" in msg
+
+    def test_a_single_raster_keeps_the_direct_advice(self):
+        (msg,) = raster_context_warnings({"LD": True}, {}, width_px=40, height_px=40)
+        assert "Réduisez « Rayon max (px) » à ≤ 5 px" in msg

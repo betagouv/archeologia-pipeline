@@ -93,3 +93,36 @@ class TestExistingMntRunnerFinalize:
         )
         assert len(finalized) == 1
         assert finalized[0]["outcome"] == "cancelled"
+
+
+class _RecordingReporter(NullProgressReporter):
+    def __init__(self):
+        self.warnings: list[str] = []
+        self.errors: list[str] = []
+
+    def user_warning(self, msg: str) -> None:
+        self.warnings.append(msg)
+
+    def error(self, msg: str) -> None:
+        self.errors.append(msg)
+
+
+def test_diagnostic_non_bloquant_route_en_avertissement(
+    config_with_output_dir, tmp_path, monkeypatch, finalized
+):
+    # Noyau RVT trop large pour un raster, dalle dégénérée écartée : le run
+    # continue, ce sont des ⚠. Sur le canal erreur, le bandeau final annonçait
+    # « Pipeline terminé — 4 erreurs » alors que rien n'avait échoué.
+    def behaviour(**kw):
+        kw["warning_log"]("noyau trop large pour ce raster")
+        return SimpleNamespace(total=1, candidates=1)
+
+    monkeypatch.setattr("pipeline.modes.existing_mnt.run_existing_mnt", behaviour)
+    reporter = _RecordingReporter()
+    ExistingMntRunner().run(
+        ctx=_ctx(config_with_output_dir, tmp_path),
+        reporter=reporter,
+        cancel=CancelToken(threading.Event()),
+    )
+    assert reporter.warnings == ["noyau trop large pour ce raster"]
+    assert reporter.errors == []

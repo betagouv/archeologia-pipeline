@@ -1,0 +1,10 @@
+{
+  "extraKnownMarketplaces": {
+    "archeologia": {
+      "source": { "source": "directory", "path": "C:/projets/Archeologia/claude-plugins" }
+    }
+  },
+  "enabledPlugins": {
+    "archeologia@archeologia": true
+  }
+}

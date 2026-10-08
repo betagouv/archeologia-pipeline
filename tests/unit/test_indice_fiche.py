@@ -371,18 +371,10 @@ def test_aucune_citation_anglaise_dans_les_fiches_livrees():
     """
     from src.app.services.indice_fiche import default_fiches_path
 
+    from src.app.services.citations import citations_anglaises
+
     brut = Path(default_fiches_path()).read_text(encoding="utf-8")
-    mots_outils = re.compile(
-        r"\b(the|and|is|are|of|it|that|with|for|to|in|does|not|can|be|which|by|as"
-        r"|from|on|you|your|this|these|all|more|than|its|was|were|has|have|but"
-        r"|because|while|such|they|their|an|a)\b",
-        re.IGNORECASE,
-    )
-    anglaises = [
-        m.group(1)
-        for m in re.finditer(r"«\s*([^»]{3,}?)\s*»", brut)
-        if len({w.lower() for w in mots_outils.findall(m.group(1))}) >= 2
-    ]
+    anglaises = citations_anglaises(brut)
     assert anglaises == [], (
         "citations à traduire dans data/indices_fiches.json : " + " | ".join(anglaises)
     )

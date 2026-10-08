@@ -28,6 +28,7 @@ from qgis.PyQt.QtWidgets import (
     QLabel,
     QProgressBar,
     QPushButton,
+    QScrollArea,
     QTextBrowser,
     QVBoxLayout,
     QWidget,
@@ -304,6 +305,21 @@ class RunView(QWidget):
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(10)
+        # Tout sauf la rangée d'actions défile en hauteur (2026-10-08) : le bilan de
+        # fin de run ajoutait ~200 px à la hauteur minimale de la vue, et Qt
+        # agrandissait la fenêtre jusqu'à la faire passer sous la barre des tâches.
+        # La fenêtre garde sa taille, les boutons restent visibles en bas.
+        contenu = QWidget()
+        haut = QVBoxLayout(contenu)
+        haut.setContentsMargins(0, 0, 0, 0)
+        haut.setSpacing(10)
+        zone = QScrollArea()
+        zone.setObjectName("LaunchScroll")
+        zone.setWidgetResizable(True)
+        zone.setFrameShape(QFrame.Shape.NoFrame)
+        zone.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        zone.setWidget(contenu)
+        root.addWidget(zone, 1)
 
         # Bandeau de fin de run (succès / échec / annulation) — chiffres réels
         # uniquement (durée mesurée, compteurs ⚠/✗). Caché pendant le run.
@@ -312,7 +328,7 @@ class RunView(QWidget):
         self._end_banner.setProperty("kind", "ok")
         self._end_banner.setWordWrap(True)
         self._end_banner.setVisible(False)
-        root.addWidget(self._end_banner)
+        haut.addWidget(self._end_banner)
         # Bilan de fiabilité (2026-10-08) : « par où commencer » — une barre par
         # entité, du plus sûr au plus douteux. Visible seulement à la fin d'un run
         # qui a produit des détections avec fiabilité.
@@ -326,7 +342,7 @@ class RunView(QWidget):
         bl.addWidget(bilan_titre)
         self._bilan_layout = bl
         self._bilan_box.setVisible(False)
-        root.addWidget(self._bilan_box)
+        haut.addWidget(self._bilan_box)
 
         # En-tête : point d'activité pulsé + « Étape N/M · <étape> » + sous-ligne
         # (sous-étape courante) + chrono total à droite. Le compteur live
@@ -369,10 +385,10 @@ class RunView(QWidget):
         right.addWidget(self._elapsed_caption)
         hl.addLayout(titles, 1)
         hl.addLayout(right)
-        root.addWidget(header)
+        haut.addWidget(header)
 
         self._timeline = _Timeline()
-        root.addWidget(self._timeline)
+        haut.addWidget(self._timeline)
 
         self._progress = QProgressBar()
         self._progress.setObjectName("RunProgress")
@@ -380,7 +396,7 @@ class RunView(QWidget):
         self._progress.setValue(0)
         self._progress.setTextVisible(True)
         self._progress.setFormat("%p %")
-        root.addWidget(self._progress)
+        haut.addWidget(self._progress)
 
         jhead = QHBoxLayout()
         jhead.setSpacing(8)
@@ -412,7 +428,7 @@ class RunView(QWidget):
         jhead.addStretch(1)
         jhead.addWidget(copy_btn)
         jhead.addWidget(clear_btn)
-        root.addLayout(jhead)
+        haut.addLayout(jhead)
 
         # Navigateur de texte en lecture seule (2026-10-08) : une ligne ⚠/✗ porte
         # un lien vers sa rubrique de Dépannage du manuel (un QPlainTextEdit n'a
@@ -424,7 +440,12 @@ class RunView(QWidget):
         self._journal.setOpenExternalLinks(False)
         self._journal.document().setMaximumBlockCount(5000)
         self._journal.anchorClicked.connect(self._sur_lien_journal)
-        root.addWidget(self._journal, 1)
+        # Hauteur plancher : quand le bilan prend la place, la vue défile plutôt
+        # que d'écraser le journal à quatre lignes.
+        self._journal.setMinimumHeight(140)
+        haut.addWidget(self._journal, 1)
+        # Largeur minimale du contenu reportée sur la zone : rien de rogné à droite.
+        zone.setMinimumWidth(contenu.minimumSizeHint().width() + zone.verticalScrollBar().sizeHint().width())
 
         actions = QHBoxLayout()
         # Icônes SVG du thème (teintées, nettes) plutôt que des émojis couleur

@@ -139,7 +139,7 @@ def test_construire_html_ne_situe_pas_et_couvre_les_sections():
     for morceau in (
         "hypothèses", "Zone traitée", "9 km² couverts, en 9 dalles.", "ni nom de dalle ni coordonnée",
         "<h2>Produits</h2>", "rayon 10 px, 16 directions, sans suppression du bruit", "sans réglage",
-        "Détection automatique", "<th>Seuil</th>", "0,26", ", sur LD", "12 images en 4min 07s (≈ 20,6 s par image)", "reprise du run précédent",
+        "Détection automatique", "<th>Seuil</th>", "0,26", ", sur LD", "12 images en 4min 07s (≈ 21s par image)", "reprise du run précédent",
         "Bilan de fiabilité", "Par km²", "11,4", "12 très probables, 30 probables, 41 possibles, 20 douteuses",
         "très probable : au moins 85 % de vrais objets", "douteux : moins de 35 %",
         "Durées par étape", "Téléchargement", "9 dalles", "1h 02min", "(×3)", "Le noyau atteint N pixels",

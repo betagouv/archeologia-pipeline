@@ -5,17 +5,18 @@ utilisateur 2026-10-08 : une carte unique qui dit où la classe a été apprise 
 pas de carte dans « Par zone d'évaluation »). À gauche, une petite carte par pays
 concerné (France, Irlande) : un disque par zone, dans la couleur de la couche, d'aire
 proportionnelle aux objets annotés. À droite, les zones avec une barre et leurs
-effectifs ; survoler une ligne entoure sa zone sur la carte, survoler un disque donne
-son nom et ses effectifs. Données et géométrie : module pur
+effectifs. Survol croisé (demande utilisateur 2026-10-08) : survoler un disque l'entoure
+et met sa ligne en valeur, survoler une ligne fait de même ; un seul état, porté par
+``CarteZonesWidget.surligner``. Données et géométrie : module pur
 :mod:`app.services.carte_zones`. Compatible Qt5/Qt6 : énumérés scopés.
 """
 from __future__ import annotations
 
 from typing import Any, List, Mapping, Optional, Sequence, Tuple
 
-from qgis.PyQt.QtCore import QEvent, QPointF, QSize, Qt
+from qgis.PyQt.QtCore import QPointF, QRectF, QSize, Qt, pyqtSignal
 from qgis.PyQt.QtGui import QColor, QPainter, QPainterPath, QPen
-from qgis.PyQt.QtWidgets import QFrame, QHBoxLayout, QLabel, QSizePolicy, QToolTip, QVBoxLayout, QWidget
+from qgis.PyQt.QtWidgets import QFrame, QHBoxLayout, QLabel, QSizePolicy, QVBoxLayout, QWidget
 
 from ...app.services.carte_zones import (
     ZoneSituee,
@@ -25,6 +26,7 @@ from ...app.services.carte_zones import (
     projection,
     rayon,
     situer,
+    zone_sous,
 )
 from .vignette import couleur_texte
 
@@ -49,7 +51,10 @@ def _effectifs(z: Any) -> str:
 
 
 class CarteZonesWidget(QWidget):
-    """Une carte par pays, les zones en disques ; ``surligner(nom)`` entoure une zone."""
+    """Une carte par pays, les zones en disques ; ``surligner(nom)`` entoure une zone
+    et émet ``survol(nom)`` (``""`` : aucune) pour que la liste suive."""
+
+    survol = pyqtSignal(str)
 
     def __init__(self, zones: Sequence[ZoneSituee], data: Mapping[str, Any], couleur: RGB, parent=None):
         super().__init__(parent)
@@ -68,9 +73,13 @@ class CarteZonesWidget(QWidget):
         return self.size()
 
     def surligner(self, nom: Optional[str]) -> None:
+        nom = nom or None
         if nom != self._surligne:
             self._surligne = nom
+            z = next((d[0] for d in self._disques() if d[0].nom == nom), None)
+            self.setToolTip(f"{z.nom} — {_effectifs(z)} annotés" if z else "")
             self.update()
+            self.survol.emit(nom or "")
 
     def _disques(self) -> List[Tuple[ZoneSituee, float, float, float]]:
         """``(zone, x, y, rayon)`` en px du widget, les plus grosses d'abord."""
@@ -85,16 +94,15 @@ class CarteZonesWidget(QWidget):
                     out.append((z, x + dx, y, rayon(z.objets, maximum, _COTE)))
         return sorted(out, key=lambda t: -t[3])
 
-    def event(self, ev) -> bool:  # noqa: N802 (signature Qt)
-        if ev.type() == QEvent.Type.ToolTip:
-            pos = ev.pos()
-            for z, x, y, r in reversed(self._disques()):          # les petits sont dessus
-                if (pos.x() - x) ** 2 + (pos.y() - y) ** 2 <= (r + 2) ** 2:
-                    QToolTip.showText(ev.globalPos(), f"{z.nom} — {_effectifs(z)} annotés", self)
-                    return True
-            QToolTip.hideText()
-            return True
-        return super().event(ev)
+    def mouseMoveEvent(self, ev) -> None:  # noqa: N802 (signature Qt)
+        p = ev.position() if hasattr(ev, "position") else ev.localPos()   # Qt6 / Qt5
+        z = zone_sous(self._disques(), p.x(), p.y())
+        self.surligner(z.nom if z else None)
+        super().mouseMoveEvent(ev)
+
+    def leaveEvent(self, ev) -> None:  # noqa: N802 (signature Qt)
+        self.surligner(None)
+        super().leaveEvent(ev)
 
     def paintEvent(self, _ev) -> None:  # noqa: N802 (signature Qt)
         p = QPainter(self)
@@ -133,14 +141,16 @@ class CarteZonesWidget(QWidget):
 
 class _LigneZone(QWidget):
     """Une zone de la liste : nom, barre proportionnelle aux objets, effectifs. Le survol
-    entoure la zone sur la carte."""
+    entoure la zone sur la carte ; ``mettre_en_valeur`` teinte la ligne."""
 
     def __init__(self, zone: Any, maximum: int, couleur: RGB, carte: Optional[CarteZonesWidget], parent=None):
         super().__init__(parent)
         self._nom = str(zone.nom)
         self._carte = carte
+        self._couleur = tuple(int(v) for v in couleur)
+        self._en_valeur = False
         lay = QHBoxLayout(self)
-        lay.setContentsMargins(0, 0, 0, 0)
+        lay.setContentsMargins(6, 2, 6, 2)      # la teinte de survol déborde un peu du texte
         lay.setSpacing(8)
         nom = QLabel(self._nom)
         nom.setObjectName("FicheTexte")
@@ -161,6 +171,27 @@ class _LigneZone(QWidget):
         lay.addWidget(chiffres)
         lay.addStretch(1)
         self.setToolTip(f"{self._nom} — {_effectifs(zone)} annotés")
+
+    @property
+    def nom(self) -> str:
+        return self._nom
+
+    def mettre_en_valeur(self, oui: bool) -> None:
+        if oui != self._en_valeur:
+            self._en_valeur = oui
+            self.update()
+
+    def paintEvent(self, ev) -> None:  # noqa: N802 (signature Qt)
+        if self._en_valeur:
+            p = QPainter(self)
+            p.setRenderHint(QPainter.RenderHint.Antialiasing)
+            fond = QColor(*self._couleur)
+            fond.setAlpha(48)
+            p.setPen(QPen(QColor(couleur_texte(self._couleur)), 1))
+            p.setBrush(fond)
+            p.drawRoundedRect(QRectF(self.rect()).adjusted(0.5, 0.5, -0.5, -0.5), 4, 4)
+            p.end()
+        super().paintEvent(ev)
 
     def enterEvent(self, ev) -> None:  # noqa: N802 (signature Qt)
         if self._carte is not None:
@@ -187,13 +218,15 @@ def bandeau_appris_sur(zones: Sequence[Any], data: Mapping[str, Any], couleur: R
     carte = CarteZonesWidget(situees, data, couleur)
     lay.addWidget(carte, 0, Qt.AlignmentFlag.AlignTop)
     colonne = QVBoxLayout()
-    colonne.setSpacing(4)
+    colonne.setSpacing(1)
     titre = QLabel(f"Appris sur · {phrase_resume(zones)}")
     titre.setObjectName("FicheSousTitre")
     colonne.addWidget(titre)
     maximum = max((int(getattr(z, "objets", 0) or 0) for z in zones), default=0)
-    for z in zones:
-        colonne.addWidget(_LigneZone(z, maximum, couleur, carte))
+    lignes = [_LigneZone(z, maximum, couleur, carte) for z in zones]
+    for ligne in lignes:
+        colonne.addWidget(ligne)
+    carte.survol.connect(lambda nom: [li.mettre_en_valeur(li.nom == nom) for li in lignes])
     colonne.addStretch(1)
     lay.addLayout(colonne, 1)
     return cadre

@@ -111,6 +111,16 @@ def rayon(objets: int, maximum: int, cote: float) -> float:
     return 3.0 + 0.07 * cote * math.sqrt(max(0, objets) / maximum)
 
 
+def zone_sous(disques: Sequence[Tuple[Any, float, float, float]], x: float, y: float, marge: float = 2.0) -> Any:
+    """La zone dont le disque ``(zone, cx, cy, rayon)`` contient le point, ou ``None``.
+    Les petits disques sont dessinés par-dessus les grands : ils passent d'abord, sans
+    quoi une zone posée au centre d'une plus grande serait inatteignable."""
+    for zone, cx, cy, r in sorted(disques, key=lambda t: t[3]):
+        if (x - cx) ** 2 + (y - cy) ** 2 <= (r + marge) ** 2:
+            return zone
+    return None
+
+
 def phrase_resume(zones: Sequence[Any]) -> str:
     """« 3 zones · 2 186 objets annotés » (sur toutes les zones de la fiche, situées ou non)."""
     n = len(zones)

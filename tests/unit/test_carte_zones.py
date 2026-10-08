@@ -17,6 +17,7 @@ from app.services.carte_zones import (
     projection,
     rayon,
     situer,
+    zone_sous,
 )
 
 RACINE = Path(__file__).resolve().parents[2]
@@ -54,6 +55,17 @@ def test_projection_rayon_et_resume():
     assert phrase_resume([z("a", 1, 0)]) == "1 zone"
 
 
+def test_zone_sous_le_curseur_petits_disques_dessus():
+    """Survol de la carte (2026-10-08) : une zone posée au centre d'une plus grande
+    (Garrigues d'Alès / La Capelle) reste atteignable, la grande l'est sur sa couronne."""
+    grande, petite, loin = z("Garrigues"), z("La Capelle"), z("Blois")
+    disques = [(grande, 96.3, 104.6, 10.3), (petite, 96.3, 106.0, 4.0), (loin, 67.3, 55.8, 6.7)]
+    assert zone_sous(disques, 96.3, 106.0) is petite
+    assert zone_sous(disques, 96.3, 96.0) is grande
+    assert zone_sous(disques, 67.3 + 8.0, 55.8) is loin          # marge de 2 px autour du disque
+    assert zone_sous(disques, 20.0, 20.0) is None and zone_sous([], 0, 0) is None
+
+
 def test_fichier_livre_lisible():
     data = charger(RACINE)
     assert data, "data/zones_corpus.json absent ou illisible : relancer dev/fiches/zones_corpus.py"
@@ -89,5 +101,5 @@ def test_la_fiche_pose_le_bandeau():
     src = (RACINE / "src/ui/dialogs/class_info_dialog.py").read_text(encoding="utf-8")
     assert "bandeau_appris_sur(" in src and "avec_zones=bandeau is None" in src
     widget = (RACINE / "src/ui/widgets/carte_zones.py").read_text(encoding="utf-8")
-    assert "def surligner" in widget and "QToolTip.showText" in widget
+    assert "def surligner" in widget and "zone_sous(" in widget and "survol.connect(" in widget   # survol croisé carte ↔ liste
     assert json.loads((RACINE / "data/zones_corpus.json").read_text(encoding="utf-8"))["source"]

@@ -406,12 +406,12 @@ def test_le_widget_suit_le_seuil_et_les_fiches_posent_les_zones():
 
 
 def test_carte_entite_selection_par_le_haut_et_vignette_inerte():
-    """Garde-fou sans QGIS : la vignette n'ouvre plus la fiche et le clic ne coche que
-    dans le haut de la carte (vignette, titre, description, ligne du modèle)."""
+    """Garde-fou sans QGIS : la vignette n'ouvre plus la fiche ; le clic coche partout
+    dans la carte sauf dans la bande des réglages (2026-10-08)."""
     carte = (Path(__file__).resolve().parents[2] / "src/ui/widgets/entity_card.py").read_text(encoding="utf-8")
     assert "self._thumb.clicked.connect" not in carte
     assert "WA_TransparentForMouseEvents" in carte
-    assert "_bas_zone_selection()" in carte
+    assert "_bande_reglages()" in carte and "_bas_zone_selection" not in carte
 
 
 def test_fiches_distinguees_option_a():

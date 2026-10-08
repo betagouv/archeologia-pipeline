@@ -746,23 +746,28 @@ class EntityCard(QFrame):
             w.style().unpolish(w)
             w.style().polish(w)
 
-    def _bas_zone_selection(self) -> int:
-        """Bas, en px de la carte, de la zone qui coche/décoche : vignette, titre,
-        description et ligne du modèle. En dessous (réglages avancés, regroupement,
-        figure du profil) un clic ne change plus la sélection — on y règle, on n'y
-        coche pas (demande utilisateur 2026-10-08)."""
-        bas = 0
-        for w in (self._thumb, self._label, self._desc, self._nomodel, self._rvt_row, self._model_row):
+    def _bande_reglages(self) -> Tuple[int, int]:
+        """``(haut, bas)``, en px de la carte, de la bande des réglages visibles :
+        case ou badge de regroupement, réglages avancés, profil, paramètres du
+        regroupement. Un clic dans cette bande règle, il ne coche pas (demande
+        utilisateur 2026-10-08) ; partout ailleurs, il coche ou décoche, y compris
+        dans le vide d'une carte (toute la carte, décochée, n'a pas de réglage).
+        ``(0, -1)`` : aucune bande."""
+        ys = []
+        for w in (self._cluster_check, self._derived_badge, self._adv_row,
+                  self._fiab_hint, self._profil_box, self._cluster_params_box):
             if w.isVisible():
-                bas = max(bas, w.mapTo(self, QPoint(0, w.height())).y())
-        return bas
+                haut = w.mapTo(self, QPoint(0, 0)).y()
+                ys += [haut, haut + w.height()]
+        return (min(ys), max(ys)) if ys else (0, -1)
 
     def mousePressEvent(self, event):  # noqa: N802 (signature Qt)
-        # Bascule la sélection si l'entité a un modèle ET que le clic tombe dans le
-        # haut de la carte. Les widgets interactifs (bouton Fiche, Changer ▾, case
-        # cluster, + Activer) consomment leurs propres clics.
+        # Bascule la sélection si l'entité a un modèle ET que le clic tombe hors de
+        # la bande des réglages. Les widgets interactifs (bouton Fiche, Changer ▾,
+        # + Activer) consomment leurs propres clics.
         pos = event.position().toPoint() if hasattr(event, "position") else event.pos()
-        if self._has_model and pos.y() <= self._bas_zone_selection() + 4:
+        haut, bas = self._bande_reglages()
+        if self._has_model and not (haut - 3 <= pos.y() <= bas + 3):
             self.toggled.emit(self._id, not self._selected)
         super().mousePressEvent(event)
 

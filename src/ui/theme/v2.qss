@@ -520,8 +520,14 @@ QPushButton[role="micro"] {
 
 /* En-tête fixe au-dessus du scroll. */
 #ModelInfoHeader { background: #ffffff; border-bottom: 1px solid #c4c4c4; }
+/* Liseré et étiquette de nature (option A, 2026-10-08) : ardoise pour un modèle,
+   couleur de la classe (posée dynamiquement) pour une fiche de structure. */
+#ModelInfoLisere { background: #3d4b5c; }
+#ModelInfoDetecte { color: #2c2c2c; font-size: 10px; }
+#FicheNature { font-size: 9px; font-weight: bold; letter-spacing: 1px; }
+#FicheLienModele { color: #3d4b5c; }
 #ModelInfoKicker {
-    color: #5a5a5a;
+    color: #3d4b5c;
     font-size: 9px;
     font-weight: bold;
     letter-spacing: 1px;

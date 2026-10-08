@@ -40,9 +40,10 @@ from qgis.PyQt.QtWidgets import (
 
 from ...app.services.class_fiche import ClassFiche
 from ...app.services.fiabilite import pct
-from ..widgets.vignette import FicheButton, pixmap_ajuste
+from ..icons import colored_icon
+from ..widgets.vignette import ARDOISE, FicheButton, couleur_texte, pastille, pixmap_ajuste
 from ...app.services.profil_scores import libelle_zone, zones_sans_objet
-from ..widgets.profil_scores import figure_profil, figures_par_zone, ligne_essai_seuil
+from ..widgets.profil_scores import couleur_de_classe, figure_profil, figures_par_zone, ligne_essai_seuil
 
 _VIGNETTE_MAX = 320  # côté max de l'aperçu, en px logiques
 
@@ -234,7 +235,20 @@ class _CorpsFiche(QWidget):
         lay.setContentsMargins(18, 16, 18, 18)
         lay.setSpacing(12)
 
-        # — en-tête —
+        # — en-tête : étiquette de nature dans la couleur de la classe (celle de sa
+        #   couche dans QGIS), puis le titre (option A, 2026-10-08) —
+        base = couleur or couleur_de_classe(fiche.nom) or (42, 120, 214)
+        nature = QHBoxLayout()
+        nature.setSpacing(6)
+        point = QLabel()
+        point.setPixmap(pastille(base, 10, self.devicePixelRatioF()))
+        etiquette = QLabel("STRUCTURE DÉTECTABLE")
+        etiquette.setObjectName("FicheNature")
+        etiquette.setStyleSheet(f"color: {couleur_texte(base)};")   # couleur de la classe : dynamique
+        nature.addWidget(point)
+        nature.addWidget(etiquette)
+        nature.addStretch(1)
+        lay.addLayout(nature)
         titre = QHBoxLayout()
         titre.setSpacing(10)
         titre.addWidget(_label(fiche.label, "FicheTitre", wrap=False))
@@ -352,6 +366,8 @@ class _CorpsFiche(QWidget):
         if ouvrir_modele is not None:
             lien = FicheButton(f"Architecture, entraînement et métriques d'évaluation de « {fiche.modele} »")
             lien.setText("Fiche du modèle")
+            lien.setObjectName("FicheLienModele")    # ardoise : la couleur des fiches de modèle
+            lien.setIcon(colored_icon("modele", ARDOISE, 14, dpr=self.devicePixelRatioF()))
             lien.clicked.connect(lambda *_: ouvrir_modele())
             lay.addWidget(lien, 0, Qt.AlignmentFlag.AlignLeft)
 
@@ -488,13 +504,21 @@ class ClassInfoDialog(QDialog):
         self._seuils = dict(seuils or {})      # (modèle, classe) → seuil effectif (étape 3)
         self._observes = dict(observes or {})  # (modèle, classe) → Observation (vos verdicts)
         self.setObjectName("ClassInfoDialog")
-        self.setWindowTitle(titre or "Structure détectable")
+        # Nature dans le titre de la fenêtre : utile dans la barre des tâches, et quand
+        # la fiche du modèle s'ouvre par-dessus (option A, 2026-10-08).
+        self.setWindowTitle(f"Structure · {titre}" if titre else "Structure détectable")
         self.setMinimumSize(760, 560)
         self.resize(900, 640)
 
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(0)
+        # Liseré de 4 px dans la couleur de la classe affichée (recoloré à chaque
+        # changement de classe dans la liste) ; la fiche du modèle a le sien, ardoise.
+        self._liseré = QFrame()
+        self._liseré.setObjectName("FicheLisere")
+        self._liseré.setFixedHeight(4)
+        root.addWidget(self._liseré)
 
         corps = QHBoxLayout()
         corps.setContentsMargins(0, 0, 0, 0)
@@ -543,6 +567,8 @@ class ClassInfoDialog(QDialog):
         if not (0 <= row < len(self._fiches)):
             return
         f = self._fiches[row]
+        base = self._couleurs.get((f.modele_id, f.nom)) or couleur_de_classe(f.nom) or (42, 120, 214)
+        self._liseré.setStyleSheet("background: rgb(%d, %d, %d);" % tuple(int(v) for v in base))
         model = self._models.get(f.modele_id)
         ouvrir = (lambda: self._ouvrir_modele(model)) if model is not None else None
         self._zone.setWidget(_CorpsFiche(

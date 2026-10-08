@@ -31,7 +31,9 @@ from qgis.PyQt.QtWidgets import (
 from ...app.services.model_orchestrator import InstalledModel, load_model_card
 
 from ...app.services.fiabilite import parse_fiabilite
-from ..widgets.profil_scores import figure_profil, ligne_essai_seuil
+from ..icons import colored_pixmap
+from ..widgets.profil_scores import couleur_de_classe, figure_profil, ligne_essai_seuil
+from ..widgets.vignette import ARDOISE, pastille
 from ..widgets.vignette import pixmap_ajuste
 from ._model_info_data import Section, build_sections
 
@@ -195,9 +197,10 @@ class ModelInfoDialog(QDialog):
         super().__init__(parent)
         self.setObjectName("ModelInfoDialog")
         self.setModal(True)
-        # Le display_name est déjà préfixé « Modèle … » → pas de « Modèle — »
-        # en plus (sinon doublon dans la barre de titre).
-        self.setWindowTitle(model.display_name)
+        # Nature dans le titre de la fenêtre, comme « Structure · … » pour la fiche de
+        # classe (option A, 2026-10-08) ; sans doublon si le nom commence déjà par « Modèle ».
+        nom = model.display_name or model.name
+        self.setWindowTitle(nom if nom.lower().startswith("modèle") else f"Modèle · {nom}")
         self.resize(620, 720)
 
         self._model = model
@@ -217,6 +220,12 @@ class ModelInfoDialog(QDialog):
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(0)
 
+        # Liseré ardoise : la fiche d'un modèle est neutre ; la couleur d'une classe
+        # est réservée à sa fiche (option A, 2026-10-08).
+        lisere = QFrame()
+        lisere.setObjectName("ModelInfoLisere")
+        lisere.setFixedHeight(4)
+        root.addWidget(lisere)
         root.addWidget(self._build_header(card))
 
         # Zone scrollable pour les sections (modèles à beaucoup de classes /
@@ -266,9 +275,16 @@ class ModelInfoDialog(QDialog):
         lay.setContentsMargins(20, 16, 20, 14)
         lay.setSpacing(4)
 
-        kicker = QLabel("MODÈLE ONNX")
+        nature = QHBoxLayout()
+        nature.setSpacing(6)
+        icone = QLabel()
+        icone.setPixmap(colored_pixmap("modele", ARDOISE, 12, dpr=self.devicePixelRatioF()))
+        kicker = QLabel("MODÈLE DE DÉTECTION · ONNX")
         kicker.setObjectName("ModelInfoKicker")
-        lay.addWidget(kicker)
+        nature.addWidget(icone)
+        nature.addWidget(kicker)
+        nature.addStretch(1)
+        lay.addLayout(nature)
 
         slug_text = str(card.get("id") or self._model.name)
         slug = QLabel(slug_text)
@@ -301,6 +317,27 @@ class ModelInfoDialog(QDialog):
             meta = QLabel(" · ".join(meta_parts))
             meta.setObjectName("ModelInfoMeta")
             lay.addWidget(meta)
+
+        # « Détecte : » les classes du modèle, chacune avec la pastille de sa couleur de
+        # couche — le lien visible avec les fiches de structure (option A, 2026-10-08).
+        classes = [c for c in (card.get("classes") or []) if isinstance(c, dict) and c.get("name")]
+        if classes:
+            ligne = QHBoxLayout()
+            ligne.setSpacing(6)
+            libelle = QLabel("Détecte :")
+            libelle.setObjectName("ModelInfoMeta")
+            ligne.addWidget(libelle)
+            dpr = self.devicePixelRatioF()
+            for c in classes:
+                rgb = couleur_de_classe(str(c["name"])) or (42, 120, 214)
+                point = QLabel()
+                point.setPixmap(pastille(rgb, 9, dpr))
+                nom = QLabel(str(c.get("label_fr") or c["name"]))
+                nom.setObjectName("ModelInfoDetecte")
+                ligne.addWidget(point)
+                ligne.addWidget(nom)
+            ligne.addStretch(1)
+            lay.addLayout(ligne)
 
         return header
 

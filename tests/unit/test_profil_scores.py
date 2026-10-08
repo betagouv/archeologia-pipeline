@@ -250,11 +250,11 @@ def test_disposer_etiquettes_sans_chevauchement():
         els = sorted((rnd.uniform(0, 500), rnd.uniform(20, 90)) for _ in range(6))
         dispo = disposer_etiquettes(els, 500.0)
         par_rangee: dict = {}
-        for (_cx, l), (r, g) in zip(els, dispo):
-            assert 0.0 <= g and g + l <= 500.0 + 1e-6
+        for (_cx, larg), (r, g) in zip(els, dispo):
+            assert 0.0 <= g and g + larg <= 500.0 + 1e-6
             for g2, l2 in par_rangee.get(r, []):
-                assert g >= g2 + l2 + 4.0 - 1e-9 or g2 >= g + l + 4.0 - 1e-9
-            par_rangee.setdefault(r, []).append((g, l))
+                assert g >= g2 + l2 + 4.0 - 1e-9 or g2 >= g + larg + 4.0 - 1e-9
+            par_rangee.setdefault(r, []).append((g, larg))
     assert disposer_etiquettes([], 100.0) == []
 
 
@@ -338,7 +338,8 @@ def test_rappel_par_zone_au_critere_objet(tmp_path):
 def test_placer_libelles_lignes_option_a():
     """Seuil d'abord ; l'équilibre change de côté, s'abrège, puis se tait ; jamais de recouvrement."""
     seuil = (200.0, [("seuil 0,59", 50.0)], [0])
-    eq = lambda x: (x, [("équilibre (F1) 0,37", 90.0), ("F1 0,37", 35.0)], [0])
+    def eq(x):
+        return (x, [("équilibre (F1) 0,37", 90.0), ("F1 0,37", 35.0)], [0])
     # loin du seuil : texte entier, à droite de sa ligne
     assert placer_libelles_lignes([seuil, eq(100.0)], 1, 320.0) == [(0, 203.0, "seuil 0,59"), (0, 103.0, "équilibre (F1) 0,37")]
     # juste avant le seuil : à droite il toucherait « seuil », il passe à gauche
@@ -411,3 +412,14 @@ def test_carte_entite_selection_par_le_haut_et_vignette_inerte():
     assert "self._thumb.clicked.connect" not in carte
     assert "WA_TransparentForMouseEvents" in carte
     assert "_bas_zone_selection()" in carte
+
+
+def test_fiches_distinguees_option_a():
+    """Garde-fou sans QGIS : liseré + étiquette de nature dans les deux fiches ; la couleur
+    d'une classe n'apparaît que dans sa fiche, la fiche du modèle reste ardoise."""
+    racine = Path(__file__).resolve().parents[2]
+    classe = (racine / "src/ui/dialogs/class_info_dialog.py").read_text(encoding="utf-8")
+    modele = (racine / "src/ui/dialogs/model_info_dialog.py").read_text(encoding="utf-8")
+    assert "STRUCTURE DÉTECTABLE" in classe and "FicheLisere" in classe and 'f"Structure · {titre}"' in classe
+    assert "MODÈLE DE DÉTECTION · ONNX" in modele and "ModelInfoLisere" in modele and "Détecte :" in modele
+    assert (racine / "src/ui/theme/icons/modele.svg").is_file()

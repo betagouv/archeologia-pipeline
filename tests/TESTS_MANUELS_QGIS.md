@@ -574,8 +574,8 @@ Recette de référence : zone test de Fénétrange (mode `existing_mnt` ou `ign_
 ponctuelle (charbonnières / fours) pour vérifier les coupures par classe.
 
 - [ ] Étape 3, « Réglages avancés » coché : sous la case « Confiance » de l'entité, une ligne
-      « Fiabilité affichée — douteux dès 0.29 · possible dès 0.35 · probable dès 0.45 · très probable
-      dès 0.65 ». Relever le seuil à 0,50 → la ligne devient « probable dès 0.50 · très probable dès 0.65 »
+      « Fiabilité affichée — douteux dès 0,29 · possible dès 0,35 · probable dès 0,45 · très probable
+      dès 0,65 ». Relever le seuil à 0,50 → la ligne devient « probable dès 0,50 · très probable dès 0,65 »
       (les catégories sous le seuil disparaissent, la première commence AU seuil).
 - [ ] « Voir les détails du modèle » : section FIABILITÉ DES DÉTECTIONS, une ligne par catégorie
       « score ≥ 0.65 : ≥ 85 % de vrais objets sur le banc (mesuré : 95 % sur 1 045 détections) », et la

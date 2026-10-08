@@ -75,7 +75,7 @@ Pour une dalle, les détections de toutes les entités se superposent sans doubl
 
 ## Le fichier metadata.json
 
-À la racine du dossier de sortie, il documente le traitement : version du plugin, date, dalles traitées, produits et leurs réglages, modèles lancés, entités produites avec le chemin de leur GeoPackage, le bilan de fiabilité par entité (effectifs par niveau) et la configuration complète de l'assistant. Il sert de trace pour l'archivage et permet de rejouer un traitement à l'identique.
+À la racine du dossier de sortie, il documente le traitement : version du plugin, date, nombre de dalles traitées, produits et leurs réglages, modèles lancés, entités produites avec le chemin de leur GeoPackage, le bilan de fiabilité par entité (effectifs par niveau) et la configuration complète de l'assistant. Il sert de trace pour l'archivage. Il porte des chemins de votre poste : pour transmettre un traitement, préférez le rapport.
 
 ## Faire de la place
 

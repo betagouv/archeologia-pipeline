@@ -315,40 +315,52 @@ def _ecrire_rapport_run(
     *, output_dir: Path, vrt_paths: List[str], cv_runs: Any, cv_cfg: Any, cv_stats: List[Dict[str, Any]],
     bilan: Any, rvt_params: Dict[str, Any], active_products: List[str], ui_config: Dict[str, Any],
     outcome: str, start_time: float, tiles_processed: int, tiles_total: Optional[int], meta_date: str,
+    reporter: Any = None,
 ) -> str:
     """Assemble et écrit ``rapport.html`` ; renvoie son nom. Thread worker (GDAL pour
-    la vignette, aucun Qt)."""
+    la vignette et la surface, aucun Qt). Rien ne situe la zone : ni nom de dalle, ni
+    chemin ; les durées par étape viennent du chronomètre posé sur le reporter."""
     import datetime as _dt
     import time as _time
 
     from ..plugin_metadata import get_plugin_version
+    from ..progress_stages import STAGE_LABELS, Stage
     from ..user_narrator import PRODUCT_LABELS
     from .rapport_run import (
         NOM_VIGNETTE,
         DonneesRapport,
         choisir_vrt_vignette,
-        dalles_depuis_vrt,
         ecrire_rapport,
         extraire_avertissements,
+        surface_km2_depuis_vrt,
         vignette_depuis_vrt,
     )
     from .source_modes import mode_info
 
     mode = str(((ui_config.get("app") or {}).get("files") or {}).get("data_mode") or "")
-    # Modèles : les durées mesurées si on les a, sinon les runs résolus (sans durée).
-    entites_par_modele: Dict[str, List[str]] = {}
+    # Par modèle (slug) : son nom (model_card, via ``fiabilite.modele`` posé par
+    # l'orchestrateur), le seuil réglé à l'étape 3, ses entités.
+    infos: Dict[str, Dict[str, Any]] = {}
     for r in list(cv_runs or []) + list((cv_cfg or {}).get("runs") or []):
-        if isinstance(r, dict) and r.get("selected_model"):
-            entites_par_modele.setdefault(str(r["selected_model"]), [
-                e.get("label") or e.get("slug") or "" for e in (r.get("entities") or []) if isinstance(e, dict)
-            ])
-    runs_rapport: List[Dict[str, Any]] = [
-        dict(x, entites=x.get("entites") or entites_par_modele.get(str(x.get("model")), [])) for x in cv_stats
-    ]
-    if not runs_rapport:
-        for modele, entites in entites_par_modele.items():
-            runs_rapport.append({"modele": modele, "model": modele, "target_rvt": "", "entites": entites,
-                                 "images": None, "secondes": None})
+        if isinstance(r, dict) and (r.get("selected_model") or r.get("model")):
+            slug = str(r.get("selected_model") or r.get("model"))   # résolu / config UI
+            fiab = r.get("fiabilite") if isinstance(r.get("fiabilite"), dict) else {}
+            infos.setdefault(slug, {
+                "modele": str(fiab.get("modele") or slug), "seuil": r.get("confidence_threshold"),
+                "entites": [e.get("label") or e.get("slug") or "" for e in (r.get("entities") or [])
+                            if isinstance(e, dict)],
+            })
+    runs_rapport: List[Dict[str, Any]] = []
+    for x in cv_stats:                       # durées mesurées, enrichies du nom et du seuil
+        info = infos.get(str(x.get("model")), {})
+        runs_rapport.append(dict(
+            x, modele=info.get("modele") or x.get("modele") or x.get("model"), seuil=info.get("seuil"),
+            entites=x.get("entites") or info.get("entites", []),
+        ))
+    if not runs_rapport:                      # runs résolus, sans durée
+        for slug, info in infos.items():
+            runs_rapport.append({"modele": info["modele"], "model": slug, "target_rvt": "", "seuil": info["seuil"],
+                                 "entites": info["entites"], "images": None, "secondes": None})
     journaux = sorted(Path(output_dir).glob("pipeline_log_*.txt"))
     avertissements: list = []
     if journaux:
@@ -358,23 +370,37 @@ def _ecrire_rapport_run(
             avertissements = []
     vrt = choisir_vrt_vignette(vrt_paths)
     vignette = vignette_depuis_vrt(vrt, Path(output_dir) / NOM_VIGNETTE) if vrt else None
+    etapes: List[tuple] = []
+    chrono = getattr(reporter, "chrono", None)
+    if chrono is not None:
+        images = sum(int(x.get("images") or 0) for x in runs_rapport)
+        n_modeles = len(runs_rapport)
+        details = {
+            Stage.DOWNLOAD: f"{tiles_processed} dalle{'s' if tiles_processed > 1 else ''}",
+            Stage.PRODUCTS: ", ".join(PRODUCT_LABELS.get(p, p) for p in active_products) or "—",
+            Stage.DETECTION: (f"{n_modeles} modèle{'s' if n_modeles > 1 else ''}, "
+                              + (f"{images} image{'s' if images > 1 else ''} analysée{'s' if images > 1 else ''}"
+                                 if images else "images reprises du run précédent")),
+            Stage.FINALIZE: "mosaïques, bilan, rapport",
+        }
+        for stage, secondes in chrono.durees():
+            etapes.append((STAGE_LABELS.get(stage, stage), details.get(stage, ""), float(secondes)))
     try:
         date = _dt.datetime.fromisoformat(meta_date).strftime("%d/%m/%Y à %H:%M")
     except ValueError:
         date = meta_date
     donnees = DonneesRapport(
         version=get_plugin_version(), date=date,
-        mode=mode_info(mode).banner_label if mode else "", output_dir=str(output_dir),
+        mode=mode_info(mode).banner_label if mode else "", data_mode=mode,
         issue=outcome, duree_s=max(0.0, _time.time() - start_time),
         tiles_processed=tiles_processed, tiles_total=tiles_total,
-        dalles=tuple(dalles_depuis_vrt(vrt_paths)),
+        surface_km2=surface_km2_depuis_vrt(vrt_paths),
         produits=tuple((p, PRODUCT_LABELS.get(p, p)) for p in active_products),
         rvt_params=rvt_params, cv_runs=tuple(runs_rapport),
-        bilan=tuple(ligne.to_dict() for ligne in bilan),
+        bilan=tuple(ligne.to_dict() for ligne in bilan), etapes=tuple(etapes),
         avertissements=tuple(avertissements), vignette=vignette,
     )
     return ecrire_rapport(Path(output_dir), donnees).name
-
 
 def finalize_pipeline(
     *,
@@ -551,7 +577,7 @@ def finalize_pipeline(
                 cv_stats=cv_stats or [], bilan=bilan, rvt_params=rvt_params or {},
                 active_products=active_products or [], ui_config=ui_config or {},
                 outcome=outcome, start_time=start_time, tiles_processed=tiles_processed,
-                tiles_total=tiles_total, meta_date=meta["date"],
+                tiles_total=tiles_total, meta_date=meta["date"], reporter=reporter,
             )
         except Exception as _rap_e:  # noqa: BLE001 — jamais bloquant
             reporter.info(f"Note: rapport non écrit ({_rap_e})")

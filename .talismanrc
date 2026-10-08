@@ -240,7 +240,7 @@ fileignoreconfig:
 - filename: tests/unit/test_recentrage.py
   checksum: e4778f57626616f0bbcfe35230cbd936d5b2da89d37dc0585b459c6fbe54159d
 - filename: .gitignore
-  checksum: 8c7100027d857fdd7b07603715d498c5552d95a8f9115fc3ffb80d9ea9d75e35
+  checksum: 6215a8b876411a77d6a530c276a41134a59b5768b3e2bacb427907991b1192d6
 - filename: aide/01-installer.md
   checksum: 9fc02cf53a5b090aa8885a08640aaa90f75d9a127a473e8b752b492609454096
 - filename: .claude/commands/livraison.md

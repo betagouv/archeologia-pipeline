@@ -18,6 +18,7 @@ from src.app.services.profil_scores import (
     f1max_depuis_bandes,
     libelle_zone,
     phrase_precision_rappel,
+    placer_libelles_lignes,
     precision_rappel,
     profil_pour_classe,
     profils_par_zone,
@@ -334,6 +335,30 @@ def test_rappel_par_zone_au_critere_objet(tmp_path):
     assert critere_evaluation(d) == ""
 
 
+def test_placer_libelles_lignes_option_a():
+    """Seuil d'abord ; l'équilibre change de côté, s'abrège, puis se tait ; jamais de recouvrement."""
+    seuil = (200.0, [("seuil 0,59", 50.0)], [0])
+    eq = lambda x: (x, [("équilibre (F1) 0,37", 90.0), ("F1 0,37", 35.0)], [0])
+    # loin du seuil : texte entier, à droite de sa ligne
+    assert placer_libelles_lignes([seuil, eq(100.0)], 1, 320.0) == [(0, 203.0, "seuil 0,59"), (0, 103.0, "équilibre (F1) 0,37")]
+    # juste avant le seuil : à droite il toucherait « seuil », il passe à gauche
+    assert placer_libelles_lignes([seuil, eq(180.0)], 1, 320.0)[1] == (0, 87.0, "équilibre (F1) 0,37")
+    # coincé entre le bord gauche et le seuil (posé à 123) : forme courte, à droite de sa ligne
+    proche = (120.0, [("seuil 0,59", 50.0)], [0])
+    assert placer_libelles_lignes([proche, eq(60.0)], 1, 320.0)[1] == (0, 63.0, "F1 0,37")
+    # lignes collées dans une figure étroite : il se tait, le seuil reste
+    res = placer_libelles_lignes([(20.0, [("seuil 0,59", 50.0)], [0]), eq(24.0)], 1, 90.0)
+    assert res[0] == (0, 23.0, "seuil 0,59") and res[1] is None
+    # deux rangées : une coupure voisine descend d'une rangée
+    res = placer_libelles_lignes([seuil, (210.0, [("0,35", 20.0)], [0, 1])], 2, 320.0)
+    assert res[1] == (1, 213.0, "0,35")
+    assert placer_libelles_lignes([], 1, 100.0) == []
+    # seuil juste avant l'équilibre (0,29 / 0,37) : le seuil passe à gauche de sa ligne
+    # pour laisser l'équilibre entier à droite de la sienne
+    res = placer_libelles_lignes([(105.0, [("seuil 0,29", 50.0)], [0]), eq(130.0)], 1, 320.0)
+    assert res == [(0, 52.0, "seuil 0,29"), (0, 133.0, "équilibre (F1) 0,37")]
+
+
 def test_couleur_de_la_couche_qualifiee_en_comparaison():
     """A9 : la figure prend la clé du registre de la COUCHE — « classe — Modèle » en A/B."""
     from src.app.services.model_orchestrator import InstalledModel, layer_name_for_class
@@ -356,7 +381,7 @@ def test_le_widget_suit_le_seuil_et_les_fiches_posent_les_zones():
     widget = (racine / "src/ui/widgets/profil_scores.py").read_text(encoding="utf-8")
     for motif in ("def set_seuil", "categories_effectives", "def bilan", "seuil_f1max", "DashLine",
                   "QToolTip.showText", "def contextMenuEvent", "def figures_par_zone",
-                  "disposer_etiquettes(", "def resizeEvent"):
+                  "disposer_etiquettes(", "def resizeEvent", "placer_libelles_lignes("):
         assert motif in widget, motif
     carte = (racine / "src/ui/widgets/entity_card.py").read_text(encoding="utf-8")
     assert "fig.set_seuil(seuil)" in carte and "phrase_bilan" not in carte      # bilan dans l'infobulle seulement

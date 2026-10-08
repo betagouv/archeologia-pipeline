@@ -444,6 +444,73 @@ def disposer_etiquettes(
     return out
 
 
+def _placer_glouton(
+    libelles: Sequence[Tuple[float, Sequence[Tuple[str, float]], Sequence[int]]],
+    nb_rangees: int,
+    largeur_totale: float,
+    ecart: float,
+    marge: float,
+    premier_a_gauche: bool,
+) -> List[Optional[Tuple[int, float, str, int]]]:
+    occupe: List[List[Tuple[float, float]]] = [[] for _ in range(max(0, nb_rangees))]
+    out: List[Optional[Tuple[int, float, str, int]]] = []
+    for k, (x_ligne, variantes, rangees) in enumerate(libelles):
+        place: Optional[Tuple[int, float, str, int]] = None
+        for iv, (texte, largeur) in enumerate(variantes):
+            cotes = (x_ligne + marge, x_ligne - marge - largeur)
+            if k == 0 and premier_a_gauche:
+                cotes = cotes[::-1]
+            for r in rangees:
+                if not 0 <= r < len(occupe):
+                    continue
+                for gauche in cotes:
+                    if gauche < 0 or gauche + largeur > largeur_totale:
+                        continue
+                    if all(gauche + largeur + ecart <= a or b + ecart <= gauche for a, b in occupe[r]):
+                        place = (r, gauche, texte, iv)
+                        occupe[r].append((gauche, gauche + largeur))
+                        break
+                if place:
+                    break
+            if place:
+                break
+        out.append(place)
+    return out
+
+
+def placer_libelles_lignes(
+    libelles: Sequence[Tuple[float, Sequence[Tuple[str, float]], Sequence[int]]],
+    nb_rangees: int,
+    largeur_totale: float,
+    ecart: float = 6.0,
+    marge: float = 3.0,
+) -> List[Optional[Tuple[int, float, str]]]:
+    """Place les libellés attachés à une ligne verticale (seuil, coupures, équilibre),
+    donnés **par ordre de priorité** : ``(x de la ligne, [(texte, largeur), …] variantes
+    de la plus longue à la plus courte, rangées essayées)``. Chacun prend la première
+    variante qui tient, sur la première rangée essayée libre, à droite de sa ligne
+    sinon à gauche, sans toucher un libellé déjà posé (``ecart``) ni sortir du cadre ;
+    sinon il est omis (``None``) — sa ligne reste, son nom est dans l'infobulle.
+    Le premier libellé (le seuil) passe à **gauche** de sa ligne quand cela permet de
+    placer davantage de libellés, ou des formes moins abrégées : à 0,29, « seuil 0,29 »
+    à droite de sa ligne occupait toute la place de « équilibre (F1) 0,37 ».
+    Renvoie ``(rangée, x gauche, texte)`` par libellé, dans l'ordre d'entrée.
+
+    Option A retenue par l'utilisateur (2026-10-08) : la rangée du haut porte les
+    seules mesures (précision, rappel, F1) ; seuil, coupures et équilibre se rangent
+    ici, en dessous — « équilibre (F1) » et les mesures se recouvraient sur une carte
+    étroite.
+    """
+    def score(res):
+        return (res[0] is None if res else False,          # le seuil d'abord
+                sum(1 for r in res if r is None),            # puis le moins d'omis
+                sum(r[3] for r in res if r is not None))     # puis le moins d'abrégés
+    essais = [_placer_glouton(libelles, nb_rangees, largeur_totale, ecart, marge, a_gauche)
+              for a_gauche in (False, True)]
+    meilleur = min(essais, key=score)                        # à égalité : seuil à droite
+    return [None if r is None else (r[0], r[1], r[2]) for r in meilleur]
+
+
 def agreger(
     bandes: Sequence[Bande], pas: float = PAS_DEFAUT, coupures: Sequence[float] = ()
 ) -> List[Bande]:

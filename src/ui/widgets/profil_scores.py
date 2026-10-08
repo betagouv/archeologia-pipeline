@@ -67,6 +67,7 @@ from ...app.services.profil_scores import (
     disposer_etiquettes,
     libelle_zone,
     phrase_precision_rappel,
+    placer_libelles_lignes,
     precision_rappel,
     profil_pour_classe,
     profils_par_zone,
@@ -455,25 +456,14 @@ class ProfilScoresWidget(QWidget):
             if xmin <= v <= xmax:
                 p.drawText(QRectF(x(v) - 20, y(0) + 2, 40, 12), Qt.AlignmentFlag.AlignHCenter, _v(v))
 
-        # — point d'équilibre précision-rappel (F1) : pointillé, libellé sur la
-        #   rangée du haut, à gauche de la ligne s'il y a la place —
+        # — lignes : équilibre (F1) en pointillé, coupures en gris, le SEUIL APPLIQUÉ
+        #   (première coupure) en orange, plus épais, sur un halo blanc : il doit se
+        #   voir quelle que soit la couleur de la classe (constat utilisateur). —
+        xe = None
         if prof.seuil_f1max is not None and xmin <= prof.seuil_f1max <= xmax:
             xe = x(prof.seuil_f1max)
             p.setPen(QPen(_ENCRE_DOUCE, 1, Qt.PenStyle.DashLine))
             p.drawLine(QRectF(xe, haut - 4, 0, y(0) - haut + 4).topLeft(), QRectF(xe, haut - 4, 0, y(0) - haut + 4).bottomLeft())
-            p.setFont(petite)
-            texte = f"équilibre (F1) {_v(prof.seuil_f1max)}"
-            y_eq = haut - (24 if mini else 30)
-            if xe - gauche > 104:
-                p.drawText(QRectF(xe - 103, y_eq, 100, 12), Qt.AlignmentFlag.AlignRight, texte)
-            else:
-                p.drawText(QRectF(xe + 3, y_eq, 100, 12), Qt.AlignmentFlag.AlignLeft, texte)
-
-        # — coupures des niveaux en gris, étiquettes en quinconce (0,29 et 0,35 se
-        #   touchent) ; le SEUIL APPLIQUÉ (première coupure) dans sa couleur propre,
-        #   plus épais, sur un halo blanc : il doit se voir quelle que soit la
-        #   couleur de la classe (constat utilisateur 2026-10-08). —
-        p.setFont(petite if mini else police)
         for i, c in enumerate(cats):
             xc = x(c.seuil)
             if i == 0:
@@ -483,29 +473,55 @@ class ProfilScoresWidget(QWidget):
             else:
                 p.setPen(QPen(_COUPURE, 1))
             p.drawLine(QRectF(xc, haut - 4, 0, y(0) - haut + 4).topLeft(), QRectF(xc, haut - 4, 0, y(0) - haut + 4).bottomLeft())
-            if mini and i > 0:
-                continue  # en mini, seule la ligne du seuil est libellée
-            texte = ("seuil " if i == 0 else "") + _v(c.seuil)
-            rect = QRectF(xc + 3, haut - (12 if mini else 18) + (0 if mini else (i % 2) * 11), 70, 12)
-            if i == 0:
-                grasse = QFont(p.font())
-                grasse.setBold(True)
-                p.setFont(grasse)
-                p.setPen(_SEUIL)
-            else:
-                p.setPen(_COUPURE)
-            p.drawText(rect, Qt.AlignmentFlag.AlignLeft, texte)
-            p.setFont(petite if mini else police)
 
-        # — précision, rappel et F1 au seuil courant : en haut à droite, dans la marge
-        #   au-dessus du tracé (rangée de l'équilibre), jamais sur les barres —
+        # — une rangée par sorte de texte (option A, 2026-10-08) : en haut, les seules
+        #   mesures (précision, rappel, F1), calées à droite ; en dessous, seuil,
+        #   coupures (complet seulement) et équilibre, rangés sans chevauchement par
+        #   placer_libelles_lignes — seuil d'abord, l'équilibre s'abrège en « F1 0,37 »
+        #   puis se tait plutôt que de recouvrir un autre libellé. —
         pr = self.phrase_precision_rappel()
         if pr:
             p.setFont(petite)
             largeur_pr = p.fontMetrics().horizontalAdvance(pr) + 4
-            rect_pr = QRectF(gauche + largeur_trace - largeur_pr, haut - (24 if mini else 30), largeur_pr, 12)
+            rect_pr = QRectF(gauche + largeur_trace - largeur_pr, haut - (24 if mini else 30), largeur_pr, 14)
             p.setPen(_ENCRE)
             p.drawText(rect_pr, Qt.AlignmentFlag.AlignRight, pr)
+
+        police_coupure = petite if mini else police
+        police_seuil = QFont(police_coupure)
+        police_seuil.setBold(True)
+        rangees_y = [haut - 12] if mini else [haut - 18, haut - 7]
+        toutes = list(range(len(rangees_y)))
+        libelles, styles = [], []
+        if cats:
+            texte = f"seuil {_v(cats[0].seuil)}"
+            libelles.append((x(cats[0].seuil), [(texte, QFontMetrics(police_seuil).horizontalAdvance(texte))], toutes))
+            styles.append((police_seuil, _SEUIL))
+        if not mini:
+            for c in cats[1:]:
+                texte = _v(c.seuil)
+                libelles.append((x(c.seuil), [(texte, QFontMetrics(police_coupure).horizontalAdvance(texte))], toutes))
+                styles.append((police_coupure, _COUPURE))
+        if xe is not None:
+            fm_eq = QFontMetrics(petite)
+            variantes = [(t, fm_eq.horizontalAdvance(t)) for t in
+                         (f"équilibre (F1) {_v(prof.seuil_f1max)}", f"F1 {_v(prof.seuil_f1max)}")]
+            libelles.append((xe, variantes, toutes))
+            styles.append((petite, _ENCRE_DOUCE))
+        for place, (fonte, couleur), (x_ligne, variantes, _r) in zip(
+            placer_libelles_lignes(libelles, len(rangees_y), float(w)), styles, libelles
+        ):
+            if place is None:
+                if couleur is not _SEUIL:
+                    continue          # coupure ou équilibre sans place : la ligne suffit
+                # Le seuil se montre toujours : contre sa ligne, ramené dans le cadre.
+                texte, largeur = variantes[0]
+                place = (0, min(max(x_ligne + 3, 0.0), w - largeur), texte)
+            rangee, g, texte = place
+            p.setFont(fonte)
+            p.setPen(couleur)
+            p.drawText(QRectF(g, rangees_y[rangee], w - g, 14), Qt.AlignmentFlag.AlignLeft, texte)
+        p.setFont(police)
 
         # — libellés sous l'axe, rangés sans chevauchement ; une étiquette décalée
         #   d'une rangée reçoit un tiret vers le centre de sa bande —
@@ -517,7 +533,8 @@ class ProfilScoresWidget(QWidget):
                 p.drawLine(QRectF(e.cx, y(0) + 12, 0, y0 - y(0) - 13).topLeft(), QRectF(e.cx, y(0) + 12, 0, y0 - y(0) - 13).bottomLeft())
             p.setPen(e.couleur)
             p.setFont(petite if mini else police)
-            p.drawText(QRectF(e.gauche, y0, e.largeur, 14 if not mini else 11), Qt.AlignmentFlag.AlignHCenter, e.nom)
+            # 14 px de haut aussi en mini : à 11 px les jambages (« p » de possible) étaient rognés.
+            p.drawText(QRectF(e.gauche, y0, e.largeur, 14), Qt.AlignmentFlag.AlignHCenter, e.nom)
             if e.detail:
                 p.setPen(_ENCRE_DOUCE)
                 p.setFont(petite)

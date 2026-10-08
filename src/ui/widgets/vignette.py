@@ -62,6 +62,38 @@ TAILLE = 44
 _MARGE = 2
 
 
+def vignette_annotee_recoloree(chemin_brut: str, chemin_annote: str, rgb) -> QPixmap:
+    """L'image « Vérité terrain » avec ses contours dans la couleur ``rgb`` de la classe
+    (``app.services.recolorer_annotation``). Image brute absente, tailles différentes ou
+    numpy indisponible → l'image annotée telle quelle, contours jaunes."""
+    from qgis.PyQt.QtGui import QImage
+
+    annote = QImage(chemin_annote)
+    brut = QImage(chemin_brut)
+    if annote.isNull():
+        return QPixmap()
+    if brut.isNull() or brut.size() != annote.size() or rgb is None:
+        return QPixmap.fromImage(annote)
+    try:
+        import numpy as np
+
+        from ...app.services.recolorer_annotation import recolorer
+
+        def tableau(img):
+            img = img.convertToFormat(QImage.Format.Format_RGB888)
+            w, h, ligne = img.width(), img.height(), img.bytesPerLine()
+            ptr = img.bits()
+            ptr.setsize(h * ligne)
+            return np.frombuffer(ptr, np.uint8).reshape(h, ligne)[:, : w * 3].reshape(h, w, 3).copy()
+
+        out = np.ascontiguousarray(recolorer(tableau(brut), tableau(annote), rgb))
+        h, w = out.shape[:2]
+        img = QImage(out.data, w, h, 3 * w, QImage.Format.Format_RGB888).copy()   # copie : out est local
+        return QPixmap.fromImage(img)
+    except Exception:  # noqa: BLE001 — confort visuel, jamais bloquant
+        return QPixmap.fromImage(annote)
+
+
 def pixmap_ajuste(
     source,
     cote: int,

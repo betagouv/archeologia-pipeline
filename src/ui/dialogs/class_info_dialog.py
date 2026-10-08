@@ -41,7 +41,14 @@ from qgis.PyQt.QtWidgets import (
 from ...app.services.class_fiche import ClassFiche
 from ...app.services.fiabilite import pct
 from ..icons import colored_icon
-from ..widgets.vignette import ARDOISE, FicheButton, couleur_texte, pastille, pixmap_ajuste
+from ..widgets.vignette import (
+    ARDOISE,
+    FicheButton,
+    couleur_texte,
+    pastille,
+    pixmap_ajuste,
+    vignette_annotee_recoloree,
+)
 from ...app.services.profil_scores import libelle_zone, zones_sans_objet
 from ..widgets.profil_scores import couleur_de_classe, figure_profil, figures_par_zone, ligne_essai_seuil
 from ...app.services.carte_zones import charger as charger_zones_corpus
@@ -118,10 +125,13 @@ class _Apercu(QWidget):
     exception ni une image cassée.
     """
 
-    def __init__(self, fiche: ClassFiche, model_dir: Optional[Path], parent=None):
+    def __init__(self, fiche: ClassFiche, model_dir: Optional[Path], parent=None, couleur=None):
         super().__init__(parent)
         self._fiche = fiche
         self._dir = Path(model_dir) if model_dir else None
+        # Couleur de la couche : les contours de la vérité terrain la prennent
+        # (au lieu du jaune des fichiers, demande utilisateur 2026-10-08).
+        self._couleur = couleur
         self._i = 0
         self._annote = bool(fiche.vignettes and fiche.vignettes[0].annote)
 
@@ -213,8 +223,12 @@ class _Apercu(QWidget):
         else:
             # −2 px : le cadre du QSS prend 1 px de chaque côté, viser la
             # taille du widget ferait rogner l'image d'autant.
+            v = self._fiche.vignettes[self._i]
+            source = str(chemin)
+            if self._annote and v.annote and v.brut and self._couleur is not None and self._dir is not None:
+                source = vignette_annotee_recoloree(str(self._dir / v.brut), str(chemin), self._couleur)
             pix = pixmap_ajuste(
-                str(chemin), _VIGNETTE_MAX - 2, dpr=self.devicePixelRatioF()
+                source, _VIGNETTE_MAX - 2, dpr=self.devicePixelRatioF()
             )
             self._image.setProperty("state", "plein")
             if pix.isNull():
@@ -281,7 +295,7 @@ class _CorpsFiche(QWidget):
         # — aperçu + reconnaître côte à côte —
         haut = QHBoxLayout()
         haut.setSpacing(18)
-        haut.addWidget(_Apercu(fiche, model_dir))
+        haut.addWidget(_Apercu(fiche, model_dir, couleur=base))
         colonne = QVBoxLayout()
         colonne.setSpacing(8)
         if fiche.reconnaitre:

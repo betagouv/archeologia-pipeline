@@ -19,7 +19,7 @@ Le panneau vérifie en tâche de fond ce dont le traitement a besoin :
 
 Chaque contrôle affiche son état et son détail. Un élément manquant bloque le lancement et dit quoi installer : voir [Dépannage](depannage.md#les-verifications-prealables-ont-echoue).
 
-[![Étape 4 : configuration valide, état du système au vert, récapitulatif du run](img/etape4-lancer.png)](img/etape4-lancer.png)
+[![Étape 4 : configuration valide, état du système au vert, récapitulatif du run](img/etape4-verifications.png)](img/etape4-verifications.png)
 
 ## Paramètres avancés
 

@@ -57,10 +57,11 @@ retard, qu'il a remplacée le 2026-10-07.
 - **Jamais à l'intérieur d'un élément de liste** : Qt la rend en ligne avec le texte (ligne géante, trous).
   Placer l'image après la liste.
 - Captures de l'assistant : hors écran, en double résolution, chemins neutres dans les champs :
-  `C:/OSGeo4W/bin/python-qgis.bat dev/rendu_hors_ecran.py captures` (écrit `aide/img/etape*.png` et
+  `C:/OSGeo4W/bin/python-qgis.bat dev/rendu_hors_ecran.py captures` (écrit `aide/img/etape*.png`, dont
+  l'étape 4 au vert et la fiche de classe, et
   `aide/img/run-journal.png`, la vue d'exécution en cours de détection). Une nouvelle capture
   s'ajoute à cette commande, jamais à un script de brouillon.
-  Captures qui exigent QGIS de bureau (canevas, résultats, étape 4 au vert) : demandées à l'utilisateur,
+  Captures qui exigent QGIS de bureau (canevas, résultats, dialogues de QGIS) : demandées à l'utilisateur,
   déposées dans son dossier de captures Windows avec le nom attendu, puis converties et placées.
 - Jamais l'adresse du dépôt, un identifiant ou un chemin personnel dans une image livrée : masquer.
 - La fenêtre ramène toute image à la largeur de lecture et la lisse à la densité d'écran : pas de

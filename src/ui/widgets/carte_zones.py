@@ -165,7 +165,11 @@ class _LigneZone(QWidget):
         chiffres = QLabel(_effectifs(zone))
         chiffres.setObjectName("FicheLegende")
         chiffres.setMinimumWidth(150)
-        nom.setFixedWidth(260)        # colonne fixe : barres et chiffres restent près des noms
+        # Colonne fixe : barres et chiffres restent près des noms. 160 et non 260 : à 260 le bandeau
+        # exigeait 734 px, la fiche d'un modèle à plusieurs classes n'en offre que 686 (900 px moins
+        # la liste des classes) → barre horizontale et texte coupé (2026-10-09). Les noms passent à la ligne.
+        # ponytail: une carte de deux pays (2 × 150 px) déborderait encore — empiler carte et liste le jour venu.
+        nom.setFixedWidth(160)
         lay.addWidget(nom)
         lay.addWidget(piste, 0, Qt.AlignmentFlag.AlignVCenter)
         lay.addWidget(chiffres)

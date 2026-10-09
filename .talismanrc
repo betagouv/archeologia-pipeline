@@ -22,7 +22,7 @@ fileignoreconfig:
 - filename: .githooks/pre-push
   checksum: b0e75a8b481a83c7a519218d19fa137bfe34752ee3b1f5fbf3fafd19b1d15b03
 - filename: CLAUDE.md
-  checksum: d155a1966155c560a2141ef3cd419a2956dabf2e6ba7305053c0864eea344e01
+  checksum: 1dc432da6bdb047d46386ce22f1d8b8f2e0aa569841ed3c172a553ff12b5014a
 - filename: README.md
   checksum: 750a05cc79bfaed67b0a047b59aa889ba713d16120ef7849316479ce9ef03913
 - filename: dev/docs/documentation_utilisateur_v1.docx
@@ -124,7 +124,7 @@ fileignoreconfig:
 - filename: src/ui/wizard_dialog.py
   checksum: ded4117ddb5c98dec9db1ed01d87b1e54c538692b01e9fbb8a1c46237313dbe9
 - filename: tests/TESTS_MANUELS_QGIS.md
-  checksum: d18a699eb5914471866545859978d2e01e781e0d9b63f0a142b1f7b05735841d
+  checksum: 86b58f87b8ace61df5708cc15ef76cb619f2c3bb804500b1e0c7a649f4ae891c
 - filename: tests/integration/test_existing_mnt_runner_finalize.py
   checksum: e67c2e4c83cea0937bdfb39e8eec7aa7476f30648d4d858589e2308ad0565d63
 - filename: tests/integration/test_existing_rvt_runner_isolation.py
@@ -252,7 +252,7 @@ fileignoreconfig:
 - filename: aide/09-depannage.md
   checksum: bd414256c96437c2c25004a38580b2388272e98f1124e1c4850cb6d8cf56b2d9
 - filename: src/ui/widgets/carte_zones.py
-  checksum: 21133047c38545b434cb80ba78495795e2936112b1c3f76c93808888752f0e53
+  checksum: fd7734612381cf74a5b64924b72739ed0e4796509d56f7a31fbc7a65b4e8297a
 - filename: tests/unit/test_aide.py
   checksum: d770864e646f666bddb4c8a7116205392f7f751301f67e859ca36fcc92e38365
 - filename: aide/img/resultats-legende-fiabilite.jpg
@@ -282,11 +282,13 @@ fileignoreconfig:
 - filename: tests/unit/test_bilan_fiabilite.py
   checksum: 342b477c612265f7d798d7e3a7e1a4ac7fe852d413369d4b29a4e2ed93419872
 - filename: aide/img/etape3-fiche-classe.png
-  checksum: 1a97c92ef4706ca8219e2e241931127733237e1eefbc64c34ba9bf1367502183
+  checksum: eb5a829fe126141a65e3c62047b2ecff788d053daf622b26644ad695ff88ed3e
 - filename: data/third_party/cv_runner_onnx/windows/build_info.json
   checksum: 45011b4d0aad06531d94d7f21b30a4df2e89c60bfc0c3d170162d814c1ae2b32
 - filename: dev/rendu_hors_ecran.py
-  checksum: bf74e7a359ea701c0bfb5dc5d36c5cd89e7c59d9857091dfdda5b458b9af87b7
+  checksum: da837d0df1bc6b9841f7af3c051a05c624ecb70f226b75d50f630447113003f9
 - filename: aide/img/etape2-produits.png
   checksum: f62de9df5db85eca061d92b3e8b9129520010193a890694009a6ef7da49cf564
+- filename: aide/img/etape4-verifications.png
+  checksum: bed332b260a74f9dbcb2ff2601426329c2ab7f551fca81b75d2da90a5c51d592
 version: '1.0'

@@ -166,7 +166,7 @@ fileignoreconfig:
 - filename: tests/unit/test_models_connectivity.py
   checksum: 4bf50a0f98e8b61f3ad99d1e822b6873cb2fc918e2847c2bc12d95f4f690e9c9
 - filename: tests/unit/test_package_plugin.py
-  checksum: c4811372635205310b721df3f5b787aa043724774caa31d1ffda2914a4fce911
+  checksum: 41e3cb044ff84beda2315238e1e32ca79d098269ba098dc73592c4b204cc1ff4
 - filename: tests/unit/test_preflight.py
   checksum: 6b37b99281e06942557dfc506ad8e2b04f1925eaeaeaf2bf140659437505c6c4
 - filename: tests/unit/test_preflight_output_dir.py
@@ -240,7 +240,7 @@ fileignoreconfig:
 - filename: tests/unit/test_recentrage.py
   checksum: e4778f57626616f0bbcfe35230cbd936d5b2da89d37dc0585b459c6fbe54159d
 - filename: .gitignore
-  checksum: 8c7100027d857fdd7b07603715d498c5552d95a8f9115fc3ffb80d9ea9d75e35
+  checksum: 6215a8b876411a77d6a530c276a41134a59b5768b3e2bacb427907991b1192d6
 - filename: aide/01-installer.md
   checksum: 76f24907867ee03ad513c5d7f4ddc69f0bb4854201a6eea9a3f6516aeb7740c2
 - filename: .claude/commands/livraison.md

@@ -22,9 +22,9 @@ fileignoreconfig:
 - filename: .githooks/pre-push
   checksum: b0e75a8b481a83c7a519218d19fa137bfe34752ee3b1f5fbf3fafd19b1d15b03
 - filename: CLAUDE.md
-  checksum: 07b0f255a5773583a2e3d1183387917d049a6297d431c63752c1259f9941b6ca
+  checksum: d155a1966155c560a2141ef3cd419a2956dabf2e6ba7305053c0864eea344e01
 - filename: README.md
-  checksum: 41eca6c89afbf91113d9d482d04e3bc1c4bcbb9a1b18f27e437eddb9d26f7b95
+  checksum: 750a05cc79bfaed67b0a047b59aa889ba713d16120ef7849316479ce9ef03913
 - filename: dev/docs/documentation_utilisateur_v1.docx
   checksum: 9984314b88553c8aa0de31f28403d664eba5a2426681c22a6b1c29e5c787cc5e
 - filename: dev/docs/specs/2026-06-11-produit-couverture-design.md
@@ -116,13 +116,13 @@ fileignoreconfig:
 - filename: src/ui/steps/step_3_detection.py
   checksum: 824c7defab8605eb779e0374da60cba4afda5b42c5a397def4f0efdf1383dcdd
 - filename: src/ui/steps/step_4_launch.py
-  checksum: f7ced9d0e1fa80ff66297ee866e16e0c39f942bb4bf1e8ed6a20b4c3056ac30b
+  checksum: 6e1aee08a7e037ee7552abd820d3b7bbced4f529f238b245c8a455d1a514ab60
 - filename: src/ui/theme/v2.qss
   checksum: d966625f455a971d7a5be24fc5cc373714455a1c1ab33b64f60704aca61069ff
 - filename: src/ui/widgets/entity_card.py
   checksum: d85a4b42c9e62dc67af74be0eddfb1c61b38d7191b6925c44a769ddd70b0208d
 - filename: src/ui/wizard_dialog.py
-  checksum: a2bfb7b6555b0f6e29315c47cc896baeda8064e1b2b4e6a459d8959b38ac97e2
+  checksum: ded4117ddb5c98dec9db1ed01d87b1e54c538692b01e9fbb8a1c46237313dbe9
 - filename: tests/TESTS_MANUELS_QGIS.md
   checksum: d18a699eb5914471866545859978d2e01e781e0d9b63f0a142b1f7b05735841d
 - filename: tests/integration/test_existing_mnt_runner_finalize.py
@@ -242,7 +242,7 @@ fileignoreconfig:
 - filename: .gitignore
   checksum: 6215a8b876411a77d6a530c276a41134a59b5768b3e2bacb427907991b1192d6
 - filename: aide/01-installer.md
-  checksum: 9fc02cf53a5b090aa8885a08640aaa90f75d9a127a473e8b752b492609454096
+  checksum: 76f24907867ee03ad513c5d7f4ddc69f0bb4854201a6eea9a3f6516aeb7740c2
 - filename: .claude/commands/livraison.md
   checksum: 812cf3734bb61af5f9bee9e48449c2b708e88669e0b89a0a45050e44e2f5ee8c
 - filename: aide/08-resultats.md
@@ -258,7 +258,7 @@ fileignoreconfig:
 - filename: aide/img/resultats-legende-fiabilite.jpg
   checksum: 7f7b3c8ba1118cf1702c15090de8a2d9361bf9db913db4ed735d59cb735ff809
 - filename: aide/img/etape3-detection.png
-  checksum: 838c4a4026d3431836da0292285d0fdcfefb0cca27a2ffdbd874944a07fcc48b
+  checksum: 3bc68a146ca073601946945900b936ac8c1d13ff38f3a6057daa0a5fa8d17c14
 - filename: aide/img/etape2-fiche-produit.png
   checksum: 0a89becab8b58bae45ba493a80b212b3c7522ed79c4c3f4451f4fd424bb53533
 - filename: aide/02-premier-traitement.md
@@ -268,7 +268,7 @@ fileignoreconfig:
 - filename: dev/build_quadrillage_from_wfs.py
   checksum: 558eacd91b195efb1474fbe514c6d951f3b86ac858ce0b668c7c8934ca0a53f1
 - filename: docs/contrats.md
-  checksum: 5cbe77418e57eb96cf556f683a3ef39f1c473baf15270274a9ad554afc3ea413
+  checksum: a657c4ebd0f1da5238b59d69ee1acbf951f6d4f7ac17726516e222c42f127436
 - filename: src/app/services/arborescence.py
   checksum: c5e606980a36c45a1741ce2471bb8eae676f7dab2f222ab8cb75a360a074f91c
 - filename: src/app/services/carte_zones.py
@@ -287,4 +287,6 @@ fileignoreconfig:
   checksum: 45011b4d0aad06531d94d7f21b30a4df2e89c60bfc0c3d170162d814c1ae2b32
 - filename: dev/rendu_hors_ecran.py
   checksum: bf74e7a359ea701c0bfb5dc5d36c5cd89e7c59d9857091dfdda5b458b9af87b7
+- filename: aide/img/etape2-produits.png
+  checksum: f62de9df5db85eca061d92b3e8b9129520010193a890694009a6ef7da49cf564
 version: '1.0'

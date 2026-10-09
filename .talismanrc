@@ -246,11 +246,11 @@ fileignoreconfig:
 - filename: .claude/commands/livraison.md
   checksum: fa4cadfbd313549dec30e915282736d7dacb8113feeb591ec45b52457d55480d
 - filename: aide/08-resultats.md
-  checksum: 72056a849103ed5fd8b09b803dcdd061a9bfa02bf4293a552c13f001d201185f
+  checksum: cadcda53578e76bfd6a51204d24a48edb968a10d46a72b5c9fc8fc0447d26ef0
 - filename: aide/04-etape-2-produits.md
   checksum: 1256428a17e07dc1fda214f6d34ee0583ef279b7f93e341d396ebc17db378e1a
 - filename: aide/09-depannage.md
-  checksum: bd414256c96437c2c25004a38580b2388272e98f1124e1c4850cb6d8cf56b2d9
+  checksum: 650d9a472a85e5a6324c73d66fb401faddfa2f8e58d2818a36d94c0a50fd5f86
 - filename: src/ui/widgets/carte_zones.py
   checksum: fd7734612381cf74a5b64924b72739ed0e4796509d56f7a31fbc7a65b4e8297a
 - filename: tests/unit/test_aide.py

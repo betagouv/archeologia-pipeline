@@ -58,7 +58,7 @@ retard, qu'il a remplacée le 2026-10-07.
   Placer l'image après la liste.
 - Captures de l'assistant : hors écran, en double résolution, chemins neutres dans les champs :
   `C:/OSGeo4W/bin/python-qgis.bat dev/rendu_hors_ecran.py captures` (écrit `aide/img/etape*.png`, dont
-  l'étape 4 au vert et la fiche de classe, et
+  l'étape 4 au vert, la carte d'une entité en réglages avancés et la fiche de classe, `aide/img/run-fin.png` (fin de run) et
   `aide/img/run-journal.png`, la vue d'exécution en cours de détection). Une nouvelle capture
   s'ajoute à cette commande, jamais à un script de brouillon.
   Captures qui exigent QGIS de bureau (canevas, résultats, dialogues de QGIS) : demandées à l'utilisateur,

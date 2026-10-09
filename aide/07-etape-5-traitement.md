@@ -30,6 +30,8 @@ La ligne du haut devient la synthèse : « Terminé en 32min 15s · aucun averti
 
 Sous la frise, le cadre **Par où commencer** : pour chaque entité, une barre des détections par niveau, du plus sûr au plus douteux, dans la couleur de la couche, avec son total. C'est la réponse à « par où commencer ? » : les **très probables** d'abord. Le même bilan est dans le journal et dans la trace du traitement.
 
+[![La fin d'un traitement : la synthèse en vert, chaque phase avec sa durée, le cadre « Par où commencer » et ses boutons](img/run-fin.png)](img/run-fin.png)
+
 Les couches **ne sont pas chargées dans QGIS automatiquement**. Le bouton **Ouvrir le projet QGIS** charge les mosaïques et les couches de détections, stylées, dans votre projet courant ; il ne le fait qu'une fois. Le projet `livrable/projet.qgs` est écrit dans tous les cas et s'ouvre aussi à la main, plus tard ou sur un autre poste.
 
 Un **rapport** du traitement (`rapport.html`) est écrit dans `livrable/` et s'ouvre dans le navigateur avec le bouton **Rapport** du même cadre : une mise en garde d'usage, le mode, la surface couverte et le nombre de dalles, les produits avec leurs réglages en mots, chaque modèle sous son nom avec le seuil appliqué, le nombre d'images analysées et la durée mesurée, le bilan de fiabilité avec ce que garantit chaque niveau et la densité de détections au km², les durées par étape, les avertissements du journal avec leur renvoi au manuel, les sources des données et des outils, et une vignette de la zone. Il ne situe pas la zone : aucun nom de dalle, aucune coordonnée, aucun chemin de votre poste, et les avertissements sont débarrassés de leurs chemins. Il se lit hors ligne et s'imprime : c'est le document à joindre au dossier de prospection.

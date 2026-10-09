@@ -14,6 +14,11 @@ livré). Un ``.gpkg`` équivalent reste accepté en option : s'il est présent, 
 est préféré — la bascule est ainsi transparente si on régénère un jour la grille
 dans ce format.
 
+Le dépôt GitHub versionne la grille **compressée** (``data/quadrillage_france.zip``,
+~23 Mo : le ``.dbf`` brut dépasse les 100 Mo par fichier qu'accepte GitHub) ; le ZIP
+du plugin la livre décompressée. :func:`assurer_quadrillage` décompresse l'archive
+au premier besoin, pour qu'une copie venue de GitHub télécharge aussi les dalles.
+
 Aucun import QGIS/OGR ici : le module reste importable hors QGIS (et donc
 collectable par pytest), et ``tile_resolver`` peut l'importer en intra-paquet
 (``from .quadrillage_paths import ...``) sans dépendance croisée vers ``app``.
@@ -21,6 +26,9 @@ collectable par pytest), et ``tile_resolver`` peut l'importer en intra-paquet
 from __future__ import annotations
 
 import datetime as _dt
+import os
+import shutil
+import zipfile
 from pathlib import Path
 from typing import Optional, Tuple
 
@@ -29,6 +37,19 @@ _BASENAME = "TA_diff_pkk_lidarhd_classe"
 
 QUADRILLAGE_GPKG_RELPATH = _QUADRILLAGE_DIR / f"{_BASENAME}.gpkg"
 QUADRILLAGE_SHP_RELPATH = _QUADRILLAGE_DIR / f"{_BASENAME}.shp"
+QUADRILLAGE_ZIP_RELPATH = _QUADRILLAGE_DIR.with_suffix(".zip")
+
+
+def _en_tete_dbf(dbf: Path) -> Optional[bytes]:
+    """Les 8 premiers octets du ``.dbf``, sur disque ou dans l'archive voisine (copie GitHub)."""
+    if dbf.is_file():
+        with open(dbf, "rb") as f:
+            return f.read(8)
+    archive = dbf.parent.with_suffix(".zip")
+    if archive.is_file():
+        with zipfile.ZipFile(archive) as z, z.open(dbf.name) as f:
+            return f.read(8)
+    return None
 
 
 _MOIS = ("janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août",
@@ -46,17 +67,14 @@ def quadrillage_info(chemin: Path) -> Optional[Tuple[_dt.date, Optional[int]]]:
     ``None`` (le bandeau n'affiche rien).
     """
     chemin = Path(chemin)
-    dbf = chemin.with_suffix(".dbf")
     try:
-        if chemin.suffix.lower() == ".shp" and dbf.is_file():
-            with open(dbf, "rb") as f:
-                tete = f.read(8)
-            if len(tete) == 8:
-                date = _dt.date(1900 + tete[1], tete[2], tete[3])
-                return date, int.from_bytes(tete[4:8], "little")
+        tete = _en_tete_dbf(chemin.with_suffix(".dbf")) if chemin.suffix.lower() == ".shp" else None
+        if tete is not None and len(tete) == 8:
+            date = _dt.date(1900 + tete[1], tete[2], tete[3])
+            return date, int.from_bytes(tete[4:8], "little")
         if chemin.is_file():
             return _dt.date.fromtimestamp(chemin.stat().st_mtime), None
-    except (OSError, ValueError):
+    except (OSError, ValueError, KeyError, zipfile.BadZipFile):
         return None
     return None
 
@@ -85,3 +103,31 @@ def resolve_quadrillage_path(plugin_root: Path) -> Path:
     if gpkg.exists():
         return gpkg
     return plugin_root / QUADRILLAGE_SHP_RELPATH
+
+
+def assurer_quadrillage(plugin_root: Path) -> Path:
+    """:func:`resolve_quadrillage_path`, après avoir décompressé l'archive si la grille manque.
+
+    Extraction dans un dossier voisin, puis déplacement fichier par fichier avec le
+    ``.shp`` en dernier : une extraction interrompue ne laisse jamais une grille qui
+    paraît complète, et la suivante recommence. Sans archive (ni grille), le chemin
+    ``.shp`` est renvoyé tel quel : l'appelant signale son absence.
+    """
+    plugin_root = Path(plugin_root)
+    chemin = resolve_quadrillage_path(plugin_root)
+    archive = plugin_root / QUADRILLAGE_ZIP_RELPATH
+    if chemin.exists() or not archive.is_file():
+        return chemin
+    dest = plugin_root / _QUADRILLAGE_DIR
+    tmp = dest.with_name(dest.name + ".partiel")
+    shutil.rmtree(tmp, ignore_errors=True)
+    with zipfile.ZipFile(archive) as z:
+        noms = z.namelist()
+        if any("/" in n or "\\" in n or n.startswith(".") for n in noms):
+            raise ValueError(f"Archive de grille inattendue : {archive}")
+        z.extractall(tmp)
+    dest.mkdir(parents=True, exist_ok=True)
+    for nom in sorted(noms, key=lambda n: n.lower().endswith(".shp")):  # le .shp en dernier
+        os.replace(tmp / nom, dest / nom)
+    shutil.rmtree(tmp, ignore_errors=True)
+    return resolve_quadrillage_path(plugin_root)

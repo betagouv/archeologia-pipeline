@@ -19,7 +19,7 @@ from pathlib import Path
 from typing import List, Optional, Tuple
 
 from ..types import CancelFn, LogFn
-from .quadrillage_paths import resolve_quadrillage_path
+from .quadrillage_paths import assurer_quadrillage
 
 logger = logging.getLogger(__name__)
 
@@ -82,12 +82,12 @@ def resolve_tiles_from_polygon(
 
     # ── Résolution du quadrillage (shapefile + index .qix ; .gpkg si présent) ──
     if quadrillage_path is None:
-        quadrillage_path = resolve_quadrillage_path(_get_plugin_root())
+        quadrillage_path = assurer_quadrillage(_get_plugin_root())
     if not quadrillage_path.exists():
         raise FileNotFoundError(
             f"Quadrillage France introuvable : {quadrillage_path}\n"
-            "Placez le quadrillage IGN (TA_diff_pkk_lidarhd_classe.shp + son index "
-            ".qix) dans data/quadrillage_france/."
+            "Ni la grille IGN (data/quadrillage_france/) ni son archive "
+            "(data/quadrillage_france.zip) ne sont dans le dossier du plugin : réinstallez-le."
         )
 
     # ── Chargement du polygone utilisateur ──

@@ -60,6 +60,9 @@ EXCLUDE_FILES = {
     "desktop.ini",  # pollution Explorer/OneDrive (les deux casses)
     "Desktop.ini",
     "CLAUDE.md",  # instructions assistant (AUDIT v2 PKG-04)
+    # Grille IGN compressée, versionnée pour GitHub : le ZIP livre déjà la grille
+    # décompressée (data/quadrillage_france/, PKG-02), l'archive la doublerait.
+    "quadrillage_france.zip",
 }
 
 # Taille maximale plausible du ZIP : un dépassement signale une régression

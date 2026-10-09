@@ -756,7 +756,8 @@ data/                               # Ressources statiques (gitignored sauf icon
 │   └── cv_runner_onnx/
 │       ├── windows/cv_runner_onnx.exe
 │       └── linux/cv_runner_onnx
-└── quadrillage_france/             #   Grille IGN LiDAR HD (gitignored, ~190 MB) — régénérée par dev/build_quadrillage_from_wfs.py
+├── quadrillage_france.zip         #   La même grille compressée (~23 Mo), VERSIONNÉE : décompressée au premier besoin (clone GitHub)
+└── quadrillage_france/             #   Grille IGN LiDAR HD (gitignored, ~200 Mo) — régénérée par dev/build_quadrillage_from_wfs.py
     ├── TA_diff_pkk_lidarhd_classe.shp   # shapefile des dalles (nom_pkk + url_telech), depuis le WFS IGNF_LIDAR-HD_METADONNEE
     └── TA_diff_pkk_lidarhd_classe.qix   # index spatial R-tree (dev/build_quadrillage_index.py)
 

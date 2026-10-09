@@ -33,6 +33,7 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import os
 import re
 import shutil
 import struct
@@ -41,6 +42,7 @@ import sys
 import tempfile
 import time
 import urllib.request
+import zipfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -143,6 +145,23 @@ def _dbf_stamp(dbf: Path) -> str:
     return f"{1900 + yy}-{mm:02d}-{dd:02d}"
 
 
+def ecrire_archive(shp: Path | None = None) -> Path:
+    """``data/quadrillage_france.zip`` : la grille compressée que versionne le dépôt GitHub
+    (le ``.dbf`` brut dépasse les 100 Mo par fichier de GitHub). Le plugin la décompresse
+    au premier besoin (``quadrillage_paths.assurer_quadrillage``). À commiter après chaque
+    reconstruction de la grille."""
+    shp = Path(shp or _DEST)
+    archive = shp.parent.with_suffix(".zip")
+    tmp = archive.with_suffix(".zip.partiel")
+    with zipfile.ZipFile(tmp, "w", zipfile.ZIP_DEFLATED, compresslevel=9) as z:
+        for ext in _SIDECARS:
+            if shp.with_suffix(ext).exists():
+                z.write(shp.with_suffix(ext), shp.stem + ext)
+    os.replace(tmp, archive)
+    print(f"✅ archive pour le dépôt GitHub : {archive} ({archive.stat().st_size / 1e6:.1f} Mo) — à commiter")
+    return archive
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
@@ -182,6 +201,7 @@ def main(argv: list[str] | None = None) -> int:
         for ext in (".shp", ".shx", ".dbf", ".prj"):
             shutil.move(str(out.with_suffix(ext)), str(_DEST.with_suffix(ext)))
         build_index(_DEST, force=True)
+        ecrire_archive(_DEST)
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
     return 0

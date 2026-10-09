@@ -60,7 +60,8 @@ class TestShouldExcludeDirs:
 
 
 class TestShouldExcludeFiles:
-    @pytest.mark.parametrize("name", ["config.json", "last_ui_config.json", "class_color_registry.json", "pytest.ini", ".gitignore"])
+    @pytest.mark.parametrize("name", ["config.json", "last_ui_config.json", "class_color_registry.json", "pytest.ini", ".gitignore",
+                                      "quadrillage_france.zip"])
     def test_excludes_dev_files(self, pkg, tmp_path, name):
         f = tmp_path / name
         f.write_text("{}")

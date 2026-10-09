@@ -65,7 +65,7 @@ Le plugin lit cette configuration pour télécharger les dalles. À défaut, il 
 
 ## Vérifier l'installation
 
-Rien à faire de particulier : à l'étape 4 de l'assistant, le panneau **État du système** vérifie en tâche de fond les outils (PDAL, GDAL), QGIS Processing et les algorithmes de Relief Visualization Toolbox, le moteur de détection, et vos dossiers d'entrée et de sortie. Un élément manquant est nommé et bloque le lancement. Voir [Étape 4 · Lancer et suivre](etape-4-lancer.md#etat-du-systeme).
+Rien à faire de particulier : à l'étape 4 de l'assistant, le panneau **État du système** vérifie en tâche de fond les outils (PDAL, GDAL), QGIS Processing et les algorithmes de Relief Visualization Toolbox, le moteur de détection, et vos dossiers d'entrée et de sortie. Un élément manquant est nommé et bloque le lancement. Voir [Étape 4 · Vérifications](etape-4-verifications.md#etat-du-systeme).
 
 ## Mettre à jour
 

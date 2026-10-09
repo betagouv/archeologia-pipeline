@@ -20,7 +20,7 @@ Le bouton **Aide** de l'assistant et la touche **F1** ouvrent ce manuel sur le c
 
 Dans la fenêtre : le sommaire à gauche, le texte à droite. **Ctrl+F** cherche dans tout le manuel : les occurrences s'affichent dans le sommaire, par chapitre et par section, et un clic saute dedans ; Entrée ou **F3** passe à la suivante dans le chapitre ouvert, vider le champ rend le sommaire. Les flèches **Précédent** et **Suivant** (Alt+← et Alt+→) rejouent la navigation après un lien. **Ctrl+molette** règle la taille du texte, Ctrl+0 la remet. **Exporter en PDF** écrit le manuel complet dans un fichier.
 
-## L'assistant en quatre étapes
+## L'assistant en cinq étapes
 
 Le plugin s'ouvre sur un assistant : un rail à gauche indique l'étape courante, **Précédent** et **Suivant** en bas. Le rail signale par une pastille toute erreur qui empêcherait de lancer. Vos choix sont sauvegardés en continu : à la réouverture, vous retrouvez vos derniers réglages. Le bouton **Aide** en haut à droite, ou la touche **F1**, ouvre le chapitre de cette aide qui correspond à l'étape affichée.
 
@@ -45,14 +45,20 @@ Activez la détection, puis cochez une entité, par exemple **Parcellaire** ou *
 
 Détail dans [Étape 3 · Détection](etape-3-detection.md).
 
-## Étape 4 · Lancer
+## Étape 4 · Vérifications
 
-Le bandeau du haut confirme que la configuration est valide ; le panneau **État du système** vérifie l'environnement. Cliquez **Lancer le pipeline**. L'écran bascule sur la vue d'exécution : une frise des phases, un chronomètre, une barre de progression et un journal. La durée dépend du nombre de dalles, des produits cochés et de votre machine ; le journal donne l'avancement réel, dalle par dalle.
+Le bandeau du haut confirme que la configuration est valide ; le panneau **État du système** vérifie l'environnement. Cliquez **Lancer le pipeline**.
 
-Détail dans [Étape 4 · Lancer et suivre](etape-4-lancer.md).
+Détail dans [Étape 4 · Vérifications](etape-4-verifications.md).
+
+## Étape 5 · Traitement
+
+L'assistant passe à l'étape 5 : une frise des phases, avec leur compteur et leur chronomètre, et un journal. La durée dépend du nombre de dalles, des produits cochés et de votre machine ; le journal donne l'avancement réel, dalle par dalle.
+
+Détail dans [Étape 5 · Traitement](etape-5-traitement.md).
 
 ## À la fin
 
-Les couches sont chargées dans QGIS : les mosaïques des indices et, par entité, un GeoPackage de détections avec sa légende de fiabilité. Le projet `livrable/projet.qgs` dans le dossier de sortie regroupe tout, déjà stylé : c'est le point d'entrée pour valider les détections.
+Le cadre **Par où commencer** apparaît sous la frise. **Ouvrir le projet QGIS** y charge les mosaïques des indices et, par entité, un GeoPackage de détections avec sa légende de fiabilité. Le projet `livrable/projet.qgs` dans le dossier de sortie regroupe tout, déjà stylé : c'est le point d'entrée pour valider les détections.
 
 Ce qu'il y a dans le dossier de sortie et comment le lire : [Vos résultats dans QGIS](resultats.md).

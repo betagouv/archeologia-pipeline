@@ -1,6 +1,6 @@
 # Dépannage
 
-Les situations rencontrées, par ordre d'apparition dans un traitement. Quand le journal de l'étape 4 affiche un message, cherchez-le ici.
+Les situations rencontrées, par ordre d'apparition dans un traitement. Quand le journal de l'étape 5 affiche un message, cherchez-le ici.
 
 ## Le dépôt ne s'affiche pas connecté
 

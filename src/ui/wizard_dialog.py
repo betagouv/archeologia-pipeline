@@ -1,8 +1,10 @@
-"""WizardDialog — UI V2 (wizard 4 étapes).
+"""WizardDialog — UI V2 (wizard 5 étapes).
 
 QDialog + en-tête (titre dynamique par étape) + liseré de progression + rail
-latéral (stepper) + QStackedWidget des 4 pages + barre d'actions. Point d'entrée
-unique de l'UI (lancé par ``main.py``).
+latéral (stepper) + QStackedWidget des 5 pages + barre d'actions. Point d'entrée
+unique de l'UI (lancé par ``main.py``). Étape 4 = vérifications avant lancement,
+étape 5 = suivi du traitement (``RunView``) — une seule étape « Lancer » jusqu'au
+2026-10-09.
 """
 from __future__ import annotations
 
@@ -44,11 +46,13 @@ from ..app.services.aide import AIDE_DIRNAME, CHAPITRE_PAR_ETAPE
 from .dialogs.aide_dialog import nouveautes_non_lues, ouvrir_aide
 from .dialogs.config_dialogs import ConfigsDialog, demander_nom
 from .icons import colored_icon, colored_pixmap
+from .run_view import RunView
 from .steps.step_1_source import SourcePage
 from .steps.step_2_indices import IndicesPage
 from .steps.step_3_detection import DetectionPage
 from .steps.step_4_launch import LaunchPage, RecapSection
 from .visualisation_tab import VisualisationTab
+from .widgets.card import build_card
 from .widgets.stepper_rail import StepperRail
 
 # Onglet « Visualisation » (flux Géoplateforme) : rebranché le 2026-09-23 sur
@@ -77,20 +81,24 @@ def _classify_error_step(err: str) -> int:
 
 
 class WizardDialog(QDialog):
-    """Dialogue principal V2 en wizard 4 étapes."""
+    """Dialogue principal V2 en wizard 5 étapes."""
 
     RAIL_STEPS = [
         {"label": "Source", "sub": "—"},
         {"label": "Produits", "sub": "—"},
         {"label": "Détection IA", "sub": "—", "optional": True},
-        {"label": "Lancer", "sub": "Vérification & run"},
+        {"label": "Vérifications", "sub": "État du système & récap"},
+        {"label": "Traitement", "sub": "Frise & journal"},
     ]
     TITLES = {
         1: ("Nouveau traitement LiDAR", "Points d'entrée du pipeline"),
         2: ("Produits à calculer", "MNT, qualité de la donnée, indices de visualisation"),
         3: ("Détection automatique", "Sélection par entités archéologiques"),
-        4: ("Lancer le pipeline", "Vérification & récapitulatif"),
+        4: ("Vérifications avant lancement", "État du système & récapitulatif"),
+        5: ("Suivi du traitement", "Frise des phases & journal"),
     }
+    STEP_VERIFS = 4      # le bouton principal y devient « Lancer le pipeline »
+    STEP_TRAITEMENT = 5  # frise + journal ; le lancement y mène
 
     def __init__(self, parent=None, iface=None):
         super().__init__(parent)
@@ -159,11 +167,13 @@ class WizardDialog(QDialog):
         self._source_page = SourcePage()
         self._indices_page = IndicesPage()
         self._detection_page = DetectionPage(self._plugin_root)
-        self._launch_page = LaunchPage(self._plugin_root, self._config)
+        self._launch_page = LaunchPage()
+        self._run_view = RunView(self._config)
         self._stack.addWidget(self._defilante(self._source_page))    # étape 1
         self._stack.addWidget(self._defilante(self._indices_page))   # étape 2
         self._stack.addWidget(self._detection_page)            # étape 3
         self._stack.addWidget(self._launch_page)               # étape 4
+        self._stack.addWidget(self._build_run_page())          # étape 5
         body.addWidget(self._rail)
         body.addWidget(self._stack, 1)
         wizard_layout.addLayout(body, 1)
@@ -195,8 +205,8 @@ class WizardDialog(QDialog):
         self._detection_page.changed.connect(self._refresh_rail_subs)
         self._detection_page.activate_rvt.connect(self._indices_page.activate_product)
         self._source_page.mode_changed.connect(self._on_mode_changed)
-        self._launch_page.run_started.connect(self._on_run_started)
-        self._launch_page.run_finished.connect(self._on_run_finished)
+        self._run_view.run_started.connect(self._on_run_started)
+        self._run_view.run_finished.connect(self._on_run_finished)
         self._launch_page.workers_changed.connect(self._on_workers_changed)
         self._refresh_rail_subs()
 
@@ -335,10 +345,25 @@ class WizardDialog(QDialog):
         # remet l'icône à sa taille par défaut (16 px) → upscale pixelisé.
         self._next_btn.setIconSize(QSize(14, 14))
         self._next_btn.clicked.connect(self._on_next)
+        # Icône SVG du thème (nette, teintable) plutôt qu'un émoji « ▶ »
+        # au rendu hétérogène. Variante grise pour l'état désactivé.
+        dpr = self.devicePixelRatioF()
+        self._play_icon = colored_icon("play", "#ffffff", 14, dpr=dpr)
+        self._play_icon.addPixmap(colored_pixmap("play", "#707070", 14, dpr=dpr), QIcon.Mode.Disabled)
         layout.addWidget(self._prev_btn)
         layout.addStretch(1)
         layout.addWidget(self._next_btn)
         return bar
+
+    def _build_run_page(self) -> QWidget:
+        """Étape 5 : la vue d'exécution (frise, journal, cadre de fin) dans sa carte."""
+        page = QWidget()
+        v = QVBoxLayout(page)
+        v.setContentsMargins(16, 16, 16, 16)
+        card, xv = build_card("Exécution")
+        xv.addWidget(self._run_view)
+        v.addWidget(card, 1)
+        return page
 
     @staticmethod
     def _defilante(page: QWidget) -> QScrollArea:
@@ -386,23 +411,9 @@ class WizardDialog(QDialog):
         self._title_label.setText(title)
         self._subtitle_label.setText(f"Étape {step} sur {self._n_steps} · {subtitle}")
         self._prev_btn.setEnabled(step > 1)
-        is_last = step == self._n_steps
-        if is_last:
-            # Icône SVG du thème (nette, teintable) plutôt qu'un émoji « ▶ »
-            # au rendu hétérogène. Variante grise pour l'état désactivé.
-            self._next_btn.setText("Lancer le pipeline")
-            dpr = self.devicePixelRatioF()
-            icon = colored_icon("play", "#ffffff", 14, dpr=dpr)
-            icon.addPixmap(
-                colored_pixmap("play", "#707070", 14, dpr=dpr), QIcon.Mode.Disabled
-            )
-            self._next_btn.setIcon(icon)
-        else:
-            self._next_btn.setText("Suivant  →")
-            self._next_btn.setIcon(QIcon())
-        if is_last:
+        if step >= self.STEP_VERIFS:
             self._update_launch_recap()
-            self._apply_validation()
+            self._apply_validation()  # met aussi à jour le bouton principal
         else:
             self._update_launch_button()
         self._update_review_banner()
@@ -410,17 +421,25 @@ class WizardDialog(QDialog):
     def _on_prev(self) -> None:
         self._goto_step(self._current_step - 1)
 
+    def _next_launches(self) -> bool:
+        """Le bouton principal lance le traitement aux étapes 4 et 5 — sauf à
+        l'étape 4 pendant un run : il y mène au suivi (étape 5)."""
+        if self._current_step < self.STEP_VERIFS:
+            return False
+        return not (self._current_step == self.STEP_VERIFS and self._run_view.is_running())
+
     def _on_next(self) -> None:
-        if self._current_step < self._n_steps:
-            self._goto_step(self._current_step + 1)
-        else:
+        if self._next_launches():
             self._on_launch()
+        else:
+            self._goto_step(self._current_step + 1)
 
     def _on_launch(self) -> None:
-        if self._launch_page.is_running():
+        if self._run_view.is_running():
             return
-        self._update_launch_recap()  # collecte la config + remplit le récap
-        self._launch_page.start_run(copy.deepcopy(self._config))
+        # Bascule sur le suivi : collecte la config, remplit récap et frise.
+        self._goto_step(self.STEP_TRAITEMENT)
+        self._run_view.start_run(copy.deepcopy(self._config))
 
     def _update_launch_recap(self) -> None:
         self._collect_config()
@@ -460,13 +479,12 @@ class WizardDialog(QDialog):
         # (Plus de ligne « Performance » : les workers sont dans les paramètres avancés.)
 
         self._launch_page.update_recap(sections)
-        self._launch_page.set_step_subtitles(self._step_subtitles())
-        self._launch_page.refresh_preflight(self._config)
-        # Avant le premier run, l'étape 4 arrive sur le récap ; ensuite elle garde
-        # sa vue (le journal du dernier traitement restait inaccessible dès qu'on
-        # passait par une étape 1-3, constat utilisateur 2026-10-08).
-        if not self._launch_page.is_running() and not self._launch_page.has_run():
-            self._launch_page.show_recap()
+        self._run_view.set_step_subtitles(self._step_subtitles())
+        if self._current_step == self.STEP_VERIFS:
+            # Le préflight lance des sous-processus : seulement là où il s'affiche.
+            self._launch_page.refresh_preflight(self._config)
+        else:
+            self._run_view.preview(self._config)
 
     def _step_subtitles(self) -> dict:
         """Sous-libellés statiques de la timeline (depuis la config courante)."""
@@ -508,16 +526,17 @@ class WizardDialog(QDialog):
         self._exit_review_mode()
 
     def _enter_review_mode(self) -> None:
-        """Pendant un run : navigation conservée mais étapes 1-3 en lecture seule.
+        """Pendant un run : navigation conservée mais étapes 1-4 en lecture seule.
 
         L'utilisateur peut revenir consulter les paramètres lancés (rail +
         Précédent/Suivant restent actifs) sans pouvoir rien modifier ; seule la
-        relance (bouton « Lancer » de l'étape 4) reste désactivée.
+        relance (bouton « Lancer le pipeline ») reste désactivée.
         """
         self._review_mode = True
         self._source_page.set_readonly(True)
         self._indices_page.set_readonly(True)
         self._detection_page.set_readonly(True)
+        self._launch_page.set_readonly(True)
         # Lecture seule étanche : charger une config pendant le run
         # remplacerait les paramètres consultés (≠ ceux qui tournent).
         self._load_btn.setEnabled(False)
@@ -528,11 +547,12 @@ class WizardDialog(QDialog):
         self._update_review_banner()
 
     def _exit_review_mode(self) -> None:
-        """Fin/annulation du run : restaure l'édition complète des étapes 1-3."""
+        """Fin/annulation du run : restaure l'édition complète des étapes 1-4."""
         self._review_mode = False
         self._source_page.set_readonly(False)
         self._indices_page.set_readonly(False)
         self._detection_page.set_readonly(False)
+        self._launch_page.set_readonly(False)
         self._load_btn.setEnabled(True)
         self._load_btn.setToolTip("")
         self._rail.setEnabled(True)
@@ -542,9 +562,9 @@ class WizardDialog(QDialog):
 
     def _update_review_banner(self) -> None:
         """Affiche la pastille « Lecture seule » (barre de titre) uniquement sur
-        les étapes 1-3 pendant un run (masquée sur l'étape 4 = RunView, et hors
+        les étapes 1-4 pendant un run (masquée sur l'étape 5 = RunView, et hors
         run). Dans la barre de titre, son apparition ne décale rien."""
-        show = self._review_mode and self._current_step < self._n_steps
+        show = self._review_mode and self._current_step < self.STEP_TRAITEMENT
         self._review_pill.setVisible(show)
 
     # ------------------------------------------------------------------
@@ -576,24 +596,27 @@ class WizardDialog(QDialog):
         self._update_launch_button()
 
     def _update_launch_button(self) -> None:
-        running = self._launch_page.is_running()
-        if self._current_step == self._n_steps:
-            # Étape 4 : pendant un run, jamais de relance possible.
-            if running:
-                self._next_btn.setEnabled(False)
-                self._next_btn.setToolTip("Run en cours — relance impossible")
-                return
-            ok = not self._validation_errors
-            self._next_btn.setEnabled(ok)
-            self._next_btn.setToolTip(
-                "" if ok
-                else "Corrigez avant de lancer :\n• " + "\n• ".join(self._validation_errors)
-            )
-        else:
-            # Étapes 1-3 : « Suivant » = navigation pure, autorisée même pendant
-            # un run (permet de remonter jusqu'à l'étape 4 = suivi du run).
+        if not self._next_launches():
+            # « Suivant » = navigation pure, autorisée même pendant un run
+            # (permet de remonter jusqu'à l'étape 5 = suivi du run).
+            self._next_btn.setText("Suivant  →")
+            self._next_btn.setIcon(QIcon())
             self._next_btn.setEnabled(True)
             self._next_btn.setToolTip("")
+            return
+        self._next_btn.setText("Lancer le pipeline")
+        self._next_btn.setIcon(self._play_icon)
+        if self._run_view.is_running():
+            # Étape 5 pendant un run : jamais de relance possible.
+            self._next_btn.setEnabled(False)
+            self._next_btn.setToolTip("Run en cours — relance impossible")
+            return
+        ok = not self._validation_errors
+        self._next_btn.setEnabled(ok)
+        self._next_btn.setToolTip(
+            "" if ok
+            else "Corrigez avant de lancer :\n• " + "\n• ".join(self._validation_errors)
+        )
 
     def _refresh_rail_subs(self) -> None:
         self._rail.set_sub(1, self._source_page.summary())
@@ -641,7 +664,7 @@ class WizardDialog(QDialog):
         Renvoie True si la fermeture peut continuer.
         """
         try:
-            running = self._launch_page.is_running()
+            running = self._run_view.is_running()
         except Exception:
             running = False
         if not running:
@@ -667,7 +690,7 @@ class WizardDialog(QDialog):
         if clicked is stay:
             return False
         if clicked is close_cancel:
-            self._launch_page.request_cancel()
+            self._run_view.request_cancel()
         return clicked is close_keep or clicked is close_cancel
 
     def _on_visu_layer_count(self, count: int) -> None:
@@ -689,8 +712,8 @@ class WizardDialog(QDialog):
         except Exception:
             pass
         try:
-            if self._launch_page.is_running():
-                self._launch_page.request_cancel()
+            if self._run_view.is_running():
+                self._run_view.request_cancel()
         except Exception:
             pass
 

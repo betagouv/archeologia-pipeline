@@ -15,7 +15,7 @@ La frise du haut représente la chaîne de traitement. Cliquez le point d'entré
 
 Les deux premiers modes exécutent toute la chaîne. Le mode MNT existant commence aux indices. Le mode Indices existants n'a de sens qu'avec la détection : il ne calcule rien, il analyse.
 
-Dans tous les cas, indiquez un **dossier de sortie**, de préférence vide. Relancer dans le même dossier est possible : voir [Relancer dans le même dossier](etape-4-lancer.md#relancer-dans-le-meme-dossier).
+Dans tous les cas, indiquez un **dossier de sortie**, de préférence vide. Relancer dans le même dossier est possible : voir [Relancer dans le même dossier](etape-5-traitement.md#relancer-dans-le-meme-dossier).
 
 ## Téléchargement IGN
 

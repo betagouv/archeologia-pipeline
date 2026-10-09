@@ -17,7 +17,8 @@ Monte un ``QgsApplication`` en ``QT_QPA_PLATFORM=offscreen`` avec le thème QSS 
   que la barre horizontale est à 0 px (une image trop large la ferait apparaître) ; ``--recherche``
   vérifie la recherche dans tout le manuel ; ``--tous`` rend chaque chapitre, puis l'historique et le
   zoom — c'est le contrôle de non-régression du runbook ``/livraison``.
-- ``journal`` : la vue d'exécution hors run, avec une ligne ⚠ dont le renvoi au manuel est un lien.
+- ``journal`` : la vue d'exécution hors run, avec une ligne ⚠ dont le renvoi au manuel est un lien ; puis les
+  étapes 4 et 5 de l'assistant : bouton principal, « Suivant » vers le suivi pendant un run, journal gardé.
 - ``profil`` : la fiche de classe et la fiche ⓘ d'un modèle, avec la figure du profil des scores,
   puis l'étape 3 en réglages avancés (mini-profil et bilan sur les cartes des entités du modèle).
 
@@ -328,29 +329,40 @@ def journal(app, sortie: Path, log) -> int:
     app.processEvents()
     log("bilan : cadre visible =", v._bilan_box.isVisible(), "| fil :", v._fil_gauche.text(), "| phrases :", [ligne.phrase() for ligne in v._bilan])
     v.grab().save(str(sortie / "journal.png"))
-    # Étape 4 après un run : le journal reste la vue d'arrivée, bascule récap ↔ journal
-    # (constat utilisateur 2026-10-08). Sans préflight ni worker : run simulé.
-    from archeo.src.ui.steps.step_4_launch import LaunchPage
+    # Étapes 4 « Vérifications » et 5 « Traitement » (scindées le 2026-10-09) : bouton
+    # principal, « Suivant » vers le suivi pendant un run, lecture seule des workers, et
+    # le journal d'un run passé qui survit à la navigation. Sans worker : run simulé.
+    from archeo.src.ui.wizard_dialog import WizardDialog
 
-    p = LaunchPage(RACINE, {})
-    p.show()
-    p.resize(900, 560)
-    avant = (p.has_run(), p._vers_journal_btn.isVisible())
-    p._has_run = True
-    p._vers_journal_btn.setVisible(True)
-    p.show_recap()
+    w = WizardDialog()
+    w.show()
+    w.resize(1120, 700)
+    w._goto_step(4)
     app.processEvents()
-    p.grab().save(str(sortie / "etape4_recap_apres_run.png"))
-    p._vers_journal_btn.click()
+    etape4 = (w._stack.currentIndex(), w._next_btn.text())
+    w._run_view._running = True
+    w._enter_review_mode()
+    w._goto_step(4)
     app.processEvents()
-    vers_journal = p._stack.currentIndex()
-    p._vers_recap_btn.click()
+    pendant = (w._next_btn.text(), w._review_pill.isVisible(), w._launch_page._workers_body.isEnabled())
+    w._on_next()
     app.processEvents()
-    vers_recap = p._stack.currentIndex()
-    bascule_ok = avant == (False, False) and vers_journal == 1 and vers_recap == 0
-    log("étape 4 : avant run (has_run, bouton journal) =", avant, "| clic journal → page", vers_journal,
-        "| clic récap → page", vers_recap, "| attendu (False, False), 1, 0")
-    return 0 if n_liens == 2 and v._bilan_box.isVisible() and bascule_ok else 1
+    suivi = (w._current_step, w._next_btn.text(), w._next_btn.isEnabled())
+    w.grab().save(str(sortie / "etape5_pendant_run.png"))
+    w._run_view._running = False
+    w._run_view._run_started_at = 0.0
+    w._run_view._append_log("INFO", "✓ Terminé")
+    w._exit_review_mode()
+    w._goto_step(2)
+    w._goto_step(5)
+    app.processEvents()
+    garde = "Terminé" in w._run_view._journal.toPlainText()
+    etapes_ok = (etape4 == (3, "Lancer le pipeline") and pendant == ("Suivant  →", True, False)
+                 and suivi == (5, "Lancer le pipeline", False) and garde)
+    log("étape 4 (page, bouton) =", etape4, "| pendant un run (bouton, pastille, workers actifs) =", pendant,
+        "| Suivant → (étape, bouton, actif) =", suivi, "| journal gardé après navigation =", garde,
+        "| attendu (3, 'Lancer le pipeline'), ('Suivant  →', True, False), (5, 'Lancer le pipeline', False), True")
+    return 0 if n_liens == 2 and v._bilan_box.isVisible() and etapes_ok else 1
 
 
 def main(argv=None) -> int:

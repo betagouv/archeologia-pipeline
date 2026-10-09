@@ -527,6 +527,15 @@ class RunView(QWidget):
     def is_running(self) -> bool:
         return self._running
 
+    def preview(self, config: dict) -> None:
+        """Avant le premier run, la frise et la ligne d'état suivent la config courante
+        (l'étape 5 est consultable avant de lancer). Après un run : rien ne bouge,
+        sa frise, son cadre de fin et son journal restent affichés."""
+        if self._running or self._run_started_at is not None:
+            return
+        self._config = config or {}
+        self._apply_stage_sequence()
+
     def set_step_subtitles(self, subs: Dict[str, str]) -> None:
         """Sous-libellés statiques de la timeline, indexés par ID d'étape.
 

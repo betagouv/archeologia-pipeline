@@ -3,16 +3,18 @@
 
 À lancer avec le **Python de QGIS** (le plugin importe ``qgis.PyQt``) :
 
-    C:/OSGeo4W/bin/python-qgis.bat dev/rendu_hors_ecran.py captures            # aide/img/etape{1,2,3}-*.png (2×)
+    C:/OSGeo4W/bin/python-qgis.bat dev/rendu_hors_ecran.py captures            # aide/img/etape{1,2,3,4}-*.png (2×)
     C:/OSGeo4W/bin/python-qgis.bat dev/rendu_hors_ecran.py manuel [--chapitre etape-2-produits --ancre tuilage-et-marge] [--recherche mot] [--tous]
     C:/OSGeo4W/bin/python-qgis.bat dev/rendu_hors_ecran.py journal                             # vue d'exécution : renvoi ⚠ cliquable
     C:/OSGeo4W/bin/python-qgis.bat dev/rendu_hors_ecran.py profil [--modele crateres_seg_ld_v1]
 
 Monte un ``QgsApplication`` en ``QT_QPA_PLATFORM=offscreen`` avec le thème QSS du plugin, puis :
 
-- ``captures`` : l'assistant aux étapes 1 à 3, avec des chemins neutres dans les champs et quelques
-  produits cochés, en **double résolution** (``QT_SCALE_FACTOR=2``, posé avant la création de
-  l'application) → ``aide/img/``. L'étape 4 n'est pas capturée : le préflight échoue hors QGIS.
+- ``captures`` : l'assistant aux étapes 1 à 4, la fiche d'une classe et la vue d'exécution, avec des
+  chemins neutres dans les champs et quelques produits cochés, en **double résolution**
+  (``QT_SCALE_FACTOR=2``, posé avant la création de l'application) → ``aide/img/``. L'étape 4 est
+  au vert : Processing et le fournisseur de rvt-qgis sont chargés hors écran, les contrôles du
+  préflight sont les vrais, seul le dossier personnel est remplacé dans leurs détails.
 - ``manuel`` : la fenêtre du manuel sur un chapitre (et une ancre), PNG dans ``--sortie`` + contrôle
   que la barre horizontale est à 0 px (une image trop large la ferait apparaître) ; ``--recherche``
   vérifie la recherche dans tout le manuel ; ``--tous`` rend chaque chapitre, puis l'historique et le
@@ -118,10 +120,95 @@ def _journal_en_cours(app, img: Path, log) -> None:
     log("run-journal :", v.width(), "x", v.height(), "| fil :", v._fil_gauche.text(), "|", v._fil_droite.text())
 
 
+def _processing_hors_ecran(log) -> bool:
+    """Processing et le fournisseur rvt-qgis dans l'application hors écran, comme dans QGIS :
+    sans eux le préflight de l'étape 4 est rouge (« QGIS processing », « Algorithmes RVT »)."""
+    import importlib.util
+
+    try:
+        prefixe = Path(os.environ.get("QGIS_PREFIX_PATH", r"C:\OSGeo4W\apps\qgis"))
+        sys.path.insert(0, str(prefixe / "python" / "plugins"))
+        from processing.core.Processing import Processing
+
+        Processing.initialize()
+        rvt = RACINE.parent / "rvt-qgis"            # extension sœur du profil QGIS
+        sys.path.insert(0, str(rvt))                # ses algorithmes importent ``rvt.*``
+        spec = importlib.util.spec_from_file_location(
+            "rvt_qgis", rvt / "__init__.py", submodule_search_locations=[str(rvt)])
+        sys.modules["rvt_qgis"] = importlib.util.module_from_spec(spec)
+        from qgis.core import QgsApplication
+        from rvt_qgis.processing_provider.provider import Provider
+
+        QgsApplication.processingRegistry().addProvider(Provider())
+        return True
+    except Exception as e:  # noqa: BLE001
+        log("Processing / rvt-qgis non chargés hors écran :", repr(e))
+        return False
+
+
+def _fiche_classe(app, img: Path, log, modele: str = "crateres_seg_ld_v1") -> bool:
+    """aide/img/etape3-fiche-classe.png : la fiche d'une classe en haut, vérité terrain affichée."""
+    from archeo.src.app.services.class_fiche import build_all_fiches
+    from archeo.src.app.services.model_orchestrator import discover_installed_models, load_model_card
+    from archeo.src.ui.dialogs.class_info_dialog import ClassInfoDialog
+
+    modeles = {m.name: m for m in discover_installed_models(RACINE / "data" / "models")}
+    if modele not in modeles:
+        log("fiche de classe : modèle absent :", modele)
+        return False
+    m = modeles[modele]
+    card = load_model_card(m.model_dir)
+    card = card[0] if isinstance(card, tuple) else card
+    fiches = build_all_fiches(card)
+    dlg = ClassInfoDialog(fiches, model_dirs={f.modele_id: m.model_dir for f in fiches}, titre=modele)
+    dlg.show()
+    dlg.resize(900, 640)
+    app.processEvents()
+    dlg.grab().save(str(img / "etape3-fiche-classe.png"))
+    log("fiche de classe :", modele, dlg.width(), "x", dlg.height())
+    return True
+
+
+def _etape4(app, w, img: Path, log) -> bool:
+    """aide/img/etape4-verifications.png : bandeau, état du système au vert, récapitulatif."""
+    import time
+
+    import archeo.src.pipeline.preflight as pf
+    from dataclasses import replace
+
+    if not _processing_hors_ecran(log):
+        return False
+    brut = pf.collect_preflight_results
+    maison = str(Path.home())
+
+    def neutre(**kw):  # le chemin du moteur de détection passe par le profil de l'utilisateur
+        return [replace(r, details=r.details.replace(maison, r"C:\Users\utilisateur")) for r in brut(**kw)]
+
+    pf.collect_preflight_results = neutre
+    try:
+        w._goto_step(4)
+        limite = time.monotonic() + 120
+        while w._launch_page._preflight_status == "pending" and time.monotonic() < limite:
+            app.processEvents()
+            time.sleep(0.05)
+    finally:
+        pf.collect_preflight_results = brut
+    app.processEvents()
+    w.grab().save(str(img / "etape4-verifications.png"))
+    statut = w._launch_page._preflight_status
+    log("étape 4 : préflight =", statut, "| bouton :", w._next_btn.text(), "| actif :", w._next_btn.isEnabled())
+    return statut == "ok" and w._next_btn.isEnabled()
+
+
 def captures(app, sortie: Path, log) -> int:
-    """Étapes 1 à 3 de l'assistant et la vue d'exécution en cours → aide/img/, chemins neutres,
-    SVF + LD cochés, détection activée."""
+    """Étapes 1 à 4 de l'assistant, la fiche d'une classe et la vue d'exécution en cours →
+    aide/img/, chemins neutres, SVF + LD cochés, détection activée."""
+    import archeo.src.ui.wizard_dialog as wizard
     from archeo.src.ui.wizard_dialog import WizardDialog
+
+    # ponytail: l'onglet Visualisation n'a pas de chapitre et reste masqué sur dev et main ; les
+    # captures montrent l'assistant livré, quelle que soit la branche. Retirer le jour où il est livré.
+    wizard.VISUALISATION_TAB_ENABLED = False
 
     img = RACINE / "aide" / "img"
     img.mkdir(exist_ok=True)
@@ -161,8 +248,10 @@ def captures(app, sortie: Path, log) -> int:
     n = len(getattr(w._detection_page, "_cards", {}) or [])
     log("entités affichées à l'étape 3 :", n, "(0 = aucun modèle sous data/models)")
     w.grab().save(str(img / "etape3-detection.png"))
+    fiche_ok = _fiche_classe(app, img, log)
+    etape4_ok = _etape4(app, w, img, log)
     log("captures écrites dans", img, "— taille de l'assistant :", w.width(), "x", w.height())
-    return 0 if n else 1
+    return 0 if n and fiche_ok and etape4_ok else 1
 
 
 def manuel(app, sortie: Path, log, chapitre: str, ancre: str, recherche: str = "", tous: bool = False) -> int:
@@ -248,7 +337,8 @@ def profil(app, sortie: Path, log, modele: str) -> int:
     dlg.show()
     app.processEvents()
     figures = dlg.findChildren(ProfilScoresWidget)
-    log(modele, "fiche de classe : figures =", len(figures))
+    debord = dlg.findChild(QScrollArea).horizontalScrollBar().maximum()
+    log(modele, "fiche de classe : figures =", len(figures), "| barre horizontale", debord, "px (attendu 0)")
     if figures:
         zone = dlg.findChild(QScrollArea)
         if zone is not None:
@@ -291,7 +381,7 @@ def profil(app, sortie: Path, log, modele: str) -> int:
         app.processEvents()
         log("  bilan :", minis[0].phrase_bilan())
     w.grab().save(str(sortie / f"carte_{modele}.png"))
-    return 0 if figures else 1
+    return 0 if figures and not debord else 1
 
 
 def journal(app, sortie: Path, log) -> int:

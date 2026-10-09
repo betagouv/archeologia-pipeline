@@ -1,13 +1,16 @@
 __pycache__/
 *.pyc
 .vscode/
-# .claude/ reste privé (plans, settings.local, skills perso) SAUF les deux skills partagés avec
-# training-models (règle 2026-09-15, cf. CLAUDE.md § deux dépôts) : versionnés des deux côtés.
+# .claude/ reste privé (plans, settings.local, skills perso) SAUF le skill du manuel, les commandes et
+# les réglages partagés (settings.json : marketplace du plugin Claude Code « archeologia », qui porte
+# les skills communs avec training-models depuis le 2026-10-08, cf. CLAUDE.md § Installation d'un modèle).
 .claude/*
+!.claude/settings.json
 !.claude/skills/
 .claude/skills/*
-!.claude/skills/installer-modele-plugin/
-!.claude/skills/fiche-classe-plugin/
+!.claude/skills/manuel-integre/
+# Runbooks du projet (aucun secret : l'adresse du dépôt vit dans deploy.config.json)
+!.claude/commands/
 .superpowers/
 
 # PyInstaller (dev/runner_onnx build artifacts)

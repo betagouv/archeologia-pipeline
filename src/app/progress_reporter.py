@@ -126,7 +126,25 @@ class NullProgressReporter:
 # erreur — ces canaux ne sont qu'un complément d'affichage, jamais un chemin
 # critique du pipeline.
 # ----------------------------------------------------------------------
+def chrono_de(reporter: "ProgressReporter"):
+    """Le chronomètre des étapes du reporter (``progress_stages.ChronoEtapes``),
+    posé au premier appel : le rapport de traitement lit ses durées. Un reporter
+    sans attribut assignable en reçoit un jetable."""
+    from .progress_stages import ChronoEtapes
+
+    chrono = getattr(reporter, "chrono", None)
+    if isinstance(chrono, ChronoEtapes):
+        return chrono
+    chrono = ChronoEtapes()
+    try:
+        reporter.chrono = chrono
+    except Exception:
+        pass
+    return chrono
+
+
 def report_stage_id(reporter: "ProgressReporter", stage: str) -> None:
+    chrono_de(reporter).marquer(str(stage))
     fn = getattr(reporter, "stage_id", None)
     if fn is None:
         return

@@ -2,7 +2,8 @@
 
 Affiche le contenu du ``model_card.yaml`` (et le clustering du ``args.yaml``)
 sous forme de sections pliables : ARCHITECTURE, INDICE RVT D'ENTRAÎNEMENT,
-MNT D'ENTRAÎNEMENT, REGROUPEMENT (DBSCAN), NOTES & LIMITES. Un bouton
+MNT D'ENTRAÎNEMENT, REGROUPEMENT (DBSCAN), MÉTRIQUES D'ÉVALUATION (résumé +
+courbes de ``entrainement/evaluation*/``), NOTES & LIMITES. Un bouton
 « Ouvrir le dossier » lance l'explorateur de fichiers sur ``model_dir``.
 
 La logique de présentation (humanisation, alias non-canoniques, builders de
@@ -12,7 +13,7 @@ module se contente de fabriquer les widgets Qt et de gérer les interactions.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Sequence
 
 from qgis.PyQt.QtCore import Qt, QUrl, pyqtSignal
 from qgis.PyQt.QtGui import QDesktopServices
@@ -29,7 +30,17 @@ from qgis.PyQt.QtWidgets import (
 
 from ...app.services.model_orchestrator import InstalledModel, load_model_card
 
+from ...app.services.fiabilite import parse_fiabilite
+from ..icons import colored_pixmap
+from ..widgets.profil_scores import couleur_de_classe, figure_profil, ligne_essai_seuil
+from ..widgets.vignette import ARDOISE, pastille
+from ..widgets.vignette import pixmap_ajuste
 from ._model_info_data import Section, build_sections
+
+# Largeur des courbes : celle du corps de section dans le dialog de 620 px.
+# ponytail: fixée à l'ouverture, ne suit pas un redimensionnement — le clic ouvre
+# l'image en taille réelle.
+_LARGEUR_COURBE = 540
 
 
 # ----------------------------------------------------------------------
@@ -96,10 +107,29 @@ class _SectionHeader(QFrame):
         super().mousePressEvent(ev)
 
 
+class _Courbe(QLabel):
+    """Courbe d'évaluation à la largeur du dialog, nette à toute densité d'écran ;
+    un clic l'ouvre en taille réelle dans la visionneuse du système (quatre
+    graphes sur 540 px restent petits)."""
+
+    def __init__(self, chemin: str, parent: Optional[QWidget] = None):
+        super().__init__(parent)
+        self._chemin = chemin
+        self.setPixmap(pixmap_ajuste(chemin, _LARGEUR_COURBE, dpr=self.devicePixelRatioF()))
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.setToolTip("Cliquer pour ouvrir l'image en taille réelle")
+
+    def mousePressEvent(self, ev):  # noqa: N802 (signature Qt)
+        if ev.button() == Qt.MouseButton.LeftButton:
+            QDesktopServices.openUrl(QUrl.fromLocalFile(self._chemin))
+        super().mousePressEvent(ev)
+
+
 class _SectionWidget(QFrame):
     """Section pliable : header + corps (lignes label/valeur)."""
 
-    def __init__(self, section: Section, parent: Optional[QWidget] = None):
+    def __init__(self, section: Section, parent: Optional[QWidget] = None,
+                 extras: Sequence[QWidget] = ()):
         super().__init__(parent)
         self.setObjectName("ModelInfoSection")
         self._expanded = not section.collapsed
@@ -134,6 +164,14 @@ class _SectionWidget(QFrame):
             rl.addWidget(label)
             rl.addWidget(value, 1)
             body_lay.addWidget(row_frame)
+        for titre, chemin in section.images:
+            t = QLabel(titre)
+            t.setObjectName("ModelInfoRowLabel")
+            t.setContentsMargins(0, 8, 0, 2)
+            body_lay.addWidget(t)
+            body_lay.addWidget(_Courbe(chemin))
+        for w in extras:          # figures construites par le dialog (profil des scores)
+            body_lay.addWidget(w)
         lay.addWidget(self._body)
         self._body.setVisible(self._expanded)
 
@@ -159,9 +197,10 @@ class ModelInfoDialog(QDialog):
         super().__init__(parent)
         self.setObjectName("ModelInfoDialog")
         self.setModal(True)
-        # Le display_name est déjà préfixé « Modèle … » → pas de « Modèle — »
-        # en plus (sinon doublon dans la barre de titre).
-        self.setWindowTitle(model.display_name)
+        # Nature dans le titre de la fenêtre, comme « Structure · … » pour la fiche de
+        # classe (option A, 2026-10-08) ; sans doublon si le nom commence déjà par « Modèle ».
+        nom = model.display_name or model.name
+        self.setWindowTitle(nom if nom.lower().startswith("modèle") else f"Modèle · {nom}")
         self.resize(620, 720)
 
         self._model = model
@@ -181,6 +220,12 @@ class ModelInfoDialog(QDialog):
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(0)
 
+        # Liseré ardoise : la fiche d'un modèle est neutre ; la couleur d'une classe
+        # est réservée à sa fiche (option A, 2026-10-08).
+        lisere = QFrame()
+        lisere.setObjectName("ModelInfoLisere")
+        lisere.setFixedHeight(4)
+        root.addWidget(lisere)
         root.addWidget(self._build_header(card))
 
         # Zone scrollable pour les sections (modèles à beaucoup de classes /
@@ -193,8 +238,9 @@ class ModelInfoDialog(QDialog):
         content_lay = QVBoxLayout(content)
         content_lay.setContentsMargins(20, 4, 20, 12)
         content_lay.setSpacing(6)
-        for section in build_sections(card, args):
-            content_lay.addWidget(_SectionWidget(section))
+        for section in build_sections(card, args, model.model_dir):
+            extras = self._figures_fiabilite(section, card, model.model_dir)
+            content_lay.addWidget(_SectionWidget(section, extras=extras))
         content_lay.addStretch(1)
         scroll.setWidget(content)
         root.addWidget(scroll, 1)
@@ -202,6 +248,26 @@ class ModelInfoDialog(QDialog):
         root.addWidget(self._build_footer())
 
     # ------------------------------------------------------------------
+    @staticmethod
+    def _figures_fiabilite(section: Section, card: Dict[str, Any], model_dir: Optional[Path]) -> list:
+        """Sous FIABILITÉ DES DÉTECTIONS : le profil des scores de chaque classe
+        (bandes de l'évaluation livrée avec le modèle) — rien si elle ne l'est pas."""
+        if model_dir is None or not section.title.startswith("FIABILITÉ"):
+            return []
+        par_classe, _provenance = parse_fiabilite((card or {}).get("thresholds"))
+        out: list = []
+        for classe, cats in par_classe.items():
+            fig = figure_profil(model_dir, classe, cats)
+            if fig is None:
+                continue
+            titre = QLabel(f"Profil des scores — {classe}")
+            titre.setObjectName("ModelInfoRowLabel")
+            titre.setContentsMargins(0, 10, 0, 2)
+            # Essai de seuil (sans effet sur le traitement) : ligne, niveaux,
+            # précision et rappel au banc suivent la case.
+            out.extend([titre, fig, ligne_essai_seuil(fig)])
+        return out
+
     def _build_header(self, card: Dict[str, Any]) -> QWidget:
         header = QFrame()
         header.setObjectName("ModelInfoHeader")
@@ -209,9 +275,16 @@ class ModelInfoDialog(QDialog):
         lay.setContentsMargins(20, 16, 20, 14)
         lay.setSpacing(4)
 
-        kicker = QLabel("MODÈLE ONNX")
+        nature = QHBoxLayout()
+        nature.setSpacing(6)
+        icone = QLabel()
+        icone.setPixmap(colored_pixmap("modele", ARDOISE, 12, dpr=self.devicePixelRatioF()))
+        kicker = QLabel("MODÈLE DE DÉTECTION · ONNX")
         kicker.setObjectName("ModelInfoKicker")
-        lay.addWidget(kicker)
+        nature.addWidget(icone)
+        nature.addWidget(kicker)
+        nature.addStretch(1)
+        lay.addLayout(nature)
 
         slug_text = str(card.get("id") or self._model.name)
         slug = QLabel(slug_text)
@@ -244,6 +317,27 @@ class ModelInfoDialog(QDialog):
             meta = QLabel(" · ".join(meta_parts))
             meta.setObjectName("ModelInfoMeta")
             lay.addWidget(meta)
+
+        # « Détecte : » les classes du modèle, chacune avec la pastille de sa couleur de
+        # couche — le lien visible avec les fiches de structure (option A, 2026-10-08).
+        classes = [c for c in (card.get("classes") or []) if isinstance(c, dict) and c.get("name")]
+        if classes:
+            ligne = QHBoxLayout()
+            ligne.setSpacing(6)
+            libelle = QLabel("Détecte :")
+            libelle.setObjectName("ModelInfoMeta")
+            ligne.addWidget(libelle)
+            dpr = self.devicePixelRatioF()
+            for c in classes:
+                rgb = couleur_de_classe(str(c["name"])) or (42, 120, 214)
+                point = QLabel()
+                point.setPixmap(pastille(rgb, 9, dpr))
+                nom = QLabel(str(c.get("label_fr") or c["name"]))
+                nom.setObjectName("ModelInfoDetecte")
+                ligne.addWidget(point)
+                ligne.addWidget(nom)
+            ligne.addStretch(1)
+            lay.addLayout(ligne)
 
         return header
 

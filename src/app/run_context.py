@@ -29,6 +29,8 @@ progressivement.
 """
 from __future__ import annotations
 
+import os
+
 import copy
 from dataclasses import dataclass, field, replace
 from pathlib import Path
@@ -433,6 +435,14 @@ def _build_cv_config(cv_dict: Dict[str, Any]) -> CvConfig:
     )
 
 
+def chemin_dans(a: Path, b: Path) -> bool:
+    """``a`` est ``b`` ou se trouve sous ``b`` (comparaison lexicale, casse Windows
+    ignorée, sans toucher le disque)."""
+    pa = Path(os.path.normcase(os.path.abspath(str(a))))
+    pb = Path(os.path.normcase(os.path.abspath(str(b))))
+    return pa == pb or pb in pa.parents
+
+
 def validate_run_context(ctx: RunContext) -> Tuple[List[str], List[str]]:
     """Vérifie que ``ctx`` est exécutable pour son ``mode``.
 
@@ -567,6 +577,26 @@ def validate_run_context(ctx: RunContext) -> Tuple[List[str], List[str]]:
     # n'apparaît qu'au calcul de la première dalle — après le téléchargement.
     errors.extend(rvt_kernel_context.mstp_scale_errors(products_dict, ctx.rvt_params))
 
+    # Entrée et sortie imbriquées (arborescence v3, 2026-10-08) : un dossier de
+    # sortie DANS le dossier source est refusé (la réorganisation déplacerait les
+    # données) ; un dossier source dans le dossier de sortie est seulement signalé
+    # (jamais déplacé : inconnu de la migration).
+    source = {
+        "local_laz": ctx.files.local_laz_dir,
+        "existing_mnt": ctx.files.existing_mnt_dir,
+        "existing_rvt": ctx.files.existing_rvt_dir,
+    }.get(ctx.mode)
+    if source is not None and ctx.output_dir is not None:
+        if chemin_dans(ctx.output_dir, source):
+            errors.append(
+                f"Le dossier de sortie est dans le dossier source ({ctx.output_dir}) : "
+                "choisissez un dossier de sortie à part"
+            )
+        elif chemin_dans(source, ctx.output_dir):
+            warnings.append(
+                f"Le dossier source est dans le dossier de sortie ({source}) : il ne sera jamais "
+                "déplacé ni supprimé par le plugin, mais données et résultats se mélangent"
+            )
     return errors, warnings
 
 

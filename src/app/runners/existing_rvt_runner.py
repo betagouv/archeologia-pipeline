@@ -93,6 +93,7 @@ class ExistingRvtRunner:
         # total_detections par run (résumé du runner) — None exclus : si aucun
         # run n'a de résumé (fallback, vieux binaire), pas d'annonce de total.
         detection_counts: list = []
+        cv_stats: list = []
 
         def _process_run(run_idx: int, run_cfg: dict) -> None:
             nonlocal total_images
@@ -159,6 +160,12 @@ class ExistingRvtRunner:
                 narrator.cv_run_done(
                     model_display, int(st["images_inferees"]), float(st.get("secondes", 0.0))
                 )
+            cv_stats.append({   # durée mesurée par modèle, pour le rapport de run
+                "modele": model_display, "model": run_model, "target_rvt": run_rvt,
+                "entites": [e.get("label") or e.get("slug") or "" for e in (run_cfg.get("entities") or [])
+                            if isinstance(e, dict)],
+                "images": int(st.get("images_inferees") or 0), "secondes": float(st.get("secondes") or 0.0),
+            })
 
         def _on_run_failure(run_idx: int, run_cfg: dict, exc: Exception) -> None:
             model_display = _model_display_name(run_cfg.get("selected_model", "?"))
@@ -210,6 +217,7 @@ class ExistingRvtRunner:
             final_ok = finalize_pipeline(
                 output_dir=ctx.output_dir,
                 cv_cfg=cv_config,
+                cv_stats=cv_stats,
                 rvt_params=ctx.rvt_params,
                 reporter=reporter,
                 slog=slog,

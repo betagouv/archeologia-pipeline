@@ -1736,11 +1736,23 @@ def create_shapefile_from_detections(
             # la symbologie (chargement live ET .qgs) y lit les catégories, leur
             # mesure au banc et la provenance — sans plomberie de signaux.
             if class_name in _fiab_cats:
+                # Effectifs par niveau des détections ÉCRITES (bilan de fin de run,
+                # 2026-10-08) : comptés sur la table telle qu'elle part dans le
+                # GeoPackage, après filtrage sous le seuil et nettoyage.
+                _effectifs: dict = {}
+                try:
+                    if _FIAB_LABEL in gdf.columns:
+                        _effectifs = {
+                            str(k): int(v) for k, v in gdf[_FIAB_LABEL].value_counts().items() if str(k)
+                        }
+                except Exception:  # noqa: BLE001 — le bilan est un confort
+                    _effectifs = {}
                 _entree = {
                     "classe": class_name,
                     "modele": str((fiabilite or {}).get("modele") or model_name or ""),
                     "provenance": str((fiabilite or {}).get("provenance") or ""),
                     "categories": [c.to_dict() for c in _fiab_cats[class_name]],
+                    "effectifs": _effectifs,
                 }
                 for _sc_gpkg, _sc_layer in class_write_targets:
                     try:

@@ -1,19 +1,17 @@
-"""Étape 4 — Lancement : récap propre, puis bascule sur la vue d'exécution.
+"""Étape 4 — Vérifications : bandeau de validation, panneau « État du système »
+(préflight lancé en tâche de fond), récapitulatif des choix des étapes 1-3 et
+paramètres avancés repliés (workers). Aucune estimation de durée/RAM (le pipeline
+ne les expose pas de façon fiable).
 
-Deux phases dans un ``QStackedWidget`` interne :
-
-- **Récap** (avant lancement) : panneau « État du système » (préflight lancé en
-  tâche de fond), récapitulatif des choix des étapes 1-3, et paramètres avancés
-  repliés (workers). Aucune estimation de durée/RAM (le pipeline ne les expose
-  pas de façon fiable).
-- **Exécution** : le :class:`RunView` (timeline + journal). Le bouton « Lancer »
-  de la barre d'actions appelle :meth:`start_run`, qui bascule sur cette vue.
+Le bouton « Lancer le pipeline » de la barre d'actions démarre le traitement, suivi
+à l'étape 5 (``RunView``, posé par le wizard). Les deux écrans étaient les deux
+sous-pages de l'ancienne étape « Lancer » (scindée le 2026-10-09).
 """
 from __future__ import annotations
 
 import threading
 from dataclasses import dataclass, field
-from typing import Dict, List
+from typing import List
 
 from qgis.PyQt.QtCore import QObject, QPoint, QRect, QSize, Qt, pyqtSignal
 from qgis.PyQt.QtWidgets import (
@@ -24,12 +22,10 @@ from qgis.PyQt.QtWidgets import (
     QLayout,
     QPushButton,
     QScrollArea,
-    QStackedWidget,
     QVBoxLayout,
     QWidget,
 )
 
-from ..run_view import RunView
 from ..widgets.card import build_card
 from ..widgets.collapsible import CollapsibleSection
 from ..widgets.no_wheel import NoWheelSpinBox
@@ -114,11 +110,9 @@ class _PreflightEmitter(QObject):
 
 
 class LaunchPage(QWidget):
-    run_started = pyqtSignal()
-    run_finished = pyqtSignal()
     workers_changed = pyqtSignal(int)
 
-    def __init__(self, plugin_root, config_ref=None, parent=None):
+    def __init__(self, parent=None):
         super().__init__(parent)
         self._recap_rows: List[QWidget] = []
         self._workers = 4
@@ -130,25 +124,13 @@ class LaunchPage(QWidget):
         self._preflight_status = "pending"
         self._pf_emitter = _PreflightEmitter(self)
         self._pf_emitter.done.connect(self._on_preflight_done)
-        self._build(config_ref)
+        self._build()
 
     # ------------------------------------------------------------------
     # Construction
     # ------------------------------------------------------------------
-    def _build(self, config_ref) -> None:
-        root = QVBoxLayout(self)
-        root.setContentsMargins(0, 0, 0, 0)
-        root.setSpacing(0)
-        self._stack = QStackedWidget()
-        self._recap_page = self._build_recap_page()
-        self._run_page = self._build_run_page(config_ref)
-        self._stack.addWidget(self._recap_page)  # [0]
-        self._stack.addWidget(self._run_page)    # [1]
-        root.addWidget(self._stack)
-
-    def _build_recap_page(self) -> QWidget:
-        page = QWidget()
-        outer = QVBoxLayout(page)
+    def _build(self) -> None:
+        outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
         outer.setSpacing(0)
 
@@ -199,7 +181,6 @@ class LaunchPage(QWidget):
         v.addStretch(1)
         scroll.setWidget(content)
         outer.addWidget(scroll)
-        return page
 
     def _build_preflight_card(self) -> QWidget:
         card, cv = build_card("État du système", "1")
@@ -263,20 +244,8 @@ class LaunchPage(QWidget):
         note.setObjectName("WorkersNote")
         note.setWordWrap(True)
         h.addWidget(note, 1)
+        self._workers_body = body
         return body
-
-    def _build_run_page(self, config_ref) -> QWidget:
-        page = QWidget()
-        v = QVBoxLayout(page)
-        v.setContentsMargins(16, 16, 16, 16)
-        v.setSpacing(12)
-        run_card, xv = build_card("Exécution")
-        self._run_view = RunView(config_ref)
-        self._run_view.run_started.connect(self.run_started)
-        self._run_view.run_finished.connect(self.run_finished)
-        xv.addWidget(self._run_view)
-        v.addWidget(run_card, 1)
-        return page
 
     # ------------------------------------------------------------------
     # Récapitulatif (assemblé par le wizard)
@@ -392,6 +361,10 @@ class LaunchPage(QWidget):
 
     def workers_value(self) -> int:
         return self._workers
+
+    def set_readonly(self, on: bool) -> None:
+        """Pendant un run : les workers du run en cours ne se changent plus."""
+        self._workers_body.setEnabled(not on)
 
     @staticmethod
     def _safe_int(value, default: int) -> int:
@@ -528,24 +501,3 @@ class LaunchPage(QWidget):
             w = item.widget()
             if w is not None:
                 w.deleteLater()
-
-    # ------------------------------------------------------------------
-    # Bascule récap ↔ exécution
-    # ------------------------------------------------------------------
-    def show_recap(self) -> None:
-        self._stack.setCurrentWidget(self._recap_page)
-
-    def set_step_subtitles(self, subs: Dict[str, str]) -> None:
-        self._run_view.set_step_subtitles(subs)
-
-    def start_run(self, config: dict) -> None:
-        self._stack.setCurrentWidget(self._run_page)
-        self._run_view.start_run(config)
-
-    def is_running(self) -> bool:
-        return self._run_view.is_running()
-
-    def request_cancel(self) -> None:
-        """Relaye la demande d'annulation au RunView (fermeture pendant un
-        run / unload du plugin — AUDIT v2 UIX-01/THR-04)."""
-        self._run_view.request_cancel()

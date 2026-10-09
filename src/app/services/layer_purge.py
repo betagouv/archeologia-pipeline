@@ -22,7 +22,9 @@ from typing import List, Mapping
 # ``pipeline/output_paths.py`` → ``DIR_INDICES`` / ``DIR_DETECTIONS``). Gardés en
 # littéraux locaux pour ne pas importer ``pipeline`` (qui tire QGIS) depuis un
 # module devant rester pur.
-_PURGE_SUBTREES = ("indices", "detections")
+# ``livrable`` (arborescence v3) + les deux racines v2, pour les couches encore
+# chargées depuis un dossier qui vient d'être réorganisé.
+_PURGE_SUBTREES = ("livrable", "indices", "detections")
 
 
 def _norm_parts(path: str | os.PathLike) -> List[str]:

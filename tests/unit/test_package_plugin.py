@@ -51,15 +51,17 @@ class TestShouldExcludeDirs:
         d = _mkdir(tmp_path, name)
         assert pkg.should_exclude(d, name) is True
 
-    @pytest.mark.parametrize("name", ["src", "data", "quadrillage_france", "models", "third_party"])
+    @pytest.mark.parametrize("name", ["src", "data", "quadrillage_france", "models", "third_party", "aide"])
     def test_keeps_runtime_dirs(self, pkg, tmp_path, name):
         # PKG-02 : quadrillage_france est REQUIS au runtime → ne pas exclure.
+        # aide/ : le manuel intégré (Markdown) est lu au runtime, à la différence de docs/.
         d = _mkdir(tmp_path, name)
         assert pkg.should_exclude(d, name) is False
 
 
 class TestShouldExcludeFiles:
-    @pytest.mark.parametrize("name", ["config.json", "last_ui_config.json", "class_color_registry.json", "pytest.ini", ".gitignore"])
+    @pytest.mark.parametrize("name", ["config.json", "last_ui_config.json", "class_color_registry.json", "pytest.ini", ".gitignore",
+                                      "quadrillage_france.zip"])
     def test_excludes_dev_files(self, pkg, tmp_path, name):
         f = tmp_path / name
         f.write_text("{}")
@@ -199,3 +201,51 @@ class TestZipSizeGuard:
         z = tmp_path / "main.zip"
         z.write_bytes(b"0" * 2048)
         pkg.enforce_zip_size_guard(z, max_mb=1)
+
+
+class TestEntrainementEvaluation:
+    # 2026-09-29 : la fiche ⓘ d'un modèle affiche ses courbes d'évaluation, donc le
+    # ZIP embarque entrainement/evaluation*/ (*.png + metriques_eval.json) et rien
+    # d'autre de entrainement/ — surtout pas appariements.json (jusqu'à 46 Mo).
+    _BASE = "data/models/m/entrainement"
+
+    def _chemin(self, tmp_path, rel, dossier=False):
+        p = tmp_path / rel
+        if dossier:
+            p.mkdir(parents=True, exist_ok=True)
+        else:
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_bytes(b"x")
+        return p
+
+    @pytest.mark.parametrize("rel", ["", "/evaluation", "/evaluation_couverture"])
+    def test_descend_dans_les_dossiers_d_evaluation(self, pkg, tmp_path, rel):
+        p = self._chemin(tmp_path, self._BASE + rel, dossier=True)
+        assert pkg.should_exclude(p, self._BASE + rel) is False
+
+    @pytest.mark.parametrize("rel", ["/comparaison_seg_v1", "/evaluation/sous_dossier"])
+    def test_ne_descend_pas_ailleurs(self, pkg, tmp_path, rel):
+        p = self._chemin(tmp_path, self._BASE + rel, dossier=True)
+        assert pkg.should_exclude(p, self._BASE + rel) is True
+
+    @pytest.mark.parametrize("rel", [
+        "/evaluation/courbes_seuils_pr.png",
+        "/evaluation/metriques_eval.json",
+        "/evaluation_couverture/zones_et_masques.png",
+    ])
+    def test_embarque_courbes_et_resume(self, pkg, tmp_path, rel):
+        p = self._chemin(tmp_path, self._BASE + rel)
+        assert pkg.should_exclude(p, self._BASE + rel) is False
+
+    @pytest.mark.parametrize("rel", [
+        "/evaluation/appariements.json",
+        "/evaluation/provenance_outils.txt",
+        "/evaluation/desktop.ini",
+        "/metrics.csv",
+        "/hparams.yaml",
+        "/events.out.tfevents.1789048309.x.0",
+        "/courbe_hors_evaluation.png",
+    ])
+    def test_exclut_le_reste(self, pkg, tmp_path, rel):
+        p = self._chemin(tmp_path, self._BASE + rel)
+        assert pkg.should_exclude(p, self._BASE + rel) is True

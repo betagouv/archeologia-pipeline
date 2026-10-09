@@ -71,9 +71,11 @@ def load_quadrillage_layer(plugin_root: Path):
 
     # Import différé (module pur, pas de QGIS) — résolu au runtime côté plugin.
     from ...app.services.grid_view import decide_grid_reuse
-    from ...pipeline.ign.quadrillage_paths import resolve_quadrillage_path
+    from ...pipeline.ign.quadrillage_paths import assurer_quadrillage
 
-    path = resolve_quadrillage_path(plugin_root)
+    # ponytail: la première sélection d'une copie venue de GitHub décompresse la grille
+    # (~200 Mo) sur le thread de l'interface, quelques secondes, une seule fois.
+    path = assurer_quadrillage(plugin_root)
     logger.info("Quadrillage : path=%s exists=%s", path, path.exists())
     if not path.exists():
         logger.warning("Quadrillage introuvable : %s", path)

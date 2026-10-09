@@ -200,9 +200,9 @@ class TestFolderPathSymmetry:
         out = Path("/tmp/out")
         folder = get_rvt_folder_name("LD", LD_PARAMS)
         assert indice_tif_dir(out, folder) == \
-            out / "indices" / "LD_A15_Rmin10_Rmax20_H1p7_V1" / "tif"
+            out / "livrable" / "indices" / "LD_A15_Rmin10_Rmax20_H1p7_V1" / "tif"
 
     def test_mnt_dir_unchanged(self):
         out = Path("/tmp/out")
         assert indice_tif_dir(out, get_rvt_folder_name("MNT", LD_PARAMS)) == \
-            out / "indices" / "MNT" / "tif"
+            out / "livrable" / "indices" / "MNT" / "tif"

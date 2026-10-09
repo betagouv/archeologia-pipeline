@@ -1,4 +1,4 @@
-"""Écriture du projet QGIS de validation (``detections_validation.qgs``) via l'API QGIS.
+"""Écriture du projet QGIS de validation (``livrable/projet.qgs``) via l'API QGIS.
 
 QGIS-side, **thread principal uniquement** (l'API QGIS n'est pas thread-safe). Construit
 un ``QgsProject`` **dédié** (jamais le singleton de la session de l'utilisateur) puis le

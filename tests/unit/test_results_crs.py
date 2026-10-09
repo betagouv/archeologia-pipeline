@@ -100,7 +100,7 @@ class TestCopyFinalProducts:
             output_formats={"tif": True},
             rvt_params={},
         )
-        tifs = list((out_dir / "indices" / "MNT" / "tif").glob("*.tif"))
+        tifs = list((out_dir / "livrable" / "indices" / "MNT" / "tif").glob("*.tif"))
         assert len(tifs) == 1
         return tifs[0]
 

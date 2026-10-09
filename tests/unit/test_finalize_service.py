@@ -506,7 +506,7 @@ class TestMetadataStructureDetections:
     def _read_meta(self, tmp_path):
         import json
 
-        return json.loads((tmp_path / "metadata.json").read_text(encoding="utf-8"))
+        return json.loads((tmp_path / "livrable" / "traitement.json").read_text(encoding="utf-8"))
 
     def test_omise_quand_le_dossier_n_existe_pas(self, tmp_path, monkeypatch):
         _finalize(tmp_path, monkeypatch, tiles_processed=1)
@@ -515,10 +515,12 @@ class TestMetadataStructureDetections:
         assert "detections" not in meta["structure"]
 
     def test_presente_quand_le_dossier_existe(self, tmp_path, monkeypatch):
-        (tmp_path / "detections").mkdir()
+        (tmp_path / "livrable" / "detections").mkdir(parents=True)
         _finalize(tmp_path, monkeypatch, tiles_processed=1)
         meta = self._read_meta(tmp_path)
-        assert meta["structure"]["detections"].endswith("detections")
+        assert meta["structure"]["detections"] == "livrable/detections" and meta["arborescence"] == 3
+        assert "ui_config" not in meta        # la trace du livrable ne porte pas le poste
+        assert list((tmp_path / "technique" / "journaux").glob("metadata_*.json"))
 
 
 class TestFinalizeReturnsVerdict:

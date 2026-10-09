@@ -758,6 +758,19 @@ def _compute_layer_names(
     return names
 
 
+def layer_name_for_class(
+    model: InstalledModel, eid: str, classe: str, compared: bool = False
+) -> str:
+    """Nom de la couche de détections de ``classe`` pour l'entité ``eid`` — la
+    **clé du registre de couleurs** (``class_color_registry``, indexé par nom de
+    couche). Même règle que ``_entity_block`` : nom de classe (ou libellé d'une
+    dérivée), suffixé « — Modèle » en comparaison A/B. Sert à l'UI pour donner
+    à la figure du profil la couleur de la couche qu'elle décrit (A9, 2026-10-08)."""
+    noms = _compute_layer_names(model, eid, sorted(model.coverage.get(eid, ())))
+    nom = noms.get(classe, classe)
+    return f"{nom} — {model.display_name}" if compared else nom
+
+
 # ----------------------------------------------------------------------
 # Résolution des runs
 # ----------------------------------------------------------------------

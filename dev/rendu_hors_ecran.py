@@ -10,7 +10,8 @@
 
 Monte un ``QgsApplication`` en ``QT_QPA_PLATFORM=offscreen`` avec le thème QSS du plugin, puis :
 
-- ``captures`` : l'assistant aux étapes 1 à 4, la fiche d'une classe et la vue d'exécution, avec des
+- ``captures`` : l'assistant aux étapes 1 à 4, la carte d'une entité en réglages avancés, la fiche d'une
+  classe et la vue d'exécution (en cours, puis à la fin avec « Par où commencer »), avec des
   chemins neutres dans les champs et quelques produits cochés, en **double résolution**
   (``QT_SCALE_FACTOR=2``, posé avant la création de l'application) → ``aide/img/``. L'étape 4 est
   au vert : Processing et le fournisseur de rvt-qgis sont chargés hors écran, les contrôles du
@@ -120,6 +121,101 @@ def _journal_en_cours(app, img: Path, log) -> None:
     log("run-journal :", v.width(), "x", v.height(), "| fil :", v._fil_gauche.text(), "|", v._fil_droite.text())
 
 
+def _journal_fin(app, img: Path, log) -> bool:
+    """aide/img/run-fin.png : la vue d'exécution à la fin d'un run avec détection — synthèse dans la
+    ligne du haut, frise faite avec ses durées, cadre « Par où commencer ». Run simulé : états et
+    bilan posés à la main, classes déjà présentes dans le registre de couleurs du profil."""
+    import time
+
+    from archeo.src.app.services.bilan_fiabilite import LigneBilan
+    from archeo.src.app.services.fiabilite import Categorie
+    from archeo.src.ui.run_view import RunView, _fmt_hms
+
+    cfg = {"app": {"files": {"data_mode": "ign_laz", "output_dir": "C:/Temp/archeologia_demo/sortie"}},
+           "processing": {"products": {"MNT": True, "SVF": True, "LD": True}},
+           "computer_vision": {"enabled": True, "runs": [
+               {"selected_model": "crateres_seg_ld_v1", "target_rvt": "LD"},
+               {"selected_model": "lineaires_seg_v3_1", "target_rvt": "LD"},
+               {"selected_model": "ponctuelles_2cl_det_ld_v1", "target_rvt": "LD"}]}}
+    v = RunView(cfg)
+    v.show()
+    v.resize(880, 580)                               # tout tient sans défilement
+    v._apply_stage_sequence()
+    v._running = True
+    durees = (61, 1202, 590, 82)                     # 32min 15s au total
+    v._run_started_at = time.monotonic() - sum(durees)
+    for ligne in ("▶ Démarrage du traitement — Téléchargement IGN", "✓ 12 dalles téléchargées",
+                  "✓ MNT et indices : 12 dalles, 3 produits",
+                  "✓ « Modèle cratères LD v1 » : 43 images analysées en 3min 12s (≈ 4s par image)",
+                  "✓ « Structures linéaires 3 classes (LD) » : 43 images analysées en 3min 40s (≈ 5s par image)",
+                  "✓ « Modèle ponctuelles LD v1 » : 43 images analysées en 2min 58s (≈ 4s par image)",
+                  "📂 Projet QGIS écrit : livrable/projet.qgs"):
+        v._append_log("INFO", ligne)
+    for i, (sid, metrique) in enumerate((("download", (12, 12, "dalles")), ("products", (12, 12, "dalles")),
+                                          ("detection", (43, 43, "images")), ("finalize", None))):
+        v._on_stage_id(sid)
+        if i:
+            v._step_elapsed[i - 1] = durees[i - 1]
+            v._timeline.set_timing(i - 1, _fmt_hms(durees[i - 1]))
+        if metrique:
+            v._on_metric(*metrique)
+    v._active_started = time.monotonic() - durees[-1]
+
+    def niveaux(coupures, parts):
+        noms = ("douteux", "possible", "probable", "quasi_certain")
+        return tuple(Categorie(n, c, g, g, 100) for n, c, g in zip(noms, coupures, parts))
+
+    v._bilan = [
+        LigneBilan("crateres", "Cratères", "cratere", "cratere", "crateres_seg_ld_v1",
+                   niveaux((0.29, 0.35, 0.5, 0.65), (0.0, 0.35, 0.6, 0.85)),
+                   {"quasi_certain": 412, "probable": 158, "possible": 61, "douteux": 97}),
+        LigneBilan("parcellaire", "Parcellaire", "parcellaire", "parcellaire", "lineaires_seg_v3_1",
+                   niveaux((0.26, 0.3, 0.45, 0.6), (0.0, 0.35, 0.6, 0.85)),
+                   {"quasi_certain": 18, "probable": 46, "possible": 39, "douteux": 22}),
+        LigneBilan("talus_fosse", "Talus et fossés", "talus_fosse", "talus_fosse", "lineaires_seg_v3_1",
+                   niveaux((0.25, 0.3, 0.45, 0.7), (0.0, 0.35, 0.6, 0.85)),
+                   {"quasi_certain": 9, "probable": 31, "possible": 27, "douteux": 14}),
+        LigneBilan("charbonnieres", "Charbonnières", "charbonniere", "charbonniere", "ponctuelles_2cl_det_ld_v1",
+                   niveaux((0.2, 0.3, 0.45, 0.6), (0.0, 0.35, 0.6, 0.85)),
+                   {"quasi_certain": 6, "probable": 4, "possible": 3, "douteux": 5}),
+    ]
+    v._couches_a_charger = ((), (), (), ())          # le projet s'ouvrirait au clic : bouton actif
+    v._on_run_enabled(True)
+    v._open_report_btn.setEnabled(True)              # rapport.html absent du dossier de démonstration
+    for _ in range(5):                               # le cadre apparu relance la mise en page de la zone défilante
+        app.processEvents()
+    v.grab().save(str(img / "run-fin.png"))
+    from qgis.PyQt.QtWidgets import QScrollArea
+    defile = v.findChild(QScrollArea).verticalScrollBar().maximum()
+    log("run-fin :", v.width(), "x", v.height(), "| fil :", v._fil_gauche.text(), "| cadre visible :",
+        v._bilan_box.isVisible(), "| défilement", defile, "px (attendu 0)")
+    return v._bilan_box.isVisible() and not defile
+
+
+def _carte_avancee(app, w, img: Path, log, entite: str = "parcellaire") -> bool:
+    """aide/img/etape3-carte-avancee.png : la carte d'une entité en réglages avancés — confiance,
+    aire minimale, mini-profil des scores avec le seuil en orange."""
+    from qgis.PyQt.QtWidgets import QScrollArea
+
+    page = w._detection_page
+    page._on_entity_toggled(entite, True)
+    page._adv_check.setChecked(True)
+    app.processEvents()
+    carte = page._cards.get(entite)
+    if carte is None:
+        log("carte avancée : entité absente :", entite)
+        return False
+    zone = page.findChild(QScrollArea)
+    if zone is not None:
+        zone.ensureWidgetVisible(carte, 0, 20)
+    app.processEvents()
+    carte.grab().save(str(img / "etape3-carte-avancee.png"))
+    page._adv_check.setChecked(False)
+    app.processEvents()
+    log("carte avancée :", entite, carte.width(), "x", carte.height())
+    return True
+
+
 def _processing_hors_ecran(log) -> bool:
     """Processing et le fournisseur rvt-qgis dans l'application hors écran, comme dans QGIS :
     sans eux le préflight de l'étape 4 est rouge (« QGIS processing », « Algorithmes RVT »)."""
@@ -213,6 +309,7 @@ def captures(app, sortie: Path, log) -> int:
     img = RACINE / "aide" / "img"
     img.mkdir(exist_ok=True)
     _journal_en_cours(app, img, log)
+    fin_ok = _journal_fin(app, img, log)
     w = WizardDialog()
     w.show()
     w.resize(980, 760)
@@ -248,10 +345,11 @@ def captures(app, sortie: Path, log) -> int:
     n = len(getattr(w._detection_page, "_cards", {}) or [])
     log("entités affichées à l'étape 3 :", n, "(0 = aucun modèle sous data/models)")
     w.grab().save(str(img / "etape3-detection.png"))
+    carte_ok = _carte_avancee(app, w, img, log)
     fiche_ok = _fiche_classe(app, img, log)
     etape4_ok = _etape4(app, w, img, log)
     log("captures écrites dans", img, "— taille de l'assistant :", w.width(), "x", w.height())
-    return 0 if n and fiche_ok and etape4_ok else 1
+    return 0 if n and fin_ok and carte_ok and fiche_ok and etape4_ok else 1
 
 
 def manuel(app, sortie: Path, log, chapitre: str, ancre: str, recherche: str = "", tous: bool = False) -> int:

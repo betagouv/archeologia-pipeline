@@ -32,16 +32,29 @@ def test_le_projet_qgis_ne_s_ouvre_qu_au_clic():
     assert "actions.addWidget(self._open_dir_btn)" not in vue
 
 
-def test_le_journal_reste_accessible_apres_le_run():
-    # Revenir d'une étape 1-3 sur l'étape 4 ne doit plus remplacer le journal
-    # par le récap (constat utilisateur 2026-10-08) : le récap ne s'impose
-    # qu'avant le premier run, et chaque sous-page a sa bascule.
+def test_verifications_et_traitement_sont_deux_etapes():
+    # L'étape « Lancer » est scindée (2026-10-09) : 4 = Vérifications (préflight,
+    # récap, workers), 5 = Traitement (frise, journal). Plus de bascule interne.
+    from src.app.services.aide import CHAPITRE_PAR_ETAPE
+
     wizard = (RACINE / "src/ui/wizard_dialog.py").read_text(encoding="utf-8")
-    assert "not self._launch_page.is_running() and not self._launch_page.has_run()" in wizard
+    assert '{"label": "Vérifications"' in wizard and '{"label": "Traitement"' in wizard
+    assert "self._stack.addWidget(self._build_run_page())" in wizard
+    lancer = wizard[wizard.index("def _on_launch("):wizard.index("def _update_launch_recap(")]
+    assert lancer.index("self._goto_step(self.STEP_TRAITEMENT)") < lancer.index(".start_run(")
     page = (RACINE / "src/ui/steps/step_4_launch.py").read_text(encoding="utf-8")
-    assert "def has_run(" in page and "def show_run(" in page
-    assert "_vers_journal_btn.clicked.connect(self.show_run)" in page
-    assert "_vers_recap_btn.clicked.connect(self.show_recap)" in page
+    assert "import RunView" not in page and "QStackedWidget" not in page and "_vers_journal_btn" not in page
+    assert sorted(CHAPITRE_PAR_ETAPE) == [1, 2, 3, 4, 5]
+
+
+def test_le_journal_reste_accessible_apres_le_run():
+    # Revenir sur l'étape 5 après un run ne doit jamais remplacer le journal ni la
+    # frise du run (constat utilisateur 2026-10-08) : l'aperçu de la config courante
+    # ne s'applique qu'avant le premier run.
+    vue = _vue()
+    debut = vue.index("def preview(")
+    apercu = vue[debut:vue.index("def set_step_subtitles(", debut)]
+    assert "if self._running or self._run_started_at is not None:" in apercu
 
 
 def test_un_seul_format_de_duree_et_la_synthese_dans_le_fil():
@@ -52,7 +65,8 @@ def test_un_seul_format_de_duree_et_la_synthese_dans_le_fil():
 
 
 def test_le_manuel_et_la_recette_suivent():
-    manuel = (RACINE / "aide/06-etape-4-lancer.md").read_text(encoding="utf-8")
+    manuel = (RACINE / "aide/07-etape-5-traitement.md").read_text(encoding="utf-8")
     assert "Ouvrir le projet QGIS" in manuel and "barre de progression" not in manuel
     recette = (RACINE / "tests/TESTS_MANUELS_QGIS.md").read_text(encoding="utf-8")
     assert "## 44." in recette and "Ouvrir le projet QGIS" in recette
+    assert "## 45." in recette and "Vérifications" in recette

@@ -1,31 +1,8 @@
-# Étape 4 · Lancer et suivre
+# Étape 5 · Traitement
 
-## Avant de lancer
-
-Le bandeau du haut dit si la configuration est valide. S'il manque quelque chose, il nomme les points à corriger et le rail de gauche pose une pastille sur l'étape concernée.
-
-Le **récapitulatif** reprend vos choix : mode et source, produits, entités et modèles, dossier de sortie.
-
-### État du système
-
-Le panneau vérifie en tâche de fond ce dont le traitement a besoin :
-
-- les outils en ligne de commande : PDAL pour les nuages de points, GDAL pour les rasters ;
-- QGIS Processing et les algorithmes de Relief Visualization Toolbox ;
-- le moteur de détection et ses bibliothèques, si la détection est activée ;
-- les dossiers d'entrée et de sortie, et la projection des rasters en MNT ou Indices existants.
-
-Chaque contrôle affiche son état et son détail. Un élément manquant bloque le lancement et dit quoi installer : voir [Dépannage](depannage.md#les-verifications-prealables-ont-echoue).
-
-[![Étape 4 : configuration valide, état du système au vert, récapitulatif du run](img/etape4-lancer.png)](img/etape4-lancer.png)
-
-### Paramètres avancés
-
-**Workers parallèles** : le nombre de dalles traitées en même temps. Plus de workers accélère le traitement sur une machine à plusieurs cœurs mais consomme plus de mémoire. Sur un poste à 16 Go, restez à deux ou trois.
+**Lancer le pipeline**, à l'[étape 4](etape-4-verifications.md), ouvre cette étape. Elle est consultable avant même le lancement et montre alors ce qui a été choisi : la ligne du haut résume le mode, les produits et les modèles, et la frise annonce les phases du mode, Téléchargement, Produits, Détection, Finalisation.
 
 ## Pendant le traitement
-
-**Lancer le pipeline** bascule l'écran sur la vue d'exécution. Avant même le lancement, elle montre ce qui a été choisi : la ligne du haut résume le mode, les produits et les modèles, et la frise annonce les phases du mode, Téléchargement, Produits, Détection, Finalisation.
 
 - la **frise** porte l'état : la phase en cours est encadrée, avec son compteur mesuré (dalles, images) et son chronomètre ; le fil qui la suit se remplit à proportion de ce compteur, et passe au vert quand la phase est faite. Le chronomètre total est à droite de la ligne du haut ;
 - le **journal** : un message par événement, dans le vocabulaire de cette aide. Les pastilles **⚠** et **✗** comptent les avertissements et les erreurs et filtrent l'affichage ; **Copier** et **Effacer** agissent sur le texte affiché.
@@ -34,7 +11,7 @@ Rien n'est estimé : une phase sans compteur montre son chronomètre, pas un pou
 
 [![La vue d'exécution pendant une détection : la frise porte l'état, le journal raconte](img/run-journal.png)](img/run-journal.png)
 
-Pendant le traitement, les étapes 1 à 3 restent consultables mais en lecture seule, signalé par une pastille dans l'en-tête. **Annuler** arrête proprement à la fin de la dalle en cours.
+Pendant le traitement, les étapes 1 à 4 restent consultables mais en lecture seule, signalé par une pastille dans l'en-tête. **Annuler** arrête proprement à la fin de la dalle en cours.
 
 ### Lire le journal
 
@@ -59,7 +36,7 @@ Un **rapport** du traitement (`rapport.html`) est écrit dans `livrable/` et s'o
 
 **Ouvrir le dossier**, dans le même cadre, ouvre le dossier de sortie dans l'explorateur de fichiers. En bas, **Log complet** ouvre le journal détaillé.
 
-Le journal reste là : revenir sur une autre étape puis sur l'étape 4 le retrouve tel quel. **Récapitulatif**, en haut à droite, ramène à l'écran d'avant lancement, et **Journal du traitement** fait le chemin inverse.
+Le journal reste là : revenir sur une autre étape puis sur l'étape 5 le retrouve tel quel, jusqu'au lancement suivant. **Lancer le pipeline**, en bas de l'étape 4 comme de celle-ci, relance avec les réglages en cours.
 
 Ce que contient le dossier et comment lire les couches : [Vos résultats dans QGIS](resultats.md).
 

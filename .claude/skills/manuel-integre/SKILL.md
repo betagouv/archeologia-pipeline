@@ -32,11 +32,12 @@ retard, qu'il a remplacée le 2026-10-07.
 | Mode, source, sélection des dalles, dossier de sortie | `03-etape-1-source.md` |
 | Produit, réglage avancé, tuilage, diagnostic de contexte | `04-etape-2-produits.md` (sans décrire le produit : c'est sa fiche) |
 | Entité, modèle, seuil, regroupement, fiabilité, fiche de classe ou de modèle, profil des scores, bandeau « Appris sur », fiabilité observée | `05-etape-3-detection.md` |
-| Préflight, workers, vue d'exécution (ligne d'état, frise, cadre « Par où commencer », bascule récap ↔ journal), journal, rapport de traitement, relance, migration d'un ancien dossier | `06-etape-4-lancer.md` |
-| Dossier de sortie (`livrable/` et `technique/`), trace du traitement, couches QGIS, légende, attributs, faire de la place | `07-resultats.md` |
-| Nouveau message ⚠/✗ du narrateur avec une cause connue | `08-depannage.md` + une ligne dans `_RUBRIQUES_DEPANNAGE` (`aide.py`) |
+| Bandeau de validation, préflight (état du système), récapitulatif, workers | `06-etape-4-verifications.md` |
+| Vue d'exécution (ligne d'état, frise, cadre « Par où commencer »), journal, rapport de traitement, relance, migration d'un ancien dossier | `07-etape-5-traitement.md` |
+| Dossier de sortie (`livrable/` et `technique/`), trace du traitement, couches QGIS, légende, attributs, faire de la place | `08-resultats.md` |
+| Nouveau message ⚠/✗ du narrateur avec une cause connue | `09-depannage.md` + une ligne dans `_RUBRIQUES_DEPANNAGE` (`aide.py`) |
 | Manuel lui-même (recherche, historique, zoom, nouveautés) | `02-premier-traitement.md` › « Ce manuel » |
-| Terme nouveau pour l'utilisateur | `09-glossaire.md` |
+| Terme nouveau pour l'utilisateur | `10-glossaire.md` |
 | Ce qui a changé dans la version | rien : le chapitre Nouveautés est rendu depuis `changelog=` de `metadata.txt` |
 
 ## Écrire
@@ -71,7 +72,7 @@ retard, qu'il a remplacée le 2026-10-07.
    `python-qgis.bat dev/rendu_hors_ecran.py manuel --chapitre <cle> [--ancre <slug>]` → PNG à regarder,
    barre horizontale à 0 px ; `manuel --tous` rend chaque chapitre (c'est le contrôle du runbook
    `/livraison`), `manuel --recherche <mot>` vérifie la recherche globale, `journal` la vue de fin de
-   run (renvoi cliquable, cadre « Par où commencer », bascule récap ↔ journal), `profil --modele <id>`
+   run (renvoi cliquable, cadre « Par où commencer ») et les étapes 4 et 5 de l'assistant, `profil --modele <id>`
    les fiches de classe et de modèle (profil des scores, bandeau « Appris sur »).
 3. Ajouter ou mettre à jour le point de recette dans `tests/TESTS_MANUELS_QGIS.md` (§38 pour le manuel).
 4. Rappeler à l'utilisateur de recharger le plugin : les chapitres sont relus à chaque ouverture du

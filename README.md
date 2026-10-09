@@ -136,14 +136,15 @@ Certaines étapes reposent sur des exécutables dans le `PATH` :
 - `gdal_translate` requis pour `existing_mnt` / `existing_rvt`
 - `gdaladdo` optionnel (pyramides / overviews). Si absent, la génération de pyramides est ignorée
 
-## Utilisation : l'assistant en 4 étapes
+## Utilisation : l'assistant en 5 étapes
 
-Depuis la **v0.3.0**, le plugin s'utilise via un **assistant (wizard) en 4 étapes**. On navigue avec **Précédent / Suivant** ; un rail latéral indique l'étape courante et signale les erreurs bloquantes. La configuration est **auto-sauvegardée** entre deux sessions (`last_ui_config.json`) ; l'en-tête propose aussi **Charger / Enregistrer config** (profils `.json`).
+Depuis la **v0.3.0**, le plugin s'utilise via un **assistant (wizard)**, en **5 étapes** depuis que l'étape « Lancer » est scindée en « Vérifications » et « Traitement » (2026-10-09). On navigue avec **Précédent / Suivant** ; un rail latéral indique l'étape courante et signale les erreurs bloquantes. La configuration est **auto-sauvegardée** entre deux sessions (`last_ui_config.json`) ; l'en-tête propose aussi **Charger / Enregistrer config** (profils `.json`).
 
 1. **Source** — Choix du mode de données (`ign_laz`, `local_laz`, `existing_mnt`, `existing_rvt`) et des chemins d'entrée (zone/liste IGN, dossier LAZ, dossier MNT ou dossier RVT selon le mode).
 2. **Produits** — Sélection des produits : **MNT / Densité / Couverture** (modèle de base) + indices **RVT**, tous présentés sur le même gabarit de carte (**HS, M-HS, SVF, SLO, LD, SLRM, VAT, MSTP, CVAT, PRISM, CRIM**). Le bouton **« Réglages avancés… »** ouvre une vue à onglets pour régler finement chaque indice (paramètres RVT : azimut/élévation solaire, directions, rayons, échelles multi-niveaux, etc.) ainsi qu'un onglet par produit du modèle de base — **MNT** (filtre PDAL, **résolution MNT** : 0,50 m/pixel par défaut), **Densité** (résolution du raster de densité), **Couverture** (seuil de zones mal couvertes) — et la **marge de tuilage**, commune à tous les indices. Tous les paramètres se règlent là et nulle part ailleurs : la vue d'ensemble ne sert qu'à choisir les produits. *(HS = hillshade simple, mono-directionnel ; M-HS = multi-directionnel ; MSTP = position topographique multi-échelle, sortie RGB ; CVAT = VAT combiné general+flat, composition figée ; PRISM = ouverture prismatique, la couleur dit l'orientation du versant ; CRIM = relief coloré, la couleur dit la pente.)* Chaque carte de produit porte une **fiche** (vignette + lien « Fiche », même accès qu'à l'étape 3) : ce que montre l'image, dans quelle optique s'en servir, ce qu'elle ne montre **pas**, comment elle est calculée, ses réglages et ses sources (documentation et manuel RVT, QGIS/PDAL/GDAL, descriptif de contenu IGN LiDAR HD, articles fondateurs). En tête de la fiche, deux **tableaux comparatifs** (« ce que chaque produit sait faire », « quel produit pour quelle forme ») répondent à la question que la fiche d'un seul produit ne résout pas : lequel cocher. Textes dans `data/indices_fiches.json`, images dans `data/indices_vignettes/`, logique pure dans `src/app/services/indice_fiche.py`.
 3. **Détection IA** *(optionnelle)* — On coche les **entités archéologiques** à détecter (parcellaire, trous d'obus, talus/fossés…). L'orchestrateur choisit automatiquement le(s) modèle(s) ONNX adapté(s) et l'indice RVT cible. Les seuils de **confiance** et d'**aire minimale** sont réglables par entité. La valeur par défaut de chaque entité vient du `model_card.yaml` du modèle : elle est **choisie sous le seuil F1-max** mesuré au banc (le F1 pèse un oubli comme un faux positif, alors qu'en prospection un faux positif se rejette en quelques secondes), dans la fenêtre [bas du plateau F1 ≥ 95 % ; F1-max] — la lecture qui l'a fixée est consignée dans `seuils_provenance`. Le seuil de confiance est **filtrant** : les détections sous le seuil sont écartées du `.gpkg` de l'entité (après clustering, donc l'hystérésis de regroupement reste alimentée), et la **légende** du `.qgs` part du seuil propre à chaque entité — une entité dont rien ne dépasse son seuil donne une couche vide. Pour les modèles qui portent une table de fiabilité (`thresholds.fiabilite` du `model_card.yaml`), la légende ne montre plus des tranches de score mais quatre catégories **douteux / possible / probable / très probable**, définies par la part de vrais objets mesurée au banc (≥ 35 / 60 / 85 %) : les mots ont le même sens pour tous les modèles, seules les coupures de score changent, par classe. Le rendu reste celui des tranches d'origine : un contour sans remplissage dans la couleur de l'entité, déclinée en luminosité par catégorie (plus sombre = plus sûr), pour laisser lire le relief à l'intérieur ; le détail mesuré (« ≥ 85 % de vrais objets sur le banc, mesuré 95 % sur 1 013 détections ») est dans l'infobulle de la couche, l'infobulle de chaque détection et les champs `fiabilite` / `fiabilite_pct`. En mode avancé, l'étape 3 affiche les coupures effectives sous la case « Confiance ».
-4. **Lancer** — Un panneau **« État du système »** exécute le préflight en tâche de fond (outils CLI, Processing, runner ONNX, espace disque…) ; un **récapitulatif** résume les choix ; le nombre de **workers** parallèles est réglable dans les paramètres avancés repliables. Le bouton **▶ Lancer le pipeline** démarre le traitement : l'écran bascule alors sur la **vue d'exécution** (timeline 5 étapes + journal défilant avec auto-défilement / copier / effacer).
+4. **Vérifications** — Un panneau **« État du système »** exécute le préflight en tâche de fond (outils CLI, Processing, runner ONNX, espace disque…) ; un **récapitulatif** résume les choix ; le nombre de **workers** parallèles est réglable dans les paramètres avancés repliables. Le bouton **▶ Lancer le pipeline** démarre le traitement et passe à l'étape 5.
+5. **Traitement** — La **vue d'exécution** : frise des phases (compteur mesuré et chronomètre par phase), journal défilant (copier / effacer / filtres ⚠ ✗), puis le cadre « Par où commencer » (bilan de fiabilité, « Ouvrir le projet QGIS », rapport). Pendant un run, les étapes 1 à 4 sont en lecture seule.
 
 ## Computer vision : runner ONNX + modèles
 
@@ -541,7 +542,7 @@ Les GeoTIFF peuvent contenir des **overviews** si l'option pyramides est activé
 ## Développement
 
 - Point d’entrée plugin : `main.py` (classe `ArcheologiaPipelinePlugin`)
-- UI : `src/ui/wizard_dialog.py` (assistant 4 étapes ; pages dans `src/ui/steps/`, vue d'exécution `src/ui/run_view.py`)
+- UI : `src/ui/wizard_dialog.py` (assistant 5 étapes ; pages dans `src/ui/steps/`, vue d'exécution `src/ui/run_view.py` = étape 5)
 - Pipeline : `src/pipeline/`
   - prérequis : `src/pipeline/preflight.py`
 
@@ -600,14 +601,14 @@ flowchart TD
         C --> D["initGui() → action menu + toolbar"]
     end
 
-    subgraph UI["Interface (WizardDialog — assistant 4 étapes)"]
+    subgraph UI["Interface (WizardDialog — assistant 5 étapes)"]
         E["Clic sur plugin"] --> F["WizardDialog"]
         F --> S1["Étape 1 · Source (mode + chemins)"]
         S1 --> S2["Étape 2 · Indices (produits + réglages avancés RVT)"]
         S2 --> S3["Étape 3 · Détection (entités → model_orchestrator → runs CV)"]
-        S3 --> S4["Étape 4 · Lancer (préflight + récap + workers)"]
+        S3 --> S4["Étape 4 · Vérifications (préflight + récap + workers)"]
         S4 -->|"▶ Lancer le pipeline"| H3["Thread worker (daemon)"]
-        S4 -.->|"bascule l'affichage"| RV["RunView (timeline 5 étapes + journal)"]
+        S4 -.->|"passe à l'étape 5"| RV["Étape 5 · Traitement — RunView (frise + journal)"]
     end
 
     subgraph Worker["Thread Worker"]
@@ -873,7 +874,7 @@ src/
 │       ├── existing_rvt.py         # Traitement RVT existants (indices_folder_name param)
 │       └── local_laz.py            # Indexation nuages locaux
 │
-└── ui/                            # Interface Qt V2 (assistant 4 étapes)
+└── ui/                            # Interface Qt V2 (assistant 5 étapes)
     ├── wizard_dialog.py            # Assistant : rail + 4 pages + navigation + validation
     ├── run_view.py                 # Vue d'exécution : timeline 5 étapes + journal
     ├── icons.py                    # Chargement / teinte des icônes SVG

@@ -124,7 +124,7 @@ fileignoreconfig:
 - filename: src/ui/wizard_dialog.py
   checksum: 59bb2125db65d4ea616791b2872ebf822c3b486e2a8dc97453b9b4a374de4e1c
 - filename: tests/TESTS_MANUELS_QGIS.md
-  checksum: 447ad9c6ea802e3e5ca1b41fad543b7b9e94afb826bf26b6f2d31352276daf8f
+  checksum: d18a699eb5914471866545859978d2e01e781e0d9b63f0a142b1f7b05735841d
 - filename: tests/integration/test_existing_mnt_runner_finalize.py
   checksum: e67c2e4c83cea0937bdfb39e8eec7aa7476f30648d4d858589e2308ad0565d63
 - filename: tests/integration/test_existing_rvt_runner_isolation.py
@@ -245,11 +245,11 @@ fileignoreconfig:
   checksum: 9fc02cf53a5b090aa8885a08640aaa90f75d9a127a473e8b752b492609454096
 - filename: .claude/commands/livraison.md
   checksum: 812cf3734bb61af5f9bee9e48449c2b708e88669e0b89a0a45050e44e2f5ee8c
-- filename: aide/07-resultats.md
+- filename: aide/08-resultats.md
   checksum: 72056a849103ed5fd8b09b803dcdd061a9bfa02bf4293a552c13f001d201185f
 - filename: aide/04-etape-2-produits.md
   checksum: 1256428a17e07dc1fda214f6d34ee0583ef279b7f93e341d396ebc17db378e1a
-- filename: aide/08-depannage.md
+- filename: aide/09-depannage.md
   checksum: bd414256c96437c2c25004a38580b2388272e98f1124e1c4850cb6d8cf56b2d9
 - filename: src/ui/widgets/carte_zones.py
   checksum: 21133047c38545b434cb80ba78495795e2936112b1c3f76c93808888752f0e53
@@ -262,7 +262,7 @@ fileignoreconfig:
 - filename: aide/img/etape2-fiche-produit.png
   checksum: 0a89becab8b58bae45ba493a80b212b3c7522ed79c4c3f4451f4fd424bb53533
 - filename: aide/02-premier-traitement.md
-  checksum: 8f891fa5a521898bd461f43e1ea1d67dca7023706859c9e75de02a37b79097f2
+  checksum: c7c43df4dfbda088a300c572db81c11962d0a2afa43324bf6a6d9883fd79bb39
 - filename: src/ui/dialogs/aide_dialog.py
   checksum: 338b10a2dfe83b50cab535702b67c5153e974019a0c4981c1a1066981424f513
 - filename: dev/build_quadrillage_from_wfs.py
@@ -285,4 +285,6 @@ fileignoreconfig:
   checksum: 1a97c92ef4706ca8219e2e241931127733237e1eefbc64c34ba9bf1367502183
 - filename: data/third_party/cv_runner_onnx/windows/build_info.json
   checksum: 45011b4d0aad06531d94d7f21b30a4df2e89c60bfc0c3d170162d814c1ae2b32
+- filename: dev/rendu_hors_ecran.py
+  checksum: bf74e7a359ea701c0bfb5dc5d36c5cd89e7c59d9857091dfdda5b458b9af87b7
 version: '1.0'

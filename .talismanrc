@@ -4,7 +4,7 @@ fileignoreconfig:
 - filename: tests/unit/test_opns.py
   checksum: 0506c8a17e9157f23cf0cbcd449ce4703241b1ed07c051270b39ed4484dfcf4a
 - filename: metadata.txt
-  checksum: a195ff83bb7e118726ab8231e1635092d4d502c17b08027d8dae123ab846d18d
+  checksum: d087e21da9ebe1a2cabd39529cab8edd6c275c65ffc3274145fea569845098a8
 - filename: tests/unit/test_mnt_chien_de_garde.py
   checksum: fbb2c02d82caaf493cc5be4f107d9ad7b9e9b753a835b33de36e913e9ca7f7b5
 - filename: src/pipeline/ign/products/mnt.py
@@ -24,7 +24,7 @@ fileignoreconfig:
 - filename: CLAUDE.md
   checksum: 1035be5aec73a319dd56c0ef428bee494dcadef2e61d2071f8e664a40b25a666
 - filename: README.md
-  checksum: 9a9a0ba471eb993d013b0cc705d5233d437afaf059d0df2f33963c1ffbdf05f3
+  checksum: e3f3d410bee1b412cf75d6cd5ce571a29440a739eaa52699c6b951f19df043ca
 - filename: dev/docs/documentation_utilisateur_v1.docx
   checksum: 9984314b88553c8aa0de31f28403d664eba5a2426681c22a6b1c29e5c787cc5e
 - filename: dev/docs/specs/2026-06-11-produit-couverture-design.md

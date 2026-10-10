@@ -116,7 +116,10 @@ class ExistingRvtRunner:
             # PNG des suivants sont déjà là) → lui seul pilote la bande 0–10,
             # sinon la barre reculerait de 95 à 0 au run 2.
             def _on_prep_progress(idx, total, name, _ri=run_idx):
-                narrator.rvt_prep_progress(idx, total, name)
+                if cv_runs:
+                    narrator.rvt_prep_progress(idx, total, name)
+                else:   # sans détection, la boucle ne fait que publier les TIF
+                    narrator.rvt_prep_progress(idx, total, name, "Publication des indices", "dalles")
                 if _ri == 1:
                     reporter.progress(plan.at(plan.products, idx / max(1, total)))
 
@@ -236,7 +239,10 @@ class ExistingRvtRunner:
                 # Le repli sur le nombre de runs ne sert qu'au cas où RIEN n'a
                 # abouti — il faut alors un total non nul pour armer la garde, et
                 # le numérateur y vaut 0 de toute façon.
-                tiles_total=total_images or len(run_configs),
+                # Sans détection, ce mode n'a pas de compteur (aucune image) :
+                # total 0 → la garde « 0 sur N » ne s'applique pas (recette
+                # 0.14.0 §11.1 : TIF publiés mais run annoncé « en échec »).
+                tiles_total=(total_images or len(run_configs)) if cv_runs else 0,
                 active_products=active_rvts,
                 extra_label="Images traitées",
                 ui_config=ctx.ui_config,

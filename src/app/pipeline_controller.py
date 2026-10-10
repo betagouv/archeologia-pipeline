@@ -176,4 +176,8 @@ class PipelineController:
             # visible dans le journal UI même si l'erreur a fui AVANT le try
             # du runner, puis on laisse le traceback remonter au worker.
             reporter.error(f"Erreur fatale du pipeline : {e}")
+            # La trace au niveau INFO : le journal fichier la garde, l'assistant
+            # (filtré à USER_INFO) ne l'affiche pas — l'exception qui remonte au
+            # worker y arrive après la fermeture du journal fichier.
+            logging.getLogger("archeologia_pipeline").info("Trace de l'erreur fatale :", exc_info=True)
             raise

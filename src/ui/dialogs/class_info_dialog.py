@@ -346,7 +346,7 @@ class _CorpsFiche(QWidget):
                 figure.set_seuil(seuil)
                 if abs(seuil - figure.profil.seuil) > 1e-9:
                     legende += (f" Seuil réglé à {seuil:.2f} (modèle : "
-                                f"{figure.profil.seuil:g}).").replace(".", ",")
+                                f"{figure.profil.seuil:g})").replace(".", ",") + "."
             lay.addWidget(_label(legende, "FicheLegende"))
             # Petits multiples par zone d'évaluation : une classe sûre ici et
             # faible là se voit d'un coup d'œil (les linéaires surtout).

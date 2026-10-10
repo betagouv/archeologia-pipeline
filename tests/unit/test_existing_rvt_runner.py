@@ -89,6 +89,21 @@ class TestExistingRvtRunner:
         assert finalize_calls[0]["tiles_processed"] == 3
         assert finalize_calls[0]["active_products"] == ["LD"]
 
+    def test_sans_detection_pas_de_compteur_donc_pas_d_echec(self, tmp_path: Path, monkeypatch):
+        """Recette 0.14.0 §11.1 : sans détection, aucune image n'est produite ; le
+        total d'images doit valoir 0 (mode sans compteur), sinon « 0 sur 1 » fait
+        annoncer un échec alors que les TIF sont publiés."""
+        monkeypatch.setattr("pipeline.modes.existing_rvt.run_existing_rvt",
+                            lambda **kw: SimpleNamespace(total_images=0))
+        finalize_calls = []
+        monkeypatch.setattr("app.runners.existing_rvt_runner.finalize_pipeline",
+                            lambda **kwargs: finalize_calls.append(kwargs))
+        ExistingRvtRunner().run(
+            ctx=_ctx(tmp_path, {"enabled": False, "target_rvt": "LD"}),
+            reporter=_Reporter(), cancel=CancelToken(threading.Event()),
+        )
+        assert finalize_calls[0]["tiles_processed"] == 0 and finalize_calls[0]["tiles_total"] == 0
+
     def test_enabled_cv_without_model_logs_and_copies_rasters_without_inference(self, tmp_path: Path, monkeypatch):
         calls = []
 

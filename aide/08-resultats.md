@@ -7,9 +7,9 @@ Deux dossiers, une règle : `livrable/` se garde et se transmet, `technique/` se
 ```
 dossier_de_sortie/
 ├── livrable/                          ce que vous gardez et transmettez
-│   ├── projet.qgs                     le projet QGIS, tout regroupé et stylé : le point d'entrée
-│   ├── rapport.html                   le rapport du traitement, à ouvrir dans le navigateur
-│   ├── traitement.json                résumé du dernier traitement, sans chemin de votre poste
+│   ├── projet.qgs                     le projet QGIS stylé : le point d'entrée
+│   ├── rapport.html                   le rapport, à ouvrir dans le navigateur
+│   ├── traitement.json                résumé du traitement, sans chemin de votre poste
 │   ├── indices/
 │   │   ├── MNT/tif/                   le modèle de terrain, dalle par dalle
 │   │   │   └── index_MNT.vrt          la mosaïque, chargée dans QGIS

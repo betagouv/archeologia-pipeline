@@ -43,6 +43,9 @@ EXCLUDE_DIRS = {
     "temp",
     # (entrainement/ des modèles : règle à part dans should_exclude, qui n'en garde
     # que les courbes d'évaluation.)
+    # Flux Géoplateforme privés de l'onglet Visualisation : les descripteurs
+    # GDAL_WMS portent la clé d'accès (gitignoré, cf. .gitignore).
+    "local_catalogue",
 }
 
 EXCLUDE_FILES = {
@@ -122,6 +125,11 @@ def should_exclude(path: Path, relative_path: str) -> bool:
     # jamais distribué. On NE peut PAS exclure tous les .txt : classes.txt, dalles_urls.txt…
     # sont des fichiers runtime légitimes du plugin.
     if path.is_file() and name.startswith("pipeline_log_") and name.endswith(".txt"):
+        return True
+
+    # Sauvegardes horodatées (catalogue.json.bak-2026-09-23…) : état local du poste,
+    # jamais distribué — le ZIP 0.14.0 les embarquait avant ce garde-fou (2026-10-09).
+    if path.is_file() and ".bak-" in name:
         return True
 
     # Exclure par extension — endswith et non path.suffix : les extensions

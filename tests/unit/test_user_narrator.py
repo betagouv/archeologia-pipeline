@@ -395,6 +395,13 @@ class TestNewNarratorEvents:
         assert "échec" in msg
         assert "téléchargée" not in msg
 
+    def test_download_tile_progress_dalle_sautee_dit_deja_presente(self):
+        # Recette 0.14.0 : une dalle sautée (déjà sur le disque) se disait « téléchargée ».
+        narrator, reporter = self._make()
+        narrator.download_tile_progress(2, 2, "T2", success=True, skipped=True)
+        msg, _group = reporter.user_info_transient.call_args[0]
+        assert "déjà présente" in msg and "téléchargée" not in msg
+
     def test_download_tile_progress_defaults_to_success(self):
         # Rétro-compat : sans argument explicite, comportement « téléchargée ».
         narrator, reporter = self._make()

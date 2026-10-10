@@ -216,7 +216,7 @@ Cette grille indique, pour chaque vague livrée, **quelles sections de tests son
 >
 > **V1** : tester les 3 régimes (idem §10).
 
-- [ ] **11.1** RVT valide → copie TIF, nettoyage orphelins. ⚠️ La conversion PNG+PGW n'a lieu **que si une détection est cochée** (les PNG ne servent qu'à l'inférence) : sans CV, aucun `livrable/indices/RVT/png/` ne doit apparaître.
+- [ ] **11.1** RVT valide → copie TIF, nettoyage orphelins. ⚠️ La conversion PNG+PGW n'a lieu **que si une détection est cochée** (les PNG ne servent qu'à l'inférence) : sans CV, aucun `technique/png/` ne doit apparaître, et le run se termine en ✓ (« Publication des indices n/N » dans le journal, jamais « Préparation des images »).
 - [ ] **11.2 Avec détection activée** → inférence ONNX sur les JPG, shapefiles
   - Régime large : SAHI doit slicer en mémoire (pas de pré-découpage)
 
@@ -452,7 +452,7 @@ Cette grille indique, pour chaque vague livrée, **quelles sections de tests son
 
 - [ ] **22.1 Premier run** : lancer un run `ign_laz`/`local_laz` sur ≥ 2 dalles contiguës dans un `output_dir` neuf → couches `index_*` chargées, mosaïque complète. **Ne pas fermer QGIS.**
 - [ ] **22.2 Re-run avec dalle ajoutée** : relancer dans **le même** `output_dir` en ajoutant 1 dalle (distante de préférence). Au lancement, le journal indique « N couche(s) périmée(s) … retirée(s) avant régénération ». À la fin, les couches `index_*` affichent **toutes** les dalles (ancienne(s) + nouvelle).
-- [ ] **22.3 Vérif disque** : dans `livrable/indices/<PRODUIT>/tif/index_<PRODUIT>.vrt`, le nombre de `<SourceFilename>` = nombre de TIF présents (toutes dalles incluses), **sans** bloc `STATISTICS_*` parasite (signature d'une réécriture QGIS périmée). ⚠️ Une balise `<OverviewList>` seule est **normale** : `gdalbuildvrt` (GDAL ≥ 3.11) la dérive des pyramides `.ovr` des sources — seul `STATISTICS_` discrimine.
+- [ ] **22.3 Vérif disque** : dans `livrable/indices/<PRODUIT>/tif/index_<PRODUIT>.vrt`, le nombre de `<SourceFilename>` = nombre de TIF présents (toutes dalles incluses), et chaque source pointe un TIF présent. ⚠️ Ni un bloc `STATISTICS_*` ni une balise `<OverviewList>` ne signalent une réécriture périmée : les premiers sont écrits en fin de run par la création des couches de `livrable/projet.qgs`, la seconde est dérivée par `gdalbuildvrt` (GDAL ≥ 3.11) des pyramides `.ovr` — seul le compte des sources discrimine (recette 0.14.0).
 - [ ] **22.4 Persistance** : sauvegarder le projet QGIS puis le rouvrir → toujours toutes les dalles visibles.
 - [ ] **22.5 Dossier différent (non-régression)** : relancer dans un `output_dir` **différent** → aucune couche du premier run n'est retirée ; fonds de carte, polygone d'emprise (étape 1) et couche quadrillage restent **intacts** (jamais purgés).
 - [ ] **22.6 Détections** : si des détections existent, le re-run rafraîchit aussi les couches `livrable/detections/<entité>/*.gpkg` (pas de doublon, données à jour).
@@ -521,7 +521,7 @@ Cette grille indique, pour chaque vague livrée, **quelles sections de tests son
 > extérieur au périmètre (NoData) ne doit produire aucune détection.
 
 - [ ] **26.1 Source non rognée** : run `ign_laz` ≥ 2 dalles adjacentes + CV active → le journal montre `Conversion TIF->PNG (existing_rvt): LHD_FXX_…_PTS_C_LAMB93_IGN69_<RVT>….tif -> …` (nom **source non rogné**, pas le nom `…_A_LAMB93`).
-- [ ] **26.2 PNG à marge** : dans `livrable/indices/<RVT…>/png/`, les PNG font ~2800×2800 px (marge 20 % @ 0,5 m) et s'alignent sur le VRT quand on les charge via leur `.pgw`.
+- [ ] **26.2 PNG à marge** : dans `technique/png/<RVT…>/` (arborescence v3), les PNG débordent de la dalle de 20 % (200 m @ 0,5 m) vers chaque voisine présente — ~2800×2800 px pour une dalle entourée, 2401×2001 px pour deux dalles côte à côte — et s'alignent sur le VRT quand on les charge via leur `.pgw`.
 - [ ] **26.3 Objet à cheval** : une structure traversant la frontière entre deux dalles ressort **continue** (pas de coupure rectiligne à x/y multiple de 1000 m) et **sans doublon** superposé dans la bande de recouvrement.
 - [ ] **26.4 Pas de bruit hors périmètre** : aucune détection au-delà de l'union des dalles commandées (halo extérieur clippé).
 - [ ] **26.5 Cache invalidé** : relancer dans un `output_dir` d'un run antérieur → journal `cache(s) de détection plus ancien(s) que leur PNG — purgé(s), ré-inférence` au premier passage ; résultats stables au second.
@@ -573,10 +573,9 @@ Recette de référence : zone test de Fénétrange (mode `existing_mnt` ou `ign_
 « Grandes dépressions » (modèle `depressions_grandes_seg_ld_v1`, seuil 0,29) et une entité
 ponctuelle (charbonnières / fours) pour vérifier les coupures par classe.
 
-- [ ] Étape 3, « Réglages avancés » coché : sous la case « Confiance » de l'entité, une ligne
-      « Fiabilité affichée — douteux dès 0,29 · possible dès 0,35 · probable dès 0,45 · très probable
-      dès 0,65 ». Relever le seuil à 0,50 → la ligne devient « probable dès 0,50 · très probable dès 0,65 »
-      (les catégories sous le seuil disparaissent, la première commence AU seuil).
+- [ ] Étape 3, « Réglages avancés » coché : sous la case « Confiance » de l'entité, le mini-profil des
+      scores (§39.8) remplace l'ancienne ligne « Fiabilité affichée — douteux dès … ». Relever le seuil à
+      0,50 → la ligne orange du seuil suit et les niveaux sous le seuil passent en « écartées ».
 - [ ] « Voir les détails du modèle » : section FIABILITÉ DES DÉTECTIONS, une ligne par catégorie
       « score ≥ 0.65 : ≥ 85 % de vrais objets sur le banc (mesuré : 95 % sur 1 045 détections) », et la
       provenance. Charbonnières / fours : deux jeux de lignes, un par classe.
@@ -610,7 +609,7 @@ ponctuelle (charbonnières / fours) pour vérifier les coupures par classe.
 > extérieur au périmètre ne doit produire aucune détection.
 
 - [ ] **29.1 Halo fabriqué** : run `existing_rvt` sur ≥ 2 dalles 1 km adjacentes + CV → journal `Halo inter-dalles depuis les voisins (marge 50 m) : N fabriqué(s), 0 réutilisé(s), K dalle(s) sans voisin` ; `technique/intermediaires/halo/RVT/` contient un `.tif` + `.inputs.json` par dalle ayant un voisin.
-- [ ] **29.2 PNG à marge** : `livrable/indices/RVT/png/*.png` font 2200×2200 px (dalles 2000 px @ 0,5 m) et s'alignent sur les TIF via leur `.pgw` (origine décalée de 50 m).
+- [ ] **29.2 PNG à marge** : `technique/png/RVT/*.png` (arborescence v3) font 2200×2200 px (dalles 2000 px @ 0,5 m) et s'alignent sur les TIF via leur `.pgw` (origine décalée de 50 m).
 - [ ] **29.3 Objet à cheval** : Fénétrange (`tif_test`, 43 dalles LD), dépression GT `train:12785` (48.838776, 6.920619) à cheval sur y = 6 867 000 → **un seul** polygone entier (IoU ≥ 0,7 avec le masque SAM), plus de coupure rectiligne à y = 6 867 000 ; charbonnière à 48.883707, 6.922291 → boîte non tronquée à y = 6 872 000.
 - [ ] **29.4 Pas de bruit hors périmètre** : aucune détection au-delà de l'union des dalles ; pas de polygones le long des bords extérieurs.
 - [ ] **29.5 Reprise** : relancer dans le même `output_dir` → `N réutilisé(s)`, PNG non régénérés, cache CV conservé (pas de ré-inférence). Ajouter une dalle voisine → seuls les halos des dalles touchées sont re-fabriqués et ré-inférés.
@@ -753,7 +752,7 @@ dossier, donc deux runs de types différents cohabitent.
 
 ### Le calcul
 
-- [ ] **36.6 Run positive** : run `existing_mnt` ou `ign_laz` avec OPNS seul, type Positive → dossier `livrable/indices/OPNS_Pos_R10_D16_V1_N0/tif/`, mosaïque `index_OPNS.vrt` chargée dans QGIS sous le nom `index_OPNS`.
+- [ ] **36.6 Run positive** : run `existing_mnt` ou `ign_laz` avec OPNS seul, type Positive → dossier `livrable/indices/OPNS_Pos_R10_D16_V1_N0/tif/`, mosaïque `index_OPNS_Pos_R10_D16_V1_N0.vrt` chargée dans QGIS sous le même nom (règle du 14.1.a : la mosaïque porte le nom complet du dossier).
 - [ ] **36.7 Lecture positive** : sur l'image 8 bits, les tertres, crêtes et lèvres de cratère sont **clairs**, les fossés sombres, le terrain plan d'un gris uniforme. Aucune ombre portée, aucune direction privilégiée : tourner mentalement la dalle ne change rien.
 - [ ] **36.8 Run négative, même dossier de sortie** : relancer avec le type Négative → un **second** dossier `livrable/indices/OPNS_Neg_R10_D16_V1_N0/`, le premier intact. Les deux couches coexistent dans QGIS.
 - [ ] **36.9 Lecture négative** : les creux (chemins creux, fossés, fonds de carrière) sont **sombres**, comme en positive — RVT inverse l'échelle à l'export 8 bits. ⚠ En décochant « Export 8 bits », l'inversion disparaît : un creux y devient clair. C'est écrit dans la fiche.
@@ -783,7 +782,7 @@ jamais `appariements.json`, les tfevents, les journaux ni les `comparaison_*/`.
 - [ ] **37.6 Multi-classes** : ponctuelles et linéaires montrent aussi « F1 par classe », entre les deux autres courbes. Les ponctuelles affichent les chiffres de leur propre bloc (précision 0.70 · rappel 0.59), pas ceux du modèle comparé.
 - [ ] **37.7 Installation par ZIP** : installer le ZIP produit par `dev/package_plugin.py` dans un profil vierge → les sections et les courbes sont présentes ; le dossier `entrainement/` installé ne contient que `evaluation*/` avec des `.png` et `metriques_eval.json`.
 - [ ] **37.7 bis Fiches distinguées** (option A, 2026-10-08) : fiche de Cratères → titre de fenêtre « Structure · Cratères », liseré rouge (couleur de la couche) en haut, étiquette « ● STRUCTURE DÉTECTABLE » rouge foncé au-dessus du titre ; passer à « Regroupement de cratères » dans la liste recolore liseré et étiquette. Lien « Fiche du modèle » avec une icône de puce ardoise → fiche du modèle : titre « Modèle · … » (sans doublon si le nom commence par « Modèle »), liseré ardoise, étiquette « MODÈLE DE DÉTECTION · ONNX », ligne « Détecte : ● Cratère … » avec la pastille de chaque classe. Enclos circulaires (cyan) : l'étiquette reste lisible (cyan assombri).
-- [ ] **37.7 quater Vérité terrain en couleur de la classe** (2026-10-08) : fiche de Cratères, bouton « Vérité terrain » → les contours sont rouges (couleur de la couche), plus jaunes ; Parcellaire → bleus ; Enclos circulaires → cyan ; le relief sous les contours est inchangé et « Relief seul » ne montre aucun contour. En comparaison A/B, la couleur est celle de la couche « classe — Modèle ».
+- [ ] **37.7 quater Vérité terrain en couleur de la classe** (2026-10-08) : fiche de Cratères, bouton « Vérité terrain » → les contours ont la couleur de la couche Cratères du projet (celle du registre de couleurs du profil QGIS : elle varie d'un profil à l'autre), plus jaunes ; de même pour Parcellaire et Enclos circulaires, chacun dans sa teinte ; le relief sous les contours est inchangé et « Relief seul » ne montre aucun contour. En comparaison A/B, la couleur est celle de la couche « classe — Modèle ».
 - [ ] **37.7 ter Appris sur** (2026-10-08) : fiche de Charbonnière → en tête de « Ce que le modèle a appris », un bandeau : carte de France avec huit disques (couleur de la couche, Rambouillet le plus gros), et à droite « Appris sur · 8 zones · 12 225 objets annotés » puis une ligne par zone (nom, barre, « 5 510 objets · 1 237 tuiles ») ; survoler une ligne la teinte de la couleur de la couche et entoure son disque ; survoler un disque l'entoure, teinte sa ligne et donne son nom et ses effectifs en infobulle (le petit disque de La Capelle, posé sur celui des Garrigues d'Alès, se survole ; les Garrigues se survolent sur leur couronne) ; quitter la carte ou la liste efface les deux. La liste « Zones d'apprentissage » en texte n'apparaît plus en dessous. Fiche d'Enclos circulaires → carte de l'Irlande, neuf disques. Aucune carte dans « Par zone d'évaluation ».
 - [ ] **37.8 Depuis la fiche de classe** : étape 3, « Fiche » d'une entité → sous « Contexte technique », un lien « Fiche du modèle » ouvre la fiche ⓘ du modèle **de la classe affichée** par-dessus ; la fermer ramène à la fiche de classe. En comparaison A/B (deux modèles cochés sur Cratères), chaque classe de la liste de gauche mène à son propre modèle.
 - [ ] **37.9 Qt6** : rejouer 37.1 à 37.4 et 37.8 sous QGIS 4 — aucun `AttributeError` dans le journal Python.
@@ -792,8 +791,8 @@ jamais `appariements.json`, les tfevents, les journaux ni les `comparaison_*/`.
 
 Le manuel (`aide/*.md`) remplace la notice Word. Il est non modal : on le garde ouvert à côté de l'assistant.
 
-- [ ] **38.1 Menu** : Extensions → Archéolog'IA → **Manuel** ouvre la fenêtre « Manuel d'Archéolog'IA — v<version> » sur « Installer et mettre à jour » ; sommaire à gauche (10 chapitres, le dernier « Nouveautés »), texte à droite avec titres, tableaux et listes rendus.
-- [ ] **38.2 Bouton « Aide »** : dans l'assistant, le bouton **Aide** de l'en-tête (icône info, même style que « Charger une config ») et **F1** ouvre le chapitre de l'étape affichée — étape 2 → « Étape 2 · Produits », étape 3 → « Étape 3 · Détection », étape 4 (y compris pendant un run) → « Étape 4 · Lancer et suivre ». Rouvrir depuis une autre étape change le chapitre sans ouvrir une seconde fenêtre.
+- [ ] **38.1 Menu** : Extensions → Archéolog'IA → **Manuel** ouvre la fenêtre « Manuel d'Archéolog'IA — v<version> » sur « Installer et mettre à jour » ; sommaire à gauche (11 chapitres, le dernier « Nouveautés »), texte à droite avec titres, tableaux et listes rendus.
+- [ ] **38.2 Bouton « Aide »** : dans l'assistant, le bouton **Aide** de l'en-tête (icône info, même style que « Charger une config ») et **F1** ouvre le chapitre de l'étape affichée — étape 2 → « Étape 2 · Produits », étape 3 → « Étape 3 · Détection », étape 4 → « Étape 4 · Vérifications », étape 5 (y compris pendant un run) → « Étape 5 · Traitement ». Rouvrir depuis une autre étape change le chapitre sans ouvrir une seconde fenêtre.
 - [ ] **38.3 Sommaire** : cliquer une section (ex. Étape 2 › « Tuilage et marge ») fait défiler le texte jusqu'au titre ; cliquer un chapitre revient en haut.
 - [ ] **38.4 Liens internes** : dans « Dépannage › Le dépôt ne s'affiche pas connecté », le lien « le proxy » ouvre « Installer et mettre à jour » sur la section « Réseau d'entreprise : le proxy » et le sommaire suit. Dans « Dépannage › Signaler un problème », le lien GitHub s'ouvre dans le navigateur.
 - [ ] **38.5 Recherche** : chapitre « Vos résultats dans QGIS », taper `fiabilite` puis Entrée : l'occurrence courante est surlignée en **jaune franc**, les autres du chapitre en jaune clair, le texte défile jusqu'à elle ; Entrée à nouveau passe à la suivante et reboucle en fin de chapitre ; vider le champ efface le surlignage ; changer de chapitre aussi. **Ctrl+F** depuis n'importe où dans la fenêtre met le focus dans le champ et sélectionne son contenu, **F3** passe à l'occurrence suivante.
@@ -864,7 +863,7 @@ Vos verdicts (champ `validation` : oui / non / peut-être) agrégés par modèle
 
 Deux racines (2026-10-08) : `livrable/` se garde et se transmet (projet.qgs, rapport.html, traitement.json, indices/, detections/), `technique/` se supprime (sources/, intermediaires/, png/, detection/, journaux/). Chemins : `src/pipeline/output_paths.py` ; migration : `src/app/services/arborescence.py`.
 
-- [ ] **43.1 Dossier neuf** : run IGN (2 dalles, SVF + LD, Cratères) dans un dossier vide → à la racine, exactement `livrable/` et `technique/` ; `livrable/projet.qgs`, `livrable/rapport.html`, `livrable/traitement.json`, `livrable/indices/MNT/tif/index_MNT.vrt`, `livrable/indices/SVF_…/tif/`, `livrable/detections/crateres/crateres.gpkg` + `fiabilite.json` ; `technique/sources/dalles/*.laz`, `technique/sources/dalles_urls.txt`, `technique/intermediaires/`, `technique/png/SVF_…/` et `technique/png/LD_…/`, `technique/detection/<modèle>/raw_detections/`, `technique/journaux/pipeline_log_<date>.txt` **et** `metadata_<date>.json` (même `<date>`). Aucun `png/` sous `livrable/indices/`, aucun `metadata.json` ni `pipeline_log_*.txt` à la racine.
+- [ ] **43.1 Dossier neuf** : run IGN (2 dalles, SVF + LD, Cratères) dans un dossier vide → à la racine, exactement `livrable/` et `technique/` ; `livrable/projet.qgs`, `livrable/rapport.html`, `livrable/traitement.json`, `livrable/indices/MNT/tif/index_MNT.vrt`, `livrable/indices/SVF_…/tif/`, `livrable/detections/crateres/crateres.gpkg` + `fiabilite.json` ; `technique/sources/dalles/*.laz`, `technique/sources/dalles_urls.txt`, `technique/intermediaires/`, `technique/png/SVF_…/` et `technique/png/LD_…/`, `technique/detection/<modèle>/raw_detections/`, `technique/sources/fichier_tri.txt`, `technique/journaux/pipeline_log_<date>.txt` **et** `metadata_<date>.json` (même `<date>`). Aucun `png/` sous `livrable/indices/`, aucun `metadata.json` ni `pipeline_log_*.txt` à la racine.
 - [ ] **43.2 traitement.json** : `plugin_version` = la version du titre de la fenêtre, `arborescence` = 3, `structure` en chemins relatifs (`livrable/indices`, `livrable/detections`), `detections_entities[].gpkg` en `livrable/detections/…`, **pas** de clé `ui_config` ; `technique/journaux/metadata_<date>.json` porte tout, `ui_config` compris.
 - [ ] **43.3 Livrable transmissible** : copier `livrable/` seul sur une clé, ouvrir `projet.qgs` depuis la clé → toutes les couches (mosaïques et GeoPackages) se chargent, styles compris ; « Rapport » s'ouvre.
 - [ ] **43.4 Boutons de la vue** : « Rapport » ouvre `livrable/rapport.html`, « Log complet » ouvre le dernier `technique/journaux/pipeline_log_*.txt`, « Ouvrir le dossier » ouvre la racine.
@@ -898,3 +897,17 @@ Demandé le 2026-10-09 : l'ancienne étape « Lancer » est scindée en deux ét
 - [ ] **45.5 Après le run** : la frise, le cadre « Par où commencer » et le journal restent à l'étape 5 quel que soit le chemin dans le rail ; changer un réglage à l'étape 2 puis revenir ne les efface pas ; « Lancer le pipeline » (étape 4 ou 5) relance et vide le journal.
 - [ ] **45.6 Aide** : F1 à l'étape 4 ouvre « Étape 4 · Vérifications », à l'étape 5 « Étape 5 · Traitement » ; le sommaire du manuel liste les deux chapitres puis « Vos résultats dans QGIS ».
 - [ ] **45.7 Qt6** : rejouer 45.2 et 45.3 sous QGIS 4 — aucun `AttributeError`.
+
+## 46. Correctifs de la 0.14.1 (défauts de la recette 0.14.0) ⭐ P0
+
+La recette de la 0.14.0, jouée par script sous QGIS 3.44 et 4.0.3 le 2026-10-10, a relevé ces défauts ; chaque point vérifie son correctif.
+
+- [ ] **46.1 Dalle isolée** : run IGN sur **une seule** dalle sans voisine (MNT + LD) → ✓ ; le journal technique dit « Prétraitement terminé » puis calcule le MNT. Avant : « _merged.laz introuvable » (la dalle COPC copiée sous `_merged.laz` était refusée par le fournisseur pdal de QGIS). Rejouer dans un dossier de sortie d'une 0.14.0 où ce run avait échoué : le `_merged.laz` en cache est réécrit, le run aboutit.
+- [ ] **46.2 Export PDF sous Qt6** : QGIS 4, Manuel → « Exporter en PDF » → un PDF de plus de 100 Ko, toutes les pages lisibles, et la boîte « Manuel enregistré ». Avant : fichier vide (`print_` inconnu de PyQt6).
+- [ ] **46.3 Chapitre Résultats sous Qt6** : QGIS 4, Manuel › « Vos résultats dans QGIS » → aucune barre de défilement horizontale (l'arborescence débordait de 5 px).
+- [ ] **46.4 Légende du seuil** : fiche d'une classe dont le seuil réglé diffère de celui du modèle → la légende finit par « Seuil réglé à 0,40 (modèle : 0,26). », avec un point final, pas une virgule.
+- [ ] **46.5 `fichier_tri.txt`** : run IGN ou LAZ locaux dans un dossier vide → à la racine, seulement `livrable/` et `technique/` ; la liste triée est dans `technique/sources/fichier_tri.txt`.
+- [ ] **46.6 Erreur fatale sans trace Python** : provoquer une erreur fatale (dossier de sortie verrouillé, §28.7, ou URL de dalle invalide) → le journal de l'assistant affiche « Erreur fatale du pipeline : … » sans `Traceback (most recent call last)` ; la trace complète reste dans `technique/journaux/pipeline_log_<date>.txt`.
+- [ ] **46.7 Indices existants sans détection** : mode Indices existants, aucune entité cochée → ✓ « Terminé », les TIF et la mosaïque publiés, le journal dit « Publication des indices n/N ». Avant : « ✗ En échec · aucune dalle n'a produit de sortie » et « Préparation des images ».
+- [ ] **46.8 Journal lisible** : relancer un run IGN dans le même dossier → « Dalle 2/2 déjà présente » (plus « téléchargée ») ; les modèles sont nommés par leur nom d'affichage (« Cratères d'obus (LD) »), jamais par leur identifiant (`crateres_seg_ld_v1`), dans le journal et dans les durées du rapport.
+- [ ] **46.9 Qt6** : rejouer 46.1, 46.6 et 46.7 sous QGIS 4.

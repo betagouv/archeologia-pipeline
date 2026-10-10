@@ -9,7 +9,7 @@ name=Archéolog'IA
 qgisMinimumVersion=3.34
 qgisMaximumVersion=4.99
 description=Détection de sites archéologiques par réseaux de neurones
-version=0.14.0
+version=0.14.1
 author=Valentin VIEUX
 email=valentin.vieux.pro@outlook.com
 about=Plugin pour automatiser la production d'indices de visualisation (à l'aide du plugin Relief Visualization Toolbox) à partir de données LiDAR ou de MNT et pour détecter des sites archéologiques à l'aide de réseaux de neurones (YOLO, RF-DETR détection ou segmentation)
@@ -21,7 +21,13 @@ repository=https://github.com/betagouv/archeologia-pipeline
 #
 
 hasProcessingProvider=no
-changelog=0.14.0 (2026-10-09)
+changelog=0.14.1 (2026-10-11)
+    * Correctif : un traitement sur une seule dalle, sans voisine, échouait toujours (« fichier introuvable » au calcul du MNT). La dalle est maintenant réécrite au lieu d'être copiée, et un dossier où ce traitement avait échoué repart sans rien supprimer à la main.
+    * Correctif : en mode « Indices existants » sans détection, le traitement s'annonçait en échec alors que les indices étaient bien publiés. Il se termine désormais normalement, et le journal dit « Publication des indices ».
+    * Correctif : sous QGIS 4, l'export du manuel en PDF produisait un fichier vide, et le chapitre « Vos résultats dans QGIS » débordait légèrement de la fenêtre.
+    * Le journal de l'assistant est plus lisible : une dalle déjà sur le disque est dite « déjà présente » et non « téléchargée », les modèles portent leur nom (« Cratères d'obus (LD) ») et non leur identifiant technique, et une erreur bloquante n'affiche plus de trace Python : le détail reste dans le journal complet du dossier de sortie.
+    * Le fichier de tri des dalles rejoint le dossier « technique » au lieu de la racine du dossier de sortie, et la légende du seuil dans la fiche d'une classe se termine par un point au lieu d'une virgule.
+ 0.14.0 (2026-10-09)
     * Un manuel intégré remplace la notice Word : bouton « Aide » ou touche F1 dans l'assistant, menu Extensions › Archéolog'IA › Manuel. Un chapitre par écran, la recherche dans tout le manuel (Ctrl+F, F3), l'historique, le zoom et l'export en PDF. À la première ouverture après une mise à jour, il s'ouvre sur les nouveautés. Une ligne ⚠ ou ✗ du journal renvoie d'un clic à la rubrique de dépannage qui l'explique.
     * L'assistant passe à cinq étapes : l'étape « Lancer » devient « Vérifications » (état du système, récapitulatif, workers) puis « Traitement » (frise et journal). « Lancer le pipeline » passe de l'une à l'autre ; pendant un traitement, les étapes 1 à 4 restent consultables en lecture seule.
     * Vue d'exécution refondue : une ligne d'état au-dessus de la frise, et la frise porte l'avancement, avec le compteur mesuré et le chronomètre de chaque phase. Plus de barre de progression, rien d'estimé. À la fin, le cadre « Par où commencer » montre pour chaque entité ses détections par niveau de fiabilité, du plus sûr au plus douteux.

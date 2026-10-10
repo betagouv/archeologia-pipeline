@@ -16,13 +16,13 @@ Pendant le traitement, les étapes 1 à 4 restent consultables mais en lecture s
 ### Lire le journal
 
 - **▶ Démarrage**, puis les vérifications préalables.
-- **Téléchargement** : les dalles identifiées, puis chaque dalle téléchargée.
+- **Téléchargement** : les dalles identifiées, puis chaque dalle téléchargée, ou « déjà présente » si un lancement précédent l'a laissée sur le disque.
 - **Fusion des dalles avec leurs voisines** : la marge est constituée.
 - **Calcul des produits** : une ligne par dalle, puis par modèle de terrain.
-- **Détection** : une ligne par modèle, puis par image analysée ; à la fin de chaque modèle, le nombre d'images et la durée mesurée.
+- **Détection** : une ligne par modèle, nommé comme à l'étape 3, puis par image analysée ; à la fin de chaque modèle, le nombre d'images et la durée mesurée. Sans entité cochée, en mode indices existants, une seule ligne « Publication des indices ».
 - **Assemblage** : mosaïques, GeoPackages, projet QGIS, puis le nombre de couches ajoutées.
 
-Un **⚠** signale quelque chose qui n'arrête pas le traitement mais mérite d'être lu : un raster trop petit pour le rayon d'un indice, une dalle écartée. Un **✗** est une erreur ; si le traitement s'interrompt, le message en donne la cause et le journal complet du dossier de sortie le détail. Quand ce manuel a une rubrique pour le message, la ligne se termine par « voir Manuel › Dépannage › … » : un clic l'ouvre directement.
+Un **⚠** signale quelque chose qui n'arrête pas le traitement mais mérite d'être lu : un raster trop petit pour le rayon d'un indice, une dalle écartée. Un **✗** est une erreur ; si le traitement s'interrompt, le message en donne la cause et le journal complet du dossier de sortie (`technique/journaux/`) le détail technique. Quand ce manuel a une rubrique pour le message, la ligne se termine par « voir Manuel › Dépannage › … » : un clic l'ouvre directement.
 
 ## À la fin
 

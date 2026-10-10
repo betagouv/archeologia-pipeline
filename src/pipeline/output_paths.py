@@ -302,6 +302,11 @@ def dalles_dir(output_dir: Path) -> Path:
     return sources_dir(output_dir) / "dalles"
 
 
+def fichier_tri_path(output_dir: Path) -> Path:
+    """La liste triée des dalles du lancement : ``<output>/technique/sources/fichier_tri.txt``."""
+    return sources_dir(output_dir) / "fichier_tri.txt"
+
+
 def dalles_urls_path(output_dir: Path) -> Path:
     """La liste des dalles résolues : ``<output>/technique/sources/dalles_urls.txt``."""
     return sources_dir(output_dir) / "dalles_urls.txt"

@@ -642,7 +642,8 @@ class AideDialog(QDialog):
             imprimante = QPrinter(QPrinter.PrinterMode.HighResolution)
             imprimante.setOutputFormat(QPrinter.OutputFormat.PdfFormat)
             imprimante.setOutputFileName(chemin)
-            doc.print_(imprimante)
+            # PyQt6 nomme la méthode `print`, PyQt5 `print_` (mot réservé de Python 2).
+            (getattr(doc, "print", None) or doc.print_)(imprimante)
         except Exception as exc:  # noqa: BLE001 — l'export est un confort, jamais un crash
             QMessageBox.warning(self, "Export PDF", f"L'export a échoué : {exc}")
             return

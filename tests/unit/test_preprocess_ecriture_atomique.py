@@ -55,21 +55,57 @@ def test_fusion_pdal_echouee_ne_laisse_pas_de_laz_final(tmp_path, pdal_dit_oui, 
     assert not preprocess.merged_inputs_sidecar(sortie).exists()
 
 
-def test_copie_interrompue_ne_laisse_pas_de_laz_final(tmp_path, pdal_dit_oui, monkeypatch):
-    # Branche « aucun voisin valide » : c'est celle de l'incident.
+def test_reecriture_interrompue_ne_laisse_pas_de_laz_final(tmp_path, pdal_dit_oui, monkeypatch):
+    # Branche « aucun voisin valide » : c'est celle de l'incident (copie à l'époque,
+    # réécriture `pdal translate` depuis la 0.14.1).
     central = _laz(tmp_path / "central.laz")
     sortie = tmp_path / "dalle_merged.laz"
 
-    def copie_tuee_en_vol(src, dst, *a, **k):
-        Path(dst).write_bytes(b"LASF" + b"\x00" * 64)
-        raise OSError("processus tué pendant la copie")
+    def pdal_ecrit_puis_plante(cmd, **kwargs):
+        Path(cmd[-1]).write_bytes(b"LASF" + b"\x00" * 64)
+        return subprocess.CompletedProcess(cmd, 3221225794, "", "processus tué")
 
-    monkeypatch.setattr(preprocess.shutil, "copy2", copie_tuee_en_vol)
+    monkeypatch.setattr(preprocess, "run_pdal_command_cancellable", pdal_ecrit_puis_plante)
 
-    with pytest.raises(OSError):
-        preprocess.merge_tiles(central_path=central, neighbor_paths=[], output_path=sortie)
-    assert not sortie.exists(), "une copie interrompue porte le nom final"
+    assert preprocess.merge_tiles(central_path=central, neighbor_paths=[], output_path=sortie) is False
+    assert not sortie.exists(), "une réécriture interrompue porte le nom final"
     assert not preprocess.merged_inputs_sidecar(sortie).exists()
+
+
+def test_dalle_isolee_reecrite_jamais_copiee(tmp_path, pdal_dit_oui, monkeypatch):
+    """Recette 0.14.0 : la copie brute d'une dalle COPC sous ``_merged.laz`` était
+    refusée par le fournisseur pdal de QGIS → toute dalle isolée échouait."""
+    central = _laz(tmp_path / "central.copc.laz", b"LASF" + b"\x00" * 300 + b"copc")
+    sortie = tmp_path / "dalle_merged.laz"
+    commandes = []
+
+    def pdal(cmd, **kwargs):
+        commandes.append(cmd[1])
+        Path(cmd[-1]).write_bytes(b"LASF-reecrit")
+        return subprocess.CompletedProcess(cmd, 0, "", "")
+
+    monkeypatch.setattr(preprocess, "run_pdal_command_cancellable", pdal)
+    monkeypatch.setattr(preprocess.shutil, "copy2", lambda *a, **k: pytest.fail("copie brute"))
+
+    assert preprocess.merge_tiles(central_path=central, neighbor_paths=[], output_path=sortie)
+    assert commandes == ["translate"] and sortie.read_bytes() == b"LASF-reecrit"
+
+
+def test_ancienne_copie_copc_en_cache_reecrite(tmp_path, pdal_dit_oui, monkeypatch):
+    central = _laz(tmp_path / "central.copc.laz", b"LASF" + b"\x00" * 300 + b"copc")
+    sortie = _laz(tmp_path / "dalle_merged.laz", central.read_bytes())
+    preprocess.write_merged_inputs_sidecar(sortie, [])
+    commandes = []
+
+    def pdal(cmd, **kwargs):
+        commandes.append(cmd[1])
+        Path(cmd[-1]).write_bytes(b"LASF-reecrit")
+        return subprocess.CompletedProcess(cmd, 0, "", "")
+
+    monkeypatch.setattr(preprocess, "run_pdal_command_cancellable", pdal)
+
+    assert preprocess.merge_tiles(central_path=central, neighbor_paths=[], output_path=sortie)
+    assert commandes == ["translate"] and not preprocess.est_copc(sortie)
 
 
 def test_rognage_pdal_echoue_ne_laisse_pas_de_laz_final(tmp_path, pdal_dit_oui, monkeypatch):

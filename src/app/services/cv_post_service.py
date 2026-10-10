@@ -29,11 +29,22 @@ def _model_display_name(selected_model: str) -> str:
 
     Accepte aussi bien un nom de dossier (``mon_modele``) qu'un chemin
     complet vers ``best.onnx`` (``…/models/mon_modele/weights/best.onnx``).
+    Le ``display_name`` du ``model_card.yaml`` quand il existe (« Cratères
+    d'obus (LD) »), sinon le nom du dossier : le journal de l'assistant nommait les
+    modèles par leur identifiant (recette 0.14.0).
     """
+    from .model_orchestrator import load_model_card
+
     p = Path(selected_model)
     if p.suffix.lower() == ".onnx" and p.parent.name == "weights":
-        return p.parent.parent.name or selected_model
-    return selected_model
+        dossier = p.parent.parent
+    elif p.is_absolute():
+        dossier = p
+    else:
+        dossier = Path(__file__).resolve().parents[3] / "data" / "models" / selected_model
+    nom = dossier.name or selected_model
+    card = load_model_card(dossier) if dossier.is_dir() else None
+    return str((card or {}).get("display_name") or nom)
 
 if TYPE_CHECKING:
     from ..cancel_token import CancelToken

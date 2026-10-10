@@ -60,5 +60,7 @@ def run_local_laz(
     if not local_laz_dir.exists() or not local_laz_dir.is_dir():
         raise FileNotFoundError(f"Dossier nuages locaux inexistant ou invalide: {local_laz_dir}")
 
-    sorted_list_file = output_dir / "fichier_tri.txt"
+    from ..output_paths import fichier_tri_path
+    sorted_list_file = fichier_tri_path(output_dir)
+    sorted_list_file.parent.mkdir(parents=True, exist_ok=True)
     return build_sorted_list_from_local_laz(local_dir=local_laz_dir, sorted_list_file=sorted_list_file, log=log)

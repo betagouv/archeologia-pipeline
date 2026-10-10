@@ -39,10 +39,10 @@ class QtLogHandler(logging.Handler):
         self._emitter = emitter
 
     def emit(self, record: logging.LogRecord) -> None:
-        try:
-            msg = self.format(record)
-        except Exception:
-            msg = record.getMessage()
+        # Le message seul, jamais la trace d'une exception (``logger.exception``) :
+        # elle reste dans le journal fichier, l'utilisateur lit déjà « Erreur
+        # fatale du pipeline : … » (recette 0.14.0, §28.7).
+        msg = record.getMessage()
         level = record.levelname
         transient_group = getattr(record, "transient_group", None)
         if transient_group:

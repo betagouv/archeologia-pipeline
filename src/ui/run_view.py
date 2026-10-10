@@ -328,7 +328,6 @@ class RunView(QWidget):
         # Message brut : l'horodatage (hh:mm discret) et le niveau (couleur +
         # glyphe ⚠/✗) sont rendus par le journal lui-même — le préfixe complet
         # « asctime - LEVEL - » reste réservé au fichier de log.
-        self._log_handler.setFormatter(logging.Formatter("%(message)s"))
         # Retire les handlers d'une instance précédente (réouverture du dialogue) :
         # sinon les logs partiraient vers un émetteur mort et le journal resterait
         # muet. On garantit qu'un seul QtLogHandler — celui-ci — est attaché.

@@ -262,6 +262,15 @@ def write_merged_inputs_sidecar(output_path: Path, neighbor_paths: List[Path]) -
     )
 
 
+def est_copc(path: Path) -> bool:
+    """Vrai si le LAZ porte le VLR ``copc`` (premier VLR, juste après l'en-tête)."""
+    try:
+        with open(path, "rb") as f:
+            return b"copc" in f.read(1024)
+    except OSError:
+        return False
+
+
 def merge_tiles(
     *,
     central_path: Path,
@@ -277,6 +286,10 @@ def merge_tiles(
 
     if output_path.exists():
         ok, _ = validate_las_or_laz_with_pdal(output_path)
+        if ok and est_copc(output_path):
+            # Copie brute d'une dalle isolée par une version ≤ 0.14.0 : illisible
+            # par QGIS (cf. plus bas) → réécrite.
+            ok = False
         if ok:
             # Le cache n'est valable que pour le MÊME jeu de voisins : au
             # re-run « extension de zone » ({A} puis {A,B}), la marge de A
@@ -317,27 +330,31 @@ def merge_tiles(
 
     partial = _partial_path(output_path)
     try:
+        # Sans voisin, la dalle est RÉÉCRITE par PDAL, jamais copiée : la dalle
+        # IGN est un COPC dont le fournisseur pdal de QGIS refuse les octets
+        # supplémentaires (« Extra byte specification exceeds point length »),
+        # et pdal:exportrastertin échouait sur toute dalle isolée (recette 0.14.0).
         if len(valid_files) <= 1:
-            shutil.copy2(str(central_path), str(partial))
+            cmd = [_pdal_exe(), "translate", str(central_path), str(partial)]
         else:
             cmd = [_pdal_exe(), "merge"] + [str(p) for p in valid_files] + [str(partial)]
-            result = run_pdal_command_cancellable(cmd, cancel=cancel)
-            if result.returncode != 0:
-                log(f"Erreur PDAL merge (code {result.returncode})")
-                log("💡 Conseil: réduisez max_workers dans config.json (ex: max_workers=1 ou 2) pour éviter les crashs mémoire.")
-                if result.returncode in (3221225477, 3221226505):
-                    # 0xC0000005 = ACCESS_VIOLATION, 0xC0000409 = STACK_BUFFER_OVERRUN
-                    log("PDAL a crashé (erreur mémoire).")
-                if result.stderr:
-                    log(result.stderr.strip())
-                return False
+        result = run_pdal_command_cancellable(cmd, cancel=cancel)
+        if result.returncode != 0:
+            log(f"Erreur PDAL {cmd[1]} (code {result.returncode})")
+            log("💡 Conseil: réduisez max_workers dans config.json (ex: max_workers=1 ou 2) pour éviter les crashs mémoire.")
+            if result.returncode in (3221225477, 3221226505):
+                # 0xC0000005 = ACCESS_VIOLATION, 0xC0000409 = STACK_BUFFER_OVERRUN
+                log("PDAL a crashé (erreur mémoire).")
+            if result.stderr:
+                log(result.stderr.strip())
+            return False
 
-            ok_out, msg_out = validate_las_or_laz_with_pdal(partial)
-            if not ok_out:
-                log(f"Fichier fusionné invalide via PDAL: {output_path.name}")
-                if msg_out:
-                    log(f"PDAL: {msg_out}")
-                return False
+        ok_out, msg_out = validate_las_or_laz_with_pdal(partial)
+        if not ok_out:
+            log(f"Fichier fusionné invalide via PDAL: {output_path.name}")
+            if msg_out:
+                log(f"PDAL: {msg_out}")
+            return False
 
         os.replace(str(partial), str(output_path))
     finally:

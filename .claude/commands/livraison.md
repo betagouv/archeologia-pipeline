@@ -33,7 +33,9 @@ le dépôt est déposé par l'utilisateur (FTP), le runbook s'arrête au ZIP et 
    `python run_tests.py unit`, `ruff check src/`.
 3. **Grille IGN à jour** : `python dev/build_quadrillage_from_wfs.py` depuis le dossier principal
    (quelques minutes ; l'IGN ajoute ~2 500 dalles toutes les 1 à 3 semaines). Noter le nombre de dalles
-   pour le changelog.
+   pour le changelog. Le script réécrit aussi `data/quadrillage_france.zip`, la grille compressée que
+   versionne le dépôt GitHub (le plugin la décompresse au premier besoin) : **la commiter sur dev** avec
+   la version, sinon une copie venue de GitHub télécharge sur une grille périmée.
 4. **Manuel** : `python run_tests.py -k test_aide` vert ; chaque fonctionnalité de la version a son
    chapitre à jour (skill `manuel-integre`). Puis, **à chaque livraison**, les deux rendus hors écran
    (Python de QGIS, `C:/OSGeo4W/bin/python-qgis.bat`) :

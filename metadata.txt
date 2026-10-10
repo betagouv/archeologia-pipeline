@@ -9,7 +9,7 @@ name=Archéolog'IA
 qgisMinimumVersion=3.34
 qgisMaximumVersion=4.99
 description=Détection de sites archéologiques par réseaux de neurones
-version=0.13.1
+version=0.14.0
 author=Valentin VIEUX
 email=valentin.vieux.pro@outlook.com
 about=Plugin pour automatiser la production d'indices de visualisation (à l'aide du plugin Relief Visualization Toolbox) à partir de données LiDAR ou de MNT et pour détecter des sites archéologiques à l'aide de réseaux de neurones (YOLO, RF-DETR détection ou segmentation)
@@ -21,7 +21,20 @@ repository=https://github.com/betagouv/archeologia-pipeline
 #
 
 hasProcessingProvider=no
-changelog=0.13.1 (2026-09-22)
+changelog=0.14.0 (2026-10-09)
+    * Un manuel intégré remplace la notice Word : bouton « Aide » ou touche F1 dans l'assistant, menu Extensions › Archéolog'IA › Manuel. Un chapitre par écran, la recherche dans tout le manuel (Ctrl+F, F3), l'historique, le zoom et l'export en PDF. À la première ouverture après une mise à jour, il s'ouvre sur les nouveautés. Une ligne ⚠ ou ✗ du journal renvoie d'un clic à la rubrique de dépannage qui l'explique.
+    * L'assistant passe à cinq étapes : l'étape « Lancer » devient « Vérifications » (état du système, récapitulatif, workers) puis « Traitement » (frise et journal). « Lancer le pipeline » passe de l'une à l'autre ; pendant un traitement, les étapes 1 à 4 restent consultables en lecture seule.
+    * Vue d'exécution refondue : une ligne d'état au-dessus de la frise, et la frise porte l'avancement, avec le compteur mesuré et le chronomètre de chaque phase. Plus de barre de progression, rien d'estimé. À la fin, le cadre « Par où commencer » montre pour chaque entité ses détections par niveau de fiabilité, du plus sûr au plus douteux.
+    * Les couches ne se chargent plus d'elles-mêmes dans le projet QGIS ouvert : le bouton « Ouvrir le projet QGIS » les ajoute, stylées, quand vous le décidez. Le projet du traitement est écrit dans tous les cas.
+    * Un rapport de traitement (rapport.html) accompagne chaque run : mode, surface couverte, produits et réglages en mots, modèles avec leur seuil, durées mesurées, bilan de fiabilité, avertissements, sources des données et des outils. Il ne situe jamais la zone : aucun nom de dalle, aucune coordonnée, aucun chemin de votre poste. C'est le document à joindre au dossier de prospection.
+    * Le dossier de sortie est réorganisé en deux : « livrable » (projet QGIS, rapport, indices, détections), à garder et à transmettre, et « technique » (sources, fichiers intermédiaires, journaux), à supprimer une fois satisfait. Un dossier écrit par une version précédente est réorganisé au lancement, après votre accord, jamais en silence.
+    * Profil des scores dans la fiche de chaque classe et de chaque modèle : les détections de l'évaluation rangées par score, les vraies en couleur et les fausses en gris, les quatre niveaux de fiabilité sous l'axe, le seuil en orange et le point d'équilibre entre précision et rappel. La précision et le rappel au seuil choisi, un petit profil par zone d'évaluation, et la case « Tester un seuil » pour essayer une valeur sans toucher au traitement. La figure s'enregistre ou se copie d'un clic droit.
+    * En réglages avancés de l'étape 3, chaque carte d'entité porte un profil des scores en miniature qui suit le seuil saisi ; son infobulle dit ce que le réglage gagne ou perd sur le banc d'évaluation par rapport au seuil du modèle.
+    * Fiches de classe : la fiche d'une structure et la fiche d'un modèle se distinguent d'un coup d'œil (liseré et étiquette). Un bandeau « Appris sur » montre sur une carte les zones où la structure a été apprise, avec leurs effectifs. La vérité terrain est tracée dans la couleur de la couche, et les sections suivent l'ordre des questions qu'on se pose avant de cocher.
+    * Fiabilité observée : les verdicts oui, non ou peut-être saisis dans QGIS sur vos détections s'ajoutent à la fiche de la classe, à côté de la fiabilité mesurée au banc.
+    * La grille des dalles IGN est reconstruite depuis le service de la Géoplateforme : 524 687 dalles. Le bandeau du mode Téléchargement IGN dit de quand elle date. Elle est aussi versionnée, compressée, dans le dépôt GitHub : une copie récupérée de GitHub la décompresse d'elle-même au premier usage, et le téléchargement des dalles y fonctionne.
+    * Correctifs : la fiche d'un modèle à plusieurs classes s'ouvrait avec une barre de défilement horizontale et du texte coupé ; toute la carte d'une entité la coche désormais, sauf la bande des réglages ; le bouton ↺ s'active dès la saisie d'une valeur ; en MNT existant, un raster trop petit pour le rayon d'un indice ou une dalle écartée s'affichaient en erreur, et un run réussi s'annonçait avec des erreurs : ce sont désormais des avertissements, et le conseil tient compte de l'ensemble du lot.
+ 0.13.1 (2026-09-22)
     * Correctif : depuis la 0.13.0, les dalles voisines n'étaient plus prises en compte. Chaque dalle était calculée seule, sans marge, et une couture apparaissait à la frontière entre deux dalles sur les indices de visualisation (ombrage, dominance locale…) ; les détections en bord de dalle perdaient aussi leur marge. Le fichier LiDAR temporaire introduit par la 0.13.0 portait un nom que l'outil de lecture refusait : il garde désormais son extension habituelle.
  0.13.0 (2026-09-21)
     * Un quinzième produit de visualisation : l'ouverture du relief (openness). Un seul réglage décide de l'image — positive pour ce qui dépasse (tertres, crêtes, lèvres de cratère), négative pour ce qui s'enfonce (fossés, chemins creux, fonds de carrière). Les deux images se lisent de la même façon : clair = saillie, sombre = creux. Fiche, vignettes et réglages avancés comme les autres produits.

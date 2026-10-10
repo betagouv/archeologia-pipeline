@@ -45,7 +45,10 @@ class TestShouldExcludeDirs:
          # build n'ont rien à faire chez l'utilisateur.
          "docs", "scripts", "dist",
          # État de dev / sorties / temp — ne doivent pas fuiter dans le ZIP utilisateur.
-         "temp_zones", "results", "output", "output_test", "temp"],
+         "temp_zones", "results", "output", "output_test", "temp",
+         # Catalogue privé de l'onglet Visualisation : ses descripteurs portent la clé
+         # d'accès Géoplateforme (le ZIP 0.14.0 l'embarquait, 2026-10-09).
+         "local_catalogue"],
     )
     def test_excludes_dev_and_hidden_dirs(self, pkg, tmp_path, name):
         d = _mkdir(tmp_path, name)
@@ -60,7 +63,8 @@ class TestShouldExcludeDirs:
 
 
 class TestShouldExcludeFiles:
-    @pytest.mark.parametrize("name", ["config.json", "last_ui_config.json", "class_color_registry.json", "pytest.ini", ".gitignore"])
+    @pytest.mark.parametrize("name", ["config.json", "last_ui_config.json", "class_color_registry.json", "pytest.ini", ".gitignore",
+                                      "quadrillage_france.zip"])
     def test_excludes_dev_files(self, pkg, tmp_path, name):
         f = tmp_path / name
         f.write_text("{}")
@@ -248,3 +252,9 @@ class TestEntrainementEvaluation:
     def test_exclut_le_reste(self, pkg, tmp_path, rel):
         p = self._chemin(tmp_path, self._BASE + rel)
         assert pkg.should_exclude(p, self._BASE + rel) is True
+
+
+def test_les_sauvegardes_horodatees_ne_partent_pas(pkg, tmp_path):
+    f = tmp_path / "catalogue.json.bak-2026-09-23"
+    f.write_text("{}")
+    assert pkg.should_exclude(f, "data/demo_catalogue/catalogue.json.bak-2026-09-23") is True

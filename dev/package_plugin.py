@@ -63,6 +63,9 @@ EXCLUDE_FILES = {
     "desktop.ini",  # pollution Explorer/OneDrive (les deux casses)
     "Desktop.ini",
     "CLAUDE.md",  # instructions assistant (AUDIT v2 PKG-04)
+    # Grille IGN compressée, versionnée pour GitHub : le ZIP livre déjà la grille
+    # décompressée (data/quadrillage_france/, PKG-02), l'archive la doublerait.
+    "quadrillage_france.zip",
 }
 
 # Taille maximale plausible du ZIP : un dépassement signale une régression
@@ -122,6 +125,11 @@ def should_exclude(path: Path, relative_path: str) -> bool:
     # jamais distribué. On NE peut PAS exclure tous les .txt : classes.txt, dalles_urls.txt…
     # sont des fichiers runtime légitimes du plugin.
     if path.is_file() and name.startswith("pipeline_log_") and name.endswith(".txt"):
+        return True
+
+    # Sauvegardes horodatées (catalogue.json.bak-2026-09-23…) : état local du poste,
+    # jamais distribué — le ZIP 0.14.0 les embarquait avant ce garde-fou (2026-10-09).
+    if path.is_file() and ".bak-" in name:
         return True
 
     # Exclure par extension — endswith et non path.suffix : les extensions

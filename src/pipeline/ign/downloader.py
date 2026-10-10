@@ -519,12 +519,12 @@ def download_ign_dalles(
     stage: StageFn = _default_stage,
     cancel: CancelFn = _default_cancel,
     max_workers: Optional[int] = None,
-    on_tile_done: Optional[Callable[[int, int, str, bool], None]] = None,
+    on_tile_done: Optional[Callable[[int, int, str, bool, bool], None]] = None,
 ) -> IgnDownloadResult:
     """Télécharge les dalles IGN listées dans ``input_file``.
 
     ``on_tile_done`` (optionnel) est invoqué après chaque dalle traitée
-    avec ``(completed_index_1based, total, filename, success)`` — le caller s'en
+    avec ``(completed_index_1based, total, filename, success, skipped)`` — le caller s'en
     sert pour remonter une sous-progression à l'utilisateur (ligne
     réécrite dans le journal). Les téléchargements parallèles ne
     garantissent pas l'ordre des appels (``completed_index`` reflète
@@ -533,9 +533,10 @@ def download_ign_dalles(
     if not output_dir.exists():
         output_dir.mkdir(parents=True, exist_ok=True)
 
-    from ..output_paths import dalles_dir as _dalles_dir
+    from ..output_paths import dalles_dir as _dalles_dir, fichier_tri_path
     dalles_dir = _dalles_dir(output_dir)
-    sorted_list = output_dir / "fichier_tri.txt"
+    sorted_list = fichier_tri_path(output_dir)
+    sorted_list.parent.mkdir(parents=True, exist_ok=True)
 
     stage("Tri des fichiers")
     progress(0)
@@ -582,7 +583,7 @@ def download_ign_dalles(
             current = completed_count[0]
         if on_tile_done is not None:
             try:
-                on_tile_done(current, total, result.filename, result.success)
+                on_tile_done(current, total, result.filename, result.success, result.skipped)
             except Exception:
                 pass
 
@@ -625,7 +626,7 @@ def download_ign_dalles(
                     current = completed_count[0]
                 if on_tile_done is not None:
                     try:
-                        on_tile_done(current, total, task.filename, False)
+                        on_tile_done(current, total, task.filename, False, False)
                     except Exception:
                         pass
 

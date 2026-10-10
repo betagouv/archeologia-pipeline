@@ -48,3 +48,29 @@ def test_exception_runner_emet_une_erreur_actionnable(
         PipelineController().run(ctx, reporter, CancelToken(threading.Event()))
 
     assert any("boom interne du runner" in e for e in reporter.errors)
+
+
+def test_trace_de_l_erreur_fatale_dans_le_fichier_seulement(
+    config_with_output_dir, tmp_path, monkeypatch, caplog
+):
+    """Recette 0.14.0 §28.7 : la trace va au journal fichier (INFO), jamais à
+    l'assistant (filtré à USER_INFO)."""
+    import logging
+
+    from app.progress_reporter import USER_INFO
+
+    rvt_dir = tmp_path / "rvt_in"
+    rvt_dir.mkdir()
+    cfg = config_with_output_dir
+    cfg["app"]["files"]["data_mode"] = "existing_rvt"
+    cfg["app"]["files"]["existing_rvt_dir"] = str(rvt_dir)
+    ctx = build_run_context(cfg)
+    monkeypatch.setattr("pipeline.preflight.run_preflight", lambda **kw: True)
+    monkeypatch.setattr("app.runners.registry.get_runner", lambda mode: _ExplodingRunner())
+
+    caplog.set_level(logging.INFO, logger="archeologia_pipeline")
+    with pytest.raises(RuntimeError):
+        PipelineController().run(ctx, RecordingReporter(), CancelToken(threading.Event()))
+
+    traces = [r for r in caplog.records if r.exc_info]
+    assert traces and all(r.levelno < USER_INFO for r in traces)

@@ -195,7 +195,8 @@ class UserNarrator:
         )
 
     def download_tile_progress(
-        self, index: int, total: int, tile_name: str, success: bool = True
+        self, index: int, total: int, tile_name: str, success: bool = True,
+        skipped: bool = False,
     ) -> None:
         """Sous-progression du téléchargement (1 dalle terminée).
 
@@ -207,7 +208,7 @@ class UserNarrator:
         :meth:`_user_info_transient`.
         """
         short = tile_name if len(tile_name) <= 30 else tile_name[:27] + "…"
-        statut = "téléchargée" if success else "échec"
+        statut = ("déjà présente" if skipped else "téléchargée") if success else "échec"
         self._user_info_transient(
             f"   • Dalle {index}/{total} {statut} : {short}",
             group="download_tile_progress",
@@ -278,7 +279,8 @@ class UserNarrator:
         )
         self._metric(index, total, "MNT")
 
-    def rvt_prep_progress(self, index: int, total: int, image_name: str) -> None:
+    def rvt_prep_progress(self, index: int, total: int, image_name: str,
+                          quoi: str = "Préparation des images", unite: str = "images") -> None:
         """Sous-progression de la préparation TIF→PNG (mode existing_rvt).
 
         Phase muette jusqu'ici : sur un gros lot (>1000 dalles, ~1,5 s
@@ -288,10 +290,10 @@ class UserNarrator:
         """
         short = image_name if len(image_name) <= 30 else image_name[:27] + "…"
         self._user_info_transient(
-            f"   ↳ Préparation des images {index}/{total} : {short}",
+            f"   ↳ {quoi} {index}/{total} : {short}",
             group="rvt_prep_progress",
         )
-        self._metric(index, total, "images")
+        self._metric(index, total, unite)
 
     # ------------------------------------------------------------------
     # Computer Vision

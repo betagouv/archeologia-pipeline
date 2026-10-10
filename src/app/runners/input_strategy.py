@@ -194,11 +194,11 @@ class IgnDownloadStrategy:
         if n_to_download:
             narrator.download_start(n_to_download)
 
-        def _on_dalle_downloaded(i: int, n: int, filename: str, success: bool) -> None:
+        def _on_dalle_downloaded(i: int, n: int, filename: str, success: bool, skipped: bool = False) -> None:
             # Nom court : on ne veut pas du suffixe ``.copc.laz`` dans le
             # journal — la troncature est gérée côté narrator.
             base = filename.replace(".copc.laz", "").replace(".laz", "")
-            narrator.download_tile_progress(i, n, base, success)
+            narrator.download_tile_progress(i, n, base, success, skipped)
 
         return download_ign_dalles(
             input_file=input_path,

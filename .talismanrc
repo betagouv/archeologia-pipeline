@@ -1,6 +1,6 @@
 fileignoreconfig:
 - filename: tests/unit/test_preprocess_ecriture_atomique.py
-  checksum: 2651ca367523a5a5f0ca87a521447ca103c70d8b6a73ecedba53c16ea5abfae0
+  checksum: 82d4b35d83c30f809fbcc5a2802404e5e3ea75a3b351e58566a1d10c00ce9dc8
 - filename: tests/unit/test_opns.py
   checksum: 0506c8a17e9157f23cf0cbcd449ce4703241b1ed07c051270b39ed4484dfcf4a
 - filename: metadata.txt
@@ -82,19 +82,19 @@ fileignoreconfig:
 - filename: src/pipeline/ign/coords_fallback.py
   checksum: b1997408c2011b138fc5ffc525a10fa88a37848ffa763f355892b9d5dd0c1450
 - filename: src/pipeline/ign/downloader.py
-  checksum: 0b91bdbcc14d25818a927be76f647e0bb3a088cf56e406521f2eb24c4373510f
+  checksum: 0ef1fc8d25c67c7d2117eefe66b980b37e9b26525a8d4468f53f9e71bd2c8189
 - filename: src/pipeline/ign/pdal_validation.py
   checksum: 8867b41e31232f0047d39a3ed884b5e677848f2269c5e79d9b5cd5217bc6b407
 - filename: src/pipeline/ign/preprocess.py
-  checksum: 08fa21666ede0b18131d439187cac2b830e48584eb3df8f5fae710491118344a
+  checksum: 31437a97ad99cabce9ffaa45ca4f90335fc9f115345a26bcb7822c58ce67fab1
 - filename: src/pipeline/ign/products/indices.py
   checksum: 4d7b0fba36cd4a608e0926deb94db04a561a2c5bdd2ba29564d939c73de50ea1
 - filename: src/pipeline/ign/products/results.py
   checksum: 548840688980552b52747d14f5355bae0a7fe87a559f08b69edf6cc5028b591c
 - filename: src/pipeline/modes/local_laz.py
-  checksum: 1640c1c28321c5fad61f6857a147523ca14c3e7eaa1bdd1fdd8e07d8e7040c9c
+  checksum: aa12c4a804b54e7b3dfe451251813a3a731790033acc95a5ad3691cb4ff138fd
 - filename: src/pipeline/output_paths.py
-  checksum: 02b1a8160c6f3092fa707b11ca94dba759c59d56275eb3e738947f4981bc5f6a
+  checksum: f114e139cb314647d2e4e40345896e35c916adb5e9b35f76a8f0549e8ee41fcf
 - filename: src/pipeline/preflight.py
   checksum: 3783cd8377aca8176fc0cfcfbb878fe2acbe7bfffc103716048f66159c1ee760
 - filename: src/pipeline/types.py
@@ -124,7 +124,7 @@ fileignoreconfig:
 - filename: src/ui/wizard_dialog.py
   checksum: 78260730953c1840a7596251973291818166925dfd63f5cfad889b19876ea467
 - filename: tests/TESTS_MANUELS_QGIS.md
-  checksum: 86b58f87b8ace61df5708cc15ef76cb619f2c3bb804500b1e0c7a649f4ae891c
+  checksum: aef3d516e882da4be2754c0d739718f8828627dfc1c8b3703a1e334898839b3b
 - filename: tests/integration/test_existing_mnt_runner_finalize.py
   checksum: e67c2e4c83cea0937bdfb39e8eec7aa7476f30648d4d858589e2308ad0565d63
 - filename: tests/integration/test_existing_rvt_runner_isolation.py
@@ -132,7 +132,7 @@ fileignoreconfig:
 - filename: tests/integration/test_ign_runner_finalize.py
   checksum: 2d2ced1ee5339e8614044bf22374e1c4d601bc193e0b00ce3892773debd50156
 - filename: tests/integration/test_pipeline_controller_failure.py
-  checksum: 818ceb722588c060d9fc7eaaedefa9be74949055dd2b78e0d3cb92710592c67d
+  checksum: 2d9246cda39d45e772b789ea5c60207c465d3f13155767ddfc17ecb2293a3f76
 - filename: tests/unit/test_config_example_sync.py
   checksum: 78a091e0da89158fb0771fa935e94cd3aa2056cc35cfb067177202de40bfcd63
 - filename: tests/unit/test_config_manager.py
@@ -152,7 +152,7 @@ fileignoreconfig:
 - filename: tests/unit/test_existing_rvt_png_consistency.py
   checksum: a1852cd7d16c6890c453bbe7944fb0894ce8f523f6cd3f2b8b615eaa79e3c373
 - filename: tests/unit/test_existing_rvt_runner.py
-  checksum: 6fb2cda565a157dfc277ca39d4fee065b5ef9480a13371562a8bd27c74f33eb3
+  checksum: 9b09754cfc70c2c93cffb7c3699c99ee1df835dc9dd90b66f4ddfa54d1353443
 - filename: tests/unit/test_finalize_service.py
   checksum: bdcab7d2504b9e1068db344e2eb7577c7fa7d6f2ac6554cf93642e26d4cede04
 - filename: tests/unit/test_indices_model.py
@@ -246,7 +246,7 @@ fileignoreconfig:
 - filename: .claude/commands/livraison.md
   checksum: fa4cadfbd313549dec30e915282736d7dacb8113feeb591ec45b52457d55480d
 - filename: aide/08-resultats.md
-  checksum: cadcda53578e76bfd6a51204d24a48edb968a10d46a72b5c9fc8fc0447d26ef0
+  checksum: 304ac6dc6f4b6089df936767b140e5073bc7bc84b51dccd15ec3f07701393fec
 - filename: aide/04-etape-2-produits.md
   checksum: 1256428a17e07dc1fda214f6d34ee0583ef279b7f93e341d396ebc17db378e1a
 - filename: aide/09-depannage.md
@@ -264,7 +264,7 @@ fileignoreconfig:
 - filename: aide/02-premier-traitement.md
   checksum: c7c43df4dfbda088a300c572db81c11962d0a2afa43324bf6a6d9883fd79bb39
 - filename: src/ui/dialogs/aide_dialog.py
-  checksum: 338b10a2dfe83b50cab535702b67c5153e974019a0c4981c1a1066981424f513
+  checksum: dacd2662d77e300206a86e41fd06098c95248890ce7963639dee01862b889c4d
 - filename: dev/build_quadrillage_from_wfs.py
   checksum: 5286a1495ce8a7a8bf350eb5bcff2c2827dca6e2c50454ef6b3210995610e3f6
 - filename: docs/contrats.md

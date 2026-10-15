@@ -161,7 +161,7 @@
   },
   "M_HS": {
     "resume": "Seize ombrages calculés tous les 22,5° et réunis en une seule image : aucune structure n'est parallèle à toutes les lumières à la fois. C'est l'ombrage débarrassé de son angle mort.",
-    "lire": "Chaque structure linéaire est éclairée par au moins une direction, donc visible. Les teintes traduisent l'orientation des versants : la sortie 8 bits est une composition en couleurs de trois des directions (315° dans le rouge, 15° dans le vert, 75° dans le bleu). Le fichier flottant, lui, garde une bande par direction, 0° en bande 1 puis dans le sens horaire.",
+    "lire": "Chaque structure linéaire est éclairée par au moins une direction, donc visible. Les teintes traduisent l'orientation des versants : la sortie 8 bits est une composition en couleurs de trois éclairages (315° dans le rouge, 22,5° dans le vert, 90° dans le bleu), à l'élévation et à l'exagération réglées. Le fichier flottant, lui, garde une bande par direction, 0° en bande 1 puis dans le sens horaire.",
     "usage": [
       "Premier repérage toutes orientations confondues : c'est un fond plus complet que l'ombrage simple, au même coût de lecture.",
       "Indice d'entrée de plusieurs modèles de détection du plugin.",
@@ -175,14 +175,14 @@
     ],
     "methode": [
       "L'ombrage est recalculé pour N azimuts équirépartis entre 0 et 360°, à élévation solaire constante (Hobbs 1999, cité par le manuel RVT).",
-      "Le fichier 8 bits compose trois de ces directions dans les canaux rouge, vert et bleu, avec le même étirement 0–1 que l'ombrage simple."
+      "Le fichier 8 bits compose trois éclairages, à 315°, 22,5° et 90°, dans les canaux rouge, vert et bleu, avec le même étirement 0–1 que l'ombrage simple."
     ],
     "parametres": [
       {
         "cle": "mdh.num_directions",
         "label": "Nombre de directions",
         "defaut": "16",
-        "sens": "Manuel RVT : valeurs utiles 4 à 36, « 16 est optimal pour la plupart des applications ». Le temps de calcul croît linéairement."
+        "sens": "Manuel RVT : valeurs utiles 4 à 36, « 16 est optimal pour la plupart des applications ». Le temps de calcul croît linéairement. Sans effet sur le fichier 8 bits, qui compose toujours trois éclairages : le réglage n'est affiché que si la sortie 8 bits est décochée."
       },
       {
         "cle": "mdh.sun_elevation",
@@ -979,7 +979,7 @@
         "cle": "mstp.lightness",
         "label": "Luminosité",
         "defaut": "1,2",
-        "sens": "Clarté globale de la composition ; RVT utilise 0,9. « facteur de luminosité pour ajuster la visibilité du MSTP »."
+        "sens": "Clarté globale de la composition ; RVT utilise 0,9. « facteur de luminosité pour ajuster la visibilité du MSTP ». Appliquée telle que réglée ; l'extension rvt-qgis l'arrondissait à l'entier."
       },
       {
         "cle": "mstp.ve_factor",

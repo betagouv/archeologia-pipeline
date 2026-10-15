@@ -207,6 +207,33 @@ def test_sans_partage_le_balayage_ne_calcule_que_ce_qui_est_demande(monkeypatch)
     assert appels == [(True, True)] and len(c._memo) == 1
 
 
+def test_m_hs_8_bits_aux_defauts_identique_a_rvt_qgis():
+    """rvt_multi_hillshade.py en 8 bits : DefaultValues().float_to_8bit(MULTI_HILLSHADE) sur le MNT — trois ombrages
+    (315°, 22,5°, 90°) à 35°, sans exagération. Le moteur, à 35° et VE 1, compose les mêmes trois ombrages."""
+    _, _, default, _ = _rvt()
+    dem = _mnt()
+    attendu = default.DefaultValues().float_to_8bit(float_arr=dem.copy(), visualization=default.RVTVisualization.MULTI_HILLSHADE,
+                                                     x_res=RES, y_res=RES, no_data=ND)
+    _egal(m.composer_mhs_8bits(_couches(dem), elevation=35, ve=1), attendu, "M-HS 8 bits aux défauts")
+
+
+def test_m_hs_8_bits_applique_l_elevation_reglee():
+    """Changement voulu (0.16.0) : rvt-qgis ignorait l'élévation en 8 bits."""
+    _, _, default, _ = _rvt()
+    dem = _mnt()
+    defaut = default.DefaultValues().float_to_8bit(float_arr=dem.copy(), visualization=default.RVTVisualization.MULTI_HILLSHADE,
+                                                    x_res=RES, y_res=RES, no_data=ND)
+    assert not np.array_equal(m.composer_mhs_8bits(_couches(dem), elevation=50, ve=1), defaut)
+
+
+def test_m_hs_8_bits_partage_l_ombrage_du_hs():
+    """Revue de la tâche 4 : aux mêmes réglages, le rouge du M-HS 8 bits (315°) est l'ombrage du HS par défaut."""
+    c = _couches(_mnt())
+    m.composer_mhs_8bits(c, elevation=35, ve=1)
+    c.ombrage(315.0, 35.0, 1.0, RES, RES)   # clé de calculer_hs (azimut 315, élévation 35, VE 1)
+    assert len(c._memo) == 3
+
+
 if __name__ == "__main__":   # hors pytest : Pythons de QGIS (numpy 1.26 et 2.x)
     faits = []
     for nom, f in sorted(globals().items()):

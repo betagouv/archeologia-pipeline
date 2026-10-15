@@ -9,6 +9,10 @@ MNT une fois et partage une couche entre produits quand rvt l'aurait calculée �
 de partage est faite des paramètres que la fonction de rvt reçoit réellement, jamais du seul réglage de
 l'interface.
 
+Deux corrections voulues (0.16.0, changelog) : la luminosité du MSTP n'est plus arrondie à l'entier, et le M-HS
+8 bits applique l'élévation et l'exagération réglées. indices.py note leur version à côté de l'intermédiaire
+(VERSION_CALCUL) pour qu'un ancien soit recalculé une fois.
+
 Imports de numpy et de rvt différés : ce module s'importe sans eux (tests, préflight).
 """
 from __future__ import annotations
@@ -22,7 +26,7 @@ from typing import Any, Callable, Dict, Tuple
 VARIABLE_MOTEUR = "ARCHEO_INDICES_MOTEUR"
 
 #: Produits calculés par le moteur intégré ; les autres passent encore par Processing (rvt-qgis).
-PRODUITS_MOTEUR = frozenset({"CVAT", "CRIM", "LD", "HS", "SVF", "OPNS", "SLO", "SLRM"})
+PRODUITS_MOTEUR = frozenset({"CVAT", "CRIM", "LD", "HS", "SVF", "OPNS", "SLO", "SLRM", "M_HS", "MSTP"})
 
 #: Produits sans algorithme Processing : toujours calculés ici, même forcé.
 SANS_PROCESSING = frozenset({"CVAT", "CRIM"})
@@ -283,3 +287,41 @@ def calculer_slrm(c: Couches, out: Path, *, rayon: int, ve: float, huit_bits: bo
     _, _, _, vis = _rvt()
     arr = vis.slrm(dem=c.brut(), radius_cell=int(rayon), ve_factor=float(ve), no_data=c.no_data)
     _publier(c, out, arr, huit_bits, "SIMPLE_LOCAL_RELIEF_MODEL")
+
+
+def composer_mhs_8bits(c: Couches, *, elevation: float, ve: float):
+    """Le M-HS 8 bits : trois ombrages (315°, 22,5°, 90°) étirés de 0 à 1 puis en octets, la branche « value » de
+    DefaultValues.float_to_8bit(MULTI_HILLSHADE) — mais à l'élévation et à l'exagération réglées, que rvt-qgis
+    remplaçait par 35° et 1 (décision 0.16.0 ; identique aux défauts)."""
+    import numpy as np
+    _, blend_func, default, vis = _rvt()
+    bornes = default.DefaultValues().mhs_bytscl   # ("value", 0, 1)
+    return np.array([vis.byte_scale(data=blend_func.normalize_lin(
+        image=c.ombrage(float(az), float(elevation), float(ve), c.res_x, c.res_y),
+        minimum=bornes[1], maximum=bornes[2]), no_data=np.nan, c_min=0, c_max=1) for az in (315, 22.5, 90)])
+
+
+def calculer_mhs(c: Couches, out: Path, *, directions: int, elevation: float, ve: float, huit_bits: bool) -> None:
+    """rvt_multi_hillshade.py. En flottant : N bandes, une par direction. En 8 bits : ``composer_mhs_8bits`` (le
+    nombre de directions y est sans effet, comme dans rvt-qgis qui jetait son calcul)."""
+    if not huit_bits:
+        _verifier("M_HS", num_directions=directions, sun_elevation=elevation, ve_factor=ve)
+        _, _, _, vis = _rvt()
+        _ecrire(c, out, vis.multi_hillshade(
+            dem=c.brut(), resolution_x=c.res_x, resolution_y=c.res_y, nr_directions=int(directions),
+            sun_elevation=float(elevation), ve_factor=float(ve), no_data=c.no_data), 6)
+        return
+    _verifier("M_HS", sun_elevation=elevation, ve_factor=ve)
+    _ecrire(c, out, composer_mhs_8bits(c, elevation=elevation, ve=ve), 1)
+
+
+def calculer_mstp(c: Couches, out: Path, *, local: Tuple[int, int, int], meso: Tuple[int, int, int],
+                  large: Tuple[int, int, int], luminosite: float, ve: float, huit_bits: bool) -> None:
+    """rvt_mstp.py, mais la luminosité réglée telle quelle : rvt-qgis la passait par int() (1,2 → 1)."""
+    _verifier("MSTP", lightness=luminosite, ve_factor=ve,
+              **{f"{e}_scale_{k}": v for e, t in (("local", local), ("meso", meso), ("broad", large))
+                 for k, v in zip(("min", "max", "step"), t)})
+    _, _, _, vis = _rvt()
+    arr = vis.mstp(dem=c.brut(), local_scale=tuple(local), meso_scale=tuple(meso), broad_scale=tuple(large),
+                   lightness=float(luminosite), ve_factor=float(ve), no_data=c.no_data)
+    _publier(c, out, arr, huit_bits, "MULTI_SCALE_TOPOGRAPHIC_POSITION")

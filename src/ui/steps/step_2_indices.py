@@ -453,6 +453,11 @@ class IndicesPage(QWidget):
             ("Facteur VE", mdh_ve, _HELP_VE),
             ("", mdh_8, _HELP_8BIT),
         ]), "M-HS")
+        # 8 bits : l'image compose trois éclairages (315°, 22,5°, 90°) ; le nombre de directions ne sert qu'au
+        # fichier flottant (décision 0.16.0 ; nom de dossier inchangé, la valeur reste enregistrée).
+        cellule_directions = mdh_dirs.parentWidget()
+        mdh_8.toggled.connect(lambda huit: cellule_directions.setVisible(not huit))
+        cellule_directions.setVisible(not mdh_8.isChecked())
 
         # — SVF (svf) —
         # Bornes = bornes DURES de rvt:rvt_svf, comme pour OPNS : au-delà,

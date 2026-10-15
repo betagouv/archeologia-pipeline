@@ -49,6 +49,35 @@ def _as_bool(value: Any, default: bool) -> bool:
         return bool(default)
 
 
+#: Calculs dont le résultat a changé en 0.16.0 à nom de fichier égal (même dossier) : MSTP (luminosité appliquée
+#: telle quelle, rvt-qgis l'arrondissait à l'entier) et M-HS 8 bits (élévation et exagération appliquées). Une note
+#: ``<intermédiaire>.calcul`` porte la version ; sans elle — calculé par une version précédente, ou par Processing —
+#: l'intermédiaire est recalculé une fois (needs_refresh ne voit que les dates). Le rognage et la publication
+#: suivent par fraîcheur (results.needs_refresh).
+VERSION_CALCUL = {"MSTP": "luminosite-reelle-1", "M_HS": "elevation-reelle-1"}
+
+
+def _note_calcul(out: Path) -> Path:
+    return out.with_name(out.name + ".calcul")
+
+
+def _a_recalculer(produit: str, source: Path, out: Path) -> bool:
+    if needs_refresh(source, out):
+        return True
+    try:
+        return _note_calcul(out).read_text(encoding="utf-8") != VERSION_CALCUL[produit]
+    except OSError:
+        return True
+
+
+def _noter_calcul(produit: str, out: Path, par_le_moteur: bool) -> None:
+    note = _note_calcul(out)
+    if par_le_moteur and out.exists():
+        note.write_text(VERSION_CALCUL[produit], encoding="utf-8")
+    elif note.exists():
+        note.unlink()
+
+
 def create_visualization_products(
     *,
     temp_dir: Path,
@@ -128,23 +157,30 @@ def create_visualization_products(
         ve_factor = _as_int(mdh.get("ve_factor", 1), 1)
         save_as_8bit = _as_bool(mdh.get("save_as_8bit", True), True)
         out = temp_dir / get_rvt_temp_filename("M_HS", current_tile_name, rvt_params)
-        if needs_refresh(input_path, out):
+        if _a_recalculer("M_HS", input_path, out):
+            moteur = moteur_indices.par_le_moteur("M_HS")
             log(format_params_line("RVT/M_HS", {
                 "tile": current_tile_name,
                 "num_directions": num_directions,
                 "sun_elevation": sun_elevation,
                 "ve_factor": ve_factor,
                 "save_as_8bit": save_as_8bit,
+                "moteur": "interne" if moteur else "processing",
             }))
-            params = {
-                "INPUT": str(input_path),
-                "OUTPUT": str(out),
-                "NUM_DIRECTIONS": num_directions,
-                "SAVE_AS_8BIT": save_as_8bit,
-                "SUN_ELEVATION": sun_elevation,
-                "VE_FACTOR": ve_factor,
-            }
-            run_qgis_algorithm("rvt:rvt_multi_hillshade", params, feedback=feedback, context=context)
+            if moteur:
+                moteur_indices.calculer_mhs(_couches(), out, directions=num_directions, elevation=sun_elevation,
+                                            ve=ve_factor, huit_bits=save_as_8bit)
+            else:
+                params = {
+                    "INPUT": str(input_path),
+                    "OUTPUT": str(out),
+                    "NUM_DIRECTIONS": num_directions,
+                    "SAVE_AS_8BIT": save_as_8bit,
+                    "SUN_ELEVATION": sun_elevation,
+                    "VE_FACTOR": ve_factor,
+                }
+                run_qgis_algorithm("rvt:rvt_multi_hillshade", params, feedback=feedback, context=context)
+            _noter_calcul("M_HS", out, moteur)
         else:
             log(f"M_HS réutilisé (cache intermédiaire) : {out.name}")
         if out.exists():
@@ -431,7 +467,8 @@ def create_visualization_products(
         ve_factor = _as_int(mstp.get("ve_factor", 1), 1)
         save_as_8bit = _as_bool(mstp.get("save_as_8bit", True), True)
         out = temp_dir / get_rvt_temp_filename("MSTP", current_tile_name, rvt_params)
-        if needs_refresh(input_path, out):
+        if _a_recalculer("MSTP", input_path, out):
+            moteur = moteur_indices.par_le_moteur("MSTP")
             log(format_params_line("RVT/MSTP", {
                 "tile": current_tile_name,
                 "local_scale": f"{local_scale_min}-{local_scale_max}/{local_scale_step}",
@@ -440,24 +477,33 @@ def create_visualization_products(
                 "lightness": lightness,
                 "ve_factor": ve_factor,
                 "save_as_8bit": save_as_8bit,
+                "moteur": "interne" if moteur else "processing",
             }))
-            params = {
-                "INPUT": str(input_path),
-                "OUTPUT": str(out),
-                "LOCAL_SCALE_MIN": local_scale_min,
-                "LOCAL_SCALE_MAX": local_scale_max,
-                "LOCAL_SCALE_STEP": local_scale_step,
-                "MESO_SCALE_MIN": meso_scale_min,
-                "MESO_SCALE_MAX": meso_scale_max,
-                "MESO_SCALE_STEP": meso_scale_step,
-                "BROAD_SCALE_MIN": broad_scale_min,
-                "BROAD_SCALE_MAX": broad_scale_max,
-                "BROAD_SCALE_STEP": broad_scale_step,
-                "LIGHTNESS": lightness,
-                "VE_FACTOR": ve_factor,
-                "SAVE_AS_8BIT": save_as_8bit,
-            }
-            run_qgis_algorithm("rvt:rvt_mstp", params, feedback=feedback, context=context)
+            if moteur:
+                moteur_indices.calculer_mstp(
+                    _couches(), out, local=(local_scale_min, local_scale_max, local_scale_step),
+                    meso=(meso_scale_min, meso_scale_max, meso_scale_step),
+                    large=(broad_scale_min, broad_scale_max, broad_scale_step), luminosite=lightness,
+                    ve=ve_factor, huit_bits=save_as_8bit)
+            else:   # rvt:rvt_mstp arrondit la luminosité à l'entier (int(parameterAsDouble))
+                params = {
+                    "INPUT": str(input_path),
+                    "OUTPUT": str(out),
+                    "LOCAL_SCALE_MIN": local_scale_min,
+                    "LOCAL_SCALE_MAX": local_scale_max,
+                    "LOCAL_SCALE_STEP": local_scale_step,
+                    "MESO_SCALE_MIN": meso_scale_min,
+                    "MESO_SCALE_MAX": meso_scale_max,
+                    "MESO_SCALE_STEP": meso_scale_step,
+                    "BROAD_SCALE_MIN": broad_scale_min,
+                    "BROAD_SCALE_MAX": broad_scale_max,
+                    "BROAD_SCALE_STEP": broad_scale_step,
+                    "LIGHTNESS": lightness,
+                    "VE_FACTOR": ve_factor,
+                    "SAVE_AS_8BIT": save_as_8bit,
+                }
+                run_qgis_algorithm("rvt:rvt_mstp", params, feedback=feedback, context=context)
+            _noter_calcul("MSTP", out, moteur)
         else:
             log(f"MSTP réutilisé (cache intermédiaire) : {out.name}")
         if out.exists():

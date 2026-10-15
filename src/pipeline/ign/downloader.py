@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 import re
 import shutil
@@ -293,6 +294,49 @@ def _is_local_url(url: str) -> Optional[Path]:
         return None
     return None
 
+def _partial_telechargement(dest: Path) -> Path:
+    """``<nom>.partial`` à côté de la cible : rien ne porte le nom final avant la
+    fin complète du transfert (même volume → ``os.replace`` atomique). Sans
+    extension ``.laz`` : ni PDAL ni un glob de dalles ne le prennent."""
+    return dest.with_name(dest.name + ".partial")
+
+
+def note_verifiee_path(dest: Path) -> Path:
+    return dest.with_name(dest.name + ".verifie.json")
+
+
+def ecrire_note_verifiee(dest: Path) -> None:
+    """Note « vérifiée » : taille et date du LAZ, posée quand il est prouvé entier
+    (lecture complète réussie, ou taille égale à celle annoncée par le serveur)."""
+    st = dest.stat()
+    note_verifiee_path(dest).write_text(
+        json.dumps({"taille": st.st_size, "mtime_ns": st.st_mtime_ns}), encoding="utf-8"
+    )
+
+
+def note_verifiee_valide(dest: Path) -> bool:
+    """Vrai si la note décrit encore le fichier (même taille, même date) : la
+    lecture complète (14 à 36 s par dalle, mesuré) n'apprendrait rien."""
+    try:
+        note = json.loads(note_verifiee_path(dest).read_text(encoding="utf-8"))
+        st = dest.stat()
+    except (OSError, ValueError):
+        return False
+    return note == {"taille": st.st_size, "mtime_ns": st.st_mtime_ns}
+
+
+def _taille_annoncee(headers) -> Optional[int]:
+    """``Content-Length`` utilisable pour contrôler le fichier écrit ; ``None`` s'il
+    manque ou si le corps est encodé (gzip… : la taille annoncée n'est pas celle
+    écrite)."""
+    try:
+        if str(headers.get("Content-Encoding") or "identity").lower() != "identity":
+            return None
+        n = int(headers.get("Content-Length") or 0)
+    except (TypeError, ValueError, AttributeError):
+        return None
+    return n if n > 0 else None
+
 
 def download_one(
     url: str,
@@ -313,6 +357,13 @@ def download_one(
 
     dalles_dir.mkdir(parents=True, exist_ok=True)
     dest = dalles_dir / filename
+    partial = _partial_telechargement(dest)
+    if partial.exists():
+        # Reste d'un téléchargement tué (QGIS fermé, plantage) : jamais repris tel quel.
+        try:
+            partial.unlink()
+        except OSError:
+            pass
 
     if dest.exists():
         log(f"🔍 Validation PDAL rapide de {filename}...")
@@ -325,11 +376,16 @@ def download_one(
                 dest.unlink()
             except Exception:
                 pass
+        elif note_verifiee_valide(dest):
+            # Lu en entier par un lancement précédent et inchangé depuis.
+            log(f"✅ {filename} déjà présente (vérifiée)")
+            return True, True
         else:
             # Validation profonde pour détecter les fichiers tronqués
             log(f"🔍 Validation PDAL profonde de {filename}...")
             ok_deep, msg_deep = validate_laz_deep(dest)
             if ok_deep:
+                ecrire_note_verifiee(dest)
                 log(f"✅ {filename} déjà téléchargé (validation complète OK)")
                 return True, True
             log(f"⚠️ Fichier existant tronqué/corrompu ({filename}) -> suppression et nouveau téléchargement")
@@ -375,10 +431,7 @@ def download_one(
     max_bytes = int(MAX_DOWNLOAD_SIZE_MB * 1024 * 1024)
 
     def _declared_too_big(headers) -> bool:
-        try:
-            declared = int(headers.get("Content-Length") or 0)
-        except (TypeError, ValueError):
-            declared = 0
+        declared = _taille_annoncee(headers) or 0
         if declared > max_bytes:
             log(
                 f"❌ {filename}: taille annoncée {declared / 1e6:.0f} Mo > cap "
@@ -391,8 +444,8 @@ def download_one(
         if written <= max_bytes:
             return False
         f.close()
-        if dest.exists():
-            dest.unlink()
+        if partial.exists():
+            partial.unlink()
         log(
             f"❌ {filename}: dépasse le cap de {MAX_DOWNLOAD_SIZE_MB} Mo en "
             "cours de téléchargement — abandonné (anti-saturation disque)"
@@ -405,6 +458,8 @@ def download_one(
             return False, False
 
         try:
+            # Écriture dans <nom>.partial (lot 3) : un flux coupé ou un QGIS tué
+            # laissait un LAZ tronqué sous le nom final.
             if HAS_REQUESTS:
                 # Utiliser requests qui gère correctement les proxies HTTPS
                 resp = requests.get(
@@ -417,13 +472,14 @@ def download_one(
                 resp.raise_for_status()
                 if _declared_too_big(resp.headers):
                     return False, False  # définitif : pas de retry
+                annoncee = _taille_annoncee(resp.headers)
                 written = 0
-                with open(dest, "wb") as f:
+                with open(partial, "wb") as f:
                     for chunk in resp.iter_content(chunk_size=chunk_size):
                         if cancel():
                             f.close()
-                            if dest.exists():
-                                dest.unlink()
+                            if partial.exists():
+                                partial.unlink()
                             return False, False
                         if chunk:
                             written += len(chunk)
@@ -436,15 +492,17 @@ def download_one(
                 proxy_handler = urllib.request.ProxyHandler(proxies if proxies else None)
                 opener = urllib.request.build_opener(proxy_handler)
                 with opener.open(req, timeout=timeout_s) as r:
-                    if _declared_too_big(getattr(r, "headers", {})):
+                    entetes = getattr(r, "headers", {})
+                    if _declared_too_big(entetes):
                         return False, False  # définitif : pas de retry
+                    annoncee = _taille_annoncee(entetes)
                     written = 0
-                    with open(dest, "wb") as f:
+                    with open(partial, "wb") as f:
                         while True:
                             if cancel():
                                 f.close()
-                                if dest.exists():
-                                    dest.unlink()
+                                if partial.exists():
+                                    partial.unlink()
                                 return False, False
                             chunk = r.read(chunk_size)
                             if not chunk:
@@ -453,6 +511,11 @@ def download_one(
                             if _over_cap(written, f):
                                 return False, False  # définitif : pas de retry
                             f.write(chunk)
+
+            # Flux coupé net, sans erreur réseau : la taille annoncée le trahit.
+            if annoncee is not None and written != annoncee:
+                raise IOError(f"téléchargement incomplet : {written} octets reçus sur {annoncee} annoncés")
+            os.replace(str(partial), str(dest))
 
             log(f"🔍 Validation PDAL rapide de {filename}...")
             ok, msg = _is_valid_with_pdal(dest)
@@ -466,19 +529,22 @@ def download_one(
                     pass
                 raise IOError(f"pdal-invalid: {msg}")
 
-            # Validation profonde pour détecter les fichiers tronqués
-            log(f"🔍 Validation PDAL profonde de {filename} (lecture complète)...")
-            ok_deep, msg_deep = validate_laz_deep(dest)
-            if not ok_deep:
-                log(f"⚠️ Fichier tronqué/corrompu détecté ({filename}) -> suppression")
-                if msg_deep:
-                    log(f"PDAL: {msg_deep}")
-                try:
-                    dest.unlink()
-                except Exception:
-                    pass
-                raise IOError(f"pdal-deep-invalid: {msg_deep}")
+            if annoncee is None:
+                # Sans taille annoncée, seule une lecture complète prouve le fichier
+                # entier — une fois : la note « vérifiée » la retient.
+                log(f"🔍 Validation PDAL profonde de {filename} (lecture complète)...")
+                ok_deep, msg_deep = validate_laz_deep(dest)
+                if not ok_deep:
+                    log(f"⚠️ Fichier tronqué/corrompu détecté ({filename}) -> suppression")
+                    if msg_deep:
+                        log(f"PDAL: {msg_deep}")
+                    try:
+                        dest.unlink()
+                    except Exception:
+                        pass
+                    raise IOError(f"pdal-deep-invalid: {msg_deep}")
 
+            ecrire_note_verifiee(dest)
             return True, False
         except Exception as e:
             last_err = e

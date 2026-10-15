@@ -78,7 +78,7 @@ class TestNeighborHaloResolve:
         assert inputs == [a, b]
         assert window == halo_window(_cell(872, 6904), 50)
         sidecar = json.loads(out.with_suffix(".inputs.json").read_text(encoding="utf-8"))
-        assert sidecar == [a.name, b.name]
+        assert sidecar == {"marge_m": 50.0, "voisins": [a.name, b.name]}
 
     def test_reutilise_le_halo_a_jour(self, halo_env):
         a, _b = sorted(halo_env["tiles"])
@@ -133,6 +133,24 @@ class TestNeighborHaloResolve:
 
     def test_dalle_inconnue(self, halo_env):
         assert halo_env["halo"].resolve(Path("ailleurs.tif")) is None
+
+    def test_marge_changee_refabrique(self, halo_env):
+        a, _b = sorted(halo_env["tiles"])
+        halo_env["halo"].resolve(a)
+        NeighborHalo(halo_env["tiles"], halo_env["tmp"] / "halo", 80).resolve(a)
+
+        assert len(halo_env["calls"]) == 2
+        assert halo_env["calls"][1][1] == halo_window(_cell(872, 6904), 80)
+
+    def test_ancien_sidecar_sans_marge_refabrique(self, halo_env):
+        # Halo écrit par la 0.14.1 : sidecar = simple liste des voisins.
+        a, b = sorted(halo_env["tiles"])
+        out = halo_env["halo"].resolve(a)
+        out.with_suffix(".inputs.json").write_text(json.dumps([a.name, b.name]), encoding="utf-8")
+
+        halo_env["halo"].resolve(a)
+
+        assert len(halo_env["calls"]) == 2
 
 
 class TestDefaultMargin:

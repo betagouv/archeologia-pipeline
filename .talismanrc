@@ -8,7 +8,7 @@ fileignoreconfig:
 - filename: tests/unit/test_mnt_chien_de_garde.py
   checksum: fbb2c02d82caaf493cc5be4f107d9ad7b9e9b753a835b33de36e913e9ca7f7b5
 - filename: src/pipeline/ign/products/mnt.py
-  checksum: 1e5cde94f4c045dd9b2975f1479347239cd3c7022df8b9fcb5dba9360b12ebe8
+  checksum: 9102f679399a595f481e388bc295f5a686caffdfc32fb4488c8690df100412d0
 - filename: tests/unit/test_neighbor_halo.py
   checksum: f1cc2dac01c4ad78b8a38630fa00ddab9b644d354f1dcc9f9b314bc20e2f0201
 - filename: tests/unit/test_merge_inputs_freshness.py
@@ -84,7 +84,7 @@ fileignoreconfig:
 - filename: src/pipeline/ign/downloader.py
   checksum: 0ef1fc8d25c67c7d2117eefe66b980b37e9b26525a8d4468f53f9e71bd2c8189
 - filename: src/pipeline/ign/pdal_validation.py
-  checksum: 8867b41e31232f0047d39a3ed884b5e677848f2269c5e79d9b5cd5217bc6b407
+  checksum: 82507d6418ebf588086b4018194b582839bf55a0eea1333a88ba98af71de6d3f
 - filename: src/pipeline/ign/preprocess.py
   checksum: 31437a97ad99cabce9ffaa45ca4f90335fc9f115345a26bcb7822c58ce67fab1
 - filename: src/pipeline/ign/products/indices.py

@@ -982,7 +982,7 @@ Lot 3 du chantier d'accélération (2026-10-15) : une dalle lue en entier reçoi
 > **Contexte** (0.16.0) : les 12 indices sont calculés avec la bibliothèque rvt intégrée ; l'extension n'est plus
 > requise, et l'avoir installée ne change rien (le `rvt` de l'extension et celui du plugin ne se partagent jamais).
 
-- [ ] **53.1** Désactiver « Relief Visualization Toolbox » dans le gestionnaire d'extensions, redémarrer QGIS, cocher les 12 indices → étape 4 : « Moteur d'indices intégré » ✓, aucune ligne « Algorithmes RVT (Processing) » ; le traitement publie les 12 indices.
+- [ ] **53.1** Désactiver « Relief Visualization Toolbox » dans le gestionnaire d'extensions, redémarrer QGIS, cocher les 12 indices → étape 4 : « Moteur d'indices intégré » ✓, aucune ligne « Algorithmes RVT (Processing) » ; le traitement publie les 12 indices ; à l'installation du plugin, QGIS ne propose plus d'installer l'extension.
 - [ ] **53.2** Réactiver l'extension, refaire le même traitement dans un autre dossier → mêmes images (deux TIF au hasard, identiques dans QGIS ; la preuve au pixel est le N3, scénarios 8 et 9).
 - [ ] **53.3** Le ZIP livré contient `src/pipeline/ign/products/rvt_embarque/LICENSE` et `NOTICE` ; Aide › Installer et Glossaire citent le ZRC SAZU et l'Université de Ljubljana ; le rapport de traitement aussi (Sources).
 - [ ] **53.4 Qt6** : rejouer 53.1 sous QGIS 4.

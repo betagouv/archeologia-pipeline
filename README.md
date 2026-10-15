@@ -569,7 +569,7 @@ Ensuite, un `git push` déclenchera automatiquement Talisman et pourra bloquer l
 
 - **Préflight KO** : vérifier que `pdal`, `gdalwarp`, `gdal_translate` sont accessibles dans le `PATH`.
 - **Pyramides absentes** : vérifier la présence de `gdaladdo` et que l’option pyramides est activée.
-- **RVT indisponible** (✗ « Algorithmes RVT (Processing) » au préflight, ou erreur « Algorithm rvt:… not found ») : vérifier dans *Extensions → Installer/Gérer les extensions* que **Relief Visualization Toolbox** est installé, **coché** (activé) et à jour — obligatoire en version ≥ 1.0.1 sous QGIS 4, les versions ≤ 0.10.0 n'y étant pas chargées.
+- **RVT indisponible** (✗ « Algorithmes RVT (Processing) » au préflight, ou erreur « Algorithm rvt:… not found ») : n'apparaît que si l'ancien calcul est forcé (`ARCHEO_INDICES_MOTEUR=processing`) : vérifier alors dans *Extensions → Installer/Gérer les extensions* que **Relief Visualization Toolbox** est installé, **coché** et à jour (≥ 1.0.1 sous QGIS 4). Dans le cas normal, consulter plutôt la ligne **« Moteur d'indices intégré »** du préflight (numpy, scipy, matplotlib de QGIS).
 - **Computer vision** :
   - soit fournir le runner externe dans `third_party/cv_runner_onnx/...`
   - soit installer les dépendances Python (`onnxruntime`, `pillow`) dans l'environnement QGIS
@@ -862,7 +862,7 @@ src/
 │   │       ├── convert_tif_to_jpg.py
 │   │       ├── crop.py             # Découpe aux limites dalle + copy_products_without_crop (MNT < 1 km)
 │   │       ├── crim.py             # CRIM (Color Relief Image Map) — calcul in-process via le paquet rvt
-│   │       ├── cvat.py             # CVAT (Combined VAT) — calcul in-process via le paquet rvt de rvt-qgis
+│   │       ├── cvat.py             # CVAT (Combined VAT) — calcul in-process via le paquet rvt embarqué (rvt_embarque)
 │   │       ├── density.py          # Carte de densité
 │   │       ├── indices.py          # Indices RVT (HS, M-HS, SVF, SLO, LD, SLRM, VAT, MSTP, CVAT, PRISM, CRIM)
 │   │       ├── mnt.py              # MNT (PDAL + gdalwarp)

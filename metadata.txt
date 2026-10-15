@@ -158,5 +158,4 @@ category=Raster
 icon=data/icon.png
 experimental=False
 deprecated=False
-plugin_dependencies=Relief Visualization Toolbox
 server=False

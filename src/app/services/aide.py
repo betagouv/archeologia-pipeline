@@ -261,6 +261,7 @@ CLE_DEPANNAGE = "depannage"
 #: Motif cherché sans tenir compte de la casse ; le premier qui matche gagne.
 #: ``test_aide`` vérifie que chaque titre existe bien dans le chapitre.
 _RUBRIQUES_DEPANNAGE: Tuple[Tuple[str, str], ...] = (
+    (r"d[ée]tection impossible|moteur de d[ée]tection", "La détection est impossible"),
     (r"noyau atteint", "Le noyau atteint N pixels"),
     (r"v[ée]rifications pr[ée]alables ont [ée]chou", "Les vérifications préalables ont échoué"),
     (r"timed out|data\.geopf\.fr|proxy|t[ée]l[ée]chargement.*[ée]chou", "Le téléchargement échoue"),

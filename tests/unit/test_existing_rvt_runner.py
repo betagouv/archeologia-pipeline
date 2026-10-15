@@ -302,3 +302,33 @@ class TestDureeReelleDuRun:
     def test_rien_si_tout_vient_du_cache(self, tmp_path, monkeypatch):
         reporter = self._run(tmp_path, monkeypatch, {"images_inferees": 0, "secondes": 0.4})
         assert not any("analysée" in m for m in reporter.messages)
+
+
+class TestDetectionImpossible:
+    """Lot 0d : un moteur en échec est tracé pour la finalisation (cv_engine = "none")."""
+
+    def test_l_echec_est_transmis_a_la_finalisation(self, tmp_path, monkeypatch):
+        from pipeline.cancellation import DetectionImpossible
+
+        def fake_run_existing_rvt(**kwargs):
+            raise DetectionImpossible("moteur de détection en échec (cv_runner failed (code=2))")
+
+        monkeypatch.setattr(
+            "pipeline.cv.class_utils.resolve_cv_runs",
+            lambda _cfg: [{"selected_model": "m", "target_rvt": "LD", "enabled": True}],
+        )
+        monkeypatch.setattr("pipeline.modes.existing_rvt.run_existing_rvt", fake_run_existing_rvt)
+        recu: dict = {}
+
+        def fake_finalize(**kw):
+            recu.update(kw)
+            return False
+
+        monkeypatch.setattr("app.runners.existing_rvt_runner.finalize_pipeline", fake_finalize)
+        ExistingRvtRunner().run(
+            ctx=_ctx(tmp_path, {"enabled": True, "target_rvt": "LD"}),
+            reporter=_Reporter(),
+            cancel=CancelToken(threading.Event()),
+        )
+        assert recu["cv_stats"][-1]["moteur"] == "none"
+        assert "en échec" in recu["cv_stats"][-1]["motif"]

@@ -20,7 +20,7 @@ import os
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-from ..cancellation import PipelineCancelled
+from ..cancellation import DetectionImpossible, PipelineCancelled
 from ..types import LogFn, CancelCheckFn
 from .external_runner import (
     ImageProgressFn,
@@ -43,6 +43,15 @@ from .runner_shapefiles import deduplicate_cv_shapefiles_final
 
 # Re-export pour compatibilité (utilisé par preflight.py)
 _find_external_cv_runner = find_external_cv_runner
+
+MOTIF_MOTEUR_ABSENT = "moteur de détection absent de l'extension (cv_runner_onnx) — réinstallez l'extension"
+
+
+def _onnxruntime_disponible() -> bool:
+    """Le repli dans le processus de QGIS n'existe que si onnxruntime y est
+    installé — ni QGIS 3.44 (OSGeo4W) ni QGIS 4.0 ne l'ont (vérifié 2026-10-15)."""
+    import importlib.util
+    return importlib.util.find_spec("onnxruntime") is not None
 
 
 def _absolutize_models_dir(cv_config: Dict[str, Any]) -> Dict[str, Any]:
@@ -144,6 +153,9 @@ def run_cv_on_folder(
     # différente — ou absente : dossier d'une version précédente — → purge,
     # donc ré-inférence (le binaire saute toute image au cache).
     ext = find_external_cv_runner(log=log)
+    if ext is None and not _onnxruntime_disponible():
+        # Avant toute purge : un moteur manquant ne doit pas vider le cache.
+        raise DetectionImpossible(MOTIF_MOTEUR_ABSENT)
     from .model_config import resolve_model_weights_path as _poids_du_modele
     _purgees = aligner_cache_detections(
         effective_raw_dir,
@@ -262,6 +274,8 @@ def run_cv_on_folder(
                     log=log,
                     cancel_check=cancel_check,
                 )
+            if stats is not None:
+                stats["moteur"] = "cache"
             return
         else:
             already = len(candidate_pngs) - len(missing)
@@ -296,6 +310,8 @@ def run_cv_on_folder(
                 tile_progress=tile_progress,
                 stats=stats,
             )
+            if stats is not None:
+                stats["moteur"] = "binaire"
             # Générer les shapefiles côté plugin (avec shapely + post-processing)
             if run_shapefile_dedup:
                 shapefile_output_dir = effective_detection_dir / "shapefiles"
@@ -319,6 +335,8 @@ def run_cv_on_folder(
             # Annulation utilisateur : propager sans tenter le fallback.
             raise
         except Exception as e:
+            if not _onnxruntime_disponible():
+                raise DetectionImpossible(f"moteur de détection en échec ({e})") from e
             log(f"Computer Vision: échec runner externe, fallback Python ONNX: {e}")
 
     # 2) Fallback : inférence ONNX en Python (onnxruntime)
@@ -334,6 +352,8 @@ def run_cv_on_folder(
 
     # ponytail: le fallback in-process ne remonte ni tuiles ni total — chemin
     # rare (binaire absent), à câbler si l'usage sans binaire se généralise.
+    if stats is not None:
+        stats["moteur"] = "python"
     run_fallback_inference(
         jpg_dir=jpg_dir,
         raw_dir=effective_raw_dir,

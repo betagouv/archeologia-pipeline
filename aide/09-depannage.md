@@ -16,7 +16,7 @@ Les situations rencontrées, par ordre d'apparition dans un traitement. Quand le
 
 ## Alerte antivirus à l'installation
 
-Certains antivirus signalent ou mettent en quarantaine `cv_runner_onnx.exe`, le moteur de détection, dans `data\third_party\cv_runner_onnx\windows`. C'est un faux positif : ce programme est un composant du plugin, compilé par l'équipe, qui ne fait que lire des images et écrire des détections. Restaurez le fichier depuis la quarantaine et ajoutez une exclusion pour le dossier du plugin ; à défaut, le plugin détecte quand même, par un moteur de secours plus lent, et le signale dans le journal.
+Certains antivirus signalent ou mettent en quarantaine `cv_runner_onnx.exe`, le moteur de détection, dans `data\third_party\cv_runner_onnx\windows`. C'est un faux positif : ce programme est un composant du plugin, compilé par l'équipe, qui ne fait que lire des images et écrire des détections. Restaurez le fichier depuis la quarantaine et ajoutez une exclusion pour le dossier du plugin. Sans lui, la détection est impossible : voir [La détection est impossible](#la-detection-est-impossible).
 
 ## Le plugin ne se lance pas
 
@@ -61,6 +61,15 @@ Si le calcul d'un modèle de terrain ne rend pas la main après deux heures, la 
 ## Erreur PDAL ou mémoire
 
 Une erreur de PDAL pendant le découpage ou la fusion des dalles, en particulier avec un code de violation d'accès, vient presque toujours d'un manque de mémoire : plusieurs dalles traitées en parallèle sur un poste qui ne peut pas les tenir. Réduisez les **workers** à 1 ou 2 à l'étape 4 et relancez dans le même dossier : les dalles déjà calculées sont conservées.
+
+## La détection est impossible
+
+Le moteur de détection est un programme livré avec l'extension. S'il manque, les vérifications de l'étape 4 le signalent et bloquent le lancement. S'il s'arrête en cours de traitement, par exemple mis en quarantaine par un antivirus à sa première exécution, aucune détection n'est cherchée : la fin du traitement le dit en rouge, avec la cause, et le rapport aussi. Les produits, eux, sont calculés.
+
+- Un antivirus l'a mis en quarantaine : voir [Alerte antivirus à l'installation](#alerte-antivirus-a-l-installation).
+- Le fichier est endommagé, ou une mise à jour a été interrompue : réinstallez l'extension depuis le dépôt.
+
+Relancez ensuite dans le même dossier : les produits déjà calculés sont conservés, seule la détection est refaite.
 
 ## Aucun run, ou aucune détection
 

@@ -46,6 +46,29 @@ def _model_display_name(selected_model: str) -> str:
     card = load_model_card(dossier) if dossier.is_dir() else None
     return str((card or {}).get("display_name") or nom)
 
+
+def noter_echec_detection(
+    stats: Optional[list], run_cfg: Dict[str, Any], model_display: str, exc: Exception
+) -> None:
+    """Trace dans ``stats`` un run sans détection possible (moteur absent ou en
+    échec, sans repli) : la finalisation en tire ``cv_engine = "none"``, une fin de
+    run non ✓ et le motif dans traitement.json et rapport.html."""
+    try:  # fallback standalone (tests : src/ sur le path)
+        from ...pipeline.cancellation import DetectionImpossible
+    except ImportError:  # pragma: no cover
+        from pipeline.cancellation import DetectionImpossible
+    from .rapport_run import anonymiser
+
+    if stats is None or not isinstance(exc, DetectionImpossible):
+        return
+    stats.append({
+        "modele": model_display, "model": run_cfg.get("selected_model", "?"),
+        "target_rvt": run_cfg.get("target_rvt", ""),
+        "entites": [e.get("label") or e.get("slug") or "" for e in (run_cfg.get("entities") or [])
+                    if isinstance(e, dict)],
+        "images": 0, "secondes": 0.0, "moteur": "none", "motif": anonymiser(str(exc)),
+    })
+
 if TYPE_CHECKING:
     from ..cancel_token import CancelToken
     from ..progress_reporter import ProgressReporter
@@ -248,6 +271,7 @@ def run_cv_post_loop(
                 "entites": [e.get("label") or e.get("slug") or "" for e in (run_cfg.get("entities") or [])
                             if isinstance(e, dict)],
                 "images": int(st.get("images_inferees") or 0), "secondes": float(st.get("secondes") or 0.0),
+                "moteur": st.get("moteur"),
             })
 
     def _on_run_failure(run_idx: int, run_cfg: Dict[str, Any], exc: Exception) -> None:
@@ -256,6 +280,7 @@ def run_cv_post_loop(
             f"Computer Vision: run {run_idx} (modèle={model_display}) en échec, "
             f"ignoré : {exc}"
         )
+        noter_echec_detection(stats_out, run_cfg, model_display, exc)
 
     # Isolation par run : l'échec d'inférence/conversion d'un modèle n'empêche
     # plus les runs suivants de produire leurs détections (cf. AUDIT ROB-04).

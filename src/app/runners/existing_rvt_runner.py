@@ -7,7 +7,7 @@ from ..cancel_token import CancelToken
 from ..progress_reporter import ProgressReporter, report_busy, report_stage_id
 from ..progress_stages import Stage
 from ..run_context import RunContext
-from ..services.cv_post_service import _model_display_name, resolve_uncropped_tif
+from ..services.cv_post_service import _model_display_name, noter_echec_detection, resolve_uncropped_tif
 from ..services.finalize_service import finalize_pipeline
 from ..structured_logger import log_section
 from ..user_narrator import create_user_narrator
@@ -168,6 +168,7 @@ class ExistingRvtRunner:
                 "entites": [e.get("label") or e.get("slug") or "" for e in (run_cfg.get("entities") or [])
                             if isinstance(e, dict)],
                 "images": int(st.get("images_inferees") or 0), "secondes": float(st.get("secondes") or 0.0),
+                "moteur": st.get("moteur"),
             })
 
         def _on_run_failure(run_idx: int, run_cfg: dict, exc: Exception) -> None:
@@ -176,6 +177,7 @@ class ExistingRvtRunner:
                 f"Computer Vision: run {run_idx} (modèle={model_display}) en échec, "
                 f"ignoré : {exc}"
             )
+            noter_echec_detection(cv_stats, run_cfg, model_display, exc)
 
         # Annulation = arrêt rapide du travail lourd, puis finalisation légère
         # (VRT + projet QGIS + chargement des couches déjà produites).

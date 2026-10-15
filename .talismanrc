@@ -124,7 +124,7 @@ fileignoreconfig:
 - filename: src/ui/wizard_dialog.py
   checksum: 78260730953c1840a7596251973291818166925dfd63f5cfad889b19876ea467
 - filename: tests/TESTS_MANUELS_QGIS.md
-  checksum: aef3d516e882da4be2754c0d739718f8828627dfc1c8b3703a1e334898839b3b
+  checksum: 49b356e863955dbc83619ce01bbdfc3f523ec2bf661d09da1c5c57d6eff9470f
 - filename: tests/integration/test_existing_mnt_runner_finalize.py
   checksum: e67c2e4c83cea0937bdfb39e8eec7aa7476f30648d4d858589e2308ad0565d63
 - filename: tests/integration/test_existing_rvt_runner_isolation.py

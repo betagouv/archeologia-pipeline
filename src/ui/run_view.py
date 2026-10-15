@@ -41,6 +41,7 @@ from ..app.services.aide import AIDE_DIRNAME, CLE_DEPANNAGE, resoudre_cible, rub
 from ..app.services.bilan_fiabilite import collecter as collecter_bilan
 from ..app.services.fiabilite_observee import enregistrer_run
 from ..app.services.arborescence import appliquer, decrire, non_reconnus, plan_migration
+from ..app.services.finalize_service import echec_detection
 from ..app.services.rapport_run import NOM_RAPPORT
 from ..app.services.source_modes import mode_info
 from ..pipeline.output_paths import detections_dir, journaux_dir, livrable_dir, projet_qgs_path
@@ -947,7 +948,10 @@ class RunView(QWidget):
         elif outcome == "cancel":
             text = f"Annulé après {elapsed}{suffix}"
         else:
-            text = f"✗ En échec après {elapsed}{suffix} — voir le journal"
+            out_dir = self._output_dir()
+            motif = echec_detection(out_dir) if out_dir else ""
+            text = (f"✗ Détection impossible après {elapsed} : {motif}{suffix}" if motif
+                    else f"✗ En échec après {elapsed}{suffix} — voir le journal")
         self._fil_gauche.setText(text)
         self._fil_gauche.setProperty("kind", outcome)
         self._fil_gauche.style().unpolish(self._fil_gauche)

@@ -23,6 +23,7 @@ repository=https://github.com/betagouv/archeologia-pipeline
 hasProcessingProvider=no
 changelog=0.15.0 (en préparation)
     * Correctif : relancer dans le même dossier avec un autre seuil, un autre modèle ou après une mise à jour du moteur de détection reprenait les détections du lancement précédent. Les images sont maintenant ré-analysées dès que l'un de ces réglages change ; à réglages identiques, elles ne le sont pas de nouveau.
+    * Quand le moteur de détection livré avec l'extension s'arrête en cours de traitement, le traitement ne se dit plus « terminé » : la fin indique « Détection impossible » et sa cause, en rouge, et le rapport comme la trace du traitement le disent aussi. Les produits restent calculés ; une rubrique du manuel explique quoi faire.
  0.14.1 (2026-10-11)
     * Correctif : un traitement sur une seule dalle, sans voisine, échouait toujours (« fichier introuvable » au calcul du MNT). La dalle est maintenant réécrite au lieu d'être copiée, et un dossier où ce traitement avait échoué repart sans rien supprimer à la main.
     * Correctif : en mode « Indices existants » sans détection, le traitement s'annonçait en échec alors que les indices étaient bien publiés. Il se termine désormais normalement, et le journal dit « Publication des indices ».

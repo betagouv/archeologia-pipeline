@@ -920,3 +920,13 @@ Le cache `technique/detection/<modèle>/raw_detections/` porte une clé (`cle_ca
 - [ ] **47.2 Relance identique** : relancer sans rien changer, dans le même dossier → pas de message de purge, le journal dit « inférence sautée » et aucune durée de modèle n'est annoncée (0 image analysée) ; le résultat est identique.
 - [ ] **47.3 Dossier écrit par la 0.14.1** : relancer, avec cette version, dans un dossier de sortie produit par la 0.14.1 (détections déjà présentes, sans clé) → le journal annonce la purge et la ré-inférence ; `technique/detection/<modèle>/raw_detections/cle_cache.json` apparaît. Une relance suivante, identique, réutilise le cache (47.2).
 - [ ] **47.4 Qt6** : rejouer 47.1 sous QGIS 4.
+
+## 48. Détection impossible : moteur absent ou en échec ⭐ P0
+
+Lot 0d du chantier d'accélération (2026-10-15). Sans le moteur de détection livré avec l'extension, il n'y a pas de repli (onnxruntime n'est installé ni dans QGIS 3.44 ni dans QGIS 4.0) : l'échec doit se voir partout.
+
+- [ ] **48.1 Moteur absent** : renommer `data/third_party/cv_runner_onnx/windows/cv_runner_onnx.exe` du profil en `.exe.bak`, ouvrir l'étape 4 avec une entité cochée → l'état du système est rouge (`python:onnxruntime` critique) et le lancement est refusé ; aucun dossier de sortie n'est touché.
+- [ ] **48.2 Moteur en échec** : copier `C:\Windows\System32\where.exe` à la place de `cv_runner_onnx.exe` (il refuse l'option `--config`), lancer un run Indices existants (une dalle, Cratères) → la ligne du haut dit « ✗ Détection impossible après … : moteur de détection en échec (…) » en rouge, jamais « ✓ Terminé » ; le journal a une ligne ✗ « Détection impossible » avec le renvoi « voir Manuel › Dépannage › La détection est impossible » ; aucun GeoPackage dans `livrable/detections/` ; les TIF de `livrable/indices/` sont publiés.
+- [ ] **48.3 Traces** : après 48.2, `livrable/traitement.json` porte `"cv_engine": "none"` et `"cv_motif"` sans chemin du poste ; « Rapport » ouvre un rapport qui dit « Traitement terminé sans détection », puis « Détection impossible : … », et la colonne d'analyse du modèle dit « détection impossible ».
+- [ ] **48.4 Retour du moteur** : remettre le vrai `cv_runner_onnx.exe`, relancer dans le même dossier → ✓ Terminé, détections produites, `traitement.json` porte `"cv_engine": "binaire"` et plus de `cv_motif`.
+- [ ] **48.5 Qt6** : rejouer 48.2 et 48.4 sous QGIS 4 — aucun `AttributeError`.

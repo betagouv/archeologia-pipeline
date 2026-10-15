@@ -50,6 +50,7 @@ _ISSUES = {
     "success": "terminé",
     "cancelled": "annulé",
     "failed": "en échec",
+    "detection_impossible": "terminé sans détection",
 }
 
 #: Section de ``rvt_params`` de chaque produit (l'inverse de ``SECTION_PRODUIT``).
@@ -99,6 +100,7 @@ class DonneesRapport:
     etapes: Tuple[Tuple[str, str, float], ...] = ()     # (étape, détail, secondes mesurées)
     avertissements: Tuple[Avertissement, ...] = ()
     vignette: Optional[str] = None                      # chemin relatif au rapport
+    motif_detection: str = ""                           # « Détection impossible » : la cause (lot 0d)
 
 
 # ----------------------------------------------------------------------
@@ -399,7 +401,9 @@ def _cv_runs(runs: Sequence[Mapping[str, Any]]) -> str:
     lignes = []
     for r in runs:
         images, secondes = r.get("images"), r.get("secondes")
-        if images is None:
+        if r.get("moteur") == "none":
+            analyse = "détection impossible"
+        elif images is None:
             analyse = "—"
         elif not images:
             analyse = "reprise du run précédent"
@@ -470,6 +474,9 @@ def construire_html(d: DonneesRapport) -> str:
     else:
         garde = ("Ce rapport ne localise pas la zone traitée ; les produits restent dans le dossier du "
                  "traitement, à côté de ce rapport.")
+    impossible = (f'<p><b class="ko">Détection impossible</b> : {_e(anonymiser(d.motif_detection))}. '
+                  "Les produits sont calculés ; aucune détection n'a été cherchée.</p>\n"
+                  if d.motif_detection else "")
     etapes = f"<h2>Durées par étape</h2>\n{_etapes(d.etapes)}\n" if d.etapes else ""
     return f"""<!doctype html>
 <html lang="fr"><head><meta charset="utf-8"><title>Rapport de traitement — {_e(d.date)}</title>
@@ -478,7 +485,7 @@ def construire_html(d: DonneesRapport) -> str:
 <p class=sous>Archéolog'IA v{_e(d.version)} — {_e(d.date)} — {_e(d.mode)}</p>
 <p class=garde>{garde}</p>
 <p>Traitement <b class="{classe_issue}">{_e(issue)}</b> en {_e(format_duree(d.duree_s))}.</p>
-<h2>Zone traitée</h2>
+{impossible}<h2>Zone traitée</h2>
 {vignette}
 {_zone(d)}
 <h2>Produits</h2>

@@ -341,3 +341,28 @@ class TestCheckRasterCrs:
         results = []
         _check_raster_crs(str(tmp_path), ("tif",), results)
         assert not any(r.name == "Dalles dégénérées" for r in results)
+
+
+class TestMoteurIntegre:
+    """« Moteur d'indices intégré » (0.16.0) : la bibliothèque rvt embarquée se charge-t-elle ?"""
+
+    NAME = "Moteur d'indices intégré"
+    CHEMIN = "pipeline.ign.products.moteur_indices.moteur_disponible"
+
+    def _collect(self, products):
+        return collect_preflight_results(mode="ign_laz", cv_config={"enabled": False}, products=products,
+                                         files_config={}, output_dir=None)
+
+    def test_bibliotheque_chargee(self, monkeypatch):
+        monkeypatch.setattr(self.CHEMIN, lambda: "")
+        r = next(x for x in self._collect({"CVAT": True}) if x.name == self.NAME)
+        assert r.ok and "CVAT" in r.details
+
+    def test_cvat_et_crim_seuls_ne_bloquent_pas(self, monkeypatch):
+        # Comme avant : sans bibliothèque, CVAT et CRIM sont sautés avec un message, la dalle continue.
+        monkeypatch.setattr(self.CHEMIN, lambda: "ModuleNotFoundError: No module named 'scipy'")
+        r = next(x for x in self._collect({"CVAT": True, "CRIM": True}) if x.name == self.NAME)
+        assert not r.ok and not r.critical and "scipy" in r.details
+
+    def test_aucun_produit_du_moteur_aucun_controle(self):
+        assert not any(x.name == self.NAME for x in self._collect({"MNT": True}))

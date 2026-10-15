@@ -18,9 +18,8 @@ class CheckResult:
     critical: bool
 
 
-# Produit → algorithme Processing du provider rvt-qgis. Garder en phase avec
-# les appels réels de ign/products/indices.py (CVAT absent : calculé
-# in-process via le paquet rvt, vérifié séparément).
+# Produit → algorithme Processing du provider rvt-qgis, pour les produits qui passent encore par Processing
+# (moteur_indices.par_le_moteur) ou quand ARCHEO_INDICES_MOTEUR=processing. CVAT et CRIM n'en ont pas.
 RVT_ALGO_BY_PRODUCT: Dict[str, str] = {
     "HS": "rvt_hillshade",
     "M_HS": "rvt_multi_hillshade",
@@ -259,15 +258,37 @@ def collect_preflight_results(
             )
         )
 
-    # Vérification RÉELLE des algos rvt:* (bug SRA HDF 2026-08-31) : un
-    # rvt-qgis absent/désactivé/trop vieux (non chargé par QGIS 4) ne se
-    # voyait qu'au premier processing.run("rvt:...") — « Algorithm not
-    # found » opaque, après les téléchargements. On interroge le registre
-    # Processing par produit coché ; hors QGIS (standalone/tests), non
-    # vérifiable → non bloquant. CVAT est exclu (in-process, check dédié
-    # ci-dessous).
+    # Indices de visualisation (0.16.0) : ceux que le moteur intégré calcule (bibliothèque rvt embarquée,
+    # ign/products/moteur_indices.py) n'exigent plus l'extension rvt-qgis ; on vérifie que la bibliothèque se
+    # charge. Import relatif différé : un import absolu `pipeline.*` ne résout pas dans QGIS.
+    try:
+        from .ign.products import moteur_indices
+    except Exception:  # noqa: BLE001 — paquet introuvable : tout passe par Processing
+        moteur_indices = None
+
+    def _par_le_moteur(produit: str) -> bool:
+        return moteur_indices is not None and moteur_indices.par_le_moteur(produit)
+
+    coches_moteur = sorted(p for p in (moteur_indices.PRODUITS_MOTEUR if moteur_indices else ())
+                           if products.get(p, False) and _par_le_moteur(p))
+    if coches_moteur and mode in ("ign_laz", "local_laz", "existing_mnt"):
+        raison = moteur_indices.moteur_disponible()
+        results.append(CheckResult(
+            name="Moteur d'indices intégré",
+            ok=not raison,
+            details=(f"bibliothèque rvt intégrée : {', '.join(coches_moteur)}" if not raison
+                     else f"{raison} — {', '.join(coches_moteur)} non calculable(s)"),
+            # CVAT et CRIM seuls : un échec les saute avec un message (comme avant) ; les autres font échouer
+            # la dalle, donc bloquent le lancement.
+            critical=any(p not in moteur_indices.SANS_PROCESSING for p in coches_moteur),
+        ))
+
+    # Vérification RÉELLE des algos rvt:* (bug SRA HDF 2026-08-31) pour les produits qui passent ENCORE par
+    # Processing (pas encore dans le moteur, ou ARCHEO_INDICES_MOTEUR=processing) : un rvt-qgis
+    # absent/désactivé/trop vieux ne se voyait qu'au premier processing.run("rvt:...") — « Algorithm not
+    # found » opaque, après les téléchargements. Hors QGIS (standalone/tests), non vérifiable → non bloquant.
     needed_algos = sorted(
-        {algo for prod, algo in RVT_ALGO_BY_PRODUCT.items() if products.get(prod, False)}
+        {algo for prod, algo in RVT_ALGO_BY_PRODUCT.items() if products.get(prod, False) and not _par_le_moteur(prod)}
     )
     if needed_algos and mode in ("ign_laz", "local_laz", "existing_mnt"):
         try:
@@ -312,29 +333,6 @@ def collect_preflight_results(
                 details=f"non vérifiable hors QGIS ({e.__class__.__name__})",
                 critical=False,
             ))
-
-    # CVAT et CRIM n'utilisent pas Processing : ils sont calculés in-process via
-    # le paquet ``rvt`` fourni par le plugin rvt-qgis. On vérifie qu'il est
-    # localisable. Une seule vérification suffit : les deux passent par le même
-    # ``_locate_rvt_package``.
-    _in_process = [k for k in ("CVAT", "CRIM") if products.get(k, False)]
-    if _in_process and mode in ("ign_laz", "local_laz", "existing_mnt"):
-        _libelle = f"{' et '.join(_in_process)} (lib rvt in-process)"
-        try:
-            # Import relatif différé : un import absolu `pipeline.*` ne résout pas
-            # dans QGIS (le package n'est pas exposé sous ce nom au runtime), et
-            # tirer ign.products au top-level casserait l'import standalone (QGIS
-            # via .mnt).
-            from .ign.products.cvat import _locate_rvt_package
-            ok = _locate_rvt_package() is not None
-            results.append(CheckResult(
-                name=_libelle,
-                ok=ok,
-                details="plugin rvt-qgis détecté" if ok else "plugin rvt-qgis introuvable",
-                critical=False,
-            ))
-        except Exception as e:
-            results.append(CheckResult(name=_libelle, ok=False, details=repr(e), critical=False))
 
     if cv_enabled:
         runner = _find_external_cv_runner()

@@ -14,7 +14,7 @@ Plugin QGIS pour exécuter un pipeline de traitement LiDAR et produire des raste
   - **Densité**
   - **Couverture** (*QA points sol*) — carte qualité des zones où le MNT est interpolé faute de points sol (raster + polygones des zones sous le seuil). Disponible uniquement quand le nuage de points est traité (modes `ign_laz` / `local_laz`).
   - Indices **RVT** (via *Processing*) : **HS**, **M-HS**, **SVF**, **SLO**, **LD**, **SLRM**, **VAT**, **MSTP**, **PRISM** (ouverture prismatique)
-  - Indices **CVAT** (*Combined VAT*) et **CRIM** (*Color Relief Image Map*) — calculés *in-process* via le paquet `rvt` du plugin rvt-qgis (non exposés par *Processing*)
+  - Indices **CVAT** (*Combined VAT*) et **CRIM** (*Color Relief Image Map*) — calculés *in-process* avec la bibliothèque `rvt` intégrée au plugin (`src/pipeline/ign/products/rvt_embarque/`, non exposés par *Processing*)
 - Export optionnel en **JPG + world file (JGW)** pour certains produits.
 - (Optionnel) Détection / segmentation d'instances par computer vision à partir des JPG produits (via runner externe ou dépendances Python) :
   - **Sélection par entités archéologiques** (UI étape 3) : on coche les entités à détecter (parcellaire, trous d'obus…) et un orchestrateur résout automatiquement quels modèles lancer, sur quel indice RVT, avec quelles classes. Plusieurs modèles peuvent ainsi tourner en parallèle, chacun ciblant un RVT. En interne, le filtrage par classes subsiste : si aucune classe n'est retenue pour un modèle, l'inférence est ignorée (court-circuit `selected_classes=[]` avant toute inférence).
@@ -123,7 +123,7 @@ Le plugin exécute un **préflight** (contrôle des dépendances) au lancement.
 - **Processing** : doit être disponible (dans QGIS : `Traitement` → `Boîte à outils`).
 - **Algorithmes RVT via Processing** : nécessaires si tu actives des produits RVT (HS/M-HS/SVF/SLO/LD/SLRM/VAT/MSTP/PRISM). Fournis par le plugin QGIS **« Relief Visualization Toolbox » (rvt-qgis)**.
   ⚠️ Le plugin rvt-qgis doit être **installé, activé et à jour** : sous QGIS 4, toute version ≤ 0.10.0 est refusée au chargement (marquée incompatible) et les algorithmes `rvt:*` deviennent introuvables — mettre à jour via *Extensions → Installer/Gérer les extensions* (version ≥ 1.0.1 recommandée). Le préflight de l'étape 4 signale ce cas par un ✗ critique **« Algorithmes RVT (Processing) »** et bloque le lancement.
-- **CVAT** (*Combined VAT*) et **CRIM** (*Color Relief Image Map*) : nécessitent également le plugin **rvt-qgis** installé — ils ne sont pas exposés par *Processing*, le plugin réutilise donc directement son paquet Python `rvt`.
+- **CVAT** (*Combined VAT*) et **CRIM** (*Color Relief Image Map*) : calculés avec la bibliothèque `rvt` intégrée au plugin, sans extension à installer.
 
 Si un élément est manquant, le préflight affichera une erreur et empêchera le lancement.
 
@@ -1020,3 +1020,5 @@ Aucune dépendance externe requise (stdlib uniquement). Le script exclut automat
 ## Licence
 
 Le dépôt contient un fichier `LICENSE.txt` (MIT).
+
+Le dossier `src/pipeline/ign/products/rvt_embarque/` contient une copie de la bibliothèque `rvt` de l'extension Relief Visualization Toolbox (rvt-qgis 1.0.1, ZRC SAZU et Université de Ljubljana, UL FGG), sous licence Apache 2.0 : voir son `LICENSE` et son `NOTICE` (imports internes rendus relatifs, aucun calcul modifié).

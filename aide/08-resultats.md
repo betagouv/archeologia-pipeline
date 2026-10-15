@@ -75,9 +75,13 @@ Pour une dalle, les détections de toutes les entités se superposent sans doubl
 
 ## Les traces d'un traitement
 
-`livrable/traitement.json` résume le dernier traitement : version du plugin, date, nombre de dalles, produits et leurs réglages, modèles lancés, entités produites avec le chemin de leur GeoPackage, le bilan de fiabilité par entité, le moteur de détection employé ou, si la détection a été impossible, sa cause. Il ne porte aucun chemin de votre poste et se transmet avec le livrable.
+`livrable/traitement.json` résume le dernier traitement : version du plugin, date, nombre de dalles, version de PDAL qui a calculé le MNT, produits et leurs réglages, modèles lancés, entités produites avec le chemin de leur GeoPackage, le bilan de fiabilité par entité, le moteur de détection employé ou, si la détection a été impossible, sa cause. Il ne porte aucun chemin de votre poste et se transmet avec le livrable.
 
 `technique/journaux/` garde, pour chaque lancement, le journal détaillé `pipeline_log_<date>.txt` et la trace complète `metadata_<date>.json`, avec la configuration entière de l'assistant, chemins de votre poste compris. C'est ce qu'il faut joindre à une demande d'aide.
+
+## Un MNT reproductible
+
+La fusion de chaque dalle avec ses voisines lit les points toujours dans le même ordre : deux traitements des mêmes dalles avec la même version de PDAL, celle que note `livrable/traitement.json`, donnent le même MNT au bit près. Un dossier calculé par une version précédente du plugin voit donc son MNT, et tout ce qui en découle (indices, détections), recalculé une dernière fois à la relance : le journal le signale par « Méthode de calcul mise à jour ». L'écart avec l'ancien MNT est de l'ordre de celui qu'il y avait déjà entre deux traitements identiques.
 
 ## Faire de la place
 

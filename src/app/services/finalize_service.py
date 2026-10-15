@@ -462,6 +462,8 @@ def finalize_pipeline(
     ui_config: Optional[Dict[str, Any]] = None,
     outcome: str = "success",
     cv_stats: Optional[List[Dict[str, Any]]] = None,
+    pdal_version: str = "",
+    fusion: str = "",
 ) -> bool:
     """
     Finalisation commune à tous les runners :
@@ -594,6 +596,10 @@ def finalize_pipeline(
             "arborescence": VERSION_ARBORESCENCE,
             "date": _dt.datetime.now().isoformat(timespec="seconds"),
             "tiles_processed": tiles_processed,
+            # LiDAR (lot 1) : le LAZ fusionné et le MNT ne sont reproductibles qu'à
+            # version de PDAL et méthode de fusion égales.
+            **({"pdal_version": pdal_version} if pdal_version else {}),
+            **({"fusion_laz": fusion} if fusion else {}),
             "active_products": active_products or [],
             "rvt_params": rvt_params or {},
             "cv_runs": [

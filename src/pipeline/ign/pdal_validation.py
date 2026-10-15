@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import re
 import subprocess
 import threading
 import time
@@ -197,3 +198,22 @@ def validate_laz_deep(path: Path, timeout_s: int = 600) -> Tuple[bool, str]:
         return False, msg
 
     return True, "ok"
+
+
+def lire_version_pdal(sortie: str) -> str:
+    """« 2.10.0 (git-version: eb9126) » depuis la bannière de `pdal --version`, "" sinon."""
+    m = re.search(r"^pdal\s+(.+?)\s*$", sortie or "", re.MULTILINE)
+    return m.group(1) if m else ""
+
+
+def version_pdal() -> str:
+    """Version du PDAL qui a fusionné et calculé le MNT : le LAZ fusionné n'est
+    reproductible, octet pour octet, qu'à version de PDAL égale (lot 1)."""
+    pdal = which("pdal")
+    if not pdal:
+        return ""
+    try:
+        r = run_pdal_command([pdal, "--version"], timeout_s=60)
+    except Exception:
+        return ""
+    return lire_version_pdal(r.stdout or "")

@@ -930,3 +930,15 @@ Lot 0d du chantier d'accélération (2026-10-15). Sans le moteur de détection l
 - [ ] **48.3 Traces** : après 48.2, `livrable/traitement.json` porte `"cv_engine": "none"` et `"cv_motif"` sans chemin du poste ; « Rapport » ouvre un rapport qui dit « Traitement terminé sans détection », puis « Détection impossible : … », et la colonne d'analyse du modèle dit « détection impossible ».
 - [ ] **48.4 Retour du moteur** : remettre le vrai `cv_runner_onnx.exe`, relancer dans le même dossier → ✓ Terminé, détections produites, `traitement.json` porte `"cv_engine": "binaire"` et plus de `cv_motif`.
 - [ ] **48.5 Qt6** : rejouer 48.2 et 48.4 sous QGIS 4 — aucun `AttributeError`.
+
+## 49. MNT reproductible : fusion en un passage ⭐ P0
+
+Lot 1 du chantier d'accélération (2026-10-15) : la fusion d'une dalle avec ses voisines est un seul `pdal pipeline --stream`, tout en lecture ordonnée ; l'ancienne fusion reste derrière `ARCHEO_FUSION_LEGACY=1` pendant une version.
+
+- [ ] **49.1 Reproductible** : deux runs LAZ locaux (bloc 3×3, MNT seul) dans deux dossiers vides → les `technique/intermediaires/*_merged.laz` ont le même sha256 deux à deux (`Get-FileHash`), les `livrable/indices/MNT/tif/*.tif` aussi.
+- [ ] **49.2 Dossier d'une version précédente** : relancer dans un dossier de sortie écrit par la 0.14.1 → le journal dit « ⚠️ Méthode de calcul mise à jour → cache des intermédiaires invalidé », aucune ligne « LAZ fusionné réutilisé » ; fusionnés et MNT recalculés ; chaque `*_merged.inputs.json` porte `"fusion": "flux-1"`.
+- [ ] **49.3 Dalle isolée, dalle de bord** : run sur une dalle seule (`dalle_A.txt`) puis sur une zone de bord (`zone_ACB.txt`) → ✓, MNT produit, aucune ligne « Échec merge ».
+- [ ] **49.4 Voisine illisible** : en LAZ locaux, remplacer une voisine par une copie tronquée de 1 Mo → ✓ ; le journal technique dit « voisine(s) illisible(s) écartée(s) → nouvelle fusion » pour les dalles qui la touchent.
+- [ ] **49.5 Trace** : `livrable/traitement.json` porte `pdal_version` (« 2.10.0 … » sous QGIS 4.0.3, « 2.9.0 … » sous QGIS 3.44) et `"fusion_laz": "flux-1"`.
+- [ ] **49.6 Interrupteur** : lancer QGIS avec `ARCHEO_FUSION_LEGACY=1` dans l'environnement et relancer dans le même dossier → « Méthode de calcul mise à jour », `technique/intermediaires/` contient de nouveau des `*_neighbor_N.laz`, `traitement.json` porte `"fusion_laz": "pdal-merge"`.
+- [ ] **49.7 Qt6** : rejouer 49.1 et 49.2 sous QGIS 4.

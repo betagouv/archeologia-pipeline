@@ -170,9 +170,9 @@ class IgnOrLocalRunner:
     ) -> Optional[bool]:
         # Vider le cache de validation PDAL au début de chaque run
         try:  # fallback standalone (tests : src/ sur le path), cf. imports module
-            from ...pipeline.ign.pdal_validation import clear_validation_cache
+            from ...pipeline.ign.pdal_validation import clear_validation_cache, version_pdal
         except ImportError:  # pragma: no cover
-            from pipeline.ign.pdal_validation import clear_validation_cache
+            from pipeline.ign.pdal_validation import clear_validation_cache, version_pdal
         clear_validation_cache()
 
         start_time = time.time()
@@ -408,6 +408,8 @@ class IgnOrLocalRunner:
                 coverage_threshold_percent=processing.coverage_threshold_percent,
                 ui_config=ctx.ui_config,
                 outcome=outcome,
+                pdal_version=version_pdal(),
+                fusion=fusion_mode(),
             )
 
         if cancelled or cancel.is_cancelled():

@@ -4,7 +4,7 @@ fileignoreconfig:
 - filename: tests/unit/test_opns.py
   checksum: 0506c8a17e9157f23cf0cbcd449ce4703241b1ed07c051270b39ed4484dfcf4a
 - filename: metadata.txt
-  checksum: 4fe8e2ae808ad0c9c1491c717d7f181a313d8254a7a17eda5aeab9b31edd64e4
+  checksum: 00ffe028e2c981e7261be2cd3e832b75173a776fbd0e7907f17f887350a8ed71
 - filename: tests/unit/test_mnt_chien_de_garde.py
   checksum: fbb2c02d82caaf493cc5be4f107d9ad7b9e9b753a835b33de36e913e9ca7f7b5
 - filename: src/pipeline/ign/products/mnt.py
@@ -44,7 +44,7 @@ fileignoreconfig:
 - filename: src/app/services/fiabilite.py
   checksum: 2be92628ee9f9d642c3536b8aedbf2537ef67342897d8961bc86902f301aa347
 - filename: src/app/services/finalize_service.py
-  checksum: 433c1051d8938cc8c9e59d8a8cb383150efc285e4bd2830ad1f4308cd52c513e
+  checksum: 9c61cc3b154e79a4bacddc679e8de2ac7f3d043fe17a516139de009717463418
 - filename: src/app/services/indices_model.py
   checksum: 5cdf912ee7fd9946454e8e000e01a988b758463d3e91f8b2899d9beec89b9b77
 - filename: src/app/services/model_orchestrator.py
@@ -86,7 +86,7 @@ fileignoreconfig:
 - filename: src/pipeline/ign/pdal_validation.py
   checksum: 82507d6418ebf588086b4018194b582839bf55a0eea1333a88ba98af71de6d3f
 - filename: src/pipeline/ign/preprocess.py
-  checksum: 31437a97ad99cabce9ffaa45ca4f90335fc9f115345a26bcb7822c58ce67fab1
+  checksum: 6b052d732036625b9ef292809692482f9148c93e6c3459c3a6e7f5f2b23efecc
 - filename: src/pipeline/ign/products/indices.py
   checksum: 4d7b0fba36cd4a608e0926deb94db04a561a2c5bdd2ba29564d939c73de50ea1
 - filename: src/pipeline/ign/products/results.py
@@ -124,7 +124,7 @@ fileignoreconfig:
 - filename: src/ui/wizard_dialog.py
   checksum: 78260730953c1840a7596251973291818166925dfd63f5cfad889b19876ea467
 - filename: tests/TESTS_MANUELS_QGIS.md
-  checksum: 49b356e863955dbc83619ce01bbdfc3f523ec2bf661d09da1c5c57d6eff9470f
+  checksum: 19884dc6db6a11477a4779c40712f2f936a6bb1304c347f7b9eede73cfee97c8
 - filename: tests/integration/test_existing_mnt_runner_finalize.py
   checksum: e67c2e4c83cea0937bdfb39e8eec7aa7476f30648d4d858589e2308ad0565d63
 - filename: tests/integration/test_existing_rvt_runner_isolation.py
@@ -246,7 +246,7 @@ fileignoreconfig:
 - filename: .claude/commands/livraison.md
   checksum: fa4cadfbd313549dec30e915282736d7dacb8113feeb591ec45b52457d55480d
 - filename: aide/08-resultats.md
-  checksum: 304ac6dc6f4b6089df936767b140e5073bc7bc84b51dccd15ec3f07701393fec
+  checksum: d35a83b5053d0d4f723d4470ab50aacd7ebdbd2c4caa464aad9a61eae5d7d87e
 - filename: aide/04-etape-2-produits.md
   checksum: 1256428a17e07dc1fda214f6d34ee0583ef279b7f93e341d396ebc17db378e1a
 - filename: aide/09-depannage.md

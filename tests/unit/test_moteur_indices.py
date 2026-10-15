@@ -234,6 +234,126 @@ def test_m_hs_8_bits_partage_l_ombrage_du_hs():
     assert len(c._memo) == 3
 
 
+def test_melanges_par_couches_injectees_identiques():
+    """rvt_blender.py (VAT, Prismatic openness, City) × trois terrains : le rendu avec les couches fournies par
+    Couches = le rendu où rvt les calcule lui-même, sur le MNT brut à sans-donnée — et sans trou : rvt rend City
+    (sky illumination) tout en NaN dès qu'un pixel manque, la comparaison y serait vide."""
+    import copy
+    blend, _, default, _ = _rvt()
+    sans_trou = _mnt()
+    sans_trou[sans_trou == ND] = 200
+    vides = []
+    for trou, dem in ((True, _mnt()), (False, sans_trou)):
+        for indice, terrain in ((i, t) for i in (0, 1, 2) for t in (0, 1, 2)):
+            combos = blend.BlenderCombinations()
+            combos.read_from_file(str(m.chemin_reglages("default_blender_combinations.json")))
+            ref = copy.deepcopy(combos.combinations[indice])
+            terrains = blend.TerrainsSettings()
+            terrains.read_from_file(str(m.chemin_reglages("default_terrains_settings.json")))
+            d0 = default.DefaultValues()
+            terrains.terrains_settings[terrain].apply_terrain(default=d0, combination=ref)
+            ref.add_dem_arr(dem_arr=dem.copy(), dem_resolution=RES)
+            with np.errstate(invalid="ignore"):
+                attendu = ref.render_all_images(default=d0, no_data=ND)
+            if np.isnan(attendu).all():
+                vides.append((trou, indice))
+            c = _couches(dem)
+            comb, d1 = m.combinaison(indice, terrain)
+            m.injecter_couches(c, comb, d1)
+            comb.add_dem_arr(dem_arr=c.brut(), dem_resolution=RES)
+            with np.errstate(invalid="ignore"):
+                _egal(comb.render_all_images(default=d1, no_data=ND), attendu,
+                      f"mélange {indice} terrain {terrain} trou {trou}")
+    assert vides == [(True, 2)] * 3   # seul City à sans-donnée est vide
+
+
+def test_moities_de_cvat_identiques():
+    """cvat.py : deux VAT de blender_VAT.json (general, flat) rendus sur UN tableau partagé ; le moteur les rend à
+    couches injectées."""
+    blend, _, default, _ = _rvt()
+    dem = _mnt()
+    partage = dem.copy()
+    for terrain in ("general", "flat"):
+        d0 = default.DefaultValues()
+        v = blend.BlenderCombination()
+        v.read_from_file(str(m.chemin_reglages("blender_VAT.json")))
+        terrains = blend.TerrainsSettings()
+        terrains.read_from_file(str(m.chemin_reglages("default_terrains_settings.json")))
+        terrains.select_terrain_settings_by_name(terrain).apply_terrain(default=d0, combination=v)
+        v.add_dem_arr(dem_arr=partage, dem_resolution=RES)
+        _egal(m.vat_cvat(_couches(dem), terrain), v.render_all_images(default=d0, no_data=ND), f"CVAT {terrain}")
+
+
+def test_crim_identique_a_color_relief_image_map():
+    blend, _, default, _ = _rvt()
+    dem = _mnt()
+    for cmap, lo, hi in [("OrRd", 0.0, 1.0), ("viridis", 0.1, 0.9), ("Greys", 0.0, 0.5)]:
+        attendu = blend.color_relief_image_map(dem=dem.copy(), resolution=RES, default=default.DefaultValues(),
+                                               colormap=cmap, min_colormap_cut=lo, max_colormap_cut=hi, no_data=ND)
+        _egal(m.crim(_couches(dem), colormap=cmap, min_colormap_cut=lo, max_colormap_cut=hi), attendu, f"CRIM {cmap}")
+
+
+def test_vis_mutantes_comme_rvt():
+    """_VIS_MUTANTES = les méthodes que render_all_images calcule en écrivant NaN DANS le MNT de la combinaison :
+    chacune de celles qu'il connaît, rendue seule sur un MNT à sans-donnée, est classée par son effet sur ce MNT
+    (« shadow » passe par sky_illumination)."""
+    import re
+    import warnings
+    blend, _, default, _ = _rvt()
+    noms = set(re.findall(r'self\.layers\[i_img\]\.vis\.lower\(\) == "([^"]+)"',
+                          Path(blend.__file__).read_text(encoding="utf-8")))
+    mutantes = set()
+    for nom in noms:
+        dem = _mnt()
+        comb = blend.BlenderCombination()
+        comb.create_layer(vis_method=nom, normalization="value", minimum=0, maximum=1)
+        comb.add_dem_arr(dem_arr=dem, dem_resolution=RES)
+        with np.errstate(all="ignore"), warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            comb.render_all_images(default=default.DefaultValues(), no_data=ND)
+        if np.isnan(dem).any():
+            mutantes.add(nom)
+    assert mutantes == m._VIS_MUTANTES, mutantes ^ m._VIS_MUTANTES
+
+
+def test_melanges_ne_reprennent_que_les_couches_aux_memes_reglages():
+    """Revue des tâches 4-5 : une couche n'est reprise que si rvt l'aurait calculée à l'identique. Le VAT « general »
+    reprend HS, SVF et SLO par défaut ; le « flat » (élévation 15°, SVF rayon 20 bruit 3) calcule les siennes, sauf
+    la pente ; CRIM reprend le balayage du SVF ; PRISM « general » l'openness négative de CRIM et l'ombrage du HS."""
+    c = _couches(_mnt())
+    c.ombrage(315.0, 35.0, 1.0, RES, RES)   # clés de calculer_hs, calculer_svf, calculer_slo par défaut
+    c.horizon(10, 16, 0, 1.0, RES)
+    c.pente("degree", 1.0, RES, RES)
+    m.injecter_couches(c, *m.combinaison(0, 0))
+    assert len(c._memo) == 3
+    m.injecter_couches(c, *m.combinaison(0, 1))
+    assert len(c._memo) == 5
+    m.crim(c, colormap="OrRd", min_colormap_cut=0.0, max_colormap_cut=1.0)   # + pente en radians, openness −
+    assert len(c._memo) == 7
+    m.injecter_couches(c, *m.combinaison(1, 0))   # + ombrages à 22,5° et 90°
+    assert len(c._memo) == 9
+
+
+def test_melanges_sans_partage_ne_balaient_que_la_sortie_de_la_couche(monkeypatch):
+    """Comme rvt (une couche = un appel qui ne calcule qu'elle) : hors partage, le VAT et CRIM n'allouent pas
+    l'accumulateur de la sortie qu'ils ne lisent pas (la mémoire d'avant, revue de la tâche 4)."""
+    _, _, _, vis = _rvt()
+    appels = []
+    vrai = vis.sky_view_factor
+
+    def espion(*a, **k):
+        appels.append((k["compute_svf"], k["compute_opns"]))
+        return vrai(*a, **k)
+    monkeypatch.setattr(vis, "sky_view_factor", espion)
+    monkeypatch.setattr(m, "PARTAGE_MAX_PX", 100)
+    c = _couches(_mnt())
+    m.injecter_couches(c, *m.combinaison(0, 0))   # couches SVF puis openness +
+    assert appels == [(True, False), (False, True)]
+    appels.clear()
+    m.crim(c, colormap="OrRd", min_colormap_cut=0.0, max_colormap_cut=1.0)
+    assert appels == [(False, True), (False, True)]   # openness + puis openness − (de −MNT)
+
+
 if __name__ == "__main__":   # hors pytest : Pythons de QGIS (numpy 1.26 et 2.x)
     faits = []
     for nom, f in sorted(globals().items()):

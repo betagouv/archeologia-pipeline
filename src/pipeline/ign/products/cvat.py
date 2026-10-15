@@ -16,7 +16,6 @@ from pathlib import Path
 from typing import Optional
 
 from ...types import LogFn
-from .moteur_indices import chemin_reglages
 
 
 def _find_rendered_tif(out_base: Path, save_as_8bit: bool) -> Optional[Path]:
@@ -38,46 +37,29 @@ def compute_cvat(
     *,
     input_path: Path,
     output_path: Path,
+    couches,
     save_as_8bit: bool = True,
     log: LogFn = lambda _: None,
 ) -> Optional[Path]:
     """Calcule CVAT pour ``input_path`` (MNT) et écrit le raster dans ``output_path``.
 
+    ``couches`` : fonction qui rend le MNT de la dalle et ses couches partagées (``moteur_indices.Couches``, lu au
+    premier appel), appelée dans le ``try`` comme l'était la lecture du MNT ; les deux VAT reçoivent leurs couches
+    déjà calculées (``moteur_indices.vat_cvat``) au lieu de les recalculer.
+
     Renvoie ``output_path`` en cas de succès, ``None`` si le rendu échoue (l'indice est alors
     simplement ignoré, le reste du pipeline continue).
     """
     try:
-        from .rvt_embarque import blend, default
+        c = couches()
+        from .moteur_indices import vat_cvat
+        from .rvt_embarque import blend
 
         dem_path = str(input_path)
-        dict_arr = default.get_raster_arr(dem_path)
-        dem_arr = dict_arr["array"]
-        resolution = dict_arr["resolution"]  # (x_res, y_res)
-        no_data = dict_arr["no_data"]
-
+        no_data = c.no_data
         save_float = not save_as_8bit
-
-        default_general = default.DefaultValues()
-        default_flat = default.DefaultValues()
-
-        vat_general = blend.BlenderCombination()
-        vat_flat = blend.BlenderCombination()
-        vat_general.read_from_file(str(chemin_reglages("blender_VAT.json")))
-        vat_flat.read_from_file(str(chemin_reglages("blender_VAT.json")))
-
-        terrains = blend.TerrainsSettings()
-        terrains.read_from_file(str(chemin_reglages("default_terrains_settings.json")))
-        terrains.select_terrain_settings_by_name("general").apply_terrain(
-            default=default_general, combination=vat_general
-        )
-        terrains.select_terrain_settings_by_name("flat").apply_terrain(
-            default=default_flat, combination=vat_flat
-        )
-
-        vat_general.add_dem_arr(dem_arr=dem_arr, dem_resolution=resolution[0])
-        vat_arr_general = vat_general.render_all_images(default=default_general, no_data=no_data)
-        vat_flat.add_dem_arr(dem_arr=dem_arr, dem_resolution=resolution[0])
-        vat_arr_flat = vat_flat.render_all_images(default=default_flat, no_data=no_data)
+        vat_arr_general = vat_cvat(c, "general")
+        vat_arr_flat = vat_cvat(c, "flat")
 
         combination = blend.BlenderCombination()
         combination.create_layer(

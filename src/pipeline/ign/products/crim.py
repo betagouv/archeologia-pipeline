@@ -3,7 +3,8 @@
 Comme le CVAT, CRIM n'est pas atteignable par le framework Processing de QGIS : l'enum ``BLEND_COMBINATION`` de
 ``rvt:rvt_blender`` est construit depuis ``settings/default_blender_combinations.json``, qui ne liste que *VAT*,
 *Prismatic openness* et *City*. CRIM n'existe que comme fonction de la bibliothèque rvt
-(``blend.color_relief_image_map``), appelée ici depuis sa copie intégrée au plugin (``rvt_embarque``).
+(``blend.color_relief_image_map``), dont ``moteur_indices.crim`` reprend le corps avec la copie intégrée au plugin
+(``rvt_embarque``) : mêmes couches, ses trois couches de calcul partagées avec les autres produits de la dalle.
 
 Recette, telle que numérotée par la docstring de ``color_relief_image_map`` :
 
@@ -40,6 +41,7 @@ def compute_crim(
     *,
     input_path: Path,
     output_path: Path,
+    couches,
     colormap: str = DEFAUT_COLORMAP,
     min_colormap_cut: float = DEFAUT_CUT_MIN,
     max_colormap_cut: float = DEFAUT_CUT_MAX,
@@ -52,31 +54,22 @@ def compute_crim(
     (et non à l'altitude) ; ``min_colormap_cut`` / ``max_colormap_cut`` rognent
     les extrémités de cette colormap, entre 0 et 1.
 
+    ``couches`` : fonction qui rend le MNT de la dalle et ses couches partagées (``moteur_indices.Couches``, lu au
+    premier appel), appelée dans le ``try`` comme l'était la lecture du MNT : l'openness ± et la pente sont reprises
+    si un autre produit les a déjà calculées (``moteur_indices.crim``).
+
     Renvoie ``output_path`` en cas de succès, ``None`` si le rendu échoue (l'indice est
     alors simplement ignoré, le reste du pipeline continue — même contrat que :func:`cvat.compute_cvat`).
     """
     try:
+        c = couches()
         import numpy as np
-        from .rvt_embarque import blend, default, vis
+        from .moteur_indices import crim
+        from .rvt_embarque import default, vis
 
         dem_path = str(input_path)
-        dict_arr = default.get_raster_arr(dem_path)
-        # ``color_relief_image_map`` écrit des NaN DANS le tableau qu'on lui
-        # passe (``dem[dem == no_data] = np.nan``) : on lui donne une copie,
-        # sinon on abîmerait un tableau que l'appelant pourrait réutiliser.
-        dem_arr = np.array(dict_arr["array"], copy=True)
-        resolution = dict_arr["resolution"][0]
-        no_data = dict_arr["no_data"]
-
-        crim_arr = blend.color_relief_image_map(
-            dem=dem_arr,
-            resolution=resolution,
-            default=default.DefaultValues(),
-            colormap=colormap,
-            min_colormap_cut=min_colormap_cut,
-            max_colormap_cut=max_colormap_cut,
-            no_data=no_data,
-        )
+        crim_arr = crim(c, colormap=colormap, min_colormap_cut=min_colormap_cut,
+                        max_colormap_cut=max_colormap_cut)
 
         # Écriture en deux temps : RVT écrit dans un voisin temporaire, qu'on
         # bascule seulement une fois le rendu complet. Écrire directement dans

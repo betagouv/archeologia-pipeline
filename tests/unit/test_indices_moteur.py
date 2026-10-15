@@ -89,3 +89,49 @@ def test_produit_seul_par_le_moteur_ou_force_par_processing(banc, monkeypatch, p
     monkeypatch.setenv(moteur_indices.VARIABLE_MOTEUR, "processing")
     _lancer(tmp, [produit])
     assert appels["processing"] == [algo]
+
+
+@pytest.mark.parametrize("produit,indice,terrain,base", [("VAT", 0, 1, "_VAT_T1_B0_outputs"),
+                                                         ("PRISM", 1, 2, "_PRISM_T2_outputs")])
+def test_melange_par_le_moteur_ou_force_par_processing(banc, monkeypatch, produit, indice, terrain, base):
+    tmp, appels, _ = banc
+    rendus = []
+
+    def rendre(c, prod, ind_, ter, sortie_base, huit_bits):
+        rendus.append((prod, ind_, ter, sortie_base.name, huit_bits))
+        Path(str(sortie_base) + "_8bit.tif").write_bytes(b"r")
+    monkeypatch.setattr(moteur_indices, "rendre_melange", rendre)
+    monkeypatch.delenv(moteur_indices.VARIABLE_MOTEUR, raising=False)
+    section = {"VAT": "vat", "PRISM": "prism"}[produit]
+    logs = _lancer(tmp, [produit], {section: {"terrain_type": terrain}})
+    assert rendus == [(produit, indice, terrain, f"{TILE}{base}", True)] and appels["processing"] == []
+    assert any(ligne.startswith(f"[PARAMS RVT/{produit}]") and "moteur=interne" in ligne for ligne in logs)
+    assert (tmp / f"{TILE}{base[:-len('_outputs')]}.tif").read_bytes() == b"r"   # copié comme avant
+    for p in tmp.glob(f"{TILE}_*"):
+        if not p.name.endswith("_MNT.tif"):
+            p.unlink()
+    monkeypatch.setenv(moteur_indices.VARIABLE_MOTEUR, "processing")
+    _lancer(tmp, [produit], {section: {"terrain_type": terrain}})
+    assert appels["processing"] == ["rvt:rvt_blender"]
+
+
+def test_cvat_et_crim_recoivent_les_couches_de_la_dalle(banc, monkeypatch):
+    tmp, _, _ = banc
+    recus = []
+    monkeypatch.setattr(ind, "compute_cvat", lambda **k: recus.append(("CVAT", k["couches"]())))
+    monkeypatch.setattr(ind, "compute_crim", lambda **k: recus.append(("CRIM", k["couches"]())))
+    _lancer(tmp, ["CVAT", "CRIM"])
+    assert [r[0] for r in recus] == ["CVAT", "CRIM"] and recus[0][1] is recus[1][1]   # le même MNT, lu une fois
+
+
+def test_cvat_et_crim_sautes_si_le_mnt_ne_se_charge_pas(banc, monkeypatch):
+    """Contrat du préflight (« CVAT et CRIM seuls ne bloquent pas ») : bibliothèque ou MNT en défaut → les deux
+    indices sont sautés avec un message, la dalle continue — la lecture du MNT reste dans leur try."""
+    tmp, _, _ = banc
+
+    def lire(cls, chemin):
+        raise ModuleNotFoundError("No module named 'scipy'")
+    monkeypatch.setattr(moteur_indices.Couches, "lire", classmethod(lire))
+    logs = _lancer(tmp, ["CVAT", "CRIM"])
+    assert any(ligne.startswith("CVAT : échec") and "scipy" in ligne for ligne in logs)
+    assert any(ligne.startswith("CRIM : échec") and "scipy" in ligne for ligne in logs)

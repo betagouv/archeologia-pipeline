@@ -26,7 +26,8 @@ from typing import Any, Callable, Dict, Tuple
 VARIABLE_MOTEUR = "ARCHEO_INDICES_MOTEUR"
 
 #: Produits calculés par le moteur intégré ; les autres passent encore par Processing (rvt-qgis).
-PRODUITS_MOTEUR = frozenset({"CVAT", "CRIM", "LD", "HS", "SVF", "OPNS", "SLO", "SLRM", "M_HS", "MSTP"})
+PRODUITS_MOTEUR = frozenset({"HS", "M_HS", "SVF", "OPNS", "SLO", "LD", "SLRM", "VAT", "MSTP", "CVAT", "PRISM",
+                             "CRIM"})
 
 #: Produits sans algorithme Processing : toujours calculés ici, même forcé.
 SANS_PROCESSING = frozenset({"CVAT", "CRIM"})
@@ -325,3 +326,106 @@ def calculer_mstp(c: Couches, out: Path, *, local: Tuple[int, int, int], meso: T
     arr = vis.mstp(dem=c.brut(), local_scale=tuple(local), meso_scale=tuple(meso), broad_scale=tuple(large),
                    lightness=float(luminosite), ve_factor=float(ve), no_data=c.no_data)
     _publier(c, out, arr, huit_bits, "MULTI_SCALE_TOPOGRAPHIC_POSITION")
+
+
+#: Fonctions de rvt.vis qui écrivent NaN DANS le MNT reçu (``dem[dem == no_data] = np.nan`` avant toute copie) :
+#: appelées par un mélange, elles laissent son MNT « NaN-isé » pour les couches calculées ensuite. « shadow » passe
+#: par sky_illumination. Relevé sur rvt par tests/unit/test_moteur_indices.py:test_vis_mutantes_comme_rvt.
+_VIS_MUTANTES = frozenset({"hillshade", "multiple directions hillshade", "simple local relief model",
+                           "local dominance", "sky illumination", "shadow", "multi-scale relief model",
+                           "multi-scale topographic position"})
+
+
+def injecter_couches(c: Couches, comb, defaut) -> None:
+    """Fournit à une combinaison rvt (après ``apply_terrain``) les couches qu'elle calculerait elle-même, avec les
+    paramètres que ``BlenderCombination.render_all_images`` leur donnerait : ceux de ``defaut`` (que le terrain a
+    réglés), la résolution X pour X et Y. Une couche d'un autre type reste vide : rvt la calcule, comme avant."""
+    import numpy as np
+    res = c.res_x
+    ve = float(defaut.ve_factor)
+    for i, couche in enumerate(comb.layers):
+        nom = (couche.vis or "").lower()
+        if nom == "hillshade":
+            couche.image = c.ombrage(float(defaut.hs_sun_azi), float(defaut.hs_sun_el), ve, res, res)
+        elif nom == "multiple directions hillshade":   # trois ombrages, exagération 1 (pas defaut.ve_factor)
+            couche.image = np.array([c.ombrage(float(az), float(defaut.mhs_sun_el), 1.0, res, res)
+                                     for az in (315, 22.5, 90)])
+        elif nom == "slope gradient":
+            couche.image = c.pente(defaut.slp_output_units, ve, res, res)
+        elif nom in ("sky-view factor", "openness - positive"):
+            svf = nom == "sky-view factor"
+            h = c.horizon(int(defaut.svf_r_max), int(defaut.svf_n_dir), int(defaut.svf_noise), ve, res, svf=svf,
+                          opns=not svf)
+            couche.image = h["svf" if svf else "opns"]
+        elif nom == "openness - negative":
+            # render_all_images parcourt les couches de la dernière à la première : une fonction « mutante »
+            # appelée avant celle-ci a déjà remplacé le sans-donnée par NaN dans le MNT de la combinaison.
+            nan_avant = any((x.vis or "").lower() in _VIS_MUTANTES for x in comb.layers[i + 1:])
+            couche.image = c.ouverture_negative(int(defaut.svf_r_max), int(defaut.svf_n_dir),
+                                                int(defaut.svf_noise), ve, res, nan_avant=nan_avant)
+
+
+def combinaison(indice: int, terrain: int):
+    """(combinaison, DefaultValues) de rvt_blender.py : ``indice`` et ``terrain`` sont les indices de ses enums
+    BLEND_COMBINATION et TERRAIN_TYPE (ordre des fichiers default_blender_combinations.json et
+    default_terrains_settings.json). Copie neuve à chaque appel : rvt-qgis réutilisait un objet partagé entre les
+    appels d'une même session QGIS."""
+    import copy
+    blend, _, default, _ = _rvt()
+    combos = blend.BlenderCombinations()
+    combos.read_from_file(str(chemin_reglages("default_blender_combinations.json")))
+    comb = copy.deepcopy(combos.combinations[int(indice)])
+    terrains = blend.TerrainsSettings()
+    terrains.read_from_file(str(chemin_reglages("default_terrains_settings.json")))
+    defaut = default.DefaultValues()
+    terrains.terrains_settings[int(terrain)].apply_terrain(default=defaut, combination=comb)
+    return comb, defaut
+
+
+def rendre_melange(c: Couches, produit: str, indice: int, terrain: int, sortie_base: Path, huit_bits: bool) -> None:
+    """rvt_blender.py (combinaisons ordinaires) : rvt écrit lui-même ``<sortie_base>_8bit.tif`` en 8 bits. Comme
+    Processing, qui n'ajoute pas d'extension à OUTPUT (vérifié le 2026-10-15), le flottant va dans
+    ``<sortie_base>`` sans extension, que indices.py ne trouve pas : VAT et PRISM flottants restent absents, comme
+    avant (signalé à l'utilisateur)."""
+    _verifier(produit, terrain_type=terrain, blend_combination=indice)
+    comb, defaut = combinaison(indice, terrain)
+    injecter_couches(c, comb, defaut)
+    comb.add_dem_arr(dem_arr=c.brut(), dem_resolution=c.res_x)
+    comb.add_dem_path(str(c.chemin))
+    comb.render_all_images(default=defaut, save_visualizations=False, save_render_path=str(sortie_base),
+                           save_float=not huit_bits, save_8bit=huit_bits, no_data=c.no_data)
+
+
+def vat_cvat(c: Couches, terrain: str):
+    """Une moitié de CVAT (cvat.py, branche CVAT de rvt_blender.py) : blender_VAT.json, terrain par son nom."""
+    blend, _, default, _ = _rvt()
+    defaut = default.DefaultValues()
+    comb = blend.BlenderCombination()
+    comb.read_from_file(str(chemin_reglages("blender_VAT.json")))
+    terrains = blend.TerrainsSettings()
+    terrains.read_from_file(str(chemin_reglages("default_terrains_settings.json")))
+    terrains.select_terrain_settings_by_name(terrain).apply_terrain(default=defaut, combination=comb)
+    injecter_couches(c, comb, defaut)
+    comb.add_dem_arr(dem_arr=c.brut(), dem_resolution=c.res_x)
+    return comb.render_all_images(default=defaut, no_data=c.no_data)
+
+
+def crim(c: Couches, *, colormap: str, min_colormap_cut: float, max_colormap_cut: float):
+    """rvt.blend.color_relief_image_map, mêmes couches et mêmes étirements, ses trois couches de calcul prises dans
+    ``Couches`` (rvt : MNT « NaN-isé », openness ± à rayon 10 et paramètres par défaut, pente en radians)."""
+    blend, _, default, _ = _rvt()
+    d = default.DefaultValues()
+    res = c.res_x
+    ve = float(d.ve_factor)
+    pos = c.horizon(10, int(d.svf_n_dir), int(d.svf_noise), ve, res, svf=False, opns=True)["opns"]
+    neg = c.ouverture_negative(10, int(d.svf_n_dir), int(d.svf_noise), ve, res, nan_avant=True)
+    pos_neg = pos - neg
+    comb = blend.BlenderCombination()
+    comb.create_layer(vis_method="Openness_Pos-Neg", normalization="value", minimum=-28, maximum=28,
+                      blend_mode="overlay", opacity=50, image=pos_neg)
+    comb.create_layer(vis_method="Openness_Pos-Neg", normalization="value", minimum=-28, maximum=28,
+                      blend_mode="luminosity", opacity=50, image=pos_neg)   # le même tableau, comme rvt
+    comb.create_layer(vis_method="slope gradient rad", normalization="value", minimum=0, maximum=0.8,
+                      blend_mode="normal", opacity=100, colormap=colormap, min_colormap_cut=min_colormap_cut,
+                      max_colormap_cut=max_colormap_cut, image=c.pente("radian", 1.0, res, res))
+    return comb.render_all_images()

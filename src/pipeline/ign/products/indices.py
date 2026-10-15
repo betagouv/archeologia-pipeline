@@ -415,24 +415,30 @@ def create_visualization_products(
         vat_output_base = standard_vat_tif.with_suffix("").with_name(standard_vat_tif.stem + "_outputs")
 
         if needs_refresh(input_path, standard_vat_tif):
+            moteur = moteur_indices.par_le_moteur("VAT")
             log(format_params_line("RVT/VAT", {
                 "tile": current_tile_name,
                 "terrain_type": {0: "general", 1: "flat", 2: "steep"}.get(terrain_type, str(terrain_type)),
                 "blend_combination": blend_combination,
                 "save_as_8bit": save_as_8bit,
+                "moteur": "interne" if moteur else "processing",
             }))
-            params = {
-                "INPUT": str(input_path),
-                "distance_units": "meters",
-                "area_units": "m2",
-                "ellipsoid": "EPSG:7019",
-                "BLEND_COMBINATION": blend_combination,
-                "TERRAIN_TYPE": terrain_type,
-                "SAVE_AS_8BIT": save_as_8bit,
-                "SAVE_AS_FLOAT": False,
-                "OUTPUT": str(vat_output_base),
-            }
-            run_qgis_algorithm("rvt:rvt_blender", params, feedback=feedback, context=context)
+            if moteur:
+                moteur_indices.rendre_melange(_couches(), "VAT", blend_combination, terrain_type, vat_output_base,
+                                              save_as_8bit)
+            else:
+                params = {
+                    "INPUT": str(input_path),
+                    "distance_units": "meters",
+                    "area_units": "m2",
+                    "ellipsoid": "EPSG:7019",
+                    "BLEND_COMBINATION": blend_combination,
+                    "TERRAIN_TYPE": terrain_type,
+                    "SAVE_AS_8BIT": save_as_8bit,
+                    "SAVE_AS_FLOAT": False,
+                    "OUTPUT": str(vat_output_base),
+                }
+                run_qgis_algorithm("rvt:rvt_blender", params, feedback=feedback, context=context)
 
             expected_tif = Path(str(vat_output_base) + "_8bit.tif")
             if expected_tif.exists():
@@ -519,11 +525,14 @@ def create_visualization_products(
             log(format_params_line("RVT/CVAT", {
                 "tile": current_tile_name,
                 "save_as_8bit": save_as_8bit,
+                "moteur": "interne",
             }))
-            # CVAT n'est pas exposé via Processing : calcul in-process (cf. cvat.py).
+            # CVAT n'est pas exposé via Processing : calcul in-process (cf. cvat.py). Le MNT est lu dans son
+            # try (_couches, pas _couches()) : MNT ou bibliothèque en défaut → indice sauté, comme avant.
             compute_cvat(
                 input_path=input_path,
                 output_path=out,
+                couches=_couches,
                 save_as_8bit=save_as_8bit,
                 log=log,
             )
@@ -549,25 +558,30 @@ def create_visualization_products(
         base_sorties = cible.with_suffix("").with_name(cible.stem + "_outputs")
 
         if needs_refresh(input_path, cible):
+            moteur = moteur_indices.par_le_moteur("PRISM")
             log(format_params_line("RVT/PRISM", {
                 "tile": current_tile_name,
                 "blend_combination": 1,
                 "terrain_type": {0: "general", 1: "flat", 2: "steep"}.get(
                     terrain_type, str(terrain_type)),
                 "save_as_8bit": save_as_8bit,
+                "moteur": "interne" if moteur else "processing",
             }))
-            params = {
-                "INPUT": str(input_path),
-                "distance_units": "meters",
-                "area_units": "m2",
-                "ellipsoid": "EPSG:7019",
-                "BLEND_COMBINATION": 1,
-                "TERRAIN_TYPE": terrain_type,
-                "SAVE_AS_8BIT": save_as_8bit,
-                "SAVE_AS_FLOAT": False,
-                "OUTPUT": str(base_sorties),
-            }
-            run_qgis_algorithm("rvt:rvt_blender", params, feedback=feedback, context=context)
+            if moteur:
+                moteur_indices.rendre_melange(_couches(), "PRISM", 1, terrain_type, base_sorties, save_as_8bit)
+            else:
+                params = {
+                    "INPUT": str(input_path),
+                    "distance_units": "meters",
+                    "area_units": "m2",
+                    "ellipsoid": "EPSG:7019",
+                    "BLEND_COMBINATION": 1,
+                    "TERRAIN_TYPE": terrain_type,
+                    "SAVE_AS_8BIT": save_as_8bit,
+                    "SAVE_AS_FLOAT": False,
+                    "OUTPUT": str(base_sorties),
+                }
+                run_qgis_algorithm("rvt:rvt_blender", params, feedback=feedback, context=context)
 
             attendu = Path(str(base_sorties) + "_8bit.tif")
             if attendu.exists():
@@ -597,11 +611,13 @@ def create_visualization_products(
                 "colormap": colormap,
                 "colormap_cut": f"{cut_min}-{cut_max}",
                 "save_as_8bit": save_as_8bit,
+                "moteur": "interne",
             }))
             # CRIM n'est pas exposé via Processing : calcul in-process (cf. crim.py).
             compute_crim(
                 input_path=input_path,
                 output_path=out,
+                couches=_couches,
                 colormap=colormap,
                 min_colormap_cut=cut_min,
                 max_colormap_cut=cut_max,

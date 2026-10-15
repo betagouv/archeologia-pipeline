@@ -149,12 +149,15 @@ class Couches:
             dem=self.brut(), resolution_x=rx, resolution_y=ry, output_units=unite, ve_factor=ve,
             no_data=self.no_data)["slope"])
 
-    def horizon(self, rayon: int, directions: int, bruit: int, ve: float, res: float) -> Dict[str, Any]:
+    def horizon(self, rayon: int, directions: int, bruit: int, ve: float, res: float, svf: bool = True,
+                opns: bool = True) -> Dict[str, Any]:
         """SVF et openness positive d'un même balayage : rvt.vis.sky_view_factor les tire des mêmes pentes
-        maximales, chaque sortie est celle d'un appel qui ne calcule qu'elle."""
+        maximales, chaque sortie est celle d'un appel qui ne calcule qu'elle. Hors partage, seules les
+        sorties demandées sont calculées (pas d'accumulateur de plus : la mémoire d'avant)."""
         _, _, _, vis = _rvt()
+        svf_, opns_ = (True, True) if self.partage else (svf, opns)
         return self._une_fois(("horizon", rayon, directions, bruit, ve, res), lambda: vis.sky_view_factor(
-            dem=self.brut(), resolution=res, compute_svf=True, compute_asvf=False, compute_opns=True,
+            dem=self.brut(), resolution=res, compute_svf=svf_, compute_asvf=False, compute_opns=opns_,
             svf_n_dir=directions, svf_r_max=rayon, svf_noise=bruit, ve_factor=ve, no_data=self.no_data))
 
     def ouverture_negative(self, rayon: int, directions: int, bruit: int, ve: float, res: float, *,
@@ -253,7 +256,7 @@ def calculer_svf(c: Couches, out: Path, *, rayon: int, directions: int, bruit: i
                  huit_bits: bool) -> None:
     """rvt_svf.py."""
     _verifier("SVF", radius=rayon, num_directions=directions, noise_remove=bruit, ve_factor=ve)
-    h = c.horizon(int(rayon), int(directions), int(bruit), float(ve), c.res_x)
+    h = c.horizon(int(rayon), int(directions), int(bruit), float(ve), c.res_x, svf=True, opns=False)
     _publier(c, out, h["svf"], huit_bits, "SKY_VIEW_FACTOR")
 
 
@@ -264,7 +267,7 @@ def calculer_opns(c: Couches, out: Path, *, negative: bool, rayon: int, directio
     if negative:
         arr = c.ouverture_negative(int(rayon), int(directions), int(bruit), float(ve), c.res_x, nan_avant=False)
     else:
-        arr = c.horizon(int(rayon), int(directions), int(bruit), float(ve), c.res_x)["opns"]
+        arr = c.horizon(int(rayon), int(directions), int(bruit), float(ve), c.res_x, svf=False, opns=True)["opns"]
     _publier(c, out, arr, huit_bits, "NEGATIVE_OPENNESS" if negative else "POSITIVE_OPENNESS")
 
 

@@ -178,6 +178,35 @@ def test_unite_de_pente_suit_l_enum_de_rvt_slope():
     assert m.UNITES_PENTE == ("degree", "radian", "percent")
 
 
+def test_sans_partage_le_balayage_ne_calcule_que_ce_qui_est_demande(monkeypatch):
+    """Review round 1 : hors partage, SVF seul n'alloue pas l'accumulateur d'openness (rvt_svf.py : compute_opns=False)."""
+    _, _, _, vis = _rvt()
+    appels = []
+    vrai = vis.sky_view_factor
+
+    def espion(*a, **k):
+        appels.append((k["compute_svf"], k["compute_opns"]))
+        return vrai(*a, **k)
+    monkeypatch.setattr(vis, "sky_view_factor", espion)
+    dem = _mnt()
+    monkeypatch.setattr(m, "PARTAGE_MAX_PX", 100)
+    c = _couches(dem)
+    h = c.horizon(10, 16, 0, 1.0, RES, svf=True, opns=False)
+    _egal(h["svf"], vrai(dem.copy(), resolution=RES, compute_svf=True, compute_opns=False, svf_n_dir=16,
+                         svf_r_max=10, svf_noise=0, ve_factor=1.0, no_data=ND)["svf"], "svf seul")
+    h = c.horizon(10, 16, 0, 1.0, RES, svf=False, opns=True)
+    _egal(h["opns"], vrai(dem.copy(), resolution=RES, compute_svf=False, compute_opns=True, svf_n_dir=16,
+                          svf_r_max=10, svf_noise=0, ve_factor=1.0, no_data=ND)["opns"], "opns seul")
+    assert appels[:2] == [(True, False), (False, True)]
+    # avec partage : un seul balayage pour les deux sorties
+    monkeypatch.setattr(m, "PARTAGE_MAX_PX", 2801 * 2801)
+    appels.clear()
+    c = _couches(dem)
+    c.horizon(10, 16, 0, 1.0, RES, svf=True, opns=False)
+    c.horizon(10, 16, 0, 1.0, RES, svf=False, opns=True)
+    assert appels == [(True, True)] and len(c._memo) == 1
+
+
 if __name__ == "__main__":   # hors pytest : Pythons de QGIS (numpy 1.26 et 2.x)
     faits = []
     for nom, f in sorted(globals().items()):

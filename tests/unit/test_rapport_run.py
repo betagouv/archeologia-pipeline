@@ -143,7 +143,8 @@ def test_construire_html_ne_situe_pas_et_couvre_les_sections():
         "Bilan de fiabilité", "Par km²", "11,4", "12 très probables, 30 probables, 41 possibles, 20 douteuses",
         "très probable : au moins 85 % de vrais objets", "douteux : moins de 35 %",
         "Durées par étape", "Téléchargement", "9 dalles", "1h 02min", "(×3)", "Le noyau atteint N pixels",
-        "<h2>Sources</h2>", "Licence Ouverte 2.0", "Relief Visualization Toolbox", "Modèles de détection : Modèle &lt;A&gt;, B",
+        "<h2>Sources</h2>", "Licence Ouverte 2.0", "Relief Visualization Toolbox", "intégrée au plugin",
+        "Modèles de détection : Modèle &lt;A&gt;, B",
         'src="rapport_vignette.png"',
     ):
         assert morceau in h, morceau

@@ -20,7 +20,6 @@ Certains antivirus signalent ou mettent en quarantaine `cv_runner_onnx.exe`, le 
 
 ## Le plugin ne se lance pas
 
-- Vérifiez que **Relief Visualization Toolbox** est installée et activée dans le gestionnaire d'extensions.
 - Si le gestionnaire d'extensions affiche une erreur au chargement, notez le message complet et transmettez-le avec la version de QGIS.
 
 ## Les vérifications préalables ont échoué
@@ -28,7 +27,8 @@ Certains antivirus signalent ou mettent en quarantaine `cv_runner_onnx.exe`, le 
 Le panneau **État du système** de l'étape 4 nomme ce qui manque :
 
 - **PDAL** ou **GDAL** introuvables : installez QGIS par OSGeo4W, qui les fournit, ou ajoutez-les au chemin du système.
-- **Algorithmes RVT** absents : installez ou activez Relief Visualization Toolbox, puis relancez QGIS.
+- **Moteur d'indices intégré** indisponible : une bibliothèque livrée avec QGIS (numpy, scipy ou matplotlib) manque ou ne se charge pas ; le détail la nomme. Réinstallez QGIS par OSGeo4W.
+- **Algorithmes RVT** absents : n'apparaît que si l'ancien calcul par l'extension a été forcé pour un diagnostic ; installez alors Relief Visualization Toolbox, puis relancez QGIS.
 - **Moteur de détection** absent : voir l'alerte antivirus ci-dessus.
 - **Projection** refusée : un raster d'entrée n'est pas en Lambert-93 (EPSG:2154). Reprojetez-le avant.
 - **Dossier** introuvable ou vide : le chemin, ou l'extension des fichiers attendue par le mode.

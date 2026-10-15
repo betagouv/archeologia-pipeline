@@ -558,8 +558,8 @@ Cette grille indique, pour chaque vague livrée, **quelles sections de tests son
 > plus récent, écrase le TIF final de même nom — `livrable/indices/` n'est jamais
 > supprimé, c'est le livrable accumulé multi-zones, cf. §22).
 
-- [ ] **28.1 Préflight rvt-qgis absent** : désactiver (décocher) le plugin « Relief Visualization Toolbox » dans le gestionnaire d'extensions, cocher un indice RVT (ex. LD) à l'étape 2 → le panneau « État du système » de l'étape 4 affiche un ✗ **critique** « Algorithmes RVT (Processing) » mentionnant l'installation/mise à jour via Extensions ; **▶ Lancer** refuse de démarrer le pipeline (préflight KO **avant** tout téléchargement).
-- [ ] **28.2 Préflight rvt-qgis présent** : réactiver rvt-qgis, redémarrer QGIS → le même check passe au ✓ (« N algorithme(s) rvt:* disponibles ») et le run démarre normalement.
+- [ ] **28.1 Préflight rvt-qgis absent** *(révisé 0.16.0 : ne vaut plus qu'avec `ARCHEO_INDICES_MOTEUR=processing` ; sinon voir § 53)* : désactiver (décocher) le plugin « Relief Visualization Toolbox » dans le gestionnaire d'extensions, cocher un indice RVT (ex. LD) à l'étape 2 → le panneau « État du système » de l'étape 4 affiche un ✗ **critique** « Algorithmes RVT (Processing) » mentionnant l'installation/mise à jour via Extensions ; **▶ Lancer** refuse de démarrer le pipeline (préflight KO **avant** tout téléchargement).
+- [ ] **28.2 Préflight rvt-qgis présent** *(révisé 0.16.0, même condition)* : réactiver rvt-qgis, redémarrer QGIS → le même check passe au ✓ (« N algorithme(s) rvt:* disponibles ») et le run démarre normalement.
 - [ ] **28.3 Re-run, paramètre changé** : run 1 `ign_laz` (1 dalle suffit) avec résolution MNT 0,5 m ; puis étape 2 → résolution MNT 2 m et re-run dans le **même** `output_dir` → la **fenêtre du wizard** affiche « ⚠️ Paramètres de traitement modifiés → cache des intermédiaires invalidé » ; la dalle est **réellement recalculée** (durée non nulle, pas de « Terminé en 0.0s »), le fichier de log montre « TIF rogné copié » et le TIF de `livrable/indices/MNT/tif/` a la nouvelle résolution (propriétés de la couche : taille de pixel 2 m — le fichier existant a bien été **écrasé**). Si la CV est active : le PNG d'inférence est régénéré (« PNG plus ancien que sa source, régénération ») et l'inférence re-tourne (pas de « déjà traité »).
 - [ ] **28.4 Re-run, paramètres identiques (reprise)** : relancer une 3e fois **sans rien changer** → pas de purge, reprise rapide sur le cache — dans le **fichier de log** (`*.txt`, canal technique, pas la fenêtre), chercher « (cache intermédiaire) » : une ligne par produit (« MNT réutilisé… », « Densité réutilisée… », « LD réutilisé… », « LAZ fusionné réutilisé… » — accord au féminin pour Densité/COUVERTURE), pas de « TIF rogné copié », « PNG déjà présent » si PNG activés, et **aucune** ré-inférence CV (cache de détections conservé) — le comportement §22 (ajout de dalle) reste intact.
 - [ ] **28.5 Bornes de la purge** : après 28.3, vérifier que `technique/sources/dalles/*.laz` (pas de re-téléchargement) et `livrable/detections/` (si présents) n'ont **pas** été supprimés ; `technique/intermediaires/run_params.json` existe et reflète les derniers paramètres.
@@ -976,3 +976,13 @@ Lot 3 du chantier d'accélération (2026-10-15) : une dalle lue en entier reçoi
 - [ ] **52.3 M-HS 8 bits à 50°** : élévation 50° → les ombres sont plus courtes qu'à 35° ; à 35°, l'image est celle de la version précédente.
 - [ ] **52.4 Réglages avancés › M-HS** : « Nombre de directions » est masqué quand « Sauver en 8 bits » est coché, réapparaît quand il est décoché ; après « Réinitialiser » et après un chargement de configuration, l'état suit la case ; le dossier reste `M_HS_D16_E35_V1`.
 - [ ] **52.5 Qt6** : rejouer 52.4 sous QGIS 4.
+
+## 53. Sans l'extension rvt-qgis ⭐ P0
+
+> **Contexte** (0.16.0) : les 12 indices sont calculés avec la bibliothèque rvt intégrée ; l'extension n'est plus
+> requise, et l'avoir installée ne change rien (le `rvt` de l'extension et celui du plugin ne se partagent jamais).
+
+- [ ] **53.1** Désactiver « Relief Visualization Toolbox » dans le gestionnaire d'extensions, redémarrer QGIS, cocher les 12 indices → étape 4 : « Moteur d'indices intégré » ✓, aucune ligne « Algorithmes RVT (Processing) » ; le traitement publie les 12 indices.
+- [ ] **53.2** Réactiver l'extension, refaire le même traitement dans un autre dossier → mêmes images (deux TIF au hasard, identiques dans QGIS ; la preuve au pixel est le N3, scénarios 8 et 9).
+- [ ] **53.3** Le ZIP livré contient `src/pipeline/ign/products/rvt_embarque/LICENSE` et `NOTICE` ; Aide › Installer et Glossaire citent le ZRC SAZU et l'Université de Ljubljana ; le rapport de traitement aussi (Sources).
+- [ ] **53.4 Qt6** : rejouer 53.1 sous QGIS 4.

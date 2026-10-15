@@ -13,7 +13,7 @@ Plugin QGIS pour exécuter un pipeline de traitement LiDAR et produire des raste
   - **MNT**
   - **Densité**
   - **Couverture** (*QA points sol*) — carte qualité des zones où le MNT est interpolé faute de points sol (raster + polygones des zones sous le seuil). Disponible uniquement quand le nuage de points est traité (modes `ign_laz` / `local_laz`).
-  - Indices **RVT** (via *Processing*) : **HS**, **M-HS**, **SVF**, **SLO**, **LD**, **SLRM**, **VAT**, **MSTP**, **PRISM** (ouverture prismatique)
+  - Indices **RVT** (bibliothèque `rvt` intégrée) : **HS**, **M-HS**, **SVF**, **SLO**, **LD**, **SLRM**, **VAT**, **MSTP**, **PRISM** (ouverture prismatique)
   - Indices **CVAT** (*Combined VAT*) et **CRIM** (*Color Relief Image Map*) — calculés *in-process* avec la bibliothèque `rvt` intégrée au plugin (`src/pipeline/ign/products/rvt_embarque/`, non exposés par *Processing*)
 - Export optionnel en **JPG + world file (JGW)** pour certains produits.
 - (Optionnel) Détection / segmentation d'instances par computer vision à partir des JPG produits (via runner externe ou dépendances Python) :
@@ -47,7 +47,7 @@ Le plugin s’exécute dans QGIS et s’appuie sur des outils externes. Un contr
 
 - **QGIS 3.34+ (Qt5) ou QGIS 4.x (Qt6)**
 - Module **Processing** (fourni avec QGIS)
-- Les algorithmes RVT accessibles via Processing (selon installation QGIS)
+- Rien d'autre : les indices RVT sont calculés par le plugin avec la bibliothèque `rvt` intégrée (`src/pipeline/ign/products/rvt_embarque/`, licence Apache 2.0)
 
 ### Réseau d'entreprise (proxy)
 
@@ -121,8 +121,7 @@ Sous Windows (profil par défaut) — `QGIS3` pour QGIS 3.x, `QGIS4` pour QGIS 4
 Le plugin exécute un **préflight** (contrôle des dépendances) au lancement.
 
 - **Processing** : doit être disponible (dans QGIS : `Traitement` → `Boîte à outils`).
-- **Algorithmes RVT via Processing** : nécessaires si tu actives des produits RVT (HS/M-HS/SVF/SLO/LD/SLRM/VAT/MSTP/PRISM). Fournis par le plugin QGIS **« Relief Visualization Toolbox » (rvt-qgis)**.
-  ⚠️ Le plugin rvt-qgis doit être **installé, activé et à jour** : sous QGIS 4, toute version ≤ 0.10.0 est refusée au chargement (marquée incompatible) et les algorithmes `rvt:*` deviennent introuvables — mettre à jour via *Extensions → Installer/Gérer les extensions* (version ≥ 1.0.1 recommandée). Le préflight de l'étape 4 signale ce cas par un ✗ critique **« Algorithmes RVT (Processing) »** et bloque le lancement.
+- **Indices RVT** (HS/M-HS/SVF/OPNS/SLO/LD/SLRM/VAT/MSTP/CVAT/PRISM/CRIM) : calculés par le plugin avec la bibliothèque `rvt` intégrée (copie figée de rvt-qgis 1.0.1) ; le préflight vérifie le **« Moteur d'indices intégré »** (numpy, scipy, matplotlib, GDAL de QGIS). L'extension **rvt-qgis** n'est requise que si l'ancien calcul est forcé pour un diagnostic (`ARCHEO_INDICES_MOTEUR=processing`) : le préflight vérifie alors les algorithmes `rvt:*` (✗ critique **« Algorithmes RVT (Processing) »**).
 - **CVAT** (*Combined VAT*) et **CRIM** (*Color Relief Image Map*) : calculés avec la bibliothèque `rvt` intégrée au plugin, sans extension à installer.
 
 Si un élément est manquant, le préflight affichera une erreur et empêchera le lancement.

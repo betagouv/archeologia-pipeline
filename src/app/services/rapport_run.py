@@ -449,8 +449,8 @@ def _sources(d: DonneesRapport) -> str:
     if donnees:
         lignes.append(f"<p>Données : {_e(donnees)}</p>")
     if d.data_mode and d.data_mode != "existing_rvt":
-        lignes.append("<p>Indices de visualisation : Relief Visualization Toolbox (ZRC SAZU), "
-                      "par l'extension QGIS rvt-qgis.</p>")
+        lignes.append("<p>Indices de visualisation : Relief Visualization Toolbox (ZRC SAZU, Université de "
+                      "Ljubljana), bibliothèque intégrée au plugin, licence Apache 2.0.</p>")
     modeles = []
     for r in d.cv_runs:
         nom = str(r.get("modele") or r.get("model") or "")

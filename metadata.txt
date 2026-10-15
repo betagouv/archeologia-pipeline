@@ -12,7 +12,7 @@ description=Détection de sites archéologiques par réseaux de neurones
 version=0.14.1
 author=Valentin VIEUX
 email=valentin.vieux.pro@outlook.com
-about=Plugin pour automatiser la production d'indices de visualisation (à l'aide du plugin Relief Visualization Toolbox) à partir de données LiDAR ou de MNT et pour détecter des sites archéologiques à l'aide de réseaux de neurones (YOLO, RF-DETR détection ou segmentation)
+about=Plugin pour automatiser la production d'indices de visualisation (avec la bibliothèque Relief Visualization Toolbox du ZRC SAZU et de l'Université de Ljubljana, intégrée sous licence Apache 2.0) à partir de données LiDAR ou de MNT et pour détecter des sites archéologiques à l'aide de réseaux de neurones (YOLO, RF-DETR détection ou segmentation)
 tracker=https://github.com/betagouv/archeologia-pipeline/issues
 repository=https://github.com/betagouv/archeologia-pipeline
 
@@ -24,9 +24,10 @@ hasProcessingProvider=no
 changelog=0.16.0 (en préparation)
     * La dominance locale (LD) est calculée par le plugin lui-même, avec une copie figée de la bibliothèque de Relief Visualization Toolbox, au lieu de passer par l'extension rvt-qgis. L'image est identique au pixel près ; un réglage hors des bornes de l'algorithme est refusé comme avant, avec un message qui le nomme.
     * Ombrage (HS), facteur de vue du ciel (SVF), ouverture (OPNS), pente (SLO) et relief local (SLRM) sont aussi calculés par le plugin ; le facteur de vue du ciel et l'ouverture positive à mêmes réglages sortent d'un seul calcul. Images identiques au pixel près.
-    * MSTP : la luminosité réglée (1,2 par défaut) est enfin appliquée telle quelle ; l'extension rvt-qgis l'arrondissait à l'entier, 1. À réglages égaux, les MSTP sont donc plus clairs qu'avant, et le nom de leur dossier ne change pas : un dossier calculé par une version précédente voit son MSTP recalculé une fois.
+    * MSTP : la luminosité réglée (1,2 par défaut) est enfin appliquée telle quelle ; l'extension rvt-qgis l'arrondissait à l'entier, 1. À réglages égaux, les MSTP sont donc plus clairs qu'avant, et le nom de leur dossier ne change pas : un dossier calculé par une version précédente voit son MSTP et son M-HS recalculés une fois.
     * M-HS en 8 bits : l'élévation solaire et l'exagération réglées sont appliquées, elles étaient ignorées ; aux réglages par défaut l'image ne change pas. Le nombre de directions, sans effet sur l'image 8 bits faite de trois éclairages, n'est plus affiché dans ce cas.
-    * Les compositions VAT, CVAT, PRISM et CRIM reprennent les couches déjà calculées pour la dalle (facteur de vue du ciel, ouvertures, pente, ombrages) au lieu de les recalculer chacune. Images identiques au pixel près.
+    * Les compositions VAT, CVAT, PRISM et CRIM reprennent les couches déjà calculées pour la dalle (facteur de vue du ciel, ouvertures, pente, ombrages) au lieu de les recalculer chacune. Images identiques au pixel près. Le relief coloré (CRIM) ne plante plus sur un MNT stocké en entiers avec une valeur de vide.
+    * L'extension Relief Visualization Toolbox (rvt-qgis) n'est plus nécessaire : le plugin intègre une copie figée de sa bibliothèque (ZRC SAZU et Université de Ljubljana, licence Apache 2.0), si bien qu'une mise à jour de l'extension ne change plus vos images. L'étape 4 vérifie désormais le « moteur d'indices intégré ».
  0.15.0 (en préparation)
     * Correctif : relancer dans le même dossier avec un autre seuil, un autre modèle ou après une mise à jour du moteur de détection reprenait les détections du lancement précédent. Les images sont maintenant ré-analysées dès que l'un de ces réglages change ; à réglages identiques, elles ne le sont pas de nouveau.
     * Quand le moteur de détection livré avec l'extension s'arrête en cours de traitement, le traitement ne se dit plus « terminé » : la fin indique « Détection impossible » et sa cause, en rouge, et le rapport comme la trace du traitement le disent aussi. Les produits restent calculés ; une rubrique du manuel explique quoi faire.

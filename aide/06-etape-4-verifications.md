@@ -13,7 +13,7 @@ Le **récapitulatif** reprend vos choix : mode et source, produits, entités et 
 Le panneau vérifie en tâche de fond ce dont le traitement a besoin :
 
 - les outils en ligne de commande : PDAL pour les nuages de points, GDAL pour les rasters ;
-- QGIS Processing et les algorithmes de Relief Visualization Toolbox ;
+- QGIS Processing et le moteur d'indices intégré (la bibliothèque Relief Visualization Toolbox livrée avec le plugin) ;
 - le moteur de détection et ses bibliothèques, si la détection est activée ;
 - les dossiers d'entrée et de sortie, et la projection des rasters en MNT ou Indices existants.
 

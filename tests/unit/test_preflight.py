@@ -391,3 +391,15 @@ def test_ld_forcee_par_processing_exige_rvt_ld(monkeypatch):
     assert "Moteur d'indices intégré" not in res
     r = res["Algorithmes RVT (Processing)"]
     assert not r.ok and r.critical and "rvt_ld" in r.details
+
+
+def test_les_12_indices_sans_rvt_qgis(monkeypatch):
+    """0.16.0 : sans ARCHEO_INDICES_MOTEUR=processing, aucun algorithme rvt:* n'est exigé (N3 scénario 8)."""
+    monkeypatch.delenv("ARCHEO_INDICES_MOTEUR", raising=False)
+    monkeypatch.setattr("pipeline.ign.products.moteur_indices.moteur_disponible", lambda: "")
+    douze = ["HS", "M_HS", "SVF", "OPNS", "SLO", "LD", "SLRM", "VAT", "MSTP", "CVAT", "PRISM", "CRIM"]
+    res = {r.name: r for r in collect_preflight_results(mode="existing_mnt", cv_config={"enabled": False},
+                                                        products={p: True for p in douze}, files_config={},
+                                                        output_dir=None)}
+    assert "Algorithmes RVT (Processing)" not in res
+    assert res["Moteur d'indices intégré"].ok and all(p in res["Moteur d'indices intégré"].details for p in douze)

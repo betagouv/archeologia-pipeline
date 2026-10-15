@@ -160,7 +160,7 @@
     ]
   },
   "M_HS": {
-    "resume": "Seize ombrages calculés tous les 22,5° et réunis en une seule image : aucune structure n'est parallèle à toutes les lumières à la fois. C'est l'ombrage débarrassé de son angle mort.",
+    "resume": "Plusieurs ombrages, éclairés depuis des directions différentes, réunis en une seule image : aucune structure n'est parallèle à toutes les lumières à la fois. Par défaut (sortie 8 bits), l'image compose trois éclairages (315°, 22,5° et 90°) en couleurs ; décochée, elle garde un ombrage par direction, seize par défaut. C'est l'ombrage débarrassé de son angle mort.",
     "lire": "Chaque structure linéaire est éclairée par au moins une direction, donc visible. Les teintes traduisent l'orientation des versants : la sortie 8 bits est une composition en couleurs de trois éclairages (315° dans le rouge, 22,5° dans le vert, 90° dans le bleu), à l'élévation et à l'exagération réglées. Le fichier flottant, lui, garde une bande par direction, 0° en bande 1 puis dans le sens horaire.",
     "usage": [
       "Premier repérage toutes orientations confondues : c'est un fond plus complet que l'ombrage simple, au même coût de lecture.",
@@ -401,7 +401,7 @@
       "Depuis chaque pixel, on balaye seize directions jusqu'au rayon de recherche et on relève dans chacune l'angle du relief le plus haut ; l'openness est 90° moins la moyenne de ces angles. Elle vaut donc 90° quand rien ne dépasse, plus de 90° quand l'horizon s'abaisse (convexité), moins quand il se relève (concavité).",
       "L'openness **négative** est exactement le même calcul mené sur le relief inversé : le plugin ne l'approxime pas, c'est l'algorithme de RVT qui multiplie le modèle d'altitude par −1 avant le balayage. Elle mesure donc l'ouverture vers le bas, et non vers le ciel.",
       "Différence avec le Sky-View Factor : celui-ci ne considère que l'hémisphère céleste, l'openness prend la sphère entière. C'est ce qui lui fait perdre la pente générale du terrain — un atout sur un versant, une perte d'information en terrain de faible relief.",
-      "Le calcul passe par l'algorithme rvt:rvt_opns du plugin rvt-qgis, comme le Sky-View Factor par rvt:rvt_svf — aucun code de calcul dans le plugin, contrairement au CVAT et au CRIM.",
+      "Le calcul est celui de la fonction d'openness de la bibliothèque RVT, copie intégrée au plugin ; le Sky-View Factor et l'openness positive de mêmes réglages sortent d'un seul balayage d'horizon, sans changer l'image.",
       "Comme pour le Sky-View Factor, le calcul lit au-delà du bord de la dalle : le plugin le nourrit avec la dalle élargie de la marge de tuilage, faute de quoi RVT fabriquerait le voisinage manquant en repliant l'image sur elle-même.",
       "Le type, le rayon, les directions, l'exagération verticale et le niveau de bruit figurent tous au nom du dossier de sortie : deux réglages produisent deux dossiers, jamais un écrasement."
     ],
@@ -714,11 +714,11 @@
     ],
     "limites": [
       "Deux visualisations complètes sont calculées, dont chacune en agrège quatre : c'est le plus long des indices du plugin.",
-      "Le calcul dépend du plugin QGIS rvt-qgis installé. S'il est absent, l'indice est simplement ignoré, avec un message au journal, et le reste du traitement continue.",
+      "Les deux VAT réutilisent les couches déjà calculées pour la dalle (ombrage, pente, ouverture, Sky-View Factor) quand les réglages sont communs : le coût réel est donc inférieur à deux VAT séparés.",
       "Les limites de fond du VAT demeurent : rayon du SVF exprimé en pixels, ombrage saturé en très fort relief, et l'impossibilité de mesurer sur une image composée."
     ],
     "methode": [
-      "rvt-qgis n'expose le VAT combiné que dans sa boîte de dialogue, pas dans son fournisseur Processing : le plugin le calcule donc lui-même, en réutilisant le paquet Python rvt du plugin voisin.",
+      "Le VAT combiné n'existe que dans la boîte de dialogue de l'extension Relief Visualization Toolbox, pas dans son fournisseur Processing : le plugin le calcule donc lui-même, avec la bibliothèque RVT qu'il intègre.",
       "Il rend deux VAT complets — chacun agrégeant HS, SLO, OPEN-POS et SVF —, l'un avec les réglages « general », l'autre « flat », puis les fond en mode Normal aux opacités 50 et 100 : le VAT « flat », déclaré en dernier, est le fond. C'est exactement la recette de la branche CVAT de rvt_blender.py."
     ],
     "parametres": [
@@ -779,7 +779,7 @@
       "L'openness est la moyenne des angles d'horizon mesurés dans seize directions jusqu'au rayon de recherche. La positive est la moyenne des angles au zénith : elle est haute sur les convexités. La négative est le même calcul sur le MNT inversé, donc la moyenne des angles au nadir : elle est haute dans les concavités. « l'openness prend en compte la sphère entière dans son calcul, et non le seul hémisphère céleste comme le fait le SVF » — le résultat est débarrassé de la pente générale, et « là où l'openness positive met en évidence les convexités topographiques (les crêtes séparant deux chemins creux, les lèvres des trous d'obus), l'openness négative souligne les parties les plus basses des concavités (les chemins creux eux-mêmes, les fonds de gorges, le pied des falaises) ».",
       "Le fond réintroduit la topographie générale que l'openness efface : c'est la composition RVB de trois ombrages calculés aux azimuts 315°, 22,5° et 90°, à l'élévation solaire du préréglage de terrain (35° en général).",
       "Filiation : la méthode vient de Canuto et al. (2018) ; Verbovšek et al. (2019) l'ont modifiée en « en remplaçant l'exagération verticale au triple du terrain, qui servait à calculer l'ombrage depuis trois directions, par une fusion en mode Overlay des openness positive et négative », ce qui « améliore l'efficacité de la transmission de l'information, parce que les couleurs sont plus marquées et la topographie générale mieux définie ».",
-      "Le calcul passe entièrement par l'algorithme rvt:rvt_blender du plugin rvt-qgis, comme le VAT : à la différence du CVAT, rien n'est recalculé dans le plugin. Et comme pour le Sky-View Factor, le calcul lit au-delà du bord de la dalle : le plugin le nourrit avec la dalle élargie de la marge de tuilage, faute de quoi RVT fabriquerait le voisinage manquant en repliant l'image sur elle-même."
+      "Le calcul est celui de la composition « Prismatic openness » de la bibliothèque RVT, copie intégrée au plugin, qui réutilise les couches déjà calculées pour la dalle (ombrages, openness). Et comme pour le Sky-View Factor, le calcul lit au-delà du bord de la dalle : le plugin le nourrit avec la dalle élargie de la marge de tuilage, faute de quoi RVT fabriquerait le voisinage manquant en repliant l'image sur elle-même."
     ],
     "parametres": [
       {
@@ -852,11 +852,11 @@
       "L'étirement de la pente est fixe, de 0 à 0,8 radian (environ 46°), et n'est pas réglable depuis l'étape 2 : au-delà, tout porte la teinte la plus foncée de la colormap.",
       "Un fond coloré supporte mal une symbologie vectorielle dense : pour digitaliser sous des vecteurs, le CVAT reste un meilleur support.",
       "Deux openness complets sont calculés, la positive et la négative : comptez environ le double d'un sky-view factor.",
-      "Le calcul dépend du plugin QGIS rvt-qgis (paquet ``rvt`` et matplotlib). S'il est absent, l'indice est simplement ignoré, avec un message au journal, et le reste du traitement continue — même contrat que le CVAT.",
+      "Le calcul utilise matplotlib, livré avec QGIS, pour colorer la pente. S'il manque, l'indice est simplement ignoré, avec un message au journal, et le reste du traitement continue — même contrat que le CVAT.",
       "La colormap et ses bornes de coupe figurent au nom du dossier de sortie : deux colormaps produisent deux dossiers, ce qui évite de confondre deux images sans rapport."
     ],
     "methode": [
-      "rvt-qgis n'expose CRIM ni dans son fournisseur Processing — l'enum ``BLEND_COMBINATION`` de ``rvt:rvt_blender`` est construit depuis ``settings/default_blender_combinations.json``, qui ne liste que VAT, Prismatic openness et City — ni dans sa boîte de dialogue. Le plugin l'appelle donc lui-même, en réutilisant le paquet Python ``rvt`` du plugin voisin : ``rvt.blend.color_relief_image_map`` (rvt-qgis 1.0.1). Même dispositif que pour le CVAT, avec un seul point de détection du paquet pour les deux.",
+      "rvt-qgis n'expose CRIM ni dans son fournisseur Processing — l'enum ``BLEND_COMBINATION`` de ``rvt:rvt_blender`` est construit depuis ``settings/default_blender_combinations.json``, qui ne liste que VAT, Prismatic openness et City — ni dans sa boîte de dialogue. Le plugin l'appelle donc lui-même, avec la bibliothèque RVT qu'il intègre : ``rvt.blend.color_relief_image_map`` (version 1.0.1 de l'extension). Même dispositif que pour le CVAT.",
       "Trois couches, tirées de deux indices seulement. L'image de base est la pente (SLO), calculée en radians, étirée de 0 à 0,8 (environ 46°) et colorée par une colormap matplotlib — OrRd par défaut. Par-dessus, deux fois la même différence « openness positive (OPEN-POS) moins openness négative (OPEN-NEG) », étirée de −28 à +28° : une fois en mode luminosity à 50 % d'opacité, une fois en mode overlay à 50 %. Le rendu de RVT part de la dernière couche déclarée et remonte, la pente colorée est donc bien le fond.",
       "L'openness positive est l'angle moyen, sur seize directions, entre le zénith et la ligne d'horizon : grand sur une crête où l'horizon est bas, petit au fond d'un creux. L'openness négative est la même mesure sur le relief inversé, c'est-à-dire vers le bas. Leur différence est positive sur les convexités, négative dans les creux, nulle en terrain plan — c'est elle qui porte tout le modelé de l'image, indépendamment de toute source de lumière.",
       "Les deux openness sont calculées dans un rayon de 10 pixels, valeur écrite en dur par la fonction elle-même : CRIM ne voit donc que le voisinage proche, et sa lecture ne dépend d'aucun réglage de rayon."

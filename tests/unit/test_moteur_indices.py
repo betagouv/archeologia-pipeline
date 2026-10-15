@@ -129,6 +129,55 @@ def test_interrupteur_renvoie_ld_vers_processing(monkeypatch):
     assert not m.par_le_moteur("LD") and m.par_le_moteur("CVAT")
 
 
+def test_svf_et_openness_d_un_seul_balayage_identiques_aux_appels_separes():
+    """rvt.vis.sky_view_factor tire SVF et openness des mêmes pentes maximales : un appel qui calcule les deux
+    rend, pour chacun, l'image d'un appel qui ne calcule que lui (rvt_svf.py, rvt_opns.py)."""
+    _, _, _, vis = _rvt()
+    dem = _mnt()
+    for r, d, b, ve in [(10, 16, 0, 1.0), (20, 32, 2, 2.0), (50, 8, 3, 1.0)]:
+        h = _couches(dem).horizon(r, d, b, ve, RES)
+        for cle, svf, opns in (("svf", True, False), ("opns", False, True)):
+            seul = vis.sky_view_factor(dem.copy(), resolution=RES, compute_svf=svf, compute_opns=opns, svf_n_dir=d,
+                                       svf_r_max=r, svf_noise=b, ve_factor=ve, no_data=ND)[cle]
+            _egal(h[cle], seul, f"{cle} {(r, d, b, ve)}")
+
+
+def test_openness_negative_comme_rvt_opns():
+    """rvt_opns.py (type négatif) passe −MNT tel quel : −no_data n'est plus reconnu, le sans-donnée compte comme un
+    relief près des bords. Reproduit à l'identique (signalé à l'utilisateur, pas corrigé en silence)."""
+    _, _, _, vis = _rvt()
+    dem = _mnt()
+    attendu = vis.sky_view_factor(dem.copy() * -1, resolution=RES, compute_svf=False, compute_opns=True,
+                                  svf_n_dir=8, svf_r_max=15, svf_noise=1, ve_factor=1.0, no_data=ND)["opns"]
+    _egal(_couches(dem).ouverture_negative(15, 8, 1, 1.0, RES, nan_avant=False), attendu, "OPNS négative")
+
+
+def test_une_couche_partagee_est_rendue_en_copie():
+    _, _, _, vis = _rvt()
+    c = _couches(_mnt())
+    a = c.ombrage(315.0, 35.0, 1.0, RES, RES)
+    a[:] = 0   # un consommateur qui écrit dans sa couche (les normalisations de rvt le font)
+    attendu = vis.hillshade(dem=_mnt(), resolution_x=RES, resolution_y=RES, sun_azimuth=315.0, sun_elevation=35.0,
+                            ve_factor=1.0, no_data=ND)
+    _egal(c.ombrage(315.0, 35.0, 1.0, RES, RES), attendu, "ombrage partagé")
+    assert len(c._memo) == 1
+
+
+def test_au_dela_du_plafond_rien_n_est_garde(monkeypatch):
+    """Review Focus 4 : au-delà d'une dalle standard, chaque produit recalcule ses couches (mémoire d'avant)."""
+    monkeypatch.setattr(m, "PARTAGE_MAX_PX", 100)
+    c = _couches(_mnt())
+    c.ombrage(315.0, 35.0, 1.0, RES, RES)
+    assert not c.partage and c._memo == {} and c.taille == (120, 120)
+
+
+def test_unite_de_pente_suit_l_enum_de_rvt_slope():
+    """L'interface envoie 0 (« Degrés ») ou 1 (« Pourcentage ») ; rvt:rvt_slope lit l'indice dans
+    ["degree", "radian", "percent"] : 1 donne des RADIANS. Reproduit tel quel (identité) et signalé à
+    l'utilisateur : corriger changerait l'image, c'est à décider."""
+    assert m.UNITES_PENTE == ("degree", "radian", "percent")
+
+
 if __name__ == "__main__":   # hors pytest : Pythons de QGIS (numpy 1.26 et 2.x)
     faits = []
     for nom, f in sorted(globals().items()):

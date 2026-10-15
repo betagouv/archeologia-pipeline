@@ -961,4 +961,5 @@ Lot 3 du chantier d'accélération (2026-10-15) : une dalle lue en entier reçoi
 
 - [ ] **51.1 LD** : un traitement avec la dominance locale → le journal complet du dossier de sortie (`technique/journaux/pipeline_log_*.txt`) porte, pour chaque dalle, `[PARAMS RVT/LD] … moteur=interne` ; l'image LD ressemble à celle d'un dossier calculé par la version précédente.
 - [ ] **51.2 Ancien calcul forcé** : QGIS lancé depuis une console où `set ARCHEO_INDICES_MOTEUR=processing`, même traitement dans un autre dossier → `moteur=processing` dans le journal, mêmes images (l'extension rvt-qgis est alors requise).
+- [ ] **51.4 Produits seuls** : HS, SVF, OPNS, SLO et SLRM cochés → `moteur=interne` sur leur ligne `[PARAMS RVT/…]` ; un MNT existant de plus de 2 801 px de côté (régime « large ») → le journal dit « au-delà d'une dalle standard : chaque produit recalcule ses couches ».
 - [ ] **51.3 Qt6** : rejouer 51.1 sous QGIS 4.

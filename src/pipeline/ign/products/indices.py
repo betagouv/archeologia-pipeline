@@ -74,6 +74,9 @@ def create_visualization_products(
         nonlocal couches
         if couches is None:
             couches = moteur_indices.Couches.lire(input_path)
+            if not couches.partage:
+                log(f"Indices : raster de {couches.taille[0]} × {couches.taille[1]} px, au-delà d'une dalle "
+                    "standard : chaque produit recalcule ses couches (pas de partage, mémoire inchangée).")
         return couches
 
     if products.get("HS", False):
@@ -84,22 +87,28 @@ def create_visualization_products(
         save_as_8bit = _as_bool(hs.get("save_as_8bit", True), True)
         out = temp_dir / get_rvt_temp_filename("HS", current_tile_name, rvt_params)
         if needs_refresh(input_path, out):
+            moteur = moteur_indices.par_le_moteur("HS")
             log(format_params_line("RVT/HS", {
                 "tile": current_tile_name,
                 "sun_azimuth": sun_azimuth,
                 "sun_elevation": sun_elevation,
                 "ve_factor": ve_factor,
                 "save_as_8bit": save_as_8bit,
+                "moteur": "interne" if moteur else "processing",
             }))
-            params = {
-                "INPUT": str(input_path),
-                "OUTPUT": str(out),
-                "SUN_AZIMUTH": sun_azimuth,
-                "SUN_ELEVATION": sun_elevation,
-                "VE_FACTOR": ve_factor,
-                "SAVE_AS_8BIT": save_as_8bit,
-            }
-            run_qgis_algorithm("rvt:rvt_hillshade", params, feedback=feedback, context=context)
+            if moteur:
+                moteur_indices.calculer_hs(_couches(), out, azimut=sun_azimuth, elevation=sun_elevation,
+                                           ve=ve_factor, huit_bits=save_as_8bit)
+            else:
+                params = {
+                    "INPUT": str(input_path),
+                    "OUTPUT": str(out),
+                    "SUN_AZIMUTH": sun_azimuth,
+                    "SUN_ELEVATION": sun_elevation,
+                    "VE_FACTOR": ve_factor,
+                    "SAVE_AS_8BIT": save_as_8bit,
+                }
+                run_qgis_algorithm("rvt:rvt_hillshade", params, feedback=feedback, context=context)
         else:
             log(f"HS réutilisé (cache intermédiaire) : {out.name}")
         if out.exists():
@@ -158,6 +167,7 @@ def create_visualization_products(
         save_as_8bit = _as_bool(brut.get("save_as_8bit", True), True)
         out = temp_dir / get_rvt_temp_filename("SVF", current_tile_name, rvt_params)
         if needs_refresh(input_path, out):
+            moteur = moteur_indices.par_le_moteur("SVF")
             log(format_params_line("RVT/SVF", {
                 "tile": current_tile_name,
                 "num_directions": svf["num_directions"],
@@ -165,17 +175,22 @@ def create_visualization_products(
                 "noise_remove": svf["noise_remove"],
                 "ve_factor": svf["ve_factor"],
                 "save_as_8bit": save_as_8bit,
+                "moteur": "interne" if moteur else "processing",
             }))
-            params = {
-                "INPUT": str(input_path),
-                "OUTPUT": str(out),
-                "NOISE_REMOVE": svf["noise_remove"],
-                "NUM_DIRECTIONS": svf["num_directions"],
-                "RADIUS": svf["radius"],
-                "SAVE_AS_8BIT": save_as_8bit,
-                "VE_FACTOR": svf["ve_factor"],
-            }
-            run_qgis_algorithm("rvt:rvt_svf", params, feedback=feedback, context=context)
+            if moteur:
+                moteur_indices.calculer_svf(_couches(), out, rayon=svf["radius"], directions=svf["num_directions"],
+                                            bruit=svf["noise_remove"], ve=svf["ve_factor"], huit_bits=save_as_8bit)
+            else:
+                params = {
+                    "INPUT": str(input_path),
+                    "OUTPUT": str(out),
+                    "NOISE_REMOVE": svf["noise_remove"],
+                    "NUM_DIRECTIONS": svf["num_directions"],
+                    "RADIUS": svf["radius"],
+                    "SAVE_AS_8BIT": save_as_8bit,
+                    "VE_FACTOR": svf["ve_factor"],
+                }
+                run_qgis_algorithm("rvt:rvt_svf", params, feedback=feedback, context=context)
         else:
             log(f"SVF réutilisé (cache intermédiaire) : {out.name}")
         if out.exists():
@@ -199,6 +214,7 @@ def create_visualization_products(
         save_as_8bit = _as_bool(brut.get("save_as_8bit", True), True)
         out = temp_dir / get_rvt_temp_filename("OPNS", current_tile_name, rvt_params)
         if needs_refresh(input_path, out):
+            moteur = moteur_indices.par_le_moteur("OPNS")
             log(format_params_line("RVT/OPNS", {
                 "tile": current_tile_name,
                 "type": "negative" if opns["opns_type"] == 1 else "positive",
@@ -207,18 +223,24 @@ def create_visualization_products(
                 "noise_remove": opns["noise_remove"],
                 "ve_factor": opns["ve_factor"],
                 "save_as_8bit": save_as_8bit,
+                "moteur": "interne" if moteur else "processing",
             }))
-            params = {
-                "INPUT": str(input_path),
-                "OUTPUT": str(out),
-                "NOISE_REMOVE": opns["noise_remove"],
-                "NUM_DIRECTIONS": opns["num_directions"],
-                "OPNS_TYPE": opns["opns_type"],
-                "RADIUS": opns["radius"],
-                "SAVE_AS_8BIT": save_as_8bit,
-                "VE_FACTOR": opns["ve_factor"],
-            }
-            run_qgis_algorithm("rvt:rvt_opns", params, feedback=feedback, context=context)
+            if moteur:
+                moteur_indices.calculer_opns(_couches(), out, negative=opns["opns_type"] == 1, rayon=opns["radius"],
+                                             directions=opns["num_directions"], bruit=opns["noise_remove"],
+                                             ve=opns["ve_factor"], huit_bits=save_as_8bit)
+            else:
+                params = {
+                    "INPUT": str(input_path),
+                    "OUTPUT": str(out),
+                    "NOISE_REMOVE": opns["noise_remove"],
+                    "NUM_DIRECTIONS": opns["num_directions"],
+                    "OPNS_TYPE": opns["opns_type"],
+                    "RADIUS": opns["radius"],
+                    "SAVE_AS_8BIT": save_as_8bit,
+                    "VE_FACTOR": opns["ve_factor"],
+                }
+                run_qgis_algorithm("rvt:rvt_opns", params, feedback=feedback, context=context)
         else:
             log(f"OPNS réutilisé (cache intermédiaire) : {out.name}")
         if out.exists():
@@ -233,20 +255,27 @@ def create_visualization_products(
         save_as_8bit = _as_bool(slope.get("save_as_8bit", True), True)
         out = temp_dir / get_rvt_temp_filename("SLO", current_tile_name, rvt_params)
         if needs_refresh(input_path, out):
+            moteur = moteur_indices.par_le_moteur("SLO")
             log(format_params_line("RVT/SLO", {
                 "tile": current_tile_name,
-                "unit": "degrees" if unit == 0 else "percent",
+                # Ce que rvt:rvt_slope calcule réellement (enum degree / radian / percent) : l'interface dit
+                # « Pourcentage » pour 1, qui donne des radians — reproduit tel quel, signalé à l'utilisateur.
+                "unit": moteur_indices.UNITES_PENTE[unit] if 0 <= unit < 3 else unit,
                 "ve_factor": ve_factor,
                 "save_as_8bit": save_as_8bit,
+                "moteur": "interne" if moteur else "processing",
             }))
-            params = {
-                "INPUT": str(input_path),
-                "OUTPUT": str(out),
-                "UNIT": unit,
-                "VE_FACTOR": ve_factor,
-                "SAVE_AS_8BIT": save_as_8bit,
-            }
-            run_qgis_algorithm("rvt:rvt_slope", params, feedback=feedback, context=context)
+            if moteur:
+                moteur_indices.calculer_slo(_couches(), out, unite=unit, ve=ve_factor, huit_bits=save_as_8bit)
+            else:
+                params = {
+                    "INPUT": str(input_path),
+                    "OUTPUT": str(out),
+                    "UNIT": unit,
+                    "VE_FACTOR": ve_factor,
+                    "SAVE_AS_8BIT": save_as_8bit,
+                }
+                run_qgis_algorithm("rvt:rvt_slope", params, feedback=feedback, context=context)
         else:
             log(f"SLO réutilisé (cache intermédiaire) : {out.name}")
         if out.exists():
@@ -312,20 +341,25 @@ def create_visualization_products(
         save_as_8bit = _as_bool(slrm.get("save_as_8bit", True), True)
         out = temp_dir / get_rvt_temp_filename("SLRM", current_tile_name, rvt_params)
         if needs_refresh(input_path, out):
+            moteur = moteur_indices.par_le_moteur("SLRM")
             log(format_params_line("RVT/SLRM", {
                 "tile": current_tile_name,
                 "radius": radius,
                 "ve_factor": ve_factor,
                 "save_as_8bit": save_as_8bit,
+                "moteur": "interne" if moteur else "processing",
             }))
-            params = {
-                "INPUT": str(input_path),
-                "OUTPUT": str(out),
-                "RADIUS": radius,
-                "VE_FACTOR": ve_factor,
-                "SAVE_AS_8BIT": save_as_8bit,
-            }
-            run_qgis_algorithm("rvt:rvt_slrm", params, feedback=feedback, context=context)
+            if moteur:
+                moteur_indices.calculer_slrm(_couches(), out, rayon=radius, ve=ve_factor, huit_bits=save_as_8bit)
+            else:
+                params = {
+                    "INPUT": str(input_path),
+                    "OUTPUT": str(out),
+                    "RADIUS": radius,
+                    "VE_FACTOR": ve_factor,
+                    "SAVE_AS_8BIT": save_as_8bit,
+                }
+                run_qgis_algorithm("rvt:rvt_slrm", params, feedback=feedback, context=context)
         else:
             log(f"SLRM réutilisé (cache intermédiaire) : {out.name}")
         if out.exists():

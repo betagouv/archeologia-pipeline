@@ -4,7 +4,10 @@ algorithmes Processing de l'extension rvt-qgis.
 
 Règle : chaque produit appelle les MÊMES fonctions de rvt, avec les MÊMES arguments, que l'algorithme
 Processing qu'il remplace (``processing_provider/rvt_*.py`` de rvt-qgis 1.0.1). Tout écart est nommé là où il
-est fait et prouvé au pixel près (``tests/unit/test_moteur_indices.py``, bancs N2).
+est fait et prouvé au pixel près (``tests/unit/test_moteur_indices.py``, bancs N2). Par dalle, ``Couches`` lit le
+MNT une fois et partage une couche entre produits quand rvt l'aurait calculée à l'identique pour chacun : la clé
+de partage est faite des paramètres que la fonction de rvt reçoit réellement, jamais du seul réglage de
+l'interface.
 
 Imports de numpy et de rvt différés : ce module s'importe sans eux (tests, préflight).
 """
@@ -12,14 +15,14 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Dict, Tuple
+from typing import Any, Callable, Dict, Tuple
 
 #: « processing » : chaque produit qui a un algorithme Processing passe par l'extension rvt-qgis, comme avant
 #: la 0.16.0 (diagnostic d'un écart ; l'extension est alors requise). CVAT et CRIM n'en ont pas.
 VARIABLE_MOTEUR = "ARCHEO_INDICES_MOTEUR"
 
 #: Produits calculés par le moteur intégré ; les autres passent encore par Processing (rvt-qgis).
-PRODUITS_MOTEUR = frozenset({"CVAT", "CRIM", "LD"})
+PRODUITS_MOTEUR = frozenset({"CVAT", "CRIM", "LD", "HS", "SVF", "OPNS", "SLO", "SLRM"})
 
 #: Produits sans algorithme Processing : toujours calculés ici, même forcé.
 SANS_PROCESSING = frozenset({"CVAT", "CRIM"})
@@ -91,13 +94,30 @@ def _rvt():
     return blend, blend_func, default, vis
 
 
+#: Au-delà, chaque produit recalcule ses couches : la mémoire d'avant sur les grands rasters (RF2).
+# ponytail: plafond fixe = dalle LiDAR standard (1 km + 20 % de marge à 0,5 m) ; libérer chaque couche après son
+# dernier consommateur si les grands rasters doivent aussi partager.
+PARTAGE_MAX_PX = 2801 * 2801
+
+#: Unités de pente de rvt:rvt_slope, dans l'ordre de son enum UNIT (l'interface envoie 0 ou 1).
+UNITES_PENTE = ("degree", "radian", "percent")
+
+
 class Couches:
-    """Le MNT d'une dalle, lu une fois pour tous ses produits calculés ici."""
+    """Le MNT d'une dalle, lu une fois, et les couches de calcul partagées entre ses produits.
+
+    Chaque couche est indexée par les paramètres que la fonction de rvt reçoit réellement : deux produits ne la
+    partagent que si rvt l'aurait calculée à l'identique pour chacun. Toute couche est rendue en COPIE (les
+    normalisations de rvt écrivent dans le tableau reçu).
+    """
 
     def __init__(self, chemin: Path, brut, res_x: float, res_y: float, no_data) -> None:
         self.chemin = Path(chemin)
         self._brut = brut
         self.res_x, self.res_y, self.no_data = res_x, res_y, no_data
+        self.taille = (brut.shape[-1], brut.shape[-2])
+        self.partage = brut.size <= PARTAGE_MAX_PX
+        self._memo: Dict[tuple, Any] = {}
 
     @classmethod
     def lire(cls, chemin: Path) -> "Couches":
@@ -108,6 +128,53 @@ class Couches:
     def brut(self):
         """Copie du MNT tel que lu : ce que reçoit un algorithme Processing, qui relit le fichier."""
         return self._brut.copy()
+
+    def _une_fois(self, cle: tuple, calcul: Callable[[], Any]):
+        if not self.partage:
+            return calcul()
+        if cle not in self._memo:
+            self._memo[cle] = calcul()
+        v = self._memo[cle]
+        return {k: a.copy() for k, a in v.items()} if isinstance(v, dict) else v.copy()
+
+    def ombrage(self, az: float, el: float, ve: float, rx: float, ry: float):
+        _, _, _, vis = _rvt()
+        return self._une_fois(("ombrage", az, el, ve, rx, ry), lambda: vis.hillshade(
+            dem=self.brut(), resolution_x=rx, resolution_y=ry, sun_azimuth=az, sun_elevation=el,
+            ve_factor=ve, no_data=self.no_data))
+
+    def pente(self, unite: str, ve: float, rx: float, ry: float):
+        _, _, _, vis = _rvt()
+        return self._une_fois(("pente", unite, ve, rx, ry), lambda: vis.slope_aspect(
+            dem=self.brut(), resolution_x=rx, resolution_y=ry, output_units=unite, ve_factor=ve,
+            no_data=self.no_data)["slope"])
+
+    def horizon(self, rayon: int, directions: int, bruit: int, ve: float, res: float) -> Dict[str, Any]:
+        """SVF et openness positive d'un même balayage : rvt.vis.sky_view_factor les tire des mêmes pentes
+        maximales, chaque sortie est celle d'un appel qui ne calcule qu'elle."""
+        _, _, _, vis = _rvt()
+        return self._une_fois(("horizon", rayon, directions, bruit, ve, res), lambda: vis.sky_view_factor(
+            dem=self.brut(), resolution=res, compute_svf=True, compute_asvf=False, compute_opns=True,
+            svf_n_dir=directions, svf_r_max=rayon, svf_noise=bruit, ve_factor=ve, no_data=self.no_data))
+
+    def ouverture_negative(self, rayon: int, directions: int, bruit: int, ve: float, res: float, *,
+                           nan_avant: bool):
+        """Openness négative = openness de −MNT. ``nan_avant`` : le sans-donnée est-il déjà NaN quand rvt négative
+        le MNT ? Non pour rvt:rvt_opns (−no_data n'est plus reconnu, le sans-donnée compte comme un relief :
+        reproduit tel quel) ; oui dans CRIM et dans un mélange où une fonction « mutante » est passée avant."""
+        _, _, _, vis = _rvt()
+
+        def calcul():
+            import numpy as np
+            dem = self.brut()
+            if nan_avant and self.no_data is not None:
+                dem = dem.astype(np.float32)
+                dem[dem == self.no_data] = np.nan
+            return vis.sky_view_factor(
+                dem=dem * -1, resolution=res, compute_svf=False, compute_asvf=False, compute_opns=True,
+                svf_n_dir=directions, svf_r_max=rayon, svf_noise=bruit, ve_factor=ve,
+                no_data=self.no_data)["opns"]
+        return self._une_fois(("ouverture_negative", rayon, directions, bruit, ve, res, nan_avant), calcul)
 
 
 def dominance_locale(dem, min_rad=10, max_rad=20, rad_inc=1, angular_res=15, observer_height=1.7, ve_factor=1,
@@ -173,3 +240,43 @@ def calculer_ld(c: Couches, out: Path, *, angular_res: int, min_radius: int, max
                            angular_res=int(angular_res), observer_height=float(observer_h), ve_factor=float(ve),
                            no_data=c.no_data)
     _publier(c, out, arr, huit_bits, "LOCAL_DOMINANCE")
+
+
+def calculer_hs(c: Couches, out: Path, *, azimut: float, elevation: float, ve: float, huit_bits: bool) -> None:
+    """rvt_hillshade.py."""
+    _verifier("HS", sun_azimuth=azimut, sun_elevation=elevation, ve_factor=ve)
+    _publier(c, out, c.ombrage(float(azimut), float(elevation), float(ve), c.res_x, c.res_y), huit_bits,
+             "HILLSHADE")
+
+
+def calculer_svf(c: Couches, out: Path, *, rayon: int, directions: int, bruit: int, ve: float,
+                 huit_bits: bool) -> None:
+    """rvt_svf.py."""
+    _verifier("SVF", radius=rayon, num_directions=directions, noise_remove=bruit, ve_factor=ve)
+    h = c.horizon(int(rayon), int(directions), int(bruit), float(ve), c.res_x)
+    _publier(c, out, h["svf"], huit_bits, "SKY_VIEW_FACTOR")
+
+
+def calculer_opns(c: Couches, out: Path, *, negative: bool, rayon: int, directions: int, bruit: int, ve: float,
+                  huit_bits: bool) -> None:
+    """rvt_opns.py : type négatif = openness de −MNT, sans-donnée non remplacé avant la négation (sans partage)."""
+    _verifier("OPNS", radius=rayon, num_directions=directions, noise_remove=bruit, ve_factor=ve)
+    if negative:
+        arr = c.ouverture_negative(int(rayon), int(directions), int(bruit), float(ve), c.res_x, nan_avant=False)
+    else:
+        arr = c.horizon(int(rayon), int(directions), int(bruit), float(ve), c.res_x)["opns"]
+    _publier(c, out, arr, huit_bits, "NEGATIVE_OPENNESS" if negative else "POSITIVE_OPENNESS")
+
+
+def calculer_slo(c: Couches, out: Path, *, unite: int, ve: float, huit_bits: bool) -> None:
+    """rvt_slope.py (``unite`` = indice de l'enum de l'algorithme, cf. UNITES_PENTE)."""
+    _verifier("SLO", unit=unite, ve_factor=ve)
+    _publier(c, out, c.pente(UNITES_PENTE[int(unite)], float(ve), c.res_x, c.res_y), huit_bits, "SLOPE")
+
+
+def calculer_slrm(c: Couches, out: Path, *, rayon: int, ve: float, huit_bits: bool) -> None:
+    """rvt_slrm.py."""
+    _verifier("SLRM", radius=rayon, ve_factor=ve)
+    _, _, _, vis = _rvt()
+    arr = vis.slrm(dem=c.brut(), radius_cell=int(rayon), ve_factor=float(ve), no_data=c.no_data)
+    _publier(c, out, arr, huit_bits, "SIMPLE_LOCAL_RELIEF_MODEL")

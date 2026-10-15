@@ -32,6 +32,8 @@ class TestVisualizationProductsFreshness:
         import pipeline.ign.products.indices as indices_mod
 
         calls: list = []
+        # La fraîcheur se décide avant le choix du calcul : voie Processing, seule à passer par l'espion.
+        monkeypatch.setenv("ARCHEO_INDICES_MOTEUR", "processing")
         monkeypatch.setattr(
             indices_mod, "run_qgis_algorithm", lambda *a, **k: calls.append(a)
         )

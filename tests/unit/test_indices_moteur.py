@@ -66,3 +66,26 @@ def test_ld_hors_bornes_fait_echouer_la_dalle_comme_processing(banc, monkeypatch
     monkeypatch.setattr(moteur_indices, "dominance_locale", lambda *a, **k: pytest.fail("calcul lancé hors bornes"))
     with pytest.raises(ValueError, match="angular_res=45"):
         _lancer(tmp, ["LD"], {"ldo": {"angular_res": 45}})
+
+
+@pytest.mark.parametrize("produit,fonction,algo,attendu", [
+    ("HS", "calculer_hs", "rvt:rvt_hillshade", {"azimut": 315, "elevation": 35, "ve": 1, "huit_bits": True}),
+    ("SVF", "calculer_svf", "rvt:rvt_svf", {"rayon": 10, "directions": 16, "bruit": 0, "ve": 1, "huit_bits": True}),
+    ("OPNS", "calculer_opns", "rvt:rvt_opns",
+     {"negative": False, "rayon": 10, "directions": 16, "bruit": 0, "ve": 1, "huit_bits": True}),
+    ("SLO", "calculer_slo", "rvt:rvt_slope", {"unite": 0, "ve": 1, "huit_bits": True}),
+    ("SLRM", "calculer_slrm", "rvt:rvt_slrm", {"rayon": 20, "ve": 1, "huit_bits": True}),
+])
+def test_produit_seul_par_le_moteur_ou_force_par_processing(banc, monkeypatch, produit, fonction, algo, attendu):
+    tmp, appels, brancher = banc
+    brancher(fonction)
+    monkeypatch.delenv(moteur_indices.VARIABLE_MOTEUR, raising=False)
+    logs = _lancer(tmp, [produit])
+    assert appels["moteur"] == [(fonction, attendu)] and appels["processing"] == []
+    assert any(ligne.startswith(f"[PARAMS RVT/{produit}]") and "moteur=interne" in ligne for ligne in logs)
+    for p in tmp.glob(f"{TILE}_*"):
+        if not p.name.endswith("_MNT.tif"):
+            p.unlink()
+    monkeypatch.setenv(moteur_indices.VARIABLE_MOTEUR, "processing")
+    _lancer(tmp, [produit])
+    assert appels["processing"] == [algo]

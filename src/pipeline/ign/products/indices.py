@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, Optional
 
+from . import moteur_indices
 from .crim import compute_crim
 from .cvat import compute_cvat
 from .qgis_processing import run_qgis_algorithm
@@ -66,6 +67,14 @@ def create_visualization_products(
         raise FileNotFoundError(f"MNT introuvable pour indices: {input_path}")
 
     outputs: Dict[str, Path] = {}
+    couches: Optional[moteur_indices.Couches] = None
+
+    def _couches() -> moteur_indices.Couches:
+        """Le MNT de la dalle, lu une fois pour tous les produits du moteur intégré."""
+        nonlocal couches
+        if couches is None:
+            couches = moteur_indices.Couches.lire(input_path)
+        return couches
 
     if products.get("HS", False):
         hs = (rvt_params or {}).get("hs", {})
@@ -260,8 +269,7 @@ def create_visualization_products(
         save_as_8bit = _as_bool(ldo.get("save_as_8bit", True), True)
         out = temp_dir / get_rvt_temp_filename("LD", current_tile_name, rvt_params)
         if needs_refresh(input_path, out):
-            # RVT QGIS: passer un entier si la valeur est entière, sinon float
-            observer_h_param = int(observer_h) if observer_h == int(observer_h) else observer_h
+            moteur = moteur_indices.par_le_moteur("LD")
             log(format_params_line("RVT/LD", {
                 "tile": current_tile_name,
                 "angular_res": angular_res,
@@ -270,18 +278,26 @@ def create_visualization_products(
                 "observer_h_m": observer_h,
                 "ve_factor": ve_factor,
                 "save_as_8bit": save_as_8bit,
+                "moteur": "interne" if moteur else "processing",
             }))
-            params = {
-                "INPUT": str(input_path),
-                "OUTPUT": str(out),
-                "ANGULAR_RES": angular_res,
-                "MIN_RADIUS": min_radius,
-                "MAX_RADIUS": max_radius,
-                "OBSERVER_H": observer_h_param,
-                "VE_FACTOR": ve_factor,
-                "SAVE_AS_8BIT": save_as_8bit,
-            }
-            run_qgis_algorithm("rvt:rvt_ld", params, feedback=feedback, context=context)
+            if moteur:
+                moteur_indices.calculer_ld(_couches(), out, angular_res=angular_res, min_radius=min_radius,
+                                           max_radius=max_radius, observer_h=observer_h, ve=ve_factor,
+                                           huit_bits=save_as_8bit)
+            else:
+                # RVT QGIS: passer un entier si la valeur est entière, sinon float
+                observer_h_param = int(observer_h) if observer_h == int(observer_h) else observer_h
+                params = {
+                    "INPUT": str(input_path),
+                    "OUTPUT": str(out),
+                    "ANGULAR_RES": angular_res,
+                    "MIN_RADIUS": min_radius,
+                    "MAX_RADIUS": max_radius,
+                    "OBSERVER_H": observer_h_param,
+                    "VE_FACTOR": ve_factor,
+                    "SAVE_AS_8BIT": save_as_8bit,
+                }
+                run_qgis_algorithm("rvt:rvt_ld", params, feedback=feedback, context=context)
         else:
             log(f"LD réutilisé (cache intermédiaire) : {out.name}")
         if out.exists():

@@ -951,3 +951,14 @@ Lot 3 du chantier d'accélération (2026-10-15) : une dalle lue en entier reçoi
 - [ ] **50.2 Dalle modifiée** : ajouter un octet à une dalle, relancer → elle est relue en entier (« Validation PDAL profonde ») puis, si elle est tronquée, retéléchargée.
 - [ ] **50.3 Interruption** : fermer QGIS pendant un téléchargement → seul `<dalle>.partial` est sur le disque, aucun LAZ sous le nom final ; relancer → le `.partial` est supprimé et la dalle retéléchargée en entier.
 - [ ] **50.4 Qt6** : rejouer 50.1 sous QGIS 4.
+
+## 51. Moteur d'indices intégré : mêmes images, sans Processing ⭐ P0
+
+> **Contexte** (0.16.0, lots 4 et 6 du chantier d'accélération) : les indices sont calculés par le plugin avec une
+> copie figée de la bibliothèque rvt (`src/pipeline/ign/products/rvt_embarque/`, `LICENSE` et `NOTICE` Apache 2.0).
+> Les images doivent être identiques à celles de la version précédente — la preuve automatique est le banc N2 —,
+> sauf MSTP et M-HS 8 bits (§ 52).
+
+- [ ] **51.1 LD** : un traitement avec la dominance locale → le journal complet du dossier de sortie (`technique/journaux/pipeline_log_*.txt`) porte, pour chaque dalle, `[PARAMS RVT/LD] … moteur=interne` ; l'image LD ressemble à celle d'un dossier calculé par la version précédente.
+- [ ] **51.2 Ancien calcul forcé** : QGIS lancé depuis une console où `set ARCHEO_INDICES_MOTEUR=processing`, même traitement dans un autre dossier → `moteur=processing` dans le journal, mêmes images (l'extension rvt-qgis est alors requise).
+- [ ] **51.3 Qt6** : rejouer 51.1 sous QGIS 4.

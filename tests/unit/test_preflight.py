@@ -193,6 +193,12 @@ class TestRvtAlgosCheck:
 
     NAME = "Algorithmes RVT (Processing)"
 
+    @pytest.fixture(autouse=True)
+    def _ancien_calcul_force(self, monkeypatch):
+        # Ces tests visent le contrôle du registre Processing : on force l'ancien calcul (0.16.0), sinon les
+        # produits du moteur intégré n'y passent plus.
+        monkeypatch.setenv("ARCHEO_INDICES_MOTEUR", "processing")
+
     @staticmethod
     def _install_fake_qgis(monkeypatch, *, algos, has_provider=True):
         import sys
@@ -366,3 +372,22 @@ class TestMoteurIntegre:
 
     def test_aucun_produit_du_moteur_aucun_controle(self):
         assert not any(x.name == self.NAME for x in self._collect({"MNT": True}))
+
+def test_ld_par_le_moteur_n_exige_plus_rvt_qgis(monkeypatch):
+    monkeypatch.delenv("ARCHEO_INDICES_MOTEUR", raising=False)
+    monkeypatch.setattr("pipeline.ign.products.moteur_indices.moteur_disponible", lambda: "")
+    res = {r.name: r for r in collect_preflight_results(mode="ign_laz", cv_config={"enabled": False},
+                                                        products={"LD": True}, files_config={}, output_dir=None)}
+    assert "Algorithmes RVT (Processing)" not in res
+    assert res["Moteur d'indices intégré"].ok and res["Moteur d'indices intégré"].critical
+
+
+def test_ld_forcee_par_processing_exige_rvt_ld(monkeypatch):
+    # Effet de ARCHEO_INDICES_MOTEUR=processing sur le préflight : LD redevient un algorithme requis.
+    monkeypatch.setenv("ARCHEO_INDICES_MOTEUR", "processing")
+    TestRvtAlgosCheck._install_fake_qgis(monkeypatch, algos=set(), has_provider=True)
+    res = {r.name: r for r in collect_preflight_results(mode="ign_laz", cv_config={"enabled": False},
+                                                        products={"LD": True}, files_config={}, output_dir=None)}
+    assert "Moteur d'indices intégré" not in res
+    r = res["Algorithmes RVT (Processing)"]
+    assert not r.ok and r.critical and "rvt_ld" in r.details

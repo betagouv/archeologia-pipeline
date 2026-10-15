@@ -21,7 +21,9 @@ repository=https://github.com/betagouv/archeologia-pipeline
 #
 
 hasProcessingProvider=no
-changelog=0.15.0 (en préparation)
+changelog=0.16.0 (en préparation)
+    * La dominance locale (LD) est calculée par le plugin lui-même, avec une copie figée de la bibliothèque de Relief Visualization Toolbox, au lieu de passer par l'extension rvt-qgis. L'image est identique au pixel près ; un réglage hors des bornes de l'algorithme est refusé comme avant, avec un message qui le nomme.
+ 0.15.0 (en préparation)
     * Correctif : relancer dans le même dossier avec un autre seuil, un autre modèle ou après une mise à jour du moteur de détection reprenait les détections du lancement précédent. Les images sont maintenant ré-analysées dès que l'un de ces réglages change ; à réglages identiques, elles ne le sont pas de nouveau.
     * Quand le moteur de détection livré avec l'extension s'arrête en cours de traitement, le traitement ne se dit plus « terminé » : la fin indique « Détection impossible » et sa cause, en rouge, et le rapport comme la trace du traitement le disent aussi. Les produits restent calculés ; une rubrique du manuel explique quoi faire.
     * Le MNT est désormais reproductible : la fusion d'une dalle avec ses voisines lit les points toujours dans le même ordre, et deux traitements des mêmes dalles donnent le même MNT, au bit près, avec la même version de PDAL (notée dans traitement.json). La fusion se fait aussi en un seul passage, beaucoup moins gourmand en mémoire. Un dossier calculé par une version précédente voit son MNT, et tout ce qui en découle, recalculé une dernière fois ; l'écart est de l'ordre de celui qu'il y avait déjà entre deux traitements identiques.

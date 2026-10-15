@@ -323,9 +323,13 @@ def moteur_detection(cv_stats: Optional[List[Dict[str, Any]]]) -> Tuple[Optional
     return ("+".join(moteurs) if moteurs else None), ""
 
 
-def echec_detection(output_dir: Path) -> str:
+def echec_detection(output_dir: Path, lance_le: float) -> str:
     """Motif de « détection impossible » lu dans livrable/traitement.json ; ""
-    sinon. Lu par la vue d'exécution pour sa ligne de fin (thread UI)."""
+    sinon. Lu par la vue d'exécution pour sa ligne de fin (thread UI).
+    ``lance_le`` (``time.time()`` au lancement) : une trace datée d'avant — laissée
+    par un lancement précédent, quand celui-ci échoue avant sa finalisation —
+    est ignorée. Sa ``date`` vient de la même horloge, à la seconde."""
+    import datetime as _dt
     import json as _json
 
     try:  # fallback standalone (tests : src/ sur le path)
@@ -334,9 +338,12 @@ def echec_detection(output_dir: Path) -> str:
         from pipeline.output_paths import traitement_json_path
     try:
         trace = _json.loads(traitement_json_path(Path(output_dir)).read_text(encoding="utf-8"))
-    except (OSError, ValueError):
+        ecrite = _dt.datetime.fromisoformat(str(trace.get("date") or ""))
+    except (OSError, ValueError, AttributeError):
         return ""
-    if not isinstance(trace, dict) or trace.get("cv_engine") != "none":
+    if ecrite < _dt.datetime.fromtimestamp(lance_le).replace(microsecond=0):
+        return ""
+    if trace.get("cv_engine") != "none":
         return ""
     return str(trace.get("cv_motif") or "moteur de détection indisponible")
 
@@ -755,7 +762,7 @@ def finalize_pipeline(
         reporter.progress(100)
     elif outcome == "cancelled":
         reporter.stage("Annulé")
-    elif detection_impossible:
+    elif outcome == "success" and detection_impossible:
         reporter.stage("Terminé sans détection")
     else:
         reporter.stage("Interrompu par une erreur")

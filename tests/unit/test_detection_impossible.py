@@ -63,6 +63,22 @@ class TestRunner:
         with pytest.raises(DetectionImpossible, match="en échec"):
             runner_mod.run_cv_on_folder(jpg_dir=png, cv_config=cfg, target_rvt="LD", output_dir=tmp_path / "out")
 
+    def test_echec_d_ecriture_apres_le_moteur_n_est_pas_une_detection_impossible(self, tmp_path, monkeypatch):
+        png, cfg = _png_et_modele(tmp_path)
+        exe = tmp_path / "cv_runner_onnx.exe"
+        exe.write_bytes(b"exe")
+
+        def verrouille(**_kw):
+            raise RuntimeError("GeoPackage verrouillé")
+
+        monkeypatch.setattr(runner_mod, "find_external_cv_runner", lambda log=None: exe)
+        monkeypatch.setattr(runner_mod, "run_external_cv_runner", lambda **kw: 0)
+        monkeypatch.setattr(runner_mod, "deduplicate_cv_shapefiles_final", verrouille)
+        monkeypatch.setattr(runner_mod, "_onnxruntime_disponible", lambda: False)
+        with pytest.raises(RuntimeError, match="GeoPackage verrouillé") as err:
+            runner_mod.run_cv_on_folder(jpg_dir=png, cv_config=cfg, target_rvt="LD", output_dir=tmp_path / "out")
+        assert not isinstance(err.value, DetectionImpossible)
+
     def test_le_moteur_employe_est_note(self, tmp_path, monkeypatch):
         png, cfg = _png_et_modele(tmp_path)
         exe = tmp_path / "cv_runner_onnx.exe"
@@ -112,13 +128,14 @@ class _Rec(NullProgressReporter):
 
 
 class TestFinalisation:
-    def _fin(self, tmp_path, stats):
+    def _fin(self, tmp_path, stats, outcome="success"):
         rec = _Rec()
         ok = finalize_pipeline(output_dir=tmp_path, cv_cfg={}, rvt_params={}, reporter=rec, slog=None,
-                               start_time=time.time(), cv_stats=stats)
+                               start_time=time.time(), cv_stats=stats, outcome=outcome)
         return ok, rec
 
     def test_detection_impossible_n_est_pas_un_succes(self, tmp_path):
+        debut = time.time()
         ok, rec = self._fin(tmp_path, [ECHEC])
         assert ok is False
         assert any(m.startswith("✗ Détection impossible : moteur de détection absent") for m in rec.errors)
@@ -128,17 +145,29 @@ class TestFinalisation:
         rapport = (tmp_path / "livrable" / "rapport.html").read_text(encoding="utf-8")
         assert "terminé sans détection" in rapport and "Détection impossible" in rapport
         assert "<td>détection impossible</td>" in rapport
-        assert echec_detection(tmp_path) == MOTIF
+        assert echec_detection(tmp_path, debut) == MOTIF
+
+    def test_erreur_fatale_reste_une_erreur(self, tmp_path):
+        ok, rec = self._fin(tmp_path, [ECHEC], outcome="failed")
+        assert ok is False
+        assert "Interrompu par une erreur" in rec.stages and "Terminé sans détection" not in rec.stages
+
+    def test_trace_d_un_lancement_precedent_ignoree(self, tmp_path):
+        # Trace « détection impossible » laissée par un lancement antérieur : un
+        # lancement plus récent qui échoue avant sa finalisation ne la reprend pas.
+        self._fin(tmp_path, [ECHEC])
+        assert echec_detection(tmp_path, time.time() + 5) == ""
 
     def test_binaire_employe_trace_sans_motif(self, tmp_path):
+        debut = time.time()
         ok, _rec = self._fin(tmp_path, [dict(ECHEC, moteur="binaire", motif="", images=3, secondes=9.0)])
         assert ok is True
         trace = json.loads((tmp_path / "livrable" / "traitement.json").read_text(encoding="utf-8"))
         assert trace["cv_engine"] == "binaire" and "cv_motif" not in trace
-        assert echec_detection(tmp_path) == ""
+        assert echec_detection(tmp_path, debut) == ""
 
     def test_sans_traitement_json(self, tmp_path):
-        assert echec_detection(tmp_path) == ""
+        assert echec_detection(tmp_path, time.time()) == ""
 
 
 class TestVueEtManuel:
@@ -146,6 +175,8 @@ class TestVueEtManuel:
         vue = (RACINE / "src/ui/run_view.py").read_text(encoding="utf-8")
         fin = vue[vue.index("def _show_end_banner("):vue.index("def _afficher_bilan(")]
         assert "echec_detection(" in fin and "✗ Détection impossible après" in fin
+        # La trace n'est reprise que si elle date de ce lancement-ci.
+        assert "self._run_lance_le" in fin and "self._run_lance_le = time.time()" in vue
 
     def test_renvoi_au_depannage(self):
         assert rubrique_depannage("✗ Détection impossible : moteur de détection absent") == \

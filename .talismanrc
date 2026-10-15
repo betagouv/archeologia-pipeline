@@ -44,7 +44,7 @@ fileignoreconfig:
 - filename: src/app/services/fiabilite.py
   checksum: 2be92628ee9f9d642c3536b8aedbf2537ef67342897d8961bc86902f301aa347
 - filename: src/app/services/finalize_service.py
-  checksum: a6446d3769672781ff2da4ea7703fbe30a3a5d2d4e39163a3518de3e95466606
+  checksum: 433c1051d8938cc8c9e59d8a8cb383150efc285e4bd2830ad1f4308cd52c513e
 - filename: src/app/services/indices_model.py
   checksum: 5cdf912ee7fd9946454e8e000e01a988b758463d3e91f8b2899d9beec89b9b77
 - filename: src/app/services/model_orchestrator.py

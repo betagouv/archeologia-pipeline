@@ -280,6 +280,7 @@ class RunView(QWidget):
         self._running = False
         self._last_stage_text = ""
         self._run_started_at: Optional[float] = None
+        self._run_lance_le = 0.0   # time.time() au lancement : date la trace de ce run
         # Timeline mode-aware : séquence d'IDs + mapping ID→bucket + sous-libellés.
         self._stage_ids: List[str] = []
         self._stage_bucket_map: Dict[str, int] = {}
@@ -634,6 +635,7 @@ class RunView(QWidget):
 
         self._running = True
         self._run_started_at = time.monotonic()
+        self._run_lance_le = time.time()
         self._cancel_event.clear()
         self._cancel_btn.setEnabled(True)
         # Le dossier de sortie (et le log) existent dès le démarrage du run.
@@ -949,7 +951,7 @@ class RunView(QWidget):
             text = f"Annulé après {elapsed}{suffix}"
         else:
             out_dir = self._output_dir()
-            motif = echec_detection(out_dir) if out_dir else ""
+            motif = echec_detection(out_dir, self._run_lance_le) if out_dir else ""
             text = (f"✗ Détection impossible après {elapsed} : {motif}{suffix}" if motif
                     else f"✗ En échec après {elapsed}{suffix} — voir le journal")
         self._fil_gauche.setText(text)

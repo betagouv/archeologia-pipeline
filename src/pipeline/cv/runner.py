@@ -310,6 +310,16 @@ def run_cv_on_folder(
                 tile_progress=tile_progress,
                 stats=stats,
             )
+        except PipelineCancelled:
+            # Annulation utilisateur : propager sans tenter le fallback.
+            raise
+        except Exception as e:
+            if not _onnxruntime_disponible():
+                raise DetectionImpossible(f"moteur de détection en échec ({e})") from e
+            log(f"Computer Vision: échec runner externe, fallback Python ONNX: {e}")
+        else:
+            # Le moteur a tourné : un échec de l'écriture qui suit (GeoPackage
+            # verrouillé…) remonte tel quel, ce n'est ni le moteur ni un repli.
             if stats is not None:
                 stats["moteur"] = "binaire"
             # Générer les shapefiles côté plugin (avec shapely + post-processing)
@@ -331,13 +341,6 @@ def run_cv_on_folder(
                     cancel_check=cancel_check,
                 )
             return total_detections
-        except PipelineCancelled:
-            # Annulation utilisateur : propager sans tenter le fallback.
-            raise
-        except Exception as e:
-            if not _onnxruntime_disponible():
-                raise DetectionImpossible(f"moteur de détection en échec ({e})") from e
-            log(f"Computer Vision: échec runner externe, fallback Python ONNX: {e}")
 
     # 2) Fallback : inférence ONNX en Python (onnxruntime)
     expected = (

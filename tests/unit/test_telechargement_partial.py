@@ -124,3 +124,16 @@ def test_taille_ou_date_changees_invalident_la_note(tmp_path):
     st = dest.stat()
     os.utime(dest, ns=(st.st_atime_ns, st.st_mtime_ns + 2_000_000_000))
     assert not dl.note_verifiee_valide(dest)
+
+
+def test_ecriture_de_la_note_impossible_n_echoue_pas(tmp_path, reseau, monkeypatch):
+    # La note n'est qu'un accélérateur : disque plein ou droit refusé ne doit ni
+    # faire échouer ni refaire télécharger une dalle valide.
+    def refuse(*_a, **_k):
+        raise OSError("disque plein")
+
+    monkeypatch.setattr(dl.Path, "write_text", refuse)
+    reseau["reponse"] = _Reponse([b"x" * 20], {"Content-Length": "20"})
+    assert _telecharger(tmp_path) == (True, False)
+    assert (tmp_path / NOM).read_bytes() == b"x" * 20
+    assert not dl.note_verifiee_valide(tmp_path / NOM)

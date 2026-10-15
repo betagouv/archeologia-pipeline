@@ -19,7 +19,9 @@ dossier_de_sortie/
 │       ├── parcellaire/parcellaire.gpkg   un GeoPackage par entité
 │       └── parcellaire/fiabilite.json     les coupures de fiabilité de cette couche
 └── technique/                         ce que vous pouvez supprimer
-    ├── sources/dalles/                dalles LiDAR téléchargées, re-téléchargeables
+    ├── sources/dalles/                dalles LiDAR téléchargées, re-téléchargeables ; à côté de chacune,
+    │                                  une note « .verifie.json » (lue en entier, supprimable) et, si un
+    │                                  téléchargement a été interrompu, un « .partial » (retéléchargé au lancement suivant)
     ├── intermediaires/                fichiers de calcul par dalle
     ├── png/                           images préparées pour la détection
     ├── detection/<modèle>/            sorties brutes et images annotées

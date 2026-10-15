@@ -308,10 +308,13 @@ def note_verifiee_path(dest: Path) -> Path:
 def ecrire_note_verifiee(dest: Path) -> None:
     """Note « vérifiée » : taille et date du LAZ, posée quand il est prouvé entier
     (lecture complète réussie, ou taille égale à celle annoncée par le serveur)."""
-    st = dest.stat()
-    note_verifiee_path(dest).write_text(
-        json.dumps({"taille": st.st_size, "mtime_ns": st.st_mtime_ns}), encoding="utf-8"
-    )
+    try:
+        st = dest.stat()
+        note_verifiee_path(dest).write_text(
+            json.dumps({"taille": st.st_size, "mtime_ns": st.st_mtime_ns}), encoding="utf-8"
+        )
+    except OSError:
+        pass  # accélérateur seulement : sans note, la prochaine relance relit le LAZ en entier
 
 
 def note_verifiee_valide(dest: Path) -> bool:

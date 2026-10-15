@@ -429,7 +429,7 @@ Cette grille indique, pour chaque vague livrée, **quelles sections de tests son
 - [ ] **21.13 Fermeture / rechargement pendant la sélection** : fermer le dialogue (croix) ou recharger le plugin pendant une sélection active → pas de crash, pas d'outil-carte ni de couche orphelins.
 - [ ] **21.14 Quadrillage absent** : renommer le `.shp` → clic sur le bouton affiche un message clair, l'outil ne s'active pas.
 - [ ] **21.15 Persistance de la liste (reprise après interruption)** : lancer un run `ign_laz` à partir d'une **sélection sur carte**. Dès le début du téléchargement, `<output_dir>/dalles_urls.txt` est créé (lignes `nom,url`, en-tête `#`) et le journal indique « Liste des dalles enregistrée: dalles_urls.txt ». **Interrompre** le run après quelques dalles → le fichier est toujours présent et complet (toutes les dalles sélectionnées, pas seulement celles téléchargées).
-- [ ] **21.16 Reprise** : relancer en mode `ign_laz` avec ce `dalles_urls.txt` comme source et le **même** `output_dir` → les dalles déjà présentes dans `technique/sources/dalles/` sont **sautées** (« déjà téléchargé »), seules les manquantes sont récupérées.
+- [ ] **21.16 Reprise** : relancer en mode `ign_laz` avec ce `dalles_urls.txt` comme source et le **même** `output_dir` → les dalles déjà présentes dans `technique/sources/dalles/` sont **sautées** (« déjà présente (vérifiée) » au 2ᵉ lancement), seules les manquantes sont récupérées.
 
 > **Consolidation affichage (anti-« grille absente, réparée par redémarrage »)** — ⭐ P0
 
@@ -942,3 +942,12 @@ Lot 1 du chantier d'accélération (2026-10-15) : la fusion d'une dalle avec ses
 - [ ] **49.5 Trace** : `livrable/traitement.json` porte `pdal_version` (« 2.10.0 … » sous QGIS 4.0.3, « 2.9.0 … » sous QGIS 3.44) et `"fusion_laz": "flux-1"`.
 - [ ] **49.6 Interrupteur** : lancer QGIS avec `ARCHEO_FUSION_LEGACY=1` dans l'environnement et relancer dans le même dossier → « Méthode de calcul mise à jour », `technique/intermediaires/` contient de nouveau des `*_neighbor_N.laz`, `traitement.json` porte `"fusion_laz": "pdal-merge"`.
 - [ ] **49.7 Qt6** : rejouer 49.1 et 49.2 sous QGIS 4.
+
+## 50. Téléchargement : note « vérifiée » et fichier `.partial` ⭐ P0
+
+Lot 3 du chantier d'accélération (2026-10-15) : une dalle lue en entier reçoit une note `<dalle>.verifie.json` (taille + date) et n'est plus relue ; un téléchargement s'écrit dans `<dalle>.partial`.
+
+- [ ] **50.1 Relance dans le même dossier** : deux lancements `ign_laz` ou LAZ locaux dans le même dossier → `technique/sources/dalles/` porte un `.verifie.json` par dalle ; le journal du 2ᵉ lancement dit « déjà présente (vérifiée) » pour chaque dalle et aucune ligne « Validation PDAL profonde ».
+- [ ] **50.2 Dalle modifiée** : ajouter un octet à une dalle, relancer → elle est relue en entier (« Validation PDAL profonde ») puis, si elle est tronquée, retéléchargée.
+- [ ] **50.3 Interruption** : fermer QGIS pendant un téléchargement → seul `<dalle>.partial` est sur le disque, aucun LAZ sous le nom final ; relancer → le `.partial` est supprimé et la dalle retéléchargée en entier.
+- [ ] **50.4 Qt6** : rejouer 50.1 sous QGIS 4.

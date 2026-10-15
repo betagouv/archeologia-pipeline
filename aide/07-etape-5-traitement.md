@@ -16,7 +16,7 @@ Pendant le traitement, les étapes 1 à 4 restent consultables mais en lecture s
 ### Lire le journal
 
 - **▶ Démarrage**, puis les vérifications préalables.
-- **Téléchargement** : les dalles identifiées, puis chaque dalle téléchargée, ou « déjà présente » si un lancement précédent l'a laissée sur le disque.
+- **Téléchargement** : les dalles identifiées, puis chaque dalle téléchargée, ou « déjà présente (vérifiée) » si un lancement précédent l'a laissée sur le disque après l'avoir lue en entier : elle n'est alors pas relue.
 - **Fusion des dalles avec leurs voisines** : la marge est constituée.
 - **Calcul des produits** : une ligne par dalle, puis par modèle de terrain.
 - **Détection** : une ligne par modèle, nommé comme à l'étape 3, puis par image analysée ; à la fin de chaque modèle, le nombre d'images et la durée mesurée. Sans entité cochée, en mode indices existants, une seule ligne « Publication des indices ».

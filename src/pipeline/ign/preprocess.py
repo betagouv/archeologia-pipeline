@@ -431,6 +431,23 @@ def _executer_fusion(
     return False
 
 
+def _empreinte(path: Path) -> Optional[List[int]]:
+    """``[taille, mtime_ns]`` : dit qu'une voisine écartée a changé sans la relire."""
+    try:
+        st = path.stat()
+    except OSError:
+        return None
+    return [st.st_size, st.st_mtime_ns]
+
+
+def _sidecar_flux(voisins: List[str], ecartees: Dict[str, Optional[List[int]]]) -> Dict:
+    """Contenu du sidecar de :func:`merge_tiles_flux` (``ecartees`` seulement s'il y en a)."""
+    contenu: Dict = {"fusion": FUSION_FLUX, "voisins": voisins}
+    if ecartees:
+        contenu["ecartees"] = ecartees
+    return contenu
+
+
 def merge_tiles_flux(
     *,
     central_path: Path,
@@ -451,14 +468,17 @@ def merge_tiles_flux(
     :func:`merge_tiles`, qui reste la fusion de ``ARCHEO_FUSION_LEGACY=1``.
 
     ``voisines`` : ``(LAZ source, bornes de sa bande)`` dans l'ordre de
-    :func:`calculate_neighbor_coordinates`. Le sidecar enregistre la méthode et les
-    voisines candidates : un fusionné d'une autre méthode (sidecar « liste » des
-    versions ≤ 0.14.1, ou absent) est refait, jamais adopté.
+    :func:`calculate_neighbor_coordinates`. Le sidecar enregistre la méthode, les
+    voisines candidates et, s'il y en a, les voisines écartées (illisibles) avec leur
+    ``[taille, mtime_ns]`` : un fusionné d'une autre méthode (sidecar « liste » des
+    versions ≤ 0.14.1, ou absent) est refait, jamais adopté ; une voisine écartée
+    n'est pas relue tant qu'elle n'a pas changé sur disque, et refusionnée dès
+    qu'elle a été réparée ou remplacée.
     """
     if cancel():
         return False
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    attendu = {"fusion": FUSION_FLUX, "voisins": sorted(p.name for p, _ in voisines)}
+    voisins = sorted(p.name for p, _ in voisines)
     sidecar = merged_inputs_sidecar(output_path)
 
     if output_path.exists():
@@ -467,7 +487,12 @@ def merge_tiles_flux(
             enregistre = json.loads(sidecar.read_text(encoding="utf-8"))
         except (OSError, ValueError):
             enregistre = None
-        if ok and enregistre == attendu:
+        avant = enregistre.get("ecartees") if isinstance(enregistre, dict) else None
+        par_nom = {p.name: p for p, _ in voisines}
+        actuel = _sidecar_flux(voisins, {
+            nom: _empreinte(par_nom[nom]) for nom in avant if nom in par_nom
+        } if isinstance(avant, dict) else {})
+        if ok and enregistre == actuel:
             log(f"LAZ fusionné réutilisé (cache intermédiaire) : {output_path.name}")
             return True
         log(f"Fusion d'une version précédente ou voisines modifiées → re-fusion : {output_path.name}")
@@ -484,6 +509,7 @@ def merge_tiles_flux(
         return False
 
     valides: List[Tuple[Path, Dict[str, str]]] = []
+    ecartees: Dict[str, Optional[List[int]]] = {}
     for source, bornes in voisines:
         if cancel():
             return False
@@ -491,6 +517,7 @@ def merge_tiles_flux(
             valides.append((source, bornes))
         else:
             log(f"Voisine illisible via PDAL, ignorée : {source.name}")
+            ecartees[source.name] = _empreinte(source)
 
     partial = _partial_path(output_path)
     try:
@@ -500,7 +527,12 @@ def merge_tiles_flux(
             # fait échouer tout le pipeline : on l'isole par une lecture complète et
             # on refusionne sans elle — comme l'ancienne fusion, où seul son
             # rognage échouait.
-            saines = [(s, b) for s, b in valides if validate_laz_deep(s)[0]]
+            saines: List[Tuple[Path, Dict[str, str]]] = []
+            for s, b in valides:
+                if validate_laz_deep(s)[0]:
+                    saines.append((s, b))
+                else:
+                    ecartees[s.name] = _empreinte(s)
             if len(saines) < len(valides):
                 log(f"{len(valides) - len(saines)} voisine(s) illisible(s) écartée(s) → nouvelle fusion")
                 ok = _executer_fusion(central_path, saines, partial, log=log, cancel=cancel)
@@ -516,7 +548,7 @@ def merge_tiles_flux(
     finally:
         _discard_partial(partial)
 
-    sidecar.write_text(json.dumps(attendu), encoding="utf-8")
+    sidecar.write_text(json.dumps(_sidecar_flux(voisins, ecartees)), encoding="utf-8")
     return True
 
 

@@ -29,12 +29,14 @@ def _laz(p: Path) -> Path:
 def pdal(monkeypatch):
     """PDAL factice : lit le pipeline, échoue si une source a des points illisibles."""
     etat = {"pipelines": [], "commandes": [], "illisibles_entete": set(), "illisibles_points": set(),
-            "plante": False, "sans_flux": False}
+            "plante": False, "sans_flux": False, "lectures": []}
 
     def valider(path, *a, **k):
+        etat["lectures"].append(Path(path).name)
         return (Path(path).name not in etat["illisibles_entete"], "")
 
     def valider_profond(path, *a, **k):
+        etat["lectures"].append(Path(path).name)
         return (Path(path).name not in etat["illisibles_points"], "")
 
     def executer(cmd, cancel=None, **k):
@@ -134,6 +136,26 @@ class TestMergeTilesFlux:
         _laz(tmp_path / f"{TILE}_merged.laz")
         ok, _out = self._fusion(tmp_path, [])
         assert ok is True and len(pdal["commandes"]) == 1
+
+    def test_voisine_ecartee_inchangee_ni_relue_ni_refusionnee(self, tmp_path, pdal):
+        pdal["illisibles_points"] = {"v2.laz"}
+        voisines = [(_laz(tmp_path / "v1.copc.laz"), B1), (_laz(tmp_path / "v2.laz"), B2)]
+        self._fusion(tmp_path, voisines)
+        pdal["lectures"].clear()
+        ok, _out = self._fusion(tmp_path, voisines)
+        assert ok is True and len(pdal["commandes"]) == 2
+        assert "v2.laz" not in pdal["lectures"]
+
+    def test_voisine_ecartee_reparee_refusionnee_avec_sa_bande(self, tmp_path, pdal):
+        pdal["illisibles_points"] = {"v2.laz"}
+        v1, v2 = _laz(tmp_path / "v1.copc.laz"), _laz(tmp_path / "v2.laz")
+        self._fusion(tmp_path, [(v1, B1), (v2, B2)])
+        v2.write_bytes(b"LASF-reparee")
+        pdal["illisibles_points"] = set()
+        ok, out = self._fusion(tmp_path, [(v1, B1), (v2, B2)])
+        assert ok is True and len(pdal["commandes"]) == 3
+        assert _sources(pdal["pipelines"][2]) == [f"{TILE}.copc.laz", "v1.copc.laz", "v2.laz"]
+        assert "ecartees" not in json.loads(pp.merged_inputs_sidecar(out).read_text(encoding="utf-8"))
 
     def test_pdal_qui_plante_ne_laisse_pas_de_laz_final(self, tmp_path, pdal):
         pdal["plante"] = True

@@ -314,6 +314,10 @@ def main() -> int:
     # Transmis par --config (cv_config du run) : sans lui, le binaire sautait
     # toute image au cache même quand le plugin demandait de la refaire.
     force_reprocess = bool(cv_config.get("force_reprocess", False))
+    # Session ONNX créée une fois, à la première image à inférer : un run servi
+    # entièrement par le cache n'en paie pas la création (lot 2).
+    onnx_session = None
+    session_tentee = False
 
     for idx, jpg_file in enumerate(jpg_files, 1):
         image_name = jpg_file.stem
@@ -331,7 +335,11 @@ def main() -> int:
 
         processed_count += 1
         _print(f"progress={idx}/{total_images} image={jpg_file.name} status=processing")
-        
+
+        if not session_tentee:
+            session_tentee = True
+            onnx_session = cv_mod.charger_session_partagee(str(model_path), _print)
+
         try:
             ok, num_dets = cv_mod.run_onnx_inference(
                 image_path=str(jpg_file),
@@ -349,6 +357,7 @@ def main() -> int:
                 return_count=True,
                 class_names=class_names,
                 class_colors=class_colors,
+                onnx_session=onnx_session,
             )
         except Exception as e:
             ok = False

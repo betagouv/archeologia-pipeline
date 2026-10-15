@@ -48,6 +48,7 @@ Vous pouvez relancer un traitement dans un dossier de sortie déjà utilisé, pa
 
 - un produit déjà calculé avec les mêmes réglages n'est pas recalculé ;
 - un indice relancé avec d'autres réglages va dans un dossier distinct, dont le nom porte les réglages ;
+- une détection relancée avec un autre modèle, un autre seuil ou après une mise à jour du moteur de détection est refaite ; à réglages identiques, les images déjà analysées ne le sont pas de nouveau ;
 - les mosaïques sont régénérées et les couches périmées retirées du projet QGIS au lancement, pour que les nouvelles dalles apparaissent.
 
 Les sorties intermédiaires ne sont jamais supprimées par le plugin : vous pouvez les effacer vous-même une fois satisfait, voir [Faire de la place](resultats.md#faire-de-la-place).

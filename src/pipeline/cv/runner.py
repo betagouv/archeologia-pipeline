@@ -29,11 +29,14 @@ from .external_runner import (
     run_external_cv_runner,
 )
 from .runner_cache import (
+    aligner_cache_detections,
+    cle_cache_detections,
     get_model_slug,
     has_cached_detection,
     list_candidate_pngs,
     prepare_model_workdir,
     purge_stale_cached_detections,
+    version_moteur,
 )
 from .runner_inference import run_fallback_inference
 from .runner_shapefiles import deduplicate_cv_shapefiles_final
@@ -134,6 +137,23 @@ def run_cv_on_folder(
 
     # Base RVT (pour external_runner / fallback) — parent du dossier technique.
     effective_rvt_base = effective_detection_dir.parent if output_dir is not None else (rvt_base_dir or jpg_dir.parent)
+
+    # ── Clé du cache des détections (lot 0b, 2026-10) ─────────────────
+    # raw_detections/ est indexé par nom d'image : la clé dit avec quoi il a
+    # été calculé (fichiers du modèle, SAHI résolu, seuils, moteur). Clé
+    # différente — ou absente : dossier d'une version précédente — → purge,
+    # donc ré-inférence (le binaire saute toute image au cache).
+    ext = find_external_cv_runner(log=log)
+    from .model_config import resolve_model_weights_path as _poids_du_modele
+    _purgees = aligner_cache_detections(
+        effective_raw_dir,
+        cle_cache_detections(cv_config, _poids_du_modele(cv_config), version_moteur(ext)),
+    )
+    if _purgees:
+        log(
+            f"Computer Vision [{model_slug}]: {_purgees} image(s) en cache calculée(s) avec un "
+            "autre modèle, d'autres seuils ou un autre moteur — purgée(s), ré-inférence"
+        )
 
     # Générer le fichier classes.txt dans le dossier raw_detections du modèle
     try:
@@ -251,8 +271,7 @@ def run_cv_on_folder(
                     f"image(s) déjà traitée(s), inférence uniquement sur {len(missing)} restante(s)"
                 )
 
-    # 1) Essayer le runner ONNX externe (compilé)
-    ext = find_external_cv_runner(log=log)
+    # 1) Essayer le runner ONNX externe (compilé), trouvé avant la clé du cache
     if ext is not None:
         log(f"Computer Vision: utilisation runner externe -> {ext}")
         try:

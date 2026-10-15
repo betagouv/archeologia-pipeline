@@ -911,3 +911,12 @@ La recette de la 0.14.0, jouée par script sous QGIS 3.44 et 4.0.3 le 2026-10-10
 - [ ] **46.7 Indices existants sans détection** : mode Indices existants, aucune entité cochée → ✓ « Terminé », les TIF et la mosaïque publiés, le journal dit « Publication des indices n/N ». Avant : « ✗ En échec · aucune dalle n'a produit de sortie » et « Préparation des images ».
 - [ ] **46.8 Journal lisible** : relancer un run IGN dans le même dossier → « Dalle 2/2 déjà présente » (plus « téléchargée ») ; les modèles sont nommés par leur nom d'affichage (« Cratères d'obus (LD) »), jamais par leur identifiant (`crateres_seg_ld_v1`), dans le journal et dans les durées du rapport.
 - [ ] **46.9 Qt6** : rejouer 46.1, 46.6 et 46.7 sous QGIS 4.
+
+## 47. Cache des détections : seuil changé, dossier d'une version précédente ⭐ P0
+
+Le cache `technique/detection/<modèle>/raw_detections/` porte une clé (`cle_cache.json`) : fichiers du modèle, SAHI, seuils, IoU, moteur de détection. Clé différente ou absente → les images en cache sont purgées et ré-analysées.
+
+- [ ] **47.1 Seuil abaissé, même dossier** : lancer une détection (un modèle, une ou deux dalles), puis relancer dans le même dossier de sortie avec un seuil de confiance plus bas (étape 3, réglages avancés de l'entité) → le journal dit « Computer Vision [<modèle>] : N image(s) en cache calculée(s) avec un autre modèle, d'autres seuils ou un autre moteur — purgée(s), ré-inférence », les images sont réellement ré-analysées (durée du modèle mesurée en fin de run), et la couche compte plus d'objets qu'au premier lancement. Avant : les détections du premier lancement étaient resservies, seuil sans effet.
+- [ ] **47.2 Relance identique** : relancer sans rien changer, dans le même dossier → pas de message de purge, le journal dit « inférence sautée » et aucune durée de modèle n'est annoncée (0 image analysée) ; le résultat est identique.
+- [ ] **47.3 Dossier écrit par la 0.14.1** : relancer, avec cette version, dans un dossier de sortie produit par la 0.14.1 (détections déjà présentes, sans clé) → le journal annonce la purge et la ré-inférence ; `technique/detection/<modèle>/raw_detections/cle_cache.json` apparaît. Une relance suivante, identique, réutilise le cache (47.2).
+- [ ] **47.4 Qt6** : rejouer 47.1 sous QGIS 4.

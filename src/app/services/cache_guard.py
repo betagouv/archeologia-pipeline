@@ -42,13 +42,20 @@ def build_signature(
     density_resolution: float,
     tile_overlap: float,
     filter_expression: str,
+    fusion: str,
 ) -> Dict[str, Any]:
-    """Signature des paramètres de traitement NON encodés dans les noms de fichiers."""
+    """Signature des paramètres de traitement NON encodés dans les noms de fichiers.
+
+    ``fusion`` (méthode de fusion des voisines, ``preprocess.fusion_mode``) en fait
+    partie : un dossier écrit par une version qui fusionnait autrement — ou sans
+    cette clé, 0.14.1 et avant — voit ses fusionnés et MNT refaits, jamais resservis.
+    """
     return {
         "mnt_resolution": float(mnt_resolution),
         "density_resolution": float(density_resolution),
         "tile_overlap": float(tile_overlap),
         "filter_expression": str(filter_expression),
+        "fusion": str(fusion),
     }
 
 
@@ -80,9 +87,14 @@ def ensure_cache_matches(
     purged = False
     if sidecar_exists:
         # Provenance prouvée différente (ou illisible) → le cache est périmé.
+        # Seule la méthode a changé (mise à jour du plugin) : ne pas dire à
+        # l'utilisateur qu'il a modifié ses paramètres.
+        seule_methode = isinstance(previous, dict) and {
+            k for k in set(previous) | set(signature) if previous.get(k) != signature.get(k)
+        } == {"fusion"}
         log(
-            "⚠️ Paramètres de traitement modifiés → cache des intermédiaires "
-            "invalidé : les dalles de ce run seront recalculées et re-publiées."
+            ("⚠️ Méthode de calcul mise à jour" if seule_methode else "⚠️ Paramètres de traitement modifiés")
+            + " → cache des intermédiaires invalidé : les dalles de ce run seront recalculées et re-publiées."
         )
         try:
             # Enfant par enfant, SIDECAR EN DERNIER : un rmtree du dossier

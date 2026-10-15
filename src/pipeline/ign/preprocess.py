@@ -38,6 +38,17 @@ def _default_cancel() -> bool:
     return False
 
 
+#: Méthode de fusion des voisines, inscrite dans la signature du cache des
+#: intermédiaires (cache_guard) : la changer refait fusions et MNT d'un dossier
+#: écrit autrement, au lieu de les resservir (Review Focus 1).
+FUSION_ANCIENNE = "pdal-merge"
+
+
+def fusion_mode() -> str:
+    """Méthode de fusion de ce run."""
+    return FUSION_ANCIENNE
+
+
 def calculate_neighbor_coordinates(x: str, y: str) -> List[Tuple[int, int, int]]:
     min_x = int(f"1{x}") - 10000
     min_y = int(f"1{y}") - 10000

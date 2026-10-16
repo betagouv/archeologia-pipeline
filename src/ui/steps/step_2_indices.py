@@ -106,6 +106,10 @@ _TAB_DESC = {
 
 # Aides communes à plusieurs indices.
 _HELP_VE = "Exagération verticale (1 = aucune)."
+#: Bruit : rvt ignore max(arrondi(rayon × 10 / 20 / 40 %), 1) px du rayon ; au niveau 1, sous 15 px de rayon, cela
+#: fait 1 px, comme sans suppression (mesuré identique au pixel à 10 px).
+_HELP_BRUIT = ("Ignore le début du rayon pour gommer le bruit du nuage (0 = aucun, 3 = fort). "
+               "« 1 » (faible) n'agit qu'à partir d'un rayon de 15 px.")
 _HELP_8BIT = "Fichier plus léger, suffisant pour l'affichage."
 
 
@@ -476,8 +480,7 @@ class IndicesPage(QWidget):
         self._reg(("rvt_params", "svf"), "ve_factor", svf_ve, "int", 1)
         self._reg(("rvt_params", "svf"), "save_as_8bit", svf_8, "bool", True)
         self._tab_index["SVF"] = self._adv_tabs.addTab(self._make_param_tab("SVF", [
-            ("Suppression du bruit", svf_noise,
-             "Niveau de lissage du bruit (0 = aucun)."),
+            ("Suppression du bruit", svf_noise, _HELP_BRUIT),
             ("Nombre de directions", svf_dirs,
              "Directions d'horizon échantillonnées autour de chaque pixel."),
             ("Rayon (px)", svf_radius,
@@ -510,8 +513,7 @@ class IndicesPage(QWidget):
              "cratère). Négative : ce qui s'y enfonce (fossés, chemins creux). "
              "Un run = un type ; l'autre s'obtient en relançant, dans un dossier "
              "distinct."),
-            ("Suppression du bruit", opns_noise,
-             "Niveau de lissage du bruit (0 = aucun, 3 = fort)."),
+            ("Suppression du bruit", opns_noise, _HELP_BRUIT),
             ("Nombre de directions", opns_dirs,
              "Directions d'horizon échantillonnées autour de chaque pixel."),
             ("Rayon (px)", opns_radius,
@@ -609,7 +611,8 @@ class IndicesPage(QWidget):
         mstp_bmax = self._mk_spin(1, 100000, 400)
         mstp_bstep = self._mk_spin(1, 100000, 60)
         mstp_light = self._mk_dspin(0.1, 5.0, 0.9)
-        mstp_ve = self._mk_spin(1, 100, 1)
+        # Pas de « Facteur VE » : le MSTP divise l'écart par l'écart type local, l'exagération s'y annule (mesuré :
+        # médiane de l'écart 5·10⁻⁶ ; tests/unit/test_effet_reglages.py). Le champ ne faisait rien.
         mstp_8 = self._mk_check()
         self._reg(("rvt_params", "mstp"), "local_scale_min", mstp_lmin, "int", 3)
         self._reg(("rvt_params", "mstp"), "local_scale_max", mstp_lmax, "int", 21)
@@ -621,7 +624,6 @@ class IndicesPage(QWidget):
         self._reg(("rvt_params", "mstp"), "broad_scale_max", mstp_bmax, "int", 400)
         self._reg(("rvt_params", "mstp"), "broad_scale_step", mstp_bstep, "int", 60)
         self._reg(("rvt_params", "mstp"), "lightness", mstp_light, "float", 0.9)
-        self._reg(("rvt_params", "mstp"), "ve_factor", mstp_ve, "int", 1)
         self._reg(("rvt_params", "mstp"), "save_as_8bit", mstp_8, "bool", True)
         self._tab_index["MSTP"] = self._adv_tabs.addTab(self._make_param_tab("MSTP", [
             ("Échelle locale — rayon min (px)", mstp_lmin,
@@ -637,7 +639,6 @@ class IndicesPage(QWidget):
             ("Échelle large — rayon max (px)", mstp_bmax, "Borne haute de l'échelle large."),
             ("Échelle large — pas (px)", mstp_bstep, "Pas d'échantillonnage de l'échelle large."),
             ("Luminosité", mstp_light, "Clarté globale de l'image composite (0.1–5)."),
-            ("Facteur VE", mstp_ve, _HELP_VE),
             ("", mstp_8, _HELP_8BIT),
         ]), "MSTP")
 
@@ -714,7 +715,11 @@ class IndicesPage(QWidget):
         self._overlap_spin = self._mk_spin(0, 100, 20)
         self._reg(("processing",), "tile_overlap", self._overlap_spin, "int", 20,
                   produit=TUILAGE)
-        ov_row = QHBoxLayout()
+        # La marge ne sert qu'aux modes qui fusionnent des dalles voisines (LAZ) : masquée ailleurs (set_mode), où elle
+        # ne faisait rien. Le diagnostic de contexte (_ctx_hint) reste, il vaut aussi pour un MNT existant.
+        self._ov_marge = QWidget()
+        ov_row = QHBoxLayout(self._ov_marge)
+        ov_row.setContentsMargins(0, 0, 0, 0)
         ov_row.setSpacing(8)
         ov_lbl = QLabel("Marge tuiles")
         ov_lbl.setObjectName("FieldLabel")
@@ -734,13 +739,14 @@ class IndicesPage(QWidget):
         )
         ov_hint.setObjectName("MntHint")
         ov_hint.setWordWrap(True)
+        self._ov_hint = ov_hint
         # Diagnostic live : la marge fournit-elle assez de contexte aux noyaux
         # RVT demandés ? C'est ici que la marge, la résolution et les rayons se
         # règlent, donc c'est ici que la réponse doit s'afficher.
         self._ctx_hint = QLabel("")
         self._ctx_hint.setObjectName("MntHint")
         self._ctx_hint.setWordWrap(True)
-        ovv.addLayout(ov_row)
+        ovv.addWidget(self._ov_marge)
         ovv.addWidget(ov_hint)
         ovv.addWidget(self._ctx_hint)
         root.addWidget(ov_card)
@@ -1059,6 +1065,9 @@ class IndicesPage(QWidget):
         # calculent un MNT depuis un nuage de points.
         for idx in self._base_tab_indices:
             self._adv_tabs.setTabEnabled(idx, mode in ("ign_laz", "local_laz"))
+        # Marge entre dalles : seuls les modes LAZ fusionnent des voisines (sans effet ailleurs, mesuré au pixel).
+        self._ov_marge.setVisible(mode in ("ign_laz", "local_laz"))
+        self._ov_hint.setVisible(mode in ("ign_laz", "local_laz"))
         # Purge des produits dérivés du nuage (densité/couverture) dans les modes
         # sans nuage : la carte « Modèle de base » est seulement masquée, jamais
         # réinitialisée — sans ça une sélection héritée d'un run LAZ persiste dans

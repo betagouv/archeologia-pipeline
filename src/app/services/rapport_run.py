@@ -324,7 +324,7 @@ def decrire_reglages(section: str, valeurs: Optional[Mapping[str, Any]]) -> str:
             m.append(f"échelle {nom} de {_dec(g(f'{cle}_scale_min'), 0)} à {_dec(g(f'{cle}_scale_max'), 0)} px "
                      f"par pas de {_dec(g(f'{cle}_scale_step'), 0)}")
         m.append(f"luminosité {_dec(g('lightness', 0.9))}")
-    ve = g("ve_factor")
+    ve = None if section == "mstp" else g("ve_factor")   # MSTP : l'exagération s'annule, plus de champ
     if ve is not None and float(ve) != 1.0:
         m.append(f"exagération verticale ×{_dec(ve)}")
     return ", ".join(m) if m else "réglages par défaut"

@@ -333,7 +333,7 @@
         "cle": "svf.noise_remove",
         "label": "Suppression du bruit",
         "defaut": "0 (aucune)",
-        "sens": "0 aucune, 1 faible, 2 moyenne, 3 forte. Le préréglage « terrain plat » du VAT utilise 3."
+        "sens": "0 aucune, 1 faible, 2 moyenne, 3 forte. Le préréglage « terrain plat » du VAT utilise 3. Le niveau 1 (faible) n'agit qu'à partir d'un rayon de 15 px : en dessous, il ignore 1 px, comme sans suppression."
       },
       {
         "cle": "svf.ve_factor",
@@ -428,7 +428,7 @@
         "cle": "opns.noise_remove",
         "label": "Suppression du bruit",
         "defaut": "0 (aucune)",
-        "sens": "Ignore les tout premiers pixels du rayon, ce qui gomme l'effet « poivre et sel » venu du nuage de points. 0 aucune, 1 faible, 2 moyenne, 3 forte."
+        "sens": "Ignore les tout premiers pixels du rayon, ce qui gomme l'effet « poivre et sel » venu du nuage de points. 0 aucune, 1 faible, 2 moyenne, 3 forte. Le niveau 1 (faible) n'agit qu'à partir d'un rayon de 15 px : en dessous, il ignore 1 px, comme sans suppression."
       },
       {
         "cle": "opns.ve_factor",
@@ -980,12 +980,6 @@
         "label": "Luminosité",
         "defaut": "0,9",
         "sens": "Clarté globale de la composition, « facteur de luminosité pour ajuster la visibilité du MSTP ». 0,9 comme dans la fenêtre de rvt-qgis ; son outil Processing affichait 1,2 mais l'arrondissait à l'entier. Appliquée telle que réglée."
-      },
-      {
-        "cle": "mstp.ve_factor",
-        "label": "Facteur VE",
-        "defaut": "1",
-        "sens": "Exagération verticale."
       },
       {
         "cle": "mstp.save_as_8bit",

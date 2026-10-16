@@ -46,10 +46,11 @@ Les réglages qui comptent le plus :
 - **Résolution de la densité** et **seuil de couverture** : le pourcentage de cellules sans point sol au-delà duquel une zone est marquée mal couverte.
 - Les réglages propres à chaque indice : direction et hauteur de lumière, rayons, nombre de directions, exagération verticale, sortie 8 bits. Certains ont des bornes fixées par l'algorithme : les champs ne permettent pas d'en sortir, et le rayon minimum de la dominance locale (LD) ne peut pas dépasser son rayon maximum.
 - **M-HS** sauvé en 8 bits : l'image compose trois éclairages, dans le rouge, le vert et le bleu ; le nombre de directions ne concerne que le fichier flottant et n'est affiché que si **Sauver en 8 bits** est décoché. L'élévation et l'exagération s'appliquent dans les deux cas.
+- **Suppression du bruit** (SVF, OPNS) : le niveau 1, « faible », n'agit qu'à partir d'un rayon de 15 px ; au rayon par défaut de 10 px, il donne la même image que 0.
 - **OPNS négative** : autour d'une zone sans donnée (eau, bord de chantier, dalle étrangère), le vide n'est plus pris pour un relief ; une openness négative calculée par une version précédente est recalculée une fois à la relance, sous le même nom de dossier.
 - **Sauver en 8 bits** : coché, l'image est étirée en 256 niveaux, légère et prête pour la détection ; décoché, elle garde les valeurs mesurables (degrés, angles…) dans un dossier à part dont le nom finit par `_F32` ; pour les compositions (VAT, PRISM, CVAT), le flottant garde la composition en valeurs de 0 à 1, sans gain à l'affichage. Passer de l'un à l'autre et relancer dans le même dossier de sortie calcule bien l'autre version.
 - **Pente (SLO)** en **Pourcentage** : 100 % vaut 45°. En 8 bits, l'image est étirée de 0 à 123 %, soit de 0 à 51° comme en degrés : le plat sort blanc, le pentu noir. Une pente « en pourcentage » calculée par une version précédente contenait en réalité des radians (image presque blanche) ; elle reste dans son dossier `SLO_U1_…`, à supprimer. Les nouvelles vont dans `SLO_U2_…`.
-- **MSTP** : la luminosité s'applique telle que réglée ; elle vaut 0,9 par défaut, comme dans la fenêtre de rvt-qgis. Les trois pas d'échelle changent l'image : dès qu'ils quittent leurs valeurs par défaut, ils s'ajoutent au nom du dossier (`…_P4-18-60`), et une relance avec d'autres pas recalcule le MSTP.
+- **MSTP** : la luminosité s'applique telle que réglée ; elle vaut 0,9 par défaut, comme dans la fenêtre de rvt-qgis. Il n'a pas d'exagération verticale : il compare chaque pixel à l'écart type de son voisinage, et l'exagération s'y annule. Les trois pas d'échelle changent l'image : dès qu'ils quittent leurs valeurs par défaut, ils s'ajoutent au nom du dossier (`…_P4-18-60`), et une relance avec d'autres pas recalcule le MSTP.
 
 ## Tuilage et marge
 
@@ -60,7 +61,7 @@ Sous les réglages, une ligne de diagnostic compare cette marge au rayon le plus
 - **✓ Contexte fourni aux noyaux** : la marge couvre le rayon, rien à faire.
 - **⚠** suivi du nom d'un produit : son rayon dépasse la marge. Au-delà de la marge, l'algorithme reconstruit le voisinage par symétrie et les dalles ne se raccordent plus. Réduisez le rayon indiqué, ou augmentez la marge.
 
-En MNT existant, chaque raster est calculé sans voisin : le diagnostic dit quelle part de l'emprise aura un voisinage complet. Sur un lot, le réglage vaut pour toutes les dalles ; ne réduisez un rayon que si la plupart des rasters ont cette taille.
+En MNT existant, chaque raster est calculé sans voisin : le champ de marge est masqué, il n'aurait aucun effet, et le diagnostic dit quelle part de l'emprise aura un voisinage complet. Sur un lot, le réglage vaut pour toutes les dalles ; ne réduisez un rayon que si la plupart des rasters ont cette taille.
 
 ## Mode MNT existant
 

@@ -43,6 +43,7 @@ def build_signature(
     tile_overlap: float,
     filter_expression: str,
     fusion: str,
+    grille_mnt: str = "",
 ) -> Dict[str, Any]:
     """Signature des paramètres de traitement NON encodés dans les noms de fichiers.
 
@@ -56,6 +57,8 @@ def build_signature(
         "tile_overlap": float(tile_overlap),
         "filter_expression": str(filter_expression),
         "fusion": str(fusion),
+        # Calage de la grille du MNT (mnt.GRILLE_MNT) : un dossier d'avant le calage refait ses MNT une fois.
+        "grille_mnt": str(grille_mnt),
     }
 
 
@@ -91,7 +94,7 @@ def ensure_cache_matches(
         # l'utilisateur qu'il a modifié ses paramètres.
         seule_methode = isinstance(previous, dict) and {
             k for k in set(previous) | set(signature) if previous.get(k) != signature.get(k)
-        } == {"fusion"}
+        } <= {"fusion", "grille_mnt"}
         log(
             ("⚠️ Méthode de calcul mise à jour" if seule_methode else "⚠️ Paramètres de traitement modifiés")
             + " → cache des intermédiaires invalidé : les dalles de ce run seront recalculées et re-publiées."

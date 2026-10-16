@@ -210,8 +210,10 @@ class IgnOrLocalRunner:
 
         try:  # fallback standalone (tests : src/ sur le path)
             from ...pipeline.ign.preprocess import fusion_mode, prepare_merged_tiles
+            from ...pipeline.ign.products.mnt import GRILLE_MNT
         except ImportError:  # pragma: no cover
             from pipeline.ign.preprocess import fusion_mode, prepare_merged_tiles
+            from pipeline.ign.products.mnt import GRILLE_MNT
 
         active_products: list = []
         merged_result = None
@@ -258,6 +260,7 @@ class IgnOrLocalRunner:
                     tile_overlap=processing.tile_overlap,
                     filter_expression=processing.filter_expression,
                     fusion=fusion_mode(),
+                    grille_mnt=GRILLE_MNT,
                 ),
                 intermediaires=_inter_dir(ctx.output_dir),
                 # user_warning : le ⚠️ de purge doit être VISIBLE dans la

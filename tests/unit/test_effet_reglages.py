@@ -407,3 +407,31 @@ def test_openness_negative_d_avant_recalculee_une_fois(calcul, tmp_path):
     assert not any("réutilisé" in ligne for ligne in journal)
     _, _, journal = calcul("OPNS", {"opns": {"opns_type": 1}}, _trou, dossier=d)
     assert any("réutilisé" in ligne for ligne in journal)
+
+
+@pytest.mark.parametrize("bornes,res,attendu", [
+    ((816000.0, 817000.0, 6332000.0, 6333000.0), 0.5, (816000.0, 817000.0, 6332000.0, 6333000.0)),
+    ((815800.01, 817199.98, 6331800.27, 6333199.6), 0.5, (815800.0, 817200.0, 6331800.0, 6333200.0)),
+    ((815999.76, 817000.0, 6332000.0, 6333000.26), 1.0, (815999.0, 817000.0, 6332000.0, 6333001.0)),
+])
+def test_emprise_du_mnt_calee_sur_la_resolution(bornes, res, attendu):
+    """Arrondie vers l'extérieur au multiple de la résolution : la grille du MNT de travail est celle des dalles IGN,
+    quelle que soit la position du premier point, et le rognage au kilomètre ne rééchantillonne plus."""
+    from pipeline.ign.products.mnt import emprise_alignee
+    e = emprise_alignee(bornes, res)
+    assert e == pytest.approx(attendu)
+    assert all(abs(v / res - round(v / res)) < 1e-9 for v in e)
+
+
+def test_calage_de_la_grille_dans_la_signature_du_cache(tmp_path):
+    """Un dossier calculé avant le calage refait ses MNT une fois, présenté comme une mise à jour de méthode."""
+    from app.services.cache_guard import build_signature, ensure_cache_matches
+    from pipeline.ign.products.mnt import GRILLE_MNT
+    base = dict(mnt_resolution=0.5, density_resolution=1.0, tile_overlap=20, filter_expression="f", fusion="flux-1")
+    inter = tmp_path / "intermediaires"
+    ensure_cache_matches(signature=build_signature(**base), intermediaires=inter)
+    (inter / "x_MNT.tif").write_bytes(b"ancien")
+    journal = []
+    assert ensure_cache_matches(signature=build_signature(**base, grille_mnt=GRILLE_MNT), intermediaires=inter,
+                                log=journal.append)
+    assert not (inter / "x_MNT.tif").exists() and "Méthode de calcul mise à jour" in journal[0]

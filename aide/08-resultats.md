@@ -85,6 +85,8 @@ Pour une dalle, les détections de toutes les entités se superposent sans doubl
 
 La fusion de chaque dalle avec ses voisines lit les points toujours dans le même ordre : deux traitements des mêmes dalles avec la même version de PDAL, celle que note `livrable/traitement.json`, donnent le même MNT au bit près. Un dossier calculé par une version précédente du plugin voit donc son MNT, et tout ce qui en découle (indices, détections), recalculé une dernière fois à la relance : le journal le signale par « Méthode de calcul mise à jour ». L'écart avec l'ancien MNT est de l'ordre de celui qu'il y avait déjà entre deux traitements identiques.
 
+La grille du MNT est calée sur celle des dalles IGN (bords des pixels sur les multiples de la résolution) : chaque pixel du MNT publié est un pixel calculé, recadré sans rééchantillonnage, au même endroit d'un traitement à l'autre. Les MNT calculés par une version précédente pouvaient être décalés d'un demi-pixel (25 cm à 0,5 m), dans un sens qui variait d'une dalle et d'une relance à l'autre ; la relance d'un tel dossier refait ses MNT une fois (« Méthode de calcul mise à jour »).
+
 ## Faire de la place
 
 Une fois le traitement validé, supprimez `technique/` : rien du livrable n'en dépend. Si vous voulez garder les nuages de points téléchargés, déplacez d'abord `technique/sources/`. Un traitement relancé dans le même dossier re-télécharge ou recalcule ce qui manque.

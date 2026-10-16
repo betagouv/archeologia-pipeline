@@ -1,8 +1,12 @@
 from __future__ import annotations
 
+import json
+import math
+import shutil
+import subprocess
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Tuple
 
 from ..pdal_validation import validate_las_or_laz_with_pdal
 from .qgis_processing import run_qgis_algorithm
@@ -22,6 +26,42 @@ MNT_ALGO_TIMEOUT_S = 2 * 3600
 @dataclass(frozen=True)
 class TerrainModelResult:
     mnt_path: Path
+
+
+#: Calage de la grille du MNT, inscrit dans la signature du cache (cache_guard) : un dossier calculé avant ce calage
+#: refait une fois ses MNT au lieu de les resservir.
+GRILLE_MNT = "emprise-alignee-1"
+
+
+def emprise_alignee(bornes: Tuple[float, float, float, float], resolution: float) -> Tuple[float, float, float, float]:
+    """(xmin, xmax, ymin, ymax) des points, arrondis VERS L'EXTÉRIEUR au multiple de la résolution.
+
+    Sans emprise, pdal:exportrastertin cale la grille d'un LAZ ordinaire (pas d'un COPC) sur le premier point moins
+    un demi-pixel (815 999,75 pour un nuage qui commence à 816 000) : le rognage au kilomètre prenait alors, pour
+    chaque pixel publié, l'un de ses voisins, d'un sens qui changeait avec le premier point (25 cm à 0,5 m, et une
+    dalle décalée d'une colonne d'une relance à l'autre). Calée sur les multiples de la résolution, la grille est
+    celle des dalles IGN, et le rognage ne fait plus que découper. Moins d'un pixel de plus que les points : pas de
+    zone vide ajoutée au bord d'un lot.
+    """
+    xmin, xmax, ymin, ymax = (float(v) for v in bornes)
+    r = float(resolution)
+    eps = 1e-6
+    return (math.floor(xmin / r + eps) * r, math.ceil(xmax / r - eps) * r,
+            math.floor(ymin / r + eps) * r, math.ceil(ymax / r - eps) * r)
+
+
+def _bornes_du_nuage(laz: Path) -> Optional[Tuple[float, float, float, float]]:
+    """Bornes des points d'après l'en-tête du LAZ (``pdal info --metadata``, sans lire les points), ou None."""
+    pdal = shutil.which("pdal")
+    if not pdal:
+        return None
+    try:
+        sortie = subprocess.run([pdal, "info", "--metadata", str(laz)], capture_output=True, text=True, timeout=120,
+                                **({"creationflags": 0x08000000} if hasattr(subprocess, "STARTUPINFO") else {}))
+        m = json.loads(sortie.stdout)["metadata"]
+        return float(m["minx"]), float(m["maxx"]), float(m["miny"]), float(m["maxy"])
+    except Exception:  # noqa: BLE001 — sans bornes, la grille de PDAL d'avant (le journal le dit)
+        return None
 
 
 def _run_under_watchdog(
@@ -119,6 +159,13 @@ def create_terrain_model(
         "RESOLUTION": str(mnt_resolution),
         "FILTER_EXPRESSION": filter_expression,
     }
+    bornes = _bornes_du_nuage(input_laz_path)
+    if bornes is not None:
+        x0, x1, y0, y1 = emprise_alignee(bornes, mnt_resolution)
+        parameters["FILTER_EXTENT"] = f"{x0},{x1},{y0},{y1} [EPSG:2154]"
+        log(f"MNT : grille calée sur {x0:.2f}, {y1:.2f} (multiples de {mnt_resolution} m)")
+    else:
+        log("⚠️ MNT : bornes du nuage illisibles — grille de PDAL sans calage (décalage possible d'un demi-pixel)")
 
     watchdog = dict(
         feedback=feedback, context=context, timeout_s=algo_timeout_s, tile_name=current_tile_name

@@ -544,9 +544,11 @@ class IndicesPage(QWidget):
         ld_rmin = self._mk_spin(1, 100, 10)   # 0 : division par une distance nulle
         ld_rmax = self._mk_spin(1, 100, 20)
         ld_obs = self._mk_dspin(0.5, 20.0, 1.7)
-        # rayon min ≤ rayon max : sinon aucune distance, image sans valeur (même verrou que les coupes du CRIM)
-        ld_rmin.valueChanged.connect(lambda v, hi=ld_rmax: hi.setMinimum(v))
-        ld_rmax.valueChanged.connect(lambda v, lo=ld_rmin: lo.setMaximum(v))
+        # rayon min ≤ rayon max : sinon aucune distance, image sans valeur. Le champ modifié POUSSE l'autre (et non des
+        # bornes croisées, qui ne se posaient qu'au premier changement du voisin et dépendaient de l'ordre de
+        # chargement d'une configuration) : vrai dès l'ouverture, quelle que soit la valeur chargée.
+        ld_rmin.valueChanged.connect(lambda v, hi=ld_rmax: hi.setValue(v) if v > hi.value() else None)
+        ld_rmax.valueChanged.connect(lambda v, lo=ld_rmin: lo.setValue(v) if v < lo.value() else None)
         ld_ve = self._mk_spin(1, 100, 1)
         ld_8 = self._mk_check()
         self._reg(("rvt_params", "ldo"), "angular_res", ld_ang, "int", 15)

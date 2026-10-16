@@ -85,3 +85,22 @@ def test_confiance_min_du_regroupement_relevee_ignore_les_detections_dessous():
     regle.update(sanitize_clustering_overrides({"min_confidence": 0.60}, rule_type="dbscan"))
     zones, _ = run_clustering(_cratères([0.9, 0.9, 0.9, 0.5, 0.5, 0.5]), [regle])
     assert zones["zone_crateres"][0]["nb_detect"] == 3
+
+
+def _deux_groupes():
+    """Groupe A : 6 cratères tous les 5 m ; groupe B, 300 m plus loin : 4 cratères tous les 20 m. Confiance 0,9."""
+    a = [box(i * 5.0, 0.0, i * 5.0 + 2.0, 2.0) for i in range(6)]
+    b = [box(300 + i * 20.0, 0.0, 302 + i * 20.0, 2.0) for i in range(4)]
+    return {"cratere": [{"geometry": g, "confidence": 0.9, "model_pred": "cratere", "model_name": "m"}
+                        for g in a + b]}
+
+
+@pytest.mark.parametrize("cle,valeur", [("eps_m", 10.0), ("min_cluster_size", 5), ("min_area_m2", 2000.0),
+                                        ("buffer_m", 20.0), ("min_samples", 6)])
+def test_chaque_parametre_du_regroupement_change_les_zones(cle, valeur):
+    def zones(surcharge):
+        regle = _regle_du_modele()
+        regle.update(sanitize_clustering_overrides(surcharge, rule_type="dbscan"))
+        z, _ = run_clustering(_deux_groupes(), [regle])
+        return sorted(round(x["geometry"].area, 1) for x in z.get("zone_crateres", []))
+    assert zones({cle: valeur}) != zones({})

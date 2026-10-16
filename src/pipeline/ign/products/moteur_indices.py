@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Any, Callable, Dict, Tuple
+from typing import Any, Callable, Dict, Optional, Tuple
 
 #: « processing » : chaque produit qui a un algorithme Processing passe par l'extension rvt-qgis, comme avant
 #: la 0.16.0 (diagnostic d'un écart ; l'extension est alors requise). CVAT et CRIM n'en ont pas.
@@ -392,11 +392,22 @@ def combinaison(indice: int, terrain: int):
     return comb, defaut
 
 
+def sortie_rendue(base: Path, huit_bits: bool) -> Optional[Path]:
+    """Le fichier qu'écrit ``BlenderCombination.render_all_images(save_render_path=base)`` : ``<base>_8bit.tif`` en
+    8 bits ; en flottant, ``<base>`` TEL QUEL, sans extension (rvt écrit le chemin reçu, et Processing n'en ajoute
+    pas à OUTPUT). C'est ce fichier sans extension que le plugin ne cherchait pas : VAT, PRISM et CVAT flottants
+    restaient absents. ``None`` si rien n'a été écrit."""
+    base = Path(base)
+    for p in ([Path(str(base) + "_8bit.tif")] if huit_bits else [base, Path(str(base) + ".tif")]):
+        if p.is_file():
+            return p
+    return None
+
+
 def rendre_melange(c: Couches, produit: str, indice: int, terrain: int, sortie_base: Path, huit_bits: bool) -> None:
-    """rvt_blender.py (combinaisons ordinaires) : rvt écrit lui-même ``<sortie_base>_8bit.tif`` en 8 bits. Comme
-    Processing, qui n'ajoute pas d'extension à OUTPUT (vérifié le 2026-10-15), le flottant va dans
-    ``<sortie_base>`` sans extension, que indices.py ne trouve pas : VAT et PRISM flottants restent absents, comme
-    avant (signalé à l'utilisateur)."""
+    """rvt_blender.py (combinaisons ordinaires) : rvt écrit lui-même ``<sortie_base>_8bit.tif`` en 8 bits, et en
+    flottant ``<sortie_base>`` sans extension, comme Processing (vérifié le 2026-10-15) ; ``sortie_rendue`` retrouve
+    l'un ou l'autre."""
     _verifier(produit, terrain_type=terrain, blend_combination=indice)
     comb, defaut = combinaison(indice, terrain)
     injecter_couches(c, comb, defaut)

@@ -19,18 +19,9 @@ from ...types import LogFn
 
 
 def _find_rendered_tif(out_base: Path, save_as_8bit: bool) -> Optional[Path]:
-    """Localise le .tif produit par ``render_all_images`` (suffixe variable).
-
-    RVT ajoute ``_8bit`` (ou rien) avant l'extension selon le mode de sortie ;
-    on tente le nom attendu puis on retombe sur un glob (même logique que le bloc
-    VAT de ``indices.py``).
-    """
-    suffix = "_8bit.tif" if save_as_8bit else ".tif"
-    expected = Path(str(out_base) + suffix)
-    if expected.exists():
-        return expected
-    matches = sorted(out_base.parent.glob(f"{out_base.name}*.tif"))
-    return matches[0] if matches else None
+    """Le fichier écrit par ``render_all_images`` (``moteur_indices.sortie_rendue``, flottant sans extension compris)."""
+    from .moteur_indices import sortie_rendue
+    return sortie_rendue(out_base, save_as_8bit)
 
 
 def compute_cvat(

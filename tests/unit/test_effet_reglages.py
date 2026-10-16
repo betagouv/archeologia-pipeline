@@ -110,8 +110,9 @@ def calcul(monkeypatch, tmp_path):
         sortie = res.outputs.get(produit)
         if sortie is None:
             return None, None, journal
-        # le fichier publié est soit écrit par le moteur, soit copié d'une sortie de rvt (mélanges, CVAT)
-        cle = sortie.name if sortie.name in ecrits else next((k for k in ecrits if k.endswith("_8bit.tif")), None)
+        # le fichier publié est soit écrit par le moteur…
+        # sinon la sortie de rvt copiée sous le nom publié (mélanges, CVAT : <base>_8bit.tif, ou <base> en flottant)
+        cle = sortie.name if sortie.name in ecrits else next(iter(ecrits), None)
         if cle is None:   # rien d'écrit : l'intermédiaire du lancement précédent a été resservi
             return None, sortie.name, journal
         return ecrits[cle][0], sortie.name, journal
@@ -231,11 +232,11 @@ DEFAUT_NOM = {("MSTP", k): "DÉFAUT : les pas du MSTP ne sont pas dans le nom du
 # ───────────────────────── défauts mesurés ─────────────────────────
 
 @pytest.mark.parametrize("produit,section", [("VAT", "vat"), ("PRISM", "prism"), ("CVAT", "cvat")])
-@pytest.mark.xfail(strict=True, reason="DÉFAUT : en sortie flottante, rvt écrit <base> sans extension, que "
-                                       "indices.py / cvat.py ne retrouvent pas : aucun fichier")
 def test_sortie_flottante_des_melanges(calcul, produit, section):
+    """rvt écrit le flottant d'un mélange sous <base> sans extension : il doit être retrouvé et publié, en flottant."""
     a, nom, _ = calcul(produit, {section: {"save_as_8bit": False}}, _bosses)
-    assert a is not None
+    assert a is not None and nom.endswith("_F32.tif")
+    assert not np.allclose(a[np.isfinite(a)], np.round(a[np.isfinite(a)]))   # des valeurs flottantes, pas des octets
 
 
 @pytest.mark.parametrize("produit,section", [("SVF", "svf"), ("OPNS", "opns")])

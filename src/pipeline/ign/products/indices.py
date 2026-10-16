@@ -438,18 +438,16 @@ def create_visualization_products(
                 }
                 run_qgis_algorithm("rvt:rvt_blender", params, feedback=feedback, context=context)
 
-            expected_tif = Path(str(vat_output_base) + "_8bit.tif")
-            if expected_tif.exists():
-                shutil.copy2(str(expected_tif), str(standard_vat_tif))
-            else:
-                candidates = sorted(temp_dir.glob(f"{vat_output_base.name}*.tif"))
-                if candidates:
-                    shutil.copy2(str(candidates[0]), str(standard_vat_tif))
+            rendu = moteur_indices.sortie_rendue(vat_output_base, save_as_8bit)
+            if rendu is not None:
+                shutil.copy2(str(rendu), str(standard_vat_tif))
         else:
             log(f"VAT réutilisé (cache intermédiaire) : {standard_vat_tif.name}")
 
         if standard_vat_tif.exists():
             outputs["VAT"] = standard_vat_tif
+        else:
+            log(f"VAT non créé: {standard_vat_tif.name}")
 
     if products.get("MSTP", False):
         mstp = (rvt_params or {}).get("mstp", {})
@@ -581,13 +579,9 @@ def create_visualization_products(
                 }
                 run_qgis_algorithm("rvt:rvt_blender", params, feedback=feedback, context=context)
 
-            attendu = Path(str(base_sorties) + "_8bit.tif")
-            if attendu.exists():
-                shutil.copy2(str(attendu), str(cible))
-            else:
-                candidats = sorted(temp_dir.glob(f"{base_sorties.name}*.tif"))
-                if candidats:
-                    shutil.copy2(str(candidats[0]), str(cible))
+            rendu = moteur_indices.sortie_rendue(base_sorties, save_as_8bit)
+            if rendu is not None:
+                shutil.copy2(str(rendu), str(cible))
         else:
             log(f"PRISM réutilisé (cache intermédiaire) : {cible.name}")
 

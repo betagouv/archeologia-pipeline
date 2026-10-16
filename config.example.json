@@ -14,6 +14,7 @@
     "mnt_resolution": 0.5,
     "density_resolution": 1.0,
     "tile_overlap": 20,
+    "coverage_threshold_percent": 30,
     "filter_expression": "Classification = 2 OR Classification = 6 OR Classification = 66 OR Classification = 67 OR Classification = 9",
     "max_workers": 3,
     "products": {
@@ -55,7 +56,7 @@
       {
         "model": "<chemin/vers/data/models/<mon_modele>/weights/best.onnx>",
         "target_rvt": "LD",
-        "confidence_threshold": 0.2,
+        "confidence_threshold": 0.3,
         "min_area_m2": 0.0
       }
     ],
@@ -66,7 +67,7 @@
     "entity_cluster_params": {},
     "selected_model": "",
     "target_rvt": "LD",
-    "confidence_threshold": 0.2,
+    "confidence_threshold": 0.3,
     "iou_threshold": 0.5,
     "generate_annotated_images": false,
     "generate_shapefiles": false,

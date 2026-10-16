@@ -3,8 +3,8 @@
 synthétiques à réponse connue. Seuls la lecture et l'écriture GDAL sont remplacées (hors QGIS, pas d'osgeo).
 
 Un réglage qui ne change rien à l'image, qui change le nom du fichier sans changer son contenu, ou dont l'effet
-n'est pas celui annoncé à l'utilisateur, est un défaut : les défauts connus et non corrigés sont marqués
-``xfail(strict=True)`` — le test passera au vert, et le signalera, le jour où la correction arrive.
+n'est pas celui annoncé à l'utilisateur, est un défaut. Les défauts trouvés par l'audit du 2026-10-16 sont corrigés ;
+chacun garde ici le test qui échouerait s'il revenait.
 """
 from __future__ import annotations
 
@@ -235,12 +235,13 @@ def test_sortie_flottante_des_melanges(calcul, produit, section):
 
 
 @pytest.mark.parametrize("produit,section", [("SVF", "svf"), ("OPNS", "opns")])
-@pytest.mark.xfail(strict=True, reason="DÉFAUT (rvt) : rayon min = max(arrondi(rayon × 10 %), 1) : au rayon par "
-                                       "défaut de 10 px, la suppression du bruit « faible » vaut « aucune »")
-def test_bruit_faible_au_rayon_par_defaut(calcul, produit, section):
+def test_bruit_faible_sans_effet_au_rayon_par_defaut_comme_l_annonce_l_ecran(calcul, produit, section):
+    """rvt ignore max(arrondi(rayon × 10 %), 1) px : au rayon de 10 px, « faible » = « aucune », au pixel. C'est la
+    bibliothèque, pas le plugin ; l'infobulle et les fiches le disent (« n'agit qu'à partir d'un rayon de 15 px »).
+    Si ce test échoue, rvt a changé : relire l'infobulle _HELP_BRUIT et les fiches SVF et OPNS."""
     ref, _, _ = calcul(produit, {section: {"noise_remove": 0}}, _bosses)
     a, _, _ = calcul(produit, {section: {"noise_remove": 1}}, _bosses)
-    assert not np.array_equal(np.nan_to_num(ref), np.nan_to_num(a))
+    assert np.array_equal(np.nan_to_num(ref), np.nan_to_num(a))
 
 
 def test_bruit_faible_agit_des_15_px(calcul):
@@ -355,12 +356,12 @@ def test_bornes_de_l_interface_dans_celles_du_moteur():
     assert not hors, hors
 
 
-@pytest.mark.xfail(strict=True, reason="NOM TROMPEUR : le MNT publié s'appelle …_MNT_A_0M50_… quelle que soit la "
-                                       "résolution réglée (la fonction ne la reçoit même pas)")
-def test_nom_du_mnt_publie_ne_fige_pas_la_resolution():
+@pytest.mark.parametrize("res,jeton", [(0.5, "0M50"), (1.0, "1M00"), (0.25, "0M25"), (2.5, "2M50")])
+def test_nom_du_mnt_publie_porte_sa_resolution(res, jeton):
+    """Le nom du MNT publié disait 0M50 quelle que soit la résolution ; à 0,5 m (le défaut), le nom d'avant."""
     from pipeline.ign.products.rvt_naming import get_rvt_source_and_dest_filenames
-    _, dest = get_rvt_source_and_dest_filenames("MNT", "T", "0816", "6333", {})
-    assert "0M50" not in dest
+    _, dest = get_rvt_source_and_dest_filenames("MNT", "T", "0816", "6333", {}, mnt_resolution=res)
+    assert dest == f"LHD_FXX_0816_6333_MNT_A_{jeton}_LAMB93_IGN69.tif"
 
 
 @pytest.mark.parametrize("produit", ["HS", "M_HS", "SVF", "OPNS", "SLO", "LD", "SLRM", "VAT", "MSTP", "CVAT", "PRISM",

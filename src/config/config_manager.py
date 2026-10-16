@@ -53,6 +53,7 @@ class ConfigManager:
                 "mnt_resolution": 0.5,
                 "density_resolution": 1.0,
                 "tile_overlap": 20,
+                "coverage_threshold_percent": 30,
                 "filter_expression": "Classification = 2 OR Classification = 6 OR Classification = 66 OR Classification = 67 OR Classification = 9",
                 "max_workers": 3,
                 "products": {

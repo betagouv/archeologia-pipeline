@@ -23,7 +23,7 @@ Chaque contrôle affiche son état et son détail. Un élément manquant bloque 
 
 ## Paramètres avancés
 
-**Workers parallèles** : le nombre de dalles traitées en même temps. Plus de workers accélère le traitement sur une machine à plusieurs cœurs mais consomme plus de mémoire. Sur un poste à 16 Go, restez à deux ou trois.
+**Workers parallèles** : le nombre de dalles téléchargées, fusionnées avec leurs voisines et préparées pour la détection en même temps. Le MNT et les indices, eux, sont calculés une dalle après l'autre. Plus de workers accélère ces étapes sur une machine à plusieurs cœurs mais consomme plus de mémoire. Sur un poste à 16 Go, restez à deux ou trois.
 
 ## Pendant un traitement
 

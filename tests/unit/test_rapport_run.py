@@ -138,7 +138,7 @@ def test_construire_html_ne_situe_pas_et_couvre_les_sections():
     assert "Modèle &lt;A&gt;" in h and "noyau &lt;40&gt;" in h and "<A>" not in h
     for morceau in (
         "hypothèses", "Zone traitée", "9 km² couverts, en 9 dalles.", "ni nom de dalle ni coordonnée",
-        "<h2>Produits</h2>", "rayon 10 px, 16 directions, sans suppression du bruit", "sans réglage",
+        "<h2>Produits</h2>", "rayon 10 px, 16 directions, sans suppression du bruit", "résolution 0,5 m",
         "Détection automatique", "<th>Seuil</th>", "0,26", ", sur LD", "12 images en 4min 07s (≈ 21s par image)", "reprise du run précédent",
         "Bilan de fiabilité", "Par km²", "11,4", "12 très probables, 30 probables, 41 possibles, 20 douteuses",
         "très probable : au moins 85 % de vrais objets", "douteux : moins de 35 %",

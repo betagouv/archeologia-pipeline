@@ -31,4 +31,4 @@
 | Run | Lancement d'un modèle sur un indice, pour une ou plusieurs entités |
 | Score | Valeur entre 0 et 1 donnée par un modèle à une détection ; ce n'est pas une probabilité et son échelle change d'un modèle à l'autre |
 | Seuil de confiance | Score en dessous duquel une détection est écartée, fixé par entité |
-| Worker | Un processus de calcul ; le nombre de workers est le nombre de dalles traitées en parallèle |
+| Worker | Un processus de calcul ; le nombre de workers est le nombre de dalles téléchargées, fusionnées et préparées pour la détection en parallèle |

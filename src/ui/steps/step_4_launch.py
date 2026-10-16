@@ -115,7 +115,7 @@ class LaunchPage(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self._recap_rows: List[QWidget] = []
-        self._workers = 4
+        self._workers = 3   # = ConfigManager (processing.max_workers)
         self._preflight_gen = 0
         self._validation_errors: List[str] = []
         # État du préflight pour le bandeau : pending | ok | warn | err.
@@ -238,8 +238,9 @@ class LaunchPage(QWidget):
         h.addWidget(plus)
 
         note = QLabel(
-            "Nombre de dalles traitées en parallèle. Plus de workers accélère le "
-            "traitement sur les machines multi-cœurs mais consomme plus de RAM."
+            "Nombre de dalles téléchargées, fusionnées et préparées pour la détection en "
+            "parallèle ; le MNT et les indices sont calculés une dalle après l'autre. "
+            "Plus de workers accélère ces étapes mais consomme plus de mémoire."
         )
         note.setObjectName("WorkersNote")
         note.setWordWrap(True)

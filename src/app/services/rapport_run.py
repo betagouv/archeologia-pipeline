@@ -95,6 +95,7 @@ class DonneesRapport:
     surface_km2: Optional[float] = None                 # mesurée sur les rasters du run
     produits: Tuple[Tuple[str, str], ...] = ()          # (code, libellé)
     rvt_params: Mapping[str, Any] = field(default_factory=dict)
+    processing: Mapping[str, Any] = field(default_factory=dict)   # section processing de la configuration
     cv_runs: Tuple[Mapping[str, Any], ...] = ()         # modele, target_rvt, entites, seuil, images, secondes
     bilan: Tuple[Mapping[str, Any], ...] = ()           # LigneBilan.to_dict()
     etapes: Tuple[Tuple[str, str, float], ...] = ()     # (étape, détail, secondes mesurées)
@@ -299,7 +300,9 @@ def decrire_reglages(section: str, valeurs: Optional[Mapping[str, Any]]) -> str:
     if section == "hs":
         m += [f"azimut solaire {_dec(g('sun_azimuth', 315), 0)}°", f"élévation solaire {_dec(g('sun_elevation', 35), 0)}°"]
     elif section == "mdh":
-        m += [f"{_nb(int(g('num_directions', 16)))} directions", f"élévation solaire {_dec(g('sun_elevation', 35), 0)}°"]
+        # 8 bits (défaut) : trois éclairages fixes, le nombre de directions n'y joue pas (champ masqué à l'écran)
+        m += ["trois éclairages composés" if g("save_as_8bit", True) else f"{_nb(int(g('num_directions', 16)))} directions",
+              f"élévation solaire {_dec(g('sun_elevation', 35), 0)}°"]
     elif section in ("svf", "opns"):
         if section == "opns":
             m.append("ouverture négative, les creux" if int(g("opns_type", 0) or 0) == 1 else "ouverture positive, les saillies")
@@ -330,6 +333,20 @@ def decrire_reglages(section: str, valeurs: Optional[Mapping[str, Any]]) -> str:
     return ", ".join(m) if m else "réglages par défaut"
 
 
+def _reglages_base(code: str, processing: Mapping[str, Any]) -> str:
+    """Réglages du MNT, de la densité et de la couverture (étape 2, onglets du modèle de base)."""
+    p = processing or {}
+    try:
+        if code == "MNT":
+            filtre = str(p.get("filter_expression") or "").strip()
+            return f"résolution {_dec(p.get('mnt_resolution', 0.5), 2)} m" + (f", points retenus : {filtre}" if filtre else "")
+        if code == "DENSITE":
+            return f"résolution {_dec(p.get('density_resolution', 1.0), 2)} m"
+        return f"zones mal couvertes sous {_dec(p.get('coverage_threshold_percent', 30), 0)} %"
+    except (TypeError, ValueError):
+        return "réglages par défaut"
+
+
 def _zone(d: DonneesRapport) -> str:
     n = d.tiles_processed
     pluriel = "s" if n > 1 else ""
@@ -357,7 +374,7 @@ def _produits(d: DonneesRapport) -> str:
         if code == "MNT" and d.data_mode == "existing_mnt":
             desc = "fourni avec les données"
         elif code in ("MNT", "DENSITE", "COUVERTURE"):
-            desc = "sans réglage"
+            desc = _reglages_base(code, d.processing)
         else:
             section = _SECTION_PAR_PRODUIT.get(code, "")
             desc = decrire_reglages(section, (d.rvt_params or {}).get(section)) if section else "réglages par défaut"

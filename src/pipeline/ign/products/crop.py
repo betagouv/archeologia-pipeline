@@ -26,6 +26,7 @@ def crop_final_products(
     gdalwarp_path: Optional[str] = None,
     cancel_check: CancelCheckFn | None = None,
     name_suffix: str = "",
+    mnt_resolution: float = 0.5,
 ) -> Dict[str, Path]:
     temp_dir.mkdir(parents=True, exist_ok=True)
 
@@ -54,7 +55,8 @@ def crop_final_products(
         check_cancelled(cancel_check)
 
         src_name, dst_name = get_rvt_source_and_dest_filenames(
-            product_name, current_tile_name, x, y, rvt_params, name_suffix=name_suffix
+            product_name, current_tile_name, x, y, rvt_params, name_suffix=name_suffix,
+            mnt_resolution=mnt_resolution
         )
         src_path = temp_dir / src_name
         dst_path = temp_dir / dst_name

@@ -352,6 +352,12 @@ def get_all_rvt_temp_filenames(
     }
 
 
+def jeton_resolution(resolution_m: float) -> str:
+    """Résolution du MNT au format du nom IGN : 0,5 m → ``0M50``, 1 m → ``1M00``, 0,25 m → ``0M25``."""
+    cm = int(round(float(resolution_m) * 100))
+    return f"{cm // 100}M{cm % 100:02d}"
+
+
 def get_rvt_source_and_dest_filenames(
     product_name: str,
     current_tile_name: str,
@@ -360,6 +366,7 @@ def get_rvt_source_and_dest_filenames(
     rvt_params: Dict[str, Any],
     *,
     name_suffix: str = "",
+    mnt_resolution: float = 0.5,
 ) -> Tuple[str, str]:
     """
     Génère les noms de fichiers source (temp) et destination (cropped) pour un produit.
@@ -369,6 +376,7 @@ def get_rvt_source_and_dest_filenames(
         current_tile_name: Nom de la dalle
         x, y: Coordonnées extraites du nom de dalle (cosmétiques)
         rvt_params: Paramètres RVT
+        mnt_resolution: Résolution du MNT (m), écrite dans le nom du MNT publié.
         name_suffix: Suffixe d'unicité inséré avant ``.tif`` dans le nom de destination
             (ex. ``"_<uid>"``). Le placement venant des métadonnées, ``x``/``y`` ne
             servent qu'au préfixe cosmétique ``LHD_FXX_{x}_{y}`` ; pour des dalles
@@ -386,7 +394,8 @@ def get_rvt_source_and_dest_filenames(
 
     # Noms de destination avec paramètres pour invalider le cache
     if product_name == "MNT":
-        dest_filename = f"LHD_FXX_{x}_{y}_MNT_A_0M50_LAMB93_IGN69{name_suffix}.tif"
+        # Résolution RÉELLE au nom (figée à 0M50 jusqu'ici, même pour un MNT à 1 m) ; à 0,5 m, le nom d'avant.
+        dest_filename = f"LHD_FXX_{x}_{y}_MNT_A_{jeton_resolution(mnt_resolution)}_LAMB93_IGN69{name_suffix}.tif"
     elif product_name == "DENSITE":
         dest_filename = f"LHD_FXX_{x}_{y}_densite_A_LAMB93{name_suffix}.tif"
     elif product_name == "COUVERTURE":

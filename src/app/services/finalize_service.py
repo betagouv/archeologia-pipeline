@@ -439,7 +439,8 @@ def _ecrire_rapport_run(
         tiles_processed=tiles_processed, tiles_total=tiles_total,
         surface_km2=surface_km2_depuis_vrt(vrt_paths),
         produits=tuple((p, PRODUCT_LABELS.get(p, p)) for p in active_products),
-        rvt_params=rvt_params, cv_runs=tuple(runs_rapport),
+        rvt_params=rvt_params, processing=dict((ui_config or {}).get("processing") or {}),
+        cv_runs=tuple(runs_rapport),
         bilan=tuple(ligne.to_dict() for ligne in bilan), etapes=tuple(etapes),
         avertissements=tuple(avertissements), vignette=vignette, motif_detection=motif_detection,
     )

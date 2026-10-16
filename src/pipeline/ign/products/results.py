@@ -250,13 +250,15 @@ def copy_mnt_to_results(
     output_dir: Path,
     current_tile_name: str,
     log: LogFn = lambda _: None,
+    mnt_resolution: float = 0.5,
 ) -> Path:
     x, y = _extract_xy_from_tile_name(current_tile_name)
 
     mnt_tif = indice_tif_dir(output_dir, "MNT")
     mnt_tif.mkdir(parents=True, exist_ok=True)
 
-    output_name = f"LHD_FXX_{x}_{y}_MNT_A_0M50_LAMB93_IGN69.tif"
+    from .rvt_naming import jeton_resolution
+    output_name = f"LHD_FXX_{x}_{y}_MNT_A_{jeton_resolution(mnt_resolution)}_LAMB93_IGN69.tif"
     out_path = mnt_tif / output_name
 
     if not temp_mnt_path.exists():
@@ -287,6 +289,7 @@ def copy_final_products_to_results(
     log: LogFn = lambda _: None,
     cancel_check: CancelCheckFn | None = None,
     name_suffix: str = "",
+    mnt_resolution: float = 0.5,
 ) -> Dict[str, Any]:
     x, y = _extract_xy_from_tile_name(current_tile_name)
 
@@ -299,7 +302,7 @@ def copy_final_products_to_results(
     source_files_uncropped: Dict[str, str] = {}
     for product in all_products:
         uncropped, cropped = get_rvt_source_and_dest_filenames(
-            product, current_tile_name, x, y, rvt_params, name_suffix=name_suffix
+            product, current_tile_name, x, y, rvt_params, name_suffix=name_suffix, mnt_resolution=mnt_resolution
         )
         source_files_uncropped[product] = uncropped
         source_files_cropped[product] = cropped

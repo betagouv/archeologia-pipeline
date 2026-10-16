@@ -138,6 +138,7 @@ class IgnOrLocalRunner:
             current_tile_name=tile_name,
             products=products_cfg,
             rvt_params=rvt_params,
+            mnt_resolution=mnt_resolution,
             log=lambda m: reporter.info(m),
             cancel_check=cancel.is_cancelled,
         )
@@ -153,6 +154,7 @@ class IgnOrLocalRunner:
                 rvt_params=rvt_params,
                 log=lambda m: reporter.info(m),
                 cancel_check=cancel.is_cancelled,
+                mnt_resolution=mnt_resolution,
             )
 
         if slog:

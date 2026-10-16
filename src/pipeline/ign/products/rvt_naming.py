@@ -119,7 +119,33 @@ def opns_settings(rvt_params: Dict[str, Any]) -> Dict[str, int]:
     return reglages
 
 
+#: Section de ``rvt_params`` de chaque indice (celle qui porte son ``save_as_8bit``).
+SECTION_DU_PRODUIT: Dict[str, str] = {
+    "HS": "hs", "M_HS": "mdh", "SVF": "svf", "OPNS": "opns", "SLO": "slope", "LD": "ldo", "SLRM": "slrm",
+    "VAT": "vat", "MSTP": "mstp", "CVAT": "cvat", "PRISM": "prism", "CRIM": "crim",
+}
+
+#: Marque d'une sortie flottante (« Sauver en 8 bits » décoché). Absente en 8 bits, le défaut : les dossiers 8 bits
+#: gardent leur nom. Sans elle, 8 bits et flottant partageaient un nom de fichier, et une relance resservait l'un
+#: pour l'autre (le cache des intermédiaires ne compare que les dates).
+SUFFIXE_FLOTTANT = "_F32"
+
+
+def sortie_8bits(product_name: str, rvt_params: Dict[str, Any]) -> bool:
+    """« Sauver en 8 bits » de l'indice (vrai par défaut)."""
+    cfg = (rvt_params or {}).get(SECTION_DU_PRODUIT.get(product_name, ""), {})
+    return bool(cfg.get("save_as_8bit", True)) if isinstance(cfg, dict) else True
+
+
 def get_rvt_param_suffix(product_name: str, rvt_params: Dict[str, Any]) -> str:
+    """Suffixe de paramètres d'un indice, ``SUFFIXE_FLOTTANT`` compris quand la sortie est flottante."""
+    suffixe = _suffixe_reglages(product_name, rvt_params)
+    if product_name in SECTION_DU_PRODUIT and not sortie_8bits(product_name, rvt_params):
+        suffixe += SUFFIXE_FLOTTANT
+    return suffixe
+
+
+def _suffixe_reglages(product_name: str, rvt_params: Dict[str, Any]) -> str:
     """
     Génère le suffixe de paramètres pour un produit RVT donné.
     

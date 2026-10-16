@@ -180,7 +180,8 @@ class TestCvatNaming:
     def test_no_suffix(self):
         assert get_rvt_param_suffix("CVAT", {}) == ""
         assert get_rvt_folder_name("CVAT", {}) == "CVAT"
-        assert get_rvt_folder_name("CVAT", {"cvat": {"save_as_8bit": False}}) == "CVAT"
+        # Flottant : marqué, pour ne jamais partager un nom avec le 8 bits (relance resservie sinon).
+        assert get_rvt_folder_name("CVAT", {"cvat": {"save_as_8bit": False}}) == "CVAT_F32"
 
     def test_temp_filename(self):
         assert get_rvt_temp_filename("CVAT", TILE, {}) == f"{TILE}_CVAT.tif"

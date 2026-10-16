@@ -272,8 +272,6 @@ def test_exageration_du_mstp_sans_effet_mesurable(calcul):
     assert np.median(d) < 1e-4 and d.mean() < 5e-3
 
 
-@pytest.mark.xfail(strict=True, reason="DÉFAUT : save_as_8bit n'est ni dans le nom de l'intermédiaire ni dans la "
-                                       "signature du cache : décocher « 8 bits » et relancer resservit le 8 bits")
 @pytest.mark.parametrize("produit,section", [("HS", "hs"), ("SLO", "slope"), ("MSTP", "mstp"), ("CRIM", "crim")])
 def test_relance_apres_bascule_8_bits(calcul, tmp_path, produit, section):
     d = tmp_path / "meme_dossier"
@@ -350,3 +348,15 @@ def test_nom_du_mnt_publie_ne_fige_pas_la_resolution():
     from pipeline.ign.products.rvt_naming import get_rvt_source_and_dest_filenames
     _, dest = get_rvt_source_and_dest_filenames("MNT", "T", "0816", "6333", {})
     assert "0M50" not in dest
+
+
+@pytest.mark.parametrize("produit", ["HS", "M_HS", "SVF", "OPNS", "SLO", "LD", "SLRM", "VAT", "MSTP", "CVAT", "PRISM",
+                                     "CRIM"])
+def test_sortie_flottante_dans_le_nom_8_bits_inchange(produit):
+    """Le 8 bits (défaut) garde son nom ; le flottant prend _F32 : les deux ne se resservent jamais l'un l'autre."""
+    from pipeline.ign.products.rvt_naming import SECTION_DU_PRODUIT, get_rvt_folder_name
+    defauts = _defauts()
+    huit = get_rvt_folder_name(produit, defauts)
+    defauts[SECTION_DU_PRODUIT[produit]]["save_as_8bit"] = False
+    assert get_rvt_folder_name(produit, defauts) == huit + "_F32"
+    assert "_F32" not in huit

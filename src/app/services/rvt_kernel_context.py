@@ -258,3 +258,62 @@ def mstp_scale_errors(
                 f"réglage. Réduisez le pas à ≤ {hi - lo} px."
             )
     return messages
+
+
+#: Réglages contrôlés avant le lancement contre les bornes du moteur (moteur_indices.BORNES) :
+#: (produit, section, clé, libellé à l'étape 2, flottant ?). Hors bornes, le moteur refuse et la dalle ENTIÈRE échoue
+#: (aucun de ses produits n'est publié), après le téléchargement et le MNT. Les rayons du SVF et de l'OPNS n'y sont
+#: pas : ils sont ramenés dans leurs bornes, avec une ligne de journal (rvt_naming._horizon_settings).
+_REGLAGES_BORNES = (
+    ("HS", "hs", "sun_azimuth", "Azimut solaire", False),
+    ("HS", "hs", "sun_elevation", "Élévation solaire", False),
+    ("M_HS", "mdh", "sun_elevation", "Élévation solaire", False),
+    ("LD", "ldo", "angular_res", "Résolution angulaire", False),
+    ("LD", "ldo", "min_radius", "Rayon min", False),
+    ("LD", "ldo", "max_radius", "Rayon max", False),
+    ("LD", "ldo", "observer_h", "Hauteur observateur", True),
+    ("SLRM", "slrm", "radius", "Rayon", False),
+    ("MSTP", "mstp", "lightness", "Luminosité", True),
+)
+
+
+def _nombre(value, flottant: bool):
+    try:
+        v = float(str(value).replace(",", "."))
+    except (TypeError, ValueError):
+        return None
+    return v if flottant else int(v)
+
+
+def bornes_errors(products: Optional[Mapping], rvt_params: Optional[Mapping]) -> List[str]:
+    """Réglages hors des bornes du moteur, et rayon min du LD hors de [1 ; rayon max] : bloquant avant le lancement.
+
+    Lecture des valeurs comme indices.py (virgule française, entier tronqué) ; une clé absente prend le défaut du
+    pipeline, toujours dans les bornes. Le nombre de directions du M-HS n'est contrôlé qu'en sortie flottante, la
+    seule où il compte (le 8 bits compose trois éclairages fixes).
+    """
+    try:
+        from ...pipeline.ign.products.moteur_indices import BORNES
+    except ImportError:  # pragma: no cover - tests (src/ sur le chemin)
+        from pipeline.ign.products.moteur_indices import BORNES
+    messages: List[str] = []
+    reglages = list(_REGLAGES_BORNES)
+    if _requested(products, "M_HS") and not _section(rvt_params, "mdh").get("save_as_8bit", True):
+        reglages.append(("M_HS", "mdh", "num_directions", "Nombre de directions", False))
+    for produit, section, cle, libelle, flottant in reglages:
+        if not _requested(products, produit) or cle not in _section(rvt_params, section):
+            continue
+        v = _nombre(_section(rvt_params, section)[cle], flottant)
+        lo, hi = BORNES[produit][cle]
+        if v is None or (cle == "observer_h" and v <= 0):   # 0 : remplacé par 1,7 au calcul, avec une ligne de journal
+            continue
+        if not lo <= v <= hi:
+            messages.append(f"{produit.replace('_', '-')} / « {libelle} » : {v:g} hors des bornes du calcul "
+                            f"({lo:g} à {hi:g}) — la dalle échouerait.")
+    if _requested(products, "LD"):
+        ld = _section(rvt_params, "ldo")
+        rmin, rmax = _nombre(ld.get("min_radius", 10), False), _nombre(ld.get("max_radius", 20), False)
+        if rmin is not None and rmax is not None and not 1 <= rmin <= rmax:
+            messages.append(f"LD / « Rayon min » : {rmin} px — il doit valoir au moins 1 et au plus le rayon max "
+                            f"({rmax} px) ; sinon l'image ne porte aucune valeur.")
+    return messages

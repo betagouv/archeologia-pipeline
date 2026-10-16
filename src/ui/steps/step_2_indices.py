@@ -438,7 +438,8 @@ class IndicesPage(QWidget):
         ]), "HS")
 
         # — M-HS (mdh) —
-        mdh_dirs = self._mk_spin(1, 360, 16)
+        # Bornes des spins = celles du moteur (moteur_indices.BORNES) : au-delà, la dalle échouait au calcul.
+        mdh_dirs = self._mk_spin(2, 64, 16)
         mdh_sun = self._mk_spin(0, 90, 35)
         mdh_ve = self._mk_spin(1, 100, 1)
         mdh_8 = self._mk_check()
@@ -537,10 +538,13 @@ class IndicesPage(QWidget):
         ]), "SLO")
 
         # — LD (ldo) —
-        ld_ang = self._mk_spin(1, 360, 15)
-        ld_rmin = self._mk_spin(0, 100000, 10)
-        ld_rmax = self._mk_spin(0, 100000, 20)
-        ld_obs = self._mk_dspin(0.0, 10000.0, 1.7)
+        ld_ang = self._mk_spin(4, 32, 15)
+        ld_rmin = self._mk_spin(1, 100, 10)   # 0 : division par une distance nulle
+        ld_rmax = self._mk_spin(1, 100, 20)
+        ld_obs = self._mk_dspin(0.5, 20.0, 1.7)
+        # rayon min ≤ rayon max : sinon aucune distance, image sans valeur (même verrou que les coupes du CRIM)
+        ld_rmin.valueChanged.connect(lambda v, hi=ld_rmax: hi.setMinimum(v))
+        ld_rmax.valueChanged.connect(lambda v, lo=ld_rmin: lo.setMaximum(v))
         ld_ve = self._mk_spin(1, 100, 1)
         ld_8 = self._mk_check()
         self._reg(("rvt_params", "ldo"), "angular_res", ld_ang, "int", 15)
@@ -563,7 +567,7 @@ class IndicesPage(QWidget):
         ]), "LD")
 
         # — SLRM (slrm) —
-        slrm_radius = self._mk_spin(1, 100000, 20)
+        slrm_radius = self._mk_spin(10, 50, 20)
         slrm_ve = self._mk_spin(1, 100, 1)
         slrm_8 = self._mk_check()
         self._reg(("rvt_params", "slrm"), "radius", slrm_radius, "int", 20)

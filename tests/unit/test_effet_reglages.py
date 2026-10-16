@@ -249,11 +249,33 @@ def test_bruit_faible_agit_des_15_px(calcul):
     assert not np.array_equal(np.nan_to_num(ref), np.nan_to_num(a))
 
 
-@pytest.mark.xfail(strict=True, reason="DÉFAUT : rayon min du LD à 0 (permis par l'interface et les bornes) : "
-                                       "division par une distance nulle, image saturée")
-def test_ld_rayon_min_nul(calcul):
-    a, _, _ = calcul("LD", {"ldo": {"min_radius": 0, "save_as_8bit": False}}, _bosses)
-    assert np.isfinite(a).mean() > 0.9 and np.nanstd(a) > 0
+@pytest.mark.parametrize("rmin,rmax", [(0, 20), (30, 20)])
+def test_ld_rayon_min_hors_de_1_au_rayon_max_refuse(calcul, rmin, rmax):
+    """0 px : division par une distance nulle ; min > max : aucune distance. Les deux donnaient une image sans aucune
+    valeur finie, sans erreur : refusés au calcul et, plus tôt, avant le lancement (bornes_errors)."""
+    from app.services.rvt_kernel_context import bornes_errors
+    with pytest.raises(ValueError, match="min_radius"):
+        calcul("LD", {"ldo": {"min_radius": rmin, "max_radius": rmax}}, _bosses)
+    assert any("Rayon min" in m for m in bornes_errors({"LD": True}, {"ldo": {"min_radius": rmin, "max_radius": rmax}}))
+
+
+@pytest.mark.parametrize("section,cle,valeur,produit", [
+    ("ldo", "angular_res", 2, "LD"), ("ldo", "max_radius", 150, "LD"), ("ldo", "observer_h", 0.2, "LD"),
+    ("slrm", "radius", 80, "SLRM"), ("mstp", "lightness", 6.0, "MSTP")])
+def test_reglage_hors_bornes_refuse_avant_le_lancement(section, cle, valeur, produit):
+    from app.services.rvt_kernel_context import bornes_errors
+    assert bornes_errors({produit: True}, {section: {cle: valeur}})
+    assert not bornes_errors({produit: False}, {section: {cle: valeur}})   # produit non coché : rien à dire
+
+
+def test_reglages_par_defaut_dans_les_bornes():
+    from app.services.rvt_kernel_context import bornes_errors
+    tous = {p: True for p in ("HS", "M_HS", "LD", "SLRM", "MSTP")}
+    defauts = _defauts()
+    assert bornes_errors(tous, defauts) == []
+    defauts["mdh"]["save_as_8bit"] = False
+    defauts["mdh"]["num_directions"] = 100
+    assert bornes_errors(tous, defauts)   # en flottant seulement, les directions du M-HS comptent
 
 
 def test_exageration_du_mstp_sans_effet_mesurable(calcul):
@@ -324,8 +346,6 @@ def test_replis_du_pipeline_egaux_aux_defauts_de_l_interface(calcul):
     assert get_rvt_param_suffix("MSTP", params) == get_rvt_param_suffix("MSTP", _defauts())
 
 
-@pytest.mark.xfail(strict=True, reason="BORNES : l'interface permet des valeurs que le moteur refuse (dalle en "
-                                       "échec au calcul) : M-HS directions, LD résolution/rayons/hauteur, SLRM rayon")
 def test_bornes_de_l_interface_dans_celles_du_moteur():
     hors = []
     for (sec, cle), (_, widget) in _reg_ui().items():

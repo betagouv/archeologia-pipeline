@@ -249,6 +249,9 @@ def calculer_ld(c: Couches, out: Path, *, angular_res: int, min_radius: int, max
     """rvt_local_dom.py, par ``dominance_locale``."""
     _verifier("LD", angular_res=angular_res, min_radius=min_radius, max_radius=max_radius, observer_h=observer_h,
               ve_factor=ve)
+    if not 1 <= int(min_radius) <= int(max_radius):
+        # rvt divise par la distance (0 px) ou n'a aucune distance (min > max) : image sans aucune valeur finie.
+        raise ValueError(f"LD : min_radius={min_radius} doit valoir de 1 à max_radius={max_radius}")
     arr = dominance_locale(c.brut(), min_rad=int(min_radius), max_rad=int(max_radius), rad_inc=1,
                            angular_res=int(angular_res), observer_height=float(observer_h), ve_factor=float(ve),
                            no_data=c.no_data)

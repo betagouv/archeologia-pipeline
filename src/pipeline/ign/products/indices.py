@@ -10,7 +10,7 @@ from .crim import compute_crim
 from .cvat import compute_cvat
 from .qgis_processing import run_qgis_algorithm
 from .results import needs_refresh
-from .rvt_naming import get_rvt_temp_filename, opns_settings, svf_settings
+from .rvt_naming import get_rvt_temp_filename, opns_settings, slope_unit, svf_settings
 from ...tilespec import reclass_rvt_nodata
 from ...types import LogFn, format_params_line
 
@@ -286,7 +286,7 @@ def create_visualization_products(
 
     if products.get("SLO", False):
         slope = (rvt_params or {}).get("slope", {})
-        unit = _as_int(slope.get("unit", 0), 0)
+        unit = slope_unit(rvt_params)   # 0 degrés, 2 pourcentage (l'ancien 1 est relu comme un pourcentage)
         ve_factor = _as_int(slope.get("ve_factor", 1), 1)
         save_as_8bit = _as_bool(slope.get("save_as_8bit", True), True)
         out = temp_dir / get_rvt_temp_filename("SLO", current_tile_name, rvt_params)
@@ -294,9 +294,7 @@ def create_visualization_products(
             moteur = moteur_indices.par_le_moteur("SLO")
             log(format_params_line("RVT/SLO", {
                 "tile": current_tile_name,
-                # Ce que rvt:rvt_slope calcule réellement (enum degree / radian / percent) : l'interface dit
-                # « Pourcentage » pour 1, qui donne des radians — reproduit tel quel, signalé à l'utilisateur.
-                "unit": moteur_indices.UNITES_PENTE[unit] if 0 <= unit < 3 else unit,
+                "unit": moteur_indices.UNITES_PENTE[unit],
                 "ve_factor": ve_factor,
                 "save_as_8bit": save_as_8bit,
                 "moteur": "interne" if moteur else "processing",

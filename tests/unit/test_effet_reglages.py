@@ -148,11 +148,20 @@ def test_pente_en_degres_et_exageration(calcul):
                                                     abs=1e-3)
 
 
-@pytest.mark.xfail(strict=True, reason="DÉFAUT : l'interface envoie 1 pour « Pourcentage », l'enum de rvt_slope "
-                                       "est (degree, radian, percent) : la pente sort en radians")
-def test_pente_en_pourcentage(calcul):
-    a, _, _ = calcul("SLO", {"slope": {"unit": 1, "save_as_8bit": False}}, _plan)
+@pytest.mark.parametrize("code", [2, 1], ids=["pourcentage", "ancien_code_1"])
+def test_pente_en_pourcentage(calcul, code):
+    """2 = « percent » de rvt_slope ; 1 est ce qu'envoyait « Pourcentage » avant la correction (des radians) : relu
+    comme un pourcentage, et rangé sous le même nom que 2, jamais sous l'ancien dossier _U1 (des radians)."""
+    a, nom, _ = calcul("SLO", {"slope": {"unit": code, "save_as_8bit": False}}, _plan)
     assert np.nanmedian(_coeur(a)) == pytest.approx(100 * math.tan(math.radians(PENTE)), abs=1e-2)
+    assert "_U2_" in nom
+
+
+def test_pente_en_pourcentage_8_bits_etiree_comme_en_degres(calcul):
+    """L'étirement 8 bits de rvt va de 0 à 51 (degrés) : en pourcentage, il va de 0 à tan 51° = 123,49 %."""
+    a, _, _ = calcul("SLO", {"slope": {"unit": 2}}, _plan)
+    pct = 100 * math.tan(math.radians(PENTE))
+    assert np.nanmedian(_coeur(a)) == pytest.approx(255 * (1 - pct / 123.49), abs=1.0)
 
 
 def test_luminosite_du_mstp_suit_sa_formule(calcul):

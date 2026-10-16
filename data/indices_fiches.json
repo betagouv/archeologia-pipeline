@@ -266,7 +266,7 @@
         "cle": "slope.save_as_8bit",
         "label": "Sortie 8 bits",
         "defaut": "activé",
-        "sens": "Étirement linéaire **inversé** de 0 à 51° : le plat sort blanc, le pentu noir, conformément à la convention RVT. Décocher conserve la pente en degrés, mesurable."
+        "sens": "Étirement linéaire **inversé** de 0 à 51° (de 0 à 123 % en pourcentage, la même pente) : le plat sort blanc, le pentu noir, conformément à la convention RVT. Décocher conserve la pente mesurable, en degrés ou en pourcentage."
       }
     ],
     "references": [

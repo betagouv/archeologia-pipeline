@@ -35,6 +35,7 @@ from qgis.PyQt.QtWidgets import (
     QWidget,
 )
 
+from ...pipeline.ign.products.rvt_naming import PENTE_POURCENT, slope_unit as unite_pente
 from ...app.services.rvt_kernel_context import (
     mstp_scale_errors,
     tile_margin_px,
@@ -522,7 +523,7 @@ class IndicesPage(QWidget):
         # — Slope (slope) —
         slope_unit = QComboBox()
         slope_unit.addItem("Degrés", 0)
-        slope_unit.addItem("Pourcentage", 1)
+        slope_unit.addItem("Pourcentage", PENTE_POURCENT)   # code « percent » de rvt (1 = radians)
         slope_unit.currentIndexChanged.connect(self._on_changed)
         slope_ve = self._mk_spin(1, 100, 1)
         slope_8 = self._mk_check()
@@ -1156,6 +1157,8 @@ class IndicesPage(QWidget):
                 if container is None:
                     break
             raw = container.get(key, default) if isinstance(container, dict) else default
+            if (section, key) == (("rvt_params", "slope"), "unit"):
+                raw = unite_pente({"slope": {"unit": raw}})   # l'ancien 1 (« Pourcentage ») devient 2
             self._apply_field(widget, kind, raw, default)
 
     def _collect_advanced(self, config: dict) -> None:

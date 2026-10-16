@@ -305,7 +305,8 @@ def decrire_reglages(section: str, valeurs: Optional[Mapping[str, Any]]) -> str:
             m.append("ouverture négative, les creux" if int(g("opns_type", 0) or 0) == 1 else "ouverture positive, les saillies")
         m += [f"rayon {_dec(g('radius', 10), 0)} px", f"{_nb(int(g('num_directions', 16)))} directions", _bruit(g("noise_remove", 0))]
     elif section == "slope":
-        m.append("en pourcentage" if int(g("unit", 0) or 0) == 1 else "en degrés")
+        # 2 = pourcentage ; 1 est ce qu'envoyait « Pourcentage » avant la 0.16.0, relu comme tel (rvt_naming.slope_unit)
+        m.append("en pourcentage" if int(g("unit", 0) or 0) in (1, 2) else "en degrés")
     elif section == "ldo":
         m += [f"rayon de {_dec(g('min_radius', 10), 0)} à {_dec(g('max_radius', 20), 0)} px",
               f"résolution angulaire {_dec(g('angular_res', 15), 0)}°",

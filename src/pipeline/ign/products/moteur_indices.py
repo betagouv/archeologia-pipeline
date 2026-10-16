@@ -104,8 +104,12 @@ def _rvt():
 # dernier consommateur si les grands rasters doivent aussi partager.
 PARTAGE_MAX_PX = 2801 * 2801
 
-#: Unités de pente de rvt:rvt_slope, dans l'ordre de son enum UNIT (l'interface envoie 0 ou 1).
+#: Unités de pente de rvt:rvt_slope, dans l'ordre de son enum UNIT (l'interface envoie 0 ou 2).
 UNITES_PENTE = ("degree", "radian", "percent")
+
+#: Haut de l'étirement 8 bits d'une pente en pourcentage : tan(51°), soit l'étirement 0–51° de rvt (slp_bytscl, pensé
+#: pour des degrés) exprimé en pourcentage. Sans lui, tout ce qui dépasse 51 % (≈ 27°) sortirait noir.
+POURCENT_8BITS_MAX = 123.49
 
 
 class Couches:
@@ -229,11 +233,12 @@ def _ecrire(c: Couches, out: Path, arr, e_type: int) -> None:
     os.replace(tmp, out)
 
 
-def _publier(c: Couches, out: Path, arr, huit_bits: bool, visualisation: str) -> None:
-    """Sortie d'un algorithme rvt:* : float_to_8bit puis Byte, ou le flottant brut en Float32."""
+def _publier(c: Couches, out: Path, arr, huit_bits: bool, visualisation: str, defaut=None) -> None:
+    """Sortie d'un algorithme rvt:* : float_to_8bit puis Byte, ou le flottant brut en Float32. ``defaut`` : un
+    DefaultValues réglé autrement que celui de rvt (étirement de la pente en pourcentage)."""
     _, _, default, _ = _rvt()
     if huit_bits:
-        _ecrire(c, out, default.DefaultValues().float_to_8bit(
+        _ecrire(c, out, (defaut or default.DefaultValues()).float_to_8bit(
             float_arr=arr, visualization=getattr(default.RVTVisualization, visualisation)), 1)
     else:
         _ecrire(c, out, arr, 6)
@@ -279,7 +284,12 @@ def calculer_opns(c: Couches, out: Path, *, negative: bool, rayon: int, directio
 def calculer_slo(c: Couches, out: Path, *, unite: int, ve: float, huit_bits: bool) -> None:
     """rvt_slope.py (``unite`` = indice de l'enum de l'algorithme, cf. UNITES_PENTE)."""
     _verifier("SLO", unit=unite, ve_factor=ve)
-    _publier(c, out, c.pente(UNITES_PENTE[int(unite)], float(ve), c.res_x, c.res_y), huit_bits, "SLOPE")
+    defaut = None
+    if UNITES_PENTE[int(unite)] == "percent":
+        _, _, default, _ = _rvt()
+        defaut = default.DefaultValues()
+        defaut.slp_bytscl = (defaut.slp_bytscl[0], defaut.slp_bytscl[1], POURCENT_8BITS_MAX)
+    _publier(c, out, c.pente(UNITES_PENTE[int(unite)], float(ve), c.res_x, c.res_y), huit_bits, "SLOPE", defaut)
 
 
 def calculer_slrm(c: Couches, out: Path, *, rayon: int, ve: float, huit_bits: bool) -> None:

@@ -82,6 +82,23 @@ def _horizon_settings(rvt_params: Dict[str, Any], section: str) -> Dict[str, int
     }
 
 
+#: Unité de pente envoyée pour « Pourcentage » : le code « percent » de l'enum UNIT de rvt:rvt_slope
+#: (degree = 0, radian = 1, percent = 2).
+PENTE_POURCENT = 2
+
+
+def slope_unit(rvt_params: Dict[str, Any]) -> int:
+    """Unité EFFECTIVE de la pente : 0 (degrés) ou 2 (pourcentage).
+
+    Jusqu'à la 0.16.0, l'option « Pourcentage » envoyait 1, le code des RADIANS : une configuration qui porte 1
+    est relue comme un pourcentage, ce que l'utilisateur avait demandé. SOURCE UNIQUE du nom de dossier et du
+    calcul (``indices.py``), comme ``svf_settings``.
+    """
+    cfg = (rvt_params or {}).get("slope") or {}
+    unite = _as_int(cfg.get("unit", 0), 0) if isinstance(cfg, dict) else 0
+    return PENTE_POURCENT if unite in (1, PENTE_POURCENT) else 0
+
+
 def svf_settings(rvt_params: Dict[str, Any]) -> Dict[str, int]:
     """Réglages effectifs du Sky-View Factor (section ``svf``)."""
     return _horizon_settings(rvt_params, "svf")
@@ -150,9 +167,8 @@ def get_rvt_param_suffix(product_name: str, rvt_params: Dict[str, Any]) -> str:
 
     elif product_name == "SLO":
         slope = rvt_params.get("slope", {})
-        unit = _as_int(slope.get("unit", 0), 0)
         ve_factor = _as_int(slope.get("ve_factor", 1), 1)
-        return f"_U{unit}_V{ve_factor}"
+        return f"_U{slope_unit(rvt_params)}_V{ve_factor}"
     
     elif product_name == "LD":
         ldo = rvt_params.get("ldo", {})

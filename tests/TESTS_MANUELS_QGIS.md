@@ -987,3 +987,10 @@ Lot 3 du chantier d'accélération (2026-10-15) : une dalle lue en entier reçoi
 - [ ] **53.2** Réactiver l'extension, refaire le même traitement dans un autre dossier → mêmes images (deux TIF au hasard, identiques dans QGIS ; la preuve au pixel est le N3, scénarios 8 et 9).
 - [ ] **53.3** Le ZIP livré contient `src/pipeline/ign/products/rvt_embarque/LICENSE` et `NOTICE` ; Aide › Installer et Glossaire citent le ZRC SAZU et l'Université de Ljubljana ; le rapport de traitement aussi (Sources).
 - [ ] **53.4 Qt6** : rejouer 53.1 sous QGIS 4.
+
+## 54. Réglages qui font ce qu'ils annoncent (audit du 2026-10-16) ⭐ P0
+
+> **Contexte** : chaque réglage de l'assistant a été changé seul et mesuré au pixel (`tests/unit/test_effet_reglages*.py`).
+> Les points ci-dessous rejouent dans QGIS les correctifs qui en sont sortis, un par paragraphe.
+
+- [ ] **54.1 Pente en pourcentage** : SLO coché, unité **Pourcentage**, sortie 8 bits → dossier `SLO_U2_V1` ; l'image ressemble à celle en degrés (plat blanc, talus noirs), elle n'est plus presque blanche. Décocher « Sauver en 8 bits », relancer dans un autre dossier → l'outil d'identification donne 36 sur une pente de 20° (pas 0,35). Une configuration d'une version précédente rouverte avec « Pourcentage » garde « Pourcentage ».

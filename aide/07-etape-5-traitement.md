@@ -26,7 +26,7 @@ Un **⚠** signale quelque chose qui n'arrête pas le traitement mais mérite d'
 
 ## À la fin
 
-La ligne du haut devient la synthèse : « Terminé en 32min 15s · aucun avertissement », en vert ; en gris pour une annulation, en rouge pour un échec avec le nombre d'avertissements et d'erreurs. Quand le moteur de détection s'arrête en cours de route, la ligne dit en rouge « ✗ Détection impossible » avec sa cause : les produits sont calculés, mais aucune détection n'a été cherchée ; le rapport et la trace du traitement le disent aussi. Voir [La détection est impossible](depannage.md#la-detection-est-impossible). Chaque phase de la frise garde sa durée mesurée.
+La ligne du haut devient la synthèse : « Terminé en 32min 15s · aucun avertissement », en vert ; en gris pour une annulation, en rouge pour un échec avec le nombre d'avertissements et d'erreurs. Quand le moteur de détection s'arrête en cours de route, la ligne dit en rouge « ✗ Détection impossible » avec sa cause : les produits sont calculés, mais pas les détections du modèle en cause (quand deux modèles sont comparés, l'autre a détecté normalement et la ligne nomme celui qui a échoué) ; le rapport et la trace du traitement le disent aussi. Voir [La détection est impossible](depannage.md#la-detection-est-impossible). Chaque phase de la frise garde sa durée mesurée.
 
 Sous la frise, le cadre **Par où commencer** : pour chaque entité, une barre des détections par niveau, du plus sûr au plus douteux, dans la couleur de la couche, avec son total. C'est la réponse à « par où commencer ? » : les **très probables** d'abord. Le même bilan est dans le journal et dans la trace du traitement.
 

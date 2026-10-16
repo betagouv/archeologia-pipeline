@@ -314,11 +314,15 @@ def _collect_shapefiles(det_dir: Path) -> List[str]:
 def moteur_detection(cv_stats: Optional[List[Dict[str, Any]]]) -> Tuple[Optional[str], str]:
     """``(cv_engine, motif)`` pour traitement.json : ``"none"`` et le motif dès
     qu'un run n'a pas pu détecter ; sinon le ou les moteurs des runs (``binaire``,
-    ``cache``, ``python``, joints par ``+``) ; ``None`` sans détection."""
+    ``cache``, ``python``, joints par ``+``) ; ``None`` sans détection. Quand un
+    autre run a détecté (comparaison A/B), chaque motif nomme son modèle."""
     stats = [s for s in (cv_stats or []) if isinstance(s, dict)]
-    motifs = [str(s.get("motif") or "") for s in stats if s.get("moteur") == "none"]
-    if motifs:
-        return "none", " ; ".join(dict.fromkeys(m for m in motifs if m))
+    echecs = [s for s in stats if s.get("moteur") == "none"]
+    if echecs:
+        partiel = len(echecs) < len(stats)
+        motifs = (f"« {s.get('modele') or s.get('model')} » : {s['motif']}" if partiel else str(s["motif"])
+                  for s in echecs if s.get("motif"))
+        return "none", " ; ".join(dict.fromkeys(motifs))
     moteurs = sorted({str(s["moteur"]) for s in stats if s.get("moteur")})
     return ("+".join(moteurs) if moteurs else None), ""
 
@@ -713,9 +717,10 @@ def finalize_pipeline(
     if outcome == "failed":
         narrator.pipeline_failed("erreur inattendue pendant le traitement", start_time=start_time)
     elif outcome == "success" and detection_impossible:
+        from .rapport_run import suite_detection_impossible
         reporter.error(
             f"✗ Détection impossible : {cv_motif or 'moteur de détection indisponible'}. "
-            "Les produits sont calculés ; aucune détection n'a été cherchée."
+            f"Les produits sont calculés ; {suite_detection_impossible(cv_stats or [])}"
         )
     elif outcome == "success" and all_tiles_failed:
         narrator.pipeline_failed("aucune dalle n'a produit de sortie", start_time=start_time)

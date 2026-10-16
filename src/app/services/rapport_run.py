@@ -413,6 +413,13 @@ def _bilan(bilan: Sequence[Mapping[str, Any]], surface_km2: Optional[float]) -> 
     )
 
 
+def suite_detection_impossible(runs: Sequence[Mapping[str, Any]]) -> str:
+    """Fin de la phrase « Détection impossible » : vraie aussi en comparaison A/B, où un autre modèle a détecté."""
+    if any(r.get("moteur") not in (None, "none") for r in runs):
+        return "les autres modèles ont détecté normalement."
+    return "aucune détection n'a été cherchée."
+
+
 def _cv_runs(runs: Sequence[Mapping[str, Any]]) -> str:
     if not runs:
         return "<p class=sous>Pas de détection automatique dans ce traitement.</p>"
@@ -493,7 +500,7 @@ def construire_html(d: DonneesRapport) -> str:
         garde = ("Ce rapport ne localise pas la zone traitée ; les produits restent dans le dossier du "
                  "traitement, à côté de ce rapport.")
     impossible = (f'<p><b class="ko">Détection impossible</b> : {_e(anonymiser(d.motif_detection))}. '
-                  "Les produits sont calculés ; aucune détection n'a été cherchée.</p>\n"
+                  f"Les produits sont calculés ; {_e(suite_detection_impossible(d.cv_runs))}</p>\n"
                   if d.motif_detection else "")
     etapes = f"<h2>Durées par étape</h2>\n{_etapes(d.etapes)}\n" if d.etapes else ""
     return f"""<!doctype html>

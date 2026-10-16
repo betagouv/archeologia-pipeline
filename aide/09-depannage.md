@@ -64,7 +64,7 @@ Une erreur de PDAL pendant le découpage ou la fusion des dalles, en particulier
 
 ## La détection est impossible
 
-Le moteur de détection est un programme livré avec l'extension. S'il manque, les vérifications de l'étape 4 le signalent et bloquent le lancement. S'il s'arrête en cours de traitement, par exemple mis en quarantaine par un antivirus à sa première exécution, aucune détection n'est cherchée : la fin du traitement le dit en rouge, avec la cause, et le rapport aussi. Les produits, eux, sont calculés.
+Le moteur de détection est un programme livré avec l'extension. S'il manque, l'état du système de l'étape 4 le signale en rouge, et un traitement lancé quand même s'arrête aussitôt sur ses vérifications. S'il s'arrête en cours de traitement, par exemple mis en quarantaine par un antivirus à sa première exécution, la fin du traitement le dit en rouge, avec la cause, et le rapport aussi. Les produits, eux, sont calculés ; seules manquent les détections du modèle en cause. Quand deux modèles sont comparés sur une même structure, l'autre détecte normalement et la ligne de fin nomme celui qui a échoué.
 
 - Un antivirus l'a mis en quarantaine : voir [Alerte antivirus à l'installation](#alerte-antivirus-a-l-installation).
 - Le fichier est endommagé, ou une mise à jour a été interrompue : réinstallez l'extension depuis le dépôt.

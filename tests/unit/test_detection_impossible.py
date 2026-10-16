@@ -108,7 +108,10 @@ class TestStats:
     def test_moteur_detection(self):
         assert moteur_detection([]) == (None, "")
         assert moteur_detection([{"moteur": "binaire"}, {"moteur": "cache"}]) == ("binaire+cache", "")
-        assert moteur_detection([{"moteur": "binaire"}, ECHEC]) == ("none", MOTIF)
+        assert moteur_detection([ECHEC]) == ("none", MOTIF)
+        # Comparaison A/B : un modèle a détecté, l'autre non → le motif nomme le modèle en échec.
+        assert moteur_detection([{"moteur": "binaire", "modele": "B"}, ECHEC]) == \
+            ("none", f"« Cratères d'obus (LD) » : {MOTIF}")
 
 
 class _Rec(NullProgressReporter):
@@ -146,6 +149,17 @@ class TestFinalisation:
         assert "terminé sans détection" in rapport and "Détection impossible" in rapport
         assert "<td>détection impossible</td>" in rapport
         assert echec_detection(tmp_path, debut) == MOTIF
+
+    def test_un_modele_sur_deux_en_echec(self, tmp_path):
+        # A/B : « aucune détection n'a été cherchée » serait faux, l'autre modèle a détecté.
+        ok, rec = self._fin(tmp_path, [dict(ECHEC, modele="B", model="b", moteur="binaire", motif="", images=3,
+                                            secondes=9.0), ECHEC])
+        assert ok is False
+        fin = [m for m in rec.errors if m.startswith("✗ Détection impossible")]
+        assert fin and "« Cratères d'obus (LD) »" in fin[0] and "les autres modèles ont détecté" in fin[0]
+        rapport = (tmp_path / "livrable" / "rapport.html").read_text(encoding="utf-8")
+        assert "aucune détection n'a été cherchée" not in rapport and "les autres modèles ont détecté" in rapport
+        assert "aucune détection n'a été cherchée" in "".join(self._fin(tmp_path / "seul", [ECHEC])[1].errors)
 
     def test_erreur_fatale_reste_une_erreur(self, tmp_path):
         ok, rec = self._fin(tmp_path, [ECHEC], outcome="failed")

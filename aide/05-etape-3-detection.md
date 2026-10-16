@@ -35,7 +35,7 @@ Quand deux modèles couvrent une entité, cochez-les tous les deux dans le menu 
 La case **Réglages avancés (seuils par entité)** déplie, sur chaque carte :
 
 - **Seuil de confiance** : les détections dont le score est sous ce seuil sont écartées. Le défaut vient du modèle, fixé à son évaluation ; il est choisi un peu en dessous du point d'équilibre entre précision et rappel, parce qu'en prospection une structure manquée ne se rattrape pas alors qu'une fausse détection s'écarte en quelques secondes sur le relief. Baisser le seuil augmente le rappel et les fausses détections ; le monter fait l'inverse.
-- **Aire minimale** des détections conservées, en mètres carrés.
+- **Aire minimale** des détections conservées, en mètres carrés. Elle ne vaut que pour cette entité, même quand un seul modèle en détecte plusieurs (parcellaire, talus et chemins creux, par exemple).
 - Pour les regroupements : distance maximale entre deux détections, nombre minimal de détections, confiance minimale pour participer au regroupement, aire minimale d'une zone, marge autour de la zone. Les enclos et les axes linéaires ont leurs propres réglages (fermeture, élongation, longueur minimale…), expliqués en infobulle.
 - Le bouton **↺** d'une carte remet cette seule entité aux valeurs du modèle.
 

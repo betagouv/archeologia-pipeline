@@ -177,6 +177,21 @@ def _cleanup_orphans(directory: Path | None, glob_pattern: str, kept_names: set[
         pass
 
 
+def _filtrer_aires_par_entite(output_dir: Path, run: Dict[str, Any], log) -> None:
+    """Aire minimale propre à chaque entité du run (après le filtre commun, à la plus petite des aires)."""
+    from ..output_paths import aires_par_entite
+    a_filtrer = [(gp, aire, ex) for gp, aire, ex in aires_par_entite(output_dir, run) if gp.exists()]
+    if not a_filtrer:
+        return
+    from ..cv.conversion_shp import _filter_gpkg_by_min_area
+    for gp, aire, exemptes in a_filtrer:
+        try:
+            _filter_gpkg_by_min_area(gpkg_paths=[str(gp)], min_area_m2=aire, exempt_layers=exemptes)
+            log(f"Computer Vision: aire minimale de l'entité {gp.stem} : {aire:g} m²")
+        except Exception as e:  # noqa: BLE001 — même tolérance que le filtre du run (runner_shapefiles)
+            log(f"Computer Vision: filtrage par aire de {gp.stem} ignoré (erreur): {e}")
+
+
 def run_existing_rvt(
     *,
     existing_rvt_dir: Path,
@@ -480,6 +495,7 @@ def run_existing_rvt(
         finally:
             if busy_large:
                 on_busy(False)
+        _filtrer_aires_par_entite(output_dir, cv_config, log)
 
     return ExistingRvtResult(
         total_images=len(jpg_files),

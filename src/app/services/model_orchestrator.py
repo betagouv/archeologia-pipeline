@@ -990,11 +990,18 @@ def resolve_runs_from_entities(
             [conf_par_classe.get(c, model.default_confidence) for c in group["classes"]]
             or [model.default_confidence]
         )
-        area_over = [
-            entity_thresholds[e]["min_area_m2"]
-            for e in reglees
-            if e in entity_thresholds and "min_area_m2" in entity_thresholds[e]
-        ]
+        # Aire minimale PAR ENTITÉ (même correction que la confiance) : celle de l'entité si elle l'a réglée, sinon
+        # le défaut du modèle. Le run garde la plus petite (filtre commun du run, runner_shapefiles), et chaque
+        # entité dont l'aire est plus grande voit son GeoPackage filtré à la sienne après le run
+        # (output_paths.aires_par_entite). L'ancien min() des seules surcharges imposait l'aire d'une entité aux
+        # autres entités du modèle (« Chemins creux » perdait des détections réglées sur « Parcellaire »).
+        aire_par_entite = {
+            e: float(entity_thresholds.get(e, {}).get("min_area_m2", model.default_min_area))
+            for e in group["entities"]
+        }
+        for e in incluses:   # entité incluse par une dérivée : réglée sur la carte de la dérivée
+            derivee = model.implied_entities[e]
+            aire_par_entite[e] = aire_par_entite.get(derivee, float(model.default_min_area))
         # Surcharges de paramètres de clustering, mappées par output_class_name
         # (ce que le pipeline applique). Une entité (dérivée, ou de base avec
         # « regrouper » coché) porte ses params ; on les rattache à la/les
@@ -1025,18 +1032,21 @@ def resolve_runs_from_entities(
                 "clustering_overrides": clustering_overrides,
                 **({"fiabilite": fiab_bloc} if fiab_bloc else {}),
                 "entities": [
-                    _entity_block(
+                    {**_entity_block(
                         eid, model,
                         sorted(group["entity_classes"][eid]),
                         label_by_id,
                         compared=len(models_per_eid.get(eid, [])) > 1,
-                    )
+                    ), "min_area_m2": aire_par_entite[eid],
+                        # sorties de regroupement : leur règle porte sa propre aire, jamais rabotées
+                        "classes_synthese": sorted(c for c in group["entity_classes"][eid]
+                                                   if c in model.cluster_defaults)}
                     for eid in sorted(group["entities"])
                 ],
                 "confidence_threshold": float(plancher_conf),
                 "confidence_per_class": {c: float(v) for c, v in sorted(conf_par_classe.items())},
                 "iou_threshold": float(model.default_iou),
-                "min_area_m2": float(min(area_over) if area_over else model.default_min_area),
+                "min_area_m2": float(min(aire_par_entite.values(), default=model.default_min_area)),
             }
         )
     return runs

@@ -5,6 +5,8 @@ Défauts connus et non corrigés : ``xfail(strict=True)``.
 """
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from app.services.model_orchestrator import EntityDef, InstalledModel, resolve_runs_from_entities
@@ -35,17 +37,30 @@ def test_seuil_de_confiance_d_une_entite_ne_touche_qu_elle():
     assert "talus_fosse" not in run["confidence_per_class"] or run["confidence_per_class"]["talus_fosse"] != 0.6
 
 
-def test_aire_min_d_une_entite_arrive_dans_le_run():
-    assert _run({"parcellaire": {"min_area_m2": 500.0}})["min_area_m2"] == 500.0
+def _bloc(run, eid):
+    return next(e for e in run["entities"] if e["id"] == eid)
 
 
-@pytest.mark.xfail(strict=True, reason="DÉFAUT : l'aire minimale est portée par le RUN (min des surcharges), puis "
-                                       "appliquée à tous ses GeoPackages (runner_shapefiles) : régler l'aire de "
-                                       "« parcellaire » efface aussi les petits « chemin creux » et « talus/fossé »")
-def test_aire_min_d_une_entite_ne_touche_qu_elle():
+def test_aire_min_d_une_entite_arrive_dans_son_bloc():
     run = _run({"parcellaire": {"min_area_m2": 500.0}})
-    par_classe = run.get("min_area_per_class") or {}
-    assert par_classe.get("parcellaire") == 500.0 and run["min_area_m2"] == 0.0
+    assert _bloc(run, "parcellaire")["min_area_m2"] == 500.0
+
+
+def test_aire_min_d_une_entite_ne_touche_qu_elle(tmp_path):
+    """Le run garde la plus petite aire de ses entités (filtre commun) ; seule l'entité réglée plus haut voit son
+    GeoPackage filtré à la sienne. Avant : min() des seules surcharges, imposé à tout le run (Chemins creux 3 → 2)."""
+    from pipeline.output_paths import aires_par_entite
+    run = _run({"parcellaire": {"min_area_m2": 500.0}})
+    assert run["min_area_m2"] == 0.0
+    assert _bloc(run, "talus_fosse")["min_area_m2"] == 0.0 and _bloc(run, "chemin_creux")["min_area_m2"] == 0.0
+    filtres = aires_par_entite(tmp_path, run)
+    assert [(gp.name, aire) for gp, aire, _ in filtres] == [("parcellaire.gpkg", 500.0)]
+
+
+def test_aire_min_commune_quand_toutes_les_entites_la_reglent():
+    from pipeline.output_paths import aires_par_entite
+    run = _run({e: {"min_area_m2": 200.0} for e in ("parcellaire", "talus_fosse", "chemin_creux")})
+    assert run["min_area_m2"] == 200.0 and aires_par_entite(Path("."), run) == []
 
 
 # ───────────────────────── regroupement (DBSCAN à hystérésis) ─────────────────────────

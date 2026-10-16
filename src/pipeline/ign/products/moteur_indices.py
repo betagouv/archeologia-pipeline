@@ -272,10 +272,12 @@ def calculer_svf(c: Couches, out: Path, *, rayon: int, directions: int, bruit: i
 
 def calculer_opns(c: Couches, out: Path, *, negative: bool, rayon: int, directions: int, bruit: int, ve: float,
                   huit_bits: bool) -> None:
-    """rvt_opns.py : type négatif = openness de −MNT, sans-donnée non remplacé avant la négation (sans partage)."""
+    """rvt_opns.py, à un écart près : en type négatif (openness de −MNT), le sans-donnée est passé en NaN AVANT la
+    négation. rvt_opns.py négative d'abord : −no_data n'est plus reconnu, et le vide compte comme un relief (faux
+    relief au bord de chaque zone sans donnée, mesuré jusqu'à 180°). Les mélanges, eux, gardent la recette de rvt."""
     _verifier("OPNS", radius=rayon, num_directions=directions, noise_remove=bruit, ve_factor=ve)
     if negative:
-        arr = c.ouverture_negative(int(rayon), int(directions), int(bruit), float(ve), c.res_x, nan_avant=False)
+        arr = c.ouverture_negative(int(rayon), int(directions), int(bruit), float(ve), c.res_x, nan_avant=True)
     else:
         arr = c.horizon(int(rayon), int(directions), int(bruit), float(ve), c.res_x, svf=False, opns=True)["opns"]
     _publier(c, out, arr, huit_bits, "NEGATIVE_OPENNESS" if negative else "POSITIVE_OPENNESS")

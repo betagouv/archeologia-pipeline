@@ -353,3 +353,36 @@ def test_sortie_flottante_dans_le_nom_8_bits_inchange(produit):
     defauts[SECTION_DU_PRODUIT[produit]]["save_as_8bit"] = False
     assert get_rvt_folder_name(produit, defauts) == huit + "_F32"
     assert "_F32" not in huit
+
+
+def _trou() -> np.ndarray:
+    """Le terrain à bosses percé d'un carré sans donnée."""
+    d = _bosses()
+    d[50:70, 50:70] = ND
+    return d
+
+
+def test_openness_negative_n_invente_pas_de_relief_au_bord_du_vide(calcul):
+    """Le vide reste vide (NaN), et le relief autour du trou est celui d'un balayage qui ignore le vide, comme
+    l'openness positive : rien n'y est inventé à partir de −no_data."""
+    from pipeline.ign.products.rvt_embarque import vis
+    a, _, _ = calcul("OPNS", {"opns": {"opns_type": 1, "save_as_8bit": False}}, _trou)
+    assert np.isnan(a[55:65, 55:65]).all()
+    dem = _trou().astype(np.float32)
+    dem[dem == ND] = np.nan
+    attendu = vis.sky_view_factor(dem=dem * -1, resolution=RES, compute_svf=False, compute_asvf=False,
+                                  compute_opns=True, svf_n_dir=16, svf_r_max=10, svf_noise=0, ve_factor=1,
+                                  no_data=ND)["opns"]
+    ok = np.isfinite(a) & np.isfinite(attendu)
+    assert np.abs(a[ok] - attendu[ok]).max() < 1e-4 and (np.isfinite(a) == np.isfinite(attendu)).all()
+
+
+def test_openness_negative_d_avant_recalculee_une_fois(calcul, tmp_path):
+    """Un intermédiaire OPNS négatif d'une version précédente (sans note de calcul) est recalculé à la relance."""
+    d = tmp_path / "meme_dossier"
+    calcul("OPNS", {"opns": {"opns_type": 1}}, _trou, dossier=d)
+    next(d.glob("*.calcul")).unlink()   # comme un intermédiaire écrit avant la correction
+    _, _, journal = calcul("OPNS", {"opns": {"opns_type": 1}}, _trou, dossier=d)
+    assert not any("réutilisé" in ligne for ligne in journal)
+    _, _, journal = calcul("OPNS", {"opns": {"opns_type": 1}}, _trou, dossier=d)
+    assert any("réutilisé" in ligne for ligne in journal)

@@ -410,7 +410,7 @@
         "cle": "opns.opns_type",
         "label": "Type d'ouverture",
         "defaut": "Positive",
-        "sens": "Positive : ce qui dépasse du voisinage. Négative : ce qui s'y enfonce. C'est le réglage qui change l'image, tous les autres ne font que l'ajuster. Un run = un type, comme dans rvt-qgis."
+        "sens": "Positive : ce qui dépasse du voisinage. Négative : ce qui s'y enfonce. C'est le réglage qui change l'image, tous les autres ne font que l'ajuster. Un run = un type, comme dans rvt-qgis. En négative, les zones sans donnée restent vides : rvt-qgis les comptait comme un relief à leur bord."
       },
       {
         "cle": "opns.radius",

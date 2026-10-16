@@ -54,7 +54,9 @@ def _as_bool(value: Any, default: bool) -> bool:
 #: ``<intermédiaire>.calcul`` porte la version ; sans elle — calculé par une version précédente, ou par Processing —
 #: l'intermédiaire est recalculé une fois (needs_refresh ne voit que les dates). Le rognage et la publication
 #: suivent par fraîcheur (results.needs_refresh).
-VERSION_CALCUL = {"MSTP": "luminosite-reelle-1", "M_HS": "elevation-reelle-1"}
+VERSION_CALCUL = {"MSTP": "luminosite-reelle-1", "M_HS": "elevation-reelle-1",
+                  # openness NÉGATIVE : sans-donnée exclu avant la négation (rvt-qgis le comptait comme un relief)
+                  "OPNS": "negative-sans-donnee-exclu-1"}
 
 
 def _note_calcul(out: Path) -> Path:
@@ -249,7 +251,8 @@ def create_visualization_products(
                 )
         save_as_8bit = _as_bool(brut.get("save_as_8bit", True), True)
         out = temp_dir / get_rvt_temp_filename("OPNS", current_tile_name, rvt_params)
-        if needs_refresh(input_path, out):
+        negative = opns["opns_type"] == 1
+        if _a_recalculer("OPNS", input_path, out) if negative else needs_refresh(input_path, out):
             moteur = moteur_indices.par_le_moteur("OPNS")
             log(format_params_line("RVT/OPNS", {
                 "tile": current_tile_name,
@@ -277,6 +280,8 @@ def create_visualization_products(
                     "VE_FACTOR": opns["ve_factor"],
                 }
                 run_qgis_algorithm("rvt:rvt_opns", params, feedback=feedback, context=context)
+            if negative:
+                _noter_calcul("OPNS", out, moteur)
         else:
             log(f"OPNS réutilisé (cache intermédiaire) : {out.name}")
         if out.exists():

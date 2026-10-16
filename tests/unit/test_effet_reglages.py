@@ -333,3 +333,11 @@ def test_bornes_de_l_interface_dans_celles_du_moteur():
         if b and widget and (widget[0] < b[0] or widget[1] > b[1]):
             hors.append((sec, cle, widget[:2], b))
     assert not hors, hors
+
+
+@pytest.mark.xfail(strict=True, reason="NOM TROMPEUR : le MNT publié s'appelle …_MNT_A_0M50_… quelle que soit la "
+                                       "résolution réglée (la fonction ne la reçoit même pas)")
+def test_nom_du_mnt_publie_ne_fige_pas_la_resolution():
+    from pipeline.ign.products.rvt_naming import get_rvt_source_and_dest_filenames
+    _, dest = get_rvt_source_and_dest_filenames("MNT", "T", "0816", "6333", {})
+    assert "0M50" not in dest

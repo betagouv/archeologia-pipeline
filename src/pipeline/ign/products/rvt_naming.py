@@ -99,6 +99,27 @@ def slope_unit(rvt_params: Dict[str, Any]) -> int:
     return PENTE_POURCENT if unite in (1, PENTE_POURCENT) else 0
 
 
+#: Défauts du MSTP : ceux de l'interface et de ConfigManager (échelle large 100/400/60, pas 223/2023/180 comme
+#: rvt : un rayon de 2 023 px dépasse de loin la marge de tuilage). Repli unique quand une clé manque, pour le nom
+#: du dossier ET le calcul ; app.services.rvt_kernel_context en garde un miroir (test de synchronisation).
+MSTP_DEFAUTS: Dict[str, float] = {
+    "local_scale_min": 3, "local_scale_max": 21, "local_scale_step": 2,
+    "meso_scale_min": 23, "meso_scale_max": 203, "meso_scale_step": 18,
+    "broad_scale_min": 100, "broad_scale_max": 400, "broad_scale_step": 60,
+    "lightness": 0.9, "ve_factor": 1,
+}
+_PAS_MSTP = ("local_scale_step", "meso_scale_step", "broad_scale_step")
+
+
+def mstp_settings(rvt_params: Dict[str, Any]) -> Dict[str, float]:
+    """Réglages EFFECTIFS du MSTP (section ``mstp``), défauts de ``MSTP_DEFAUTS`` pour une clé absente."""
+    cfg = (rvt_params or {}).get("mstp") or {}
+    if not isinstance(cfg, dict):
+        cfg = {}
+    return {k: (_as_float(cfg.get(k, d), d) if k == "lightness" else _as_int(cfg.get(k, d), int(d)))
+            for k, d in MSTP_DEFAUTS.items()}
+
+
 def svf_settings(rvt_params: Dict[str, Any]) -> Dict[str, int]:
     """Réglages effectifs du Sky-View Factor (section ``svf``)."""
     return _horizon_settings(rvt_params, "svf")
@@ -223,20 +244,15 @@ def _suffixe_reglages(product_name: str, rvt_params: Dict[str, Any]) -> str:
         return f"_T{terrain_type}_B{blend_combination}"
 
     elif product_name == "MSTP":
-        mstp = rvt_params.get("mstp", {})
-        l_min = _as_int(mstp.get("local_scale_min", 3), 3)
-        l_max = _as_int(mstp.get("local_scale_max", 21), 21)
-        m_min = _as_int(mstp.get("meso_scale_min", 23), 23)
-        m_max = _as_int(mstp.get("meso_scale_max", 203), 203)
-        # Repli = défauts RVT, identiques à ceux d'indices.py (voir le commentaire
-        # là-bas). Les défauts du plugin (100/400/60) sont écrits dans la config,
-        # pas ici : toucher l'un sans l'autre décorrèle nom de dossier et calcul.
-        b_min = _as_int(mstp.get("broad_scale_min", 223), 223)
-        b_max = _as_int(mstp.get("broad_scale_max", 2023), 2023)
-        lightness = _as_float(mstp.get("lightness", 0.9), 0.9)
+        m = mstp_settings(rvt_params)
         # Pas de _ dans le token lightness (cohérent avec observer_h du LD).
-        lightness_str = str(lightness).replace(".", "p")
-        return f"_L{l_min}-{l_max}_M{m_min}-{m_max}_B{b_min}-{b_max}_Li{lightness_str}"
+        lightness_str = str(m["lightness"]).replace(".", "p")
+        suffixe = (f"_L{m['local_scale_min']}-{m['local_scale_max']}_M{m['meso_scale_min']}-{m['meso_scale_max']}"
+                   f"_B{m['broad_scale_min']}-{m['broad_scale_max']}_Li{lightness_str}")
+        # Les pas changent l'image : ils vont au nom dès qu'ils quittent les défauts (aux défauts, le nom d'avant).
+        if any(m[k] != MSTP_DEFAUTS[k] for k in _PAS_MSTP):
+            suffixe += "_P{}-{}-{}".format(*(m[k] for k in _PAS_MSTP))
+        return suffixe
 
     elif product_name == "PRISM":
         # Combinaison 1 du blender RVT. Comme pour le VAT, le préréglage de

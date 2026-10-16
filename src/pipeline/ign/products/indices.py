@@ -10,7 +10,7 @@ from .crim import compute_crim
 from .cvat import compute_cvat
 from .qgis_processing import run_qgis_algorithm
 from .results import needs_refresh
-from .rvt_naming import get_rvt_temp_filename, opns_settings, slope_unit, svf_settings
+from .rvt_naming import get_rvt_temp_filename, mstp_settings, opns_settings, slope_unit, svf_settings
 from ...tilespec import reclass_rvt_nodata
 from ...types import LogFn, format_params_line
 
@@ -451,22 +451,13 @@ def create_visualization_products(
 
     if products.get("MSTP", False):
         mstp = (rvt_params or {}).get("mstp", {})
-        local_scale_min = _as_int(mstp.get("local_scale_min", 3), 3)
-        local_scale_max = _as_int(mstp.get("local_scale_max", 21), 21)
-        local_scale_step = _as_int(mstp.get("local_scale_step", 2), 2)
-        meso_scale_min = _as_int(mstp.get("meso_scale_min", 23), 23)
-        meso_scale_max = _as_int(mstp.get("meso_scale_max", 203), 203)
-        meso_scale_step = _as_int(mstp.get("meso_scale_step", 18), 18)
-        # Ces repli 223/2023/180 sont les défauts de RVT (clé absente), PAS les
-        # défauts du plugin (100/400/60, écrits par config_manager et l'UI). Ne
-        # pas les « aligner » : rvt_naming.py replie sur les mêmes valeurs, et
-        # les faire diverger ferait nommer le dossier autrement qu'il n'est
-        # calculé (cf. l'invariant « même rvt_params des deux côtés »).
-        broad_scale_min = _as_int(mstp.get("broad_scale_min", 223), 223)
-        broad_scale_max = _as_int(mstp.get("broad_scale_max", 2023), 2023)
-        broad_scale_step = _as_int(mstp.get("broad_scale_step", 180), 180)
-        lightness = _as_float(mstp.get("lightness", 0.9), 0.9)
-        ve_factor = _as_int(mstp.get("ve_factor", 1), 1)
+        m = mstp_settings(rvt_params)   # même source que le nom du dossier (rvt_naming)
+        local_scale_min, local_scale_max, local_scale_step = (
+            m["local_scale_min"], m["local_scale_max"], m["local_scale_step"])
+        meso_scale_min, meso_scale_max, meso_scale_step = m["meso_scale_min"], m["meso_scale_max"], m["meso_scale_step"]
+        broad_scale_min, broad_scale_max, broad_scale_step = (
+            m["broad_scale_min"], m["broad_scale_max"], m["broad_scale_step"])
+        lightness, ve_factor = m["lightness"], m["ve_factor"]
         save_as_8bit = _as_bool(mstp.get("save_as_8bit", True), True)
         out = temp_dir / get_rvt_temp_filename("MSTP", current_tile_name, rvt_params)
         if _a_recalculer("MSTP", input_path, out):

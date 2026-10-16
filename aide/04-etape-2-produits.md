@@ -48,7 +48,7 @@ Les réglages qui comptent le plus :
 - **M-HS** sauvé en 8 bits : l'image compose trois éclairages, dans le rouge, le vert et le bleu ; le nombre de directions ne concerne que le fichier flottant et n'est affiché que si **Sauver en 8 bits** est décoché. L'élévation et l'exagération s'appliquent dans les deux cas.
 - **Sauver en 8 bits** : coché, l'image est étirée en 256 niveaux, légère et prête pour la détection ; décoché, elle garde les valeurs mesurables (degrés, angles…) dans un dossier à part dont le nom finit par `_F32` ; pour les compositions (VAT, PRISM, CVAT), le flottant garde la composition en valeurs de 0 à 1, sans gain à l'affichage. Passer de l'un à l'autre et relancer dans le même dossier de sortie calcule bien l'autre version.
 - **Pente (SLO)** en **Pourcentage** : 100 % vaut 45°. En 8 bits, l'image est étirée de 0 à 123 %, soit de 0 à 51° comme en degrés : le plat sort blanc, le pentu noir. Une pente « en pourcentage » calculée par une version précédente contenait en réalité des radians (image presque blanche) ; elle reste dans son dossier `SLO_U1_…`, à supprimer. Les nouvelles vont dans `SLO_U2_…`.
-- **MSTP** : la luminosité s'applique telle que réglée ; elle vaut 0,9 par défaut, comme dans la fenêtre de rvt-qgis.
+- **MSTP** : la luminosité s'applique telle que réglée ; elle vaut 0,9 par défaut, comme dans la fenêtre de rvt-qgis. Les trois pas d'échelle changent l'image : dès qu'ils quittent leurs valeurs par défaut, ils s'ajoutent au nom du dossier (`…_P4-18-60`), et une relance avec d'autres pas recalcule le MSTP.
 
 ## Tuilage et marge
 

@@ -71,9 +71,9 @@ def _run(tmp_path, monkeypatch, *, products, rvt_params, n_files=1, warning_log=
     return logs, warnings, errors
 
 
-def test_small_raster_with_default_mstp_is_reported_as_a_warning(tmp_path, monkeypatch):
+def test_small_raster_with_rvt_default_mstp_is_reported_as_a_warning(tmp_path, monkeypatch):
     _logs, warnings, errors = _run(
-        tmp_path, monkeypatch, products={"MSTP": True}, rvt_params={}
+        tmp_path, monkeypatch, products={"MSTP": True}, rvt_params={"mstp": {"broad_scale_max": 2023}}
     )
 
     assert any("MSTP" in w and "2023" in w for w in warnings)
@@ -83,7 +83,7 @@ def test_small_raster_with_default_mstp_is_reported_as_a_warning(tmp_path, monke
 def test_warning_carries_no_glyph_of_its_own(tmp_path, monkeypatch):
     # Le journal préfixe déjà « ⚠ » : un « ⚠️ » dans le texte le doublerait.
     _logs, warnings, _errors = _run(
-        tmp_path, monkeypatch, products={"MSTP": True}, rvt_params={}
+        tmp_path, monkeypatch, products={"MSTP": True}, rvt_params={"mstp": {"broad_scale_max": 2023}}
     )
 
     assert warnings and not warnings[0].startswith("⚠")

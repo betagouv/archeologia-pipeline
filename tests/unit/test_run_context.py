@@ -716,8 +716,8 @@ class TestValidateRvtKernelContext:
             mode, tmp_path, processing=proc, rvt_params=rvt_params
         )
 
-    def test_default_mstp_kernel_exceeds_the_tile_margin(self, tmp_path: Path):
-        ctx = self._mstp_ctx("ign_laz", tmp_path, {})
+    def test_rvt_default_mstp_kernel_exceeds_the_tile_margin(self, tmp_path: Path):
+        ctx = self._mstp_ctx("ign_laz", tmp_path, {"mstp": {"broad_scale_max": 2023}})
         errors, warnings = validate_run_context(ctx)
         assert errors == []
         assert any("MSTP" in w and "coutures" in w for w in warnings)
@@ -728,7 +728,7 @@ class TestValidateRvtKernelContext:
         assert not any("MSTP" in w for w in warnings)
 
     def test_local_laz_is_checked_too(self, tmp_path: Path):
-        ctx = self._mstp_ctx("local_laz", tmp_path, {})
+        ctx = self._mstp_ctx("local_laz", tmp_path, {"mstp": {"broad_scale_max": 2023}})
         _errors, warnings = validate_run_context(ctx)
         assert any("MSTP" in w for w in warnings)
 
@@ -740,9 +740,9 @@ class TestValidateRvtKernelContext:
         assert not any("coutures" in w for w in warnings)
 
     def test_scale_combination_rejected_by_rvt_is_a_blocking_error(self, tmp_path: Path):
-        # 400 - 223 = 177 < 180 (pas par défaut) → rvt.vis.mstp lève, la dalle
+        # 130 - 100 = 30 < 60 (pas par défaut) → rvt.vis.mstp lève, la dalle
         # planterait après le téléchargement. On refuse avant de démarrer.
-        ctx = self._mstp_ctx("ign_laz", tmp_path, {"mstp": {"broad_scale_max": 400}})
+        ctx = self._mstp_ctx("ign_laz", tmp_path, {"mstp": {"broad_scale_max": 130}})
         errors, _warnings = validate_run_context(ctx)
         assert any("MSTP" in e and "pas" in e for e in errors)
 

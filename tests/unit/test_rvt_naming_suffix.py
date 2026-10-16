@@ -116,7 +116,7 @@ class TestRvtFolderName:
             "SLO": "SLO_U0_V1",
             "SLRM": "SLRM_R20_V1",
             "VAT": "VAT_T0_B0",
-            "MSTP": "MSTP_L3-21_M23-203_B223-2023_Li0p9",
+            "MSTP": "MSTP_L3-21_M23-203_B100-400_Li0p9",
             # Combinaison 1 du blender : seul le préréglage de terrain
             # distingue deux rendus, d'où le suffixe réduit à _T<terrain>.
             "PRISM": "PRISM_T0",
@@ -150,28 +150,28 @@ class TestMstpNaming:
     """MSTP : suffixe multi-échelle (local/meso/broad + lightness)."""
 
     def test_default_suffix(self):
-        # dict vide ⇒ valeurs par défaut RVT (3-21 / 23-203 / 223-2023, lightness 0.9, celle de la fenêtre de rvt-qgis).
-        assert get_rvt_folder_name("MSTP", {}) == "MSTP_L3-21_M23-203_B223-2023_Li0p9"
+        # dict vide ⇒ défauts du plugin (3-21 / 23-203 / 100-400, lightness 0.9), ceux de l'interface.
+        assert get_rvt_folder_name("MSTP", {}) == "MSTP_L3-21_M23-203_B100-400_Li0p9"
 
     def test_temp_filename(self):
         assert get_rvt_temp_filename("MSTP", TILE, {}) == \
-            f"{TILE}_MSTP_L3-21_M23-203_B223-2023_Li0p9.tif"
+            f"{TILE}_MSTP_L3-21_M23-203_B100-400_Li0p9.tif"
 
     def test_dest_filename(self):
         assert _dest("MSTP") == \
-            "LHD_FXX_0624_6864_MSTP_L3-21_M23-203_B223-2023_Li0p9_A_LAMB93.tif"
+            "LHD_FXX_0624_6864_MSTP_L3-21_M23-203_B100-400_Li0p9_A_LAMB93.tif"
 
     def test_distinct_params_give_distinct_folders(self):
         a = get_rvt_folder_name("MSTP", {"mstp": {"local_scale_max": 21}})
         b = get_rvt_folder_name("MSTP", {"mstp": {"local_scale_max": 31}})
         assert a != b
-        assert a == "MSTP_L3-21_M23-203_B223-2023_Li0p9"
-        assert b == "MSTP_L3-31_M23-203_B223-2023_Li0p9"
+        assert a == "MSTP_L3-21_M23-203_B100-400_Li0p9"
+        assert b == "MSTP_L3-31_M23-203_B100-400_Li0p9"
 
     def test_lightness_french_comma(self):
         # La virgule française est tolérée et le point devient "p" dans le nom.
         assert get_rvt_folder_name("MSTP", {"mstp": {"lightness": "1,5"}}) == \
-            "MSTP_L3-21_M23-203_B223-2023_Li1p5"
+            "MSTP_L3-21_M23-203_B100-400_Li1p5"
 
 
 class TestCvatNaming:

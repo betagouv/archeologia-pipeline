@@ -60,7 +60,7 @@ KERNEL_PARAMS: Dict[str, KernelParam] = {
     "OPNS": KernelParam("opns", "radius", 10, "Rayon"),
     "LD": KernelParam("ldo", "max_radius", 20, "Rayon max"),
     "SLRM": KernelParam("slrm", "radius", 20, "Rayon"),
-    "MSTP": KernelParam("mstp", "broad_scale_max", 2023, "Échelle large — rayon max"),
+    "MSTP": KernelParam("mstp", "broad_scale_max", 400, "Échelle large — rayon max"),
     # VAT, CVAT, PRISM et CRIM n'ont volontairement PAS d'entrée : leurs
     # noyaux (openness, SVF) sont figés aux défauts RVT — rayon 10 px, soit 5 m
     # au pas de 0,5 m, très en deçà de la marge de tuilage (20 m par défaut).
@@ -68,11 +68,12 @@ KERNEL_PARAMS: Dict[str, KernelParam] = {
     # rayon du SVF ou à l'échelle large du MSTP, exposés à l'utilisateur.
 }
 
-# Bandes d'échelle MSTP : (préfixe de clé, libellé, min, max, pas) par défaut.
+# Bandes d'échelle MSTP : (préfixe de clé, libellé, min, max, pas) par défaut — miroir de
+# rvt_naming.MSTP_DEFAUTS (src/app ne l'importe pas : test de synchronisation).
 _MSTP_BANDS: Tuple[Tuple[str, str, int, int, int], ...] = (
     ("local_scale", "Échelle locale", 3, 21, 2),
     ("meso_scale", "Échelle méso", 23, 203, 18),
-    ("broad_scale", "Échelle large", 223, 2023, 180),
+    ("broad_scale", "Échelle large", 100, 400, 60),
 )
 
 

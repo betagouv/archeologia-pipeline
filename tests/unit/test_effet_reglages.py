@@ -218,15 +218,10 @@ def test_le_reglage_change_l_image(calcul, produit, section, cle, valeur):
 @pytest.mark.parametrize("produit,section,cle,valeur", REGLAGES, ids=[f"{p}.{c}={v}" for p, _, c, v in REGLAGES])
 def test_le_reglage_change_le_nom_du_fichier(calcul, produit, section, cle, valeur):
     """Sans quoi une relance dans le même dossier resservirait l'intermédiaire du réglage précédent."""
-    if (produit, cle) in DEFAUT_NOM:
-        pytest.xfail(DEFAUT_NOM[(produit, cle)])
     _, nom_ref, _ = calcul(produit, {}, _bosses)
     _, nom, _ = calcul(produit, {section: {cle: valeur}}, _bosses)
     assert nom != nom_ref
 
-
-DEFAUT_NOM = {("MSTP", k): "DÉFAUT : les pas du MSTP ne sont pas dans le nom du fichier (cache resservi à la relance)"
-              for k in ("local_scale_step", "meso_scale_step", "broad_scale_step")}
 
 
 # ───────────────────────── défauts mesurés ─────────────────────────
@@ -282,7 +277,6 @@ def test_relance_apres_bascule_8_bits(calcul, tmp_path, produit, section):
     assert a is not None and not np.allclose(a, np.round(a))   # flottant, pas des octets
 
 
-@pytest.mark.xfail(strict=True, reason="DÉFAUT : pas du MSTP absents du nom : relance resservie")
 def test_relance_apres_changement_de_pas_du_mstp(calcul, tmp_path):
     d = tmp_path / "meme_dossier"
     calcul("MSTP", {}, _bosses, dossier=d)
@@ -322,8 +316,6 @@ def test_defauts_de_l_interface_egaux_a_ceux_de_la_configuration():
         assert rvt[sec][cle] == defaut, (sec, cle)
 
 
-@pytest.mark.xfail(strict=True, reason="DÉFAUTS : replis du MSTP côté pipeline à 223/2023/180 (RVT) contre "
-                                       "100/400/60 dans l'interface et la configuration")
 def test_replis_du_pipeline_egaux_aux_defauts_de_l_interface(calcul):
     _, nom_cle_absente, _ = calcul("MSTP", {"mstp": {}}, _bosses)
     params = _defauts()

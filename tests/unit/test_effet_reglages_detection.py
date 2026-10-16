@@ -1,7 +1,7 @@
 """Effet des réglages d'entité de l'étape 3 : ce que l'orchestrateur écrit dans ``computer_vision.runs`` et ce que
 le regroupement en fait. Un réglage d'entité ne doit agir que sur cette entité, et faire ce que dit son infobulle.
 
-Défauts connus et non corrigés : ``xfail(strict=True)``.
+Les défauts corrigés gardent ici leur test, qui échouerait s'ils revenaient.
 """
 from __future__ import annotations
 
@@ -92,14 +92,19 @@ def test_confiance_min_du_regroupement_abaissee_agit():
     assert zones["zone_crateres"][0]["nb_detect"] == 4
 
 
-@pytest.mark.xfail(strict=True, reason="DÉFAUT : « Confiance min » (infobulle : ignore les détections sous ce seuil "
-                                       "pour le regroupement) ne relève que le seuil cœur ; min_confidence_extend du "
-                                       "modèle (0,29) reste, et les détections de 0,29 au nouveau seuil s'agrègent")
-def test_confiance_min_du_regroupement_relevee_ignore_les_detections_dessous():
+def test_confiance_min_du_regroupement_relevee_releve_aussi_l_extension():
+    """Relevée de 0,40 à 0,60, « Confiance min » décale l'extension du modèle de 0,29 à 0,49 : les cratères à 0,45
+    ne s'agrègent plus (ils le faisaient tant que l'extension restait à 0,29)."""
+    from app.services.model_orchestrator import avec_extension
+    defauts = {"min_confidence": 0.40, "min_confidence_extend": 0.29}
+    surcharge = avec_extension({"min_confidence": 0.60}, defauts)
+    assert surcharge["min_confidence_extend"] == pytest.approx(0.49)
     regle = _regle_du_modele()
-    regle.update(sanitize_clustering_overrides({"min_confidence": 0.60}, rule_type="dbscan"))
-    zones, _ = run_clustering(_cratères([0.9, 0.9, 0.9, 0.5, 0.5, 0.5]), [regle])
+    regle.update(sanitize_clustering_overrides(surcharge, rule_type="dbscan"))
+    zones, _ = run_clustering(_cratères([0.9, 0.9, 0.9, 0.45, 0.45, 0.45]), [regle])
     assert zones["zone_crateres"][0]["nb_detect"] == 3
+    assert avec_extension({"min_confidence": 0.40}, defauts)["min_confidence_extend"] == pytest.approx(0.29)
+    assert "min_confidence_extend" not in avec_extension({"min_confidence": 0.5}, {"min_confidence": 0.4})
 
 
 def _deux_groupes():

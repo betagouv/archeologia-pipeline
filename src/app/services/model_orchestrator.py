@@ -495,7 +495,7 @@ _CLUSTER_PARAM_INT = ("min_cluster_size", "min_samples", "min_sources")
 # présents dans la règle args.yaml du modèle sont retenus, donc les clés d'un
 # type n'apparaissent jamais sur une règle d'un autre type.
 _CLUSTER_PARAM_FLOAT = (
-    "eps_m", "min_confidence", "min_area_m2", "buffer_m",
+    "eps_m", "min_confidence", "min_confidence_extend", "min_area_m2", "buffer_m",
     "gap_tolerance_m", "max_area_m2", "min_closure", "max_elongation",
     "min_ancrage", "max_isolement", "min_rectangularite",
     "band_width_m", "angle_tolerance_deg", "min_length_m", "max_gap_m",
@@ -872,6 +872,21 @@ def effective_model_names(
     return [ec.default_model] if ec.default_model else []
 
 
+def avec_extension(params: Dict[str, float], defauts: Dict[str, float]) -> Dict[str, float]:
+    """Surcharges d'une règle de regroupement, seuil d'extension décalé avec « Confiance min ».
+
+    Une règle à hystérésis (``min_confidence_extend`` < ``min_confidence`` dans args.yaml : les détections entre les
+    deux rejoignent une zone sans pouvoir l'ouvrir) gardait son extension quand l'utilisateur relevait « Confiance
+    min » : à 0,60 sur les cratères (0,40 / 0,29), les détections dès 0,29 s'agrégeaient encore. L'extension suit
+    maintenant le réglage, à l'écart calibré du modèle. Non exposée à l'écran ; une surcharge explicite l'emporte.
+    """
+    sortie = dict(params or {})
+    d_min, d_ext = defauts.get("min_confidence"), defauts.get("min_confidence_extend")
+    if "min_confidence" in sortie and "min_confidence_extend" not in sortie and d_min is not None             and d_ext is not None:
+        sortie["min_confidence_extend"] = round(max(0.0, float(d_ext) + float(sortie["min_confidence"]) - float(d_min)), 4)
+    return sortie
+
+
 def resolve_runs_from_entities(
     selected_entity_ids: Sequence[str],
     overrides: Optional[Dict[str, Any]],
@@ -1013,7 +1028,7 @@ def resolve_runs_from_entities(
                 continue
             for oc in group["entity_classes"][e]:
                 if oc in model.cluster_defaults:
-                    clustering_overrides[oc] = dict(params)
+                    clustering_overrides[oc] = avec_extension(params, model.cluster_defaults[oc])
         # Fiabilité affichée : catégories EFFECTIVES (au seuil de chaque classe dans
         # ce run, surcharge UI comprise) — consommées à la conversion (champs
         # fiabilite/fiabilite_pct + sidecar fiabilite.json) puis par la symbologie.

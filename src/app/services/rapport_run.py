@@ -322,7 +322,7 @@ def decrire_reglages(section: str, valeurs: Optional[Mapping[str, Any]]) -> str:
         for nom, cle in (("locale", "local"), ("méso", "meso"), ("large", "broad")):
             m.append(f"échelle {nom} de {_dec(g(f'{cle}_scale_min'), 0)} à {_dec(g(f'{cle}_scale_max'), 0)} px "
                      f"par pas de {_dec(g(f'{cle}_scale_step'), 0)}")
-        m.append(f"luminosité {_dec(g('lightness', 1.2))}")
+        m.append(f"luminosité {_dec(g('lightness', 0.9))}")
     ve = g("ve_factor")
     if ve is not None and float(ve) != 1.0:
         m.append(f"exagération verticale ×{_dec(ve)}")

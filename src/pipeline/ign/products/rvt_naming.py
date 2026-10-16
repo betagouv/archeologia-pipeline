@@ -191,7 +191,7 @@ def get_rvt_param_suffix(product_name: str, rvt_params: Dict[str, Any]) -> str:
         # pas ici : toucher l'un sans l'autre décorrèle nom de dossier et calcul.
         b_min = _as_int(mstp.get("broad_scale_min", 223), 223)
         b_max = _as_int(mstp.get("broad_scale_max", 2023), 2023)
-        lightness = _as_float(mstp.get("lightness", 1.2), 1.2)
+        lightness = _as_float(mstp.get("lightness", 0.9), 0.9)
         # Pas de _ dans le token lightness (cohérent avec observer_h du LD).
         lightness_str = str(lightness).replace(".", "p")
         return f"_L{l_min}-{l_max}_M{m_min}-{m_max}_B{b_min}-{b_max}_Li{lightness_str}"

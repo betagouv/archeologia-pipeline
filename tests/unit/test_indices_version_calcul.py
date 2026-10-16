@@ -61,7 +61,7 @@ def test_un_mstp_d_une_version_precedente_est_recalcule(banc):
     out = _intermediaire(tmp, mnt, "MSTP")
     _lancer(tmp, ["MSTP"])
     assert [a[0] for a in appels] == ["MSTP"]
-    assert appels[0][1]["luminosite"] == 1.2   # le défaut de rvt_params, enfin appliqué tel quel
+    assert appels[0][1]["luminosite"] == 0.9   # le défaut (celui de la fenêtre de rvt-qgis), appliqué tel quel
     assert Path(str(out) + ".calcul").read_text(encoding="utf-8") == ind.VERSION_CALCUL["MSTP"]
 
 

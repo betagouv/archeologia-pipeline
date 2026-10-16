@@ -190,7 +190,7 @@ class ConfigManager:
                     "broad_scale_min": 100,
                     "broad_scale_max": 400,
                     "broad_scale_step": 60,
-                    "lightness": 1.2,
+                    "lightness": 0.9,
                     "ve_factor": 1,
                     "save_as_8bit": True,
                 },

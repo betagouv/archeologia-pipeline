@@ -46,7 +46,7 @@ Les réglages qui comptent le plus :
 - **Résolution de la densité** et **seuil de couverture** : le pourcentage de cellules sans point sol au-delà duquel une zone est marquée mal couverte.
 - Les réglages propres à chaque indice : direction et hauteur de lumière, rayons, nombre de directions, exagération verticale, sortie 8 bits. Certains ont des bornes fixées par l'algorithme, rappelées sous le champ ; hors de ces bornes, la dalle échoue et le journal nomme le réglage.
 - **M-HS** sauvé en 8 bits : l'image compose trois éclairages, dans le rouge, le vert et le bleu ; le nombre de directions ne concerne que le fichier flottant et n'est affiché que si **Sauver en 8 bits** est décoché. L'élévation et l'exagération s'appliquent dans les deux cas.
-- **MSTP** : la luminosité s'applique telle que réglée.
+- **MSTP** : la luminosité s'applique telle que réglée ; elle vaut 0,9 par défaut, comme dans la fenêtre de rvt-qgis.
 
 ## Tuilage et marge
 

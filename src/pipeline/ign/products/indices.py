@@ -469,7 +469,7 @@ def create_visualization_products(
         broad_scale_min = _as_int(mstp.get("broad_scale_min", 223), 223)
         broad_scale_max = _as_int(mstp.get("broad_scale_max", 2023), 2023)
         broad_scale_step = _as_int(mstp.get("broad_scale_step", 180), 180)
-        lightness = _as_float(mstp.get("lightness", 1.2), 1.2)
+        lightness = _as_float(mstp.get("lightness", 0.9), 0.9)
         ve_factor = _as_int(mstp.get("ve_factor", 1), 1)
         save_as_8bit = _as_bool(mstp.get("save_as_8bit", True), True)
         out = temp_dir / get_rvt_temp_filename("MSTP", current_tile_name, rvt_params)

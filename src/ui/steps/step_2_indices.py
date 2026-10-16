@@ -603,7 +603,7 @@ class IndicesPage(QWidget):
         mstp_bmin = self._mk_spin(1, 100000, 100)
         mstp_bmax = self._mk_spin(1, 100000, 400)
         mstp_bstep = self._mk_spin(1, 100000, 60)
-        mstp_light = self._mk_dspin(0.1, 5.0, 1.2)
+        mstp_light = self._mk_dspin(0.1, 5.0, 0.9)
         mstp_ve = self._mk_spin(1, 100, 1)
         mstp_8 = self._mk_check()
         self._reg(("rvt_params", "mstp"), "local_scale_min", mstp_lmin, "int", 3)
@@ -615,7 +615,7 @@ class IndicesPage(QWidget):
         self._reg(("rvt_params", "mstp"), "broad_scale_min", mstp_bmin, "int", 100)
         self._reg(("rvt_params", "mstp"), "broad_scale_max", mstp_bmax, "int", 400)
         self._reg(("rvt_params", "mstp"), "broad_scale_step", mstp_bstep, "int", 60)
-        self._reg(("rvt_params", "mstp"), "lightness", mstp_light, "float", 1.2)
+        self._reg(("rvt_params", "mstp"), "lightness", mstp_light, "float", 0.9)
         self._reg(("rvt_params", "mstp"), "ve_factor", mstp_ve, "int", 1)
         self._reg(("rvt_params", "mstp"), "save_as_8bit", mstp_8, "bool", True)
         self._tab_index["MSTP"] = self._adv_tabs.addTab(self._make_param_tab("MSTP", [

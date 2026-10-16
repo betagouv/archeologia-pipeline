@@ -971,7 +971,8 @@ Lot 3 du chantier d'accélération (2026-10-15) : une dalle lue en entier reçoi
 > l'exagération du M-HS 8 bits. Les deux sont maintenant appliquées ; les noms de dossier ne changent pas, une note
 > `<intermédiaire>.calcul` fait recalculer une fois un intermédiaire d'avant.
 
-- [ ] **52.1 MSTP plus clair** : un MSTP par défaut calculé maintenant (dossier `MSTP_L3-21_M23-203_B100-400_Li1p2`) est plus clair que celui d'un dossier de la version précédente, à côté dans QGIS.
+- [ ] **52.1 MSTP par défaut à 0,9** : « ↺ » dans l'onglet MSTP → la luminosité vaut 0,9 ; le MSTP calculé s'écrit dans `MSTP_L3-21_M23-203_B100-400_Li0p9` et, à côté de celui d'un dossier de la version précédente dans QGIS, il est un peu plus sombre (10 niveaux sur 255 au plus), avec les mêmes formes et les mêmes couleurs.
+- [ ] **52.1 bis MSTP à 1,2** : luminosité 1,2 → dossier `…_Li1p2`, plus clair que celui de la version précédente (17 niveaux au plus) ; dans un dossier de la version précédente, recalculé une fois.
 - [ ] **52.2 Relance dans un dossier d'une version précédente** : relancer à l'identique → le journal complet porte `[PARAMS RVT/MSTP]` et `[PARAMS RVT/M_HS]` pour chaque dalle (recalculés), et « réutilisé (cache intermédiaire) » pour les autres indices ; `technique/intermediaires/` gagne un `.calcul` par MSTP et par M-HS.
 - [ ] **52.3 M-HS 8 bits à 50°** : élévation 50° → les ombres sont plus courtes qu'à 35° ; à 35°, l'image est celle de la version précédente.
 - [ ] **52.4 Réglages avancés › M-HS** : « Nombre de directions » est masqué quand « Sauver en 8 bits » est coché, réapparaît quand il est décoché ; après « Réinitialiser » et après un chargement de configuration, l'état suit la case ; le dossier reste `M_HS_D16_E35_V1`.

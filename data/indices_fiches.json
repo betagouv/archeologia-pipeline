@@ -978,8 +978,8 @@
       {
         "cle": "mstp.lightness",
         "label": "Luminosité",
-        "defaut": "1,2",
-        "sens": "Clarté globale de la composition ; RVT utilise 0,9. « facteur de luminosité pour ajuster la visibilité du MSTP ». Appliquée telle que réglée ; l'extension rvt-qgis l'arrondissait à l'entier."
+        "defaut": "0,9",
+        "sens": "Clarté globale de la composition, « facteur de luminosité pour ajuster la visibilité du MSTP ». 0,9 comme dans la fenêtre de rvt-qgis ; son outil Processing affichait 1,2 mais l'arrondissait à l'entier. Appliquée telle que réglée."
       },
       {
         "cle": "mstp.ve_factor",

@@ -4,7 +4,7 @@ fileignoreconfig:
 - filename: tests/unit/test_opns.py
   checksum: 0506c8a17e9157f23cf0cbcd449ce4703241b1ed07c051270b39ed4484dfcf4a
 - filename: metadata.txt
-  checksum: 8698c66082457a8cd465e6f79c0a88c2b25702d9122d8294e40b1624683b4ba2
+  checksum: 818c472601e4d77d96ea40b2d7472704fe38bb579dcdb461e41721bac4994e50
 - filename: tests/unit/test_mnt_chien_de_garde.py
   checksum: fbb2c02d82caaf493cc5be4f107d9ad7b9e9b753a835b33de36e913e9ca7f7b5
 - filename: src/pipeline/ign/products/mnt.py

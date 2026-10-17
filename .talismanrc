@@ -4,7 +4,7 @@ fileignoreconfig:
 - filename: tests/unit/test_opns.py
   checksum: 0506c8a17e9157f23cf0cbcd449ce4703241b1ed07c051270b39ed4484dfcf4a
 - filename: metadata.txt
-  checksum: 3ff2a72e45aa07033e578f831100642f544bbb835138aa2dd0f5d7dc7a979747
+  checksum: c0e13004336dfb67738691aab6e487706d1e649fe33d1b798e5d4598f758abce
 - filename: tests/unit/test_mnt_chien_de_garde.py
   checksum: fbb2c02d82caaf493cc5be4f107d9ad7b9e9b753a835b33de36e913e9ca7f7b5
 - filename: src/pipeline/ign/products/mnt.py
@@ -86,7 +86,7 @@ fileignoreconfig:
 - filename: src/pipeline/ign/pdal_validation.py
   checksum: 2b4ed1d8b7ed8b47c769214f73f1898b79a26b2fdddfea938b003423488462af
 - filename: src/pipeline/ign/preprocess.py
-  checksum: 524e1fe90941cc0a4e8b6c22a08d59a0d5e26d6227c4243ab86afa68f4239d4b
+  checksum: 957ffa6508ce7762395e0dd3b3014af7c9ce2d5b48f639c4cb9c73d4276e37c6
 - filename: src/pipeline/ign/products/indices.py
   checksum: 99f9ba0b4a1623999dfd731b62d62b5bf9fd8737c0ac62ee35e2713728456dce
 - filename: src/pipeline/ign/products/results.py
@@ -124,7 +124,7 @@ fileignoreconfig:
 - filename: src/ui/wizard_dialog.py
   checksum: e8a57b3b486a1151c864dc9088539ea52af2c873470e46e6ebfb933055069011
 - filename: tests/TESTS_MANUELS_QGIS.md
-  checksum: 227621d4ff98b77d5cfcc5017a7456567437245d79118ade194f1fa5b6a5ee86
+  checksum: c6ce322774896841f2ff36e4bdd3ffe17d51bde1597fdb3058b1d5ac668dcc8b
 - filename: tests/integration/test_existing_mnt_runner_finalize.py
   checksum: e67c2e4c83cea0937bdfb39e8eec7aa7476f30648d4d858589e2308ad0565d63
 - filename: tests/integration/test_existing_rvt_runner_isolation.py
@@ -248,9 +248,9 @@ fileignoreconfig:
 - filename: aide/08-resultats.md
   checksum: 650ea2ef0cf4b838889a947ff36f60e6caeca6a685a1f72012d6e034169d57aa
 - filename: aide/04-etape-2-produits.md
-  checksum: 9d34101dbce7fc028ea9019c370280767ddc3b9e47e93ed656c228600027d43c
+  checksum: 794919b776ca0c8a23fbda930d93633b5e37ad52ba13592714c4127093883237
 - filename: aide/09-depannage.md
-  checksum: 1560a54e58e94ea28869b4fc33208e60d998219b3e7ce439c6bcabc6afbe384d
+  checksum: ec9ec586963fdfeafee9d0626828965add76ad5923114b7792f4a2f08e415559
 - filename: src/ui/widgets/carte_zones.py
   checksum: fd7734612381cf74a5b64924b72739ed0e4796509d56f7a31fbc7a65b4e8297a
 - filename: tests/unit/test_aide.py
@@ -318,7 +318,7 @@ fileignoreconfig:
 - filename: tests/unit/test_carte_regroupement_ui.py
   checksum: 2a2e8387aebe6298c5be73c0bbd2a2454ca7b1af0a21ae642276cf777784e79c
 - filename: tests/unit/test_fusion_flux.py
-  checksum: 684c2160708d065378c74f889216e8e89a7db169f6be36ed3622286ab900dbe4
+  checksum: b8388a19b339f00d3b4e4376d417d49464ec02955ded63d4bc25aeaf42578c12
 - filename: tests/unit/test_cle_cache_detections.py
   checksum: 774f928a7f24fbe7b13dee2011deadd9cce9975d219ee5f55d712a72894ce730
 - filename: tests/unit/test_effet_reglages.py
@@ -338,5 +338,5 @@ fileignoreconfig:
 - filename: src/pipeline/ign/products/rvt_embarque/default.py
   checksum: 3757e8928c95fd7bccbdfce7dd6249154a0d7da2df5d530b548d441e27418e04
 - filename: tests/unit/test_fusion_filtree.py
-  checksum: 63b36295d585fe80cb9cfe3b0fabf04caa0921d12f70fc4215ede153a091c104
+  checksum: 649eaea8274a53bb77f0cf2c78570147916baaa1a3ab06f90e84082051b2a4d4
 version: '1.0'

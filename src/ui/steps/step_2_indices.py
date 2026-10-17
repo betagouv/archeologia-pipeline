@@ -38,6 +38,7 @@ from qgis.PyQt.QtWidgets import (
 
 from ...pipeline.ign.products.rvt_naming import PENTE_POURCENT, slope_unit as unite_pente
 from ...app.services.rvt_kernel_context import (
+    message_choix_inconnu,
     message_ecretage,
     mstp_scale_errors,
     tile_margin_px,
@@ -1180,11 +1181,15 @@ class IndicesPage(QWidget):
             raw = container.get(key, default) if isinstance(container, dict) else default
             if (section, key) == (("rvt_params", "slope"), "unit"):
                 raw = unite_pente({"slope": {"unit": raw}})   # l'ancien 1 (« Pourcentage ») devient 2
+            msg = None
             if kind in ("int", "float"):
                 msg = message_ecretage(produit, key, raw, widget.minimum(), widget.maximum(), kind == "float")
-                if msg:
-                    logger.warning(msg)
-                    self.ecretages.append(msg)
+            elif kind == "combo":
+                msg = message_choix_inconnu(produit, key, raw, [widget.itemData(i) for i in range(widget.count())],
+                                            default)
+            if msg:
+                logger.warning(msg)
+                self.ecretages.append(msg)
             self._apply_field(widget, kind, raw, default)
 
     def _collect_advanced(self, config: dict) -> None:

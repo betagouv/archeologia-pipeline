@@ -5,7 +5,7 @@ import os
 
 import pytest
 
-from app.services.rvt_kernel_context import bornes_errors, message_ecretage
+from app.services.rvt_kernel_context import bornes_errors, message_choix_inconnu, message_ecretage
 
 WIZARD = os.path.join(os.path.dirname(__file__), "..", "..", "src", "ui", "wizard_dialog.py")
 
@@ -21,6 +21,16 @@ def test_ecretage_nomme_le_reglage_la_valeur_lue_et_la_valeur_retenue():
 @pytest.mark.parametrize("lue", [4, 32, "10", 12.9, None, "abc"])
 def test_pas_de_message_dans_les_bornes_ou_sans_nombre(lue):
     assert message_ecretage("LD", "angular_res", lue, 4, 32, False) is None
+
+
+def test_choix_inconnu_nomme_le_reglage_la_valeur_lue_et_la_valeur_retenue():
+    # Un choix d'une configuration chargée que l'étape 2 ne propose pas (colormap CRIM « viridis »,
+    # 5 choix dans la liste) retombait en silence sur le défaut : même défaut que l'écrêtage.
+    m = message_choix_inconnu("CRIM", "colormap", "viridis", ["OrRd", "Reds_r"], "OrRd")
+    assert m.startswith("CRIM / « colormap »") and "viridis" in m and "OrRd retenu" in m and "Reds_r" in m
+    assert message_choix_inconnu("CRIM", "colormap", "OrRd", ["OrRd", "Reds_r"], "OrRd") is None
+    assert message_choix_inconnu("CRIM", "colormap", None, ["OrRd"], "OrRd") is None   # clé absente : le défaut
+    assert "7" in message_choix_inconnu("OPNS", "opns_type", 7, [0, 1], 0)
 
 
 def _classify_error_step():

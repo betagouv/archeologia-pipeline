@@ -29,7 +29,7 @@ Pur (aucun import QGIS) : testable en standalone, cf.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Dict, List, Mapping, Optional, Tuple
+from typing import Dict, List, Mapping, Optional, Sequence, Tuple
 
 # Marge maximale que ``preprocess.prepare_merged_tiles`` sait découper chez les
 # dalles voisines. Au-delà, le recouvrement demandé est silencieusement rogné.
@@ -295,6 +295,16 @@ def message_ecretage(produit: str, cle: str, lue, mini: float, maxi: float, flot
     libelle = next((lib for p, _s, c, lib, _f in _REGLAGES_BORNES if p == produit and c == cle), cle)
     return (f"{produit.replace('_', '-')} / « {libelle} » : {v:g} lu dans la configuration, hors des bornes du "
             f"réglage ({mini:g} à {maxi:g}) — {retenue:g} retenu.")
+
+
+def message_choix_inconnu(produit: str, cle: str, lue, proposes: Sequence, retenue) -> Optional[str]:
+    """Message d'un choix chargé que la liste de l'étape 2 ne propose pas (colormap CRIM d'une configuration
+    écrite à la main, par exemple) et qu'elle remplace par ``retenue`` ; ``None`` si le choix est proposé ou
+    absent (le défaut s'applique alors). Même règle que :func:`message_ecretage` : le dire, jamais en silence."""
+    if lue is None or lue in proposes:
+        return None
+    return (f"{produit.replace('_', '-')} / « {cle} » : {lue} lu dans la configuration, n'est pas proposé "
+            f"({', '.join(str(p) for p in proposes)}) — {retenue} retenu.")
 
 
 def bornes_errors(products: Optional[Mapping], rvt_params: Optional[Mapping]) -> List[str]:

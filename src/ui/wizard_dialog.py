@@ -833,10 +833,11 @@ class WizardDialog(QDialog):
         self._apply_config(loaded)
 
     def _signaler_ecretages(self) -> None:
-        """Un réglage chargé hors des bornes de son champ y est ramené : le dire (le journal Python l'a déjà)."""
+        """Un réglage chargé hors des bornes de son champ y est ramené, un choix qu'il ne propose pas est
+        remplacé par le défaut : le dire (le journal Python l'a déjà)."""
         msgs = getattr(self._indices_page, "ecretages", None) or []
         if msgs:
-            show_toast(self, "\n".join(["Réglage ramené dans ses bornes :", *msgs]), duration=8000)
+            show_toast(self, "\n".join(["Réglage ramené à ce que l'étape 2 propose :", *msgs]), duration=8000)
 
     def _apply_config(self, loaded) -> None:
         """Point de passage UNIQUE d'un changement de config (menu, import,

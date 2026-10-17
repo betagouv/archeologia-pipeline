@@ -64,7 +64,7 @@ Une erreur de PDAL pendant le découpage ou la fusion des dalles, en particulier
 
 ## Le filtre des points n'est pas reconnu
 
-Le journal dit « Filtre des points non reconnu … : fusion sans filtre ». Le filtre de l'étape 2 est écrit dans une syntaxe que le plugin ne sait pas traduire pour ne garder que ces points dès la fusion des dalles : comparaisons d'une dimension à un nombre (`Classification = 2`, `Z >= 10`), reliées par `AND`, `OR`, `NOT` et des parenthèses. Le traitement n'est pas en cause : le nuage fusionné garde tous les points, et le MNT comme la densité appliquent le filtre eux-mêmes, comme dans les versions précédentes, en plus lent. Ramenez le filtre à cette syntaxe, ou au défaut par le bouton ↺ de l'onglet, pour retrouver la fusion filtrée.
+Le journal dit « Filtre des points non reconnu … : fusion sans filtre » ou « Filtre des points refusé par PDAL … : fusion sans filtre ». Dans le premier cas, le filtre de l'étape 2 est écrit dans une syntaxe que le plugin ne sait pas traduire pour ne garder que ces points dès la fusion des dalles : comparaisons d'une dimension à un nombre (`Classification = 2`, `Z >= 10`), reliées par `AND`, `OR`, `NOT` et des parenthèses. Dans le second, la syntaxe est bonne mais l'outil de fusion la refuse, le plus souvent pour une dimension mal orthographiée ; la fin du message cite sa raison. Le traitement n'est pas en cause : le nuage fusionné garde tous les points, et le MNT comme la densité appliquent le filtre eux-mêmes, comme dans les versions précédentes, en plus lent. Ramenez le filtre à cette syntaxe, ou au défaut par le bouton ↺ de l'onglet, pour retrouver la fusion filtrée.
 
 ## La détection est impossible
 

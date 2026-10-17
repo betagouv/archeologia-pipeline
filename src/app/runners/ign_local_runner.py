@@ -15,6 +15,14 @@ from ..user_narrator import create_user_narrator
 from .input_strategy import select_input_strategy
 from .progress_plan import build_progress_plan
 
+
+def journal_fusion(reporter: ProgressReporter):
+    """Journal de la fusion des dalles : ses « ⚠️ » (filtre des points non reconnu ou refusé par PDAL,
+    bornes non relevées, dalle absente) doivent être VISIBLES dans la fenêtre — reporter.info = INFO=20,
+    filtré par le seuil USER_INFO=25 du journal du wizard (pattern ROB-15) ; le reste du détail
+    (voisines, cache) reste au journal complet."""
+    return lambda m: reporter.user_warning(m) if "⚠️" in m else reporter.info(m)
+
 try:  # cross-package import : OK en QGIS, fallback en tests standalone (src/ sur le path)
     from ...pipeline.cancellation import PipelineCancelled
     from ...pipeline.batch import process_items_isolated
@@ -275,7 +283,7 @@ class IgnOrLocalRunner:
                 output_dir=ctx.output_dir,
                 tile_overlap_percent=processing.tile_overlap,
                 filter_expression=processing.filter_expression,
-                log=lambda m: reporter.info(m),
+                log=journal_fusion(reporter),
                 cancel=lambda: cancel.is_cancelled(),
                 stage=lambda s: reporter.stage(s),
                 max_workers=processing.max_workers,

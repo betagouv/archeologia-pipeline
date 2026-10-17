@@ -452,12 +452,18 @@ def _bornes_des_metadonnees(chemin: Path) -> Optional[List[float]]:
         return None
 
 
+class _FiltreRefuse(RuntimeError):
+    """PDAL refuse l'expression du filtre : la grammaire de :func:`expression_pdal` l'avait acceptée
+    (faute de frappe dans un nom de dimension, par exemple). Ce n'est pas une voisine illisible."""
+
+
 def _executer_fusion(
     central: Path, voisines: List[Tuple[Path, Dict[str, str]]], sortie: Path, *, log: LogFn, cancel: CancelFn,
     filtre: Optional[str] = None,
 ) -> Tuple[bool, Optional[List[float]]]:
     """Lance `pdal pipeline --stream` sur :func:`pipeline_fusion` : (réussi, bornes du nuage avant filtrage
-    — None sans filtre ou si PDAL ne les a pas rendues)."""
+    — None sans filtre ou si PDAL ne les a pas rendues). Lève :class:`_FiltreRefuse` si PDAL refuse
+    ``filtre`` (son message est préfixé « filters.expression: »)."""
     with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False, encoding="utf-8") as tf:
         json.dump(pipeline_fusion(central, voisines, sortie, filtre), tf, indent=1)
         fichier = tf.name
@@ -483,6 +489,8 @@ def _executer_fusion(
         if filtre and bornes is None:
             log("⚠️ Bornes du nuage non relevées à la fusion : grille calée sur l'en-tête du fusionné filtré")
         return True, bornes
+    if filtre and "filters.expression" in (result.stderr or ""):
+        raise _FiltreRefuse((result.stderr or "").strip().splitlines()[0])
     log(f"Erreur PDAL pipeline (code {result.returncode})")
     if result.returncode in (3221225477, 3221226505):
         # 0xC0000005 = ACCESS_VIOLATION, 0xC0000409 = STACK_BUFFER_OVERRUN
@@ -589,7 +597,13 @@ def merge_tiles_flux(
 
     partial = _partial_path(output_path)
     try:
-        ok, bornes = _executer_fusion(central_path, valides, partial, log=log, cancel=cancel, filtre=filtre)
+        try:
+            ok, bornes = _executer_fusion(central_path, valides, partial, log=log, cancel=cancel, filtre=filtre)
+        except _FiltreRefuse as e:
+            log(f"⚠️ Filtre des points refusé par PDAL ({filtre}) : fusion sans filtre, "
+                f"le MNT et la densité filtrent eux-mêmes (plus lent) — {e}")
+            filtre = None
+            ok, bornes = _executer_fusion(central_path, valides, partial, log=log, cancel=cancel)
         if not ok and valides and not cancel():
             # Une voisine à l'en-tête sain mais aux points illisibles (LAZ tronqué)
             # fait échouer tout le pipeline : on l'isole par une lecture complète et
@@ -660,8 +674,9 @@ class _PreprocessTask:
     # re-téléchargements de voisins doivent passer par le même proxy que
     # l'acquisition (AUDIT v2 NET-06 — réseau d'entreprise).
     proxies: Dict[str, str] = field(default_factory=dict)
-    # Filtre des points de l'étape 2 (syntaxe QGIS) : le fusionné ne garde que ces classes.
-    filtre: str = ""
+    # Filtre des points de l'étape 2, déjà en syntaxe PDAL (traduit UNE fois par prepare_merged_tiles) :
+    # le fusionné ne garde que ces classes. None = nuage entier.
+    filtre: Optional[str] = None
 
 
 @dataclass
@@ -736,17 +751,13 @@ def _process_single_tile_preprocess(
         if fusion_mode() == FUSION_ANCIENNE:
             ok = _fusion_ancienne(task, voisines, merged_path, tlog, cancel)
         else:
-            filtre = expression_pdal(task.filtre) if task.filtre else None
-            if task.filtre and filtre is None:
-                tlog(f"⚠️ Filtre des points non reconnu ({task.filtre}) : fusion sans filtre, "
-                     "le MNT et la densité filtrent eux-mêmes (plus lent)")
             ok = merge_tiles_flux(
                 central_path=task.central_path,
                 voisines=[(source, bornes) for source, bornes, _place in voisines],
                 output_path=merged_path,
                 log=tlog,
                 cancel=cancel,
-                filtre=filtre,
+                filtre=task.filtre,
             )
         if not ok:
             if cancel():
@@ -841,6 +852,13 @@ def prepare_merged_tiles(
 
     margin_m = max(0, min(999, int(round(1000.0 * float(tile_overlap_percent) / 100.0))))
 
+    # Le filtre de l'étape 2 traduit UNE fois pour tout le lot : un filtre non reconnu
+    # s'annonce une fois, pas une fois par dalle.
+    filtre = expression_pdal(filter_expression) if filter_expression else None
+    if filter_expression and filtre is None:
+        log(f"⚠️ Filtre des points non reconnu ({filter_expression}) : fusion sans filtre, "
+            "le MNT et la densité filtrent eux-mêmes (plus lent)")
+
     # Construire l'index pour recherche rapide des voisins
     file_index = _build_file_index(sorted_list_file)
 
@@ -897,7 +915,7 @@ def prepare_merged_tiles(
             margin_m=margin_m,
             dalles_dir=dalles_dir,
             proxies=proxies,
-            filtre=filter_expression,
+            filtre=filtre,
         ))
 
     # Configuration parallélisation

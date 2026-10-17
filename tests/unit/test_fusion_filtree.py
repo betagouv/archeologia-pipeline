@@ -34,22 +34,34 @@ class TestExpressionPdal:
 
 @pytest.fixture
 def pdal(monkeypatch):
-    """PDAL factice : écrit le fusionné et, si demandé, les métadonnées de filters.stats (bornes des X, Y)."""
-    etat = {"commandes": [], "pipelines": []}
+    """PDAL factice : écrit le fusionné et, si demandé, les métadonnées de filters.stats (bornes des X, Y).
+    ``refuse_filtre`` : PDAL 2.10 refuse l'expression (message réel : « PDAL: filters.expression: … »).
+    ``sans_metadonnees`` : le fichier de métadonnées n'est pas écrit."""
+    etat = {"commandes": [], "pipelines": [], "refuse_filtre": False, "sans_metadonnees": False, "sans_flux": False,
+            "profondes": []}
 
     def executer(cmd, cancel=None, **k):
         etat["commandes"].append(list(cmd))
         doc = json.loads(Path(cmd[cmd.index("pipeline") + 2 if "--stream" in cmd else cmd.index("pipeline") + 1])
                          .read_text(encoding="utf-8"))
         etat["pipelines"].append(doc)
+        if etat["sans_flux"] and "--stream" in cmd:
+            return subprocess.CompletedProcess(cmd, 1, "", "PDAL: Pipeline is not streamable")
+        if etat["refuse_filtre"] and any(e["type"] == "filters.expression" for e in doc["pipeline"]):
+            return subprocess.CompletedProcess(cmd, 1, "", "PDAL: filters.expression: Unknown dimension 'Classifcation' in assignment.")
         Path(doc["pipeline"][-1]["filename"]).write_bytes(b"LASF-fusion")
-        if "--metadata" in cmd:
+        if "--metadata" in cmd and not etat["sans_metadonnees"]:
             Path(cmd[cmd.index("--metadata") + 1]).write_text(json.dumps({"stages": {"filters.stats": {"statistic": [
                 {"name": "X", "minimum": 815799.76, "maximum": 817200.31},
                 {"name": "Y", "minimum": 6331800.0, "maximum": 6333199.5}]}}}), encoding="utf-8")
         return subprocess.CompletedProcess(cmd, 0, "", "")
 
+    def profonde(path, *a, **k):
+        etat["profondes"].append(Path(path).name)
+        return (True, "")
+
     monkeypatch.setattr(pp, "validate_las_or_laz_with_pdal", lambda p, *a, **k: (True, ""))
+    monkeypatch.setattr(pp, "validate_laz_deep", profonde)
     monkeypatch.setattr(pp, "run_pdal_command_cancellable", executer)
     monkeypatch.setattr(pp, "_pdal_exe", lambda: "pdal")
     return etat
@@ -100,35 +112,99 @@ class TestFusionFiltree:
         self._fusion(tmp_path, pdal, PDAL)
         assert len(pdal["commandes"]) == 1
 
+    def test_filtre_refuse_par_pdal_refusion_sans_filtre_sans_relire_les_voisines(self, tmp_path, pdal):
+        # Grammaire acceptée, PDAL refuse (faute de frappe) : ce n'est pas une voisine illisible.
+        pdal["refuse_filtre"] = True
+        journal: list = []
+        sidecar = self._fusion(tmp_path, pdal, "Classifcation == 2", journal)
+        assert len(pdal["commandes"]) == 2 and pdal["profondes"] == []
+        assert not any(e["type"] == "filters.expression" for e in pdal["pipelines"][1]["pipeline"])
+        assert sidecar["filtre"] is None
+        assert any(m.startswith("⚠️") and "Classifcation == 2" in m and "sans filtre" in m for m in journal)
 
-class TestTacheDeFusion:
-    def test_le_filtre_de_l_etape_2_arrive_traduit_a_la_fusion(self, tmp_path, monkeypatch):
-        recu: dict = {}
-        monkeypatch.delenv("ARCHEO_FUSION_LEGACY", raising=False)
-        monkeypatch.setattr(pp, "merge_tiles_flux", lambda **kw: recu.update(kw) or True)
-        task = pp._PreprocessTask(index=1, total=1, filename="c.laz", url="u", tile_name="LHD_FXX_0500_6500", x="0500",
-                                  y="6500", central_path=tmp_path / "c.laz", temp_dir=tmp_path, merged_dir=tmp_path,
-                                  margin_m=200, dalles_dir=tmp_path, filtre=QGIS)
-        assert pp._process_single_tile_preprocess(task, {}, lambda m: None, lambda: False).success
-        assert recu["filtre"] == PDAL
+    def test_bornes_non_relevees_le_journal_le_dit(self, tmp_path, pdal):
+        pdal["sans_metadonnees"] = True
+        journal: list = []
+        sidecar = self._fusion(tmp_path, pdal, PDAL, journal)
+        assert "bornes" not in sidecar and any(m.startswith("⚠️") and "ornes" in m for m in journal)
 
-    def test_filtre_non_reconnu_fusion_sans_filtre_et_le_journal_le_dit(self, tmp_path, monkeypatch):
-        recu: dict = {}
+    def test_repli_en_memoire_garde_le_filtre_et_les_bornes(self, tmp_path, pdal):
+        pdal["sans_flux"] = True
+        sidecar = self._fusion(tmp_path, pdal, PDAL)
+        assert len(pdal["commandes"]) == 2 and "--stream" not in pdal["commandes"][1]
+        assert "--metadata" in pdal["commandes"][1]
+        assert sidecar["filtre"] == PDAL and sidecar["bornes"] == [815799.76, 817200.31, 6331800.0, 6333199.5]
+
+    def test_sidecar_d_une_version_precedente_refusionne(self, tmp_path, pdal):
+        out = tmp_path / "merged.laz"
+        out.write_bytes(b"LASF")
+        pp.merged_inputs_sidecar(out).write_text(json.dumps({"fusion": "flux-1", "voisins": ["v.laz"]}), encoding="utf-8")
+        sidecar = self._fusion(tmp_path, pdal, None)
+        assert len(pdal["commandes"]) == 1 and sidecar["fusion"] == "flux-2"
+
+
+def _lot(tmp_path, noms):
+    dalles = tmp_path / "dalles"
+    dalles.mkdir()
+    liste = tmp_path / "fichier_tri.txt"
+    liste.write_text("".join(f"{n},https://data.geopf.fr/{n}\n" for n in noms), encoding="utf-8")
+    for n in noms:
+        (dalles / n).write_bytes(b"LASF")
+    return liste, dalles
+
+
+class TestTraductionUneFoisParRun:
+    NOMS = ["LHD_FXX_0500_6500_PTS_C_LAMB93_IGN69.copc.laz", "LHD_FXX_0501_6500_PTS_C_LAMB93_IGN69.copc.laz"]
+
+    def _run(self, tmp_path, monkeypatch, filtre_qgis):
+        recus: list = []
         journal: list = []
         monkeypatch.delenv("ARCHEO_FUSION_LEGACY", raising=False)
-        monkeypatch.setattr(pp, "merge_tiles_flux", lambda **kw: recu.update(kw) or True)
-        task = pp._PreprocessTask(index=1, total=1, filename="c.laz", url="u", tile_name="LHD_FXX_0500_6500", x="0500",
-                                  y="6500", central_path=tmp_path / "c.laz", temp_dir=tmp_path, merged_dir=tmp_path,
-                                  margin_m=200, dalles_dir=tmp_path, filtre="Classification IN (2, 6)")
-        assert pp._process_single_tile_preprocess(task, {}, journal.append, lambda: False).success
-        assert recu["filtre"] is None
-        assert any("non reconnu" in m and "sans filtre" in m for m in journal)
+        monkeypatch.setattr(pp, "merge_tiles_flux", lambda **kw: recus.append(kw["filtre"]) or True)
+        liste, dalles = _lot(tmp_path, self.NOMS)
+        pp.prepare_merged_tiles(sorted_list_file=liste, dalles_dir=dalles, output_dir=tmp_path / "out",
+                                tile_overlap_percent=20, filter_expression=filtre_qgis, log=journal.append, max_workers=1)
+        return recus, journal
+
+    def test_le_filtre_de_l_etape_2_traduit_une_fois_passe_a_chaque_dalle(self, tmp_path, monkeypatch):
+        recus, journal = self._run(tmp_path, monkeypatch, QGIS)
+        assert recus == [PDAL, PDAL]
+        assert not any("non reconnu" in m for m in journal)
+
+    def test_filtre_non_reconnu_un_seul_avertissement(self, tmp_path, monkeypatch):
+        recus, journal = self._run(tmp_path, monkeypatch, "Classification IN (2, 6)")
+        assert recus == [None, None]
+        avis = [m for m in journal if "non reconnu" in m]
+        assert len(avis) == 1 and avis[0].startswith("⚠️") and "Classification IN (2, 6)" in avis[0] and "sans filtre" in avis[0]
+
+
+def test_les_avertissements_de_la_fusion_sont_visibles_dans_la_fenetre():
+    from app.runners.ign_local_runner import journal_fusion
+
+    class Reporter:
+        def __init__(self):
+            self.infos, self.avertissements = [], []
+
+        def info(self, m):
+            self.infos.append(m)
+
+        def user_warning(self, m):
+            self.avertissements.append(m)
+
+    r = Reporter()
+    log = journal_fusion(r)
+    log("Prétraitement parallèle: 1 worker(s)")
+    log("⚠️ Filtre des points non reconnu (x) : fusion sans filtre")
+    assert r.infos == ["Prétraitement parallèle: 1 worker(s)"]
+    assert r.avertissements == ["⚠️ Filtre des points non reconnu (x) : fusion sans filtre"]
 
 
 def test_le_journal_renvoie_au_depannage():
     from app.services.aide import rubrique_depannage
     assert rubrique_depannage("⚠️ Filtre des points non reconnu (Classification IN (2)) : fusion sans filtre, "
                               "le MNT et la densité filtrent eux-mêmes (plus lent)") == "Le filtre des points n'est pas reconnu"
+    assert rubrique_depannage("⚠️ Filtre des points refusé par PDAL (Classifcation == 2) : fusion sans filtre") == \
+        "Le filtre des points n'est pas reconnu"
 
 
 class TestBornesDuNuage:

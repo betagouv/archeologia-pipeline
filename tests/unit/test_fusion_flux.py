@@ -41,7 +41,8 @@ def pdal(monkeypatch):
 
     def executer(cmd, cancel=None, **k):
         etat["commandes"].append(list(cmd))
-        doc = json.loads(Path(cmd[-1]).read_text(encoding="utf-8"))
+        # le pipeline suit « pipeline [--stream] » ; « --metadata <fichier> » peut suivre
+        doc = json.loads(Path(cmd[cmd.index("pipeline") + (2 if "--stream" in cmd else 1)]).read_text(encoding="utf-8"))
         etat["pipelines"].append(doc)
         if etat["sans_flux"] and "--stream" in cmd:
             return subprocess.CompletedProcess(

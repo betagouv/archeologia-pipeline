@@ -608,7 +608,9 @@ class EntityCard(QFrame):
         )
         self._cluster_params_box.setVisible(show_cluster_params)
         if show_cluster_params:
-            self._active_cluster_keys = set(defaults.keys())
+            # Seules les clés qui ont un champ : min_confidence_extend (lu
+            # d'args.yaml pour décaler l'extension) n'en a pas.
+            self._active_cluster_keys = {k for k in defaults if k in self._cluster_spins}
             self._loading = True
             try:
                 for key, spin in self._cluster_spins.items():

@@ -95,7 +95,7 @@ class TestMergeTilesFlux:
         assert [c[1:3] for c in pdal["commandes"]] == [["pipeline", "--stream"]]
         assert out.read_bytes() == b"LASF-fusion" and not pp._partial_path(out).exists()
         assert json.loads(pp.merged_inputs_sidecar(out).read_text(encoding="utf-8")) == {
-            "fusion": pp.FUSION_FLUX, "voisins": ["v1.copc.laz"]}
+            "fusion": pp.FUSION_FLUX, "voisins": ["v1.copc.laz"], "filtre": None}
 
     def test_dalle_isolee(self, tmp_path, pdal):
         ok, out = self._fusion(tmp_path, [])
@@ -267,4 +267,4 @@ def test_versions_lidar_dans_la_trace(tmp_path):
                       slog=None, start_time=time.time(), pdal_version="2.10.0 (git-version: eb9126)",
                       fusion=pp.FUSION_FLUX)
     trace = json.loads((tmp_path / "livrable" / "traitement.json").read_text(encoding="utf-8"))
-    assert trace["pdal_version"] == "2.10.0 (git-version: eb9126)" and trace["fusion_laz"] == "flux-1"
+    assert trace["pdal_version"] == "2.10.0 (git-version: eb9126)" and trace["fusion_laz"] == "flux-2"

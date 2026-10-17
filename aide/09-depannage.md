@@ -62,6 +62,10 @@ Si le calcul d'un modèle de terrain ne rend pas la main après deux heures, la 
 
 Une erreur de PDAL pendant le découpage ou la fusion des dalles, en particulier avec un code de violation d'accès, vient presque toujours d'un manque de mémoire : plusieurs dalles traitées en parallèle sur un poste qui ne peut pas les tenir. Réduisez les **workers** à 1 ou 2 à l'étape 4 et relancez dans le même dossier : les dalles déjà calculées sont conservées.
 
+## Le filtre des points n'est pas reconnu
+
+Le journal dit « Filtre des points non reconnu … : fusion sans filtre ». Le filtre de l'étape 2 est écrit dans une syntaxe que le plugin ne sait pas traduire pour ne garder que ces points dès la fusion des dalles : comparaisons d'une dimension à un nombre (`Classification = 2`, `Z >= 10`), reliées par `AND`, `OR`, `NOT` et des parenthèses. Le traitement n'est pas en cause : le nuage fusionné garde tous les points, et le MNT comme la densité appliquent le filtre eux-mêmes, comme dans les versions précédentes, en plus lent. Ramenez le filtre à cette syntaxe, ou au défaut par le bouton ↺ de l'onglet, pour retrouver la fusion filtrée.
+
 ## La détection est impossible
 
 Le moteur de détection est un programme livré avec l'extension. S'il manque, l'état du système de l'étape 4 le signale en rouge, et un traitement lancé quand même s'arrête aussitôt sur ses vérifications. S'il s'arrête en cours de traitement, par exemple mis en quarantaine par un antivirus à sa première exécution, la fin du traitement le dit en rouge, avec la cause, et le rapport aussi. Les produits, eux, sont calculés ; seules manquent les détections du modèle en cause. Quand deux modèles sont comparés sur une même structure, l'autre détecte normalement et la ligne de fin nomme celui qui a échoué.

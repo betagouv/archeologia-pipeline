@@ -43,7 +43,10 @@ def _default_cancel() -> bool:
 #: intermédiaires (cache_guard) et dans traitement.json : la changer refait
 #: fusions et MNT d'un dossier écrit autrement, au lieu de les resservir.
 FUSION_ANCIENNE = "pdal-merge"
-FUSION_FLUX = "flux-1"
+#: flux-2 (2026-10-17) : le fusionné ne garde que les classes du filtre de l'étape 2 (les seules que MNT et
+#: densité lisent) — 4× moins de points et de temps de MNT en forêt, images identiques ; ses bornes avant
+#: filtrage vont au sidecar. flux-1 (non livré) écrivait tout le nuage.
+FUSION_FLUX = "flux-2"
 
 
 def fusion_mode() -> str:
@@ -379,11 +382,46 @@ def merge_tiles(
     return True
 
 
-def pipeline_fusion(central: Path, voisines: List[Tuple[Path, Dict[str, str]]], sortie: Path) -> Dict:
+def expression_pdal(expression_qgis: str) -> Optional[str]:
+    """Le filtre des points de l'étape 2 (syntaxe de QGIS : ``Classification = 2 OR …``) en syntaxe PDAL
+    (``== … ||``), telle que QGIS la passe à pdal_wrench. ``None`` si l'expression sort de la grammaire
+    reconnue (comparaisons de dimensions à des nombres, AND/OR/NOT, parenthèses) : la fusion se fait alors
+    sans filtre et MNT/densité filtrent eux-mêmes, comme avant."""
+    import re
+    jetons = re.compile(r"\s*(?:(?P<ou>OR\b)|(?P<et>AND\b)|(?P<non>NOT\b)|(?P<cmp><>|!=|<=|>=|==|=|<|>)"
+                        r"|(?P<nb>-?\d+(?:\.\d+)?)|(?P<id>[A-Za-z_][A-Za-z0-9_]*)|(?P<par>[()]))", re.IGNORECASE)
+    traduction = {"ou": "||", "et": "&&", "non": "!", "=": "==", "<>": "!="}
+    sortie: List[str] = []
+    pos, comparaisons = 0, 0
+    while pos < len(expression_qgis):
+        m = jetons.match(expression_qgis, pos)
+        if m is None:
+            return None if expression_qgis[pos:].strip() else _assembler(sortie, comparaisons)
+        pos = m.end()
+        genre = m.lastgroup
+        valeur = m.group(genre)
+        if genre == "cmp":
+            comparaisons += 1
+            sortie.append(traduction.get(valeur, valeur))
+        else:
+            sortie.append(traduction.get(genre, valeur))
+    return _assembler(sortie, comparaisons)
+
+
+def _assembler(jetons: List[str], comparaisons: int) -> Optional[str]:
+    if not comparaisons:
+        return None
+    return " ".join(jetons).replace("( ", "(").replace(" )", ")")
+
+
+def pipeline_fusion(central: Path, voisines: List[Tuple[Path, Dict[str, str]]], sortie: Path,
+                    filtre: Optional[str] = None) -> Dict:
     """Pipeline PDAL de :func:`merge_tiles_flux` : la centrale, puis chaque voisine
     rognée à sa bande (bornes de :func:`calculate_crop_bounds`), toutes lues par
     ``readers.las`` — ordre du fichier — et écrites dans cet ordre par un seul
-    ``writers.las``."""
+    ``writers.las``. Avec ``filtre`` (syntaxe PDAL) : les bornes X, Y du nuage
+    complet sont relevées (``filters.stats``) puis seuls les points du filtre sont
+    écrits, dans le même ordre."""
     etapes: List[Dict] = [{"type": "readers.las", "filename": str(central), "tag": "centrale"}]
     entrees = ["centrale"]
     for i, (source, b) in enumerate(voisines, start=1):
@@ -395,40 +433,63 @@ def pipeline_fusion(central: Path, voisines: List[Tuple[Path, Dict[str, str]]], 
             "tag": f"bande{i}",
         })
         entrees.append(f"bande{i}")
+    if filtre:
+        etapes.append({"type": "filters.stats", "dimensions": "X,Y", "inputs": entrees, "tag": "bornes"})
+        etapes.append({"type": "filters.expression", "expression": filtre, "inputs": ["bornes"], "tag": "filtre"})
+        entrees = ["filtre"]
     etapes.append({"type": "writers.las", "filename": str(sortie), "compression": "laszip", "inputs": entrees})
     return {"pipeline": etapes}
 
 
+def _bornes_des_metadonnees(chemin: Path) -> Optional[List[float]]:
+    """``[minx, maxx, miny, maxy]`` relevés par ``filters.stats`` dans les métadonnées du pipeline, ou None."""
+    try:
+        stats = json.loads(chemin.read_text(encoding="utf-8"))["stages"]["filters.stats"]["statistic"]
+        par_dim = {s["name"]: s for s in stats}
+        return [float(par_dim["X"]["minimum"]), float(par_dim["X"]["maximum"]),
+                float(par_dim["Y"]["minimum"]), float(par_dim["Y"]["maximum"])]
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
+
+
 def _executer_fusion(
     central: Path, voisines: List[Tuple[Path, Dict[str, str]]], sortie: Path, *, log: LogFn, cancel: CancelFn,
-) -> bool:
-    """Lance `pdal pipeline --stream` sur :func:`pipeline_fusion` ; vrai si PDAL a réussi."""
+    filtre: Optional[str] = None,
+) -> Tuple[bool, Optional[List[float]]]:
+    """Lance `pdal pipeline --stream` sur :func:`pipeline_fusion` : (réussi, bornes du nuage avant filtrage
+    — None sans filtre ou si PDAL ne les a pas rendues)."""
     with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False, encoding="utf-8") as tf:
-        json.dump(pipeline_fusion(central, voisines, sortie), tf, indent=1)
+        json.dump(pipeline_fusion(central, voisines, sortie, filtre), tf, indent=1)
         fichier = tf.name
+    meta = Path(fichier).with_suffix(".meta.json")
+    options = ["--metadata", str(meta)] if filtre else []
     try:
-        cmd = [_pdal_exe(), "pipeline", "--stream", fichier]
+        cmd = [_pdal_exe(), "pipeline", "--stream", fichier, *options]
         result = run_pdal_command_cancellable(cmd, cancel=cancel)
         erreur = (result.stderr or "").lower()
         if result.returncode != 0 and ("stream mode" in erreur or "streamable" in erreur):
             # PDAL plus ancien que ceux mesurés (2.9 de QGIS 3.44, 2.10 de QGIS 4.0)
             # sans flux pour ce pipeline : même lecture ordonnée, en mémoire.
             log("PDAL : fusion en flux indisponible, fusion en mémoire")
-            result = run_pdal_command_cancellable([cmd[0], "pipeline", fichier], cancel=cancel)
+            result = run_pdal_command_cancellable([cmd[0], "pipeline", fichier, *options], cancel=cancel)
+        bornes = _bornes_des_metadonnees(meta) if filtre else None
     finally:
-        try:
-            Path(fichier).unlink()
-        except OSError:
-            pass
+        for p in (Path(fichier), meta):
+            try:
+                p.unlink()
+            except OSError:
+                pass
     if result.returncode == 0:
-        return True
+        if filtre and bornes is None:
+            log("⚠️ Bornes du nuage non relevées à la fusion : grille calée sur l'en-tête du fusionné filtré")
+        return True, bornes
     log(f"Erreur PDAL pipeline (code {result.returncode})")
     if result.returncode in (3221225477, 3221226505):
         # 0xC0000005 = ACCESS_VIOLATION, 0xC0000409 = STACK_BUFFER_OVERRUN
         log("PDAL a crashé (erreur mémoire).")
     if result.stderr:
         log(result.stderr.strip())
-    return False
+    return False, None
 
 
 def _empreinte(path: Path) -> Optional[List[int]]:
@@ -440,11 +501,15 @@ def _empreinte(path: Path) -> Optional[List[int]]:
     return [st.st_size, st.st_mtime_ns]
 
 
-def _sidecar_flux(voisins: List[str], ecartees: Dict[str, Optional[List[int]]]) -> Dict:
-    """Contenu du sidecar de :func:`merge_tiles_flux` (``ecartees`` seulement s'il y en a)."""
-    contenu: Dict = {"fusion": FUSION_FLUX, "voisins": voisins}
+def _sidecar_flux(voisins: List[str], ecartees: Dict[str, Optional[List[int]]], filtre: Optional[str],
+                  bornes: Optional[List[float]] = None) -> Dict:
+    """Contenu du sidecar de :func:`merge_tiles_flux` (``ecartees`` et ``bornes`` seulement s'il y en a).
+    ``bornes`` = X, Y du nuage AVANT filtrage : c'est là que MNT et densité calent leur grille."""
+    contenu: Dict = {"fusion": FUSION_FLUX, "voisins": voisins, "filtre": filtre}
     if ecartees:
         contenu["ecartees"] = ecartees
+    if bornes:
+        contenu["bornes"] = bornes
     return contenu
 
 
@@ -455,9 +520,11 @@ def merge_tiles_flux(
     output_path: Path,
     log: LogFn = _default_log,
     cancel: CancelFn = _default_cancel,
+    filtre: Optional[str] = None,
 ) -> bool:
     """Fusionne la dalle centrale et la bande de marge de chaque voisine en UN
-    `pdal pipeline --stream` (lot 1, 2026-10).
+    `pdal pipeline --stream` (lot 1, 2026-10), en ne gardant que les points de
+    ``filtre`` (syntaxe PDAL, :func:`expression_pdal`) s'il est donné.
 
     Tout est lu par ``readers.las``, dans l'ordre du fichier : le LAZ fusionné est
     identique d'un run à l'autre (même sha256 que ``pdal merge --driver
@@ -491,8 +558,9 @@ def merge_tiles_flux(
         par_nom = {p.name: p for p, _ in voisines}
         actuel = _sidecar_flux(voisins, {
             nom: _empreinte(par_nom[nom]) for nom in avant if nom in par_nom
-        } if isinstance(avant, dict) else {})
-        if ok and enregistre == actuel:
+        } if isinstance(avant, dict) else {}, filtre)
+        sans_bornes = {k: v for k, v in enregistre.items() if k != "bornes"} if isinstance(enregistre, dict) else None
+        if ok and sans_bornes == actuel:
             log(f"LAZ fusionné réutilisé (cache intermédiaire) : {output_path.name}")
             return True
         log(f"Fusion d'une version précédente ou voisines modifiées → re-fusion : {output_path.name}")
@@ -521,7 +589,7 @@ def merge_tiles_flux(
 
     partial = _partial_path(output_path)
     try:
-        ok = _executer_fusion(central_path, valides, partial, log=log, cancel=cancel)
+        ok, bornes = _executer_fusion(central_path, valides, partial, log=log, cancel=cancel, filtre=filtre)
         if not ok and valides and not cancel():
             # Une voisine à l'en-tête sain mais aux points illisibles (LAZ tronqué)
             # fait échouer tout le pipeline : on l'isole par une lecture complète et
@@ -535,7 +603,7 @@ def merge_tiles_flux(
                     ecartees[s.name] = _empreinte(s)
             if len(saines) < len(valides):
                 log(f"{len(valides) - len(saines)} voisine(s) illisible(s) écartée(s) → nouvelle fusion")
-                ok = _executer_fusion(central_path, saines, partial, log=log, cancel=cancel)
+                ok, bornes = _executer_fusion(central_path, saines, partial, log=log, cancel=cancel, filtre=filtre)
         if not ok:
             return False
         ok_out, msg_out = validate_las_or_laz_with_pdal(partial)
@@ -548,7 +616,7 @@ def merge_tiles_flux(
     finally:
         _discard_partial(partial)
 
-    sidecar.write_text(json.dumps(_sidecar_flux(voisins, ecartees)), encoding="utf-8")
+    sidecar.write_text(json.dumps(_sidecar_flux(voisins, ecartees, filtre, bornes)), encoding="utf-8")
     return True
 
 
@@ -592,6 +660,8 @@ class _PreprocessTask:
     # re-téléchargements de voisins doivent passer par le même proxy que
     # l'acquisition (AUDIT v2 NET-06 — réseau d'entreprise).
     proxies: Dict[str, str] = field(default_factory=dict)
+    # Filtre des points de l'étape 2 (syntaxe QGIS) : le fusionné ne garde que ces classes.
+    filtre: str = ""
 
 
 @dataclass
@@ -666,12 +736,17 @@ def _process_single_tile_preprocess(
         if fusion_mode() == FUSION_ANCIENNE:
             ok = _fusion_ancienne(task, voisines, merged_path, tlog, cancel)
         else:
+            filtre = expression_pdal(task.filtre) if task.filtre else None
+            if task.filtre and filtre is None:
+                tlog(f"⚠️ Filtre des points non reconnu ({task.filtre}) : fusion sans filtre, "
+                     "le MNT et la densité filtrent eux-mêmes (plus lent)")
             ok = merge_tiles_flux(
                 central_path=task.central_path,
                 voisines=[(source, bornes) for source, bornes, _place in voisines],
                 output_path=merged_path,
                 log=tlog,
                 cancel=cancel,
+                filtre=filtre,
             )
         if not ok:
             if cancel():
@@ -748,6 +823,7 @@ def prepare_merged_tiles(
     max_workers: Optional[int] = None,
     stage: StageFn = _default_stage,
     on_tile_merged: Optional[Callable[[int, int, str], None]] = None,
+    filter_expression: str = "",
 ) -> IgnPreprocessResult:
     """Fusionne chaque dalle avec ses voisines (préfixage des bords).
 
@@ -821,6 +897,7 @@ def prepare_merged_tiles(
             margin_m=margin_m,
             dalles_dir=dalles_dir,
             proxies=proxies,
+            filtre=filter_expression,
         ))
 
     # Configuration parallélisation

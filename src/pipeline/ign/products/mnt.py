@@ -51,7 +51,14 @@ def emprise_alignee(bornes: Tuple[float, float, float, float], resolution: float
 
 
 def _bornes_du_nuage(laz: Path) -> Optional[Tuple[float, float, float, float]]:
-    """Bornes des points d'après l'en-tête du LAZ (``pdal info --metadata``, sans lire les points), ou None."""
+    """Bornes des points : celles relevées à la fusion AVANT filtrage (sidecar ``.inputs.json``, flux-2), sinon
+    l'en-tête du LAZ (``pdal info --metadata``, sans lire les points), sinon None."""
+    try:
+        b = json.loads(laz.with_suffix(".inputs.json").read_text(encoding="utf-8")).get("bornes")
+        if isinstance(b, list) and len(b) == 4:
+            return float(b[0]), float(b[1]), float(b[2]), float(b[3])
+    except (OSError, ValueError, AttributeError):
+        pass
     pdal = shutil.which("pdal")
     if not pdal:
         return None

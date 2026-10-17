@@ -274,6 +274,7 @@ class IgnOrLocalRunner:
                 dalles_dir=result.dalles_dir,
                 output_dir=ctx.output_dir,
                 tile_overlap_percent=processing.tile_overlap,
+                filter_expression=processing.filter_expression,
                 log=lambda m: reporter.info(m),
                 cancel=lambda: cancel.is_cancelled(),
                 stage=lambda s: reporter.stage(s),

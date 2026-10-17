@@ -192,6 +192,20 @@ def _filtrer_aires_par_entite(output_dir: Path, run: Dict[str, Any], log) -> Non
             log(f"Computer Vision: filtrage par aire de {gp.stem} ignoré (erreur): {e}")
 
 
+def _recompter_effectifs(output_dir: Path, run: Dict[str, Any]) -> None:
+    """Effectifs du bilan (``fiabilite.json``) recomptés sur les GeoPackages des entités du run, après les
+    filtres d'aire ; le sidecar d'un GeoPackage vidé puis supprimé est retiré."""
+    try:  # fallback standalone (tests : src/ sur le path)
+        from ...app.services.fiabilite import recompter_effectifs
+    except ImportError:  # pragma: no cover
+        from app.services.fiabilite import recompter_effectifs
+    from ..output_paths import build_entity_class_targets
+    gpkgs = {gp for ent in (run or {}).get("entities") or []
+             for lst in build_entity_class_targets(output_dir, [ent]).values() for gp, _ in lst}
+    for gp in sorted(gpkgs):
+        recompter_effectifs(gp)
+
+
 def run_existing_rvt(
     *,
     existing_rvt_dir: Path,
@@ -496,6 +510,7 @@ def run_existing_rvt(
             if busy_large:
                 on_busy(False)
         _filtrer_aires_par_entite(output_dir, cv_config, log)
+        _recompter_effectifs(output_dir, cv_config)
 
     return ExistingRvtResult(
         total_images=len(jpg_files),

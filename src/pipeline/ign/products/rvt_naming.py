@@ -90,7 +90,7 @@ PENTE_POURCENT = 2
 def slope_unit(rvt_params: Dict[str, Any]) -> int:
     """Unité EFFECTIVE de la pente : 0 (degrés) ou 2 (pourcentage).
 
-    Jusqu'à la 0.16.0, l'option « Pourcentage » envoyait 1, le code des RADIANS : une configuration qui porte 1
+    Jusqu'à la 0.15.0, l'option « Pourcentage » envoyait 1, le code des RADIANS : une configuration qui porte 1
     est relue comme un pourcentage, ce que l'utilisateur avait demandé. SOURCE UNIQUE du nom de dossier et du
     calcul (``indices.py``), comme ``svf_settings``.
     """

@@ -558,8 +558,8 @@ Cette grille indique, pour chaque vague livrée, **quelles sections de tests son
 > plus récent, écrase le TIF final de même nom — `livrable/indices/` n'est jamais
 > supprimé, c'est le livrable accumulé multi-zones, cf. §22).
 
-- [ ] **28.1 Préflight rvt-qgis absent** *(révisé 0.16.0 : ne vaut plus qu'avec `ARCHEO_INDICES_MOTEUR=processing` ; sinon voir § 53)* : désactiver (décocher) le plugin « Relief Visualization Toolbox » dans le gestionnaire d'extensions, cocher un indice RVT (ex. LD) à l'étape 2 → le panneau « État du système » de l'étape 4 affiche un ✗ **critique** « Algorithmes RVT (Processing) » mentionnant l'installation/mise à jour via Extensions ; **▶ Lancer** refuse de démarrer le pipeline (préflight KO **avant** tout téléchargement).
-- [ ] **28.2 Préflight rvt-qgis présent** *(révisé 0.16.0, même condition)* : réactiver rvt-qgis, redémarrer QGIS → le même check passe au ✓ (« N algorithme(s) rvt:* disponibles ») et le run démarre normalement.
+- [ ] **28.1 Préflight rvt-qgis absent** *(révisé 0.15.0 : ne vaut plus qu'avec `ARCHEO_INDICES_MOTEUR=processing` ; sinon voir § 53)* : désactiver (décocher) le plugin « Relief Visualization Toolbox » dans le gestionnaire d'extensions, cocher un indice RVT (ex. LD) à l'étape 2 → le panneau « État du système » de l'étape 4 affiche un ✗ **critique** « Algorithmes RVT (Processing) » mentionnant l'installation/mise à jour via Extensions ; **▶ Lancer** refuse de démarrer le pipeline (préflight KO **avant** tout téléchargement).
+- [ ] **28.2 Préflight rvt-qgis présent** *(révisé 0.15.0, même condition)* : réactiver rvt-qgis, redémarrer QGIS → le même check passe au ✓ (« N algorithme(s) rvt:* disponibles ») et le run démarre normalement.
 - [ ] **28.3 Re-run, paramètre changé** : run 1 `ign_laz` (1 dalle suffit) avec résolution MNT 0,5 m ; puis étape 2 → résolution MNT 2 m et re-run dans le **même** `output_dir` → la **fenêtre du wizard** affiche « ⚠️ Paramètres de traitement modifiés → cache des intermédiaires invalidé » ; la dalle est **réellement recalculée** (durée non nulle, pas de « Terminé en 0.0s »), le fichier de log montre « TIF rogné copié » et le TIF de `livrable/indices/MNT/tif/` a la nouvelle résolution (propriétés de la couche : taille de pixel 2 m — le fichier existant a bien été **écrasé**). Si la CV est active : le PNG d'inférence est régénéré (« PNG plus ancien que sa source, régénération ») et l'inférence re-tourne (pas de « déjà traité »).
 - [ ] **28.4 Re-run, paramètres identiques (reprise)** : relancer une 3e fois **sans rien changer** → pas de purge, reprise rapide sur le cache — dans le **fichier de log** (`*.txt`, canal technique, pas la fenêtre), chercher « (cache intermédiaire) » : une ligne par produit (« MNT réutilisé… », « Densité réutilisée… », « LD réutilisé… », « LAZ fusionné réutilisé… » — accord au féminin pour Densité/COUVERTURE), pas de « TIF rogné copié », « PNG déjà présent » si PNG activés, et **aucune** ré-inférence CV (cache de détections conservé) — le comportement §22 (ajout de dalle) reste intact.
 - [ ] **28.5 Bornes de la purge** : après 28.3, vérifier que `technique/sources/dalles/*.laz` (pas de re-téléchargement) et `livrable/detections/` (si présents) n'ont **pas** été supprimés ; `technique/intermediaires/run_params.json` existe et reflète les derniers paramètres.
@@ -937,10 +937,10 @@ Lot 0d du chantier d'accélération (2026-10-15). Sans le moteur de détection l
 Lot 1 du chantier d'accélération (2026-10-15) : la fusion d'une dalle avec ses voisines est un seul `pdal pipeline --stream`, tout en lecture ordonnée ; l'ancienne fusion reste derrière `ARCHEO_FUSION_LEGACY=1` pendant une version.
 
 - [ ] **49.1 Reproductible** : deux runs LAZ locaux (bloc 3×3, MNT seul) dans deux dossiers vides → les `technique/intermediaires/*_merged.laz` ont le même sha256 deux à deux (`Get-FileHash`), les `livrable/indices/MNT/tif/*.tif` aussi.
-- [ ] **49.2 Dossier d'une version précédente** : relancer dans un dossier de sortie écrit par la 0.14.1 → le journal dit « ⚠️ Méthode de calcul mise à jour → cache des intermédiaires invalidé », aucune ligne « LAZ fusionné réutilisé » ; fusionnés et MNT recalculés ; chaque `*_merged.inputs.json` porte `"fusion": "flux-1"`.
+- [ ] **49.2 Dossier d'une version précédente** : relancer dans un dossier de sortie écrit par la 0.14.1 → le journal dit « ⚠️ Méthode de calcul mise à jour → cache des intermédiaires invalidé », aucune ligne « LAZ fusionné réutilisé » ; fusionnés et MNT recalculés ; chaque `*_merged.inputs.json` porte `"fusion": "flux-2"`.
 - [ ] **49.3 Dalle isolée, dalle de bord** : run sur une dalle seule (`dalle_A.txt`) puis sur une zone de bord (`zone_ACB.txt`) → ✓, MNT produit, aucune ligne « Échec merge ».
 - [ ] **49.4 Voisine illisible** : en LAZ locaux, remplacer une voisine par une copie tronquée de 1 Mo → ✓ ; le journal technique dit « voisine(s) illisible(s) écartée(s) → nouvelle fusion » pour les dalles qui la touchent.
-- [ ] **49.5 Trace** : `livrable/traitement.json` porte `pdal_version` (« 2.10.0 … » sous QGIS 4.0.3, « 2.9.0 … » sous QGIS 3.44) et `"fusion_laz": "flux-1"`.
+- [ ] **49.5 Trace** : `livrable/traitement.json` porte `pdal_version` (« 2.10.0 … » sous QGIS 4.0.3, « 2.9.0 … » sous QGIS 3.44) et `"fusion_laz": "flux-2"`.
 - [ ] **49.6 Interrupteur** : lancer QGIS avec `ARCHEO_FUSION_LEGACY=1` dans l'environnement et relancer dans le même dossier → « Méthode de calcul mise à jour », `technique/intermediaires/` contient de nouveau des `*_neighbor_N.laz`, `traitement.json` porte `"fusion_laz": "pdal-merge"`.
 - [ ] **49.7 Qt6** : rejouer 49.1 et 49.2 sous QGIS 4.
 
@@ -955,7 +955,7 @@ Lot 3 du chantier d'accélération (2026-10-15) : une dalle lue en entier reçoi
 
 ## 51. Moteur d'indices intégré : mêmes images, sans Processing ⭐ P0
 
-> **Contexte** (0.16.0, lots 4 et 6 du chantier d'accélération) : les indices sont calculés par le plugin avec une
+> **Contexte** (0.15.0, lots 4 et 6 du chantier d'accélération) : les indices sont calculés par le plugin avec une
 > copie figée de la bibliothèque rvt (`src/pipeline/ign/products/rvt_embarque/`, `LICENSE` et `NOTICE` Apache 2.0).
 > Les images doivent être identiques à celles de la version précédente — la preuve automatique est le banc N2 —,
 > sauf MSTP et M-HS 8 bits (§ 52).
@@ -968,7 +968,7 @@ Lot 3 du chantier d'accélération (2026-10-15) : une dalle lue en entier reçoi
 
 ## 52. MSTP à la luminosité réglée ; M-HS 8 bits à l'élévation réglée ⭐ P0
 
-> **Contexte** (0.16.0) : rvt-qgis arrondissait la luminosité du MSTP à l'entier et ignorait l'élévation et
+> **Contexte** (0.15.0) : rvt-qgis arrondissait la luminosité du MSTP à l'entier et ignorait l'élévation et
 > l'exagération du M-HS 8 bits. Les deux sont maintenant appliquées ; les noms de dossier ne changent pas, une note
 > `<intermédiaire>.calcul` fait recalculer une fois un intermédiaire d'avant.
 
@@ -981,7 +981,7 @@ Lot 3 du chantier d'accélération (2026-10-15) : une dalle lue en entier reçoi
 
 ## 53. Sans l'extension rvt-qgis ⭐ P0
 
-> **Contexte** (0.16.0) : les 12 indices sont calculés avec la bibliothèque rvt intégrée ; l'extension n'est plus
+> **Contexte** (0.15.0) : les 12 indices sont calculés avec la bibliothèque rvt intégrée ; l'extension n'est plus
 > requise, et l'avoir installée ne change rien (le `rvt` de l'extension et celui du plugin ne se partagent jamais).
 
 - [ ] **53.1** Désactiver « Relief Visualization Toolbox » dans le gestionnaire d'extensions, redémarrer QGIS, cocher les 12 indices → étape 4 : « Moteur d'indices intégré » ✓, aucune ligne « Algorithmes RVT (Processing) » ; le traitement publie les 12 indices ; à l'installation du plugin, QGIS ne propose plus d'installer l'extension.
@@ -1008,7 +1008,7 @@ Lot 3 du chantier d'accélération (2026-10-15) : une dalle lue en entier reçoi
 
 ## 55. Fusion filtrée : le nuage fusionné ne garde que les points du filtre ⭐ P0
 
-> **Contexte** (0.16.0, 2026-10-17) : la fusion en flux applique le filtre des points de l'étape 2 ; le nuage
+> **Contexte** (0.15.0, 2026-10-17) : la fusion en flux applique le filtre des points de l'étape 2 ; le nuage
 > fusionné de `technique/intermediaires/` ne contient plus la végétation. Mesuré : MNT 170 → 42 s, 10,7 → 6,3 Go,
 > MNT et densité identiques au pixel. Les bornes du nuage avant filtrage sont dans `<dalle>_merged.inputs.json`.
 

@@ -258,7 +258,7 @@ def collect_preflight_results(
             )
         )
 
-    # Indices de visualisation (0.16.0) : ceux que le moteur intégré calcule (bibliothèque rvt embarquée,
+    # Indices de visualisation (0.15.0) : ceux que le moteur intégré calcule (bibliothèque rvt embarquée,
     # ign/products/moteur_indices.py) n'exigent plus l'extension rvt-qgis ; on vérifie que la bibliothèque se
     # charge. Import relatif différé : un import absolu `pipeline.*` ne résout pas dans QGIS.
     try:

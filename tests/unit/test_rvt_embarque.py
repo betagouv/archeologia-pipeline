@@ -1,4 +1,4 @@
-"""Bibliothèque rvt embarquée sous un nom privé (vague 2, lot 4, 0.16.0).
+"""Bibliothèque rvt embarquée sous un nom privé (vague 2, lot 4, 0.15.0).
 
 Le plugin calcule ses indices avec une copie figée de la bibliothèque rvt de rvt-qgis 1.0.1
 (``src/pipeline/ign/products/rvt_embarque``), imports internes rendus relatifs : elle ne lit ni n'écrit

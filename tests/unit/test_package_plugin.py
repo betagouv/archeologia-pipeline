@@ -261,7 +261,7 @@ def test_les_sauvegardes_horodatees_ne_partent_pas(pkg, tmp_path):
 
 
 def test_le_rvt_embarque_et_sa_licence_partent_dans_le_zip(pkg):
-    """Lot 4 (0.16.0) : la copie de rvt, sa LICENSE et son NOTICE Apache 2.0 sont livrés."""
+    """Lot 4 (0.15.0) : la copie de rvt, sa LICENSE et son NOTICE Apache 2.0 sont livrés."""
     d = _REPO_ROOT / "src" / "pipeline" / "ign" / "products" / "rvt_embarque"
     fichiers = [p for p in d.rglob("*") if p.is_file() and "__pycache__" not in p.parts]
     assert {"LICENSE", "NOTICE", "__init__.py", "blend.py", "blend_func.py", "default.py", "tile.py", "vis.py",

@@ -1,4 +1,4 @@
-"""MSTP et M-HS (0.16.0) : leur image change à nom de fichier égal. Un intermédiaire calculé avant — sans note de
+"""MSTP et M-HS (0.15.0) : leur image change à nom de fichier égal. Un intermédiaire calculé avant — sans note de
 calcul, ou par Processing — est recalculé une fois ; à jour, il est réutilisé (Review Focus 2)."""
 from __future__ import annotations
 

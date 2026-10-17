@@ -1,4 +1,4 @@
-"""create_visualization_products (0.16.0) : chaque produit par le moteur intégré, ou par Processing quand
+"""create_visualization_products (0.15.0) : chaque produit par le moteur intégré, ou par Processing quand
 ARCHEO_INDICES_MOTEUR=processing ; la ligne [PARAMS RVT/<P>] du journal dit lequel."""
 from __future__ import annotations
 

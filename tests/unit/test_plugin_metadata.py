@@ -53,7 +53,7 @@ def test_le_metadata_livre_se_lit_avec_configparser():
 
 
 def test_metadata_ne_depend_plus_de_rvt_qgis():
-    """0.16.0 : QGIS ne doit plus exiger ni proposer l'extension Relief Visualization Toolbox."""
+    """0.15.0 : QGIS ne doit plus exiger ni proposer l'extension Relief Visualization Toolbox."""
     racine = Path(__file__).resolve().parents[2]
     for ligne in (racine / "metadata.txt").read_text(encoding="utf-8").splitlines():
         if ligne.startswith("plugin_dependencies"):

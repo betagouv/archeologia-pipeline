@@ -49,7 +49,7 @@ def _as_bool(value: Any, default: bool) -> bool:
         return bool(default)
 
 
-#: Calculs dont le résultat a changé en 0.16.0 à nom de fichier égal (même dossier) : MSTP (luminosité appliquée
+#: Calculs dont le résultat a changé en 0.15.0 à nom de fichier égal (même dossier) : MSTP (luminosité appliquée
 #: telle quelle, rvt-qgis l'arrondissait à l'entier) et M-HS 8 bits (élévation et exagération appliquées). Une note
 #: ``<intermédiaire>.calcul`` porte la version ; sans elle — calculé par une version précédente, ou par Processing —
 #: l'intermédiaire est recalculé une fois (needs_refresh ne voit que les dates). Le rognage et la publication

@@ -195,7 +195,7 @@ class TestRvtAlgosCheck:
 
     @pytest.fixture(autouse=True)
     def _ancien_calcul_force(self, monkeypatch):
-        # Ces tests visent le contrôle du registre Processing : on force l'ancien calcul (0.16.0), sinon les
+        # Ces tests visent le contrôle du registre Processing : on force l'ancien calcul (0.15.0), sinon les
         # produits du moteur intégré n'y passent plus.
         monkeypatch.setenv("ARCHEO_INDICES_MOTEUR", "processing")
 
@@ -350,7 +350,7 @@ class TestCheckRasterCrs:
 
 
 class TestMoteurIntegre:
-    """« Moteur d'indices intégré » (0.16.0) : la bibliothèque rvt embarquée se charge-t-elle ?"""
+    """« Moteur d'indices intégré » (0.15.0) : la bibliothèque rvt embarquée se charge-t-elle ?"""
 
     NAME = "Moteur d'indices intégré"
     CHEMIN = "pipeline.ign.products.moteur_indices.moteur_disponible"
@@ -394,7 +394,7 @@ def test_ld_forcee_par_processing_exige_rvt_ld(monkeypatch):
 
 
 def test_les_12_indices_sans_rvt_qgis(monkeypatch):
-    """0.16.0 : sans ARCHEO_INDICES_MOTEUR=processing, aucun algorithme rvt:* n'est exigé (N3 scénario 8)."""
+    """0.15.0 : sans ARCHEO_INDICES_MOTEUR=processing, aucun algorithme rvt:* n'est exigé (N3 scénario 8)."""
     monkeypatch.delenv("ARCHEO_INDICES_MOTEUR", raising=False)
     monkeypatch.setattr("pipeline.ign.products.moteur_indices.moteur_disponible", lambda: "")
     douze = ["HS", "M_HS", "SVF", "OPNS", "SLO", "LD", "SLRM", "VAT", "MSTP", "CVAT", "PRISM", "CRIM"]

@@ -1,4 +1,4 @@
-"""Moteur d'indices intégré (vague 2, 0.16.0) : identité au pixel avec rvt seul.
+"""Moteur d'indices intégré (vague 2, 0.15.0) : identité au pixel avec rvt seul.
 
 Chaque test compare, sur un petit MNT synthétique à sans-donnée (coin, bande, pixel isolé), le calcul du moteur
 à l'appel de rvt que fait l'algorithme Processing de rvt-qgis 1.0.1 qu'il remplace : même type, même forme, mêmes
@@ -218,7 +218,7 @@ def test_m_hs_8_bits_aux_defauts_identique_a_rvt_qgis():
 
 
 def test_m_hs_8_bits_applique_l_elevation_reglee():
-    """Changement voulu (0.16.0) : rvt-qgis ignorait l'élévation en 8 bits."""
+    """Changement voulu (0.15.0) : rvt-qgis ignorait l'élévation en 8 bits."""
     _, _, default, _ = _rvt()
     dem = _mnt()
     defaut = default.DefaultValues().float_to_8bit(float_arr=dem.copy(), visualization=default.RVTVisualization.MULTI_HILLSHADE,

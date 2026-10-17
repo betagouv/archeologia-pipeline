@@ -9,7 +9,7 @@ MNT une fois et partage une couche entre produits quand rvt l'aurait calculée �
 de partage est faite des paramètres que la fonction de rvt reçoit réellement, jamais du seul réglage de
 l'interface.
 
-Deux corrections voulues (0.16.0, changelog) : la luminosité du MSTP n'est plus arrondie à l'entier, et le M-HS
+Deux corrections voulues (0.15.0, changelog) : la luminosité du MSTP n'est plus arrondie à l'entier, et le M-HS
 8 bits applique l'élévation et l'exagération réglées. indices.py note leur version à côté de l'intermédiaire
 (VERSION_CALCUL) pour qu'un ancien soit recalculé une fois.
 
@@ -22,7 +22,7 @@ from pathlib import Path
 from typing import Any, Callable, Dict, Optional, Tuple
 
 #: « processing » : chaque produit qui a un algorithme Processing passe par l'extension rvt-qgis, comme avant
-#: la 0.16.0 (diagnostic d'un écart ; l'extension est alors requise). CVAT et CRIM n'en ont pas.
+#: la 0.15.0 (diagnostic d'un écart ; l'extension est alors requise). CVAT et CRIM n'en ont pas.
 VARIABLE_MOTEUR = "ARCHEO_INDICES_MOTEUR"
 
 #: Produits calculés par le moteur intégré ; les autres passent encore par Processing (rvt-qgis).
@@ -308,7 +308,7 @@ def calculer_slrm(c: Couches, out: Path, *, rayon: int, ve: float, huit_bits: bo
 def composer_mhs_8bits(c: Couches, *, elevation: float, ve: float):
     """Le M-HS 8 bits : trois ombrages (315°, 22,5°, 90°) étirés de 0 à 1 puis en octets, la branche « value » de
     DefaultValues.float_to_8bit(MULTI_HILLSHADE) — mais à l'élévation et à l'exagération réglées, que rvt-qgis
-    remplaçait par 35° et 1 (décision 0.16.0 ; identique aux défauts)."""
+    remplaçait par 35° et 1 (décision 0.15.0 ; identique aux défauts)."""
     import numpy as np
     _, blend_func, default, vis = _rvt()
     bornes = default.DefaultValues().mhs_bytscl   # ("value", 0, 1)

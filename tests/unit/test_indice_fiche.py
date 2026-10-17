@@ -396,7 +396,7 @@ _SIGLE_RVT = {
 
 
 def _dossier_rvt_qgis():
-    """Les réglages de rvt intégrés au plugin (copie figée de rvt-qgis 1.0.1, 0.16.0) : toujours présents."""
+    """Les réglages de rvt intégrés au plugin (copie figée de rvt-qgis 1.0.1, 0.15.0) : toujours présents."""
     return Path(__file__).resolve().parents[2] / "src" / "pipeline" / "ign" / "products" / "rvt_embarque"
 
 

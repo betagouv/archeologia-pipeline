@@ -279,16 +279,15 @@ def test_reglages_par_defaut_dans_les_bornes():
     assert bornes_errors(tous, defauts)   # en flottant seulement, les directions du M-HS comptent
 
 
-def test_exageration_du_mstp_sans_effet_mesurable(calcul):
-    """L'écart du MSTP est normalisé par l'écart type local : l'exagération verticale s'y annule (réglage à
-    masquer, ou à documenter comme sans effet)."""
+def test_exageration_du_mstp_sans_effet(calcul):
+    """L'exagération n'est plus proposée pour le MSTP (fb9ac9b) ; une ancienne configuration qui la porte encore
+    ne doit rien changer. Mathématiquement elle s'annule (écart normalisé par l'écart type local), mais le calcul
+    flottant en gardait du bruit (jusqu'à 87 niveaux sur terrain plat) : les réglages effectifs la fixent à 1."""
+    from pipeline.ign.products.rvt_naming import mstp_settings
+    assert mstp_settings({"mstp": {"ve_factor": 3}})["ve_factor"] == 1
     ref, _, _ = calcul("MSTP", {"mstp": {"save_as_8bit": False}}, _bosses)
     a, _, _ = calcul("MSTP", {"mstp": {"ve_factor": 3, "save_as_8bit": False}}, _bosses)
-    ok = np.isfinite(ref) & np.isfinite(a)
-    d = np.abs(a[ok] - ref[ok])
-    # mathématiquement nul ; seul reste le bruit d'arrondi du flottant (images intégrales de rvt : quelques pixels
-    # plats de la grande échelle, où l'écart type local est presque nul, en gardent un écart visible)
-    assert np.median(d) < 1e-4 and d.mean() < 5e-3
+    assert np.array_equal(a, ref, equal_nan=True)
 
 
 @pytest.mark.parametrize("produit,section", [("HS", "hs"), ("SLO", "slope"), ("MSTP", "mstp"), ("CRIM", "crim")])

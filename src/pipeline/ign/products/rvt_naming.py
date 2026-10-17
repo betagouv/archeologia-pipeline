@@ -116,8 +116,12 @@ def mstp_settings(rvt_params: Dict[str, Any]) -> Dict[str, float]:
     cfg = (rvt_params or {}).get("mstp") or {}
     if not isinstance(cfg, dict):
         cfg = {}
-    return {k: (_as_float(cfg.get(k, d), d) if k == "lightness" else _as_int(cfg.get(k, d), int(d)))
-            for k, d in MSTP_DEFAUTS.items()}
+    m = {k: (_as_float(cfg.get(k, d), d) if k == "lightness" else _as_int(cfg.get(k, d), int(d)))
+         for k, d in MSTP_DEFAUTS.items()}
+    # L'exagération n'est plus proposée (sans effet en arithmétique exacte, mais du bruit en flottant) : celle
+    # d'une ancienne configuration est ignorée, sans quoi l'image changerait sous le même nom de dossier.
+    m["ve_factor"] = 1
+    return m
 
 
 def svf_settings(rvt_params: Dict[str, Any]) -> Dict[str, int]:

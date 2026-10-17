@@ -60,3 +60,18 @@ def test_plus_de_lecture_d_emprise_pdal():
     # get_laz_bounds lançait un `pdal info --metadata` par dalle pour rien.
     assert not hasattr(pdal_validation, "get_laz_bounds")
     assert not hasattr(mnt_mod, "get_laz_bounds") and not hasattr(density_mod, "get_laz_bounds")
+
+
+def test_densite_sur_la_grille_calee_du_mnt(tmp_path, monkeypatch):
+    """Comme le MNT (43d2167) : sans emprise, pdal:density cale sa grille sur le premier point moins un
+    demi-pixel, et le rognage au kilomètre la rééchantillonnait. L'emprise des points arrondie au multiple
+    de la résolution de la densité fixe la grille ; la couverture, qui en dérive, suit."""
+    recus: list = []
+    monkeypatch.setattr(density_mod, "validate_las_or_laz_with_pdal", lambda p: (True, ""))
+    monkeypatch.setattr(density_mod, "run_qgis_algorithm", _algo(recus))
+    monkeypatch.setattr(mnt_mod, "_bornes_du_nuage", lambda p: (815799.76, 817200.31, 6331800.0, 6333199.5))
+    density_mod.create_density_map(
+        input_laz_path=_laz(tmp_path), temp_dir=tmp_path / "t", current_tile_name=TILE,
+        density_resolution=1.0, tile_overlap_percent=20.0, filter_expression="Classification = 2",
+    )
+    assert recus[0][1]["FILTER_EXTENT"] == "815799.0,817201.0,6331800.0,6333200.0 [EPSG:2154]"

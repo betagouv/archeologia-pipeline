@@ -28,9 +28,9 @@ class TerrainModelResult:
     mnt_path: Path
 
 
-#: Calage de la grille du MNT, inscrit dans la signature du cache (cache_guard) : un dossier calculé avant ce calage
-#: refait une fois ses MNT au lieu de les resservir.
-GRILLE_MNT = "emprise-alignee-1"
+#: Calage de la grille du MNT et de la densité, inscrit dans la signature du cache (cache_guard) : un dossier calculé
+#: avant ce calage refait une fois ses MNT et sa densité au lieu de les resservir (-2 : la densité suit, après -1).
+GRILLE_MNT = "emprise-alignee-2"
 
 
 def emprise_alignee(bornes: Tuple[float, float, float, float], resolution: float) -> Tuple[float, float, float, float]:

@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 
 from ..pdal_validation import validate_las_or_laz_with_pdal
+from . import mnt as _mnt
 from .qgis_processing import run_qgis_algorithm
 from .results import needs_refresh
 from ...types import LogFn
@@ -68,6 +69,15 @@ def create_density_map(
         "RESOLUTION": str(density_resolution),
         "FILTER_EXPRESSION": filter_expression,
     }
+
+    # Même grille calée que le MNT (mnt.emprise_alignee) : sans emprise, pdal:density cale la sienne sur le
+    # premier point moins un demi-pixel, et le rognage au kilomètre la rééchantillonnait (couverture comprise).
+    bornes = _mnt._bornes_du_nuage(input_laz_path)
+    if bornes is not None:
+        x0, x1, y0, y1 = _mnt.emprise_alignee(bornes, density_resolution)
+        parameters["FILTER_EXTENT"] = f"{x0},{x1},{y0},{y1} [EPSG:2154]"
+    else:
+        log("⚠️ Densité : bornes du nuage illisibles — grille de PDAL sans calage (décalage possible d'un demi-pixel)")
 
     run_qgis_algorithm("pdal:density", parameters, feedback=feedback, context=context)
 

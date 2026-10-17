@@ -54,6 +54,7 @@ from .steps.step_4_launch import LaunchPage, RecapSection
 from .visualisation_tab import VisualisationTab
 from .widgets.card import build_card
 from .widgets.stepper_rail import StepperRail
+from .widgets.toast import show_toast
 
 # Onglet « Visualisation » (flux Géoplateforme) : chantier inachevé, masqué en
 # attendant sa reprise. Remettre à True pour retrouver l'onglet et sa largeur.
@@ -196,6 +197,7 @@ class WizardDialog(QDialog):
         self._indices_page.set_mode(self._source_page.current_mode())
         self._detection_page.load_from(self._config)
         self._detection_page.set_active_rvts(self._indices_page.active_rvt_keys())
+        QTimer.singleShot(0, self._signaler_ecretages)   # après l'affichage de la fenêtre
         self._source_page.changed.connect(self._autosave)
         self._indices_page.changed.connect(self._autosave)
         self._indices_page.changed.connect(self._refresh_rail_subs)
@@ -830,6 +832,12 @@ class WizardDialog(QDialog):
             return
         self._apply_config(loaded)
 
+    def _signaler_ecretages(self) -> None:
+        """Un réglage chargé hors des bornes de son champ y est ramené : le dire (le journal Python l'a déjà)."""
+        msgs = getattr(self._indices_page, "ecretages", None) or []
+        if msgs:
+            show_toast(self, "\n".join(["Réglage ramené dans ses bornes :", *msgs]), duration=8000)
+
     def _apply_config(self, loaded) -> None:
         """Point de passage UNIQUE d'un changement de config (menu, import,
         réinitialisation) : normalisation, rechargement des pages, persistance."""
@@ -853,5 +861,6 @@ class WizardDialog(QDialog):
             self._detection_page.set_active_rvts(self._indices_page.active_rvt_keys())
         finally:
             self._loading = False
+        self._signaler_ecretages()
         self._refresh_rail_subs()
         self._autosave_now()  # changement explicite → persistance immédiate

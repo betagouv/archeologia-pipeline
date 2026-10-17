@@ -4,7 +4,7 @@ Avant de lancer, cette étape vérifie que tout est prêt et reprend vos choix. 
 
 ## Configuration et récapitulatif
 
-Le bandeau du haut dit si la configuration est valide. S'il manque quelque chose, il nomme les points à corriger et le rail de gauche pose une pastille sur l'étape concernée. Tant qu'un point reste à corriger, **Lancer le pipeline** est grisé et son infobulle les liste. Un réglage d'indice hors des bornes de l'algorithme (une configuration modifiée à la main, par exemple) en fait partie, avec le nom du champ : lancé tel quel, il ferait échouer chaque dalle après le téléchargement et le MNT.
+Le bandeau du haut dit si la configuration est valide. S'il manque quelque chose, il nomme les points à corriger et le rail de gauche pose une pastille sur l'étape concernée. Tant qu'un point reste à corriger, **Lancer le pipeline** est grisé et son infobulle les liste. Un réglage d'indice hors des bornes de l'algorithme (une configuration modifiée à la main, par exemple) en fait partie, avec le nom du champ, et la pastille se pose sur l'étape 2 : lancé tel quel, il ferait échouer chaque dalle après le téléchargement et le MNT.
 
 Le **récapitulatif** reprend vos choix : mode et source, produits, entités et modèles, dossier de sortie.
 

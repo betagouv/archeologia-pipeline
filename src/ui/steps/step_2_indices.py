@@ -15,6 +15,7 @@ tuilage. Ces réglages sont persistés dans ``rvt_params`` et
 """
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 
 from qgis.PyQt.QtCore import QRect, Qt, pyqtSignal
@@ -37,6 +38,7 @@ from qgis.PyQt.QtWidgets import (
 
 from ...pipeline.ign.products.rvt_naming import PENTE_POURCENT, slope_unit as unite_pente
 from ...app.services.rvt_kernel_context import (
+    message_ecretage,
     mstp_scale_errors,
     tile_margin_px,
     tiled_context_warnings,
@@ -67,6 +69,8 @@ from ..widgets.card import build_card
 from ..widgets.no_wheel import NoWheelDoubleSpinBox, NoWheelSpinBox
 from ..widgets.toast import show_toast
 from ..widgets.vignette import FicheButton, FicheThumb
+
+logger = logging.getLogger(__name__)
 
 #: Dossier ``data/`` du plugin — les chemins de vignettes du JSON des fiches y
 #: sont relatifs. Ce module vit dans ``src/ui/steps/``.
@@ -1165,7 +1169,9 @@ class IndicesPage(QWidget):
     # Réglages avancés — chargement / collecte / reset (data-driven)
     # ------------------------------------------------------------------
     def _load_advanced(self, config: dict) -> None:
-        for _p, section, key, widget, kind, default in self._adv_fields:
+        # Valeurs hors bornes écrêtées par le champ : dites (journal + toast de l'assistant), plus en silence.
+        self.ecretages = []
+        for produit, section, key, widget, kind, default in self._adv_fields:
             container = config
             for part in section:
                 container = container.get(part) if isinstance(container, dict) else None
@@ -1174,6 +1180,11 @@ class IndicesPage(QWidget):
             raw = container.get(key, default) if isinstance(container, dict) else default
             if (section, key) == (("rvt_params", "slope"), "unit"):
                 raw = unite_pente({"slope": {"unit": raw}})   # l'ancien 1 (« Pourcentage ») devient 2
+            if kind in ("int", "float"):
+                msg = message_ecretage(produit, key, raw, widget.minimum(), widget.maximum(), kind == "float")
+                if msg:
+                    logger.warning(msg)
+                    self.ecretages.append(msg)
             self._apply_field(widget, kind, raw, default)
 
     def _collect_advanced(self, config: dict) -> None:

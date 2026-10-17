@@ -244,6 +244,21 @@ def needs_refresh(source: Path, dest: Path) -> bool:
         return True
 
 
+def _retirer_mnt_autre_resolution(tif_path: Path, x: str, y: str, name_suffix: str, log: LogFn) -> None:
+    """Le nom du MNT porte sa résolution : une relance à 1 m après 0,5 m laisserait
+    ``…_0M50_…`` à côté de ``…_1M00_…``, et ``index_MNT.vrt`` superposerait les deux.
+    Retire le MNT de la même dalle à une autre résolution (et ses fichiers annexes)."""
+    for ancien in tif_path.parent.glob(f"LHD_FXX_{x}_{y}_MNT_A_*_LAMB93_IGN69{name_suffix}.tif"):
+        if ancien == tif_path:
+            continue
+        for f in tif_path.parent.glob(f"{ancien.name}*"):
+            try:
+                f.unlink()
+            except OSError as e:
+                log(f"⚠️ MNT d'une autre résolution non retiré ({f.name}) : {e}")
+        log(f"MNT d'une autre résolution retiré : {ancien.name}")
+
+
 def copy_mnt_to_results(
     *,
     temp_mnt_path: Path,
@@ -344,6 +359,8 @@ def copy_final_products_to_results(
             # Fraîcheur, pas simple existence : un TIF publié par un run
             # précédent (paramètres différents, noms identiques) est écrasé
             # dès que l'intermédiaire a été recalculé (cf. needs_refresh).
+            if product_name == "MNT" and input_path_cropped.exists():
+                _retirer_mnt_autre_resolution(tif_path, x, y, name_suffix, log)
             if input_path_cropped.exists() and needs_refresh(input_path_cropped, tif_path):
                 shutil.copy2(str(input_path_cropped), str(tif_path))
                 log(f"TIF rogné copié: {tif_path.relative_to(idx_dir)}")

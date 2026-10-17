@@ -141,6 +141,7 @@ def copy_products_without_crop(
     log: LogFn = lambda _: None,
     cancel_check: CancelCheckFn | None = None,
     name_suffix: str = "",
+    mnt_resolution: float = 0.5,
 ) -> Dict[str, Path]:
     """Variante de ``crop_final_products`` qui préserve l'emprise native du MNT.
 
@@ -165,7 +166,8 @@ def copy_products_without_crop(
         check_cancelled(cancel_check)
 
         src_name, dst_name = get_rvt_source_and_dest_filenames(
-            product_name, current_tile_name, x, y, rvt_params, name_suffix=name_suffix
+            product_name, current_tile_name, x, y, rvt_params, name_suffix=name_suffix,
+            mnt_resolution=mnt_resolution,
         )
         src_path = temp_dir / src_name
         dst_path = temp_dir / dst_name

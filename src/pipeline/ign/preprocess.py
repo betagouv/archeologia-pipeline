@@ -53,7 +53,9 @@ def fusion_mode() -> str:
     """Méthode de fusion de ce run : en flux (lot 1), sauf ``ARCHEO_FUSION_LEGACY=1``
     — l'ancienne fusion, gardée une version pour diagnostiquer un MNT chez un
     utilisateur."""
-    return FUSION_ANCIENNE if os.environ.get("ARCHEO_FUSION_LEGACY") == "1" else FUSION_FLUX
+    # « 1 », « true », « oui », « yes », « on », sans la casse : un diagnostic ne doit pas échouer sur la forme
+    legacy = os.environ.get("ARCHEO_FUSION_LEGACY", "").strip().lower() in ("1", "true", "oui", "yes", "on")
+    return FUSION_ANCIENNE if legacy else FUSION_FLUX
 
 
 def calculate_neighbor_coordinates(x: str, y: str) -> List[Tuple[int, int, int]]:
@@ -611,6 +613,8 @@ def merge_tiles_flux(
             # rognage échouait.
             saines: List[Tuple[Path, Dict[str, str]]] = []
             for s, b in valides:
+                if cancel():        # une relecture complète dure 14 à 36 s par voisine : l'annulation n'attend pas la fin
+                    return False
                 if validate_laz_deep(s)[0]:
                     saines.append((s, b))
                 else:

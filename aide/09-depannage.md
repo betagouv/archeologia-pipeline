@@ -28,7 +28,7 @@ Le panneau **État du système** de l'étape 4 nomme ce qui manque :
 
 - **PDAL** ou **GDAL** introuvables : installez QGIS par OSGeo4W, qui les fournit, ou ajoutez-les au chemin du système.
 - **Moteur d'indices intégré** indisponible : une bibliothèque livrée avec QGIS (numpy, scipy ou matplotlib) manque ou ne se charge pas ; le détail la nomme. Réinstallez QGIS par OSGeo4W.
-- **Algorithmes RVT** absents : n'apparaît que si l'ancien calcul par l'extension a été forcé pour un diagnostic ; installez alors Relief Visualization Toolbox, puis relancez QGIS.
+- **Algorithmes RVT** absents : n'apparaît que si l'ancien calcul par l'extension a été forcé pour un diagnostic (variable d'environnement `ARCHEO_INDICES_MOTEUR=processing`) ; installez alors Relief Visualization Toolbox, puis relancez QGIS. Ce mode de secours garde les comportements de l'extension : pente « Pourcentage » étirée de 0 à 51 % en 8 bits, nombre de directions du M-HS limité à 64 même en 8 bits ; ses images sont réutilisées d'une relance à l'autre tant qu'on y reste, et recalculées une fois au retour du calcul intégré.
 - **Moteur de détection** absent : voir l'alerte antivirus ci-dessus.
 - **Projection** refusée : un raster d'entrée n'est pas en Lambert-93 (EPSG:2154). Reprojetez-le avant.
 - **Dossier** introuvable ou vide : le chemin, ou l'extension des fichiers attendue par le mode.

@@ -195,6 +195,10 @@ def _suffixe_reglages(product_name: str, rvt_params: Dict[str, Any]) -> str:
         num_directions = _as_int(mdh.get("num_directions", 16), 16)
         if num_directions < 2:
             num_directions = 16
+        # En 8 bits l'image compose trois éclairages fixes : le nombre de directions n'y change rien, le nom
+        # ne le porte donc plus (constat 12 de l'audit ; il reste au nom de la sortie flottante, où il compte).
+        if str(mdh.get("save_as_8bit", True)).strip().lower() not in ("false", "0", "non", "no"):
+            num_directions = 16
         sun_elevation = _as_int(mdh.get("sun_elevation", 35), 35)
         ve_factor = _as_int(mdh.get("ve_factor", 1), 1)
         return f"_D{num_directions}_E{sun_elevation}_V{ve_factor}"

@@ -98,7 +98,7 @@ def _find_external_cv_runner() -> Optional[Path]:
     return _find()
 
 
-def _check_raster_crs(dir_path, exts, results: List["CheckResult"]) -> None:
+def _check_raster_crs(dir_path, exts, results: List["CheckResult"], declared_crs: Optional[str] = None) -> None:
     """Valide le CRS des rasters fournis (AUDIT v2 GEO-02).
 
     Le pipeline étiquette toutes ses sorties en EPSG:2154 ; un raster dans un
@@ -131,7 +131,9 @@ def _check_raster_crs(dir_path, exts, results: List["CheckResult"]) -> None:
             _short_crs,
             plan_raster_inputs,
         )
-        plan = plan_raster_inputs(paths, declared_crs="EPSG:2154", expected_crs="EPSG:2154")
+        # « declared_crs » (configuration seule, pour un raster sans CRS dans ses métadonnées, un .asc) : lu par
+        # build_run_context mais jamais transmis jusqu'ici avant la 0.15.0 ; EPSG:2154 reste le défaut.
+        plan = plan_raster_inputs(paths, declared_crs=declared_crs or "EPSG:2154", expected_crs="EPSG:2154")
         if plan.crs_verified:
             results.append(CheckResult(
                 name="CRS des rasters", ok=True,
@@ -402,10 +404,10 @@ def collect_preflight_results(
         _check_input_path(files_cfg, "local_laz_dir", "Dossier LAZ locaux", extensions=["laz", "las", "LAZ", "LAS"], results=results)
     elif mode == "existing_mnt":
         _check_input_path(files_cfg, "existing_mnt_dir", "Dossier MNT existants", extensions=["tif", "tiff", "asc"], results=results)
-        _check_raster_crs(files_cfg.get("existing_mnt_dir"), ("tif", "tiff", "asc"), results)
+        _check_raster_crs(files_cfg.get("existing_mnt_dir"), ("tif", "tiff", "asc"), results, files_cfg.get("declared_crs"))
     elif mode == "existing_rvt":
         _check_input_path(files_cfg, "existing_rvt_dir", "Dossier RVT existants", extensions=["tif", "tiff"], results=results)
-        _check_raster_crs(files_cfg.get("existing_rvt_dir"), ("tif", "tiff"), results)
+        _check_raster_crs(files_cfg.get("existing_rvt_dir"), ("tif", "tiff"), results, files_cfg.get("declared_crs"))
 
     return results
 

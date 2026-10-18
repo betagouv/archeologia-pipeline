@@ -59,23 +59,33 @@ VERSION_CALCUL = {"MSTP": "luminosite-reelle-1", "M_HS": "elevation-reelle-1",
                   "OPNS": "negative-sans-donnee-exclu-1"}
 
 
+#: Note d'un intermédiaire calculé par le mode de secours Processing (rvt-qgis) : réutilisé tant qu'on reste en
+#: secours, recalculé une fois au retour du moteur intégré (et inversement). Sans elle, le secours recalculait
+#: MSTP, M-HS et openness négative à chaque relance.
+NOTE_PROCESSING = "processing"
+
+
 def _note_calcul(out: Path) -> Path:
     return out.with_name(out.name + ".calcul")
+
+
+def _note_attendue(produit: str) -> str:
+    return VERSION_CALCUL[produit] if moteur_indices.par_le_moteur(produit) else NOTE_PROCESSING
 
 
 def _a_recalculer(produit: str, source: Path, out: Path) -> bool:
     if needs_refresh(source, out):
         return True
     try:
-        return _note_calcul(out).read_text(encoding="utf-8") != VERSION_CALCUL[produit]
+        return _note_calcul(out).read_text(encoding="utf-8") != _note_attendue(produit)
     except OSError:
         return True
 
 
 def _noter_calcul(produit: str, out: Path, par_le_moteur: bool) -> None:
     note = _note_calcul(out)
-    if par_le_moteur and out.exists():
-        note.write_text(VERSION_CALCUL[produit], encoding="utf-8")
+    if out.exists():
+        note.write_text(VERSION_CALCUL[produit] if par_le_moteur else NOTE_PROCESSING, encoding="utf-8")
     elif note.exists():
         note.unlink()
 

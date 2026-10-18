@@ -70,10 +70,8 @@
     "confidence_threshold": 0.3,
     "iou_threshold": 0.5,
     "generate_annotated_images": false,
-    "generate_shapefiles": false,
     "models_dir": "data/models",
-    "export_runner_config": false,
-    "scan_all": true
+    "export_runner_config": false
   },
   "rvt_params": {
     "hs": {

@@ -15,7 +15,7 @@ def test_ecretage_nomme_le_reglage_la_valeur_lue_et_la_valeur_retenue():
     assert "LD" in m and "Résolution angulaire" in m and "2" in m and "4 retenu" in m
     assert "150" in message_ecretage("LD", "max_radius", 150, 1, 100, False)
     assert "100 retenu" in message_ecretage("LD", "max_radius", 150, 1, 100, False)
-    assert "« radius »" in message_ecretage("SVF", "radius", 0, 1, 50, False)   # sans libellé connu : la clé
+    assert "« ve_factor »" in message_ecretage("HS", "ve_factor", 0, 1, 100, False)   # sans libellé connu : la clé
 
 
 @pytest.mark.parametrize("lue", [4, 32, "10", 12.9, None, "abc"])

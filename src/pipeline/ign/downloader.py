@@ -305,7 +305,7 @@ def note_verifiee_path(dest: Path) -> Path:
     return dest.with_name(dest.name + ".verifie.json")
 
 
-def ecrire_note_verifiee(dest: Path) -> None:
+def ecrire_note_verifiee(dest: Path, log: Optional[LogFn] = None) -> None:
     """Note « vérifiée » : taille et date du LAZ, posée quand il est prouvé entier
     (lecture complète réussie, ou taille égale à celle annoncée par le serveur)."""
     try:
@@ -313,8 +313,10 @@ def ecrire_note_verifiee(dest: Path) -> None:
         note_verifiee_path(dest).write_text(
             json.dumps({"taille": st.st_size, "mtime_ns": st.st_mtime_ns}), encoding="utf-8"
         )
-    except OSError:
-        pass  # accélérateur seulement : sans note, la prochaine relance relit le LAZ en entier
+    except OSError as exc:
+        # accélérateur seulement : sans note, la prochaine relance relit le LAZ en entier — mais on le dit
+        if log is not None:
+            log(f"Note « vérifiée » de {dest.name} non écrite ({exc}) : la dalle sera relue en entier à la prochaine relance")
 
 
 def note_verifiee_valide(dest: Path) -> bool:
@@ -388,7 +390,7 @@ def download_one(
             log(f"🔍 Validation PDAL profonde de {filename}...")
             ok_deep, msg_deep = validate_laz_deep(dest)
             if ok_deep:
-                ecrire_note_verifiee(dest)
+                ecrire_note_verifiee(dest, log)
                 log(f"✅ {filename} déjà téléchargé (validation complète OK)")
                 return True, True
             log(f"⚠️ Fichier existant tronqué/corrompu ({filename}) -> suppression et nouveau téléchargement")
@@ -401,19 +403,23 @@ def download_one(
 
     local = _is_local_url(url)
     if local is not None:
+        # Comme le téléchargement : copie en .partial, validée, puis renommée — une copie interrompue
+        # ne laisse jamais un fichier tronqué sous le nom de la dalle.
+        partial = dest.with_name(dest.name + ".partial")
         log(f"📥 Copie du fichier local {local} vers {dest}...")
-        shutil.copy2(str(local), str(dest))
+        shutil.copy2(str(local), str(partial))
         log(f"🔍 Validation PDAL de {filename}...")
-        ok, msg = _is_valid_with_pdal(dest)
+        ok, msg = _is_valid_with_pdal(partial)
         if not ok:
             log(f"❌ Fichier copié mais invalide via PDAL: {filename}")
             if msg:
                 log(f"PDAL: {msg}")
             try:
-                dest.unlink()
+                partial.unlink()
             except Exception:
                 pass
             return False, False
+        os.replace(str(partial), str(dest))
         return True, False
 
     # Liste blanche d'hôtes + https imposé (AUDIT NET-02) — coupe AVANT toute
@@ -547,7 +553,7 @@ def download_one(
                         pass
                     raise IOError(f"pdal-deep-invalid: {msg_deep}")
 
-            ecrire_note_verifiee(dest)
+            ecrire_note_verifiee(dest, log)
             return True, False
         except Exception as e:
             last_err = e

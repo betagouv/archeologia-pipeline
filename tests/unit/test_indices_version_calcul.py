@@ -85,4 +85,13 @@ def test_un_calcul_force_par_processing_ne_laisse_pas_de_note(banc, monkeypatch)
     os.utime(mnt, (out.stat().st_mtime + 10,) * 2)    # MNT plus récent : recalcul
     monkeypatch.setenv(moteur_indices.VARIABLE_MOTEUR, "processing")
     _lancer(tmp, ["MSTP"])
-    assert [a[0] for a in appels] == ["rvt:rvt_mstp"] and not Path(str(out) + ".calcul").exists()
+    assert [a[0] for a in appels] == ["rvt:rvt_mstp"]
+    # Le secours ne recalcule plus à chaque relance : il laisse une note « processing », réutilisée tant qu'on y
+    # reste, et le retour au moteur intégré recalcule une fois.
+    assert Path(str(out) + ".calcul").read_text(encoding="utf-8") == ind.NOTE_PROCESSING
+    os.utime(out, (mnt.stat().st_mtime + 10,) * 2)    # intermédiaire à jour de son MNT (daté dans le futur ci-dessus)
+    logs = _lancer(tmp, ["MSTP"])
+    assert [a[0] for a in appels] == ["rvt:rvt_mstp"] and any("MSTP réutilisé" in ligne for ligne in logs)
+    monkeypatch.delenv(moteur_indices.VARIABLE_MOTEUR)
+    _lancer(tmp, ["MSTP"])
+    assert [a[0] for a in appels] == ["rvt:rvt_mstp", "MSTP"]

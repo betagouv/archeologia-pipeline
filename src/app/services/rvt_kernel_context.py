@@ -274,6 +274,14 @@ _REGLAGES_BORNES = (
     ("LD", "ldo", "observer_h", "Hauteur observateur", True),
     ("SLRM", "slrm", "radius", "Rayon", False),
     ("MSTP", "mstp", "lightness", "Luminosité", True),
+    # SVF et OPNS étaient ramenés dans les bornes au calcul, avec une ligne de journal, quand LD et SLRM étaient
+    # refusés avant le lancement : une seule politique (revue de l'audit, pt 21), le refus avant le lancement.
+    ("SVF", "svf", "radius", "Rayon", False),
+    ("SVF", "svf", "num_directions", "Nombre de directions", False),
+    ("SVF", "svf", "noise_remove", "Suppression du bruit", False),
+    ("OPNS", "opns", "radius", "Rayon", False),
+    ("OPNS", "opns", "num_directions", "Nombre de directions", False),
+    ("OPNS", "opns", "noise_remove", "Suppression du bruit", False),
 )
 
 
@@ -307,12 +315,14 @@ def message_choix_inconnu(produit: str, cle: str, lue, proposes: Sequence, reten
             f"({', '.join(str(p) for p in proposes)}) — {retenue} retenu.")
 
 
-def bornes_errors(products: Optional[Mapping], rvt_params: Optional[Mapping]) -> List[str]:
+def bornes_errors(products: Optional[Mapping], rvt_params: Optional[Mapping],
+                  secours_processing: bool = False) -> List[str]:
     """Réglages hors des bornes du moteur, et rayon min du LD hors de [1 ; rayon max] : bloquant avant le lancement.
 
     Lecture des valeurs comme indices.py (virgule française, entier tronqué) ; une clé absente prend le défaut du
     pipeline, toujours dans les bornes. Le nombre de directions du M-HS n'est contrôlé qu'en sortie flottante, la
-    seule où il compte (le 8 bits compose trois éclairages fixes).
+    seule où il compte (le 8 bits compose trois éclairages fixes) — sauf en mode de secours Processing
+    (``secours_processing``), où rvt-qgis le refuse aussi en 8 bits.
     """
     try:
         from ...pipeline.ign.products.moteur_indices import BORNES
@@ -320,7 +330,7 @@ def bornes_errors(products: Optional[Mapping], rvt_params: Optional[Mapping]) ->
         from pipeline.ign.products.moteur_indices import BORNES
     messages: List[str] = []
     reglages = list(_REGLAGES_BORNES)
-    if _requested(products, "M_HS") and not _section(rvt_params, "mdh").get("save_as_8bit", True):
+    if _requested(products, "M_HS") and (secours_processing or not _section(rvt_params, "mdh").get("save_as_8bit", True)):
         reglages.append(("M_HS", "mdh", "num_directions", "Nombre de directions", False))
     for produit, section, cle, libelle, flottant in reglages:
         if not _requested(products, produit) or cle not in _section(rvt_params, section):

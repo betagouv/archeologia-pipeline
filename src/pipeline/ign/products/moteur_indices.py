@@ -17,6 +17,7 @@ Imports de numpy et de rvt différés : ce module s'importe sans eux (tests, pr�
 """
 from __future__ import annotations
 
+import functools
 import os
 from pathlib import Path
 from typing import Any, Callable, Dict, Optional, Tuple
@@ -47,8 +48,10 @@ def chemin_reglages(nom: str) -> Path:
     return Path(__file__).resolve().parent / "rvt_embarque" / "settings" / nom
 
 
+@functools.lru_cache(maxsize=1)
 def moteur_disponible() -> str:
-    """'' si la bibliothèque rvt embarquée se charge (numpy, scipy, matplotlib, GDAL), sinon la raison."""
+    """'' si la bibliothèque rvt embarquée se charge (numpy, scipy, matplotlib, GDAL), sinon la raison.
+    Sondé une fois par session : l'import coûte environ une seconde, sur le fil de l'interface au préflight."""
     try:
         from .rvt_embarque import blend, default, vis  # noqa: F401
     except Exception as exc:  # noqa: BLE001 — toute raison est à montrer au préflight

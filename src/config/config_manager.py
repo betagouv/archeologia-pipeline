@@ -102,10 +102,8 @@ class ConfigManager:
                 "confidence_threshold": 0.3,  # = pipeline.cv.model_config.DEFAULT_CONFIDENCE (unifié 2026-08-31)
                 "iou_threshold": 0.5,
                 "generate_annotated_images": False,
-                "generate_shapefiles": False,
                 "models_dir": "data/models",
                 "export_runner_config": False,
-                "scan_all": True,
             },
             "rvt_params": {
                 "hs": {
@@ -340,6 +338,10 @@ class ConfigManager:
         if isinstance(cv, dict):
             cv.pop("sahi", None)
             cv.pop("selected_classes", None)
+            # 0.15.0 : sans effet depuis l'assistant (le run analyse toujours toutes les images et convertit
+            # lui-même ses détections) — constat 20 de l'audit des réglages.
+            cv.pop("scan_all", None)
+            cv.pop("generate_shapefiles", None)
         # V2 : le toggle Simple/Expert est supprimé.
         ui = cfg.get("ui")
         if isinstance(ui, dict):

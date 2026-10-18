@@ -3,7 +3,7 @@
 Plugin QGIS pour exécuter un pipeline de traitement LiDAR et produire des rasters de type MNT / densité / indices RVT, avec une étape optionnelle de détection / segmentation par *computer vision*.
 
 - Nom du plugin : **ArchéologIA**
-- Version : **0.14.1**
+- Version : **0.15.0**
 - Documentation utilisateur : le **manuel intégré** (menu Extensions → Archéolog'IA → Manuel, bouton « Aide » ou F1 dans l'assistant), dont la source est `aide/*.md`, livrée avec le plugin. Ce README est la documentation développeur.
 - QGIS : **3.34+ (Qt5) ou 4.x (Qt6)** — base de code unique
 
@@ -420,7 +420,6 @@ Dans un profil de configuration (cf. `config.example.json`), la section computer
     "confidence_threshold": 0.3,
     "iou_threshold": 0.5,
     "generate_annotated_images": false,
-    "generate_shapefiles": true,
     "models_dir": "data/models"
   }
 }
@@ -708,7 +707,7 @@ flowchart TD
         CV3b --> CV3c["runner_shapefiles.deduplicate_cv_shapefiles_final()"]
         CV2 -->|"Absent / échec"| CV4["runner_inference.run_fallback_inference()"]
         CV4 --> CV5["computer_vision_onnx.py — ONNX image par image (SAHI)\nProduit List[Detection] typé"]
-        CV5 --> CV5b["runner_shapefiles.deduplicate_cv_shapefiles_final() (si generate_shapefiles)"]
+        CV5 --> CV5b["runner_shapefiles.deduplicate_cv_shapefiles_final()"]
     end
 
     subgraph Dedup["runner_shapefiles.deduplicate_cv_shapefiles_final()"]

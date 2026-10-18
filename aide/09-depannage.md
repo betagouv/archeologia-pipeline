@@ -60,7 +60,7 @@ Si le calcul d'un modèle de terrain ne rend pas la main après deux heures, la 
 
 ## Erreur PDAL ou mémoire
 
-Une erreur de PDAL pendant le découpage ou la fusion des dalles, en particulier avec un code de violation d'accès, vient presque toujours d'un manque de mémoire : plusieurs dalles traitées en parallèle sur un poste qui ne peut pas les tenir. Réduisez les **workers** à 1 ou 2 à l'étape 4 et relancez dans le même dossier : les dalles déjà calculées sont conservées.
+Une erreur de PDAL pendant la fusion d'une dalle avec ses voisines, ou le calcul du MNT, en particulier avec un code de violation d'accès, vient presque toujours d'un manque de mémoire : plusieurs dalles traitées en parallèle sur un poste qui ne peut pas les tenir. Réduisez les **workers** à 1 ou 2 à l'étape 4 et relancez dans le même dossier : les dalles déjà calculées sont conservées.
 
 ## Le filtre des points n'est pas reconnu
 

@@ -58,20 +58,14 @@ class TestBlocRun:
         assert cg.bloc_run(False, ADS, None, BIN) is None
 
     def test_sonde_a_faire(self):
+        # Le moteur énumère lui-même les cartes : le bloc ne transmet aucune liste (l'ordre vu
+        # de QGIS n'est pas le sien — vécu le 18/10, noms inversés sur un portable à deux cartes).
         bloc = cg.bloc_run(True, ADS, None, BIN)
-        assert bloc["demande"] is True and bloc["adaptateurs"] == ADS and "device_id" not in bloc
+        assert bloc == {"demande": True}
 
     def test_retenue_memorisee(self):
         bloc = cg.bloc_run(True, ADS, {**RETENUE, "date": T0.isoformat()}, BIN)
-        assert bloc["demande"] is True and bloc["device_id"] == 1
-
-    def test_retenue_dont_la_carte_a_change_d_index_est_resondee(self):
-        # La clé ignore l'ordre des cartes, le device_id est positionnel : si l'adaptateur à cet
-        # index ne porte plus le nom mémorisé (écran basculé, carte externe), on re-sonde.
-        bloc = cg.bloc_run(True, list(reversed(ADS)), {**RETENUE, "date": T0.isoformat()}, BIN)
-        assert bloc["demande"] is True and "device_id" not in bloc
-        bloc = cg.bloc_run(True, ADS[:1], {**RETENUE, "date": T0.isoformat()}, BIN)
-        assert "device_id" not in bloc
+        assert bloc == {"demande": True, "device_id": 1, "carte": "RTX"}   # index vérifié par le moteur
 
     def test_refus_memorise(self):
         bloc = cg.bloc_run(True, ADS, {**REFUSEE, "date": T0.isoformat()}, BIN)
@@ -160,6 +154,16 @@ def test_adaptateurs_hors_windows_vide(monkeypatch):
     cg.adaptateurs.cache_clear()
     assert cg.adaptateurs() == []
     cg.adaptateurs.cache_clear()
+
+
+def test_adaptateurs_viennent_du_module_du_moteur(monkeypatch):
+    from pipeline.cv import appareil as ap
+    monkeypatch.setattr(cg.sys, "platform", "win32")
+    monkeypatch.setattr(ap, "adaptateurs_dxgi", lambda: [{"id": 0, "nom": "X", "pilote": "1"}])
+    cg.adaptateurs.cache_clear()
+    assert cg.adaptateurs() == [{"id": 0, "nom": "X", "pilote": "1"}]
+    cg.adaptateurs.cache_clear()
+    assert "ctypes" not in (Path(cg.__file__).read_text(encoding="utf-8"))
 
 
 def test_defaut_decoche_et_persistance_ui():

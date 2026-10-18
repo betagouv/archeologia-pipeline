@@ -213,6 +213,11 @@ def _process_single_mnt_tile(
     pour des dalles sub-km partageant la même cellule km (placement par métadonnées,
     nommage par uid) ; ``""`` conserve le nommage IGN standard.
     """
+    # Résolution réelle du MNT fourni, écrite dans le nom du MNT publié (0M50 jusqu'ici quelle qu'elle soit).
+    from ..geo_utils import extract_tif_transform_data
+    pas = extract_tif_transform_data(temp_dir / f"{current_tile_name}_MNT.tif")[0]
+    mnt_resolution = abs(pas) if pas else 0.5
+
     create_visualization_products(
         temp_dir=temp_dir,
         current_tile_name=current_tile_name,
@@ -235,6 +240,7 @@ def _process_single_mnt_tile(
             log=log,
             cancel_check=cancel_check,
             name_suffix=name_suffix,
+            mnt_resolution=mnt_resolution,
         )
     else:
         crop_final_products(
@@ -245,6 +251,7 @@ def _process_single_mnt_tile(
             log=log,
             cancel_check=cancel_check,
             name_suffix=name_suffix,
+            mnt_resolution=mnt_resolution,
         )
 
     if cancel_check is not None and cancel_check():
@@ -262,6 +269,7 @@ def _process_single_mnt_tile(
         log=log,
         cancel_check=cancel_check,
         name_suffix=name_suffix,
+        mnt_resolution=mnt_resolution,
     )
     return True
 

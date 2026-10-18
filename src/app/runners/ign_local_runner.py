@@ -15,6 +15,14 @@ from ..user_narrator import create_user_narrator
 from .input_strategy import select_input_strategy
 from .progress_plan import build_progress_plan
 
+
+def journal_fusion(reporter: ProgressReporter):
+    """Journal de la fusion des dalles : ses « ⚠️ » (filtre des points non reconnu ou refusé par PDAL,
+    bornes non relevées, dalle absente) doivent être VISIBLES dans la fenêtre — reporter.info = INFO=20,
+    filtré par le seuil USER_INFO=25 du journal du wizard (pattern ROB-15) ; le reste du détail
+    (voisines, cache) reste au journal complet."""
+    return lambda m: reporter.user_warning(m) if "⚠️" in m else reporter.info(m)
+
 try:  # cross-package import : OK en QGIS, fallback en tests standalone (src/ sur le path)
     from ...pipeline.cancellation import PipelineCancelled
     from ...pipeline.batch import process_items_isolated
@@ -138,6 +146,7 @@ class IgnOrLocalRunner:
             current_tile_name=tile_name,
             products=products_cfg,
             rvt_params=rvt_params,
+            mnt_resolution=mnt_resolution,
             log=lambda m: reporter.info(m),
             cancel_check=cancel.is_cancelled,
         )
@@ -153,6 +162,7 @@ class IgnOrLocalRunner:
                 rvt_params=rvt_params,
                 log=lambda m: reporter.info(m),
                 cancel_check=cancel.is_cancelled,
+                mnt_resolution=mnt_resolution,
             )
 
         if slog:
@@ -170,9 +180,9 @@ class IgnOrLocalRunner:
     ) -> Optional[bool]:
         # Vider le cache de validation PDAL au début de chaque run
         try:  # fallback standalone (tests : src/ sur le path), cf. imports module
-            from ...pipeline.ign.pdal_validation import clear_validation_cache
+            from ...pipeline.ign.pdal_validation import clear_validation_cache, version_pdal
         except ImportError:  # pragma: no cover
-            from pipeline.ign.pdal_validation import clear_validation_cache
+            from pipeline.ign.pdal_validation import clear_validation_cache, version_pdal
         clear_validation_cache()
 
         start_time = time.time()
@@ -207,9 +217,11 @@ class IgnOrLocalRunner:
             return False
 
         try:  # fallback standalone (tests : src/ sur le path)
-            from ...pipeline.ign.preprocess import prepare_merged_tiles
+            from ...pipeline.ign.preprocess import fusion_mode, prepare_merged_tiles
+            from ...pipeline.ign.products.mnt import GRILLE_MNT
         except ImportError:  # pragma: no cover
-            from pipeline.ign.preprocess import prepare_merged_tiles
+            from pipeline.ign.preprocess import fusion_mode, prepare_merged_tiles
+            from pipeline.ign.products.mnt import GRILLE_MNT
 
         active_products: list = []
         merged_result = None
@@ -255,6 +267,8 @@ class IgnOrLocalRunner:
                     density_resolution=processing.density_resolution,
                     tile_overlap=processing.tile_overlap,
                     filter_expression=processing.filter_expression,
+                    fusion=fusion_mode(),
+                    grille_mnt=GRILLE_MNT,
                 ),
                 intermediaires=_inter_dir(ctx.output_dir),
                 # user_warning : le ⚠️ de purge doit être VISIBLE dans la
@@ -268,7 +282,8 @@ class IgnOrLocalRunner:
                 dalles_dir=result.dalles_dir,
                 output_dir=ctx.output_dir,
                 tile_overlap_percent=processing.tile_overlap,
-                log=lambda m: reporter.info(m),
+                filter_expression=processing.filter_expression,
+                log=journal_fusion(reporter),
                 cancel=lambda: cancel.is_cancelled(),
                 stage=lambda s: reporter.stage(s),
                 max_workers=processing.max_workers,
@@ -407,6 +422,8 @@ class IgnOrLocalRunner:
                 coverage_threshold_percent=processing.coverage_threshold_percent,
                 ui_config=ctx.ui_config,
                 outcome=outcome,
+                pdal_version=version_pdal(),
+                fusion=fusion_mode(),
             )
 
         if cancelled or cancel.is_cancelled():

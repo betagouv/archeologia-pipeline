@@ -54,6 +54,7 @@ from .steps.step_4_launch import LaunchPage, RecapSection
 from .visualisation_tab import VisualisationTab
 from .widgets.card import build_card
 from .widgets.stepper_rail import StepperRail
+from .widgets.toast import show_toast
 
 # Onglet « Visualisation » (flux Géoplateforme) : rebranché le 2026-09-23 sur
 # les flux WMTS privés de test (catalogue local, cf. visualisation_tab). Le
@@ -197,6 +198,7 @@ class WizardDialog(QDialog):
         self._indices_page.set_mode(self._source_page.current_mode())
         self._detection_page.load_from(self._config)
         self._detection_page.set_active_rvts(self._indices_page.active_rvt_keys())
+        QTimer.singleShot(0, self._signaler_ecretages)   # après l'affichage de la fenêtre
         self._source_page.changed.connect(self._autosave)
         self._indices_page.changed.connect(self._autosave)
         self._indices_page.changed.connect(self._refresh_rail_subs)
@@ -208,6 +210,7 @@ class WizardDialog(QDialog):
         self._run_view.run_started.connect(self._on_run_started)
         self._run_view.run_finished.connect(self._on_run_finished)
         self._launch_page.workers_changed.connect(self._on_workers_changed)
+        self._launch_page.carte_graphique_changed.connect(self._on_carte_graphique_changed)
         self._refresh_rail_subs()
 
         self._goto_step(1)
@@ -456,6 +459,9 @@ class WizardDialog(QDialog):
             workers = 3
         self._launch_page.set_workers(workers)
         self._config.setdefault("processing", {})["max_workers"] = self._launch_page.workers_value()
+        # Carte graphique (étape 4, décochée par défaut) : même aller-retour que les workers.
+        self._launch_page.set_carte_graphique(bool(cv.get("carte_graphique", False)))
+        self._config.setdefault("computer_vision", {})["carte_graphique"] = self._launch_page.carte_graphique_value()
 
         sections = [RecapSection("Mode", badges=[mode_info(mode).banner_label])]
 
@@ -518,6 +524,14 @@ class WizardDialog(QDialog):
             self._cm.save_last_ui_config(self._config)
         except Exception:
             pass  # la persistance ne doit jamais bloquer l'UI
+
+    def _on_carte_graphique_changed(self, on: bool) -> None:
+        """Persiste l'option « Détection sur la carte graphique » (étape 4)."""
+        self._config.setdefault("computer_vision", {})["carte_graphique"] = bool(on)
+        try:
+            self._cm.save_last_ui_config(self._config)
+        except Exception:
+            pass
 
     def _on_run_started(self) -> None:
         self._enter_review_mode()
@@ -831,6 +845,13 @@ class WizardDialog(QDialog):
             return
         self._apply_config(loaded)
 
+    def _signaler_ecretages(self) -> None:
+        """Un réglage chargé hors des bornes de son champ y est ramené, un choix qu'il ne propose pas est
+        remplacé par le défaut : le dire (le journal Python l'a déjà)."""
+        msgs = getattr(self._indices_page, "ecretages", None) or []
+        if msgs:
+            show_toast(self, "\n".join(["Réglage ramené à ce que l'étape 2 propose :", *msgs]), duration=8000)
+
     def _apply_config(self, loaded) -> None:
         """Point de passage UNIQUE d'un changement de config (menu, import,
         réinitialisation) : normalisation, rechargement des pages, persistance."""
@@ -854,5 +875,6 @@ class WizardDialog(QDialog):
             self._detection_page.set_active_rvts(self._indices_page.active_rvt_keys())
         finally:
             self._loading = False
+        self._signaler_ecretages()
         self._refresh_rail_subs()
         self._autosave_now()  # changement explicite → persistance immédiate

@@ -82,6 +82,48 @@ def _horizon_settings(rvt_params: Dict[str, Any], section: str) -> Dict[str, int
     }
 
 
+#: Unité de pente envoyée pour « Pourcentage » : le code « percent » de l'enum UNIT de rvt:rvt_slope
+#: (degree = 0, radian = 1, percent = 2).
+PENTE_POURCENT = 2
+
+
+def slope_unit(rvt_params: Dict[str, Any]) -> int:
+    """Unité EFFECTIVE de la pente : 0 (degrés) ou 2 (pourcentage).
+
+    Jusqu'à la 0.15.0, l'option « Pourcentage » envoyait 1, le code des RADIANS : une configuration qui porte 1
+    est relue comme un pourcentage, ce que l'utilisateur avait demandé. SOURCE UNIQUE du nom de dossier et du
+    calcul (``indices.py``), comme ``svf_settings``.
+    """
+    cfg = (rvt_params or {}).get("slope") or {}
+    unite = _as_int(cfg.get("unit", 0), 0) if isinstance(cfg, dict) else 0
+    return PENTE_POURCENT if unite in (1, PENTE_POURCENT) else 0
+
+
+#: Défauts du MSTP : ceux de l'interface et de ConfigManager (échelle large 100/400/60, pas 223/2023/180 comme
+#: rvt : un rayon de 2 023 px dépasse de loin la marge de tuilage). Repli unique quand une clé manque, pour le nom
+#: du dossier ET le calcul ; app.services.rvt_kernel_context en garde un miroir (test de synchronisation).
+MSTP_DEFAUTS: Dict[str, float] = {
+    "local_scale_min": 3, "local_scale_max": 21, "local_scale_step": 2,
+    "meso_scale_min": 23, "meso_scale_max": 203, "meso_scale_step": 18,
+    "broad_scale_min": 100, "broad_scale_max": 400, "broad_scale_step": 60,
+    "lightness": 0.9, "ve_factor": 1,
+}
+_PAS_MSTP = ("local_scale_step", "meso_scale_step", "broad_scale_step")
+
+
+def mstp_settings(rvt_params: Dict[str, Any]) -> Dict[str, float]:
+    """Réglages EFFECTIFS du MSTP (section ``mstp``), défauts de ``MSTP_DEFAUTS`` pour une clé absente."""
+    cfg = (rvt_params or {}).get("mstp") or {}
+    if not isinstance(cfg, dict):
+        cfg = {}
+    m = {k: (_as_float(cfg.get(k, d), d) if k == "lightness" else _as_int(cfg.get(k, d), int(d)))
+         for k, d in MSTP_DEFAUTS.items()}
+    # L'exagération n'est plus proposée (sans effet en arithmétique exacte, mais du bruit en flottant) : celle
+    # d'une ancienne configuration est ignorée, sans quoi l'image changerait sous le même nom de dossier.
+    m["ve_factor"] = 1
+    return m
+
+
 def svf_settings(rvt_params: Dict[str, Any]) -> Dict[str, int]:
     """Réglages effectifs du Sky-View Factor (section ``svf``)."""
     return _horizon_settings(rvt_params, "svf")
@@ -102,7 +144,33 @@ def opns_settings(rvt_params: Dict[str, Any]) -> Dict[str, int]:
     return reglages
 
 
+#: Section de ``rvt_params`` de chaque indice (celle qui porte son ``save_as_8bit``).
+SECTION_DU_PRODUIT: Dict[str, str] = {
+    "HS": "hs", "M_HS": "mdh", "SVF": "svf", "OPNS": "opns", "SLO": "slope", "LD": "ldo", "SLRM": "slrm",
+    "VAT": "vat", "MSTP": "mstp", "CVAT": "cvat", "PRISM": "prism", "CRIM": "crim",
+}
+
+#: Marque d'une sortie flottante (« Sauver en 8 bits » décoché). Absente en 8 bits, le défaut : les dossiers 8 bits
+#: gardent leur nom. Sans elle, 8 bits et flottant partageaient un nom de fichier, et une relance resservait l'un
+#: pour l'autre (le cache des intermédiaires ne compare que les dates).
+SUFFIXE_FLOTTANT = "_F32"
+
+
+def sortie_8bits(product_name: str, rvt_params: Dict[str, Any]) -> bool:
+    """« Sauver en 8 bits » de l'indice (vrai par défaut)."""
+    cfg = (rvt_params or {}).get(SECTION_DU_PRODUIT.get(product_name, ""), {})
+    return bool(cfg.get("save_as_8bit", True)) if isinstance(cfg, dict) else True
+
+
 def get_rvt_param_suffix(product_name: str, rvt_params: Dict[str, Any]) -> str:
+    """Suffixe de paramètres d'un indice, ``SUFFIXE_FLOTTANT`` compris quand la sortie est flottante."""
+    suffixe = _suffixe_reglages(product_name, rvt_params)
+    if product_name in SECTION_DU_PRODUIT and not sortie_8bits(product_name, rvt_params):
+        suffixe += SUFFIXE_FLOTTANT
+    return suffixe
+
+
+def _suffixe_reglages(product_name: str, rvt_params: Dict[str, Any]) -> str:
     """
     Génère le suffixe de paramètres pour un produit RVT donné.
     
@@ -127,6 +195,10 @@ def get_rvt_param_suffix(product_name: str, rvt_params: Dict[str, Any]) -> str:
         num_directions = _as_int(mdh.get("num_directions", 16), 16)
         if num_directions < 2:
             num_directions = 16
+        # En 8 bits l'image compose trois éclairages fixes : le nombre de directions n'y change rien, le nom
+        # ne le porte donc plus (constat 12 de l'audit ; il reste au nom de la sortie flottante, où il compte).
+        if str(mdh.get("save_as_8bit", True)).strip().lower() not in ("false", "0", "non", "no"):
+            num_directions = 16
         sun_elevation = _as_int(mdh.get("sun_elevation", 35), 35)
         ve_factor = _as_int(mdh.get("ve_factor", 1), 1)
         return f"_D{num_directions}_E{sun_elevation}_V{ve_factor}"
@@ -150,9 +222,8 @@ def get_rvt_param_suffix(product_name: str, rvt_params: Dict[str, Any]) -> str:
 
     elif product_name == "SLO":
         slope = rvt_params.get("slope", {})
-        unit = _as_int(slope.get("unit", 0), 0)
         ve_factor = _as_int(slope.get("ve_factor", 1), 1)
-        return f"_U{unit}_V{ve_factor}"
+        return f"_U{slope_unit(rvt_params)}_V{ve_factor}"
     
     elif product_name == "LD":
         ldo = rvt_params.get("ldo", {})
@@ -181,20 +252,15 @@ def get_rvt_param_suffix(product_name: str, rvt_params: Dict[str, Any]) -> str:
         return f"_T{terrain_type}_B{blend_combination}"
 
     elif product_name == "MSTP":
-        mstp = rvt_params.get("mstp", {})
-        l_min = _as_int(mstp.get("local_scale_min", 3), 3)
-        l_max = _as_int(mstp.get("local_scale_max", 21), 21)
-        m_min = _as_int(mstp.get("meso_scale_min", 23), 23)
-        m_max = _as_int(mstp.get("meso_scale_max", 203), 203)
-        # Repli = défauts RVT, identiques à ceux d'indices.py (voir le commentaire
-        # là-bas). Les défauts du plugin (100/400/60) sont écrits dans la config,
-        # pas ici : toucher l'un sans l'autre décorrèle nom de dossier et calcul.
-        b_min = _as_int(mstp.get("broad_scale_min", 223), 223)
-        b_max = _as_int(mstp.get("broad_scale_max", 2023), 2023)
-        lightness = _as_float(mstp.get("lightness", 1.2), 1.2)
+        m = mstp_settings(rvt_params)
         # Pas de _ dans le token lightness (cohérent avec observer_h du LD).
-        lightness_str = str(lightness).replace(".", "p")
-        return f"_L{l_min}-{l_max}_M{m_min}-{m_max}_B{b_min}-{b_max}_Li{lightness_str}"
+        lightness_str = str(m["lightness"]).replace(".", "p")
+        suffixe = (f"_L{m['local_scale_min']}-{m['local_scale_max']}_M{m['meso_scale_min']}-{m['meso_scale_max']}"
+                   f"_B{m['broad_scale_min']}-{m['broad_scale_max']}_Li{lightness_str}")
+        # Les pas changent l'image : ils vont au nom dès qu'ils quittent les défauts (aux défauts, le nom d'avant).
+        if any(m[k] != MSTP_DEFAUTS[k] for k in _PAS_MSTP):
+            suffixe += "_P{}-{}-{}".format(*(m[k] for k in _PAS_MSTP))
+        return suffixe
 
     elif product_name == "PRISM":
         # Combinaison 1 du blender RVT. Comme pour le VAT, le préréglage de
@@ -294,6 +360,12 @@ def get_all_rvt_temp_filenames(
     }
 
 
+def jeton_resolution(resolution_m: float) -> str:
+    """Résolution du MNT au format du nom IGN : 0,5 m → ``0M50``, 1 m → ``1M00``, 0,25 m → ``0M25``."""
+    cm = int(round(float(resolution_m) * 100))
+    return f"{cm // 100}M{cm % 100:02d}"
+
+
 def get_rvt_source_and_dest_filenames(
     product_name: str,
     current_tile_name: str,
@@ -302,6 +374,7 @@ def get_rvt_source_and_dest_filenames(
     rvt_params: Dict[str, Any],
     *,
     name_suffix: str = "",
+    mnt_resolution: float = 0.5,
 ) -> Tuple[str, str]:
     """
     Génère les noms de fichiers source (temp) et destination (cropped) pour un produit.
@@ -311,6 +384,7 @@ def get_rvt_source_and_dest_filenames(
         current_tile_name: Nom de la dalle
         x, y: Coordonnées extraites du nom de dalle (cosmétiques)
         rvt_params: Paramètres RVT
+        mnt_resolution: Résolution du MNT (m), écrite dans le nom du MNT publié.
         name_suffix: Suffixe d'unicité inséré avant ``.tif`` dans le nom de destination
             (ex. ``"_<uid>"``). Le placement venant des métadonnées, ``x``/``y`` ne
             servent qu'au préfixe cosmétique ``LHD_FXX_{x}_{y}`` ; pour des dalles
@@ -328,7 +402,8 @@ def get_rvt_source_and_dest_filenames(
 
     # Noms de destination avec paramètres pour invalider le cache
     if product_name == "MNT":
-        dest_filename = f"LHD_FXX_{x}_{y}_MNT_A_0M50_LAMB93_IGN69{name_suffix}.tif"
+        # Résolution RÉELLE au nom (figée à 0M50 jusqu'ici, même pour un MNT à 1 m) ; à 0,5 m, le nom d'avant.
+        dest_filename = f"LHD_FXX_{x}_{y}_MNT_A_{jeton_resolution(mnt_resolution)}_LAMB93_IGN69{name_suffix}.tif"
     elif product_name == "DENSITE":
         dest_filename = f"LHD_FXX_{x}_{y}_densite_A_LAMB93{name_suffix}.tif"
     elif product_name == "COUVERTURE":

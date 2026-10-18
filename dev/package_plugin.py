@@ -56,6 +56,7 @@ EXCLUDE_FILES = {
     "config.json",
     "last_ui_config.json",  # état de session UI (jamais distribué)
     "class_color_registry.json",  # état runtime des couleurs (profil utilisateur)
+    "carte_graphique.json",  # décision carte graphique du poste (profil utilisateur)
     "pytest.ini",
     "run_tests.py",
     ".DS_Store",

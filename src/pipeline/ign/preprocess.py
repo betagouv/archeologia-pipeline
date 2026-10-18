@@ -15,6 +15,7 @@ from .downloader import download_one, _get_proxy_config
 from .pdal_validation import (
     run_pdal_command_cancellable,
     validate_las_or_laz_with_pdal,
+    validate_laz_deep,
 )
 from ..types import LogFn, CancelFn
 
@@ -36,6 +37,25 @@ def _default_log(_: str) -> None:
 
 def _default_cancel() -> bool:
     return False
+
+
+#: Méthode de fusion des voisines, inscrite dans la signature du cache des
+#: intermédiaires (cache_guard) et dans traitement.json : la changer refait
+#: fusions et MNT d'un dossier écrit autrement, au lieu de les resservir.
+FUSION_ANCIENNE = "pdal-merge"
+#: flux-2 (2026-10-17) : le fusionné ne garde que les classes du filtre de l'étape 2 (les seules que MNT et
+#: densité lisent) — 4× moins de points et de temps de MNT en forêt, images identiques ; ses bornes avant
+#: filtrage vont au sidecar. flux-1 (non livré) écrivait tout le nuage.
+FUSION_FLUX = "flux-2"
+
+
+def fusion_mode() -> str:
+    """Méthode de fusion de ce run : en flux (lot 1), sauf ``ARCHEO_FUSION_LEGACY=1``
+    — l'ancienne fusion, gardée une version pour diagnostiquer un MNT chez un
+    utilisateur."""
+    # « 1 », « true », « oui », « yes », « on », sans la casse : un diagnostic ne doit pas échouer sur la forme
+    legacy = os.environ.get("ARCHEO_FUSION_LEGACY", "").strip().lower() in ("1", "true", "oui", "yes", "on")
+    return FUSION_ANCIENNE if legacy else FUSION_FLUX
 
 
 def calculate_neighbor_coordinates(x: str, y: str) -> List[Tuple[int, int, int]]:
@@ -364,6 +384,281 @@ def merge_tiles(
     return True
 
 
+def expression_pdal(expression_qgis: str) -> Optional[str]:
+    """Le filtre des points de l'étape 2 (syntaxe de QGIS : ``Classification = 2 OR …``) en syntaxe PDAL
+    (``== … ||``), telle que QGIS la passe à pdal_wrench. ``None`` si l'expression sort de la grammaire
+    reconnue (comparaisons de dimensions à des nombres, AND/OR/NOT, parenthèses) : la fusion se fait alors
+    sans filtre et MNT/densité filtrent eux-mêmes, comme avant."""
+    import re
+    jetons = re.compile(r"\s*(?:(?P<ou>OR\b)|(?P<et>AND\b)|(?P<non>NOT\b)|(?P<cmp><>|!=|<=|>=|==|=|<|>)"
+                        r"|(?P<nb>-?\d+(?:\.\d+)?)|(?P<id>[A-Za-z_][A-Za-z0-9_]*)|(?P<par>[()]))", re.IGNORECASE)
+    traduction = {"ou": "||", "et": "&&", "non": "!", "=": "==", "<>": "!="}
+    sortie: List[str] = []
+    pos, comparaisons = 0, 0
+    while pos < len(expression_qgis):
+        m = jetons.match(expression_qgis, pos)
+        if m is None:
+            return None if expression_qgis[pos:].strip() else _assembler(sortie, comparaisons)
+        pos = m.end()
+        genre = m.lastgroup
+        valeur = m.group(genre)
+        if genre == "cmp":
+            comparaisons += 1
+            sortie.append(traduction.get(valeur, valeur))
+        else:
+            sortie.append(traduction.get(genre, valeur))
+    return _assembler(sortie, comparaisons)
+
+
+def _assembler(jetons: List[str], comparaisons: int) -> Optional[str]:
+    if not comparaisons:
+        return None
+    return " ".join(jetons).replace("( ", "(").replace(" )", ")")
+
+
+def pipeline_fusion(central: Path, voisines: List[Tuple[Path, Dict[str, str]]], sortie: Path,
+                    filtre: Optional[str] = None) -> Dict:
+    """Pipeline PDAL de :func:`merge_tiles_flux` : la centrale, puis chaque voisine
+    rognée à sa bande (bornes de :func:`calculate_crop_bounds`), toutes lues par
+    ``readers.las`` — ordre du fichier — et écrites dans cet ordre par un seul
+    ``writers.las``. Avec ``filtre`` (syntaxe PDAL) : les bornes X, Y du nuage
+    complet sont relevées (``filters.stats``) puis seuls les points du filtre sont
+    écrits, dans le même ordre."""
+    etapes: List[Dict] = [{"type": "readers.las", "filename": str(central), "tag": "centrale"}]
+    entrees = ["centrale"]
+    for i, (source, b) in enumerate(voisines, start=1):
+        etapes.append({"type": "readers.las", "filename": str(source), "tag": f"voisine{i}"})
+        etapes.append({
+            "type": "filters.crop",
+            "bounds": f"([{b['xmin']},{b['xmax']}],[{b['ymin']},{b['ymax']}])",
+            "inputs": [f"voisine{i}"],
+            "tag": f"bande{i}",
+        })
+        entrees.append(f"bande{i}")
+    if filtre:
+        etapes.append({"type": "filters.stats", "dimensions": "X,Y", "inputs": entrees, "tag": "bornes"})
+        etapes.append({"type": "filters.expression", "expression": filtre, "inputs": ["bornes"], "tag": "filtre"})
+        entrees = ["filtre"]
+    etapes.append({"type": "writers.las", "filename": str(sortie), "compression": "laszip", "inputs": entrees})
+    return {"pipeline": etapes}
+
+
+def _bornes_des_metadonnees(chemin: Path) -> Optional[List[float]]:
+    """``[minx, maxx, miny, maxy]`` relevés par ``filters.stats`` dans les métadonnées du pipeline, ou None."""
+    try:
+        stats = json.loads(chemin.read_text(encoding="utf-8"))["stages"]["filters.stats"]["statistic"]
+        par_dim = {s["name"]: s for s in stats}
+        return [float(par_dim["X"]["minimum"]), float(par_dim["X"]["maximum"]),
+                float(par_dim["Y"]["minimum"]), float(par_dim["Y"]["maximum"])]
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
+
+
+class _FiltreRefuse(RuntimeError):
+    """PDAL refuse l'expression du filtre : la grammaire de :func:`expression_pdal` l'avait acceptée
+    (faute de frappe dans un nom de dimension, par exemple). Ce n'est pas une voisine illisible."""
+
+
+def _executer_fusion(
+    central: Path, voisines: List[Tuple[Path, Dict[str, str]]], sortie: Path, *, log: LogFn, cancel: CancelFn,
+    filtre: Optional[str] = None,
+) -> Tuple[bool, Optional[List[float]]]:
+    """Lance `pdal pipeline --stream` sur :func:`pipeline_fusion` : (réussi, bornes du nuage avant filtrage
+    — None sans filtre ou si PDAL ne les a pas rendues). Lève :class:`_FiltreRefuse` si PDAL refuse
+    ``filtre`` (son message est préfixé « filters.expression: »)."""
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False, encoding="utf-8") as tf:
+        json.dump(pipeline_fusion(central, voisines, sortie, filtre), tf, indent=1)
+        fichier = tf.name
+    meta = Path(fichier).with_suffix(".meta.json")
+    options = ["--metadata", str(meta)] if filtre else []
+    try:
+        cmd = [_pdal_exe(), "pipeline", "--stream", fichier, *options]
+        result = run_pdal_command_cancellable(cmd, cancel=cancel)
+        erreur = (result.stderr or "").lower()
+        if result.returncode != 0 and ("stream mode" in erreur or "streamable" in erreur):
+            # PDAL plus ancien que ceux mesurés (2.9 de QGIS 3.44, 2.10 de QGIS 4.0)
+            # sans flux pour ce pipeline : même lecture ordonnée, en mémoire.
+            log("PDAL : fusion en flux indisponible, fusion en mémoire")
+            result = run_pdal_command_cancellable([cmd[0], "pipeline", fichier, *options], cancel=cancel)
+        bornes = _bornes_des_metadonnees(meta) if filtre else None
+    finally:
+        for p in (Path(fichier), meta):
+            try:
+                p.unlink()
+            except OSError:
+                pass
+    if result.returncode == 0:
+        if filtre and bornes is None:
+            log("⚠️ Bornes du nuage non relevées à la fusion : grille calée sur l'en-tête du fusionné filtré")
+        return True, bornes
+    if filtre and "filters.expression" in (result.stderr or ""):
+        raise _FiltreRefuse((result.stderr or "").strip().splitlines()[0])
+    log(f"Erreur PDAL pipeline (code {result.returncode})")
+    if result.returncode in (3221225477, 3221226505):
+        # 0xC0000005 = ACCESS_VIOLATION, 0xC0000409 = STACK_BUFFER_OVERRUN
+        log("PDAL a crashé (erreur mémoire).")
+    if result.stderr:
+        log(result.stderr.strip())
+    return False, None
+
+
+def _empreinte(path: Path) -> Optional[List[int]]:
+    """``[taille, mtime_ns]`` : dit qu'une voisine écartée a changé sans la relire."""
+    try:
+        st = path.stat()
+    except OSError:
+        return None
+    return [st.st_size, st.st_mtime_ns]
+
+
+def _sidecar_flux(voisins: List[str], ecartees: Dict[str, Optional[List[int]]], filtre: Optional[str],
+                  bornes: Optional[List[float]] = None) -> Dict:
+    """Contenu du sidecar de :func:`merge_tiles_flux` (``ecartees`` et ``bornes`` seulement s'il y en a).
+    ``bornes`` = X, Y du nuage AVANT filtrage : c'est là que MNT et densité calent leur grille."""
+    contenu: Dict = {"fusion": FUSION_FLUX, "voisins": voisins, "filtre": filtre}
+    if ecartees:
+        contenu["ecartees"] = ecartees
+    if bornes:
+        contenu["bornes"] = bornes
+    return contenu
+
+
+def merge_tiles_flux(
+    *,
+    central_path: Path,
+    voisines: List[Tuple[Path, Dict[str, str]]],
+    output_path: Path,
+    log: LogFn = _default_log,
+    cancel: CancelFn = _default_cancel,
+    filtre: Optional[str] = None,
+) -> bool:
+    """Fusionne la dalle centrale et la bande de marge de chaque voisine en UN
+    `pdal pipeline --stream` (lot 1, 2026-10), en ne gardant que les points de
+    ``filtre`` (syntaxe PDAL, :func:`expression_pdal`) s'il est donné.
+
+    Tout est lu par ``readers.las``, dans l'ordre du fichier : le LAZ fusionné est
+    identique d'un run à l'autre (même sha256 que ``pdal merge --driver
+    readers.las``), là où ``pdal merge`` lisait la centrale COPC sur plusieurs fils
+    dans un ordre variable — d'où des MNT différents entre deux runs identiques. En
+    flux, la mémoire reste celle d'un tampon de points, pas du nuage entier. Même
+    écriture atomique (``.partial`` validé puis ``os.replace``) que
+    :func:`merge_tiles`, qui reste la fusion de ``ARCHEO_FUSION_LEGACY=1``.
+
+    ``voisines`` : ``(LAZ source, bornes de sa bande)`` dans l'ordre de
+    :func:`calculate_neighbor_coordinates`. Le sidecar enregistre la méthode, les
+    voisines candidates et, s'il y en a, les voisines écartées (illisibles) avec leur
+    ``[taille, mtime_ns]`` : un fusionné d'une autre méthode (sidecar « liste » des
+    versions ≤ 0.14.1, ou absent) est refait, jamais adopté ; une voisine écartée
+    n'est pas relue tant qu'elle n'a pas changé sur disque, et refusionnée dès
+    qu'elle a été réparée ou remplacée.
+    """
+    if cancel():
+        return False
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    voisins = sorted(p.name for p, _ in voisines)
+    sidecar = merged_inputs_sidecar(output_path)
+
+    if output_path.exists():
+        ok, _ = validate_las_or_laz_with_pdal(output_path)
+        try:
+            enregistre = json.loads(sidecar.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            enregistre = None
+        avant = enregistre.get("ecartees") if isinstance(enregistre, dict) else None
+        par_nom = {p.name: p for p, _ in voisines}
+        actuel = _sidecar_flux(voisins, {
+            nom: _empreinte(par_nom[nom]) for nom in avant if nom in par_nom
+        } if isinstance(avant, dict) else {}, filtre)
+        sans_bornes = {k: v for k, v in enregistre.items() if k != "bornes"} if isinstance(enregistre, dict) else None
+        if ok and sans_bornes == actuel:
+            log(f"LAZ fusionné réutilisé (cache intermédiaire) : {output_path.name}")
+            return True
+        log(f"Fusion d'une version précédente ou voisines modifiées → re-fusion : {output_path.name}")
+        try:
+            output_path.unlink()
+        except OSError:
+            pass
+
+    ok_c, msg_c = validate_las_or_laz_with_pdal(central_path)
+    if not ok_c:
+        log(f"Fichier central invalide via PDAL: {central_path.name}")
+        if msg_c:
+            log(f"PDAL: {msg_c}")
+        return False
+
+    valides: List[Tuple[Path, Dict[str, str]]] = []
+    ecartees: Dict[str, Optional[List[int]]] = {}
+    for source, bornes in voisines:
+        if cancel():
+            return False
+        if validate_las_or_laz_with_pdal(source)[0]:
+            valides.append((source, bornes))
+        else:
+            log(f"Voisine illisible via PDAL, ignorée : {source.name}")
+            ecartees[source.name] = _empreinte(source)
+
+    partial = _partial_path(output_path)
+    try:
+        try:
+            ok, bornes = _executer_fusion(central_path, valides, partial, log=log, cancel=cancel, filtre=filtre)
+        except _FiltreRefuse as e:
+            log(f"⚠️ Filtre des points refusé par PDAL ({filtre}) : fusion sans filtre, "
+                f"le MNT et la densité filtrent eux-mêmes (plus lent) — {e}")
+            filtre = None
+            ok, bornes = _executer_fusion(central_path, valides, partial, log=log, cancel=cancel)
+        if not ok and valides and not cancel():
+            # Une voisine à l'en-tête sain mais aux points illisibles (LAZ tronqué)
+            # fait échouer tout le pipeline : on l'isole par une lecture complète et
+            # on refusionne sans elle — comme l'ancienne fusion, où seul son
+            # rognage échouait.
+            saines: List[Tuple[Path, Dict[str, str]]] = []
+            for s, b in valides:
+                if cancel():        # une relecture complète dure 14 à 36 s par voisine : l'annulation n'attend pas la fin
+                    return False
+                if validate_laz_deep(s)[0]:
+                    saines.append((s, b))
+                else:
+                    ecartees[s.name] = _empreinte(s)
+            if len(saines) < len(valides):
+                log(f"{len(valides) - len(saines)} voisine(s) illisible(s) écartée(s) → nouvelle fusion")
+                ok, bornes = _executer_fusion(central_path, saines, partial, log=log, cancel=cancel, filtre=filtre)
+        if not ok:
+            return False
+        ok_out, msg_out = validate_las_or_laz_with_pdal(partial)
+        if not ok_out:
+            log(f"Fichier fusionné invalide via PDAL: {output_path.name}")
+            if msg_out:
+                log(f"PDAL: {msg_out}")
+            return False
+        os.replace(str(partial), str(output_path))
+    finally:
+        _discard_partial(partial)
+
+    sidecar.write_text(json.dumps(_sidecar_flux(voisins, ecartees, filtre, bornes)), encoding="utf-8")
+    return True
+
+
+def _fusion_ancienne(
+    task: "_PreprocessTask",
+    voisines: List[Tuple[Path, Dict[str, str], int]],
+    merged_path: Path,
+    log: LogFn,
+    cancel: CancelFn,
+) -> bool:
+    """Fusion d'avant le lot 1 (bandes rognées écrites, puis `pdal merge`), gardée
+    une version derrière ``ARCHEO_FUSION_LEGACY=1``."""
+    rognees: List[Path] = []
+    for source, bornes, place in voisines:
+        if cancel():
+            return False
+        sortie = task.temp_dir / f"{task.tile_name}_neighbor_{place}.laz"
+        if crop_neighbor_tile(input_path=source, output_path=sortie, bounds=bornes, log=log, cancel=cancel):
+            rognees.append(sortie)
+    return merge_tiles(
+        central_path=task.central_path, neighbor_paths=rognees, output_path=merged_path, log=log, cancel=cancel,
+    )
+
+
 @dataclass
 class _PreprocessTask:
     """Tâche de prétraitement pour une dalle."""
@@ -383,6 +678,9 @@ class _PreprocessTask:
     # re-téléchargements de voisins doivent passer par le même proxy que
     # l'acquisition (AUDIT v2 NET-06 — réseau d'entreprise).
     proxies: Dict[str, str] = field(default_factory=dict)
+    # Filtre des points de l'étape 2, déjà en syntaxe PDAL (traduit UNE fois par prepare_merged_tiles) :
+    # le fusionné ne garde que ces classes. None = nuage entier.
+    filtre: Optional[str] = None
 
 
 @dataclass
@@ -402,33 +700,30 @@ def _process_single_tile_preprocess(
     cancel: CancelFn,
 ) -> _PreprocessResult:
     """
-    Traite le prétraitement d'une seule dalle (crop voisins + merge).
+    Traite le prétraitement d'une seule dalle (voisines + fusion).
     Utilise uniquement PDAL (subprocess externe) → thread-safe.
     """
+    def _annule() -> _PreprocessResult:
+        return _PreprocessResult(
+            index=task.index, tile_name=task.tile_name, merged_path=None,
+            success=False, error="Annulation demandée",
+        )
+
+    def tlog(m: str) -> None:
+        log(f"[{task.tile_name}] {m}")
+
     try:
         if cancel():
-            return _PreprocessResult(
-                index=task.index,
-                tile_name=task.tile_name,
-                merged_path=None,
-                success=False,
-                error="Annulation demandée",
-            )
+            return _annule()
 
         log(f"[Dalle {task.index}/{task.total}] Début prétraitement: {task.tile_name}")
 
-        neighbors = calculate_neighbor_coordinates(task.x, task.y)
-
-        cropped_neighbors: List[Path] = []
-        for voisin_x, voisin_y, place_dalle in neighbors:
+        # Voisines présentes (téléchargées au besoin), dans l'ordre de
+        # calculate_neighbor_coordinates, avec la bande de marge à garder.
+        voisines: List[Tuple[Path, Dict[str, str], int]] = []
+        for voisin_x, voisin_y, place_dalle in calculate_neighbor_coordinates(task.x, task.y):
             if cancel():
-                return _PreprocessResult(
-                    index=task.index,
-                    tile_name=task.tile_name,
-                    merged_path=None,
-                    success=False,
-                    error="Annulation demandée",
-                )
+                return _annule()
 
             # Recherche rapide via l'index dict
             coord_key = f"{format_coordinate(voisin_x)}_{format_coordinate(voisin_y)}"
@@ -443,34 +738,34 @@ def _process_single_tile_preprocess(
                     neighbor_url,
                     neighbor_file,
                     task.dalles_dir,
-                    log=lambda m: log(f"[{task.tile_name}] {m}"),
+                    log=tlog,
                     cancel=cancel,
                     proxies=task.proxies,
                 )
                 if not ok or not neighbor_input.exists():
                     continue
 
-            bounds = calculate_crop_bounds(voisin_x, voisin_y, place_dalle, task.margin_m)
-            output_file = f"{task.tile_name}_neighbor_{place_dalle}.laz"
-            neighbor_output = task.temp_dir / output_file
-
-            if crop_neighbor_tile(
-                input_path=neighbor_input,
-                output_path=neighbor_output,
-                bounds=bounds,
-                log=lambda m: log(f"[{task.tile_name}] {m}"),
-                cancel=cancel,
-            ):
-                cropped_neighbors.append(neighbor_output)
+            voisines.append((
+                neighbor_input,
+                calculate_crop_bounds(voisin_x, voisin_y, place_dalle, task.margin_m),
+                place_dalle,
+            ))
 
         merged_path = task.merged_dir / f"{task.tile_name}_merged.laz"
-        if not merge_tiles(
-            central_path=task.central_path,
-            neighbor_paths=cropped_neighbors,
-            output_path=merged_path,
-            log=lambda m: log(f"[{task.tile_name}] {m}"),
-            cancel=cancel,
-        ):
+        if fusion_mode() == FUSION_ANCIENNE:
+            ok = _fusion_ancienne(task, voisines, merged_path, tlog, cancel)
+        else:
+            ok = merge_tiles_flux(
+                central_path=task.central_path,
+                voisines=[(source, bornes) for source, bornes, _place in voisines],
+                output_path=merged_path,
+                log=tlog,
+                cancel=cancel,
+                filtre=task.filtre,
+            )
+        if not ok:
+            if cancel():
+                return _annule()
             return _PreprocessResult(
                 index=task.index,
                 tile_name=task.tile_name,
@@ -543,6 +838,7 @@ def prepare_merged_tiles(
     max_workers: Optional[int] = None,
     stage: StageFn = _default_stage,
     on_tile_merged: Optional[Callable[[int, int, str], None]] = None,
+    filter_expression: str = "",
 ) -> IgnPreprocessResult:
     """Fusionne chaque dalle avec ses voisines (préfixage des bords).
 
@@ -559,6 +855,13 @@ def prepare_merged_tiles(
     merged_dir = temp_dir
 
     margin_m = max(0, min(999, int(round(1000.0 * float(tile_overlap_percent) / 100.0))))
+
+    # Le filtre de l'étape 2 traduit UNE fois pour tout le lot : un filtre non reconnu
+    # s'annonce une fois, pas une fois par dalle.
+    filtre = expression_pdal(filter_expression) if filter_expression else None
+    if filter_expression and filtre is None:
+        log(f"⚠️ Filtre des points non reconnu ({filter_expression}) : fusion sans filtre, "
+            "le MNT et la densité filtrent eux-mêmes (plus lent)")
 
     # Construire l'index pour recherche rapide des voisins
     file_index = _build_file_index(sorted_list_file)
@@ -616,6 +919,7 @@ def prepare_merged_tiles(
             margin_m=margin_m,
             dalles_dir=dalles_dir,
             proxies=proxies,
+            filtre=filtre,
         ))
 
     # Configuration parallélisation

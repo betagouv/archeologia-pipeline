@@ -16,11 +16,10 @@ Les situations rencontrées, par ordre d'apparition dans un traitement. Quand le
 
 ## Alerte antivirus à l'installation
 
-Certains antivirus signalent ou mettent en quarantaine `cv_runner_onnx.exe`, le moteur de détection, dans `data\third_party\cv_runner_onnx\windows`. C'est un faux positif : ce programme est un composant du plugin, compilé par l'équipe, qui ne fait que lire des images et écrire des détections. Restaurez le fichier depuis la quarantaine et ajoutez une exclusion pour le dossier du plugin ; à défaut, le plugin détecte quand même, par un moteur de secours plus lent, et le signale dans le journal.
+Certains antivirus signalent ou mettent en quarantaine `cv_runner_onnx.exe`, le moteur de détection, dans `data\third_party\cv_runner_onnx\windows`. C'est un faux positif : ce programme est un composant du plugin, compilé par l'équipe, qui ne fait que lire des images et écrire des détections. Restaurez le fichier depuis la quarantaine et ajoutez une exclusion pour le dossier du plugin. Sans lui, la détection est impossible : voir [La détection est impossible](#la-detection-est-impossible).
 
 ## Le plugin ne se lance pas
 
-- Vérifiez que **Relief Visualization Toolbox** est installée et activée dans le gestionnaire d'extensions.
 - Si le gestionnaire d'extensions affiche une erreur au chargement, notez le message complet et transmettez-le avec la version de QGIS.
 
 ## Les vérifications préalables ont échoué
@@ -28,7 +27,8 @@ Certains antivirus signalent ou mettent en quarantaine `cv_runner_onnx.exe`, le 
 Le panneau **État du système** de l'étape 4 nomme ce qui manque :
 
 - **PDAL** ou **GDAL** introuvables : installez QGIS par OSGeo4W, qui les fournit, ou ajoutez-les au chemin du système.
-- **Algorithmes RVT** absents : installez ou activez Relief Visualization Toolbox, puis relancez QGIS.
+- **Moteur d'indices intégré** indisponible : une bibliothèque livrée avec QGIS (numpy, scipy ou matplotlib) manque ou ne se charge pas ; le détail la nomme. Réinstallez QGIS par OSGeo4W.
+- **Algorithmes RVT** absents : n'apparaît que si l'ancien calcul par l'extension a été forcé pour un diagnostic (variable d'environnement `ARCHEO_INDICES_MOTEUR=processing`) ; installez alors Relief Visualization Toolbox, puis relancez QGIS. Ce mode de secours garde les comportements de l'extension : pente « Pourcentage » étirée de 0 à 51 % en 8 bits, nombre de directions du M-HS limité à 64 même en 8 bits ; ses images sont réutilisées d'une relance à l'autre tant qu'on y reste, et recalculées une fois au retour du calcul intégré.
 - **Moteur de détection** absent : voir l'alerte antivirus ci-dessus.
 - **Projection** refusée : un raster d'entrée n'est pas en Lambert-93 (EPSG:2154). Reprojetez-le avant.
 - **Dossier** introuvable ou vide : le chemin, ou l'extension des fichiers attendue par le mode.
@@ -60,7 +60,35 @@ Si le calcul d'un modèle de terrain ne rend pas la main après deux heures, la 
 
 ## Erreur PDAL ou mémoire
 
-Une erreur de PDAL pendant le découpage ou la fusion des dalles, en particulier avec un code de violation d'accès, vient presque toujours d'un manque de mémoire : plusieurs dalles traitées en parallèle sur un poste qui ne peut pas les tenir. Réduisez les **workers** à 1 ou 2 à l'étape 4 et relancez dans le même dossier : les dalles déjà calculées sont conservées.
+Une erreur de PDAL pendant la fusion d'une dalle avec ses voisines, ou le calcul du MNT, en particulier avec un code de violation d'accès, vient presque toujours d'un manque de mémoire : plusieurs dalles traitées en parallèle sur un poste qui ne peut pas les tenir. Réduisez les **workers** à 1 ou 2 à l'étape 4 et relancez dans le même dossier : les dalles déjà calculées sont conservées.
+
+## Le filtre des points n'est pas reconnu
+
+Le journal dit « Filtre des points non reconnu … : fusion sans filtre » ou « Filtre des points refusé par PDAL … : fusion sans filtre ». Dans le premier cas, le filtre de l'étape 2 est écrit dans une syntaxe que le plugin ne sait pas traduire pour ne garder que ces points dès la fusion des dalles : comparaisons d'une dimension à un nombre (`Classification = 2`, `Z >= 10`), reliées par `AND`, `OR`, `NOT` et des parenthèses. Dans le second, la syntaxe est bonne mais l'outil de fusion la refuse, le plus souvent pour une dimension mal orthographiée ; la fin du message cite sa raison. Le traitement n'est pas en cause : le nuage fusionné garde tous les points, et le MNT comme la densité appliquent le filtre eux-mêmes, comme dans les versions précédentes, en plus lent. Ramenez le filtre à cette syntaxe, ou au défaut par le bouton ↺ de l'onglet, pour retrouver la fusion filtrée.
+
+## La carte graphique n'est pas utilisée
+
+L'option **Détection sur la carte graphique** de l'étape 4 n'impose rien : au premier usage de chaque modèle sur votre poste, le moteur compare la carte au processeur sur la première image et ne la garde que si elle est plus rapide et donne les mêmes détections. Le journal dit pourquoi elle a été écartée :
+
+- « pas plus rapide que le processeur » : c'est le cas d'une carte intégrée au processeur, d'une session de bureau à distance ou d'une carte déjà occupée par un autre programme. Rien à corriger ; la détection se fait sur le processeur, comme sans l'option.
+- « résultats différents du processeur » : le pilote de la carte calcule autrement. Mettez-le à jour, puis relancez ; la décision est réessayée d'elle-même après sept jours, ou tout de suite si le pilote, le modèle ou le moteur de détection ont changé.
+- « session impossible » ou « DirectML indisponible » : la carte ou son pilote ne prend pas en charge DirectX 12, ou la mémoire de la carte ne suffit pas pour ce modèle.
+- « erreur à l'image N … ; suite de la détection sur le processeur » : la carte a échoué en cours de traitement ; l'image en cause et les suivantes ont été analysées sur le processeur, rien n'est perdu, et la carte est écartée pour sept jours. Si cela se répète, mettez le pilote à jour.
+- « indisponible aujourd'hui » : la carte retenue sur ce poste n'a pas pu être ouverte cette fois (occupée, pilote en cours de mise à jour, session distante) ; rien n'est mémorisé, le prochain traitement la réessaie.
+- « parité non vérifiable ici » : la première image n'avait aucune détection, la carte a été gardée pour ce traitement parce qu'elle est plus rapide, et sera comparée de nouveau au traitement suivant.
+- « non vérifiée » : aucune image n'a abouti sur le processeur dans ce traitement, la sonde n'a pas pu avoir lieu.
+- « le moteur de détection livré ne la prend pas en charge » : l'extension installée n'a pas le moteur compilé pour la carte graphique ; réinstallez-la depuis le dépôt.
+
+Pour forcer une nouvelle vérification avant les sept jours, supprimez le fichier `archeologia/carte_graphique.json` du profil QGIS (menu **Préférences › Profils utilisateurs › Ouvrir le dossier du profil actif**). Hors Windows, l'option est grisée.
+
+## La détection est impossible
+
+Le moteur de détection est un programme livré avec l'extension. S'il manque, l'état du système de l'étape 4 le signale en rouge, et un traitement lancé quand même s'arrête aussitôt sur ses vérifications. S'il s'arrête en cours de traitement, par exemple mis en quarantaine par un antivirus à sa première exécution, la fin du traitement le dit en rouge, avec la cause, et le rapport aussi. Les produits, eux, sont calculés ; seules manquent les détections du modèle en cause. Quand deux modèles sont comparés sur une même structure, l'autre détecte normalement et la ligne de fin nomme celui qui a échoué.
+
+- Un antivirus l'a mis en quarantaine : voir [Alerte antivirus à l'installation](#alerte-antivirus-a-l-installation).
+- Le fichier est endommagé, ou une mise à jour a été interrompue : réinstallez l'extension depuis le dépôt.
+
+Relancez ensuite dans le même dossier : les produits déjà calculés sont conservés, seule la détection est refaite.
 
 ## Aucun run, ou aucune détection
 

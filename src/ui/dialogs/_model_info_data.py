@@ -86,7 +86,7 @@ RVT_PARAM_LABELS: Dict[str, Dict[str, str]] = {
         "svf_noise": "Suppression du bruit",
     },
     "SLO": {
-        "unit": "Unité (0 = °, 1 = %)",
+        "unit": "Unité (0 = °, 2 = %)",
         "ve_factor": "Facteur VE",
         "save_as_8bit": "Export 8 bits",
     },

@@ -9,16 +9,17 @@ mosaïque des dalles FOURNIES (VRT GDAL) : vraie donnée là où un voisin exist
 aplat 0 ailleurs (bruit supprimé en aval par ``valid_region_bounds``).
 
 Fraîcheur comme le LAZ fusionné (``preprocess.merge_tiles``) : un halo est
-réutilisé si son jeu de voisins (sidecar ``.inputs.json``) est inchangé et
-qu'aucune entrée n'est plus récente que lui ; sinon il est re-découpé et son
-mtime frais ré-arme la chaîne aval (PNG → purge du cache CV → ré-inférence).
+réutilisé si sa marge et son jeu de voisins (sidecar ``.inputs.json``) sont
+inchangés et qu'aucune entrée n'est plus récente que lui ; sinon il est
+re-découpé et son mtime frais ré-arme la chaîne aval (PNG → purge du cache CV
+→ ré-inférence). Un sidecar sans marge (versions ≤ 0.14.1) est périmé.
 """
 from __future__ import annotations
 
 import json
 import threading
 from pathlib import Path
-from typing import Callable, Dict, List, Optional, Sequence, Tuple
+from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 
 from ..types import LogFn
 
@@ -112,7 +113,8 @@ class NeighborHalo:
             return None
         dst = self._halo_dir / Path(tif).name
         sidecar = dst.with_suffix(".inputs.json")
-        expected = sorted(p.name for p in inputs)
+        # La marge fait partie de la clé : une autre largeur re-découpe le halo.
+        expected = {"marge_m": self._margin, "voisins": sorted(p.name for p in inputs)}
         if dst.exists() and _is_fresh(dst, sidecar, expected, inputs):
             with self._lock:
                 self.reused += 1
@@ -132,7 +134,7 @@ class NeighborHalo:
         return dst
 
 
-def _is_fresh(dst: Path, sidecar: Path, expected: List[str], inputs: Sequence[Path]) -> bool:
+def _is_fresh(dst: Path, sidecar: Path, expected: Dict[str, Any], inputs: Sequence[Path]) -> bool:
     try:
         if json.loads(sidecar.read_text(encoding="utf-8")) != expected:
             return False

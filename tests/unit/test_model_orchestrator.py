@@ -724,7 +724,8 @@ class TestRunEntities:
         run = resolve_runs_from_entities(["parcellaire"], {}, installed, _catalog())[0]
         assert run["entities"] == [
             {"id": "parcellaire", "label": "Parcellaire", "slug": "parcellaire",
-             "classes": ["parcellaire"], "is_derived": False, "layer_names": {}},
+             "classes": ["parcellaire"], "is_derived": False, "layer_names": {},
+             "min_area_m2": 0.0, "classes_synthese": []},
         ]
 
     def test_n_entities_one_model_listed_separately_sorted(self, tmp_path):

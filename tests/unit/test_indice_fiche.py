@@ -380,7 +380,7 @@ def test_aucune_citation_anglaise_dans_les_fiches_livrees():
     )
 
 
-# ------------------------------------------- recettes de fusion (contre rvt-qgis)
+# ------------------------------------- recettes de fusion (contre le rvt intégré)
 
 #: Nom RVT d'une visualisation -> sigle du plugin. Les deux openness ne sont pas
 #: des produits de l'étape 2 : leur sigle est celui des fichiers de RVT
@@ -396,12 +396,8 @@ _SIGLE_RVT = {
 
 
 def _dossier_rvt_qgis():
-    """Le plugin rvt-qgis voisin, ou None (poste sans QGIS, CI)."""
-    plugins = Path(__file__).resolve().parents[2].parent
-    for cand in sorted(plugins.glob("rvt*")):
-        if (cand / "settings" / "blender_VAT.json").is_file():
-            return cand
-    return None
+    """Les réglages de rvt intégrés au plugin (copie figée de rvt-qgis 1.0.1, 0.15.0) : toujours présents."""
+    return Path(__file__).resolve().parents[2] / "src" / "pipeline" / "ign" / "products" / "rvt_embarque"
 
 
 def _recette_rvt(couches):

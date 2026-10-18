@@ -261,11 +261,15 @@ CLE_DEPANNAGE = "depannage"
 #: Motif cherché sans tenir compte de la casse ; le premier qui matche gagne.
 #: ``test_aide`` vérifie que chaque titre existe bien dans le chapitre.
 _RUBRIQUES_DEPANNAGE: Tuple[Tuple[str, str], ...] = (
+    # Avant « moteur de détection » : « le moteur de détection livré ne la prend pas en charge ».
+    (r"carte graphique", "La carte graphique n'est pas utilisée"),
+    (r"d[ée]tection impossible|moteur de d[ée]tection", "La détection est impossible"),
     (r"noyau atteint", "Le noyau atteint N pixels"),
     (r"v[ée]rifications pr[ée]alables ont [ée]chou", "Les vérifications préalables ont échoué"),
     (r"timed out|data\.geopf\.fr|proxy|t[ée]l[ée]chargement.*[ée]chou", "Le téléchargement échoue"),
     (r"abandonn", "Une dalle est abandonnée"),
     (r"PDAL a crash|moins de workers|max_workers", "Erreur PDAL ou mémoire"),
+    (r"filtre des points (non reconnu|refus[ée] par pdal)", "Le filtre des points n'est pas reconnu"),
     (r"aucune zone d'int[ée]r[êe]t|aucun run", "Aucun run, ou aucune détection"),
     (r"interromp", "Le traitement s'est interrompu"),
 )

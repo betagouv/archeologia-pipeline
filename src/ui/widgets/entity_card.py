@@ -58,7 +58,8 @@ _CLUSTER_PARAM_SPECS = (
     ("min_cluster_size", "Nb min de détections", 1.0, 10000.0, 1.0, 0, True,
      "Taille minimale d'un groupe pour créer une zone."),
     ("min_confidence", "Confiance min", 0.0, 1.0, 0.05, 2, False,
-     "Ignore les détections sous ce seuil POUR le regroupement (≠ seuil de détection)."),
+     "Seuil des détections qui ouvrent une zone (≠ seuil de détection). Si le modèle en prévoit, celles un peu "
+     "en dessous s'y rattachent sans en ouvrir ; ce seuil de rattachement suit ce réglage."),
     ("min_area_m2", "Aire min zone (m²)", 0.0, 1_000_000.0, 50.0, 0, True,
      "Supprime les zones de surface inférieure."),
     ("buffer_m", "Tampon (m)", 0.0, 200.0, 1.0, 0, True,
@@ -607,7 +608,9 @@ class EntityCard(QFrame):
         )
         self._cluster_params_box.setVisible(show_cluster_params)
         if show_cluster_params:
-            self._active_cluster_keys = set(defaults.keys())
+            # Seules les clés qui ont un champ : min_confidence_extend (lu
+            # d'args.yaml pour décaler l'extension) n'en a pas.
+            self._active_cluster_keys = {k for k in defaults if k in self._cluster_spins}
             self._loading = True
             try:
                 for key, spin in self._cluster_spins.items():

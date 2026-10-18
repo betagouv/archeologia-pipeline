@@ -9,6 +9,7 @@ sous-pages de l'ancienne étape « Lancer » (scindée le 2026-10-09).
 """
 from __future__ import annotations
 
+import sys
 import threading
 from dataclasses import dataclass, field
 from typing import List
@@ -16,6 +17,7 @@ from typing import List
 from qgis.PyQt.QtCore import QObject, QPoint, QRect, QSize, Qt, pyqtSignal
 from qgis.PyQt.QtWidgets import (
     QAbstractSpinBox,
+    QCheckBox,
     QGridLayout,
     QHBoxLayout,
     QLabel,
@@ -111,11 +113,13 @@ class _PreflightEmitter(QObject):
 
 class LaunchPage(QWidget):
     workers_changed = pyqtSignal(int)
+    carte_graphique_changed = pyqtSignal(bool)
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self._recap_rows: List[QWidget] = []
-        self._workers = 4
+        self._workers = 3   # = ConfigManager (processing.max_workers)
+        self._carte = False   # = ConfigManager (computer_vision.carte_graphique), décochée par défaut
         self._preflight_gen = 0
         self._validation_errors: List[str] = []
         # État du préflight pour le bandeau : pending | ok | warn | err.
@@ -164,10 +168,10 @@ class LaunchPage(QWidget):
         rv.addWidget(self._recap_host)
         v.addWidget(recap_card)
 
-        # ③ Paramètres avancés (replié) — workers
+        # ③ Paramètres avancés (replié) — workers, carte graphique
         self._adv = CollapsibleSection(
             "Paramètres avancés",
-            preview_getter=lambda: f"workers : {self._workers}",
+            preview_getter=lambda: f"workers : {self._workers} · carte graphique : {'oui' if self._carte else 'non'}",
         )
         self._adv.set_body(self._build_workers_body())
         v.addWidget(self._adv)
@@ -205,9 +209,13 @@ class LaunchPage(QWidget):
 
     def _build_workers_body(self) -> QWidget:
         body = QWidget()
-        h = QHBoxLayout(body)
+        colonne = QVBoxLayout(body)
+        colonne.setContentsMargins(0, 0, 0, 0)
+        colonne.setSpacing(8)
+        h = QHBoxLayout()
         h.setContentsMargins(0, 0, 0, 0)
         h.setSpacing(8)
+        colonne.addLayout(h)
 
         lbl = QLabel("Workers parallèles")
         lbl.setObjectName("FieldLabel")
@@ -238,12 +246,37 @@ class LaunchPage(QWidget):
         h.addWidget(plus)
 
         note = QLabel(
-            "Nombre de dalles traitées en parallèle. Plus de workers accélère le "
-            "traitement sur les machines multi-cœurs mais consomme plus de RAM."
+            "Nombre de dalles téléchargées, fusionnées et préparées pour la détection en "
+            "parallèle ; le MNT et les indices sont calculés une dalle après l'autre. "
+            "Plus de workers accélère ces étapes mais consomme plus de mémoire."
         )
         note.setObjectName("WorkersNote")
         note.setWordWrap(True)
         h.addWidget(note, 1)
+
+        # Carte graphique (DirectML, Windows) : décochée par défaut ; la sonde par poste et
+        # le repli sont faits par le moteur, le journal dit ce qui a été décidé et pourquoi.
+        ligne = QHBoxLayout()
+        ligne.setContentsMargins(0, 0, 0, 0)
+        ligne.setSpacing(8)
+        self._carte_check = QCheckBox("Détection sur la carte graphique")
+        self._carte_check.setObjectName("CarteGraphiqueCheck")
+        self._carte_check.setChecked(False)
+        self._carte_check.toggled.connect(self._on_carte_toggled)
+        ligne.addWidget(self._carte_check)
+        note_carte = QLabel(
+            "Au premier usage de chaque modèle sur ce poste, la carte est comparée au processeur sur la "
+            "première image : elle n'est gardée que si elle est plus rapide et donne les mêmes détections. "
+            "Sinon, ou à la première erreur en cours de traitement, la détection continue sur le processeur "
+            "et le journal le dit."
+        )
+        note_carte.setObjectName("WorkersNote")
+        note_carte.setWordWrap(True)
+        ligne.addWidget(note_carte, 1)
+        colonne.addLayout(ligne)
+        if sys.platform != "win32":
+            self._carte_check.setEnabled(False)
+            self._carte_check.setToolTip("Windows seulement (DirectML).")
         self._workers_body = body
         return body
 
@@ -361,6 +394,25 @@ class LaunchPage(QWidget):
 
     def workers_value(self) -> int:
         return self._workers
+
+    # ------------------------------------------------------------------
+    # Paramètres avancés — carte graphique
+    # ------------------------------------------------------------------
+    def set_carte_graphique(self, on: bool) -> None:
+        """Initialise la case depuis la config (sans émettre de signal)."""
+        self._carte = bool(on)
+        self._carte_check.blockSignals(True)
+        self._carte_check.setChecked(self._carte)
+        self._carte_check.blockSignals(False)
+        self._adv.refresh_preview()
+
+    def _on_carte_toggled(self, on: bool) -> None:
+        self._carte = bool(on)
+        self._adv.refresh_preview()
+        self.carte_graphique_changed.emit(self._carte)
+
+    def carte_graphique_value(self) -> bool:
+        return self._carte
 
     def set_readonly(self, on: bool) -> None:
         """Pendant un run : les workers du run en cours ne se changent plus."""

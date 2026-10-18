@@ -177,6 +177,35 @@ def _cleanup_orphans(directory: Path | None, glob_pattern: str, kept_names: set[
         pass
 
 
+def _filtrer_aires_par_entite(output_dir: Path, run: Dict[str, Any], log) -> None:
+    """Aire minimale propre à chaque entité du run (après le filtre commun, à la plus petite des aires)."""
+    from ..output_paths import aires_par_entite
+    a_filtrer = [(gp, aire, ex) for gp, aire, ex in aires_par_entite(output_dir, run) if gp.exists()]
+    if not a_filtrer:
+        return
+    from ..cv.conversion_shp import _filter_gpkg_by_min_area
+    for gp, aire, exemptes in a_filtrer:
+        try:
+            _filter_gpkg_by_min_area(gpkg_paths=[str(gp)], min_area_m2=aire, exempt_layers=exemptes)
+            log(f"Computer Vision: aire minimale de l'entité {gp.stem} : {aire:g} m²")
+        except Exception as e:  # noqa: BLE001 — même tolérance que le filtre du run (runner_shapefiles)
+            log(f"Computer Vision: filtrage par aire de {gp.stem} ignoré (erreur): {e}")
+
+
+def _recompter_effectifs(output_dir: Path, run: Dict[str, Any]) -> None:
+    """Effectifs du bilan (``fiabilite.json``) recomptés sur les GeoPackages des entités du run, après les
+    filtres d'aire ; le sidecar d'un GeoPackage vidé puis supprimé est retiré."""
+    try:  # fallback standalone (tests : src/ sur le path)
+        from ...app.services.fiabilite import recompter_effectifs
+    except ImportError:  # pragma: no cover
+        from app.services.fiabilite import recompter_effectifs
+    from ..output_paths import build_entity_class_targets
+    gpkgs = {gp for ent in (run or {}).get("entities") or []
+             for lst in build_entity_class_targets(output_dir, [ent]).values() for gp, _ in lst}
+    for gp in sorted(gpkgs):
+        recompter_effectifs(gp)
+
+
 def run_existing_rvt(
     *,
     existing_rvt_dir: Path,
@@ -195,6 +224,7 @@ def run_existing_rvt(
     halo_margin_m: float = DEFAULT_HALO_MARGIN_M,
     prep_progress: Optional[Callable[[int, int, str], None]] = None,
     max_workers: int = 1,
+    on_appareil: Optional[Callable[[Dict[str, Any]], None]] = None,
 ) -> ExistingRvtResult:
     if not existing_rvt_dir.exists() or not existing_rvt_dir.is_dir():
         raise FileNotFoundError(f"Dossier RVT inexistant ou invalide: {existing_rvt_dir}")
@@ -476,10 +506,13 @@ def run_existing_rvt(
                 image_progress=image_progress,
                 tile_progress=tile_progress,
                 stats=cv_stats,
+                on_appareil=on_appareil,
             )
         finally:
             if busy_large:
                 on_busy(False)
+        _filtrer_aires_par_entite(output_dir, cv_config, log)
+        _recompter_effectifs(output_dir, cv_config)
 
     return ExistingRvtResult(
         total_images=len(jpg_files),

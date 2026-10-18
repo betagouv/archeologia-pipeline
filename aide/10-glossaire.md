@@ -2,6 +2,7 @@
 
 | Terme | Définition |
 |---|---|
+| Carte graphique | Processeur graphique de l'ordinateur, que l'étape 4 peut faire servir à la détection par DirectML (Windows) après vérification contre le processeur |
 | Cible dérivée | Résultat d'un regroupement présenté comme une entité cochable à part entière, par exemple le Regroupement de cratères |
 | COPC | Nuage de points optimisé pour le cloud : le format des fichiers LAZ publiés par l'IGN |
 | Couverture | Part des cellules du MNT réellement appuyées sur des points sol, par opposition aux cellules interpolées ; un indicateur de qualité de la donnée |
@@ -27,8 +28,8 @@
 | Préflight | Vérifications préalables de l'étape 4 : outils, algorithmes, dossiers |
 | Produit | Ce qui se coche à l'étape 2 : le MNT, les cartes de qualité et les indices de visualisation |
 | Regroupement | Agrégation de détections proches en zones, par densité |
-| Relief Visualization Toolbox | Plugin QGIS qui calcule les indices de visualisation du relief, dépendance du plugin |
+| Relief Visualization Toolbox | Bibliothèque de calcul des indices de visualisation du relief, du ZRC SAZU et de l'Université de Ljubljana (UL FGG) ; le plugin en intègre une copie, sous licence Apache 2.0 |
 | Run | Lancement d'un modèle sur un indice, pour une ou plusieurs entités |
 | Score | Valeur entre 0 et 1 donnée par un modèle à une détection ; ce n'est pas une probabilité et son échelle change d'un modèle à l'autre |
 | Seuil de confiance | Score en dessous duquel une détection est écartée, fixé par entité |
-| Worker | Un processus de calcul ; le nombre de workers est le nombre de dalles traitées en parallèle |
+| Worker | Un processus de calcul ; le nombre de workers est le nombre de dalles téléchargées, fusionnées et préparées pour la détection en parallèle |

@@ -625,7 +625,8 @@ def finalize_pipeline(
                     "model": r.get("selected_model", ""),
                     "target_rvt": r.get("target_rvt", ""),
                     **trace_appareil(next((s for s in (cv_stats or []) if isinstance(s, dict)
-                                           and s.get("model") == r.get("selected_model", "")), None)),
+                                           and s.get("model") == r.get("selected_model", "")
+                                           and s.get("target_rvt") == r.get("target_rvt", "")), None)),
                 }
                 for r in cv_runs
             ],

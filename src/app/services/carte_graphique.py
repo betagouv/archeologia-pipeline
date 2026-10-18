@@ -76,11 +76,13 @@ def _adaptateurs_dxgi() -> List[Dict[str, Any]]:
                 break
             try:
                 desc = DESC1()
-                methode(adapter, 10, ctypes.c_long, ctypes.POINTER(DESC1))(adapter, ctypes.byref(desc))
+                if methode(adapter, 10, ctypes.c_long, ctypes.POINTER(DESC1))(adapter, ctypes.byref(desc)) != 0:
+                    continue
                 if not desc.Flags & DXGI_ADAPTER_FLAG_SOFTWARE:
                     umd = ctypes.c_longlong(0)   # version du pilote en mode utilisateur (IDXGIAdapter::CheckInterfaceSupport)
-                    methode(adapter, 9, ctypes.c_long, ctypes.POINTER(GUID), ctypes.POINTER(ctypes.c_longlong))(
-                        adapter, ctypes.byref(iid_device), ctypes.byref(umd))
+                    if methode(adapter, 9, ctypes.c_long, ctypes.POINTER(GUID), ctypes.POINTER(ctypes.c_longlong))(
+                            adapter, ctypes.byref(iid_device), ctypes.byref(umd)) != 0:
+                        umd.value = 0
                     v = umd.value
                     pilote = ".".join(str((v >> s) & 0xFFFF) for s in (48, 32, 16, 0)) if v else "?"
                     out.append({"id": i, "nom": desc.Description.strip() or f"carte {i}", "pilote": pilote,
@@ -189,8 +191,15 @@ def bloc_run(demande: bool, adaptateurs_: Sequence[Dict[str, Any]], decision: Op
                                              f"nouvel essai après {VALIDITE_REFUS_JOURS} jours"}
     bloc: Dict[str, Any] = {"demande": True, "adaptateurs": [dict(a) for a in adaptateurs_]}
     if decision and decision.get("appareil") == CARTE:
-        bloc["device_id"] = int(decision.get("device_id", 0))
-        bloc["carte"] = str(decision.get("carte") or "?")
+        # La clé ignore l'ordre des cartes ; le device_id est positionnel : la carte mémorisée
+        # n'est appliquée que si l'adaptateur à cet index porte encore son nom, sinon on re-sonde.
+        try:
+            did = int(decision.get("device_id", -1))
+        except (TypeError, ValueError):
+            did = -1
+        if 0 <= did < len(adaptateurs_) and str(adaptateurs_[did].get("nom")) == str(decision.get("carte")):
+            bloc["device_id"] = did
+            bloc["carte"] = str(decision.get("carte"))
     return bloc
 
 
@@ -215,14 +224,22 @@ def preparer(run_cfg: Dict[str, Any], demande: bool, *, adaptateurs: Sequence[Di
 
 def enregistrer(stats: Dict[str, Any], cle_: Optional[str], registre: Path,
                 maintenant: Optional[dt.datetime] = None) -> Optional[Dict[str, Any]]:
-    """Mémorise la décision de la sonde remontée par le moteur (``stats["appareil"]``) ; rien pour
-    un repli en cours de run (transitoire) ni pour une décision déjà mémorisée."""
+    """Mémorise la décision remontée par le moteur (``stats["appareil"]``). Jamais : une
+    décision déjà mémorisée, ni ce que le moteur marque ``memorisable: False`` (carte
+    indisponible un jour, parité non vérifiable, sonde impossible). Un repli en cours de run
+    devient un refus de sept jours : une carte qui plante à l'image k ne doit pas être
+    re-sondée, retenue et repliée à chaque traitement."""
     d = (stats or {}).get("appareil")
-    if not cle_ or not isinstance(d, dict) or d.get("repli") or d.get("memorise"):
+    if not cle_ or not isinstance(d, dict) or d.get("memorise") or d.get("memorisable") is False:
         return None
     if d.get("appareil") not in (CARTE, PROCESSEUR):
         return None
-    decision = {k: v for k, v in d.items() if k != "message"}
+    if d.get("repli"):
+        decision = {"appareil": PROCESSEUR, "repli": True,
+                    "motif": f"erreur de la carte en cours de traitement, à l'image {d.get('image', '?')} "
+                             f"({d.get('motif', '?')})"}
+    else:
+        decision = {k: v for k, v in d.items() if k != "message"}
     memoriser(registre, cle_, decision, maintenant or dt.datetime.now())
     return decision
 

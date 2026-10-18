@@ -130,6 +130,10 @@ def _fmt_s(s: float) -> str:
     return f"{s:.1f} s".replace(".", ",")
 
 
+def _fmt_conf(x: float) -> str:
+    return f"{float(x):.3f}".replace(".", ",")
+
+
 def sonder(
     adaptateurs: Sequence[Dict[str, Any]],
     secondes_processeur: float,
@@ -152,24 +156,24 @@ def sonder(
         try:
             session = ouvrir(did)
         except Exception as e:  # noqa: BLE001 — pilote, mémoire, modèle refusé
-            essai["motif"] = f"session impossible ({_court(e)})"
+            essai["motif"] = f"session impossible ({court(e)})"
             essais.append(essai)
             continue
         if session is None:
-            essai["motif"] = "DirectML indisponible sur cette carte (ORT est retombé sur le processeur)"
+            essai["motif"] = "DirectML indisponible sur cette carte (le moteur est retombé sur le processeur)"
             essais.append(essai)
             continue
         try:
             secondes, dets = inferer(session)
         except Exception as e:  # noqa: BLE001
-            essai["motif"] = f"erreur d'inférence ({_court(e)})"
+            essai["motif"] = f"erreur d'inférence ({court(e)})"
             essais.append(essai)
             continue
         cmp = comparer_detections(dets_processeur, dets, seuil_de)
         essai.update(cmp, secondes=round(float(secondes), 2), secondes_processeur=round(float(secondes_processeur), 2))
         if not cmp["conforme"]:
             essai["motif"] = (f"résultats différents du processeur ({cmp['non_retrouvees']} non retrouvée(s), "
-                              f"{cmp['en_trop']} en trop, écart de confiance max {cmp['ecart_conf_max']:.3f})")
+                              f"{cmp['en_trop']} en trop, écart de confiance max {_fmt_conf(cmp['ecart_conf_max'])})")
         elif secondes > secondes_processeur * RATIO_VITESSE_MAX:
             essai["motif"] = (f"pas plus rapide que le processeur ({_fmt_s(secondes)} contre "
                               f"{_fmt_s(secondes_processeur)} sur la première image)")
@@ -180,7 +184,10 @@ def sonder(
     retenus = [e for e in essais if "motif" not in e]
     if retenus:
         best = min(retenus, key=lambda e: e["secondes"])
+        # Sans détection sur la première image, la parité n'a pas été vue : la carte sert pour
+        # ce traitement (plus rapide, pas de plantage) mais n'est pas mémorisée — re-sondée au suivant.
         decision = {"appareil": CARTE, "device_id": best["device_id"], "carte": best["nom"],
+                    "memorisable": bool(best.get("verifiable")),
                     "sonde": {k: v for k, v in best.items() if k not in ("device_id", "nom")},
                     "ecartees": [f"{e['nom']} : {e['motif']}" for e in essais if "motif" in e]}
         decision["message"] = message(decision)
@@ -191,8 +198,12 @@ def sonder(
     return decision, None
 
 
-def _court(e: BaseException) -> str:
+def court(e: BaseException) -> str:
+    """Une erreur en une ligne courte, pour le journal."""
     return " ".join(str(e).split())[:160]
+
+
+_court = court
 
 
 # ---------------------------------------------------------------------------
@@ -209,13 +220,16 @@ def message(decision: Dict[str, Any]) -> str:
         vitesse = f"première image en {_fmt_s(s.get('secondes', 0.0))} contre {_fmt_s(s.get('secondes_processeur', 0.0))} sur le processeur"
         if s.get("verifiable"):
             parite = (f"{s.get('apparies', 0)} détection(s) retrouvée(s), écart de confiance max "
-                      f"{float(s.get('ecart_conf_max', 0.0)):.3f}")
+                      f"{_fmt_conf(s.get('ecart_conf_max', 0.0))}")
         else:
-            parite = "aucune détection sur la première image, parité non vérifiable ici"
+            parite = ("aucune détection sur la première image, parité non vérifiable ici "
+                      "(vérification refaite au prochain traitement)")
         return f"{base} : {vitesse}, {parite}"
     if decision.get("repli"):
         return (f"carte graphique : erreur à l'image {decision.get('image', '?')} ({decision.get('motif', '?')}) ; "
-                "suite de la détection sur le processeur")
+                "suite de la détection sur le processeur, carte écartée pour sept jours")
+    if decision.get("non_sondee"):
+        return f"carte graphique non vérifiée : {decision.get('motif', '?')} ; détection sur le processeur"
     return f"carte graphique écartée : {decision.get('motif', '?')} ; détection sur le processeur"
 
 
@@ -232,8 +246,16 @@ def decision_memorisee(device_id: int, carte: str) -> Dict[str, Any]:
 
 
 def decision_indisponible(carte: str, motif: str) -> Dict[str, Any]:
-    """Carte retenue sur ce poste mais impossible à ouvrir aujourd'hui."""
-    d = {"appareil": PROCESSEUR, "motif": f"« {carte} » indisponible aujourd'hui ({motif})"}
+    """Carte retenue sur ce poste mais impossible à ouvrir aujourd'hui : transitoire, jamais mémorisée."""
+    d = {"appareil": PROCESSEUR, "memorisable": False,
+         "motif": f"« {carte} » indisponible aujourd'hui ({motif})"}
+    d["message"] = message(d)
+    return d
+
+
+def decision_non_sondee(motif: str) -> Dict[str, Any]:
+    """Option demandée mais aucune sonde possible dans ce traitement : dit, jamais mémorisé."""
+    d = {"appareil": PROCESSEUR, "non_sondee": True, "memorisable": False, "motif": motif}
     d["message"] = message(d)
     return d
 

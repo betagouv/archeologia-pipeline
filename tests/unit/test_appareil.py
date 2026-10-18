@@ -140,10 +140,17 @@ class TestSonder:
         decision, session = _sonde([], lambda i: None, lambda _s: (1.0, []))
         assert decision["appareil"] == ap.PROCESSEUR and session is None and "aucune carte" in decision["motif"]
 
-    def test_parite_non_verifiable_acceptee_sur_la_vitesse(self):
+    def test_parite_non_verifiable_acceptee_sur_la_vitesse_mais_pas_memorisee(self):
         s = (_Fausse("gpu"), "x", [1, 3, 8, 8], {})
         decision, _ = _sonde(self.ADS[:1], lambda i: s, lambda _s: (1.0, []), dets_cpu=[])
         assert decision["appareil"] == ap.CARTE and "aucune détection" in decision["message"]
+        assert decision["memorisable"] is False
+
+    def test_parite_verifiee_memorisable(self):
+        s = (_Fausse("gpu"), "x", [1, 3, 8, 8], {})
+        decision, _ = _sonde(self.ADS[:1], lambda i: s, lambda _s: (1.0, [_det(0.9, 0)]))
+        assert decision["memorisable"] is True
+        assert "écart de confiance max 0,000" in decision["message"]   # virgule décimale
 
     def test_la_decision_est_serialisable(self):
         s = (_Fausse("gpu"), "x", [1, 3, 8, 8], {})
@@ -188,6 +195,16 @@ class TestMessages:
         d = ap.decision_memorisee(1, "RTX")
         assert d["appareil"] == ap.CARTE and d["device_id"] == 1 and d["memorise"] is True
         assert "RTX" in d["message"]
+
+    def test_indisponible_et_non_sondee_jamais_memorisees(self):
+        d = ap.decision_indisponible("RTX", "occupée")
+        assert d["appareil"] == ap.PROCESSEUR and d["memorisable"] is False and "indisponible" in d["message"]
+        n = ap.decision_non_sondee("aucune inférence aboutie")
+        assert n["appareil"] == ap.PROCESSEUR and n["non_sondee"] and n["memorisable"] is False
+        assert "non vérifiée" in n["message"]
+
+    def test_court(self):
+        assert ap.court(RuntimeError("a\n  b   " + "x" * 300)) == ("a b " + "x" * 300)[:160]
 
     def test_session_sur_carte(self):
         assert ap.session_sur_carte(_Fausse("dml")) and not ap.session_sur_carte(_Fausse("cpu"))

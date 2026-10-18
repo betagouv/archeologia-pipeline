@@ -67,8 +67,8 @@ def infos_onnxruntime(python_exe: Path) -> dict:
     try:
         out = subprocess.run([str(python_exe), "-c", code], capture_output=True, text=True, check=True).stdout
         info = json.loads(out.strip().splitlines()[-1])
-    except Exception as e:  # noqa: BLE001
-        return {"paquet": "?", "version": "?", "erreur": str(e)[:120]}
+    except Exception as e:  # noqa: BLE001 — jamais le message (chemin du venv) dans un fichier livré
+        return {"paquet": "?", "version": "?", "erreur": type(e).__name__}
     directml = "DmlExecutionProvider" in info.get("fournisseurs", [])
     cuda = "CUDAExecutionProvider" in info.get("fournisseurs", [])
     paquet = "onnxruntime-directml" if directml else ("onnxruntime-gpu" if cuda else "onnxruntime")

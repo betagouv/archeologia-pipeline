@@ -65,6 +65,14 @@ class TestBlocRun:
         bloc = cg.bloc_run(True, ADS, {**RETENUE, "date": T0.isoformat()}, BIN)
         assert bloc["demande"] is True and bloc["device_id"] == 1
 
+    def test_retenue_dont_la_carte_a_change_d_index_est_resondee(self):
+        # La clé ignore l'ordre des cartes, le device_id est positionnel : si l'adaptateur à cet
+        # index ne porte plus le nom mémorisé (écran basculé, carte externe), on re-sonde.
+        bloc = cg.bloc_run(True, list(reversed(ADS)), {**RETENUE, "date": T0.isoformat()}, BIN)
+        assert bloc["demande"] is True and "device_id" not in bloc
+        bloc = cg.bloc_run(True, ADS[:1], {**RETENUE, "date": T0.isoformat()}, BIN)
+        assert "device_id" not in bloc
+
     def test_refus_memorise(self):
         bloc = cg.bloc_run(True, ADS, {**REFUSEE, "date": T0.isoformat()}, BIN)
         assert bloc["demande"] is False and "écartée" in bloc["message"] and "18/10/2026" in bloc["message"]
@@ -87,10 +95,23 @@ class TestEnregistrer:
         assert d["carte"] == "RTX" and "message" not in d and "sonde" in d
         assert cg.lire(p)["k"]["date"] == T0.isoformat()
 
-    def test_repli_en_cours_de_run_n_est_pas_memorise(self, tmp_path):
+    def test_repli_en_cours_de_run_devient_un_refus(self, tmp_path):
+        # Une carte qui plante à l'image k ne doit pas être re-sondée, retenue et repliée à chaque run.
         p = tmp_path / cg.NOM_REGISTRE
-        stats = {"appareil": {"appareil": "processeur", "repli": True, "motif": "erreur"}}
-        assert cg.enregistrer(stats, "k", p, T0) is None and not p.exists()
+        stats = {"appareil": {"appareil": "processeur", "repli": True, "motif": "DML_ERROR", "image": 7,
+                              "message": "…"}}
+        d = cg.enregistrer(stats, "k", p, T0)
+        assert d["appareil"] == "processeur" and "image 7" in d["motif"] and "DML_ERROR" in d["motif"]
+        assert cg.decision_valide(cg.lire(p), "k", T0 + dt.timedelta(days=1)) is not None
+        assert cg.decision_valide(cg.lire(p), "k", T0 + dt.timedelta(days=8)) is None
+
+    def test_ce_que_le_moteur_marque_non_memorisable_ne_l_est_pas(self, tmp_path):
+        p = tmp_path / cg.NOM_REGISTRE
+        for d in ({"appareil": "processeur", "memorisable": False, "motif": "indisponible aujourd'hui"},
+                  {"appareil": "carte_graphique", "device_id": 1, "carte": "RTX", "memorisable": False},
+                  {"appareil": "processeur", "non_sondee": True, "memorisable": False, "motif": "x"}):
+            assert cg.enregistrer({"appareil": d}, "k", p, T0) is None
+        assert not p.exists()
 
     def test_decision_deja_memorisee_non_reecrite(self, tmp_path):
         p = tmp_path / cg.NOM_REGISTRE

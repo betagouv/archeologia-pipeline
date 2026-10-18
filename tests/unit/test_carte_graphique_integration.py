@@ -70,6 +70,34 @@ class TestRapportEtTrace:
         assert trace_appareil({"appareil": "processeur", "repli": True}) == {"appareil": "processeur", "repli_processeur": True}
         assert trace_appareil({"moteur": "binaire"}) == {} and trace_appareil(None) == {}
 
+    def test_trace_apparie_modele_et_indice(self):
+        # Deux runs du même modèle sur deux indices : chacun son appareil dans traitement.json.
+        src = (RACINE / "src/app/services/finalize_service.py").read_text(encoding="utf-8")
+        bloc = src[src.index('"cv_runs": ['):src.index('"detections_entities": [')]
+        assert 's.get("target_rvt") == r.get("target_rvt", "")' in bloc
+
+
+def test_le_message_du_moteur_sans_directml_renvoie_a_la_bonne_rubrique():
+    from app.services.aide import rubrique_depannage
+    assert rubrique_depannage("⚠️ « M » : carte graphique demandée, mais le moteur de détection livré ne la "
+                              "prend pas en charge ; détection sur le processeur") == "La carte graphique n'est pas utilisée"
+    assert rubrique_depannage("✗ Détection impossible après 2min : moteur de détection introuvable") == \
+        "La détection est impossible"
+
+
+def test_le_cli_leve_sans_json_et_sonde_sans_detection():
+    cli = (RACINE / "dev/runner_onnx/cv_runner_onnx_cli.py").read_text(encoding="utf-8")
+    assert "inférence sans résultat sur la carte" in cli
+    boucle = cli[cli.index("for idx, jpg_file in enumerate(jpg_files, 1):"):cli.index("summary: success=")]
+    assert "if sonde_a_faire and ok" not in boucle            # « ok » est faux sans détection
+    assert "sortie_cpu.exists()" in boucle and "decision_non_sondee(" in cli
+    assert "seuil_sonde = float(effective_conf) if is_segmentation" in cli
+
+
+def test_le_registre_du_poste_n_est_ni_versionne_ni_livre():
+    assert "carte_graphique.json" in (RACINE / ".gitignore").read_text(encoding="utf-8")
+    assert '"carte_graphique.json"' in (RACINE / "dev/package_plugin.py").read_text(encoding="utf-8")
+
 
 class TestNarrateur:
     def _narr(self):

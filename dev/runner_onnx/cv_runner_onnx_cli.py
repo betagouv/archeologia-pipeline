@@ -347,7 +347,13 @@ def main() -> int:
         except (OSError, ValueError):
             return []
 
+    # Seuil que juge la sonde : celui du sidecar pour la segmentation sémantique (run_onnx_inference
+    # remplace alors le seuil reçu), sinon le seuil par classe puis le seuil global.
+    seuil_sonde = float(effective_conf) if is_segmentation else float(confidence_threshold)
+
     def _seuil_de(d: dict) -> float:
+        if is_segmentation:
+            return seuil_sonde
         try:
             return float((confidence_per_class or {}).get(int(d.get("class_id", -1)), confidence_threshold))
         except (TypeError, ValueError):
@@ -358,9 +364,9 @@ def main() -> int:
         carte = str(cg.get("carte") or f"carte {cg['device_id']}")
         try:
             s = _ouvrir_carte(int(cg["device_id"]))
-            motif = "ORT est retombé sur le processeur"
+            motif = "le moteur est retombé sur le processeur"
         except Exception as e:  # noqa: BLE001 — pilote, mémoire, modèle refusé
-            s, motif = None, f"{type(e).__name__}: {e}"
+            s, motif = None, f"{type(e).__name__}: {app_mod.court(e)}"
         if s is None:
             _print(app_mod.ligne(app_mod.decision_indisponible(carte, motif)))
             return session_processeur
@@ -373,6 +379,8 @@ def main() -> int:
         tmp = Path(tempfile.mkdtemp(prefix="sonde_carte_"))
 
         def inferer(sess):
+            # Même chaîne que l'image processeur (le temps processeur comprend, lui, l'image
+            # annotée si elle est demandée : écart faible, dans la marge des 80 %).
             t0 = time.perf_counter()
             cv_mod.run_onnx_inference(
                 image_path=str(jpg_file), model_path=str(model_path), output_path=str(tmp / jpg_file.name),
@@ -381,7 +389,11 @@ def main() -> int:
                 overlap_ratio=overlap_ratio, generate_annotated_images=False, jpg_folder_path=str(tmp),
                 return_count=True, class_names=class_names, class_colors=class_colors, onnx_session=sess,
             )
-            return time.perf_counter() - t0, _detections(tmp / f"{image_name}.json")
+            secondes = time.perf_counter() - t0
+            sortie = tmp / f"{image_name}.json"
+            if not sortie.exists():   # run_onnx_inference avale ses exceptions : sans JSON, la carte a planté
+                raise RuntimeError("inférence sans résultat sur la carte (erreur du pilote, voir le journal)")
+            return secondes, _detections(sortie)
 
         try:
             decision, session = app_mod.sonder(
@@ -420,6 +432,7 @@ def main() -> int:
                 onnx_session = _carte_retenue(onnx_session)
 
         t_image = time.perf_counter()
+        t_image_mur = time.time()
         try:
             ok, num_dets = cv_mod.run_onnx_inference(
                 image_path=str(jpg_file),
@@ -447,10 +460,14 @@ def main() -> int:
             traceback.print_exc()
         secondes_image = time.perf_counter() - t_image
 
-        # Sonde de la carte graphique : après la première image inférée sur le processeur.
-        if sonde_a_faire and ok and onnx_session is not None:
-            sonde_a_faire = False
-            onnx_session = _sonder(jpg_file, image_name, secondes_image, onnx_session)
+        # Sonde de la carte graphique : après la première image inférée sur le processeur, qu'elle
+        # ait ou non des détections (« ok » est faux sans détection) — l'inférence a abouti si
+        # son JSON vient d'être écrit (run_onnx_inference avale ses exceptions).
+        if sonde_a_faire and onnx_session is not None:
+            sortie_cpu = raw_dir / f"{image_name}.json"
+            if sortie_cpu.exists() and sortie_cpu.stat().st_mtime >= t_image_mur - 1:
+                sonde_a_faire = False
+                onnx_session = _sonder(jpg_file, image_name, secondes_image, onnx_session)
 
         # Déterminer le mode d'inférence pour le log
         infer_mode = ""
@@ -471,6 +488,11 @@ def main() -> int:
             _print(f"progress={idx}/{total_images} image={jpg_file.name} status=done detections={num_dets}{mode_suffix}")
         else:
             _print(f"progress={idx}/{total_images} image={jpg_file.name} status=done detections=0{mode_suffix}")
+
+    if cg_demande and sonde_a_faire and processed_count > 0:
+        # Option demandée, images traitées, mais aucune inférence processeur aboutie pour sonder.
+        _print(app_mod.ligne(app_mod.decision_non_sondee(
+            "aucune inférence aboutie sur le processeur dans ce traitement pour la comparer")))
 
     _print(f"summary: success={success_count} processed={processed_count} skipped={skipped_already_processed} total_detections={total_detections}")
 

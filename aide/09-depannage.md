@@ -73,7 +73,10 @@ L'option **Détection sur la carte graphique** de l'étape 4 n'impose rien : au 
 - « pas plus rapide que le processeur » : c'est le cas d'une carte intégrée au processeur, d'une session de bureau à distance ou d'une carte déjà occupée par un autre programme. Rien à corriger ; la détection se fait sur le processeur, comme sans l'option.
 - « résultats différents du processeur » : le pilote de la carte calcule autrement. Mettez-le à jour, puis relancez ; la décision est réessayée d'elle-même après sept jours, ou tout de suite si le pilote, le modèle ou le moteur de détection ont changé.
 - « session impossible » ou « DirectML indisponible » : la carte ou son pilote ne prend pas en charge DirectX 12, ou la mémoire de la carte ne suffit pas pour ce modèle.
-- « erreur à l'image N … ; suite de la détection sur le processeur » : la carte a échoué en cours de traitement ; l'image en cause et les suivantes ont été analysées sur le processeur, rien n'est perdu. Si cela se répète, mettez le pilote à jour.
+- « erreur à l'image N … ; suite de la détection sur le processeur » : la carte a échoué en cours de traitement ; l'image en cause et les suivantes ont été analysées sur le processeur, rien n'est perdu, et la carte est écartée pour sept jours. Si cela se répète, mettez le pilote à jour.
+- « indisponible aujourd'hui » : la carte retenue sur ce poste n'a pas pu être ouverte cette fois (occupée, pilote en cours de mise à jour, session distante) ; rien n'est mémorisé, le prochain traitement la réessaie.
+- « parité non vérifiable ici » : la première image n'avait aucune détection, la carte a été gardée pour ce traitement parce qu'elle est plus rapide, et sera comparée de nouveau au traitement suivant.
+- « non vérifiée » : aucune image n'a abouti sur le processeur dans ce traitement, la sonde n'a pas pu avoir lieu.
 - « le moteur de détection livré ne la prend pas en charge » : l'extension installée n'a pas le moteur compilé pour la carte graphique ; réinstallez-la depuis le dépôt.
 
 Pour forcer une nouvelle vérification avant les sept jours, supprimez le fichier `archeologia/carte_graphique.json` du profil QGIS (menu **Préférences › Profils utilisateurs › Ouvrir le dossier du profil actif**). Hors Windows, l'option est grisée.

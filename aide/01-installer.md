@@ -7,7 +7,6 @@ Le plugin se distribue par un dépôt d'extensions QGIS privé. Vous l'ajoutez u
 | Logiciel | Version | Remarque |
 |---|---|---|
 | QGIS | 3.34 ou plus récent, QGIS 4 compris | Installation OSGeo4W recommandée : elle apporte PDAL, utilisé pour lire les nuages de points |
-| Relief Visualization Toolbox | plugin QGIS officiel | Calcule les indices de visualisation ; QGIS propose de l'installer en même temps que le plugin |
 | Accès au dépôt | adresse et identifiants | Communiqués par l'équipe, jamais écrits dans cette aide |
 
 Une bonne connexion est utile : le plugin est volumineux, car il embarque les modèles d'IA et la grille des dalles LiDAR HD de l'IGN.
@@ -31,7 +30,7 @@ Si le dépôt refuse les identifiants ou reste muet, voir [Dépannage](depannage
 
 1. Onglet **Tout** (ou **Non installées**), recherche `Arché`.
 2. **Archéolog'IA** → **Installer le plugin**. Le téléchargement est long ; la barre peut sembler figée, c'est normal.
-3. Si QGIS propose d'installer la dépendance **Relief Visualization Toolbox**, acceptez. Sinon : onglet **Tout**, recherche `Relief`, installez-la.
+3. Aucune autre extension n'est nécessaire : les indices de visualisation sont calculés par le plugin avec la bibliothèque Relief Visualization Toolbox, intégrée (ZRC SAZU et Université de Ljubljana, licence Apache 2.0).
 
 Le plugin apparaît dans le menu **Extensions → Archéolog'IA** et dans la barre d'outils. Le même menu contient **Manuel**, qui ouvre cette aide.
 
@@ -65,7 +64,7 @@ Le plugin lit cette configuration pour télécharger les dalles. À défaut, il 
 
 ## Vérifier l'installation
 
-Rien à faire de particulier : à l'étape 4 de l'assistant, le panneau **État du système** vérifie en tâche de fond les outils (PDAL, GDAL), QGIS Processing et les algorithmes de Relief Visualization Toolbox, le moteur de détection, et vos dossiers d'entrée et de sortie. Un élément manquant est nommé et bloque le lancement. Voir [Étape 4 · Vérifications](etape-4-verifications.md#etat-du-systeme).
+Rien à faire de particulier : à l'étape 4 de l'assistant, le panneau **État du système** vérifie en tâche de fond les outils (PDAL, GDAL), QGIS Processing et le moteur d'indices intégré, le moteur de détection, et vos dossiers d'entrée et de sortie. Un élément manquant est nommé et bloque le lancement. Voir [Étape 4 · Vérifications](etape-4-verifications.md#etat-du-systeme).
 
 ## Mettre à jour
 

@@ -244,19 +244,36 @@ def needs_refresh(source: Path, dest: Path) -> bool:
         return True
 
 
+def _retirer_mnt_autre_resolution(tif_path: Path, x: str, y: str, name_suffix: str, log: LogFn) -> None:
+    """Le nom du MNT porte sa résolution : une relance à 1 m après 0,5 m laisserait
+    ``…_0M50_…`` à côté de ``…_1M00_…``, et ``index_MNT.vrt`` superposerait les deux.
+    Retire le MNT de la même dalle à une autre résolution (et ses fichiers annexes)."""
+    for ancien in tif_path.parent.glob(f"LHD_FXX_{x}_{y}_MNT_A_*_LAMB93_IGN69{name_suffix}.tif"):
+        if ancien == tif_path:
+            continue
+        for f in tif_path.parent.glob(f"{ancien.name}*"):
+            try:
+                f.unlink()
+            except OSError as e:
+                log(f"⚠️ MNT d'une autre résolution non retiré ({f.name}) : {e}")
+        log(f"MNT d'une autre résolution retiré : {ancien.name}")
+
+
 def copy_mnt_to_results(
     *,
     temp_mnt_path: Path,
     output_dir: Path,
     current_tile_name: str,
     log: LogFn = lambda _: None,
+    mnt_resolution: float = 0.5,
 ) -> Path:
     x, y = _extract_xy_from_tile_name(current_tile_name)
 
     mnt_tif = indice_tif_dir(output_dir, "MNT")
     mnt_tif.mkdir(parents=True, exist_ok=True)
 
-    output_name = f"LHD_FXX_{x}_{y}_MNT_A_0M50_LAMB93_IGN69.tif"
+    from .rvt_naming import jeton_resolution
+    output_name = f"LHD_FXX_{x}_{y}_MNT_A_{jeton_resolution(mnt_resolution)}_LAMB93_IGN69.tif"
     out_path = mnt_tif / output_name
 
     if not temp_mnt_path.exists():
@@ -287,6 +304,7 @@ def copy_final_products_to_results(
     log: LogFn = lambda _: None,
     cancel_check: CancelCheckFn | None = None,
     name_suffix: str = "",
+    mnt_resolution: float = 0.5,
 ) -> Dict[str, Any]:
     x, y = _extract_xy_from_tile_name(current_tile_name)
 
@@ -299,7 +317,7 @@ def copy_final_products_to_results(
     source_files_uncropped: Dict[str, str] = {}
     for product in all_products:
         uncropped, cropped = get_rvt_source_and_dest_filenames(
-            product, current_tile_name, x, y, rvt_params, name_suffix=name_suffix
+            product, current_tile_name, x, y, rvt_params, name_suffix=name_suffix, mnt_resolution=mnt_resolution
         )
         source_files_uncropped[product] = uncropped
         source_files_cropped[product] = cropped
@@ -341,6 +359,8 @@ def copy_final_products_to_results(
             # Fraîcheur, pas simple existence : un TIF publié par un run
             # précédent (paramètres différents, noms identiques) est écrasé
             # dès que l'intermédiaire a été recalculé (cf. needs_refresh).
+            if product_name == "MNT" and input_path_cropped.exists():
+                _retirer_mnt_autre_resolution(tif_path, x, y, name_suffix, log)
             if input_path_cropped.exists() and needs_refresh(input_path_cropped, tif_path):
                 shutil.copy2(str(input_path_cropped), str(tif_path))
                 log(f"TIF rogné copié: {tif_path.relative_to(idx_dir)}")

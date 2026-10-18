@@ -50,6 +50,7 @@ _ISSUES = {
     "success": "terminé",
     "cancelled": "annulé",
     "failed": "en échec",
+    "detection_impossible": "terminé sans détection",
 }
 
 #: Section de ``rvt_params`` de chaque produit (l'inverse de ``SECTION_PRODUIT``).
@@ -94,11 +95,13 @@ class DonneesRapport:
     surface_km2: Optional[float] = None                 # mesurée sur les rasters du run
     produits: Tuple[Tuple[str, str], ...] = ()          # (code, libellé)
     rvt_params: Mapping[str, Any] = field(default_factory=dict)
+    processing: Mapping[str, Any] = field(default_factory=dict)   # section processing de la configuration
     cv_runs: Tuple[Mapping[str, Any], ...] = ()         # modele, target_rvt, entites, seuil, images, secondes
     bilan: Tuple[Mapping[str, Any], ...] = ()           # LigneBilan.to_dict()
     etapes: Tuple[Tuple[str, str, float], ...] = ()     # (étape, détail, secondes mesurées)
     avertissements: Tuple[Avertissement, ...] = ()
     vignette: Optional[str] = None                      # chemin relatif au rapport
+    motif_detection: str = ""                           # « Détection impossible » : la cause (lot 0d)
 
 
 # ----------------------------------------------------------------------
@@ -297,13 +300,16 @@ def decrire_reglages(section: str, valeurs: Optional[Mapping[str, Any]]) -> str:
     if section == "hs":
         m += [f"azimut solaire {_dec(g('sun_azimuth', 315), 0)}°", f"élévation solaire {_dec(g('sun_elevation', 35), 0)}°"]
     elif section == "mdh":
-        m += [f"{_nb(int(g('num_directions', 16)))} directions", f"élévation solaire {_dec(g('sun_elevation', 35), 0)}°"]
+        # 8 bits (défaut) : trois éclairages fixes, le nombre de directions n'y joue pas (champ masqué à l'écran)
+        m += ["trois éclairages composés" if g("save_as_8bit", True) else f"{_nb(int(g('num_directions', 16)))} directions",
+              f"élévation solaire {_dec(g('sun_elevation', 35), 0)}°"]
     elif section in ("svf", "opns"):
         if section == "opns":
             m.append("ouverture négative, les creux" if int(g("opns_type", 0) or 0) == 1 else "ouverture positive, les saillies")
         m += [f"rayon {_dec(g('radius', 10), 0)} px", f"{_nb(int(g('num_directions', 16)))} directions", _bruit(g("noise_remove", 0))]
     elif section == "slope":
-        m.append("en pourcentage" if int(g("unit", 0) or 0) == 1 else "en degrés")
+        # 2 = pourcentage ; 1 est ce qu'envoyait « Pourcentage » avant la 0.15.0, relu comme tel (rvt_naming.slope_unit)
+        m.append("en pourcentage" if int(g("unit", 0) or 0) in (1, 2) else "en degrés")
     elif section == "ldo":
         m += [f"rayon de {_dec(g('min_radius', 10), 0)} à {_dec(g('max_radius', 20), 0)} px",
               f"résolution angulaire {_dec(g('angular_res', 15), 0)}°",
@@ -320,11 +326,25 @@ def decrire_reglages(section: str, valeurs: Optional[Mapping[str, Any]]) -> str:
         for nom, cle in (("locale", "local"), ("méso", "meso"), ("large", "broad")):
             m.append(f"échelle {nom} de {_dec(g(f'{cle}_scale_min'), 0)} à {_dec(g(f'{cle}_scale_max'), 0)} px "
                      f"par pas de {_dec(g(f'{cle}_scale_step'), 0)}")
-        m.append(f"luminosité {_dec(g('lightness', 1.2))}")
-    ve = g("ve_factor")
+        m.append(f"luminosité {_dec(g('lightness', 0.9))}")
+    ve = None if section == "mstp" else g("ve_factor")   # MSTP : l'exagération s'annule, plus de champ
     if ve is not None and float(ve) != 1.0:
         m.append(f"exagération verticale ×{_dec(ve)}")
     return ", ".join(m) if m else "réglages par défaut"
+
+
+def _reglages_base(code: str, processing: Mapping[str, Any]) -> str:
+    """Réglages du MNT, de la densité et de la couverture (étape 2, onglets du modèle de base)."""
+    p = processing or {}
+    try:
+        if code == "MNT":
+            filtre = str(p.get("filter_expression") or "").strip()
+            return f"résolution {_dec(p.get('mnt_resolution', 0.5), 2)} m" + (f", points retenus : {filtre}" if filtre else "")
+        if code == "DENSITE":
+            return f"résolution {_dec(p.get('density_resolution', 1.0), 2)} m"
+        return f"zones mal couvertes sous {_dec(p.get('coverage_threshold_percent', 30), 0)} %"
+    except (TypeError, ValueError):
+        return "réglages par défaut"
 
 
 def _zone(d: DonneesRapport) -> str:
@@ -354,7 +374,7 @@ def _produits(d: DonneesRapport) -> str:
         if code == "MNT" and d.data_mode == "existing_mnt":
             desc = "fourni avec les données"
         elif code in ("MNT", "DENSITE", "COUVERTURE"):
-            desc = "sans réglage"
+            desc = _reglages_base(code, d.processing)
         else:
             section = _SECTION_PAR_PRODUIT.get(code, "")
             desc = decrire_reglages(section, (d.rvt_params or {}).get(section)) if section else "réglages par défaut"
@@ -393,13 +413,22 @@ def _bilan(bilan: Sequence[Mapping[str, Any]], surface_km2: Optional[float]) -> 
     )
 
 
+def suite_detection_impossible(runs: Sequence[Mapping[str, Any]]) -> str:
+    """Fin de la phrase « Détection impossible » : vraie aussi en comparaison A/B, où un autre modèle a détecté."""
+    if any(r.get("moteur") not in (None, "none") for r in runs):
+        return "les autres modèles ont détecté normalement."
+    return "aucune détection n'a été cherchée."
+
+
 def _cv_runs(runs: Sequence[Mapping[str, Any]]) -> str:
     if not runs:
         return "<p class=sous>Pas de détection automatique dans ce traitement.</p>"
     lignes = []
     for r in runs:
         images, secondes = r.get("images"), r.get("secondes")
-        if images is None:
+        if r.get("moteur") == "none":
+            analyse = "détection impossible"
+        elif images is None:
             analyse = "—"
         elif not images:
             analyse = "reprise du run précédent"
@@ -445,8 +474,8 @@ def _sources(d: DonneesRapport) -> str:
     if donnees:
         lignes.append(f"<p>Données : {_e(donnees)}</p>")
     if d.data_mode and d.data_mode != "existing_rvt":
-        lignes.append("<p>Indices de visualisation : Relief Visualization Toolbox (ZRC SAZU), "
-                      "par l'extension QGIS rvt-qgis.</p>")
+        lignes.append("<p>Indices de visualisation : Relief Visualization Toolbox (ZRC SAZU, Université de "
+                      "Ljubljana), bibliothèque intégrée au plugin, licence Apache 2.0.</p>")
     modeles = []
     for r in d.cv_runs:
         nom = str(r.get("modele") or r.get("model") or "")
@@ -470,6 +499,9 @@ def construire_html(d: DonneesRapport) -> str:
     else:
         garde = ("Ce rapport ne localise pas la zone traitée ; les produits restent dans le dossier du "
                  "traitement, à côté de ce rapport.")
+    impossible = (f'<p><b class="ko">Détection impossible</b> : {_e(anonymiser(d.motif_detection))}. '
+                  f"Les produits sont calculés ; {_e(suite_detection_impossible(d.cv_runs))}</p>\n"
+                  if d.motif_detection else "")
     etapes = f"<h2>Durées par étape</h2>\n{_etapes(d.etapes)}\n" if d.etapes else ""
     return f"""<!doctype html>
 <html lang="fr"><head><meta charset="utf-8"><title>Rapport de traitement — {_e(d.date)}</title>
@@ -478,7 +510,7 @@ def construire_html(d: DonneesRapport) -> str:
 <p class=sous>Archéolog'IA v{_e(d.version)} — {_e(d.date)} — {_e(d.mode)}</p>
 <p class=garde>{garde}</p>
 <p>Traitement <b class="{classe_issue}">{_e(issue)}</b> en {_e(format_duree(d.duree_s))}.</p>
-<h2>Zone traitée</h2>
+{impossible}<h2>Zone traitée</h2>
 {vignette}
 {_zone(d)}
 <h2>Produits</h2>

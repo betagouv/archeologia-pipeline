@@ -41,6 +41,7 @@ from ..app.services.aide import AIDE_DIRNAME, CLE_DEPANNAGE, resoudre_cible, rub
 from ..app.services.bilan_fiabilite import collecter as collecter_bilan
 from ..app.services.fiabilite_observee import enregistrer_run
 from ..app.services.arborescence import appliquer, decrire, non_reconnus, plan_migration
+from ..app.services.finalize_service import echec_detection
 from ..app.services.rapport_run import NOM_RAPPORT
 from ..app.services.source_modes import mode_info
 from ..pipeline.output_paths import detections_dir, journaux_dir, livrable_dir, projet_qgs_path
@@ -279,6 +280,7 @@ class RunView(QWidget):
         self._running = False
         self._last_stage_text = ""
         self._run_started_at: Optional[float] = None
+        self._run_lance_le = 0.0   # time.time() au lancement : date la trace de ce run
         # Timeline mode-aware : séquence d'IDs + mapping ID→bucket + sous-libellés.
         self._stage_ids: List[str] = []
         self._stage_bucket_map: Dict[str, int] = {}
@@ -633,6 +635,7 @@ class RunView(QWidget):
 
         self._running = True
         self._run_started_at = time.monotonic()
+        self._run_lance_le = time.time()
         self._cancel_event.clear()
         self._cancel_btn.setEnabled(True)
         # Le dossier de sortie (et le log) existent dès le démarrage du run.
@@ -947,7 +950,10 @@ class RunView(QWidget):
         elif outcome == "cancel":
             text = f"Annulé après {elapsed}{suffix}"
         else:
-            text = f"✗ En échec après {elapsed}{suffix} — voir le journal"
+            out_dir = self._output_dir()
+            motif = echec_detection(out_dir, self._run_lance_le) if out_dir else ""
+            text = (f"✗ Détection impossible après {elapsed} : {motif}{suffix}" if motif
+                    else f"✗ En échec après {elapsed}{suffix} — voir le journal")
         self._fil_gauche.setText(text)
         self._fil_gauche.setProperty("kind", outcome)
         self._fil_gauche.style().unpolish(self._fil_gauche)

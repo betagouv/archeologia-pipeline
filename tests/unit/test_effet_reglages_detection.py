@@ -1,0 +1,126 @@
+"""Effet des réglages d'entité de l'étape 3 : ce que l'orchestrateur écrit dans ``computer_vision.runs`` et ce que
+le regroupement en fait. Un réglage d'entité ne doit agir que sur cette entité, et faire ce que dit son infobulle.
+
+Les défauts corrigés gardent ici leur test, qui échouerait s'ils revenaient.
+"""
+from __future__ import annotations
+
+from pathlib import Path
+
+import pytest
+
+from app.services.model_orchestrator import EntityDef, InstalledModel, resolve_runs_from_entities
+
+CATALOG = [EntityDef(id="parcellaire", label="Parcellaire"), EntityDef(id="talus_fosse", label="Talus/fossé"),
+           EntityDef(id="chemin_creux", label="Chemin creux")]
+
+
+def _modele(**kw):
+    base = dict(name="lineaires", display_name="Linéaires", weights_path=None, target_rvt="LD", status="beta",
+                coverage={"parcellaire": ("parcellaire",), "talus_fosse": ("talus_fosse",),
+                          "chemin_creux": ("chemin_creux",)},
+                class_names=("parcellaire", "talus_fosse", "chemin_creux"), default_confidence=0.25)
+    base.update(kw)
+    return InstalledModel(**base)
+
+
+def _run(seuils):
+    (run,) = resolve_runs_from_entities(
+        selected_entity_ids=["parcellaire", "talus_fosse", "chemin_creux"], overrides=None,
+        installed_models=[_modele()], catalog=CATALOG, entity_thresholds=seuils)
+    return run
+
+
+def test_seuil_de_confiance_d_une_entite_ne_touche_qu_elle():
+    run = _run({"parcellaire": {"confidence_threshold": 0.6}})
+    assert run["confidence_per_class"]["parcellaire"] == 0.6
+    assert "talus_fosse" not in run["confidence_per_class"] or run["confidence_per_class"]["talus_fosse"] != 0.6
+
+
+def _bloc(run, eid):
+    return next(e for e in run["entities"] if e["id"] == eid)
+
+
+def test_aire_min_d_une_entite_arrive_dans_son_bloc():
+    run = _run({"parcellaire": {"min_area_m2": 500.0}})
+    assert _bloc(run, "parcellaire")["min_area_m2"] == 500.0
+
+
+def test_aire_min_d_une_entite_ne_touche_qu_elle(tmp_path):
+    """Le run garde la plus petite aire de ses entités (filtre commun) ; seule l'entité réglée plus haut voit son
+    GeoPackage filtré à la sienne. Avant : min() des seules surcharges, imposé à tout le run (Chemins creux 3 → 2)."""
+    from pipeline.output_paths import aires_par_entite
+    run = _run({"parcellaire": {"min_area_m2": 500.0}})
+    assert run["min_area_m2"] == 0.0
+    assert _bloc(run, "talus_fosse")["min_area_m2"] == 0.0 and _bloc(run, "chemin_creux")["min_area_m2"] == 0.0
+    filtres = aires_par_entite(tmp_path, run)
+    assert [(gp.name, aire) for gp, aire, _ in filtres] == [("parcellaire.gpkg", 500.0)]
+
+
+def test_aire_min_commune_quand_toutes_les_entites_la_reglent():
+    from pipeline.output_paths import aires_par_entite
+    run = _run({e: {"min_area_m2": 200.0} for e in ("parcellaire", "talus_fosse", "chemin_creux")})
+    assert run["min_area_m2"] == 200.0 and aires_par_entite(Path("."), run) == []
+
+
+# ───────────────────────── regroupement (DBSCAN à hystérésis) ─────────────────────────
+
+shapely = pytest.importorskip("shapely")
+pytest.importorskip("scipy")
+from shapely.geometry import box  # noqa: E402
+
+from pipeline.cv.clustering import run_clustering  # noqa: E402
+from pipeline.cv.clustering_bounds import sanitize_clustering_overrides  # noqa: E402
+
+
+def _regle_du_modele():
+    """La règle des cratères telle que args.yaml la déclare : cœur 0,40, extension 0,29."""
+    return {"type": "dbscan", "target_classes": ["cratere"], "min_confidence": 0.40, "min_confidence_extend": 0.29,
+            "min_cluster_size": 3, "min_samples": 2, "eps_m": 30.0, "output_class_name": "zone_crateres",
+            "output_geometry": "convex_hull", "buffer_m": 5.0, "min_area_m2": 0.0}
+
+
+def _cratères(confs):
+    return {"cratere": [{"geometry": box(i * 5.0, 0.0, i * 5.0 + 2.0, 2.0), "confidence": c,
+                         "model_pred": "cratere", "model_name": "m"} for i, c in enumerate(confs)]}
+
+
+def test_confiance_min_du_regroupement_abaissee_agit():
+    regle = _regle_du_modele()
+    regle.update(sanitize_clustering_overrides({"min_confidence": 0.30}, rule_type="dbscan"))
+    zones, _ = run_clustering(_cratères([0.31, 0.32, 0.33, 0.34]), [regle])
+    assert zones["zone_crateres"][0]["nb_detect"] == 4
+
+
+def test_confiance_min_du_regroupement_relevee_releve_aussi_l_extension():
+    """Relevée de 0,40 à 0,60, « Confiance min » décale l'extension du modèle de 0,29 à 0,49 : les cratères à 0,45
+    ne s'agrègent plus (ils le faisaient tant que l'extension restait à 0,29)."""
+    from app.services.model_orchestrator import avec_extension
+    defauts = {"min_confidence": 0.40, "min_confidence_extend": 0.29}
+    surcharge = avec_extension({"min_confidence": 0.60}, defauts)
+    assert surcharge["min_confidence_extend"] == pytest.approx(0.49)
+    regle = _regle_du_modele()
+    regle.update(sanitize_clustering_overrides(surcharge, rule_type="dbscan"))
+    zones, _ = run_clustering(_cratères([0.9, 0.9, 0.9, 0.45, 0.45, 0.45]), [regle])
+    assert zones["zone_crateres"][0]["nb_detect"] == 3
+    assert avec_extension({"min_confidence": 0.40}, defauts)["min_confidence_extend"] == pytest.approx(0.29)
+    assert "min_confidence_extend" not in avec_extension({"min_confidence": 0.5}, {"min_confidence": 0.4})
+
+
+def _deux_groupes():
+    """Groupe A : 6 cratères tous les 5 m ; groupe B, 300 m plus loin : 4 cratères tous les 20 m. Confiance 0,9."""
+    a = [box(i * 5.0, 0.0, i * 5.0 + 2.0, 2.0) for i in range(6)]
+    b = [box(300 + i * 20.0, 0.0, 302 + i * 20.0, 2.0) for i in range(4)]
+    return {"cratere": [{"geometry": g, "confidence": 0.9, "model_pred": "cratere", "model_name": "m"}
+                        for g in a + b]}
+
+
+@pytest.mark.parametrize("cle,valeur", [("eps_m", 10.0), ("min_cluster_size", 5), ("min_area_m2", 2000.0),
+                                        ("buffer_m", 20.0), ("min_samples", 6)])
+def test_chaque_parametre_du_regroupement_change_les_zones(cle, valeur):
+    def zones(surcharge):
+        regle = _regle_du_modele()
+        regle.update(sanitize_clustering_overrides(surcharge, rule_type="dbscan"))
+        z, _ = run_clustering(_deux_groupes(), [regle])
+        return sorted(round(x["geometry"].area, 1) for x in z.get("zone_crateres", []))
+    assert zones({cle: valeur}) != zones({})

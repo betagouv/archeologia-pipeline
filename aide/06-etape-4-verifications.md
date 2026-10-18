@@ -4,7 +4,7 @@ Avant de lancer, cette étape vérifie que tout est prêt et reprend vos choix. 
 
 ## Configuration et récapitulatif
 
-Le bandeau du haut dit si la configuration est valide. S'il manque quelque chose, il nomme les points à corriger et le rail de gauche pose une pastille sur l'étape concernée. Tant qu'un point reste à corriger, **Lancer le pipeline** est grisé et son infobulle les liste.
+Le bandeau du haut dit si la configuration est valide. S'il manque quelque chose, il nomme les points à corriger et le rail de gauche pose une pastille sur l'étape concernée. Tant qu'un point reste à corriger, **Lancer le pipeline** est grisé et son infobulle les liste. Un réglage d'indice hors des bornes de l'algorithme (une configuration modifiée à la main, par exemple) en fait partie, avec le nom du champ, et la pastille se pose sur l'étape 2 : lancé tel quel, il ferait échouer chaque dalle après le téléchargement et le MNT.
 
 Le **récapitulatif** reprend vos choix : mode et source, produits, entités et modèles, dossier de sortie.
 
@@ -13,7 +13,7 @@ Le **récapitulatif** reprend vos choix : mode et source, produits, entités et 
 Le panneau vérifie en tâche de fond ce dont le traitement a besoin :
 
 - les outils en ligne de commande : PDAL pour les nuages de points, GDAL pour les rasters ;
-- QGIS Processing et les algorithmes de Relief Visualization Toolbox ;
+- QGIS Processing et le moteur d'indices intégré (la bibliothèque Relief Visualization Toolbox livrée avec le plugin) ;
 - le moteur de détection et ses bibliothèques, si la détection est activée ;
 - les dossiers d'entrée et de sortie, et la projection des rasters en MNT ou Indices existants.
 
@@ -23,7 +23,7 @@ Chaque contrôle affiche son état et son détail. Un élément manquant bloque 
 
 ## Paramètres avancés
 
-**Workers parallèles** : le nombre de dalles traitées en même temps. Plus de workers accélère le traitement sur une machine à plusieurs cœurs mais consomme plus de mémoire. Sur un poste à 16 Go, restez à deux ou trois.
+**Workers parallèles** : le nombre de dalles téléchargées, fusionnées avec leurs voisines et préparées pour la détection en même temps. Le MNT et les indices, eux, sont calculés une dalle après l'autre. Plus de workers accélère ces étapes sur une machine à plusieurs cœurs mais consomme plus de mémoire. Sur un poste à 16 Go, restez à deux ou trois.
 
 ## Pendant un traitement
 

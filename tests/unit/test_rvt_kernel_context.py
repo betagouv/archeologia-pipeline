@@ -28,8 +28,9 @@ class TestKernelRadiusPx:
     def test_reads_configured_radius(self):
         assert kernel_radius_px("MSTP", {"mstp": {"broad_scale_max": 800}}) == 800
 
-    def test_falls_back_to_rvt_default_when_absent(self):
-        assert kernel_radius_px("MSTP", {}) == 2023
+    def test_falls_back_to_plugin_default_when_absent(self):
+        # Repli = défaut de l'interface (rvt_naming.MSTP_DEFAUTS), plus celui de RVT (2023).
+        assert kernel_radius_px("MSTP", {}) == 400
 
     def test_local_dominance_section_is_ldo_not_ld(self):
         # Le code court du produit est « LD » mais la section rvt_params est « ldo ».
@@ -83,8 +84,8 @@ class TestTiledContextWarnings:
             mnt_resolution=resolution,
         )
 
-    def test_default_mstp_on_default_tiling_is_flagged(self):
-        msgs = self._warn({})
+    def test_rvt_default_mstp_on_default_tiling_is_flagged(self):
+        msgs = self._warn({"mstp": {"broad_scale_max": 2023}})
         assert len(msgs) == 1
         assert "MSTP" in msgs[0]
         assert "2023" in msgs[0]
@@ -106,11 +107,11 @@ class TestTiledContextWarnings:
         assert "800" in msgs[0]
 
     def test_names_the_field_to_edit_so_the_message_is_actionable(self):
-        assert "Échelle large — rayon max" in self._warn({})[0]
+        assert "Échelle large — rayon max" in self._warn({"mstp": {"broad_scale_max": 2023}})[0]
 
     def test_one_message_per_offending_product(self):
         msgs = self._warn(
-            {"svf": {"radius": 800}},
+            {"svf": {"radius": 800}, "mstp": {"broad_scale_max": 2023}},
             products={"MSTP": True, "SVF": True, "HS": True},
         )
         assert len(msgs) == 2
@@ -119,7 +120,7 @@ class TestTiledContextWarnings:
 class TestRasterContextWarnings:
     def test_small_mnt_reports_zero_percent_valid(self):
         msgs = raster_context_warnings(
-            {"MSTP": True}, {}, width_px=600, height_px=1000
+            {"MSTP": True}, {"mstp": {"broad_scale_max": 2023}}, width_px=600, height_px=1000
         )
         assert len(msgs) == 1
         assert "0 %" in msgs[0]
@@ -127,7 +128,7 @@ class TestRasterContextWarnings:
 
     def test_large_mnt_reports_the_partial_coverage(self):
         msgs = raster_context_warnings(
-            {"MSTP": True}, {}, width_px=6000, height_px=6000
+            {"MSTP": True}, {"mstp": {"broad_scale_max": 2023}}, width_px=6000, height_px=6000
         )
         assert len(msgs) == 1
         assert "11 %" in msgs[0]
@@ -145,7 +146,7 @@ class TestMstpScaleErrors:
 
     def test_rejects_a_span_smaller_than_its_step(self):
         # rvt.vis.mstp lève si (max - min) < step → la dalle entière planterait.
-        msgs = mstp_scale_errors({"MSTP": True}, {"mstp": {"broad_scale_max": 400}})
+        msgs = mstp_scale_errors({"MSTP": True}, {"mstp": {"broad_scale_max": 130}})   # 130 − 100 < 60
         assert len(msgs) == 1
         assert "large" in msgs[0].lower()
 
@@ -223,3 +224,12 @@ class TestRasterContextWarningsInABatch:
     def test_a_single_raster_keeps_the_direct_advice(self):
         (msg,) = raster_context_warnings({"LD": True}, {}, width_px=40, height_px=40)
         assert "Réduisez « Rayon max (px) » à ≤ 5 px" in msg
+
+
+def test_defauts_mstp_miroir_de_rvt_naming():
+    """Le repli de ce module (src/app, sans import du pipeline) = celui du nom de dossier et du calcul."""
+    from pipeline.ign.products.rvt_naming import MSTP_DEFAUTS
+    from app.services.rvt_kernel_context import _MSTP_BANDS, KERNEL_PARAMS
+    for prefixe, _lib, lo, hi, pas in _MSTP_BANDS:
+        assert (lo, hi, pas) == tuple(MSTP_DEFAUTS[f"{prefixe}_{k}"] for k in ("min", "max", "step"))
+    assert KERNEL_PARAMS["MSTP"].default == MSTP_DEFAUTS["broad_scale_max"]

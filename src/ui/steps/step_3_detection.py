@@ -466,7 +466,7 @@ class DetectionPage(QWidget):
         de décodage). Sinon, défaut global du modèle, comme avant.
         """
         if model is None:
-            return 0.2
+            return 0.3   # = model_config.DEFAULT_CONFIDENCE (0,2 ici jusqu'alors)
         pc = getattr(model, "default_confidence_per_class", None) or {}
         vals = [pc[c] for c in model.coverage.get(eid, ()) if c in pc]
         return float(min(vals)) if vals else float(model.default_confidence)

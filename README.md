@@ -13,8 +13,8 @@ Plugin QGIS pour exécuter un pipeline de traitement LiDAR et produire des raste
   - **MNT**
   - **Densité**
   - **Couverture** (*QA points sol*) — carte qualité des zones où le MNT est interpolé faute de points sol (raster + polygones des zones sous le seuil). Disponible uniquement quand le nuage de points est traité (modes `ign_laz` / `local_laz`).
-  - Indices **RVT** (via *Processing*) : **HS**, **M-HS**, **SVF**, **SLO**, **LD**, **SLRM**, **VAT**, **MSTP**, **PRISM** (ouverture prismatique)
-  - Indices **CVAT** (*Combined VAT*) et **CRIM** (*Color Relief Image Map*) — calculés *in-process* via le paquet `rvt` du plugin rvt-qgis (non exposés par *Processing*)
+  - Indices **RVT** (bibliothèque `rvt` intégrée) : **HS**, **M-HS**, **SVF**, **SLO**, **LD**, **SLRM**, **VAT**, **MSTP**, **PRISM** (ouverture prismatique)
+  - Indices **CVAT** (*Combined VAT*) et **CRIM** (*Color Relief Image Map*) — calculés *in-process* avec la bibliothèque `rvt` intégrée au plugin (`src/pipeline/ign/products/rvt_embarque/`, non exposés par *Processing*)
 - Export optionnel en **JPG + world file (JGW)** pour certains produits.
 - (Optionnel) Détection / segmentation d'instances par computer vision à partir des JPG produits (via runner externe ou dépendances Python) :
   - **Sélection par entités archéologiques** (UI étape 3) : on coche les entités à détecter (parcellaire, trous d'obus…) et un orchestrateur résout automatiquement quels modèles lancer, sur quel indice RVT, avec quelles classes. Plusieurs modèles peuvent ainsi tourner en parallèle, chacun ciblant un RVT. En interne, le filtrage par classes subsiste : si aucune classe n'est retenue pour un modèle, l'inférence est ignorée (court-circuit `selected_classes=[]` avant toute inférence).
@@ -47,7 +47,7 @@ Le plugin s’exécute dans QGIS et s’appuie sur des outils externes. Un contr
 
 - **QGIS 3.34+ (Qt5) ou QGIS 4.x (Qt6)**
 - Module **Processing** (fourni avec QGIS)
-- Les algorithmes RVT accessibles via Processing (selon installation QGIS)
+- Rien d'autre : les indices RVT sont calculés par le plugin avec la bibliothèque `rvt` intégrée (`src/pipeline/ign/products/rvt_embarque/`, licence Apache 2.0)
 
 ### Réseau d'entreprise (proxy)
 
@@ -121,9 +121,8 @@ Sous Windows (profil par défaut) — `QGIS3` pour QGIS 3.x, `QGIS4` pour QGIS 4
 Le plugin exécute un **préflight** (contrôle des dépendances) au lancement.
 
 - **Processing** : doit être disponible (dans QGIS : `Traitement` → `Boîte à outils`).
-- **Algorithmes RVT via Processing** : nécessaires si tu actives des produits RVT (HS/M-HS/SVF/SLO/LD/SLRM/VAT/MSTP/PRISM). Fournis par le plugin QGIS **« Relief Visualization Toolbox » (rvt-qgis)**.
-  ⚠️ Le plugin rvt-qgis doit être **installé, activé et à jour** : sous QGIS 4, toute version ≤ 0.10.0 est refusée au chargement (marquée incompatible) et les algorithmes `rvt:*` deviennent introuvables — mettre à jour via *Extensions → Installer/Gérer les extensions* (version ≥ 1.0.1 recommandée). Le préflight de l'étape 4 signale ce cas par un ✗ critique **« Algorithmes RVT (Processing) »** et bloque le lancement.
-- **CVAT** (*Combined VAT*) et **CRIM** (*Color Relief Image Map*) : nécessitent également le plugin **rvt-qgis** installé — ils ne sont pas exposés par *Processing*, le plugin réutilise donc directement son paquet Python `rvt`.
+- **Indices RVT** (HS/M-HS/SVF/OPNS/SLO/LD/SLRM/VAT/MSTP/CVAT/PRISM/CRIM) : calculés par le plugin avec la bibliothèque `rvt` intégrée (copie figée de rvt-qgis 1.0.1) ; le préflight vérifie le **« Moteur d'indices intégré »** (numpy, scipy, matplotlib, GDAL de QGIS). L'extension **rvt-qgis** n'est requise que si l'ancien calcul est forcé pour un diagnostic (`ARCHEO_INDICES_MOTEUR=processing`) : le préflight vérifie alors les algorithmes `rvt:*` (✗ critique **« Algorithmes RVT (Processing) »**).
+- **CVAT** (*Combined VAT*) et **CRIM** (*Color Relief Image Map*) : calculés avec la bibliothèque `rvt` intégrée au plugin, sans extension à installer.
 
 Si un élément est manquant, le préflight affichera une erreur et empêchera le lancement.
 
@@ -570,7 +569,7 @@ Ensuite, un `git push` déclenchera automatiquement Talisman et pourra bloquer l
 
 - **Préflight KO** : vérifier que `pdal`, `gdalwarp`, `gdal_translate` sont accessibles dans le `PATH`.
 - **Pyramides absentes** : vérifier la présence de `gdaladdo` et que l’option pyramides est activée.
-- **RVT indisponible** (✗ « Algorithmes RVT (Processing) » au préflight, ou erreur « Algorithm rvt:… not found ») : vérifier dans *Extensions → Installer/Gérer les extensions* que **Relief Visualization Toolbox** est installé, **coché** (activé) et à jour — obligatoire en version ≥ 1.0.1 sous QGIS 4, les versions ≤ 0.10.0 n'y étant pas chargées.
+- **RVT indisponible** (✗ « Algorithmes RVT (Processing) » au préflight, ou erreur « Algorithm rvt:… not found ») : n'apparaît que si l'ancien calcul est forcé (`ARCHEO_INDICES_MOTEUR=processing`) : vérifier alors dans *Extensions → Installer/Gérer les extensions* que **Relief Visualization Toolbox** est installé, **coché** et à jour (≥ 1.0.1 sous QGIS 4). Dans le cas normal, consulter plutôt la ligne **« Moteur d'indices intégré »** du préflight (numpy, scipy, matplotlib de QGIS).
 - **Computer vision** :
   - soit fournir le runner externe dans `third_party/cv_runner_onnx/...`
   - soit installer les dépendances Python (`onnxruntime`, `pillow`) dans l'environnement QGIS
@@ -863,7 +862,7 @@ src/
 │   │       ├── convert_tif_to_jpg.py
 │   │       ├── crop.py             # Découpe aux limites dalle + copy_products_without_crop (MNT < 1 km)
 │   │       ├── crim.py             # CRIM (Color Relief Image Map) — calcul in-process via le paquet rvt
-│   │       ├── cvat.py             # CVAT (Combined VAT) — calcul in-process via le paquet rvt de rvt-qgis
+│   │       ├── cvat.py             # CVAT (Combined VAT) — calcul in-process via le paquet rvt embarqué (rvt_embarque)
 │   │       ├── density.py          # Carte de densité
 │   │       ├── indices.py          # Indices RVT (HS, M-HS, SVF, SLO, LD, SLRM, VAT, MSTP, CVAT, PRISM, CRIM)
 │   │       ├── mnt.py              # MNT (PDAL + gdalwarp)
@@ -1020,3 +1019,5 @@ Aucune dépendance externe requise (stdlib uniquement). Le script exclut automat
 ## Licence
 
 Le dépôt contient un fichier `LICENSE.txt` (MIT).
+
+Le dossier `src/pipeline/ign/products/rvt_embarque/` contient une copie de la bibliothèque `rvt` de l'extension Relief Visualization Toolbox (rvt-qgis 1.0.1, ZRC SAZU et Université de Ljubljana, UL FGG), sous licence Apache 2.0 : voir son `LICENSE` et son `NOTICE` (imports internes rendus relatifs, aucun calcul modifié).

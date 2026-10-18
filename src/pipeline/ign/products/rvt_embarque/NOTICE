@@ -1,0 +1,31 @@
+Relief Visualization Toolbox (rvt) — copie intégrée au plugin Archéolog'IA
+
+Ce dossier contient la bibliothèque Python « rvt » de l'extension QGIS Relief Visualization Toolbox (rvt-qgis),
+version 1.0.1 du 2026-07-21 : https://github.com/EarthObservation/rvt-qgis
+Copyright 2010-2026 Research Centre of the Slovenian Academy of Sciences and Arts (ZRC SAZU)
+et University of Ljubljana, Faculty of Civil and Geodetic Engineering (UL FGG).
+Auteurs cités par la bibliothèque : Žiga Kokalj, Krištof Oštir, Klemen Zakšek, Klemen Čotar, Maja Somrak,
+Žiga Maroh, Nejc Čož.
+Distribuée sous licence Apache 2.0 : texte complet dans le fichier LICENSE de ce dossier, copié tel quel.
+
+Fichiers repris : rvt/__init__.py, blend.py, blend_func.py, default.py, tile.py, vis.py ;
+settings/blender_VAT.json, default_blender_combinations.json, default_terrains_settings.json.
+
+Modifications (2026-10, Archéolog'IA) : dans blend.py, default.py et tile.py, les imports internes absolus
+(« import rvt.default », « import rvt.vis », « import rvt.blend_func », « import rvt.tile »,
+« from rvt.blend_func import * ») sont devenus relatifs, et le nom « rvt » y désigne ce dossier : la copie ne
+partage jamais le module « rvt » de l'extension rvt-qgis si elle est installée. Une ligne d'en-tête le signale dans
+chacun de ces trois fichiers. Fins de ligne normalisées. Aucun calcul n'est modifié.
+Le plugin appelle cette bibliothèque depuis src/pipeline/ign/products/moteur_indices.py, cvat.py et crim.py.
+
+Empreintes SHA-256 des fichiers d'origine (rvt-qgis 1.0.1) :
+  rvt/__init__.py                              b4fa5b7528bdd7f576b69718a30afd4f84472e5102c7cc0c2e44d0e4542e0a3b
+  rvt/blend.py                                 26dac4c1c4247308b2ca4fd4c94438a92e86903e000d5303c6cde9dc5e1f8a8b
+  rvt/blend_func.py                            c9af5717553ef13ea541b80a92d1e112d5b027f19f0dc976caf30c1eb29197a3
+  rvt/default.py                               9593cbc6d9738b7b0f699dc26de4df5bb6e4a2a5bff1aaff3d1290fb6409e93a
+  rvt/tile.py                                  32fddf5be7771c4f7f89f33bb77da7be8bdbcf80cd28df317c38b3a3ef553d36
+  rvt/vis.py                                   aaedffe22ebf9ff4c4d8ec4792d405101f9edfe5f70b2bdf88ef3b19fbb0759f
+  settings/blender_VAT.json                    227e82d55ab529df492dc87cddd209d6e8f45c9e1b6023f6625efadf146a4ead
+  settings/default_blender_combinations.json   daba5d7e1984b33531c9a6fbe1c9fa785b09602808fdc63bf480692501f01db5
+  settings/default_terrains_settings.json      ca9f58971b9e8587c0f28aaf9d4bcd093a9c0597db7c2e9e36bc2de0bfc933e8
+  LICENSE                                      1eb85fc97224598dad1852b5d6483bbcf0aa8608790dcc657a5a2a761ae9c8c6

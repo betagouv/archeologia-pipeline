@@ -576,6 +576,10 @@ def validate_run_context(ctx: RunContext) -> Tuple[List[str], List[str]]:
     # Réglages d'échelle que rvt.vis.mstp refuse : bloquant, sinon la faute
     # n'apparaît qu'au calcul de la première dalle — après le téléchargement.
     errors.extend(rvt_kernel_context.mstp_scale_errors(products_dict, ctx.rvt_params))
+    # Réglages hors des bornes du moteur : même raison (la dalle échouerait après le téléchargement et le MNT).
+    # En secours Processing (ARCHEO_INDICES_MOTEUR=processing, diagnostic), rvt-qgis borne aussi le M-HS 8 bits.
+    secours = os.environ.get("ARCHEO_INDICES_MOTEUR", "").strip().lower() == "processing"
+    errors.extend(rvt_kernel_context.bornes_errors(products_dict, ctx.rvt_params, secours_processing=secours))
 
     # Entrée et sortie imbriquées (arborescence v3, 2026-10-08) : un dossier de
     # sortie DANS le dossier source est refusé (la réorganisation déplacerait les

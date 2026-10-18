@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, TYPE_CHECKING
+from typing import Any, Callable, Dict, List, Optional, Tuple, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from ..progress_reporter import ProgressReporter
@@ -311,11 +311,52 @@ def _collect_shapefiles(det_dir: Path) -> List[str]:
     return shapefile_paths
 
 
+def moteur_detection(cv_stats: Optional[List[Dict[str, Any]]]) -> Tuple[Optional[str], str]:
+    """``(cv_engine, motif)`` pour traitement.json : ``"none"`` et le motif dès
+    qu'un run n'a pas pu détecter ; sinon le ou les moteurs des runs (``binaire``,
+    ``cache``, ``python``, joints par ``+``) ; ``None`` sans détection. Quand un
+    autre run a détecté (comparaison A/B), chaque motif nomme son modèle."""
+    stats = [s for s in (cv_stats or []) if isinstance(s, dict)]
+    echecs = [s for s in stats if s.get("moteur") == "none"]
+    if echecs:
+        partiel = len(echecs) < len(stats)
+        motifs = (f"« {s.get('modele') or s.get('model')} » : {s['motif']}" if partiel else str(s["motif"])
+                  for s in echecs if s.get("motif"))
+        return "none", " ; ".join(dict.fromkeys(motifs))
+    moteurs = sorted({str(s["moteur"]) for s in stats if s.get("moteur")})
+    return ("+".join(moteurs) if moteurs else None), ""
+
+
+def echec_detection(output_dir: Path, lance_le: float) -> str:
+    """Motif de « détection impossible » lu dans livrable/traitement.json ; ""
+    sinon. Lu par la vue d'exécution pour sa ligne de fin (thread UI).
+    ``lance_le`` (``time.time()`` au lancement) : une trace datée d'avant — laissée
+    par un lancement précédent, quand celui-ci échoue avant sa finalisation —
+    est ignorée. Sa ``date`` vient de la même horloge, à la seconde."""
+    import datetime as _dt
+    import json as _json
+
+    try:  # fallback standalone (tests : src/ sur le path)
+        from ...pipeline.output_paths import traitement_json_path
+    except ImportError:  # pragma: no cover
+        from pipeline.output_paths import traitement_json_path
+    try:
+        trace = _json.loads(traitement_json_path(Path(output_dir)).read_text(encoding="utf-8"))
+        ecrite = _dt.datetime.fromisoformat(str(trace.get("date") or ""))
+    except (OSError, ValueError, AttributeError):
+        return ""
+    if ecrite < _dt.datetime.fromtimestamp(lance_le).replace(microsecond=0):
+        return ""
+    if trace.get("cv_engine") != "none":
+        return ""
+    return str(trace.get("cv_motif") or "moteur de détection indisponible")
+
+
 def _ecrire_rapport_run(
     *, output_dir: Path, vrt_paths: List[str], cv_runs: Any, cv_cfg: Any, cv_stats: List[Dict[str, Any]],
     bilan: Any, rvt_params: Dict[str, Any], active_products: List[str], ui_config: Dict[str, Any],
     outcome: str, start_time: float, tiles_processed: int, tiles_total: Optional[int], meta_date: str,
-    reporter: Any = None,
+    reporter: Any = None, motif_detection: str = "",
 ) -> str:
     """Assemble et écrit ``rapport.html`` ; renvoie son nom. Thread worker (GDAL pour
     la vignette et la surface, aucun Qt). Rien ne situe la zone : ni nom de dalle, ni
@@ -402,9 +443,10 @@ def _ecrire_rapport_run(
         tiles_processed=tiles_processed, tiles_total=tiles_total,
         surface_km2=surface_km2_depuis_vrt(vrt_paths),
         produits=tuple((p, PRODUCT_LABELS.get(p, p)) for p in active_products),
-        rvt_params=rvt_params, cv_runs=tuple(runs_rapport),
+        rvt_params=rvt_params, processing=dict((ui_config or {}).get("processing") or {}),
+        cv_runs=tuple(runs_rapport),
         bilan=tuple(ligne.to_dict() for ligne in bilan), etapes=tuple(etapes),
-        avertissements=tuple(avertissements), vignette=vignette,
+        avertissements=tuple(avertissements), vignette=vignette, motif_detection=motif_detection,
     )
     ecrire_rapport(livrable_dir(Path(output_dir)), donnees)
     return f"{DIR_LIVRABLE}/{NOM_RAPPORT}"
@@ -425,6 +467,8 @@ def finalize_pipeline(
     ui_config: Optional[Dict[str, Any]] = None,
     outcome: str = "success",
     cv_stats: Optional[List[Dict[str, Any]]] = None,
+    pdal_version: str = "",
+    fusion: str = "",
 ) -> bool:
     """
     Finalisation commune à tous les runners :
@@ -530,6 +574,10 @@ def finalize_pipeline(
         reporter.info(f"Note: bilan de fiabilité non calculé ({_bilan_e})")
         bilan = []
 
+    # 3d. Moteur de détection (lot 0d) : "none" et le motif dès qu'un run n'a pas
+    # pu détecter — sous QGIS, sans le binaire, il n'y a pas de repli.
+    cv_engine, cv_motif = moteur_detection(cv_stats)
+
     # 4. Génération du fichier metadata.json
     try:
         import json as _json
@@ -553,6 +601,10 @@ def finalize_pipeline(
             "arborescence": VERSION_ARBORESCENCE,
             "date": _dt.datetime.now().isoformat(timespec="seconds"),
             "tiles_processed": tiles_processed,
+            # LiDAR (lot 1) : le LAZ fusionné et le MNT ne sont reproductibles qu'à
+            # version de PDAL et méthode de fusion égales.
+            **({"pdal_version": pdal_version} if pdal_version else {}),
+            **({"fusion_laz": fusion} if fusion else {}),
             "active_products": active_products or [],
             "rvt_params": rvt_params or {},
             "cv_runs": [
@@ -562,6 +614,10 @@ def finalize_pipeline(
                 }
                 for r in cv_runs
             ],
+            # Moteur de détection employé ; "none" et la cause quand la détection
+            # a été impossible (moteur absent ou en échec).
+            **({"cv_engine": cv_engine} if cv_engine else {}),
+            **({"cv_motif": cv_motif} if cv_motif else {}),
             # Correspondance entité (vocabulaire utilisateur) → dossier/fichier
             # livrable. Trace le lien entre ce que l'utilisateur a coché et où
             # les résultats atterrissent (detections/<slug>/<slug>.gpkg).
@@ -601,7 +657,9 @@ def finalize_pipeline(
                 output_dir=output_dir, vrt_paths=vrt_paths, cv_runs=cv_runs, cv_cfg=cv_cfg,
                 cv_stats=cv_stats or [], bilan=bilan, rvt_params=rvt_params or {},
                 active_products=active_products or [], ui_config=ui_config or {},
-                outcome=outcome, start_time=start_time, tiles_processed=tiles_processed,
+                outcome=("detection_impossible" if outcome == "success" and cv_engine == "none" else outcome),
+                motif_detection=cv_motif if cv_engine == "none" else "", start_time=start_time,
+                tiles_processed=tiles_processed,
                 tiles_total=tiles_total, meta_date=meta["date"], reporter=reporter,
             )
         except Exception as _rap_e:  # noqa: BLE001 — jamais bloquant
@@ -637,6 +695,12 @@ def finalize_pipeline(
     all_tiles_failed = bool(total) and tiles_processed == 0
     if success and all_tiles_failed:
         success = False
+    # Détection impossible (lot 0d) : les produits sont là, pas les détections —
+    # le run n'est pas un succès. Testé avant « 0 sur N » : en existing_rvt, le
+    # moteur en échec donne aussi 0 image traitée, et la cause est le moteur.
+    detection_impossible = cv_engine == "none"
+    if success and detection_impossible:
+        success = False
 
     if bilan:
         narrator.bilan_fiabilite([ligne.phrase() for ligne in bilan])
@@ -652,6 +716,12 @@ def finalize_pipeline(
     # rien à annoncer ici dans le cas cancelled.
     if outcome == "failed":
         narrator.pipeline_failed("erreur inattendue pendant le traitement", start_time=start_time)
+    elif outcome == "success" and detection_impossible:
+        from .rapport_run import suite_detection_impossible
+        reporter.error(
+            f"✗ Détection impossible : {cv_motif or 'moteur de détection indisponible'}. "
+            f"Les produits sont calculés ; {suite_detection_impossible(cv_stats or [])}"
+        )
     elif outcome == "success" and all_tiles_failed:
         narrator.pipeline_failed("aucune dalle n'a produit de sortie", start_time=start_time)
     elif success:
@@ -704,6 +774,8 @@ def finalize_pipeline(
         reporter.progress(100)
     elif outcome == "cancelled":
         reporter.stage("Annulé")
+    elif outcome == "success" and detection_impossible:
+        reporter.stage("Terminé sans détection")
     else:
         reporter.stage("Interrompu par une erreur")
 

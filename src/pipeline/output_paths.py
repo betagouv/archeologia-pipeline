@@ -349,3 +349,31 @@ def resolve_rvt_tif_dir(
 
     folder_name = get_rvt_folder_name(target_rvt, rvt_params or {})
     return indice_tif_dir(output_dir, folder_name)
+
+
+def aires_par_entite(output_dir: Path, run: Any) -> list:
+    """``[(gpkg, aire, couches exemptées)]`` des entités d'un run dont l'aire minimale dépasse celle du run.
+
+    Le run filtre tous ses GeoPackages à SON aire (la plus petite de ses entités) ; une entité réglée plus haut est
+    filtrée ensuite à la sienne, seule. Les couches de regroupement (``classes_synthese``) sont épargnées, comme
+    dans le filtre du run : leur règle porte sa propre aire. Pur (chemins seulement).
+    """
+    run = run or {}
+    try:
+        aire_run = float(run.get("min_area_m2", 0.0) or 0.0)
+    except (TypeError, ValueError):
+        aire_run = 0.0
+    sorties = []
+    for ent in run.get("entities") or []:
+        try:
+            aire = float((ent or {}).get("min_area_m2", 0.0) or 0.0)
+        except (TypeError, ValueError):
+            continue
+        if aire <= aire_run:
+            continue
+        cibles = build_entity_class_targets(output_dir, [ent])
+        gpkgs = sorted({str(gp) for lst in cibles.values() for gp, _ in lst})
+        noms = (ent.get("layer_names") or {})
+        exemptes = frozenset(noms.get(c, c) for c in (ent.get("classes_synthese") or []))
+        sorties += [(Path(gp), aire, exemptes) for gp in gpkgs]
+    return sorties

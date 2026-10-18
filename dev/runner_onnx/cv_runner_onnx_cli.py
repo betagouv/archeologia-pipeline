@@ -208,6 +208,7 @@ def main() -> int:
 
     from pipeline.cv import computer_vision_onnx as cv_mod
     from pipeline.cv.cv_output import get_detection_output_path
+    from pipeline.cv.runner_cache import image_deja_traitee
 
     shp_mod = None
     if generate_shapefiles and run_shapefile_dedup:
@@ -310,27 +311,35 @@ def main() -> int:
     processed_count = 0
     skipped_already_processed = 0
     total_detections = 0
+    # Transmis par --config (cv_config du run) : sans lui, le binaire sautait
+    # toute image au cache même quand le plugin demandait de la refaire.
+    force_reprocess = bool(cv_config.get("force_reprocess", False))
+    # Session ONNX créée une fois, à la première image à inférer : un run servi
+    # entièrement par le cache n'en paie pas la création (lot 2).
+    onnx_session = None
+    session_tentee = False
 
     for idx, jpg_file in enumerate(jpg_files, 1):
         image_name = jpg_file.stem
-        labels_txt = raw_dir / f"{image_name}.txt"
-        labels_json = raw_dir / f"{image_name}.json"
 
         detection_output_path = get_detection_output_path(
             str(jpg_file),
             target_rvt,
             str(annotated_output_dir) if generate_annotated_images else None,
         )
-        annotated_img = Path(detection_output_path)
 
-        if annotated_img.exists() or labels_txt.exists() or labels_json.exists():
+        if image_deja_traitee(raw_dir, image_name, force_reprocess):
             skipped_already_processed += 1
             _print(f"progress={idx}/{total_images} image={jpg_file.name} status=skipped")
             continue
 
         processed_count += 1
         _print(f"progress={idx}/{total_images} image={jpg_file.name} status=processing")
-        
+
+        if not session_tentee:
+            session_tentee = True
+            onnx_session = cv_mod.charger_session_partagee(str(model_path), _print)
+
         try:
             ok, num_dets = cv_mod.run_onnx_inference(
                 image_path=str(jpg_file),
@@ -348,6 +357,7 @@ def main() -> int:
                 return_count=True,
                 class_names=class_names,
                 class_colors=class_colors,
+                onnx_session=onnx_session,
             )
         except Exception as e:
             ok = False

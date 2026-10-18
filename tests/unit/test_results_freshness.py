@@ -186,3 +186,37 @@ class TestCopyWithoutCropFreshness:
         os.utime(src, (t - 10, t - 10))
         self._run(temp_dir)
         assert dst.read_bytes() == b"v1"
+
+
+class TestMntAUneAutreResolution:
+    """Le nom du MNT porte sa résolution (c9b3545) : une relance à 1 m après 0,5 m
+    ajoutait ``…_1M00_…`` à côté de ``…_0M50_…``, et ``index_MNT.vrt`` mélangeait
+    les deux. La publication retire le MNT de la même dalle à une autre résolution."""
+
+    def _publier(self, tmp_path, monkeypatch, res, name_suffix=""):
+        import pipeline.ign.products.results as results_mod
+
+        monkeypatch.setattr(results_mod, "build_raster_pyramids", lambda *a, **k: True)
+        monkeypatch.setattr(results_mod, "assign_crs_if_missing", lambda *a, **k: False)
+        temp_dir = tmp_path / "temp"
+        temp_dir.mkdir(exist_ok=True)
+        _src, dest = get_rvt_source_and_dest_filenames(
+            "MNT", TILE, "0623", "6864", {}, mnt_resolution=res, name_suffix=name_suffix)
+        (temp_dir / dest).write_bytes(b"mnt")
+        copy_final_products_to_results(
+            temp_dir=temp_dir, output_dir=tmp_path / "out", current_tile_name=TILE,
+            products={"MNT": True}, output_structure={}, output_formats={"tif": True},
+            rvt_params={}, mnt_resolution=res, name_suffix=name_suffix,
+        )
+        return tmp_path / "out" / "livrable" / "indices" / "MNT" / "tif"
+
+    def test_relance_a_une_autre_resolution_remplace_le_mnt_de_la_dalle(self, tmp_path, monkeypatch):
+        tif = self._publier(tmp_path, monkeypatch, 0.5)
+        (tif / "LHD_FXX_0623_6864_MNT_A_0M50_LAMB93_IGN69.tif.aux.xml").write_text("x")
+        voisine = tif / "LHD_FXX_0624_6864_MNT_A_0M50_LAMB93_IGN69.tif"
+        voisine.write_bytes(b"autre dalle")
+        autre_uid = tif / "LHD_FXX_0623_6864_MNT_A_0M50_LAMB93_IGN69_ab12.tif"
+        autre_uid.write_bytes(b"autre sous-dalle")
+        self._publier(tmp_path, monkeypatch, 1.0)
+        assert sorted(p.name for p in tif.iterdir()) == sorted([
+            "LHD_FXX_0623_6864_MNT_A_1M00_LAMB93_IGN69.tif", voisine.name, autre_uid.name])

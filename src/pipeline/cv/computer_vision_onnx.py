@@ -113,6 +113,18 @@ def _load_onnx_model(model_path: str):
     return session, input_name, input_shape, model_meta
 
 
+def charger_session_partagee(model_path: str, log) -> Optional[tuple]:
+    """Session ONNX créée UNE fois pour toutes les images d'un modèle (lot 2, banc
+    2026-10-14 : détections identiques, création évitée à chaque image) ; ``None``
+    si elle ne peut pas l'être — ``run_onnx_inference`` recrée alors la sienne à
+    chaque image, comme avant."""
+    try:
+        return _load_onnx_model(model_path)
+    except Exception as e:  # noqa: BLE001 — repli : une session par image
+        log(f"WARN: session ONNX partagée impossible ({e}), une session par image")
+        return None
+
+
 def _require_class_offset(model_meta: Dict) -> int:
     """``class_offset`` du sidecar best.json — OBLIGATOIRE pour un modèle RF-DETR.
 

@@ -667,7 +667,26 @@ def _load_rfdetr_model(checkpoint_path: str, patch_size_override: int = None, po
     print(f"[INFO] Chargement du checkpoint: {checkpoint_path}...")
     obj = torch.load(checkpoint_path, weights_only=False, map_location=torch.device('cpu'))
     args = obj.get("args", None)
-    
+
+    # Depuis rfdetr 1.8, les checkpoints « best » enregistrent la classe (model_name) et l'architecture
+    # (model_config) ; `args` ne contient plus que la configuration d'entraînement, sans `resolution`.
+    # L'heuristique ci-dessous lirait alors la largeur du backbone DINOv2 (384 pour RF-DETR Base) comme
+    # hidden_dim et la résolution de pré-entraînement des position_embeddings (518) : un RF-DETR Base
+    # serait chargé comme RFDETRLarge à 518 px et l'export échouerait.
+    model_name = obj.get("model_name")
+    model_config = obj.get("model_config")
+    if model_name in model_classes and model_config is not None:
+        def _cfg(key):
+            return model_config.get(key) if isinstance(model_config, dict) else getattr(model_config, key, None)
+        kwargs = {key: _cfg(key) for key in ("resolution", "patch_size", "positional_encoding_size")
+                  if _cfg(key) is not None}
+        if patch_size_override is not None:
+            kwargs["patch_size"] = patch_size_override
+        if positional_encoding_size_override is not None:
+            kwargs["positional_encoding_size"] = positional_encoding_size_override
+        print(f"[INFO] Modèle lu dans le checkpoint: {model_name} {kwargs}")
+        return model_classes[model_name](pretrain_weights=checkpoint_path, **kwargs)
+
     # Extraire resolution et patch_size depuis args (peut être un objet ou un dict)
     resolution = None
     hidden_dim = 256
@@ -812,8 +831,10 @@ def export_rfdetr_to_onnx(
         config = rfdetr_model.model_config
         
         resolution = config.resolution
-        device = config.device
-        
+        # Le périphérique réel des poids : config.device peut valoir "cuda" alors que rfdetr a laissé
+        # les poids chargés sur le CPU, et l'entrée factice doit être au même endroit que le modèle.
+        device = next(model.parameters()).device
+
         print(f"[INFO] Résolution: {resolution}, Device: {device}")
         
         # Créer une entrée dummy pour l'export

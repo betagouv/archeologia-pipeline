@@ -209,6 +209,7 @@ class WizardDialog(QDialog):
         self._run_view.run_started.connect(self._on_run_started)
         self._run_view.run_finished.connect(self._on_run_finished)
         self._launch_page.workers_changed.connect(self._on_workers_changed)
+        self._launch_page.carte_graphique_changed.connect(self._on_carte_graphique_changed)
         self._refresh_rail_subs()
 
         self._goto_step(1)
@@ -457,6 +458,9 @@ class WizardDialog(QDialog):
             workers = 3
         self._launch_page.set_workers(workers)
         self._config.setdefault("processing", {})["max_workers"] = self._launch_page.workers_value()
+        # Carte graphique (étape 4, décochée par défaut) : même aller-retour que les workers.
+        self._launch_page.set_carte_graphique(bool(cv.get("carte_graphique", False)))
+        self._config.setdefault("computer_vision", {})["carte_graphique"] = self._launch_page.carte_graphique_value()
 
         sections = [RecapSection("Mode", badges=[mode_info(mode).banner_label])]
 
@@ -519,6 +523,14 @@ class WizardDialog(QDialog):
             self._cm.save_last_ui_config(self._config)
         except Exception:
             pass  # la persistance ne doit jamais bloquer l'UI
+
+    def _on_carte_graphique_changed(self, on: bool) -> None:
+        """Persiste l'option « Détection sur la carte graphique » (étape 4)."""
+        self._config.setdefault("computer_vision", {})["carte_graphique"] = bool(on)
+        try:
+            self._cm.save_last_ui_config(self._config)
+        except Exception:
+            pass
 
     def _on_run_started(self) -> None:
         self._enter_review_mode()

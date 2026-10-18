@@ -262,10 +262,11 @@ Le script `runner_onnx/build.py` automatise la création du runner :
 ```bash
 cd runner_onnx
 
-# Compiler le runner (CPU)
+# Compiler le runner (Windows : DirectML, processeur + carte graphique ; ailleurs : CPU)
 python build.py
 
-# Compiler le runner avec support GPU
+# Compiler le runner processeur seul, ou avec CUDA
+python build.py --cpu
 python build.py --gpu
 
 # Nettoyer les builds précédents
@@ -995,8 +996,9 @@ Produit un exécutable autonome (via PyInstaller) qui sera distribué avec le pl
 pip install -r dev/requirements/build.txt
 
 cd dev/runner_onnx
-python build.py                # Runner CPU (~100-150 MB)
-python build.py --gpu          # Runner GPU (~300 MB)
+python build.py                # Windows : runner DirectML (processeur + carte graphique) ; ailleurs : CPU
+python build.py --cpu          # Runner processeur seul
+python build.py --gpu          # Runner CUDA (~300 MB)
 python build.py --clean        # Nettoyer les artefacts de build
 ```
 

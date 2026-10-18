@@ -327,6 +327,19 @@ def moteur_detection(cv_stats: Optional[List[Dict[str, Any]]]) -> Tuple[Optional
     return ("+".join(moteurs) if moteurs else None), ""
 
 
+def trace_appareil(stat: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    """``appareil`` (carte graphique ou processeur), ``carte`` et ``repli_processeur``
+    d'un run de détection pour traitement.json ; rien si le moteur ne l'a pas dit."""
+    if not isinstance(stat, dict) or not stat.get("appareil"):
+        return {}
+    out: Dict[str, Any] = {"appareil": str(stat["appareil"])}
+    if stat.get("carte"):
+        out["carte"] = str(stat["carte"])
+    if stat.get("repli"):
+        out["repli_processeur"] = True
+    return out
+
+
 def echec_detection(output_dir: Path, lance_le: float) -> str:
     """Motif de « détection impossible » lu dans livrable/traitement.json ; ""
     sinon. Lu par la vue d'exécution pour sa ligne de fin (thread UI).
@@ -611,6 +624,8 @@ def finalize_pipeline(
                 {
                     "model": r.get("selected_model", ""),
                     "target_rvt": r.get("target_rvt", ""),
+                    **trace_appareil(next((s for s in (cv_stats or []) if isinstance(s, dict)
+                                           and s.get("model") == r.get("selected_model", "")), None)),
                 }
                 for r in cv_runs
             ],

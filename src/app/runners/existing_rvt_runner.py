@@ -8,6 +8,7 @@ from ..progress_reporter import ProgressReporter, report_busy, report_stage_id
 from ..progress_stages import Stage
 from ..run_context import RunContext
 from ..services.cv_post_service import _model_display_name, noter_echec_detection, resolve_uncropped_tif
+from ..services.carte_graphique import enregistrer as enregistrer_appareil, preparer_run as preparer_appareil, registre_path
 from ..services.finalize_service import finalize_pipeline
 from ..structured_logger import log_section
 from ..user_narrator import create_user_narrator
@@ -103,6 +104,11 @@ class ExistingRvtRunner:
             if cv_runs:
                 reporter.info(f"Computer Vision: run {run_idx}/{len(cv_runs)} — modèle={run_model}, RVT={run_rvt}")
                 narrator.cv_run_start(run_idx, len(cv_runs), model_display, run_rvt)
+            # Carte graphique (étape 4) : sonde à faire ou carte déjà retenue sur ce poste.
+            run_cfg, cg_ctx = preparer_appareil(
+                run_cfg, bool(cv_runs) and bool((ctx.cv.raw or {}).get("carte_graphique")))
+            if cg_ctx["message"]:
+                narrator.cv_appareil(model_display, {"appareil": "processeur", "message": cg_ctx["message"]})
 
             # ``_model``/``_ri``/``_n`` figés par défaut-d'argument (late-binding).
             def _on_image_progress(
@@ -154,21 +160,27 @@ class ExistingRvtRunner:
                 tile_progress=narrator.cv_run_tile_progress if cv_runs else None,
                 on_busy=lambda active: report_busy(reporter, active),
                 inference_tif_resolver=inference_tif_resolver,
+                on_appareil=lambda d, _m=model_display: narrator.cv_appareil(_m, d),
             )
             total_images = max(total_images, res.total_images)
             if res.total_detections is not None:
                 detection_counts.append(res.total_detections)
             st = getattr(res, "cv_stats", None) or {}
+            if cg_ctx["cle"]:
+                enregistrer_appareil(st, cg_ctx["cle"], registre_path())
+            appareil = st.get("appareil") if isinstance(st.get("appareil"), dict) else {}
             if st.get("images_inferees"):
                 narrator.cv_run_done(
-                    model_display, int(st["images_inferees"]), float(st.get("secondes", 0.0))
+                    model_display, int(st["images_inferees"]), float(st.get("secondes", 0.0)),
+                    appareil=appareil.get("appareil"),
                 )
             cv_stats.append({   # durée mesurée par modèle, pour le rapport de run
                 "modele": model_display, "model": run_model, "target_rvt": run_rvt,
                 "entites": [e.get("label") or e.get("slug") or "" for e in (run_cfg.get("entities") or [])
                             if isinstance(e, dict)],
                 "images": int(st.get("images_inferees") or 0), "secondes": float(st.get("secondes") or 0.0),
-                "moteur": st.get("moteur"),
+                "moteur": st.get("moteur"), "appareil": appareil.get("appareil"), "carte": appareil.get("carte"),
+                "repli": bool(st.get("appareil_repli")),
             })
 
         def _on_run_failure(run_idx: int, run_cfg: dict, exc: Exception) -> None:

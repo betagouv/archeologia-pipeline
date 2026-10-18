@@ -224,6 +224,7 @@ def run_existing_rvt(
     halo_margin_m: float = DEFAULT_HALO_MARGIN_M,
     prep_progress: Optional[Callable[[int, int, str], None]] = None,
     max_workers: int = 1,
+    on_appareil: Optional[Callable[[Dict[str, Any]], None]] = None,
 ) -> ExistingRvtResult:
     if not existing_rvt_dir.exists() or not existing_rvt_dir.is_dir():
         raise FileNotFoundError(f"Dossier RVT inexistant ou invalide: {existing_rvt_dir}")
@@ -505,6 +506,7 @@ def run_existing_rvt(
                 image_progress=image_progress,
                 tile_progress=tile_progress,
                 stats=cv_stats,
+                on_appareil=on_appareil,
             )
         finally:
             if busy_large:

@@ -9,7 +9,10 @@ import argparse
 import io
 import json
 import logging
+import shutil
 import sys
+import tempfile
+import time
 from pathlib import Path
 from typing import Any, Dict, Optional
 
@@ -206,6 +209,7 @@ def main() -> int:
 
     _ensure_src_on_sys_path()
 
+    from pipeline.cv import appareil as app_mod
     from pipeline.cv import computer_vision_onnx as cv_mod
     from pipeline.cv.cv_output import get_detection_output_path
     from pipeline.cv.runner_cache import image_deja_traitee
@@ -319,8 +323,81 @@ def main() -> int:
     onnx_session = None
     session_tentee = False
 
+    # Carte graphique (0.15.0, vague 3) : bloc posé par le plugin
+    # (app/services/carte_graphique) — sonde sur la première image inférée, ou carte
+    # déjà retenue sur ce poste (device_id). Windows seulement (DirectML).
+    cg = cv_config.get("carte_graphique") if isinstance(cv_config.get("carte_graphique"), dict) else {}
+    cg_demande = bool(cg.get("demande")) and sys.platform == "win32"
+    sonde_a_faire = cg_demande and cg.get("device_id") is None
+    courant = {"idx": 0}
+
+    def _ouvrir_carte(device_id: int):
+        s = cv_mod._load_onnx_model(str(model_path), providers=app_mod.providers_dml(device_id))
+        return s if app_mod.session_sur_carte(s[0]) else None
+
+    def _ouvrir_processeur():
+        return cv_mod._load_onnx_model(str(model_path), providers=[app_mod.FOURNISSEUR_CPU])
+
+    def _sur_repli(motif: str) -> None:
+        _print(app_mod.ligne(app_mod.decision_repli(motif, courant["idx"])))
+
+    def _detections(path: Path) -> list:
+        try:
+            return list((json.loads(path.read_text(encoding="utf-8")) or {}).get("detections") or [])
+        except (OSError, ValueError):
+            return []
+
+    def _seuil_de(d: dict) -> float:
+        try:
+            return float((confidence_per_class or {}).get(int(d.get("class_id", -1)), confidence_threshold))
+        except (TypeError, ValueError):
+            return float(confidence_threshold)
+
+    def _carte_retenue(session_processeur):
+        """Carte déjà retenue sur ce poste : on l'ouvre sans sonder ; indisponible → processeur."""
+        carte = str(cg.get("carte") or f"carte {cg['device_id']}")
+        try:
+            s = _ouvrir_carte(int(cg["device_id"]))
+            motif = "ORT est retombé sur le processeur"
+        except Exception as e:  # noqa: BLE001 — pilote, mémoire, modèle refusé
+            s, motif = None, f"{type(e).__name__}: {e}"
+        if s is None:
+            _print(app_mod.ligne(app_mod.decision_indisponible(carte, motif)))
+            return session_processeur
+        _print(app_mod.ligne(app_mod.decision_memorisee(int(cg["device_id"]), carte)))
+        return app_mod.avec_repli(s, _ouvrir_processeur, _sur_repli)
+
+    def _sonder(jpg_file: Path, image_name: str, secondes_processeur: float, session_processeur):
+        """Rejoue la première image (déjà inférée sur le processeur, résultat gardé) sur
+        chaque carte, dans un dossier provisoire ; rend la session à garder."""
+        tmp = Path(tempfile.mkdtemp(prefix="sonde_carte_"))
+
+        def inferer(sess):
+            t0 = time.perf_counter()
+            cv_mod.run_onnx_inference(
+                image_path=str(jpg_file), model_path=str(model_path), output_path=str(tmp / jpg_file.name),
+                confidence_threshold=confidence_threshold, confidence_per_class=confidence_per_class,
+                iou_threshold=iou_threshold, slice_height=slice_height, slice_width=slice_width,
+                overlap_ratio=overlap_ratio, generate_annotated_images=False, jpg_folder_path=str(tmp),
+                return_count=True, class_names=class_names, class_colors=class_colors, onnx_session=sess,
+            )
+            return time.perf_counter() - t0, _detections(tmp / f"{image_name}.json")
+
+        try:
+            decision, session = app_mod.sonder(
+                cg.get("adaptateurs") or [], secondes_processeur, _detections(raw_dir / f"{image_name}.json"),
+                _seuil_de, _ouvrir_carte, inferer, lambda m: _print(f"[carte graphique] {m}"),
+            )
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+        _print(app_mod.ligne(decision))
+        if session is None:
+            return session_processeur
+        return app_mod.avec_repli(session, _ouvrir_processeur, _sur_repli)
+
     for idx, jpg_file in enumerate(jpg_files, 1):
         image_name = jpg_file.stem
+        courant["idx"] = idx
 
         detection_output_path = get_detection_output_path(
             str(jpg_file),
@@ -339,7 +416,10 @@ def main() -> int:
         if not session_tentee:
             session_tentee = True
             onnx_session = cv_mod.charger_session_partagee(str(model_path), _print)
+            if cg_demande and cg.get("device_id") is not None and onnx_session is not None:
+                onnx_session = _carte_retenue(onnx_session)
 
+        t_image = time.perf_counter()
         try:
             ok, num_dets = cv_mod.run_onnx_inference(
                 image_path=str(jpg_file),
@@ -365,6 +445,12 @@ def main() -> int:
             _print(f"ERROR: run_onnx_inference failed for {jpg_file.name}: {e}")
             import traceback
             traceback.print_exc()
+        secondes_image = time.perf_counter() - t_image
+
+        # Sonde de la carte graphique : après la première image inférée sur le processeur.
+        if sonde_a_faire and ok and onnx_session is not None:
+            sonde_a_faire = False
+            onnx_session = _sonder(jpg_file, image_name, secondes_image, onnx_session)
 
         # Déterminer le mode d'inférence pour le log
         infer_mode = ""

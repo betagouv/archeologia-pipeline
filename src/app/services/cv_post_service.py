@@ -22,6 +22,7 @@ from ..progress_stages import Stage
 from ..runners.progress_plan import cv_pct
 from ..structured_logger import log_section
 from ..user_narrator import create_user_narrator
+from .carte_graphique import enregistrer as enregistrer_appareil, preparer_run as preparer_appareil, registre_path
 
 
 def _model_display_name(selected_model: str) -> str:
@@ -209,6 +210,11 @@ def run_cv_post_loop(
             f"modèle={run_model}, RVT={run_rvt}"
         )
         narrator.cv_run_start(run_idx, len(cv_runs), model_display, run_rvt)
+        # Carte graphique (étape 4, décochée par défaut) : bloc posé dans la config du
+        # run (sonde à faire, ou carte déjà retenue sur ce poste) ; rien à sonder → dit.
+        run_cfg, cg_ctx = preparer_appareil(run_cfg, bool((ctx.cv.raw or {}).get("carte_graphique")))
+        if cg_ctx["message"]:
+            narrator.cv_appareil(model_display, {"appareil": "processeur", "message": cg_ctx["message"]})
 
         generated_rvt_tif_dir = resolve_rvt_tif_dir(
             ctx.output_dir, run_rvt, output_structure, rvt_params
@@ -257,13 +263,18 @@ def run_cv_post_loop(
             on_busy=lambda active: report_busy(reporter, active),
             inference_tif_resolver=inference_tif_resolver,
             max_workers=ctx.processing.max_workers,
+            on_appareil=lambda d, _m=model_display: narrator.cv_appareil(_m, d),
         )
         if res.total_detections is not None:
             detection_counts.append(res.total_detections)
         st = getattr(res, "cv_stats", None) or {}
+        if cg_ctx["cle"]:   # décision de la sonde mémorisée pour ce poste, ce modèle, ce binaire
+            enregistrer_appareil(st, cg_ctx["cle"], registre_path())
+        appareil = st.get("appareil") if isinstance(st.get("appareil"), dict) else {}
         if st.get("images_inferees"):
             narrator.cv_run_done(
-                model_display, int(st["images_inferees"]), float(st.get("secondes", 0.0))
+                model_display, int(st["images_inferees"]), float(st.get("secondes", 0.0)),
+                appareil=appareil.get("appareil"),
             )
         if stats_out is not None:   # durée mesurée par modèle, pour le rapport de run
             stats_out.append({
@@ -271,7 +282,8 @@ def run_cv_post_loop(
                 "entites": [e.get("label") or e.get("slug") or "" for e in (run_cfg.get("entities") or [])
                             if isinstance(e, dict)],
                 "images": int(st.get("images_inferees") or 0), "secondes": float(st.get("secondes") or 0.0),
-                "moteur": st.get("moteur"),
+                "moteur": st.get("moteur"), "appareil": appareil.get("appareil"), "carte": appareil.get("carte"),
+                "repli": bool(st.get("appareil_repli")),
             })
 
     def _on_run_failure(run_idx: int, run_cfg: Dict[str, Any], exc: Exception) -> None:

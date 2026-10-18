@@ -1,4 +1,6 @@
 # Compilation du runner ONNX (runner_onnx/build.py)
+# Sous Windows, build.py remplace onnxruntime par onnxruntime-directml à la version
+# figée build.ORT_DIRECTML (option « Détection sur la carte graphique », 0.15.0).
 pyinstaller>=6.0
 onnxruntime>=1.16
 pillow>=10.0

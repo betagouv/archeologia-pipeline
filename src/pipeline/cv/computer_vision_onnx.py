@@ -55,10 +55,15 @@ def _tile_progress_due(done: int, total: int) -> bool:
 logger = logging.getLogger(__name__)
 
 
-def _load_onnx_model(model_path: str):
+def _load_onnx_model(model_path: str, providers=None):
     """
     Charge un modèle ONNX avec onnxruntime.
-    
+
+    ``providers`` : liste ORT explicite (carte graphique : ``appareil.providers_dml``,
+    processeur seul : ``[appareil.FOURNISSEUR_CPU]``) ; sans elle, CUDA si disponible,
+    processeur sinon. L'appelant qui demande DirectML vérifie ``get_providers()`` :
+    ORT recrée la session sur le processeur, sans lever, quand il ne peut pas l'ouvrir.
+
     Returns:
         Tuple (session, input_name, input_shape, model_meta)
     """
@@ -81,8 +86,9 @@ def _load_onnx_model(model_path: str):
     #   avec use_tf32=0 : 1,73e-02, soit de l'arrondi float32 ordinaire
     # CPU et GPU sont chacun parfaitement déterministes en rejeu (0,00e+00) : c'est bien
     # un choix de précision, pas du bruit.
-    providers = [(p, {'use_tf32': '0'}) if p == 'CUDAExecutionProvider' else p
-                 for p in noms]
+    if providers is None:
+        providers = [(p, {'use_tf32': '0'}) if p == 'CUDAExecutionProvider' else p
+                     for p in noms]
 
     logger.info(f"ONNX: providers disponibles: {available_providers}")
     logger.info(f"ONNX: utilisation de: {providers}")

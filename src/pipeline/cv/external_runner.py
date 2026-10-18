@@ -21,6 +21,7 @@ except ImportError:  # Python < 3.8
 
 from ..cancellation import PipelineCancelled
 from ..geo_utils import write_world_file
+from .appareil import PREFIXE_LIGNE, lire_ligne
 from ..subprocess_utils import subprocess_kwargs_no_window
 from ..types import LogFn, CancelCheckFn
 
@@ -104,8 +105,12 @@ def _parse_runner_stdout(
     image_progress: Optional[ImageProgressFn] = None,
     tile_progress: Optional[TileProgressFn] = None,
     image_done: Optional[ImageProgressFn] = None,
+    on_appareil: Optional[Callable[[Dict[str, Any]], None]] = None,
 ) -> Optional[int]:
     """Parse une ligne de stdout du runner externe et la log de façon lisible.
+
+    ``on_appareil``, si fourni, reçoit la décision ``appareil={json}`` du binaire
+    (carte graphique retenue, écartée, repli en cours de run : ``pipeline.cv.appareil``).
 
     ``image_progress``, si fourni, est invoqué pour chaque ligne
     ``progress=N/TOTAL`` quel que soit le status (processing, done,
@@ -132,6 +137,17 @@ def _parse_runner_stdout(
                 tile_progress(int(m.group(1)), int(m.group(2)))
             except Exception:
                 pass
+
+    if line.startswith(PREFIXE_LIGNE):
+        decision = lire_ligne(line)
+        if decision is not None:
+            log(f"Computer Vision: {decision.get('message') or decision.get('appareil')}")
+            if on_appareil is not None:
+                try:
+                    on_appareil(decision)
+                except Exception:
+                    pass
+            return None
 
     if line.startswith("progress="):
         try:
@@ -231,14 +247,19 @@ def run_external_cv_runner(
     image_progress: Optional[ImageProgressFn] = None,
     tile_progress: Optional[TileProgressFn] = None,
     stats: Optional[Dict[str, Any]] = None,
+    on_appareil: Optional[Callable[[Dict[str, Any]], None]] = None,
 ) -> Optional[int]:
     """
     Exécute le runner ONNX externe via subprocess et parse sa sortie en temps réel.
 
     ``stats``, si fourni, reçoit la mesure du run : ``images_inferees`` (lignes
     ``status=done``, cache exclu) et ``secondes`` (temps mur, chargement du
-    modèle compris). ponytail: dict mutable plutôt qu'un nouveau type de retour
-    qui rippellerait sur run_cv_on_folder → run_existing_rvt → runners.
+    modèle compris), plus ``appareil`` (dernière décision du binaire : carte
+    graphique ou processeur) et ``appareil_repli`` si une erreur de la carte a
+    fait basculer le run sur le processeur. ponytail: dict mutable plutôt qu'un
+    nouveau type de retour qui rippellerait sur run_cv_on_folder →
+    run_existing_rvt → runners. ``on_appareil`` reçoit chaque décision au moment
+    où elle tombe (journal de l'assistant).
 
     Returns:
         Le ``total_detections`` annoncé par la ligne ``summary:`` du runner,
@@ -306,6 +327,14 @@ def run_external_cv_runner(
             nonlocal n_done
             n_done += 1
 
+        def _on_appareil(decision: Dict[str, Any]) -> None:
+            if stats is not None:
+                stats["appareil"] = decision
+                if decision.get("repli"):
+                    stats["appareil_repli"] = decision
+            if on_appareil is not None:
+                on_appareil(decision)
+
         if process.stdout:
             for line in process.stdout:
                 if cancel_check and cancel_check():
@@ -324,6 +353,7 @@ def run_external_cv_runner(
                 parsed = _parse_runner_stdout(
                     line, log, image_progress=image_progress, tile_progress=tile_progress,
                     image_done=_on_image_done if stats is not None else None,
+                    on_appareil=_on_appareil,
                 )
                 if parsed is not None:
                     total_detections = parsed

@@ -20,7 +20,7 @@ techniques restent fichier-only après filtrage.
 from __future__ import annotations
 
 import time
-from typing import TYPE_CHECKING, Optional
+from typing import Any, Dict, Optional, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from .progress_reporter import ProgressReporter
@@ -311,7 +311,21 @@ class UserNarrator:
             f"   • Modèle {run_idx}/{total} : « {model_name} » sur {target_rvt}"
         )
 
-    def cv_run_done(self, model_name: str, n_images: int, seconds: float) -> None:
+    def cv_appareil(self, model_name: str, decision: Dict[str, Any]) -> None:
+        """Appareil de détection d'un modèle : carte graphique retenue (mesure de la
+        sonde du moteur sur la première image, ou décision déjà prise sur ce poste),
+        écartée, ou repli sur le processeur en cours de run. La phrase vient du moteur
+        ou du registre (``pipeline.cv.appareil``, ``app.services.carte_graphique``) :
+        mesurée, jamais estimée. Une carte écartée ou un repli est un avertissement,
+        qui renvoie au Dépannage."""
+        msg = str(decision.get("message") or decision.get("motif") or decision.get("appareil") or "")
+        if decision.get("appareil") == "carte_graphique":
+            self._r.user_info(f"   🎮 « {model_name} » : {msg}")
+        else:
+            self._r.user_warning(f"⚠️ « {model_name} » : {msg}")
+
+    def cv_run_done(self, model_name: str, n_images: int, seconds: float,
+                    appareil: Optional[str] = None) -> None:
         """Durée RÉELLE d'un run CV, chronométrée après coup (2026-09-21) : les
         images réellement inférées (cache exclu) et le temps mur. Silencieux si
         aucune image n'a été inférée — on ne dit pas « analysées » pour une
@@ -326,6 +340,8 @@ class UserNarrator:
         )
         if n_images > 1:
             msg += f" (≈ {_format_duration(round(seconds / n_images))} par image)"
+        if appareil == "carte_graphique":
+            msg += " sur la carte graphique"
         self._r.user_info(msg)
 
     def cv_run_image_progress(

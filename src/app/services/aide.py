@@ -268,6 +268,7 @@ _RUBRIQUES_DEPANNAGE: Tuple[Tuple[str, str], ...] = (
     (r"abandonn", "Une dalle est abandonnée"),
     (r"PDAL a crash|moins de workers|max_workers", "Erreur PDAL ou mémoire"),
     (r"filtre des points (non reconnu|refus[ée] par pdal)", "Le filtre des points n'est pas reconnu"),
+    (r"carte graphique", "La carte graphique n'est pas utilisée"),
     (r"aucune zone d'int[ée]r[êe]t|aucun run", "Aucun run, ou aucune détection"),
     (r"interromp", "Le traitement s'est interrompu"),
 )

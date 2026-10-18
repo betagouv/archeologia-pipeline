@@ -3,6 +3,8 @@
 # `ruff check src/` est documenté dans CLAUDE.md et branché au hook pre-push.
 line-length = 120
 target-version = "py39"
+# Bibliothèque rvt embarquée (copie figée de rvt-qgis 1.0.1, NOTICE) : jamais retouchée, donc jamais lintée.
+extend-exclude = ["src/pipeline/ign/products/rvt_embarque"]
 
 [lint]
 select = ["E4", "E7", "E9", "F"]

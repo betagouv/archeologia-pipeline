@@ -19,7 +19,9 @@ dossier_de_sortie/
 │       ├── parcellaire/parcellaire.gpkg   un GeoPackage par entité
 │       └── parcellaire/fiabilite.json     les coupures de fiabilité de cette couche
 └── technique/                         ce que vous pouvez supprimer
-    ├── sources/dalles/                dalles LiDAR téléchargées, re-téléchargeables
+    ├── sources/dalles/                dalles LiDAR téléchargées, re-téléchargeables ; à côté de chacune,
+    │                                  une note « .verifie.json » (lue en entier, supprimable) et, si un
+    │                                  téléchargement a été interrompu, un « .partial » (retéléchargé au lancement suivant)
     ├── intermediaires/                fichiers de calcul par dalle
     ├── png/                           images préparées pour la détection
     ├── detection/<modèle>/            sorties brutes et images annotées
@@ -30,7 +32,7 @@ Copier `livrable/` suffit à transmettre un traitement : le projet QGIS y retrou
 
 ### Le nom d'un dossier d'indice
 
-Le dossier d'un indice porte ses réglages : `SVF_R10_D16_V1_N0` est un facteur de vue du ciel à rayon 10 pixels, 16 directions, exagération 1, sans suppression de bruit ; `LD_A15_Rmin10_Rmax20_H1p7_V1` une dominance locale avec ses rayons et sa hauteur d'observation. Relancer avec d'autres réglages crée un autre dossier au lieu d'écraser le premier. Le MNT, la densité et la couverture n'ont pas de réglage : leur dossier porte le nom seul. En mode Indices existants, tout va sous `livrable/indices/RVT/`.
+Le dossier d'un indice porte ses réglages : `SVF_R10_D16_V1_N0` est un facteur de vue du ciel à rayon 10 pixels, 16 directions, exagération 1, sans suppression de bruit ; `LD_A15_Rmin10_Rmax20_H1p7_V1` une dominance locale avec ses rayons et sa hauteur d'observation. Une sortie flottante (« Sauver en 8 bits » décoché) ajoute `_F32` au nom : `SVF_R10_D16_V1_N0_F32`. Relancer avec d'autres réglages, ou en passant du 8 bits au flottant, crée un autre dossier au lieu d'écraser le premier. Le MNT, la densité et la couverture rangent leurs fichiers dans un dossier au nom seul ; le nom de chaque MNT porte sa résolution (`…_MNT_A_0M50_…` à 0,5 m, `…_MNT_A_1M00_…` à 1 m), celle du MNT fourni en mode MNT existant. Relancer à une autre résolution dans le même dossier remplace le MNT de chaque dalle : la mosaïque ne mélange jamais deux résolutions. En mode Indices existants, tout va sous `livrable/indices/RVT/`.
 
 Dans chaque dossier `tif/`, la mosaïque `index_<PRODUIT>.vrt` assemble toutes les dalles : c'est elle que QGIS charge, sous le même nom. Chargée à la main, elle reste reconnaissable.
 
@@ -75,9 +77,15 @@ Pour une dalle, les détections de toutes les entités se superposent sans doubl
 
 ## Les traces d'un traitement
 
-`livrable/traitement.json` résume le dernier traitement : version du plugin, date, nombre de dalles, produits et leurs réglages, modèles lancés, entités produites avec le chemin de leur GeoPackage, le bilan de fiabilité par entité. Il ne porte aucun chemin de votre poste et se transmet avec le livrable.
+`livrable/traitement.json` résume le dernier traitement : version du plugin, date, nombre de dalles, version de PDAL qui a calculé le MNT, produits et leurs réglages, modèles lancés avec l'appareil qui a détecté (processeur ou carte graphique, et son nom), entités produites avec le chemin de leur GeoPackage, le bilan de fiabilité par entité, le moteur de détection employé ou, si la détection a été impossible, sa cause. Il ne porte aucun chemin de votre poste et se transmet avec le livrable.
 
 `technique/journaux/` garde, pour chaque lancement, le journal détaillé `pipeline_log_<date>.txt` et la trace complète `metadata_<date>.json`, avec la configuration entière de l'assistant, chemins de votre poste compris. C'est ce qu'il faut joindre à une demande d'aide.
+
+## Un MNT reproductible
+
+La fusion de chaque dalle avec ses voisines lit les points toujours dans le même ordre : deux traitements des mêmes dalles avec la même version de PDAL, celle que note `livrable/traitement.json`, donnent le même MNT au bit près. Un dossier calculé par une version précédente du plugin voit donc son MNT, et tout ce qui en découle (indices, détections), recalculé une dernière fois à la relance : le journal le signale par « Méthode de calcul mise à jour ». L'écart avec l'ancien MNT est de l'ordre de celui qu'il y avait déjà entre deux traitements identiques.
+
+Dans les modes LiDAR (téléchargement IGN, LAZ local), la grille du MNT, de la densité et de la couverture est calée sur celle des dalles IGN (bords des pixels sur les multiples de la résolution) : chaque pixel publié est un pixel calculé, recadré sans rééchantillonnage, au même endroit d'un traitement à l'autre. Les MNT et densités calculés par une version précédente pouvaient être décalés d'un demi-pixel (25 cm pour un MNT à 0,5 m), dans un sens qui variait d'une dalle et d'une relance à l'autre ; la relance d'un tel dossier refait une fois sa fusion, ses MNT, sa densité et ses indices (« Méthode de calcul mise à jour »). Le calage ne concerne pas un MNT fourni (mode MNT existant) : s'il n'est pas déjà sur les multiples de sa résolution, son recadrage au kilomètre le rééchantillonne.
 
 ## Faire de la place
 
@@ -88,3 +96,5 @@ Sur Windows, un dossier de sortie très profond peut dépasser la limite de 260 
 ## Un dossier d'une version précédente
 
 Un dossier de sortie écrit avant cette organisation garde ses anciens dossiers à la racine : `indices/`, `detections/`, `intermediaires/`, `sources/`, les journaux et `metadata.json`. Au lancement d'un traitement dans ce dossier, le plugin propose de le réorganiser et attend votre accord : il montre ce qui sera déplacé, déplace sans copier, et retire du projet QGIS les couches chargées depuis les anciens emplacements, rechargées en fin de traitement. Ce qu'il ne reconnaît pas, par exemple un dossier que vous avez posé vous-même, ne bouge pas et vous est indiqué. Refusez, et le traitement n'est pas lancé : choisissez alors un autre dossier de sortie.
+
+Certains dossiers d'indices d'une version précédente ne sont plus ceux que le plugin écrit : une sortie flottante sans `_F32` dans son nom, une pente « Pourcentage » sous `SLO_U1…` (qui donnait des radians), un MSTP à l'échelle large de rvt (`…_B223-2023…`), un M-HS 8 bits avec un autre nombre de directions que 16 dans son nom. Le plugin les laisse en place et écrit le nouveau dossier à côté ; le projet QGIS du traitement charge le nouveau. Supprimez les anciens à la main si vous n'en avez plus l'usage.

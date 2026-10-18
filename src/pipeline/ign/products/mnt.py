@@ -1,10 +1,14 @@
 from __future__ import annotations
 
+import json
+import math
+import shutil
+import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 
-from ..pdal_validation import get_laz_bounds, validate_las_or_laz_with_pdal
+from ..pdal_validation import validate_las_or_laz_with_pdal
 from .qgis_processing import run_qgis_algorithm
 from .results import needs_refresh
 from ...tilespec import assign_crs_if_missing
@@ -22,6 +26,49 @@ MNT_ALGO_TIMEOUT_S = 2 * 3600
 @dataclass(frozen=True)
 class TerrainModelResult:
     mnt_path: Path
+
+
+#: Calage de la grille du MNT et de la densité, inscrit dans la signature du cache (cache_guard) : un dossier calculé
+#: avant ce calage refait une fois ses MNT et sa densité au lieu de les resservir (-2 : la densité suit, après -1).
+GRILLE_MNT = "emprise-alignee-2"
+
+
+def emprise_alignee(bornes: Tuple[float, float, float, float], resolution: float) -> Tuple[float, float, float, float]:
+    """(xmin, xmax, ymin, ymax) des points, arrondis VERS L'EXTÉRIEUR au multiple de la résolution.
+
+    Sans emprise, pdal:exportrastertin cale la grille d'un LAZ ordinaire (pas d'un COPC) sur le premier point moins
+    un demi-pixel (815 999,75 pour un nuage qui commence à 816 000) : le rognage au kilomètre prenait alors, pour
+    chaque pixel publié, l'un de ses voisins, d'un sens qui changeait avec le premier point (25 cm à 0,5 m, et une
+    dalle décalée d'une colonne d'une relance à l'autre). Calée sur les multiples de la résolution, la grille est
+    celle des dalles IGN, et le rognage ne fait plus que découper. Moins d'un pixel de plus que les points : pas de
+    zone vide ajoutée au bord d'un lot.
+    """
+    xmin, xmax, ymin, ymax = (float(v) for v in bornes)
+    r = float(resolution)
+    eps = 1e-6
+    return (math.floor(xmin / r + eps) * r, math.ceil(xmax / r - eps) * r,
+            math.floor(ymin / r + eps) * r, math.ceil(ymax / r - eps) * r)
+
+
+def _bornes_du_nuage(laz: Path) -> Optional[Tuple[float, float, float, float]]:
+    """Bornes des points : celles relevées à la fusion AVANT filtrage (sidecar ``.inputs.json``, flux-2), sinon
+    l'en-tête du LAZ (``pdal info --metadata``, sans lire les points), sinon None."""
+    try:
+        b = json.loads(laz.with_suffix(".inputs.json").read_text(encoding="utf-8")).get("bornes")
+        if isinstance(b, list) and len(b) == 4:
+            return float(b[0]), float(b[1]), float(b[2]), float(b[3])
+    except (OSError, ValueError, AttributeError):
+        pass
+    pdal = shutil.which("pdal")
+    if not pdal:
+        return None
+    try:
+        sortie = subprocess.run([pdal, "info", "--metadata", str(laz)], capture_output=True, text=True, timeout=120,
+                                **({"creationflags": 0x08000000} if hasattr(subprocess, "STARTUPINFO") else {}))
+        m = json.loads(sortie.stdout)["metadata"]
+        return float(m["minx"]), float(m["maxx"]), float(m["miny"]), float(m["maxy"])
+    except Exception:  # noqa: BLE001 — sans bornes, la grille de PDAL d'avant (le journal le dit)
+        return None
 
 
 def _run_under_watchdog(
@@ -64,17 +111,6 @@ def _run_under_watchdog(
             )
 
 
-def _try_extract_xy_from_tile_name(tile_name: str) -> Optional[Tuple[int, int]]:
-    """Tente d'extraire les coordonnées X,Y du nom de dalle. Retourne None si impossible."""
-    parts = tile_name.split("_")
-    if len(parts) < 4:
-        return None
-    try:
-        return int(parts[2]), int(parts[3])
-    except ValueError:
-        return None
-
-
 def create_terrain_model(
     *,
     input_laz_path: Path,
@@ -110,41 +146,10 @@ def create_terrain_model(
     margin_percent = float(tile_overlap_percent) / 100.0
     # Marge toujours basée sur 1km (taille d'une dalle IGN standard)
     margin_meters = 1000.0 * margin_percent
-    
-    # Priorité 1: extraire les coordonnées du nom de la dalle (1km x 1km standard IGN)
-    xy = _try_extract_xy_from_tile_name(current_tile_name)
-    
-    if xy is not None:
-        x_km, y_km = xy
-        base_xmin = float(x_km * 1000)
-        base_xmax = float((x_km + 1) * 1000)
-        base_ymin = float((y_km - 1) * 1000)
-        base_ymax = float(y_km * 1000)
-        log(f"Bounds dalle {current_tile_name}: {base_xmin},{base_ymin} -> {base_xmax},{base_ymax} (1000x1000m)")
-    else:
-        # Fallback: lire les bounds du LAZ et calculer le centre de la dalle 1km x 1km
-        laz_bounds = get_laz_bounds(input_laz_path)
-        if laz_bounds is None:
-            raise ValueError(f"Impossible de déterminer les bounds pour {current_tile_name}: "
-                           "coordonnées absentes du nom et bounds LAZ illisibles")
-        raw_xmin, raw_ymin, raw_xmax, raw_ymax = laz_bounds
-        # Calculer le centre du fichier LAZ
-        center_x = (raw_xmin + raw_xmax) / 2.0
-        center_y = (raw_ymin + raw_ymax) / 2.0
-        # Déterminer la dalle 1km x 1km contenant ce centre
-        x_km = int(center_x / 1000)
-        y_km = int(center_y / 1000) + 1  # +1 car convention IGN: y_km est le bord supérieur
-        base_xmin = float(x_km * 1000)
-        base_xmax = float((x_km + 1) * 1000)
-        base_ymin = float((y_km - 1) * 1000)
-        base_ymax = float(y_km * 1000)
-        log(f"Bounds dalle (via centre LAZ): {base_xmin},{base_ymin} -> {base_xmax},{base_ymax} (1000x1000m)")
-
-    extended_xmin = base_xmin - margin_meters
-    extended_xmax = base_xmax + margin_meters
-    extended_ymin = base_ymin - margin_meters
-    extended_ymax = base_ymax + margin_meters
-
+    # L'emprise du raster est celle des points du LAZ fusionné, marge comprise :
+    # pdal:exportrastertin n'a pas de paramètre BOUNDS (QGIS 3.44 et 4.0 : il
+    # était ignoré, retiré au lot 0e-a) ; FILTER_EXTENT changerait l'emprise des
+    # dalles de bord — décision 0e, pas un correctif silencieux.
     log(f"Création MNT avec marge {margin_percent * 100}% ({margin_meters}m)")
     # Trace post-hoc des valeurs effectivement envoyées à PDAL.
     from ...types import format_params_line
@@ -160,8 +165,14 @@ def create_terrain_model(
         "OUTPUT": str(output_path),
         "RESOLUTION": str(mnt_resolution),
         "FILTER_EXPRESSION": filter_expression,
-        "BOUNDS": f"{extended_xmin},{extended_ymin},{extended_xmax},{extended_ymax}",
     }
+    bornes = _bornes_du_nuage(input_laz_path)
+    if bornes is not None:
+        x0, x1, y0, y1 = emprise_alignee(bornes, mnt_resolution)
+        parameters["FILTER_EXTENT"] = f"{x0},{x1},{y0},{y1} [EPSG:2154]"
+        log(f"MNT : grille calée sur {x0:.2f}, {y1:.2f} (multiples de {mnt_resolution} m)")
+    else:
+        log("⚠️ MNT : bornes du nuage illisibles — grille de PDAL sans calage (décalage possible d'un demi-pixel)")
 
     watchdog = dict(
         feedback=feedback, context=context, timeout_s=algo_timeout_s, tile_name=current_tile_name

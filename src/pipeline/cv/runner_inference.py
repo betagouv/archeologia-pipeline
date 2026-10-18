@@ -14,6 +14,7 @@ from ..cancellation import PipelineCancelled
 from ..geo_utils import write_world_file as write_world_file_from_transform
 from ..types import LogFn, CancelCheckFn
 from .external_runner import ImageProgressFn
+from .runner_cache import image_deja_traitee
 from .runner_shapefiles import deduplicate_cv_shapefiles_final
 
 
@@ -131,8 +132,6 @@ def run_fallback_inference(
             log("Computer Vision: Annulation demandée, arrêt de l'inférence...")
             raise PipelineCancelled()
         image_name = jpg_file.stem
-        labels_txt = _raw_dir / f"{image_name}.txt"
-        labels_json = _raw_dir / f"{image_name}.json"
 
         if image_progress is not None:
             try:
@@ -145,9 +144,8 @@ def run_fallback_inference(
             target_rvt,
             str(annotated_output_dir) if annotated_output_dir else None,
         )
-        annotated_img = Path(detection_output_path)
 
-        if not force_reprocess and (annotated_img.exists() or labels_txt.exists() or labels_json.exists()):
+        if image_deja_traitee(_raw_dir, image_name, force_reprocess):
             skipped_already_processed += 1
             continue
 

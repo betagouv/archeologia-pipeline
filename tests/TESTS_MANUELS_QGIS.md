@@ -429,7 +429,7 @@ Cette grille indique, pour chaque vague livrée, **quelles sections de tests son
 - [ ] **21.13 Fermeture / rechargement pendant la sélection** : fermer le dialogue (croix) ou recharger le plugin pendant une sélection active → pas de crash, pas d'outil-carte ni de couche orphelins.
 - [ ] **21.14 Quadrillage absent** : renommer le `.shp` → clic sur le bouton affiche un message clair, l'outil ne s'active pas.
 - [ ] **21.15 Persistance de la liste (reprise après interruption)** : lancer un run `ign_laz` à partir d'une **sélection sur carte**. Dès le début du téléchargement, `<output_dir>/dalles_urls.txt` est créé (lignes `nom,url`, en-tête `#`) et le journal indique « Liste des dalles enregistrée: dalles_urls.txt ». **Interrompre** le run après quelques dalles → le fichier est toujours présent et complet (toutes les dalles sélectionnées, pas seulement celles téléchargées).
-- [ ] **21.16 Reprise** : relancer en mode `ign_laz` avec ce `dalles_urls.txt` comme source et le **même** `output_dir` → les dalles déjà présentes dans `technique/sources/dalles/` sont **sautées** (« déjà téléchargé »), seules les manquantes sont récupérées.
+- [ ] **21.16 Reprise** : relancer en mode `ign_laz` avec ce `dalles_urls.txt` comme source et le **même** `output_dir` → les dalles déjà présentes dans `technique/sources/dalles/` sont **sautées** (« déjà présente (vérifiée) » au 2ᵉ lancement), seules les manquantes sont récupérées.
 
 > **Consolidation affichage (anti-« grille absente, réparée par redémarrage »)** — ⭐ P0
 
@@ -558,8 +558,8 @@ Cette grille indique, pour chaque vague livrée, **quelles sections de tests son
 > plus récent, écrase le TIF final de même nom — `livrable/indices/` n'est jamais
 > supprimé, c'est le livrable accumulé multi-zones, cf. §22).
 
-- [ ] **28.1 Préflight rvt-qgis absent** : désactiver (décocher) le plugin « Relief Visualization Toolbox » dans le gestionnaire d'extensions, cocher un indice RVT (ex. LD) à l'étape 2 → le panneau « État du système » de l'étape 4 affiche un ✗ **critique** « Algorithmes RVT (Processing) » mentionnant l'installation/mise à jour via Extensions ; **▶ Lancer** refuse de démarrer le pipeline (préflight KO **avant** tout téléchargement).
-- [ ] **28.2 Préflight rvt-qgis présent** : réactiver rvt-qgis, redémarrer QGIS → le même check passe au ✓ (« N algorithme(s) rvt:* disponibles ») et le run démarre normalement.
+- [ ] **28.1 Préflight rvt-qgis absent** *(révisé 0.15.0 : ne vaut plus qu'avec `ARCHEO_INDICES_MOTEUR=processing` ; sinon voir § 53)* : désactiver (décocher) le plugin « Relief Visualization Toolbox » dans le gestionnaire d'extensions, cocher un indice RVT (ex. LD) à l'étape 2 → le panneau « État du système » de l'étape 4 affiche un ✗ **critique** « Algorithmes RVT (Processing) » mentionnant l'installation/mise à jour via Extensions ; **▶ Lancer** refuse de démarrer le pipeline (préflight KO **avant** tout téléchargement).
+- [ ] **28.2 Préflight rvt-qgis présent** *(révisé 0.15.0, même condition)* : réactiver rvt-qgis, redémarrer QGIS → le même check passe au ✓ (« N algorithme(s) rvt:* disponibles ») et le run démarre normalement.
 - [ ] **28.3 Re-run, paramètre changé** : run 1 `ign_laz` (1 dalle suffit) avec résolution MNT 0,5 m ; puis étape 2 → résolution MNT 2 m et re-run dans le **même** `output_dir` → la **fenêtre du wizard** affiche « ⚠️ Paramètres de traitement modifiés → cache des intermédiaires invalidé » ; la dalle est **réellement recalculée** (durée non nulle, pas de « Terminé en 0.0s »), le fichier de log montre « TIF rogné copié » et le TIF de `livrable/indices/MNT/tif/` a la nouvelle résolution (propriétés de la couche : taille de pixel 2 m — le fichier existant a bien été **écrasé**). Si la CV est active : le PNG d'inférence est régénéré (« PNG plus ancien que sa source, régénération ») et l'inférence re-tourne (pas de « déjà traité »).
 - [ ] **28.4 Re-run, paramètres identiques (reprise)** : relancer une 3e fois **sans rien changer** → pas de purge, reprise rapide sur le cache — dans le **fichier de log** (`*.txt`, canal technique, pas la fenêtre), chercher « (cache intermédiaire) » : une ligne par produit (« MNT réutilisé… », « Densité réutilisée… », « LD réutilisé… », « LAZ fusionné réutilisé… » — accord au féminin pour Densité/COUVERTURE), pas de « TIF rogné copié », « PNG déjà présent » si PNG activés, et **aucune** ré-inférence CV (cache de détections conservé) — le comportement §22 (ajout de dalle) reste intact.
 - [ ] **28.5 Bornes de la purge** : après 28.3, vérifier que `technique/sources/dalles/*.laz` (pas de re-téléchargement) et `livrable/detections/` (si présents) n'ont **pas** été supprimés ; `technique/intermediaires/run_params.json` existe et reflète les derniers paramètres.
@@ -911,3 +911,129 @@ La recette de la 0.14.0, jouée par script sous QGIS 3.44 et 4.0.3 le 2026-10-10
 - [ ] **46.7 Indices existants sans détection** : mode Indices existants, aucune entité cochée → ✓ « Terminé », les TIF et la mosaïque publiés, le journal dit « Publication des indices n/N ». Avant : « ✗ En échec · aucune dalle n'a produit de sortie » et « Préparation des images ».
 - [ ] **46.8 Journal lisible** : relancer un run IGN dans le même dossier → « Dalle 2/2 déjà présente » (plus « téléchargée ») ; les modèles sont nommés par leur nom d'affichage (« Cratères d'obus (LD) »), jamais par leur identifiant (`crateres_seg_ld_v1`), dans le journal et dans les durées du rapport.
 - [ ] **46.9 Qt6** : rejouer 46.1, 46.6 et 46.7 sous QGIS 4.
+
+## 47. Cache des détections : seuil changé, dossier d'une version précédente ⭐ P0
+
+Le cache `technique/detection/<modèle>/raw_detections/` porte une clé (`cle_cache.json`) : fichiers du modèle, SAHI, seuils, IoU, moteur de détection. Clé différente ou absente → les images en cache sont purgées et ré-analysées.
+
+- [ ] **47.1 Seuil abaissé, même dossier** : lancer une détection (un modèle, une ou deux dalles), puis relancer dans le même dossier de sortie avec un seuil de confiance plus bas (étape 3, réglages avancés de l'entité) → le journal dit « Computer Vision [<modèle>] : N image(s) en cache calculée(s) avec un autre modèle, d'autres seuils ou un autre moteur — purgée(s), ré-inférence », les images sont réellement ré-analysées (durée du modèle mesurée en fin de run), et la couche compte plus d'objets qu'au premier lancement. Avant : les détections du premier lancement étaient resservies, seuil sans effet.
+- [ ] **47.2 Relance identique** : relancer sans rien changer, dans le même dossier → pas de message de purge, le journal dit « inférence sautée » et aucune durée de modèle n'est annoncée (0 image analysée) ; le résultat est identique.
+- [ ] **47.3 Dossier écrit par la 0.14.1** : relancer, avec cette version, dans un dossier de sortie produit par la 0.14.1 (détections déjà présentes, sans clé) → le journal annonce la purge et la ré-inférence ; `technique/detection/<modèle>/raw_detections/cle_cache.json` apparaît. Une relance suivante, identique, réutilise le cache (47.2).
+- [ ] **47.4 Qt6** : rejouer 47.1 sous QGIS 4.
+
+## 48. Détection impossible : moteur absent ou en échec ⭐ P0
+
+Lot 0d du chantier d'accélération (2026-10-15). Sans le moteur de détection livré avec l'extension, il n'y a pas de repli (onnxruntime n'est installé ni dans QGIS 3.44 ni dans QGIS 4.0) : l'échec doit se voir partout.
+
+- [ ] **48.1 Moteur absent** : renommer `data/third_party/cv_runner_onnx/windows/cv_runner_onnx.exe` du profil en `.exe.bak`, ouvrir l'étape 4 avec une entité cochée → l'état du système est rouge (`python:onnxruntime` critique) et le bandeau dit « l'environnement n'est pas prêt ». Le bouton reste actif (le préflight de l'étape 4 informe, comme en 0.14.1) : « Lancer le pipeline » s'arrête aussitôt sur « Préflight check : au moins une vérification CRITIQUE a échoué », sans rien écrire d'autre que `technique/journaux/pipeline_log_<ts>.txt`.
+- [ ] **48.2 Moteur en échec** : copier `C:\Windows\System32\where.exe` à la place de `cv_runner_onnx.exe` (il refuse l'option `--config`), lancer un run Indices existants (une dalle, Cratères) → la ligne du haut dit « ✗ Détection impossible après … : moteur de détection en échec (…) » en rouge, jamais « ✓ Terminé » ; le journal a une ligne ✗ « Détection impossible » avec le renvoi « voir Manuel › Dépannage › La détection est impossible » ; aucun GeoPackage dans `livrable/detections/` ; les TIF de `livrable/indices/` sont publiés.
+- [ ] **48.3 Traces** : après 48.2, `livrable/traitement.json` porte `"cv_engine": "none"` et `"cv_motif"` sans chemin du poste ; « Rapport » ouvre un rapport qui dit « Traitement terminé sans détection », puis « Détection impossible : … », et la colonne d'analyse du modèle dit « détection impossible ».
+- [ ] **48.4 Retour du moteur** : remettre le vrai `cv_runner_onnx.exe`, relancer dans le même dossier → ✓ Terminé, détections produites, `traitement.json` porte `"cv_engine": "binaire"` et plus de `cv_motif`.
+- [ ] **48.5 Un modèle sur deux en échec** (seulement si une structure est couverte par deux modèles installés, en comparaison) : faire échouer l'un des deux → la ligne de fin, le journal et le rapport nomment le modèle en échec (« « Modèle … » : … ») et disent que les autres modèles ont détecté normalement, jamais « aucune détection n'a été cherchée ».
+- [ ] **48.5 Qt6** : rejouer 48.2 et 48.4 sous QGIS 4 — aucun `AttributeError`.
+
+## 49. MNT reproductible : fusion en un passage ⭐ P0
+
+Lot 1 du chantier d'accélération (2026-10-15) : la fusion d'une dalle avec ses voisines est un seul `pdal pipeline --stream`, tout en lecture ordonnée ; l'ancienne fusion reste derrière `ARCHEO_FUSION_LEGACY=1` pendant une version.
+
+- [ ] **49.1 Reproductible** : deux runs LAZ locaux (bloc 3×3, MNT seul) dans deux dossiers vides → les `technique/intermediaires/*_merged.laz` ont le même sha256 deux à deux (`Get-FileHash`), les `livrable/indices/MNT/tif/*.tif` aussi.
+- [ ] **49.2 Dossier d'une version précédente** : relancer dans un dossier de sortie écrit par la 0.14.1 → le journal dit « ⚠️ Méthode de calcul mise à jour → cache des intermédiaires invalidé », aucune ligne « LAZ fusionné réutilisé » ; fusionnés et MNT recalculés ; chaque `*_merged.inputs.json` porte `"fusion": "flux-2"`.
+- [ ] **49.3 Dalle isolée, dalle de bord** : run sur une dalle seule (`dalle_A.txt`) puis sur une zone de bord (`zone_ACB.txt`) → ✓, MNT produit, aucune ligne « Échec merge ».
+- [ ] **49.4 Voisine illisible** : en LAZ locaux, remplacer une voisine par une copie tronquée de 1 Mo → ✓ ; le journal technique dit « voisine(s) illisible(s) écartée(s) → nouvelle fusion » pour les dalles qui la touchent.
+- [ ] **49.5 Trace** : `livrable/traitement.json` porte `pdal_version` (« 2.10.0 … » sous QGIS 4.0.3, « 2.9.0 … » sous QGIS 3.44) et `"fusion_laz": "flux-2"`.
+- [ ] **49.6 Interrupteur** : lancer QGIS avec `ARCHEO_FUSION_LEGACY=1` (ou `true`, `oui`) dans l'environnement et relancer dans le même dossier → « Méthode de calcul mise à jour », `technique/intermediaires/` contient de nouveau des `*_neighbor_N.laz`, `traitement.json` porte `"fusion_laz": "pdal-merge"`.
+- [ ] **49.8 Annulation pendant une voisine illisible** : LAZ locaux 3 × 3 avec une voisine tronquée (49.4), « Annuler » pendant « Validation PDAL profonde » → le traitement s'arrête en moins d'une minute, sans attendre la relecture des autres voisines ; aucun `.partial`.
+- [ ] **49.7 Qt6** : rejouer 49.1 et 49.2 sous QGIS 4.
+
+## 50. Téléchargement : note « vérifiée » et fichier `.partial` ⭐ P0
+
+Lot 3 du chantier d'accélération (2026-10-15) : une dalle lue en entier reçoit une note `<dalle>.verifie.json` (taille + date) et n'est plus relue ; un téléchargement s'écrit dans `<dalle>.partial`.
+
+- [ ] **50.1 Relance dans le même dossier** : deux lancements `ign_laz` ou LAZ locaux dans le même dossier → `technique/sources/dalles/` porte un `.verifie.json` par dalle ; le journal du 2ᵉ lancement dit « déjà présente (vérifiée) » pour chaque dalle et aucune ligne « Validation PDAL profonde ».
+- [ ] **50.2 Dalle modifiée** : ajouter un octet à une dalle, relancer → elle est relue en entier (« Validation PDAL profonde ») puis, si elle est tronquée, retéléchargée.
+- [ ] **50.3 Interruption** : fermer QGIS pendant un téléchargement → seul `<dalle>.partial` est sur le disque, aucun LAZ sous le nom final ; relancer → le `.partial` est supprimé et la dalle retéléchargée en entier.
+- [ ] **50.4 Qt6** : rejouer 50.1 sous QGIS 4.
+- [ ] **50.5 Note impossible à écrire** : rendre `technique/sources/dalles/` en lecture seule après le téléchargement, relancer → le journal complet dit « Note « vérifiée » de … non écrite (…) : la dalle sera relue en entier à la prochaine relance » et le traitement continue.
+
+## 51. Moteur d'indices intégré : mêmes images, sans Processing ⭐ P0
+
+> **Contexte** (0.15.0, lots 4 et 6 du chantier d'accélération) : les indices sont calculés par le plugin avec une
+> copie figée de la bibliothèque rvt (`src/pipeline/ign/products/rvt_embarque/`, `LICENSE` et `NOTICE` Apache 2.0).
+> Les images doivent être identiques à celles de la version précédente — la preuve automatique est le banc N2 —,
+> sauf MSTP et M-HS 8 bits (§ 52).
+
+- [ ] **51.1 LD** : un traitement avec la dominance locale → le journal complet du dossier de sortie (`technique/journaux/pipeline_log_*.txt`) porte, pour chaque dalle, `[PARAMS RVT/LD] … moteur=interne` ; l'image LD ressemble à celle d'un dossier calculé par la version précédente.
+- [ ] **51.2 Ancien calcul forcé** : QGIS lancé depuis une console où `set ARCHEO_INDICES_MOTEUR=processing`, même traitement dans un autre dossier → `moteur=processing` dans le journal, mêmes images (l'extension rvt-qgis est alors requise).
+- [ ] **51.4 Produits seuls** : HS, SVF, OPNS, SLO et SLRM cochés → `moteur=interne` sur leur ligne `[PARAMS RVT/…]` ; un MNT existant de plus de 2 801 px de côté (régime « large ») → le journal dit « au-delà d'une dalle standard : chaque produit recalcule ses couches ».
+- [ ] **51.5 Compositions** : VAT, CVAT, PRISM et CRIM cochés avec les indices simples → `moteur=interne` sur leurs lignes ; les quatre images ressemblent à celles de la version précédente (preuve au pixel : banc N2).
+- [ ] **51.3 Qt6** : rejouer 51.1 sous QGIS 4.
+
+## 52. MSTP à la luminosité réglée ; M-HS 8 bits à l'élévation réglée ⭐ P0
+
+> **Contexte** (0.15.0) : rvt-qgis arrondissait la luminosité du MSTP à l'entier et ignorait l'élévation et
+> l'exagération du M-HS 8 bits. Les deux sont maintenant appliquées ; les noms de dossier ne changent pas, une note
+> `<intermédiaire>.calcul` fait recalculer une fois un intermédiaire d'avant.
+
+- [ ] **52.1 MSTP par défaut à 0,9** : « ↺ » dans l'onglet MSTP → la luminosité vaut 0,9 ; le MSTP calculé s'écrit dans `MSTP_L3-21_M23-203_B100-400_Li0p9` et, à côté de celui d'un dossier de la version précédente dans QGIS, il est un peu plus sombre (10 niveaux sur 255 au plus), avec les mêmes formes et les mêmes couleurs.
+- [ ] **52.1 bis MSTP à 1,2** : luminosité 1,2 → dossier `…_Li1p2`, plus clair que celui de la version précédente (17 niveaux au plus) ; dans un dossier de la version précédente, recalculé une fois.
+- [ ] **52.2 Relance dans un dossier d'une version précédente** : relancer à l'identique → le journal complet porte `[PARAMS RVT/MSTP]` et `[PARAMS RVT/M_HS]` pour chaque dalle (recalculés), et « réutilisé (cache intermédiaire) » pour les autres indices ; `technique/intermediaires/` gagne un `.calcul` par MSTP et par M-HS.
+- [ ] **52.3 M-HS 8 bits à 50°** : élévation 50° → les ombres sont plus courtes qu'à 35° ; à 35°, l'image est celle de la version précédente.
+- [ ] **52.4 Réglages avancés › M-HS** : « Nombre de directions » est masqué quand « Sauver en 8 bits » est coché, réapparaît quand il est décoché ; après « Réinitialiser » et après un chargement de configuration, l'état suit la case ; le dossier reste `M_HS_D16_E35_V1`.
+- [ ] **52.4 bis Nom du M-HS 8 bits** : configuration avec `mdh.num_directions = 8` et « Sauver en 8 bits » coché → le dossier produit est `M_HS_D16_E35_V1` (le nombre de directions ne compte pas en 8 bits, le nom ne le porte plus) ; décoché → `M_HS_D8_E35_V1_F32`. Un dossier d'une version précédente qui porte `M_HS_D8_E35_V1` reste en place et le nouveau est écrit à côté (manuel, Résultats › Un dossier d'une version précédente).
+- [ ] **52.5 Qt6** : rejouer 52.4 sous QGIS 4.
+- [ ] **52.6 Mode de secours** : lancer QGIS avec `ARCHEO_INDICES_MOTEUR=processing`, MNT existant, MSTP et OPNS négative → calculés par rvt-qgis, `technique/intermediaires/` porte un `.calcul` « processing » à côté de chacun ; relancer → « réutilisé (cache intermédiaire) » pour les deux ; relancer sans la variable → recalculés une fois par le moteur intégré. Avec M-HS 8 bits à 100 directions dans la configuration → refusé à l'étape 4 (« hors des bornes du calcul ») dans ce mode seulement.
+
+## 53. Sans l'extension rvt-qgis ⭐ P0
+
+> **Contexte** (0.15.0) : les 12 indices sont calculés avec la bibliothèque rvt intégrée ; l'extension n'est plus
+> requise, et l'avoir installée ne change rien (le `rvt` de l'extension et celui du plugin ne se partagent jamais).
+
+- [ ] **53.1** Désactiver « Relief Visualization Toolbox » dans le gestionnaire d'extensions, redémarrer QGIS, cocher les 12 indices → étape 4 : « Moteur d'indices intégré » ✓, aucune ligne « Algorithmes RVT (Processing) » ; le traitement publie les 12 indices ; à l'installation du plugin, QGIS ne propose plus d'installer l'extension.
+- [ ] **53.2** Réactiver l'extension, refaire le même traitement dans un autre dossier → mêmes images (deux TIF au hasard, identiques dans QGIS ; la preuve au pixel est le N3, scénarios 8 et 9).
+- [ ] **53.3** Le ZIP livré contient `src/pipeline/ign/products/rvt_embarque/LICENSE` et `NOTICE` ; Aide › Installer et Glossaire citent le ZRC SAZU et l'Université de Ljubljana ; le rapport de traitement aussi (Sources).
+- [ ] **53.4 Qt6** : rejouer 53.1 sous QGIS 4.
+
+## 54. Réglages qui font ce qu'ils annoncent (audit du 2026-10-16) ⭐ P0
+
+> **Contexte** : chaque réglage de l'assistant a été changé seul et mesuré au pixel (`tests/unit/test_effet_reglages*.py`).
+> Les points ci-dessous rejouent dans QGIS les correctifs qui en sont sortis, un par paragraphe.
+
+- [ ] **54.1 Pente en pourcentage** : SLO coché, unité **Pourcentage**, sortie 8 bits → dossier `SLO_U2_V1` ; l'image ressemble à celle en degrés (plat blanc, talus noirs), elle n'est plus presque blanche. Décocher « Sauver en 8 bits », relancer dans un autre dossier → l'outil d'identification donne 36 sur une pente de 20° (pas 0,35). Une configuration d'une version précédente rouverte avec « Pourcentage » garde « Pourcentage ».
+- [ ] **54.2 Bascule 8 bits ↔ flottant à la relance** : HS et SVF cochés, lancement ; décocher « Sauver en 8 bits » dans les deux onglets, relancer **dans le même dossier de sortie** → le journal complet porte `[PARAMS RVT/HS]` et `[PARAMS RVT/SVF]` (recalculés, pas « réutilisé ») ; `livrable/indices/` gagne `HS_Az315_E35_V1_F32/` et `SVF_R10_D16_V1_N0_F32/` à côté des dossiers 8 bits, inchangés ; l'outil d'identification lit des valeurs décimales dans les `_F32`.
+- [ ] **54.3 Compositions en flottant** : VAT, PRISM et CVAT cochés, « Sauver en 8 bits » décoché dans leurs trois onglets → `livrable/indices/` contient `VAT_T0_B0_F32/`, `PRISM_T0_F32/` et `CVAT_F32/`, chacun avec ses TIF en Float32 (valeurs de 0 à 1) ; le journal ne porte plus « VAT non créé », « PRISM non créé » ni « CVAT : aucun raster produit ».
+- [ ] **54.4 Pas du MSTP** : MSTP aux réglages par défaut → dossier `MSTP_L3-21_M23-203_B100-400_Li0p9`, comme avant. Pas de l'échelle locale à 4, relance **dans le même dossier de sortie** → le journal complet porte `[PARAMS RVT/MSTP]` (recalculé, pas « réutilisé ») et `livrable/indices/` gagne `MSTP_L3-21_M23-203_B100-400_Li0p9_P4-18-60/`, à côté du premier, inchangé.
+- [ ] **54.5 Openness négative et sans-donnée** : MNT existant avec une zone sans donnée (plan d'eau masqué, bord de dalle étrangère), OPNS type **Négative** → au bord du vide, plus d'anneau clair ou sombre inventé ; le vide reste transparent. Relancer dans un dossier calculé par une version précédente → le journal complet porte `[PARAMS RVT/OPNS]` pour chaque dalle (recalculé une fois), puis « réutilisé » à la relance suivante.
+- [ ] **54.6 Bornes des réglages** : onglet LD → la résolution angulaire ne descend pas sous 4 ni ne dépasse 32, les rayons vont de 1 à 100, la hauteur de 0,5 à 20 ; monter le rayon min au-dessus du rayon max relève le max d'autant (et baisser le max sous le min baisse le min), dès l'ouverture de l'onglet. SLRM : rayon de 10 à 50. M-HS : directions de 2 à 64. SVF et OPNS : une configuration avec `svf.radius = 60` ou `opns.num_directions = 100` → refusée à l'étape 4 (« Indice SVF / « Rayon » : 60 hors des bornes du calcul (10 à 50) »), plus de ligne « ramené à 50 » au calcul. Une configuration dont `ldo.angular_res` vaut 2 (éditée à la main dans `last_ui_config.json`, QGIS fermé) → à l'ouverture de l'assistant, un message « Réglage ramené dans ses bornes : LD / « Résolution angulaire » : 2 lu dans la configuration, hors des bornes du réglage (4 à 32) — 4 retenu. » ; l'étape 2 montre 4. De même, `crim.colormap` à `viridis` (non proposé) → « CRIM / « colormap » : viridis lu dans la configuration, n'est pas proposé (OrRd, Reds_r, YlOrRd, Greys_r, gist_earth) — OrRd retenu. », l'onglet CRIM montre « Orangé → rouge (OrRd) » et le dossier produit est `CRIM_COrRd_…`. Un refus de l'étape 4 (bandeau « Indice … hors des bornes du calcul ») pose sa pastille sur l'étape 2, pas sur l'étape 1.
+- [ ] **54.7 Champs sans effet** : onglet MSTP → plus de « Facteur VE ». Mode **MNT existant**, réglages avancés → la carte Tuilage ne montre plus la marge, seulement la ligne de diagnostic ; mode **LAZ local** → la marge revient. Infobulle de « Suppression du bruit » (SVF, OPNS) : « « 1 » (faible) n'agit qu'à partir d'un rayon de 15 px ».
+- [ ] **54.8 Aire minimale d'une entité** : Parcellaire, Talus et fossés et Chemins creux cochés ; réglages avancés de **Parcellaire** seulement : aire minimale 500 m² → après le traitement, `parcellaire.gpkg` ne garde que des polygones de 500 m² et plus, et `chemins_creux.gpkg` / `talus_et_fosses.gpkg` ont le même nombre de détections qu'avec l'aire à 0 (comparer avec un traitement aux réglages par défaut, même dalle). Le journal complet porte « aire minimale de l'entité parcellaire : 500 m² ». Le cadre « Par où commencer » et `rapport.html` annoncent pour Parcellaire le nombre d'entités de `parcellaire.gpkg` (31 et non 44 sur la dalle du banc).
+- [ ] **54.9 Confiance min du regroupement** : Regroupement de cratères coché, « Confiance min » de 0,40 à 0,60 → le journal complet porte, à la ligne du regroupement, `min_confidence=0.6` et une extension `[0.49, 0.6[` (au lieu de `[0.29, 0.6[`) ; les zones sont plus petites ou moins nombreuses qu'à 0,40. Infobulle du champ : « Seuil des détections qui ouvrent une zone… ». Changer ensuite un autre champ du regroupement (distance, taille) : aucune erreur Python dans QGIS, et le journal porte les deux valeurs saisies.
+- [ ] **54.10 Noms et textes** : LAZ local à résolution 1 m → `livrable/indices/MNT/tif/…_MNT_A_1M00_LAMB93_IGN69.tif` (à 0,5 m : `…_0M50_…`, comme avant) ; relancer ce même lot à 0,5 m dans le même dossier → le dossier `MNT/tif/` ne garde que les `…_0M50_…`, et `index_MNT.vrt` est à 0,5 m (Propriétés › Information). MNT existant fourni à 1 m → `…_MNT_A_1M00_…`. `rapport.html`, tableau des produits : le MNT dit « résolution 1 m, points retenus : Classification = 2 OR … », la densité « résolution 1 m », la couverture « zones mal couvertes sous 30 % » ; un M-HS 8 bits dit « trois éclairages composés ». Étape 4 › Paramètres avancés : 3 workers par défaut, et la note dit que MNT et indices sont calculés une dalle après l'autre.
+- [ ] **54.11 MNT au bon endroit** : LAZ local de 3 × 3 dalles, MNT, densité et HS → la densité publiée a son coin sur un mètre entier (Propriétés › Information : origine sans décimale) ; le journal complet porte, pour chaque dalle, « MNT : grille calée sur … (multiples de 0.5 m) » ; dans QGIS, le MNT publié et le MNT de travail (`technique/intermediaires/…_merged_MNT.tif`) ombrés se superposent exactement au 1:200 (pas de saut d'un quart de mètre en basculant). Relancer le même lot avec une marge de 40 % dans un autre dossier → MNT publiés identiques (différence nulle hors des 50 m de bord). Relancer un dossier d'une version précédente → « ⚠️ Méthode de calcul mise à jour », MNT et indices recalculés une fois.
+
+## 55. Fusion filtrée : le nuage fusionné ne garde que les points du filtre ⭐ P0
+
+> **Contexte** (0.15.0, 2026-10-17) : la fusion en flux applique le filtre des points de l'étape 2 ; le nuage
+> fusionné de `technique/intermediaires/` ne contient plus la végétation. Mesuré : MNT 170 → 42 s, 10,7 → 6,3 Go,
+> MNT et densité identiques au pixel. Les bornes du nuage avant filtrage sont dans `<dalle>_merged.inputs.json`.
+
+- [ ] **55.1 Nuage filtré** : LiDAR local, une dalle de forêt, MNT et densité → `technique/intermediaires/<dalle>_merged.laz` pèse bien moins que la dalle source (de l'ordre du quart en forêt) ; `pdal info --metadata` donne un nombre de points de l'ordre de celui des classes du filtre ; `<dalle>_merged.inputs.json` porte `"fusion": "flux-2"`, `"filtre"` en syntaxe PDAL (`Classification == 2 || …`) et `"bornes"` (quatre nombres).
+- [ ] **55.2 Mêmes images** : le MNT et la densité publiés sont identiques au pixel à ceux d'un traitement de la même dalle fait avant ce changement avec la même grille (comparer dans QGIS par la calculatrice raster, différence nulle partout).
+- [ ] **55.3 Filtre non reconnu** : filtre des points `Classification IN (2, 6)` → le journal porte « ⚠️ Filtre des points non reconnu … : fusion sans filtre » avec le renvoi « voir Manuel › Dépannage › Le filtre des points n'est pas reconnu » ; le nuage fusionné garde tous les points (`"filtre": null` dans le sidecar) ; le MNT est produit quand même.
+- [ ] **55.4 Relance dans un dossier d'une version précédente** : relancer dans un dossier 0.14.1 → « Méthode de calcul mise à jour → cache des intermédiaires invalidé », fusions et MNT refaits une fois, puis « réutilisé (cache intermédiaire) » à la relance suivante.
+
+## 56. Détection sur la carte graphique (DirectML) ⭐ P0
+
+> **Contexte** (0.15.0, 2026-10-18, vague 3) : option de l'étape 4, décochée par défaut, Windows seulement.
+> Le binaire est compilé avec `onnxruntime-directml` 1.24.4 (sa partie processeur = mêmes détections qu'avant).
+> Sonde par poste sur la première image (processeur puis chaque carte), carte retenue si plus rapide et mêmes
+> détections ; décision mémorisée dans `archeologia/carte_graphique.json` du profil ; repli processeur annoncé.
+> Banc 2026-10-15 : ×7,5 sur l'IA, 13 546/13 546 objets finaux retrouvés, écart de confiance ≤ 0,009.
+
+- [ ] **56.1 Décochée par défaut** : profil neuf, étape 4 › Paramètres avancés → « Détection sur la carte graphique » décochée, aperçu replié « workers : 3 · carte graphique : non » ; un run sans l'option ne porte aucune ligne « carte graphique » dans le journal, `traitement.json` n'a pas de clé `appareil`.
+- [ ] **56.2 Première sonde** : cocher l'option, indices existants (LD) avec un modèle, dossier neuf → au premier modèle, après la première image, le journal porte une ligne 🎮 « « Modèle » : détection sur la carte graphique « <nom de la carte> » : première image en X s contre Y s sur le processeur, N détection(s) retrouvée(s), écart de confiance max 0,0xx » (X nettement < Y) ; la fin du modèle dit « … images analysées en … sur la carte graphique » ; `rapport.html` colonne Analyse « sur la carte graphique « <nom> » » ; `traitement.json` › `cv_runs[].appareil = "carte_graphique"` et `carte` ; `archeologia/carte_graphique.json` du profil porte une entrée datée.
+- [ ] **56.3 Mêmes détections** : comparer le GeoPackage du modèle avec celui d'un run identique sans l'option (dossier à part) : mêmes objets, écarts de confiance ≤ 0,01 sauf bascules au seuil.
+- [ ] **56.4 Décision mémorisée** : relancer le même modèle dans un nouveau dossier → pas de sonde, ligne « détection sur la carte graphique « <nom> » (vérifiée sur ce poste) » dès la première image ; durée par image divisée d'autant que 56.2.
+- [ ] **56.5 Carte écartée** : sur un poste à carte intégrée seule (ou en bureau à distance), même scénario → « ⚠️ « Modèle » : carte graphique écartée : <carte> : pas plus rapide que le processeur (…) ; détection sur le processeur » avec le renvoi « voir Manuel › Dépannage › La carte graphique n'est pas utilisée » ; la relance suivante dit « écartée sur ce poste le JJ/MM/AAAA (…) ; nouvel essai après 7 jours » sans sonder.
+- [ ] **56.6 Sans carte** : poste sans carte (machine virtuelle) → « carte graphique demandée, mais aucune carte graphique utilisable sur ce poste » ; détection sur le processeur, run complet.
+- [ ] **56.7 Binaire sans DirectML** : remplacer l'exe par un build `--cpu` → « le moteur de détection livré ne la prend pas en charge » ; `test_binaire_windows_avec_directml` rouge.
+- [ ] **56.8 Comparaison A/B** : deux modèles sur une entité, option cochée → chaque modèle a sa propre ligne de sonde et sa propre entrée mémorisée (clé par modèle).

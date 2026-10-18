@@ -7,6 +7,8 @@ d'import) et facilement testable.
 """
 from __future__ import annotations
 
+import hashlib
+import json
 import re
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -110,3 +112,101 @@ def list_candidate_pngs(
     all_pngs = sorted(jpg_dir.glob("*.png"))
     scan_all = bool(cv_config.get("scan_all", False))
     return all_pngs if scan_all else all_pngs[:1]
+
+
+#: Clé du cache des détections, à côté des ``.txt``/``.json`` qu'elle couvre.
+FICHIER_CLE_CACHE = "cle_cache.json"
+
+#: Fichiers du dossier d'un modèle lus par l'inférence, en plus de ses poids.
+_FICHIERS_DU_MODELE = ("args.yaml", "classes.txt")
+
+
+def _sha256(path: Path) -> str:
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for bloc in iter(lambda: f.read(1 << 20), b""):
+            h.update(bloc)
+    return h.hexdigest()
+
+
+def version_moteur(ext: Optional[Path]) -> str:
+    """Le moteur qui produira les détections : le binaire, identifié par le
+    ``sources_sha256`` du ``build_info.json`` posé à côté de lui par
+    ``dev/runner_onnx/build.py`` ; ``"python"`` pour l'inférence dans QGIS."""
+    if ext is None:
+        return "python"
+    try:
+        info = json.loads((Path(ext).parent / "build_info.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return "binaire:inconnu"
+    return f"binaire:{info.get('sources_sha256') or info.get('commit') or 'inconnu'}"
+
+
+def cle_cache_detections(
+    cv_config: Dict[str, Any], weights_path: Optional[Path], moteur: str
+) -> Dict[str, Any]:
+    """Tout ce dont dépendent les détections brutes d'un modèle : ses fichiers
+    (poids ``.onnx``, métadonnées ``.json``, ``args.yaml``, ``classes.txt``), le
+    SAHI résolu, les seuils et l'IoU envoyés au moteur, le moteur lui-même.
+
+    Passée par un aller-retour JSON : elle se compare telle quelle au fichier relu.
+    """
+    fichiers: Dict[str, str] = {}
+    if weights_path is not None and Path(weights_path).is_file():
+        poids = Path(weights_path)
+        dossier = poids.parent.parent if poids.parent.name == "weights" else poids.parent
+        for p in [poids, poids.with_suffix(".json"), *(dossier / n for n in _FICHIERS_DU_MODELE)]:
+            if p.is_file():
+                fichiers[p.name] = _sha256(p)
+    cle = {
+        "modele": fichiers,
+        "sahi": cv_config.get("sahi") or {},
+        "confidence_threshold": cv_config.get("confidence_threshold"),
+        "confidence_per_class": cv_config.get("confidence_per_class") or {},
+        "iou_threshold": cv_config.get("iou_threshold"),
+        "moteur": moteur,
+    }
+    return json.loads(json.dumps(cle, sort_keys=True))
+
+
+def aligner_cache_detections(raw_dir: Path, cle: Dict[str, Any]) -> int:
+    """Purge les détections en cache de ``raw_dir`` calculées sous une autre clé
+    — ou sous aucune : dossier d'une version précédente —, puis enregistre la
+    clé courante. Renvoie le nombre d'images purgées.
+
+    Le binaire saute toute image dont le ``.txt``/``.json`` existe : sans cette
+    purge, un seuil abaissé, un autre modèle ou un autre moteur resservaient les
+    détections du lancement précédent. ``classes.txt`` part aussi (le plugin le
+    réécrit aussitôt). Une suppression impossible laisse l'ancienne clé : le
+    lancement suivant purge de nouveau.
+    """
+    fichier = raw_dir / FICHIER_CLE_CACHE
+    try:
+        if json.loads(fichier.read_text(encoding="utf-8")) == cle:
+            return 0
+    except (OSError, ValueError):
+        pass
+    images = set()
+    complet = True
+    for p in sorted(raw_dir.glob("*.txt")) + sorted(raw_dir.glob("*.json")):
+        if p.name == FICHIER_CLE_CACHE:
+            continue
+        try:
+            p.unlink()
+        except OSError:
+            complet = False
+            continue
+        if p.name != "classes.txt":
+            images.add(p.stem)
+    if complet:
+        raw_dir.mkdir(parents=True, exist_ok=True)
+        fichier.write_text(json.dumps(cle, sort_keys=True, indent=1), encoding="utf-8")
+    return len(images)
+
+
+def image_deja_traitee(raw_dir: Path, stem: str, force_reprocess: bool) -> bool:
+    """Vrai si l'image a ses détections en cache et qu'on ne force pas le
+    re-traitement. Règle unique du plugin, du binaire (CLI) et du repli Python :
+    le binaire sautait toute image au cache sans lire ``force_reprocess``, et une
+    image annotée seule suffisait à le faire sauter."""
+    return not force_reprocess and has_cached_detection(raw_dir, stem)

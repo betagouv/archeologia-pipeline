@@ -29,7 +29,7 @@ Pur (aucun import QGIS) : testable en standalone, cf.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Dict, List, Mapping, Optional, Tuple
+from typing import Dict, List, Mapping, Optional, Sequence, Tuple
 
 # Marge maximale que ``preprocess.prepare_merged_tiles`` sait découper chez les
 # dalles voisines. Au-delà, le recouvrement demandé est silencieusement rogné.
@@ -60,7 +60,7 @@ KERNEL_PARAMS: Dict[str, KernelParam] = {
     "OPNS": KernelParam("opns", "radius", 10, "Rayon"),
     "LD": KernelParam("ldo", "max_radius", 20, "Rayon max"),
     "SLRM": KernelParam("slrm", "radius", 20, "Rayon"),
-    "MSTP": KernelParam("mstp", "broad_scale_max", 2023, "Échelle large — rayon max"),
+    "MSTP": KernelParam("mstp", "broad_scale_max", 400, "Échelle large — rayon max"),
     # VAT, CVAT, PRISM et CRIM n'ont volontairement PAS d'entrée : leurs
     # noyaux (openness, SVF) sont figés aux défauts RVT — rayon 10 px, soit 5 m
     # au pas de 0,5 m, très en deçà de la marge de tuilage (20 m par défaut).
@@ -68,11 +68,12 @@ KERNEL_PARAMS: Dict[str, KernelParam] = {
     # rayon du SVF ou à l'échelle large du MSTP, exposés à l'utilisateur.
 }
 
-# Bandes d'échelle MSTP : (préfixe de clé, libellé, min, max, pas) par défaut.
+# Bandes d'échelle MSTP : (préfixe de clé, libellé, min, max, pas) par défaut — miroir de
+# rvt_naming.MSTP_DEFAUTS (src/app ne l'importe pas : test de synchronisation).
 _MSTP_BANDS: Tuple[Tuple[str, str, int, int, int], ...] = (
     ("local_scale", "Échelle locale", 3, 21, 2),
     ("meso_scale", "Échelle méso", 23, 203, 18),
-    ("broad_scale", "Échelle large", 223, 2023, 180),
+    ("broad_scale", "Échelle large", 100, 400, 60),
 )
 
 
@@ -256,4 +257,95 @@ def mstp_scale_errors(
                 f"({hi} px) est plus petit que le pas ({step} px) — RVT refuse ce "
                 f"réglage. Réduisez le pas à ≤ {hi - lo} px."
             )
+    return messages
+
+
+#: Réglages contrôlés avant le lancement contre les bornes du moteur (moteur_indices.BORNES) :
+#: (produit, section, clé, libellé à l'étape 2, flottant ?). Hors bornes, le moteur refuse et la dalle ENTIÈRE échoue
+#: (aucun de ses produits n'est publié), après le téléchargement et le MNT. Les rayons du SVF et de l'OPNS n'y sont
+#: pas : ils sont ramenés dans leurs bornes, avec une ligne de journal (rvt_naming._horizon_settings).
+_REGLAGES_BORNES = (
+    ("HS", "hs", "sun_azimuth", "Azimut solaire", False),
+    ("HS", "hs", "sun_elevation", "Élévation solaire", False),
+    ("M_HS", "mdh", "sun_elevation", "Élévation solaire", False),
+    ("LD", "ldo", "angular_res", "Résolution angulaire", False),
+    ("LD", "ldo", "min_radius", "Rayon min", False),
+    ("LD", "ldo", "max_radius", "Rayon max", False),
+    ("LD", "ldo", "observer_h", "Hauteur observateur", True),
+    ("SLRM", "slrm", "radius", "Rayon", False),
+    ("MSTP", "mstp", "lightness", "Luminosité", True),
+    # SVF et OPNS étaient ramenés dans les bornes au calcul, avec une ligne de journal, quand LD et SLRM étaient
+    # refusés avant le lancement : une seule politique (revue de l'audit, pt 21), le refus avant le lancement.
+    ("SVF", "svf", "radius", "Rayon", False),
+    ("SVF", "svf", "num_directions", "Nombre de directions", False),
+    ("SVF", "svf", "noise_remove", "Suppression du bruit", False),
+    ("OPNS", "opns", "radius", "Rayon", False),
+    ("OPNS", "opns", "num_directions", "Nombre de directions", False),
+    ("OPNS", "opns", "noise_remove", "Suppression du bruit", False),
+)
+
+
+def _nombre(value, flottant: bool):
+    try:
+        v = float(str(value).replace(",", "."))
+    except (TypeError, ValueError):
+        return None
+    return v if flottant else int(v)
+
+
+def message_ecretage(produit: str, cle: str, lue, mini: float, maxi: float, flottant: bool) -> Optional[str]:
+    """Message d'un réglage chargé hors des bornes de son champ, que l'étape 2 écrête ; ``None`` dans les bornes
+    ou sans nombre (le défaut s'applique alors). Lecture comme le champ : virgule française, entier tronqué."""
+    v = _nombre(lue, flottant)
+    if v is None or mini <= v <= maxi:
+        return None
+    retenue = mini if v < mini else maxi
+    libelle = next((lib for p, _s, c, lib, _f in _REGLAGES_BORNES if p == produit and c == cle), cle)
+    return (f"{produit.replace('_', '-')} / « {libelle} » : {v:g} lu dans la configuration, hors des bornes du "
+            f"réglage ({mini:g} à {maxi:g}) — {retenue:g} retenu.")
+
+
+def message_choix_inconnu(produit: str, cle: str, lue, proposes: Sequence, retenue) -> Optional[str]:
+    """Message d'un choix chargé que la liste de l'étape 2 ne propose pas (colormap CRIM d'une configuration
+    écrite à la main, par exemple) et qu'elle remplace par ``retenue`` ; ``None`` si le choix est proposé ou
+    absent (le défaut s'applique alors). Même règle que :func:`message_ecretage` : le dire, jamais en silence."""
+    if lue is None or lue in proposes:
+        return None
+    return (f"{produit.replace('_', '-')} / « {cle} » : {lue} lu dans la configuration, n'est pas proposé "
+            f"({', '.join(str(p) for p in proposes)}) — {retenue} retenu.")
+
+
+def bornes_errors(products: Optional[Mapping], rvt_params: Optional[Mapping],
+                  secours_processing: bool = False) -> List[str]:
+    """Réglages hors des bornes du moteur, et rayon min du LD hors de [1 ; rayon max] : bloquant avant le lancement.
+
+    Lecture des valeurs comme indices.py (virgule française, entier tronqué) ; une clé absente prend le défaut du
+    pipeline, toujours dans les bornes. Le nombre de directions du M-HS n'est contrôlé qu'en sortie flottante, la
+    seule où il compte (le 8 bits compose trois éclairages fixes) — sauf en mode de secours Processing
+    (``secours_processing``), où rvt-qgis le refuse aussi en 8 bits.
+    """
+    try:
+        from ...pipeline.ign.products.moteur_indices import BORNES
+    except ImportError:  # pragma: no cover - tests (src/ sur le chemin)
+        from pipeline.ign.products.moteur_indices import BORNES
+    messages: List[str] = []
+    reglages = list(_REGLAGES_BORNES)
+    if _requested(products, "M_HS") and (secours_processing or not _section(rvt_params, "mdh").get("save_as_8bit", True)):
+        reglages.append(("M_HS", "mdh", "num_directions", "Nombre de directions", False))
+    for produit, section, cle, libelle, flottant in reglages:
+        if not _requested(products, produit) or cle not in _section(rvt_params, section):
+            continue
+        v = _nombre(_section(rvt_params, section)[cle], flottant)
+        lo, hi = BORNES[produit][cle]
+        if v is None or (cle == "observer_h" and v <= 0):   # 0 : remplacé par 1,7 au calcul, avec une ligne de journal
+            continue
+        if not lo <= v <= hi:
+            messages.append(f"Indice {produit.replace('_', '-')} / « {libelle} » : {v:g} hors des bornes du calcul "
+                            f"({lo:g} à {hi:g}) — la dalle échouerait.")
+    if _requested(products, "LD"):
+        ld = _section(rvt_params, "ldo")
+        rmin, rmax = _nombre(ld.get("min_radius", 10), False), _nombre(ld.get("max_radius", 20), False)
+        if rmin is not None and rmax is not None and not 1 <= rmin <= rmax:
+            messages.append(f"Indice LD / « Rayon min » : {rmin} px — il doit valoir au moins 1 et au plus le rayon max "
+                            f"({rmax} px) ; sinon l'image ne porte aucune valeur.")
     return messages

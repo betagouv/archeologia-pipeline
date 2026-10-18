@@ -31,3 +31,9 @@ def check_cancelled(cancel: Optional[CancelCheckFn]) -> None:
     """
     if cancel is not None and cancel():
         raise PipelineCancelled()
+
+
+class DetectionImpossible(RuntimeError):
+    """La détection n'a pas pu tourner : moteur (binaire) absent ou en échec, et
+    pas de repli possible (onnxruntime absent des Pythons de QGIS). Le message est
+    le motif montré à l'utilisateur : en français, sans chemin du poste."""

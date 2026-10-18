@@ -193,6 +193,12 @@ class TestRvtAlgosCheck:
 
     NAME = "Algorithmes RVT (Processing)"
 
+    @pytest.fixture(autouse=True)
+    def _ancien_calcul_force(self, monkeypatch):
+        # Ces tests visent le contrôle du registre Processing : on force l'ancien calcul (0.15.0), sinon les
+        # produits du moteur intégré n'y passent plus.
+        monkeypatch.setenv("ARCHEO_INDICES_MOTEUR", "processing")
+
     @staticmethod
     def _install_fake_qgis(monkeypatch, *, algos, has_provider=True):
         import sys
@@ -341,3 +347,59 @@ class TestCheckRasterCrs:
         results = []
         _check_raster_crs(str(tmp_path), ("tif",), results)
         assert not any(r.name == "Dalles dégénérées" for r in results)
+
+
+class TestMoteurIntegre:
+    """« Moteur d'indices intégré » (0.15.0) : la bibliothèque rvt embarquée se charge-t-elle ?"""
+
+    NAME = "Moteur d'indices intégré"
+    CHEMIN = "pipeline.ign.products.moteur_indices.moteur_disponible"
+
+    def _collect(self, products):
+        return collect_preflight_results(mode="ign_laz", cv_config={"enabled": False}, products=products,
+                                         files_config={}, output_dir=None)
+
+    def test_bibliotheque_chargee(self, monkeypatch):
+        monkeypatch.setattr(self.CHEMIN, lambda: "")
+        r = next(x for x in self._collect({"CVAT": True}) if x.name == self.NAME)
+        assert r.ok and "CVAT" in r.details
+
+    def test_cvat_et_crim_seuls_ne_bloquent_pas(self, monkeypatch):
+        # Comme avant : sans bibliothèque, CVAT et CRIM sont sautés avec un message, la dalle continue.
+        monkeypatch.setattr(self.CHEMIN, lambda: "ModuleNotFoundError: No module named 'scipy'")
+        r = next(x for x in self._collect({"CVAT": True, "CRIM": True}) if x.name == self.NAME)
+        assert not r.ok and not r.critical and "scipy" in r.details
+
+    def test_aucun_produit_du_moteur_aucun_controle(self):
+        assert not any(x.name == self.NAME for x in self._collect({"MNT": True}))
+
+def test_ld_par_le_moteur_n_exige_plus_rvt_qgis(monkeypatch):
+    monkeypatch.delenv("ARCHEO_INDICES_MOTEUR", raising=False)
+    monkeypatch.setattr("pipeline.ign.products.moteur_indices.moteur_disponible", lambda: "")
+    res = {r.name: r for r in collect_preflight_results(mode="ign_laz", cv_config={"enabled": False},
+                                                        products={"LD": True}, files_config={}, output_dir=None)}
+    assert "Algorithmes RVT (Processing)" not in res
+    assert res["Moteur d'indices intégré"].ok and res["Moteur d'indices intégré"].critical
+
+
+def test_ld_forcee_par_processing_exige_rvt_ld(monkeypatch):
+    # Effet de ARCHEO_INDICES_MOTEUR=processing sur le préflight : LD redevient un algorithme requis.
+    monkeypatch.setenv("ARCHEO_INDICES_MOTEUR", "processing")
+    TestRvtAlgosCheck._install_fake_qgis(monkeypatch, algos=set(), has_provider=True)
+    res = {r.name: r for r in collect_preflight_results(mode="ign_laz", cv_config={"enabled": False},
+                                                        products={"LD": True}, files_config={}, output_dir=None)}
+    assert "Moteur d'indices intégré" not in res
+    r = res["Algorithmes RVT (Processing)"]
+    assert not r.ok and r.critical and "rvt_ld" in r.details
+
+
+def test_les_12_indices_sans_rvt_qgis(monkeypatch):
+    """0.15.0 : sans ARCHEO_INDICES_MOTEUR=processing, aucun algorithme rvt:* n'est exigé (N3 scénario 8)."""
+    monkeypatch.delenv("ARCHEO_INDICES_MOTEUR", raising=False)
+    monkeypatch.setattr("pipeline.ign.products.moteur_indices.moteur_disponible", lambda: "")
+    douze = ["HS", "M_HS", "SVF", "OPNS", "SLO", "LD", "SLRM", "VAT", "MSTP", "CVAT", "PRISM", "CRIM"]
+    res = {r.name: r for r in collect_preflight_results(mode="existing_mnt", cv_config={"enabled": False},
+                                                        products={p: True for p in douze}, files_config={},
+                                                        output_dir=None)}
+    assert "Algorithmes RVT (Processing)" not in res
+    assert res["Moteur d'indices intégré"].ok and all(p in res["Moteur d'indices intégré"].details for p in douze)

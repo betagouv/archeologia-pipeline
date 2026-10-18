@@ -4,27 +4,27 @@ fileignoreconfig:
 - filename: tests/unit/test_opns.py
   checksum: 0506c8a17e9157f23cf0cbcd449ce4703241b1ed07c051270b39ed4484dfcf4a
 - filename: metadata.txt
-  checksum: d087e21da9ebe1a2cabd39529cab8edd6c275c65ffc3274145fea569845098a8
+  checksum: 8229b79f45a9075c2277f43bee4609c0ff1b1ec0563c73c3b9b125a0658bbe94
 - filename: tests/unit/test_mnt_chien_de_garde.py
   checksum: fbb2c02d82caaf493cc5be4f107d9ad7b9e9b753a835b33de36e913e9ca7f7b5
 - filename: src/pipeline/ign/products/mnt.py
-  checksum: 1e5cde94f4c045dd9b2975f1479347239cd3c7022df8b9fcb5dba9360b12ebe8
+  checksum: 46dea2f446e7792201de92fa0c0b5016b61fd133ce5713346c1d27b6772f7f04
 - filename: tests/unit/test_neighbor_halo.py
-  checksum: f1cc2dac01c4ad78b8a38630fa00ddab9b644d354f1dcc9f9b314bc20e2f0201
+  checksum: 64e47d182bea9e054bee3e30e9870d522472eeb3bf14fcf92996892dc0e785af
 - filename: tests/unit/test_merge_inputs_freshness.py
   checksum: f22da81d19eb8211793400d91f6a4b8e18a31a21a3953ad17b70b9fde37680ce
 - filename: tests/unit/test_cache_guard.py
-  checksum: 42fa6e522d5c85b15f8ec32ceb5da02cc09f364476435a442f6b1970612d34c5
+  checksum: 1a29ff5cf625c166cb263270f22e8c8e074ac18658f9412f18f761b8172c4c36
 - filename: tests/unit/test_indices_freshness.py
-  checksum: 6c3c4589bedfd1f34a4f0b5cabe9b26a15af76f2366887301e0da134d3627b4c
+  checksum: 5d6193f34ee53622336bf4dbac572ea706c2b64729aef8e5209854a99044ce4e
 - filename: tests/unit/test_results_freshness.py
-  checksum: 6406646d24c7d1b443edd1e42636afba0a983f12bde7214702ffb1cf5db4670b
+  checksum: d5caa3fc729100e364efb3da8c80646fc68d86594e9be207080dcb08de1398fe
 - filename: .githooks/pre-push
   checksum: b0e75a8b481a83c7a519218d19fa137bfe34752ee3b1f5fbf3fafd19b1d15b03
 - filename: CLAUDE.md
-  checksum: 1035be5aec73a319dd56c0ef428bee494dcadef2e61d2071f8e664a40b25a666
+  checksum: ad3ce3058362db052619db9b6ebc9e65a046ef95f78847aa92eb1413d6cf9400
 - filename: README.md
-  checksum: e3f3d410bee1b412cf75d6cd5ce571a29440a739eaa52699c6b951f19df043ca
+  checksum: db6eda15d8c1174952781000de5011a69c7963a78584e865056fe7377d50ffb7
 - filename: dev/docs/documentation_utilisateur_v1.docx
   checksum: 9984314b88553c8aa0de31f28403d664eba5a2426681c22a6b1c29e5c787cc5e
 - filename: dev/docs/specs/2026-06-11-produit-couverture-design.md
@@ -40,23 +40,23 @@ fileignoreconfig:
 - filename: scripts/validate_models_metadata.py
   checksum: 7afe6368d2cb2f9920cab67d14935bb94966dfdf6554b932423f53513ce4a97c
 - filename: src/app/run_context.py
-  checksum: 4d18a8d7e40dbaf7c90be9a038d5aa70b0ccd6764dcced6325345fd04985e2be
+  checksum: 3053b3e01737231bfa161ea5d63295ed777971da21d5436397f84e4f821a063a
 - filename: src/app/services/fiabilite.py
-  checksum: 2be92628ee9f9d642c3536b8aedbf2537ef67342897d8961bc86902f301aa347
+  checksum: de0d40eba6bb63702bdf2a502f9ae8f00bdee28277e22b8332d30377b872fb75
 - filename: src/app/services/finalize_service.py
-  checksum: a6446d3769672781ff2da4ea7703fbe30a3a5d2d4e39163a3518de3e95466606
+  checksum: 56d7334187e4f51f0ad7370bf9a0eb50caa7970c19d652cb73838a864dea62a7
 - filename: src/app/services/indices_model.py
   checksum: 5cdf912ee7fd9946454e8e000e01a988b758463d3e91f8b2899d9beec89b9b77
 - filename: src/app/services/model_orchestrator.py
-  checksum: 9816e01302139604c3fc3e4d5100d29247138581409cdb82decc5443f4b227a8
+  checksum: e9de3d6de9625354f80f01acf4daeb674c0fffc0d9925c01ea7272f82dbf29ba
 - filename: src/app/services/proxy_config.py
   checksum: cb7fe5903254aafead5171c65d9fcb148a9c5bd0ec4caeadc0a035ed83bc13fa
 - filename: src/app/services/rvt_kernel_context.py
-  checksum: 12c10b21f54ea685cf6511e857dee538e35d59424b3e75ff1febe57bff0c3804
+  checksum: a24612e495e5230910cf01061a71447f88028939c850b673093a0a35650c0bbe
 - filename: src/app/services/source_modes.py
   checksum: 3552e4b79f37aaf1f2ffde751f47050d1c293d80b1f03e5d804513f27a2878b9
 - filename: src/config/config_manager.py
-  checksum: 3f15916af220104ac6c44a68aadc7fdf3a4334b5a2955f40748fce5f51191967
+  checksum: eb7ad2266a9b223509ba9269895237fe841a1f7a951555b4b69bd5f422103115
 - filename: src/pipeline/coverage_polygons.py
   checksum: 8af2d1c7973b36884a4615f57e4c2abbbcd4bd3757ab48ed3a2bbe0840516e37
 - filename: src/pipeline/cv/alignment.py
@@ -68,7 +68,7 @@ fileignoreconfig:
 - filename: src/pipeline/cv/clustering_bounds.py
   checksum: a53968cd2a888ddf1a432388d8fec82c1ec669c7e451499d43107ff0cdadb770
 - filename: src/pipeline/cv/computer_vision_onnx.py
-  checksum: a153d1c9f4a8655c893ec996adccf2d76151634f8cd54b94fd68e70ca2c15309
+  checksum: c0e37a213e18671e2417f2326e82e6fd393b03f160cf04fe8e9ab5cd8b945043
 - filename: src/pipeline/cv/computer_vision_rfdetr.py
   checksum: 3c3de1d9bab52f155e9cc9f5f54a60f43c2ea784d485f8959603bbdc5e07d768
 - filename: src/pipeline/cv/conversion_shp.py
@@ -82,25 +82,25 @@ fileignoreconfig:
 - filename: src/pipeline/ign/coords_fallback.py
   checksum: b1997408c2011b138fc5ffc525a10fa88a37848ffa763f355892b9d5dd0c1450
 - filename: src/pipeline/ign/downloader.py
-  checksum: 0ef1fc8d25c67c7d2117eefe66b980b37e9b26525a8d4468f53f9e71bd2c8189
+  checksum: b73e671abf80a249d0ff04349cf35602d3578a56fbb91bd4c92ddc8669057b01
 - filename: src/pipeline/ign/pdal_validation.py
-  checksum: 8867b41e31232f0047d39a3ed884b5e677848f2269c5e79d9b5cd5217bc6b407
+  checksum: 2b4ed1d8b7ed8b47c769214f73f1898b79a26b2fdddfea938b003423488462af
 - filename: src/pipeline/ign/preprocess.py
-  checksum: 31437a97ad99cabce9ffaa45ca4f90335fc9f115345a26bcb7822c58ce67fab1
+  checksum: 5a8c9aa6d3f37bc2e2b3de1d6b45f73b7a3510b248ec0690576ed3cd18a782aa
 - filename: src/pipeline/ign/products/indices.py
-  checksum: 4d7b0fba36cd4a608e0926deb94db04a561a2c5bdd2ba29564d939c73de50ea1
+  checksum: 48fc3e4fe84608d1cb47e090e87ee663a760202f5bdbbf8f073d36db73824399
 - filename: src/pipeline/ign/products/results.py
-  checksum: 548840688980552b52747d14f5355bae0a7fe87a559f08b69edf6cc5028b591c
+  checksum: 4179c120c0f842bbabd6271507815842a5741b867835edde810a11906dcc2d73
 - filename: src/pipeline/modes/local_laz.py
   checksum: aa12c4a804b54e7b3dfe451251813a3a731790033acc95a5ad3691cb4ff138fd
 - filename: src/pipeline/output_paths.py
-  checksum: f114e139cb314647d2e4e40345896e35c916adb5e9b35f76a8f0549e8ee41fcf
+  checksum: e3877f217e4e287aaca76c372e1f27747d772ad6539cdbd0039e809a36bdcd9c
 - filename: src/pipeline/preflight.py
-  checksum: 3783cd8377aca8176fc0cfcfbb878fe2acbe7bfffc103716048f66159c1ee760
+  checksum: 249394e2c7d065326ef0c3500909e5f85cc85f0796386257ff1321707aab2e4a
 - filename: src/pipeline/types.py
   checksum: cc071751349938091505bf7c7cbe20240ae757e05677e4184c939ccc2edca6d9
 - filename: src/ui/dialogs/_model_info_data.py
-  checksum: a0c51aee06532ba630d115906c703a7079f1ee7c25c02da6eafd0ee6b05160cb
+  checksum: 295c0bd5a43df21aebacb55d88e56569f25b23a53b2732a45ff5873b86e60a1f
 - filename: src/ui/icons.py
   checksum: df0d068fd896cf1361d0a6286e537fc015e473c5bc58924f9d79c3813df543b0
 - filename: src/ui/layer_loader.py
@@ -112,19 +112,19 @@ fileignoreconfig:
 - filename: src/ui/steps/step_1_source.py
   checksum: 5a1abcd7505c48a149637a05a4e8840d5eb0bca32650447bbb27f146b847c6a0
 - filename: src/ui/steps/step_2_indices.py
-  checksum: 5ec00269f0324ef96fd4c373275115c14f074f7f66944814d641fe7015d884f7
+  checksum: 3071a29403ebf7f5a0776aaa0dce7f723aeff92f6219bdcafa83bac0b67c5027
 - filename: src/ui/steps/step_3_detection.py
-  checksum: 824c7defab8605eb779e0374da60cba4afda5b42c5a397def4f0efdf1383dcdd
+  checksum: 0289e3552f92bba2252e8eed52ba801d3861e6fa33d3b98fbe50e1a9557000cd
 - filename: src/ui/steps/step_4_launch.py
-  checksum: 6e1aee08a7e037ee7552abd820d3b7bbced4f529f238b245c8a455d1a514ab60
+  checksum: 947b669d04551e58cf5fa21530e3876e29d7cc0565a5e455cd83c23a794a5932
 - filename: src/ui/theme/v2.qss
-  checksum: d966625f455a971d7a5be24fc5cc373714455a1c1ab33b64f60704aca61069ff
+  checksum: acbfbf6880a9f88ac3c8611534b0cb19ac107d332ca1ebc989c1033cb985389b
 - filename: src/ui/widgets/entity_card.py
-  checksum: d85a4b42c9e62dc67af74be0eddfb1c61b38d7191b6925c44a769ddd70b0208d
+  checksum: 1d49e34c5a6cafe6cf058de8aadbf763fe5d756453dec3f4c413e0ab6ad9a65c
 - filename: src/ui/wizard_dialog.py
-  checksum: 78260730953c1840a7596251973291818166925dfd63f5cfad889b19876ea467
+  checksum: 2d0f23286c70b9fbdcd0f6c7e1c6e8bdb18a8c3160792ee537d5efc124e4705e
 - filename: tests/TESTS_MANUELS_QGIS.md
-  checksum: aef3d516e882da4be2754c0d739718f8828627dfc1c8b3703a1e334898839b3b
+  checksum: 24a2d5069b7c1b41abe6905a6a7068f3f09ae90437289ad188d068ced44139bc
 - filename: tests/integration/test_existing_mnt_runner_finalize.py
   checksum: e67c2e4c83cea0937bdfb39e8eec7aa7476f30648d4d858589e2308ad0565d63
 - filename: tests/integration/test_existing_rvt_runner_isolation.py
@@ -146,13 +146,13 @@ fileignoreconfig:
 - filename: tests/unit/test_download_url_guard.py
   checksum: a739af571447332b59b50293e351f6cbd25f375182e78321aa5db724fa00d6d4
 - filename: tests/unit/test_existing_mnt_kernel_context.py
-  checksum: 95007a595389998a91ab14b606d69078208e67d01cc6ef0e1ff38fd041ee9955
+  checksum: 79815f2e4c2c441cca7e8163d7abefc7ff8fb5ef47932c15ae9f71d85b6d189b
 - filename: tests/unit/test_existing_rvt_halo.py
   checksum: 76384b85c5b164efeea616f1812b72838b5c2fa5cf0575d93d5bfda3ce841237
 - filename: tests/unit/test_existing_rvt_png_consistency.py
   checksum: a1852cd7d16c6890c453bbe7944fb0894ce8f523f6cd3f2b8b615eaa79e3c373
 - filename: tests/unit/test_existing_rvt_runner.py
-  checksum: 9b09754cfc70c2c93cffb7c3699c99ee1df835dc9dd90b66f4ddfa54d1353443
+  checksum: bc54f1b752d2d3d1c99ca7511607065283150683e94ce21418ebc32761542050
 - filename: tests/unit/test_finalize_service.py
   checksum: bdcab7d2504b9e1068db344e2eb7577c7fa7d6f2ac6554cf93642e26d4cede04
 - filename: tests/unit/test_indices_model.py
@@ -160,25 +160,25 @@ fileignoreconfig:
 - filename: tests/unit/test_ingest_plan.py
   checksum: 539fa2bae75150a11780074cce7a05d834544024de91a6b0babc14dd436453e2
 - filename: tests/unit/test_model_orchestrator.py
-  checksum: 72aed66bcc0d4053fcbbfaf4b699eb7dec7e5ff3719dc7a33fcef5f361e97369
+  checksum: 6985a9675f83bc6de25eafdc21de4874e8d3db6f7fd2feb07ae664c60103b4ab
 - filename: tests/unit/test_model_profile.py
   checksum: 61855cd3a8a06498a8661459ef574ff8eb73aaabe7e3b77bb0d21d9b73cfc8c3
 - filename: tests/unit/test_models_connectivity.py
   checksum: 4bf50a0f98e8b61f3ad99d1e822b6873cb2fc918e2847c2bc12d95f4f690e9c9
 - filename: tests/unit/test_package_plugin.py
-  checksum: 41e3cb044ff84beda2315238e1e32ca79d098269ba098dc73592c4b204cc1ff4
+  checksum: eccd2f4b4d8f214197a295509f452b66a9863e7836fdf6310e08c5ec31f5a487
 - filename: tests/unit/test_preflight.py
-  checksum: 6b37b99281e06942557dfc506ad8e2b04f1925eaeaeaf2bf140659437505c6c4
+  checksum: b54fee8c2f4dc701006b0f5a05c00b728fd59c4daaafa2064cb19e291c887035
 - filename: tests/unit/test_preflight_output_dir.py
   checksum: ea523fa0029fff76b8426fd4a9def13e7b42f523d97c1d18fe73a945bda6e064
 - filename: tests/unit/test_preprocess_merge_isolation.py
   checksum: 2ea45922389b90886e19983d582d0bf5c1a7e5c120f25a78880fff820d467129
 - filename: tests/unit/test_preprocess_proxy.py
-  checksum: f7daa72c18aa9fe1d0bb198d940dd7825f38e5eb89018f3002d4dc79b63bf66b
+  checksum: e9d9c3d11b6c2d1dd9b23c06a1c4cb232e8294ec4b25db2104958e0cc4d8aaee
 - filename: tests/unit/test_results_crs.py
   checksum: be7d1a4cf3cf8ac3f6fac9085056967917b8399b82d0a70cf5b47d18b3dd88d5
 - filename: tests/unit/test_run_context.py
-  checksum: cef1b6d30486400e2fda5c823c915eb9bb13848871ad42ff3d8b781012cff64b
+  checksum: 355a467a6e9f2c398175b313eb80a71f222e70e4da824b027c3a13d122a6cb03
 - filename: tests/unit/test_source_modes.py
   checksum: 244504c9975114521989c64601abf68213bc564fefbf69d8bcef2d49beb90819
 - filename: tests/unit/test_tilespec.py
@@ -216,11 +216,11 @@ fileignoreconfig:
 - filename: dev/fiches/README.md
   checksum: 3d4c500bc4b796344fc21edfaa3416d0d48fd837f43c52403710f14ea8ad9d39
 - filename: tests/unit/test_indice_fiche.py
-  checksum: 3496115106af1ce364ad508fd0ab94c2141fc5647cbeed23159f9c5eecbfaf1a
+  checksum: 79097493669bdb7c09c32ed14a33ba8e55d9d7636b872aa576a6816167963398
 - filename: dev/fiches/page_choix.py
   checksum: 8f2fad83b640e15731896149c0dcc00789d4cd7129d0bfce5568d46f05d65999
 - filename: data/indices_fiches.json
-  checksum: 62111445b54e9ad64441bfab4c2a8310483373f132d04d46f1b6f676c72adfab
+  checksum: a880c85b2c118b31ec8c8fac8855808f8d2e273b75fdb1f995d4217f3c646cbe
 - filename: dev/fiches/page_choix_indices.py
   checksum: d0db0740c3c8e73ff42f7c3aa6fbe8e3b85988ab109ab73864fce2abde670793
 - filename: data/indices_vignettes/VAT.jpg
@@ -236,21 +236,21 @@ fileignoreconfig:
 - filename: src/pipeline/cv/recentrage.py
   checksum: f812c0a2141f20cdb787ba820bbb912fb946c8764c00fc526a0f120d151e5a4b
 - filename: src/pipeline/ign/products/crim.py
-  checksum: ea193e58b0fe888996af3a3caee747ab2b78ddf07cf7348e534b66d64492a313
+  checksum: ea647a0d275bb7a801dfe7c270b33926baa48df299c1c528c59d717970259267
 - filename: tests/unit/test_recentrage.py
   checksum: e4778f57626616f0bbcfe35230cbd936d5b2da89d37dc0585b459c6fbe54159d
 - filename: .gitignore
-  checksum: 6215a8b876411a77d6a530c276a41134a59b5768b3e2bacb427907991b1192d6
+  checksum: 2477feb210c11826a0ee039b93061f002070b1e5976a0b4d124904091595fec9
 - filename: aide/01-installer.md
-  checksum: 76f24907867ee03ad513c5d7f4ddc69f0bb4854201a6eea9a3f6516aeb7740c2
+  checksum: 64f5565c21c765d74f48354aafdf874763c9b2ad5624cebafd35df1a175b7ba3
 - filename: .claude/commands/livraison.md
   checksum: fa4cadfbd313549dec30e915282736d7dacb8113feeb591ec45b52457d55480d
 - filename: aide/08-resultats.md
-  checksum: 304ac6dc6f4b6089df936767b140e5073bc7bc84b51dccd15ec3f07701393fec
+  checksum: 67371bc6dc4178554da1e986ed28e9009c89fb1eef52c0c5753dcdb5641b77ec
 - filename: aide/04-etape-2-produits.md
-  checksum: 1256428a17e07dc1fda214f6d34ee0583ef279b7f93e341d396ebc17db378e1a
+  checksum: 320ff9e0f4208bba0eeea63b859ad572c3e66c9f1930d2f285805024634cd603
 - filename: aide/09-depannage.md
-  checksum: 650d9a472a85e5a6324c73d66fb401faddfa2f8e58d2818a36d94c0a50fd5f86
+  checksum: 5f66f4f2cf34a01bf80c55620a3f1afe7732de651cd02b35fbb33b0a8852490a
 - filename: src/ui/widgets/carte_zones.py
   checksum: fd7734612381cf74a5b64924b72739ed0e4796509d56f7a31fbc7a65b4e8297a
 - filename: tests/unit/test_aide.py
@@ -258,7 +258,7 @@ fileignoreconfig:
 - filename: aide/img/resultats-legende-fiabilite.jpg
   checksum: 7f7b3c8ba1118cf1702c15090de8a2d9361bf9db913db4ed735d59cb735ff809
 - filename: aide/img/etape3-detection.png
-  checksum: 3bc68a146ca073601946945900b936ac8c1d13ff38f3a6057daa0a5fa8d17c14
+  checksum: ffa1d329e94f159f55941d20cc00cf1b83cd3253f09972d224175ed72449650f
 - filename: aide/img/etape2-fiche-produit.png
   checksum: 0a89becab8b58bae45ba493a80b212b3c7522ed79c4c3f4451f4fd424bb53533
 - filename: aide/02-premier-traitement.md
@@ -268,7 +268,7 @@ fileignoreconfig:
 - filename: dev/build_quadrillage_from_wfs.py
   checksum: 5286a1495ce8a7a8bf350eb5bcff2c2827dca6e2c50454ef6b3210995610e3f6
 - filename: docs/contrats.md
-  checksum: a657c4ebd0f1da5238b59d69ee1acbf951f6d4f7ac17726516e222c42f127436
+  checksum: 541a9b82f3701ec0246769bc828aee2b34e66f18cb6f3eb83e91875934adf7e3
 - filename: src/app/services/arborescence.py
   checksum: c5e606980a36c45a1741ce2471bb8eae676f7dab2f222ab8cb75a360a074f91c
 - filename: src/app/services/carte_zones.py
@@ -278,21 +278,71 @@ fileignoreconfig:
 - filename: tests/unit/test_fiabilite_observee.py
   checksum: 0b5cfd75eef0ccf415d46f9a2d0e59f09f1a0d94e4ed7ae884f2e90348810918
 - filename: tests/unit/test_rapport_run.py
-  checksum: ee6db51033ac68f21f7bc121375dd4fb06c493a09b7f4c19ad07cbf07cec1e32
+  checksum: e6b6c6d4b0c722b3b221ea0d8638c7f07ab87b55c157ee8d3eee75bf2f01b70b
 - filename: tests/unit/test_bilan_fiabilite.py
   checksum: 342b477c612265f7d798d7e3a7e1a4ac7fe852d413369d4b29a4e2ed93419872
 - filename: aide/img/etape3-fiche-classe.png
   checksum: eb5a829fe126141a65e3c62047b2ecff788d053daf622b26644ad695ff88ed3e
 - filename: data/third_party/cv_runner_onnx/windows/build_info.json
-  checksum: 45011b4d0aad06531d94d7f21b30a4df2e89c60bfc0c3d170162d814c1ae2b32
+  checksum: 25e403b31c89d6c5db770ea1d78c37b8d0e49ee5f4f31d6f58645a4d25248aa2
 - filename: dev/rendu_hors_ecran.py
   checksum: ee231eb23ff1b7f46a3403b01f5d3754b0d556a5a12cae9e1578334af575a3fb
 - filename: aide/img/etape2-produits.png
-  checksum: f62de9df5db85eca061d92b3e8b9129520010193a890694009a6ef7da49cf564
+  checksum: 33dd6625c569d5ba7342b0c042468adf2fb5e91c133c9ce823ae7f40b87e5bfc
 - filename: aide/img/etape4-verifications.png
-  checksum: bed332b260a74f9dbcb2ff2601426329c2ab7f551fca81b75d2da90a5c51d592
+  checksum: af3df946a75008b54b3221c306db2015e5e2ef8d9f32cc87a24741101b6433fe
 - filename: src/pipeline/ign/quadrillage_paths.py
   checksum: 0fd8b8538bdf7e6517d67ea484aaf266e98a4e32b717715ddd4186ce46d69b85
 - filename: data/quadrillage_france.zip
-  checksum: 6aba225163c3d80b04115d5cb10f33c26c0ac4cda20d0ad88209d68fb50b35ee
+  checksum: b03f1ce4de5705d1afaed811479472348a9e50802d9e7f8f68dcf888775e02e9
+- filename: src/pipeline/ign/products/rvt_embarque/NOTICE
+  checksum: 3834ab3af2bfce2a5f2162fde5df36a1ef6143949e6c3c52a6044dd87a62c2e8
+- filename: tests/unit/test_rvt_embarque.py
+  checksum: 0f2ebfb23762e3e9d0a3a8f103246748c7d95ff7794af86b4df3e9577d6cffb9
+- filename: src/pipeline/cv/runner_cache.py
+  checksum: fb5c5cd4de3f0acd9f5f755e4c745df4cb754f6e2041bd4b89200305f7ebabd5
+- filename: tests/unit/test_detection_impossible.py
+  checksum: 1f870dd3c4a6b38144533cb4a2147d2ea04e1de11706a72d1d3ddd28d5d292ea
+- filename: tests/unit/test_existing_mnt_resolution.py
+  checksum: 7c6ed40e388e967aabe1f51d607d880227a1d47ea213bd5dd0b7ecfab46bd7f4
+- filename: tests/unit/test_session_partagee.py
+  checksum: 54953d36b29722938da6e886a1494325aa7db0b96fb8a70309c44157dbf25356
+- filename: tests/unit/test_indices_version_calcul.py
+  checksum: d21612134fe1c55cef67bd13fc1ffcba68285b59c7069c705ed1a7628f821a01
+- filename: tests/unit/test_mnt_densite_parametres.py
+  checksum: e946cbdc9923dbd8a56faaadcbb782020f1979cfaf9d25fbecaf0a3aaee80ef8
+- filename: tests/unit/test_telechargement_partial.py
+  checksum: 0737c6032a70bf740ffa691c0ce8b2a2012e21c5dc27fd62117de4b1b2473248
+- filename: src/pipeline/ign/products/moteur_indices.py
+  checksum: 32c820fbd56fecac44a6fad44504731243da740f82affe616e083d6d84978963
+- filename: tests/unit/test_carte_regroupement_ui.py
+  checksum: 2a2e8387aebe6298c5be73c0bbd2a2454ca7b1af0a21ae642276cf777784e79c
+- filename: tests/unit/test_fusion_flux.py
+  checksum: b8388a19b339f00d3b4e4376d417d49464ec02955ded63d4bc25aeaf42578c12
+- filename: tests/unit/test_cle_cache_detections.py
+  checksum: 774f928a7f24fbe7b13dee2011deadd9cce9975d219ee5f55d712a72894ce730
+- filename: tests/unit/test_effet_reglages.py
+  checksum: 6ace550df3b8e6551b9a7f8f9800ba2963302c5e46591275f73233075bc31c90
+- filename: tests/unit/test_effectifs_apres_filtres.py
+  checksum: a02aa7ff4e4bb668253b7f29ce7af4ab357ffa9919c181ad40fd02195fdd275d
+- filename: tests/unit/test_indices_moteur.py
+  checksum: ca6c79eb3f7f9044f7b8b10854c3b9eda866ac40eb942f1b90340d78afd85855
+- filename: src/pipeline/ign/products/rvt_embarque/tile.py
+  checksum: 1f9dcfa3206448c01e44da214eb768ddffb1dbd22531dee4566df5e215b19e51
+- filename: tests/unit/test_moteur_indices.py
+  checksum: 7f28ff494ff5f664dff5659e37315be8ee6943e677fad0bde58f8de76b509eb2
+- filename: src/pipeline/ign/products/rvt_naming.py
+  checksum: 9cf2a08d98f91cb5defd3568854ffa80c13744d5ade73e7d05a7efe6867da31a
+- filename: src/pipeline/ign/products/rvt_embarque/vis.py
+  checksum: 21693f113e1be2a2230b7f5b88e245b4a8bab418148107e951ecf89a042be07b
+- filename: src/pipeline/ign/products/rvt_embarque/default.py
+  checksum: 3757e8928c95fd7bccbdfce7dd6249154a0d7da2df5d530b548d441e27418e04
+- filename: tests/unit/test_fusion_filtree.py
+  checksum: 649eaea8274a53bb77f0cf2c78570147916baaa1a3ab06f90e84082051b2a4d4
+- filename: tests/unit/test_mineurs_0150.py
+  checksum: 3f02cc0a92b86e0e503611d3b63520a13f6e09128ceaee13f79b205051f075fb
+- filename: src/pipeline/cv/appareil.py
+  checksum: 023b353de88e9e890e39ae953265ce832f8f928f181cc0df1ecc18e07f2542a7
+- filename: tests/unit/test_carte_graphique.py
+  checksum: e39942d99ff725b8d6b7889ec3b3cb7c0824454e2f8fe15037a50d9e589a206c
 version: '1.0'

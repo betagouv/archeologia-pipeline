@@ -495,7 +495,7 @@ _CLUSTER_PARAM_INT = ("min_cluster_size", "min_samples", "min_sources")
 # présents dans la règle args.yaml du modèle sont retenus, donc les clés d'un
 # type n'apparaissent jamais sur une règle d'un autre type.
 _CLUSTER_PARAM_FLOAT = (
-    "eps_m", "min_confidence", "min_area_m2", "buffer_m",
+    "eps_m", "min_confidence", "min_confidence_extend", "min_area_m2", "buffer_m",
     "gap_tolerance_m", "max_area_m2", "min_closure", "max_elongation",
     "min_ancrage", "max_isolement", "min_rectangularite",
     "band_width_m", "angle_tolerance_deg", "min_length_m", "max_gap_m",
@@ -872,6 +872,21 @@ def effective_model_names(
     return [ec.default_model] if ec.default_model else []
 
 
+def avec_extension(params: Dict[str, float], defauts: Dict[str, float]) -> Dict[str, float]:
+    """Surcharges d'une règle de regroupement, seuil d'extension décalé avec « Confiance min ».
+
+    Une règle à hystérésis (``min_confidence_extend`` < ``min_confidence`` dans args.yaml : les détections entre les
+    deux rejoignent une zone sans pouvoir l'ouvrir) gardait son extension quand l'utilisateur relevait « Confiance
+    min » : à 0,60 sur les cratères (0,40 / 0,29), les détections dès 0,29 s'agrégeaient encore. L'extension suit
+    maintenant le réglage, à l'écart calibré du modèle. Non exposée à l'écran ; une surcharge explicite l'emporte.
+    """
+    sortie = dict(params or {})
+    d_min, d_ext = defauts.get("min_confidence"), defauts.get("min_confidence_extend")
+    if "min_confidence" in sortie and "min_confidence_extend" not in sortie and d_min is not None             and d_ext is not None:
+        sortie["min_confidence_extend"] = round(max(0.0, float(d_ext) + float(sortie["min_confidence"]) - float(d_min)), 4)
+    return sortie
+
+
 def resolve_runs_from_entities(
     selected_entity_ids: Sequence[str],
     overrides: Optional[Dict[str, Any]],
@@ -990,11 +1005,18 @@ def resolve_runs_from_entities(
             [conf_par_classe.get(c, model.default_confidence) for c in group["classes"]]
             or [model.default_confidence]
         )
-        area_over = [
-            entity_thresholds[e]["min_area_m2"]
-            for e in reglees
-            if e in entity_thresholds and "min_area_m2" in entity_thresholds[e]
-        ]
+        # Aire minimale PAR ENTITÉ (même correction que la confiance) : celle de l'entité si elle l'a réglée, sinon
+        # le défaut du modèle. Le run garde la plus petite (filtre commun du run, runner_shapefiles), et chaque
+        # entité dont l'aire est plus grande voit son GeoPackage filtré à la sienne après le run
+        # (output_paths.aires_par_entite). L'ancien min() des seules surcharges imposait l'aire d'une entité aux
+        # autres entités du modèle (« Chemins creux » perdait des détections réglées sur « Parcellaire »).
+        aire_par_entite = {
+            e: float(entity_thresholds.get(e, {}).get("min_area_m2", model.default_min_area))
+            for e in group["entities"]
+        }
+        for e in incluses:   # entité incluse par une dérivée : réglée sur la carte de la dérivée
+            derivee = model.implied_entities[e]
+            aire_par_entite[e] = aire_par_entite.get(derivee, float(model.default_min_area))
         # Surcharges de paramètres de clustering, mappées par output_class_name
         # (ce que le pipeline applique). Une entité (dérivée, ou de base avec
         # « regrouper » coché) porte ses params ; on les rattache à la/les
@@ -1006,7 +1028,7 @@ def resolve_runs_from_entities(
                 continue
             for oc in group["entity_classes"][e]:
                 if oc in model.cluster_defaults:
-                    clustering_overrides[oc] = dict(params)
+                    clustering_overrides[oc] = avec_extension(params, model.cluster_defaults[oc])
         # Fiabilité affichée : catégories EFFECTIVES (au seuil de chaque classe dans
         # ce run, surcharge UI comprise) — consommées à la conversion (champs
         # fiabilite/fiabilite_pct + sidecar fiabilite.json) puis par la symbologie.
@@ -1025,18 +1047,21 @@ def resolve_runs_from_entities(
                 "clustering_overrides": clustering_overrides,
                 **({"fiabilite": fiab_bloc} if fiab_bloc else {}),
                 "entities": [
-                    _entity_block(
+                    {**_entity_block(
                         eid, model,
                         sorted(group["entity_classes"][eid]),
                         label_by_id,
                         compared=len(models_per_eid.get(eid, [])) > 1,
-                    )
+                    ), "min_area_m2": aire_par_entite[eid],
+                        # sorties de regroupement : leur règle porte sa propre aire, jamais rabotées
+                        "classes_synthese": sorted(c for c in group["entity_classes"][eid]
+                                                   if c in model.cluster_defaults)}
                     for eid in sorted(group["entities"])
                 ],
                 "confidence_threshold": float(plancher_conf),
                 "confidence_per_class": {c: float(v) for c, v in sorted(conf_par_classe.items())},
                 "iou_threshold": float(model.default_iou),
-                "min_area_m2": float(min(area_over) if area_over else model.default_min_area),
+                "min_area_m2": float(min(aire_par_entite.values(), default=model.default_min_area)),
             }
         )
     return runs

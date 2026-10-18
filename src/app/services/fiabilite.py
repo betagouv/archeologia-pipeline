@@ -324,6 +324,49 @@ def write_sidecar(gpkg_path: Any, layer_name: str, entree: Mapping[str, Any]) ->
     return p
 
 
+def recompter_effectifs(gpkg_path: Any) -> None:
+    """Recompte les ``effectifs`` du sidecar sur le GeoPackage tel qu'il est livré.
+
+    La conversion les écrit avec les détections ; les filtres d'aire (du run, puis de chaque entité) passent
+    après : sans recomptage, bilan et rapport annonçaient des détections retirées. GeoPackage absent (vidé
+    puis supprimé par un filtre) → sidecar retiré ; couche absente → effectifs vides. Lecture sqlite3 seule ;
+    GeoPackage illisible → sidecar laissé tel quel.
+    """
+    import sqlite3
+
+    p = sidecar_path(gpkg_path)
+    if not p.is_file():
+        return
+    if not Path(gpkg_path).is_file():
+        p.unlink(missing_ok=True)
+        return
+    try:
+        data = json.loads(p.read_text(encoding="utf-8"))
+        con = sqlite3.connect(f"file:{Path(gpkg_path).as_posix()}?mode=ro", uri=True)
+    except (OSError, ValueError, sqlite3.Error):
+        return
+    if not isinstance(data, dict):
+        con.close()
+        return
+    try:
+        couches = {str(r[0]) for r in con.execute(
+            "SELECT table_name FROM gpkg_contents WHERE data_type = 'features'").fetchall()}
+        for couche, entree in data.items():
+            if not isinstance(entree, dict) or "effectifs" not in entree:
+                continue
+            compte: Dict[str, int] = {}
+            if couche in couches:
+                compte = {str(k): int(n) for k, n in con.execute(
+                    f'SELECT "{CHAMP_LABEL}", COUNT(*) FROM "{couche}" GROUP BY "{CHAMP_LABEL}"').fetchall()
+                    if k is not None and str(k)}
+            entree["effectifs"] = compte
+    except sqlite3.Error:
+        return
+    finally:
+        con.close()
+    p.write_text(json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
+
+
 def read_sidecar(gpkg_path: Any, layer_name: str) -> Optional[Dict[str, Any]]:
     """Entrée du sidecar pour une couche, ou ``None`` (absent, illisible, couche inconnue)."""
     p = sidecar_path(gpkg_path)

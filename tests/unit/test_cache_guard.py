@@ -14,6 +14,9 @@ assurée par la fraîcheur des mtimes côté ``results.py`` (needs_refresh).
 """
 from __future__ import annotations
 
+import json
+from pathlib import Path
+
 import pytest
 
 from app.services.cache_guard import (
@@ -23,12 +26,13 @@ from app.services.cache_guard import (
 )
 
 
-def _sig(mnt: float = 0.5, dens: float = 1.0, overlap: float = 5.0, filt: str = ""):
+def _sig(mnt: float = 0.5, dens: float = 1.0, overlap: float = 5.0, filt: str = "", fusion: str = "pdal-merge"):
     return build_signature(
         mnt_resolution=mnt,
         density_resolution=dens,
         tile_overlap=overlap,
         filter_expression=filt,
+        fusion=fusion,
     )
 
 
@@ -42,10 +46,10 @@ class TestBuildSignature:
     def test_values_are_normalized(self):
         # int vs float et non-str : mêmes paramètres → même signature
         a = build_signature(
-            mnt_resolution=1, density_resolution=1, tile_overlap=5, filter_expression=""
+            mnt_resolution=1, density_resolution=1, tile_overlap=5, filter_expression="", fusion="pdal-merge"
         )
         b = build_signature(
-            mnt_resolution=1.0, density_resolution=1.0, tile_overlap=5.0, filter_expression=""
+            mnt_resolution=1.0, density_resolution=1.0, tile_overlap=5.0, filter_expression="", fusion="pdal-merge"
         )
         assert a == b
 
@@ -173,3 +177,40 @@ class TestEnsureCacheMatches:
         # …et le run suivant re-purge bien une fois le verrou levé.
         assert ensure_cache_matches(signature=_sig(mnt=10.0), intermediaires=inter) is True
         assert not (inter / "zone_sud_MNT.tif").exists()
+
+
+class TestCleDeVersion:
+    """Review Focus 1 : un dossier écrit par une version précédente refait ses fusions et MNT."""
+
+    def test_dossier_d_une_version_precedente_est_purge(self, tmp_path):
+        inter = tmp_path / "intermediaires"
+        inter.mkdir()
+        # Sidecar écrit par la 0.14.1 : les quatre paramètres, sans « fusion ».
+        ancien = {"mnt_resolution": 0.5, "density_resolution": 1.0, "tile_overlap": 5.0, "filter_expression": ""}
+        (inter / SIDECAR_NAME).write_text(json.dumps(ancien), encoding="utf-8")
+        (inter / "LHD_FXX_0500_6500_merged.laz").write_bytes(b"ancien")
+        logs: list = []
+
+        assert ensure_cache_matches(signature=_sig(), intermediaires=inter, log=logs.append) is True
+        assert not (inter / "LHD_FXX_0500_6500_merged.laz").exists()
+        assert any("Méthode de calcul mise à jour" in m for m in logs)
+
+    def test_changer_de_methode_de_fusion_purge(self, tmp_path):
+        inter = tmp_path / "intermediaires"
+        ensure_cache_matches(signature=_sig(fusion="pdal-merge"), intermediaires=inter)
+        (inter / "x_MNT.tif").write_bytes(b"x")
+        assert ensure_cache_matches(signature=_sig(fusion="flux-1"), intermediaires=inter) is True
+        assert not (inter / "x_MNT.tif").exists()
+
+    def test_un_parametre_change_garde_le_message_de_la_recette(self, tmp_path):
+        # Recette §28.3 : « ⚠️ Paramètres de traitement modifiés → cache des intermédiaires invalidé ».
+        inter = tmp_path / "intermediaires"
+        ensure_cache_matches(signature=_sig(mnt=0.5), intermediaires=inter)
+        logs: list = []
+        ensure_cache_matches(signature=_sig(mnt=2.0), intermediaires=inter, log=logs.append)
+        assert any(m.startswith("⚠️ Paramètres de traitement modifiés → cache des intermédiaires invalidé")
+                   for m in logs)
+
+    def test_le_runner_lidar_signe_sa_methode_de_fusion(self):
+        src = (Path(__file__).resolve().parents[2] / "src/app/runners/ign_local_runner.py").read_text(encoding="utf-8")
+        assert "fusion=fusion_mode()" in src

@@ -80,6 +80,7 @@ def test_download_one_du_voisin_recoit_le_proxy(tmp_path, monkeypatch):
 
     monkeypatch.setattr(pp, "download_one", fake_download_one)
     monkeypatch.setattr(pp, "merge_tiles", lambda **kw: True)
+    monkeypatch.setattr(pp, "merge_tiles_flux", lambda **kw: True)
 
     res = pp._process_single_tile_preprocess(
         task, file_index, lambda m: None, lambda: False

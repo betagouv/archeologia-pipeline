@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from ..cancellation import DetectionImpossible, PipelineCancelled
 from ..types import LogFn, CancelCheckFn
@@ -92,7 +92,10 @@ def run_cv_on_folder(
     image_progress: Optional[ImageProgressFn] = None,
     tile_progress: Optional[TileProgressFn] = None,
     stats: Optional[Dict[str, Any]] = None,
+    on_appareil: Optional[Callable[[Dict[str, Any]], None]] = None,
 ) -> Optional[int]:
+    # ``on_appareil`` : décision du binaire sur l'appareil de détection (carte
+    # graphique retenue / écartée / repli), relayée au journal dès qu'elle tombe.
     # ``stats`` : mesure du run déposée par le runner externe (images réellement
     # inférées, secondes) — cf. run_external_cv_runner ; le repli in-process ne
     # la remplit pas (il ne remonte ni tuiles ni total).
@@ -309,6 +312,7 @@ def run_cv_on_folder(
                 image_progress=image_progress,
                 tile_progress=tile_progress,
                 stats=stats,
+                on_appareil=on_appareil,
             )
         except PipelineCancelled:
             # Annulation utilisateur : propager sans tenter le fallback.

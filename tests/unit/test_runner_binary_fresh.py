@@ -46,3 +46,17 @@ def test_binaire_a_jour():
         "les sources src/pipeline/cv ont changé depuis la compilation. "
         "Recompiler : python dev/runner_onnx/build.py"
     )
+
+
+def test_binaire_windows_avec_directml():
+    """0.15.0 : l'option « Détection sur la carte graphique » exige un binaire compilé avec
+    onnxruntime-directml (build.py le fait par défaut sous Windows) ; build_info.json le dit."""
+    exe = BIN_DIR / "cv_runner_onnx.exe"
+    if not exe.exists():
+        pytest.skip("binaire externe absent (poste sans runner compilé)")
+    info = json.loads((BIN_DIR / "build_info.json").read_text(encoding="utf-8"))
+    ort = info.get("onnxruntime") or {}
+    assert ort.get("directml") is True and "directml" in str(ort.get("paquet")), (
+        f"binaire sans DirectML ({ort}) : recompiler avec python dev/runner_onnx/build.py"
+    )
+    assert ort.get("version") == _module_build().ORT_DIRECTML.split("==")[1]

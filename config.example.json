@@ -71,7 +71,8 @@
     "iou_threshold": 0.5,
     "generate_annotated_images": false,
     "models_dir": "data/models",
-    "export_runner_config": false
+    "export_runner_config": false,
+    "carte_graphique": false
   },
   "rvt_params": {
     "hs": {

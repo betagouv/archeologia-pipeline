@@ -63,12 +63,18 @@ python export_to_onnx.py --model best.pt --output model.onnx --imgsz 640 --simpl
 
 ```bash
 cd dev/runner_onnx
-python build.py              # Compile le runner CPU (~100-150 MB)
-python build.py --gpu        # Compile le runner GPU (~300 MB)
+python build.py              # Windows : DirectML (processeur + carte graphique) ; ailleurs : CPU
+python build.py --cpu        # Compile le runner processeur seul
+python build.py --gpu        # Compile le runner CUDA (~300 MB)
 python build.py --clean      # Nettoie les builds
 ```
 
-Le script `build.py` lit ses dépendances depuis `dev/requirements/build.txt` (source unique).
+Le script `build.py` lit ses dépendances depuis `dev/requirements/build.txt` (source unique) ;
+sous Windows il remplace `onnxruntime` par `onnxruntime-directml` à la version figée
+`ORT_DIRECTML` (sa partie processeur donne les mêmes détections ; sa partie DirectML sert
+l'option « Détection sur la carte graphique » de l'étape 4, sondée par poste par
+`src/pipeline/cv/appareil.py`). `build_info.json` note le paquet et la version ;
+`test_binaire_windows_avec_directml` est rouge sans DirectML.
 Le binaire compilé est copié automatiquement dans `third_party/cv_runner_onnx/<os>/`.
 
 ## Dépendances du runner compilé

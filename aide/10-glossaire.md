@@ -2,6 +2,7 @@
 
 | Terme | Définition |
 |---|---|
+| Carte graphique | Processeur graphique de l'ordinateur, que l'étape 4 peut faire servir à la détection par DirectML (Windows) après vérification contre le processeur |
 | Cible dérivée | Résultat d'un regroupement présenté comme une entité cochable à part entière, par exemple le Regroupement de cratères |
 | COPC | Nuage de points optimisé pour le cloud : le format des fichiers LAZ publiés par l'IGN |
 | Couverture | Part des cellules du MNT réellement appuyées sur des points sol, par opposition aux cellules interpolées ; un indicateur de qualité de la donnée |

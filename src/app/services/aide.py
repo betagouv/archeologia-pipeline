@@ -261,6 +261,8 @@ CLE_DEPANNAGE = "depannage"
 #: Motif cherché sans tenir compte de la casse ; le premier qui matche gagne.
 #: ``test_aide`` vérifie que chaque titre existe bien dans le chapitre.
 _RUBRIQUES_DEPANNAGE: Tuple[Tuple[str, str], ...] = (
+    # Avant « moteur de détection » : « le moteur de détection livré ne la prend pas en charge ».
+    (r"carte graphique", "La carte graphique n'est pas utilisée"),
     (r"d[ée]tection impossible|moteur de d[ée]tection", "La détection est impossible"),
     (r"noyau atteint", "Le noyau atteint N pixels"),
     (r"v[ée]rifications pr[ée]alables ont [ée]chou", "Les vérifications préalables ont échoué"),

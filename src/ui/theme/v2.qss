@@ -111,6 +111,7 @@ QPushButton:disabled { color: #909090; border-color: #b0b0b0; }
 #CardTitle { color: #1d5a96; font-weight: bold; font-size: 12px; }
 #CardCounter { color: #5a5a5a; font-size: 11px; }
 #FieldLabel { color: #000000; font-size: 11px; }
+#CarteGraphiqueCheck { color: #000000; font-size: 11px; }
 #FieldUnit { color: #5a5a5a; font-size: 11px; }
 
 /* ---- Frise (StageButton) + connecteurs ▶ ---- */

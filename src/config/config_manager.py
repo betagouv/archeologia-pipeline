@@ -104,6 +104,9 @@ class ConfigManager:
                 "generate_annotated_images": False,
                 "models_dir": "data/models",
                 "export_runner_config": False,
+                # Détection sur la carte graphique (DirectML, Windows) : option de
+                # l'étape 4, décochée par défaut (0.15.0) — sonde par poste, repli visible.
+                "carte_graphique": False,
             },
             "rvt_params": {
                 "hs": {

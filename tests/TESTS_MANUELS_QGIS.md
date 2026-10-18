@@ -1020,3 +1020,20 @@ Lot 3 du chantier d'accélération (2026-10-15) : une dalle lue en entier reçoi
 - [ ] **55.2 Mêmes images** : le MNT et la densité publiés sont identiques au pixel à ceux d'un traitement de la même dalle fait avant ce changement avec la même grille (comparer dans QGIS par la calculatrice raster, différence nulle partout).
 - [ ] **55.3 Filtre non reconnu** : filtre des points `Classification IN (2, 6)` → le journal porte « ⚠️ Filtre des points non reconnu … : fusion sans filtre » avec le renvoi « voir Manuel › Dépannage › Le filtre des points n'est pas reconnu » ; le nuage fusionné garde tous les points (`"filtre": null` dans le sidecar) ; le MNT est produit quand même.
 - [ ] **55.4 Relance dans un dossier d'une version précédente** : relancer dans un dossier 0.14.1 → « Méthode de calcul mise à jour → cache des intermédiaires invalidé », fusions et MNT refaits une fois, puis « réutilisé (cache intermédiaire) » à la relance suivante.
+
+## 56. Détection sur la carte graphique (DirectML) ⭐ P0
+
+> **Contexte** (0.15.0, 2026-10-18, vague 3) : option de l'étape 4, décochée par défaut, Windows seulement.
+> Le binaire est compilé avec `onnxruntime-directml` 1.24.4 (sa partie processeur = mêmes détections qu'avant).
+> Sonde par poste sur la première image (processeur puis chaque carte), carte retenue si plus rapide et mêmes
+> détections ; décision mémorisée dans `archeologia/carte_graphique.json` du profil ; repli processeur annoncé.
+> Banc 2026-10-15 : ×7,5 sur l'IA, 13 546/13 546 objets finaux retrouvés, écart de confiance ≤ 0,009.
+
+- [ ] **56.1 Décochée par défaut** : profil neuf, étape 4 › Paramètres avancés → « Détection sur la carte graphique » décochée, aperçu replié « workers : 3 · carte graphique : non » ; un run sans l'option ne porte aucune ligne « carte graphique » dans le journal, `traitement.json` n'a pas de clé `appareil`.
+- [ ] **56.2 Première sonde** : cocher l'option, indices existants (LD) avec un modèle, dossier neuf → au premier modèle, après la première image, le journal porte une ligne 🎮 « « Modèle » : détection sur la carte graphique « <nom de la carte> » : première image en X s contre Y s sur le processeur, N détection(s) retrouvée(s), écart de confiance max 0,0xx » (X nettement < Y) ; la fin du modèle dit « … images analysées en … sur la carte graphique » ; `rapport.html` colonne Analyse « sur la carte graphique « <nom> » » ; `traitement.json` › `cv_runs[].appareil = "carte_graphique"` et `carte` ; `archeologia/carte_graphique.json` du profil porte une entrée datée.
+- [ ] **56.3 Mêmes détections** : comparer le GeoPackage du modèle avec celui d'un run identique sans l'option (dossier à part) : mêmes objets, écarts de confiance ≤ 0,01 sauf bascules au seuil.
+- [ ] **56.4 Décision mémorisée** : relancer le même modèle dans un nouveau dossier → pas de sonde, ligne « détection sur la carte graphique « <nom> » (vérifiée sur ce poste) » dès la première image ; durée par image divisée d'autant que 56.2.
+- [ ] **56.5 Carte écartée** : sur un poste à carte intégrée seule (ou en bureau à distance), même scénario → « ⚠️ « Modèle » : carte graphique écartée : <carte> : pas plus rapide que le processeur (…) ; détection sur le processeur » avec le renvoi « voir Manuel › Dépannage › La carte graphique n'est pas utilisée » ; la relance suivante dit « écartée sur ce poste le JJ/MM/AAAA (…) ; nouvel essai après 7 jours » sans sonder.
+- [ ] **56.6 Sans carte** : poste sans carte (machine virtuelle) → « carte graphique demandée, mais aucune carte graphique utilisable sur ce poste » ; détection sur le processeur, run complet.
+- [ ] **56.7 Binaire sans DirectML** : remplacer l'exe par un build `--cpu` → « le moteur de détection livré ne la prend pas en charge » ; `test_binaire_windows_avec_directml` rouge.
+- [ ] **56.8 Comparaison A/B** : deux modèles sur une entité, option cochée → chaque modèle a sa propre ligne de sonde et sa propre entrée mémorisée (clé par modèle).

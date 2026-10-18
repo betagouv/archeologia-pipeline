@@ -438,6 +438,10 @@ def _cv_runs(runs: Sequence[Mapping[str, Any]]) -> str:
                 par_image = float(secondes) / images
                 analyse += (f" (≈ {_dec(par_image, 1)} s par image)" if par_image < 10
                             else f" (≈ {format_duree(par_image)} par image)")
+        if r.get("appareil") == "carte_graphique":
+            analyse += " sur la carte graphique" + (f" « {_e(r['carte'])} »" if r.get("carte") else "")
+        elif r.get("repli"):
+            analyse += " (carte graphique, puis repli sur le processeur en cours de traitement)"
         entites = ", ".join(_e(x) for x in (r.get("entites") or [])) or "—"
         modele = _e(r.get("modele") or r.get("model") or "")
         if r.get("target_rvt"):

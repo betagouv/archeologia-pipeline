@@ -77,7 +77,7 @@ Pour une dalle, les détections de toutes les entités se superposent sans doubl
 
 ## Les traces d'un traitement
 
-`livrable/traitement.json` résume le dernier traitement : version du plugin, date, nombre de dalles, version de PDAL qui a calculé le MNT, produits et leurs réglages, modèles lancés, entités produites avec le chemin de leur GeoPackage, le bilan de fiabilité par entité, le moteur de détection employé ou, si la détection a été impossible, sa cause. Il ne porte aucun chemin de votre poste et se transmet avec le livrable.
+`livrable/traitement.json` résume le dernier traitement : version du plugin, date, nombre de dalles, version de PDAL qui a calculé le MNT, produits et leurs réglages, modèles lancés avec l'appareil qui a détecté (processeur ou carte graphique, et son nom), entités produites avec le chemin de leur GeoPackage, le bilan de fiabilité par entité, le moteur de détection employé ou, si la détection a été impossible, sa cause. Il ne porte aucun chemin de votre poste et se transmet avec le livrable.
 
 `technique/journaux/` garde, pour chaque lancement, le journal détaillé `pipeline_log_<date>.txt` et la trace complète `metadata_<date>.json`, avec la configuration entière de l'assistant, chemins de votre poste compris. C'est ce qu'il faut joindre à une demande d'aide.
 

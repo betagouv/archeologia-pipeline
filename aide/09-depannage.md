@@ -41,6 +41,7 @@ Le bandeau de l'étape 4 liste les points bloquants et le rail pose une pastille
 
 - **Délai dépassé vers data.geopf.fr** : votre réseau impose un proxy que QGIS ne connaît pas. Voir [le proxy](installer.md#reseau-d-entreprise-le-proxy). Si le proxy exige une authentification Windows automatique, demandez une exception réseau.
 - Une dalle refusée ou absente du serveur est signalée dans le journal et le traitement continue avec les autres.
+- **Une dalle qui n'avance plus** : il arrive que le serveur de l'IGN garde une connexion ouverte sans plus rien envoyer, ou presque. Le plugin surveille chaque téléchargement : après deux minutes sans un seul bloc reçu, il coupe la connexion (« aucun octet reçu depuis 120 s, connexion coupée »), puis reprend là où il s'était arrêté, sans retélécharger ce qui est déjà sur le disque (« Reprise de … à l'octet … »), jusqu'à trois tentatives. Annuler pendant un tel blocage rend la main en une seconde ou deux. Si la reprise est refusée par le serveur, le téléchargement repart de zéro ; si les trois tentatives échouent, la dalle est abandonnée et le traitement continue avec les autres.
 
 ## Zoomez davantage pour afficher les dalles
 

@@ -266,7 +266,7 @@ _RUBRIQUES_DEPANNAGE: Tuple[Tuple[str, str], ...] = (
     (r"d[ée]tection impossible|moteur de d[ée]tection", "La détection est impossible"),
     (r"noyau atteint", "Le noyau atteint N pixels"),
     (r"v[ée]rifications pr[ée]alables ont [ée]chou", "Les vérifications préalables ont échoué"),
-    (r"timed out|data\.geopf\.fr|proxy|t[ée]l[ée]chargement.*[ée]chou", "Le téléchargement échoue"),
+    (r"timed out|data\.geopf\.fr|proxy|t[ée]l[ée]chargement.*[ée]chou|aucun octet re[çc]u", "Le téléchargement échoue"),
     (r"abandonn", "Une dalle est abandonnée"),
     (r"PDAL a crash|moins de workers|max_workers", "Erreur PDAL ou mémoire"),
     (r"filtre des points (non reconnu|refus[ée] par pdal)", "Le filtre des points n'est pas reconnu"),

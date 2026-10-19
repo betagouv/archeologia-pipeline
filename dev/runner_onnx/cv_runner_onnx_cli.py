@@ -328,7 +328,16 @@ def main() -> int:
     # déjà retenue sur ce poste (device_id). Windows seulement (DirectML).
     cg = cv_config.get("carte_graphique") if isinstance(cv_config.get("carte_graphique"), dict) else {}
     cg_demande = bool(cg.get("demande")) and sys.platform == "win32"
-    sonde_a_faire = cg_demande and cg.get("device_id") is None
+    # Les cartes sont énumérées ICI : leurs device_id sont ceux de DirectML dans ce processus
+    # (QGIS les voit dans un autre ordre). Une carte mémorisée doit être encore à son index.
+    cartes_poste = app_mod.adaptateurs_dxgi() if cg_demande else []
+    if cg_demande:
+        _print("cartes_graphiques=" + json.dumps(cartes_poste, ensure_ascii=False))
+    carte_memorisee = cg_demande and cg.get("device_id") is not None
+    if carte_memorisee and not app_mod.carte_au_bon_index(cartes_poste, cg.get("device_id"), str(cg.get("carte"))):
+        _print(f"[carte graphique] carte mémorisée « {cg.get('carte')} » absente de l'index {cg.get('device_id')} : nouvelle sonde")
+        carte_memorisee = False
+    sonde_a_faire = cg_demande and not carte_memorisee
     courant = {"idx": 0}
 
     def _ouvrir_carte(device_id: int):
@@ -397,7 +406,7 @@ def main() -> int:
 
         try:
             decision, session = app_mod.sonder(
-                cg.get("adaptateurs") or [], secondes_processeur, _detections(raw_dir / f"{image_name}.json"),
+                cartes_poste, secondes_processeur, _detections(raw_dir / f"{image_name}.json"),
                 _seuil_de, _ouvrir_carte, inferer, lambda m: _print(f"[carte graphique] {m}"),
             )
         finally:
@@ -428,7 +437,7 @@ def main() -> int:
         if not session_tentee:
             session_tentee = True
             onnx_session = cv_mod.charger_session_partagee(str(model_path), _print)
-            if cg_demande and cg.get("device_id") is not None and onnx_session is not None:
+            if carte_memorisee and onnx_session is not None:
                 onnx_session = _carte_retenue(onnx_session)
 
         t_image = time.perf_counter()

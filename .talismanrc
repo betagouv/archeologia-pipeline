@@ -122,7 +122,7 @@ fileignoreconfig:
 - filename: src/ui/widgets/entity_card.py
   checksum: 1d49e34c5a6cafe6cf058de8aadbf763fe5d756453dec3f4c413e0ab6ad9a65c
 - filename: src/ui/wizard_dialog.py
-  checksum: 2d0f23286c70b9fbdcd0f6c7e1c6e8bdb18a8c3160792ee537d5efc124e4705e
+  checksum: 83a14f16a07127e881e656185f5eec04b596c7795d5ed5d268927eb0961c0352
 - filename: tests/TESTS_MANUELS_QGIS.md
   checksum: b57357556b59880cc15c77adf718a16bb0011f97ea953a678d413110f638fd79
 - filename: tests/integration/test_existing_mnt_runner_finalize.py

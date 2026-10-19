@@ -1037,3 +1037,13 @@ Lot 3 du chantier d'accélération (2026-10-15) : une dalle lue en entier reçoi
 - [ ] **56.6 Sans carte** : poste sans carte (machine virtuelle) → « carte graphique demandée, mais aucune carte graphique utilisable sur ce poste » ; détection sur le processeur, run complet.
 - [ ] **56.7 Binaire sans DirectML** : remplacer l'exe par un build `--cpu` → « le moteur de détection livré ne la prend pas en charge » ; `test_binaire_windows_avec_directml` rouge.
 - [ ] **56.8 Comparaison A/B** : deux modèles sur une entité, option cochée → chaque modèle a sa propre ligne de sonde et sa propre entrée mémorisée (clé par modèle).
+
+## 57. Niveaux « possible » et « douteux » décochés à l'ouverture ⭐ P1
+
+> **Contexte** (2026-10-19) : dans la légende des couches de détections, seuls « très probable » et « probable »
+> sont cochés à l'ouverture ; « possible » et « douteux » restent dans la légende, décochés. Rien n'est filtré.
+
+- [ ] **57.1 Projet** : ouvrir `livrable/projet.qgs` d'un traitement avec détection → chaque couche de détections montre ses quatre niveaux dans la légende, « Possible » et « Douteux » décochés, les deux autres cochés ; cocher « Douteux » fait apparaître les contours clairs sans recharger.
+- [ ] **57.2 Chargement direct** : depuis la vue d'exécution, « Ouvrir le projet QGIS » → même état des cases.
+- [ ] **57.3 Rien de perdu** : le nombre d'entités de la couche (propriétés › Information, ou la table d'attributs) et le bilan de fin de traitement comptent aussi les détections possibles et douteuses.
+- [ ] **57.4 Modèle sans fiabilité** : une couche catégorisée par tranches de score (`conf_bin`) garde toutes ses tranches cochées.

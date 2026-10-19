@@ -42,9 +42,14 @@ class TestComparerDetections:
         assert not res["conforme"] and res["en_trop"] == 1
 
     def test_bascule_au_seuil_toleree(self):
-        # Un objet à 0,33 (seuil 0,30 + moins de 0,05) absent d'un côté = bascule, pas un écart.
-        res = ap.comparer_detections([_det(0.9, 0), _det(0.33, 100)], [_det(0.9, 0)], seuil_de)
-        assert res["conforme"] and res["bascules"] == 1 and res["non_retrouvees"] == 0
+        # Un objet à moins de 0,10 au-dessus du seuil (0,30) absent d'un côté = bascule, pas un écart
+        # (0,05 écartait le modèle linéaire pour une seule bascule à 0,042 d'écart, vécu le 18/10).
+        for conf in (0.33, 0.39):
+            res = ap.comparer_detections([_det(0.9, 0), _det(conf, 100)], [_det(0.9, 0)], seuil_de)
+            assert res["conforme"] and res["bascules"] == 1 and res["non_retrouvees"] == 0, conf
+        res = ap.comparer_detections([_det(0.9, 0), _det(0.41, 100)], [_det(0.9, 0)], seuil_de)
+        assert not res["conforme"] and res["non_retrouvees"] == 1
+        assert ap.TOLERANCE_SEUIL == ap.ECART_CONF_MAX == 0.10
 
     def test_ecart_de_confiance_trop_grand(self):
         res = ap.comparer_detections([_det(0.9, 0)], [_det(0.9 - ap.ECART_CONF_MAX - 0.01, 0)], seuil_de)
@@ -205,6 +210,28 @@ class TestMessages:
 
     def test_court(self):
         assert ap.court(RuntimeError("a\n  b   " + "x" * 300)) == ("a b " + "x" * 300)[:160]
+
+
+class TestCartesDuPoste:
+    ADS = [{"id": 0, "nom": "AMD"}, {"id": 1, "nom": "RTX"}]
+
+    def test_carte_au_bon_index(self):
+        assert ap.carte_au_bon_index(self.ADS, 1, "RTX")
+        assert not ap.carte_au_bon_index(self.ADS, 0, "RTX")        # ordre différent → re-sonde
+        assert not ap.carte_au_bon_index(self.ADS, 2, "WARP")       # index hors liste
+        assert not ap.carte_au_bon_index(self.ADS, "x", "RTX") and not ap.carte_au_bon_index([], 0, "AMD")
+
+    def test_enumeration_hors_windows_vide(self, monkeypatch):
+        monkeypatch.setattr(ap.sys, "platform", "linux")
+        assert ap.adaptateurs_dxgi() == []
+
+    def test_enumeration_sur_ce_poste(self):
+        if ap.sys.platform != "win32":
+            return
+        cartes = ap.adaptateurs_dxgi()
+        assert [c["id"] for c in cartes] == list(range(len(cartes)))
+        assert all(c["nom"] and "pilote" in c and "vram_go" in c for c in cartes)
+        assert not any("Basic Render" in c["nom"] for c in cartes)   # WARP écarté
 
     def test_session_sur_carte(self):
         assert ap.session_sur_carte(_Fausse("dml")) and not ap.session_sur_carte(_Fausse("cpu"))

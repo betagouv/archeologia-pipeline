@@ -63,6 +63,16 @@ STYLE_SPEC: Dict[str, Dict[str, Any]] = {
     "douteux":       {"repr": 0.3, "outline_width": 0.6},   # base éclaircie de 35 %
 }
 
+# Niveaux présents dans la légende mais décochés à l'ouverture (décision utilisateur
+# 2026-10-19) : on commence par le sûr, les autres se cochent d'un clic. Les détections
+# restent toutes dans le GeoPackage, le bilan et le rapport.
+NIVEAUX_DECOCHES_PAR_DEFAUT: Tuple[str, ...] = ("possible", "douteux")
+
+
+def visible_par_defaut(categorie: str) -> bool:
+    """Vrai si la catégorie de fiabilité est cochée à l'ouverture de la couche."""
+    return str(categorie) not in NIVEAUX_DECOCHES_PAR_DEFAUT
+
 
 @dataclass(frozen=True)
 class Categorie:

@@ -92,6 +92,9 @@ def test_le_cli_leve_sans_json_et_sonde_sans_detection():
     assert "if sonde_a_faire and ok" not in boucle            # « ok » est faux sans détection
     assert "sortie_cpu.exists()" in boucle and "decision_non_sondee(" in cli
     assert "seuil_sonde = float(effective_conf) if is_segmentation" in cli
+    # 0.15.1 : le binaire énumère lui-même ses cartes et vérifie l'index d'une carte mémorisée.
+    assert "cartes_poste = app_mod.adaptateurs_dxgi()" in cli and "carte_au_bon_index(cartes_poste" in cli
+    assert 'cg.get("adaptateurs")' not in cli
 
 
 def test_le_registre_du_poste_n_est_ni_versionne_ni_livre():

@@ -104,17 +104,21 @@ def _apply_fiabilite_style(layer, base_color, cats, logger: logging.Logger) -> N
     rendu historique de ``_apply_confidence_style``, avec les catégories de
     fiabilité à la place des tranches de score (``app.services.fiabilite.STYLE_SPEC``).
     Libellés de légende = niveau garanti (« Probable · ≥ 60 % de vrais »),
-    catégorie la plus sûre en tête."""
+    catégorie la plus sûre en tête. Les niveaux « possible » et « douteux » sont
+    présents mais décochés à l'ouverture (``fiabilite.visible_par_defaut``) : l'état
+    est enregistré dans le projet .qgs comme dans la couche chargée en direct."""
     try:
         from qgis.core import QgsCategorizedSymbolRenderer, QgsRendererCategory
 
-        from ..app.services.fiabilite import CHAMP_LABEL, STYLE_SPEC, labels_legende
+        from ..app.services.fiabilite import CHAMP_LABEL, STYLE_SPEC, labels_legende, visible_par_defaut
 
         labels = labels_legende(cats)
         categories = []
         for c in sorted(cats, key=lambda x: x.seuil, reverse=True):
             symbol = _fiabilite_symbol(base_color, STYLE_SPEC[c.categorie])
-            categories.append(QgsRendererCategory(c.label, symbol, labels.get(c.categorie, c.label)))
+            categorie = QgsRendererCategory(c.label, symbol, labels.get(c.categorie, c.label))
+            categorie.setRenderState(visible_par_defaut(c.categorie))
+            categories.append(categorie)
         if not categories:
             return
         layer.setRenderer(QgsCategorizedSymbolRenderer(CHAMP_LABEL, categories))

@@ -5,8 +5,10 @@ sonder, ou appliquer une décision déjà prise sur ce poste pour ces cartes, ce
 binaire et ce modèle : le registre ``carte_graphique.json`` du profil QGIS (dossier
 ``archeologia``, comme les couleurs de classes). Une carte retenue le reste tant que la clé ne
 change pas ; un refus (plus lente, résultats différents, pilote) est réessayé après sept jours.
-Les cartes du poste viennent de DXGI (ctypes, Windows seulement) : l'ordre d'énumération est
-celui des ``device_id`` de DirectML, l'adaptateur logiciel (WARP) est écarté. Pur : pas de Qt.
+Les cartes du poste viennent de DXGI (``pipeline.cv.appareil.adaptateurs_dxgi``, Windows) et ne
+servent ici qu'à la clé : l'ordre DXGI dépend du processus (QGIS voit NVIDIA puis AMD là où le
+binaire voit AMD puis NVIDIA, vécu le 18/10), donc le moteur énumère lui-même pour les
+``device_id`` et vérifie qu'une carte mémorisée est encore à son index. Pur : pas de Qt.
 """
 from __future__ import annotations
 
@@ -21,7 +23,6 @@ NOM_REGISTRE = "carte_graphique.json"
 VALIDITE_REFUS_JOURS = 7
 CARTE = "carte_graphique"
 PROCESSEUR = "processeur"
-DXGI_ADAPTER_FLAG_SOFTWARE = 2
 
 
 # ---------------------------------------------------------------------------
@@ -29,70 +30,21 @@ DXGI_ADAPTER_FLAG_SOFTWARE = 2
 # ---------------------------------------------------------------------------
 @functools.lru_cache(maxsize=1)
 def adaptateurs() -> List[Dict[str, Any]]:
-    """``[{"id", "nom", "pilote", "vram_go"}, …]`` dans l'ordre DXGI = ``device_id`` DirectML ;
-    ``[]`` hors Windows ou si DXGI ne répond pas (le journal dira « aucune carte »)."""
+    """Cartes du poste vues depuis QGIS (``pipeline.cv.appareil.adaptateurs_dxgi``) : servent à la
+    **clé** (noms et pilotes, triés) et à dire « aucune carte ». Leur ordre n'est pas celui du
+    moteur (DXGI ordonne par processus) : le moteur énumère lui-même pour les ``device_id``."""
     if sys.platform != "win32":
         return []
     try:
-        return _adaptateurs_dxgi()
+        try:
+            from ...pipeline.cv.appareil import adaptateurs_dxgi
+        except ImportError:  # pragma: no cover
+            from pipeline.cv.appareil import adaptateurs_dxgi
+        return adaptateurs_dxgi()
     except Exception:  # noqa: BLE001 — poste sans DXGI (session distante, pilote absent)
         return []
 
 
-def _adaptateurs_dxgi() -> List[Dict[str, Any]]:
-    import ctypes
-    import ctypes.wintypes as w
-
-    class GUID(ctypes.Structure):
-        _fields_ = [("a", w.DWORD), ("b", w.WORD), ("c", w.WORD), ("d", ctypes.c_ubyte * 8)]
-
-    class LUID(ctypes.Structure):
-        _fields_ = [("LowPart", w.DWORD), ("HighPart", w.LONG)]
-
-    class DESC1(ctypes.Structure):
-        _fields_ = [("Description", w.WCHAR * 128), ("VendorId", w.UINT), ("DeviceId", w.UINT),
-                    ("SubSysId", w.UINT), ("Revision", w.UINT), ("DedicatedVideoMemory", ctypes.c_size_t),
-                    ("DedicatedSystemMemory", ctypes.c_size_t), ("SharedSystemMemory", ctypes.c_size_t),
-                    ("AdapterLuid", LUID), ("Flags", w.UINT)]
-
-    def methode(obj, index, restype, *argtypes):
-        vtbl = ctypes.cast(obj, ctypes.POINTER(ctypes.c_void_p))[0]
-        fn = ctypes.cast(vtbl, ctypes.POINTER(ctypes.c_void_p))[index]
-        return ctypes.WINFUNCTYPE(restype, ctypes.c_void_p, *argtypes)(fn)
-
-    # IID_IDXGIFactory1 = 770aae78-f26f-4dba-a829-253c83d1b387
-    iid = GUID(0x770AAE78, 0xF26F, 0x4DBA, (ctypes.c_ubyte * 8)(0xA8, 0x29, 0x25, 0x3C, 0x83, 0xD1, 0xB3, 0x87))
-    factory = ctypes.c_void_p()
-    if ctypes.windll.dxgi.CreateDXGIFactory1(ctypes.byref(iid), ctypes.byref(factory)) != 0:
-        return []
-    iid_device = GUID(0x54EC77FA, 0x1377, 0x44E6, (ctypes.c_ubyte * 8)(0x8C, 0x32, 0x88, 0xFD, 0x5F, 0x44, 0xC8, 0x4C))
-    out: List[Dict[str, Any]] = []
-    try:
-        enum_adapters1 = methode(factory, 12, ctypes.c_long, w.UINT, ctypes.POINTER(ctypes.c_void_p))
-        i = 0
-        while True:
-            adapter = ctypes.c_void_p()
-            if enum_adapters1(factory, i, ctypes.byref(adapter)) != 0:
-                break
-            try:
-                desc = DESC1()
-                if methode(adapter, 10, ctypes.c_long, ctypes.POINTER(DESC1))(adapter, ctypes.byref(desc)) != 0:
-                    continue
-                if not desc.Flags & DXGI_ADAPTER_FLAG_SOFTWARE:
-                    umd = ctypes.c_longlong(0)   # version du pilote en mode utilisateur (IDXGIAdapter::CheckInterfaceSupport)
-                    if methode(adapter, 9, ctypes.c_long, ctypes.POINTER(GUID), ctypes.POINTER(ctypes.c_longlong))(
-                            adapter, ctypes.byref(iid_device), ctypes.byref(umd)) != 0:
-                        umd.value = 0
-                    v = umd.value
-                    pilote = ".".join(str((v >> s) & 0xFFFF) for s in (48, 32, 16, 0)) if v else "?"
-                    out.append({"id": i, "nom": desc.Description.strip() or f"carte {i}", "pilote": pilote,
-                                "vram_go": round(desc.DedicatedVideoMemory / 2 ** 30, 1)})
-            finally:
-                methode(adapter, 2, w.ULONG)(adapter)
-            i += 1
-    finally:
-        methode(factory, 2, w.ULONG)(factory)
-    return out
 
 
 # ---------------------------------------------------------------------------
@@ -175,8 +127,8 @@ def binaire_directml(binaire: Dict[str, Any]) -> bool:
 def bloc_run(demande: bool, adaptateurs_: Sequence[Dict[str, Any]], decision: Optional[Dict[str, Any]],
              binaire: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     """``cv_config["carte_graphique"]`` du run : ``None`` option décochée ; ``demande`` faux avec
-    un ``message`` à narrer quand rien n'est à sonder ; sinon les adaptateurs à sonder, ou le
-    ``device_id`` d'une carte déjà retenue."""
+    un ``message`` à narrer quand rien n'est à sonder ; sinon la demande de sonde, ou le
+    ``device_id`` et le nom d'une carte déjà retenue (vérifiés par le moteur)."""
     if not demande:
         return None
     if not adaptateurs_:
@@ -189,17 +141,15 @@ def bloc_run(demande: bool, adaptateurs_: Sequence[Dict[str, Any]], decision: Op
         return {"demande": False, "message": f"carte graphique écartée sur ce poste le {_date_fr(decision.get('date'))} "
                                              f"({decision.get('motif', '?')}) ; détection sur le processeur, "
                                              f"nouvel essai après {VALIDITE_REFUS_JOURS} jours"}
-    bloc: Dict[str, Any] = {"demande": True, "adaptateurs": [dict(a) for a in adaptateurs_]}
+    bloc: Dict[str, Any] = {"demande": True}
     if decision and decision.get("appareil") == CARTE:
-        # La clé ignore l'ordre des cartes ; le device_id est positionnel : la carte mémorisée
-        # n'est appliquée que si l'adaptateur à cet index porte encore son nom, sinon on re-sonde.
+        # Le device_id est celui du moteur, qui vérifie lui-même que la carte à cet index porte
+        # encore ce nom (sinon il re-sonde) : l'ordre vu d'ici n'est pas le sien.
         try:
-            did = int(decision.get("device_id", -1))
+            bloc["device_id"] = int(decision.get("device_id", 0))
         except (TypeError, ValueError):
-            did = -1
-        if 0 <= did < len(adaptateurs_) and str(adaptateurs_[did].get("nom")) == str(decision.get("carte")):
-            bloc["device_id"] = did
-            bloc["carte"] = str(decision.get("carte"))
+            return bloc
+        bloc["carte"] = str(decision.get("carte") or "?")
     return bloc
 
 

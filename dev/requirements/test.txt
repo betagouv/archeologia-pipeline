@@ -1,6 +1,7 @@
 # Tests & qualité de code
 pytest>=7.0
 pytest-cov>=4.0
+pytest-xdist>=3.0   # run_tests.py lance la suite en parallèle (-n auto) dès qu'il est là
 ruff>=0.4
 
 # Lecture des args.yaml de modèles CV (model_config.py, model_profile.py)

@@ -24,7 +24,9 @@ Un défaut **vu dans le flux** (qualité des tuiles, grille, 401/403) se diagnos
 | Une fonctionnalité visible change | skill `manuel-integre` : le chapitre du manuel dans le même commit |
 | Installer un modèle, écrire une fiche de classe | `/archeologia:installer-modele-plugin` puis `/archeologia:fiche-classe-plugin` (skills partagés, § Installation d'un modèle) |
 | Un sujet d'un autre dépôt, un fichier produit ici et lu ailleurs | `/archeologia:depots` |
-| Vérifier une fenêtre sans QGIS de bureau | `C:/OSGeo4W/bin/python-qgis.bat dev/rendu_hors_ecran.py captures\|manuel\|profil\|journal` (§ Branches, worktrees) |
+| Vérifier une fenêtre sans QGIS de bureau | `C:/OSGeo4W/bin/python-qgis.bat dev/rendu_hors_ecran.py captures\|manuel\|profil\|journal` (§ Branches, worktrees) — **sous les deux QGIS** (OSGeo4W = 3.44/Qt5, `"C:/Program Files/QGIS 4.0.3/bin/python-qgis.bat"` = Qt6) : les largeurs de texte diffèrent, un débord vu seulement sous Qt6 a été livré trois fois |
+| Le schéma de la chaîne de traitement change (manuel + README) | éditer `dev/docs/schema_pipeline.svg`, puis `python-qgis.bat dev/schema_pipeline.py` → `aide/img/pipeline.png` (2×) |
+| Refaire la capture de la légende de fiabilité | `python-qgis.bat dev/capture_legende.py --run <dossier de sortie v3>` (projet de validation reconstruit avec le code courant, arbre des couches + carte hors écran) |
 | Situer les zones d'une fiche nouvelle sur la carte « Appris sur » | `python-qgis.bat dev/fiches/zones_corpus.py` → `data/zones_corpus.json` (`test_carte_zones` rouge sinon) |
 | Grille IGN à jour (avant chaque livraison) | `python dev/build_quadrillage_from_wfs.py` |
 | Binaire CV périmé (`test_binaire_a_jour` rouge) | `python dev/runner_onnx/build.py` |

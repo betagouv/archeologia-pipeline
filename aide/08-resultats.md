@@ -2,7 +2,7 @@
 
 ## Le dossier de sortie
 
-Deux dossiers, une règle : `livrable/` se garde et se transmet, `technique/` se supprime.
+Deux dossiers, une règle : `livrable/` se garde et se transmet, `technique/` se supprime. Le [schéma de la chaîne](premier-traitement.md#ce-que-fait-le-plugin) montre quelle phase écrit chaque dossier.
 
 ```
 dossier_de_sortie/
@@ -19,9 +19,9 @@ dossier_de_sortie/
 │       ├── parcellaire/parcellaire.gpkg   un GeoPackage par entité
 │       └── parcellaire/fiabilite.json     les coupures de fiabilité de cette couche
 └── technique/                         ce que vous pouvez supprimer
-    ├── sources/dalles/                dalles LiDAR téléchargées, re-téléchargeables ; à côté de chacune,
-    │                                  une note « .verifie.json » (lue en entier, supprimable) et, si un
-    │                                  téléchargement a été interrompu, un « .partial » (retéléchargé au lancement suivant)
+    ├── sources/dalles/                dalles LiDAR, re-téléchargeables ; à côté :
+    │                                  une note « .verifie.json » (lue en entier)
+    │                                  et « .partial » après une coupure
     ├── intermediaires/                fichiers de calcul par dalle
     ├── png/                           images préparées pour la détection
     ├── detection/<modèle>/            sorties brutes et images annotées
@@ -40,7 +40,7 @@ Dans chaque dossier `tif/`, la mosaïque `index_<PRODUIT>.vrt` assemble toutes l
 
 `livrable/projet.qgs` est écrit à la fin de chaque traitement et constitue le point d'entrée pour valider les détections. Il contient les mosaïques des indices et, par entité, un groupe avec sa couche de détections stylée. Deux modèles comparés sur une même entité donnent deux couches dans un groupe marqué « comparaison ».
 
-Les mêmes couches sont chargées directement dans votre projet QGIS courant à la fin du traitement.
+Les mêmes couches sont chargées dans votre projet QGIS courant quand vous cliquez **Ouvrir le projet QGIS** à la fin du traitement, une seule fois ; rien ne se charge sans ce clic.
 
 ## La légende de fiabilité
 
@@ -69,7 +69,7 @@ Une couche issue d'un modèle sans fiabilité mesurée est catégorisée par tra
 | `cluster_id` | le regroupement auquel la détection appartient, le cas échéant |
 | `corr_pred`, `validation` | deux champs vides, à votre usage pour corriger la classe et noter votre verdict |
 
-Les zones issues d'un regroupement portent en plus le nombre de détections qu'elles contiennent, leur surface en mètres carrés et leur densité par hectare.
+Les zones issues d'un regroupement portent en plus le nombre de détections qu'elles contiennent, leur surface en mètres carrés, leur densité par hectare, le score que dépassent les 10 % de détections les mieux notées (`conf_p90`) et l'élongation médiane des détections (`elong_med`).
 
 ## Valider les détections
 
@@ -79,7 +79,7 @@ Pour une dalle, les détections de toutes les entités se superposent sans doubl
 
 ## Les traces d'un traitement
 
-`livrable/traitement.json` résume le dernier traitement : version du plugin, date, nombre de dalles, version de PDAL qui a calculé le MNT, produits et leurs réglages, modèles lancés avec l'appareil qui a détecté (processeur ou carte graphique, et son nom), entités produites avec le chemin de leur GeoPackage, le bilan de fiabilité par entité, le moteur de détection employé ou, si la détection a été impossible, sa cause. Il ne porte aucun chemin de votre poste et se transmet avec le livrable.
+`livrable/traitement.json` résume le dernier traitement : version du plugin, date, nombre de dalles, version de PDAL qui a calculé le MNT et méthode de fusion des nuages, produits et leurs réglages, modèles lancés avec l'appareil qui a détecté (processeur ou carte graphique, et son nom), entités produites avec le chemin de leur GeoPackage, le bilan de fiabilité par entité, le moteur de détection employé ou, si la détection a été impossible, sa cause. Il ne porte aucun chemin de votre poste et se transmet avec le livrable.
 
 `technique/journaux/` garde, pour chaque lancement, le journal détaillé `pipeline_log_<date>.txt` et la trace complète `metadata_<date>.json`, avec la configuration entière de l'assistant, chemins de votre poste compris. C'est ce qu'il faut joindre à une demande d'aide.
 

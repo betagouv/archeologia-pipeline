@@ -268,7 +268,11 @@ _RUBRIQUES_DEPANNAGE: Tuple[Tuple[str, str], ...] = (
     (r"v[ée]rifications pr[ée]alables ont [ée]chou", "Les vérifications préalables ont échoué"),
     (r"timed out|data\.geopf\.fr|proxy|t[ée]l[ée]chargement.*[ée]chou|aucun octet re[çc]u", "Le téléchargement échoue"),
     (r"abandonn", "Une dalle est abandonnée"),
-    (r"PDAL a crash|moins de workers|max_workers", "Erreur PDAL ou mémoire"),
+    (r"m[ée]thode de calcul mise [àa] jour|param[èe]tres de traitement modifi", "Méthode de calcul mise à jour"),
+    # Les messages réels de la fusion et du MNT (ign_local_runner, existing_mnt) ; « en échec » seul
+    # serait trop large (runs de détection), d'où les ancres dalle(s) / Dalle / MNT.
+    (r"PDAL a crash|moins de workers|max_workers|non fusionn|dalle\(s\).*en [ée]chec|\bDalle .* en [ée]chec|\bMNT .* en [ée]chec",
+     "Erreur PDAL ou mémoire"),
     (r"filtre des points (non reconnu|refus[ée] par pdal)", "Le filtre des points n'est pas reconnu"),
     (r"aucune zone d'int[ée]r[êe]t|aucun run", "Aucun run, ou aucune détection"),
     (r"interromp", "Le traitement s'est interrompu"),

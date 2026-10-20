@@ -11,7 +11,7 @@ Rien n'est estimé : une phase sans compteur montre son chronomètre, pas un pou
 
 [![La vue d'exécution pendant une détection : la frise porte l'état, le journal raconte](img/run-journal.png)](img/run-journal.png)
 
-Pendant le traitement, les étapes 1 à 4 restent consultables mais en lecture seule, signalé par une pastille dans l'en-tête. **Annuler** arrête proprement à la fin de la dalle en cours.
+Pendant le traitement, les étapes 1 à 4 restent consultables mais en lecture seule, signalé par une pastille dans l'en-tête. **Annuler** arrête au prochain point de contrôle, en quelques secondes, y compris pendant un téléchargement qui n'avance plus ; ce qui est déjà écrit est gardé.
 
 ### Lire le journal
 
@@ -20,7 +20,7 @@ Pendant le traitement, les étapes 1 à 4 restent consultables mais en lecture s
 - **Fusion des dalles avec leurs voisines** : la marge est constituée.
 - **Calcul des produits** : une ligne par dalle, puis par modèle de terrain.
 - **Détection** : une ligne par modèle, nommé comme à l'étape 3, puis par image analysée ; à la fin de chaque modèle, le nombre d'images et la durée mesurée. Sans entité cochée, en mode indices existants, une seule ligne « Publication des indices ».
-- **Assemblage** : mosaïques, GeoPackages, projet QGIS, puis le nombre de couches ajoutées.
+- **Assemblage** : mosaïques, GeoPackages, puis « Projet QGIS écrit : livrable/projet.qgs » ; le nombre de couches ajoutées ne s'affiche qu'au clic sur **Ouvrir le projet QGIS**.
 
 Un **⚠** signale quelque chose qui n'arrête pas le traitement mais mérite d'être lu : un raster trop petit pour le rayon d'un indice, une dalle écartée. Un **✗** est une erreur ; si le traitement s'interrompt, le message en donne la cause et le journal complet du dossier de sortie (`technique/journaux/`) le détail technique. Quand ce manuel a une rubrique pour le message, la ligne se termine par « voir Manuel › Dépannage › … » : un clic l'ouvre directement.
 
@@ -49,7 +49,8 @@ Vous pouvez relancer un traitement dans un dossier de sortie déjà utilisé, pa
 - un produit déjà calculé avec les mêmes réglages n'est pas recalculé ;
 - un indice relancé avec d'autres réglages va dans un dossier distinct, dont le nom porte les réglages ;
 - une détection relancée avec un autre modèle, un autre seuil ou après une mise à jour du moteur de détection est refaite ; à réglages identiques, les images déjà analysées ne le sont pas de nouveau ;
-- les mosaïques sont régénérées et les couches périmées retirées du projet QGIS au lancement, pour que les nouvelles dalles apparaissent.
+- les mosaïques sont régénérées et les couches périmées retirées du projet QGIS au lancement, pour que les nouvelles dalles apparaissent ;
+- un dossier calculé par une version précédente du plugin, ou des réglages de fusion ou de MNT changés depuis, refont une fois la fusion, le MNT et les indices : le journal le dit par « ⚠️ Méthode de calcul mise à jour » ou « ⚠️ Paramètres de traitement modifiés », voir [Méthode de calcul mise à jour](depannage.md#methode-de-calcul-mise-a-jour).
 
 Les sorties intermédiaires ne sont jamais supprimées par le plugin : vous pouvez les effacer vous-même une fois satisfait, voir [Faire de la place](resultats.md#faire-de-la-place).
 

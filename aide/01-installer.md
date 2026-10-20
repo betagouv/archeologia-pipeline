@@ -8,6 +8,8 @@ Le plugin se distribue par un dépôt d'extensions QGIS privé. Vous l'ajoutez u
 |---|---|---|
 | QGIS | 3.34 ou plus récent, QGIS 4 compris | Installation OSGeo4W recommandée : elle apporte PDAL, utilisé pour lire les nuages de points |
 | Accès au dépôt | adresse et identifiants | Communiqués par l'équipe, jamais écrits dans cette aide |
+| Carte graphique | facultative, Windows | Accélère la détection une fois vérifiée contre le processeur, à l'étape 4 |
+| Disque | de la place dans le dossier de sortie | L'étape 4 affiche les Go libres du disque de sortie |
 
 Une bonne connexion est utile : le plugin est volumineux, car il embarque les modèles d'IA et la grille des dalles LiDAR HD de l'IGN.
 
@@ -64,7 +66,7 @@ Le plugin lit cette configuration pour télécharger les dalles. À défaut, il 
 
 ## Vérifier l'installation
 
-Rien à faire de particulier : à l'étape 4 de l'assistant, le panneau **État du système** vérifie en tâche de fond les outils (PDAL, GDAL), QGIS Processing et le moteur d'indices intégré, le moteur de détection, et vos dossiers d'entrée et de sortie. Un élément manquant est nommé et bloque le lancement. Voir [Étape 4 · Vérifications](etape-4-verifications.md#etat-du-systeme).
+Rien à faire de particulier : à l'étape 4 de l'assistant, le panneau **État du système** vérifie en tâche de fond les outils (PDAL, GDAL), QGIS Processing et le moteur d'indices intégré, le moteur de détection, et vos dossiers d'entrée et de sortie. Un élément manquant est nommé en rouge ; lancé quand même, le traitement s'arrête aussitôt sur ses vérifications préalables. Voir [Étape 4 · Vérifications](etape-4-verifications.md#etat-du-systeme).
 
 ## Mettre à jour
 

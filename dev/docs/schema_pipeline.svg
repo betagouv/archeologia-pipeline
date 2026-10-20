@@ -1,0 +1,156 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Source du schéma de la chaîne de traitement du manuel (aide/02-premier-traitement.md).
+     Rastérisé en aide/img/pipeline.png par : python-qgis.bat dev/schema_pipeline.py
+     Pas de marker SVG ni de variable CSS : QtSvg (SVG Tiny) ne les rend pas. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1180 640" width="1180" height="640"
+     font-family="Segoe UI" font-size="12" fill="#22262b">
+  <rect x="0" y="0" width="1180" height="640" fill="#ffffff"/>
+
+  <!-- étape 1 -->
+  <text x="30" y="13" font-size="10.5" font-weight="600" fill="#5d6670">ÉTAPE 1 · le point d'entrée fixe le mode</text>
+
+  <!-- bandes de parallélisme, rangée A -->
+  <rect x="250" y="94" width="430" height="150" rx="6" fill="#e4edf3" stroke="#2f5d7c" stroke-width="1" stroke-dasharray="4 3"/>
+  <text x="257" y="232" font-size="11" fill="#2f5d7c">en parallèle : autant de dalles que de workers (réglage de l'étape 4)</text>
+  <rect x="700" y="94" width="430" height="150" rx="6" fill="#f4efe4" stroke="#8a6d2f" stroke-width="1" stroke-dasharray="4 3"/>
+  <text x="707" y="105" font-size="10.5" font-weight="600" fill="#8a6d2f">ÉTAPE 2 · produits et réglages</text>
+  <text x="707" y="232" font-size="11" fill="#8a6d2f">une dalle après l'autre</text>
+
+  <!-- bandes de parallélisme, rangée B -->
+  <rect x="20" y="394" width="210" height="150" rx="6" fill="#e4edf3" stroke="#2f5d7c" stroke-width="1" stroke-dasharray="4 3"/>
+  <text x="27" y="532" font-size="11" fill="#2f5d7c">en parallèle : workers</text>
+  <rect x="250" y="394" width="430" height="150" rx="6" fill="#f4efe4" stroke="#8a6d2f" stroke-width="1" stroke-dasharray="4 3"/>
+  <text x="257" y="405" font-size="10.5" font-weight="600" fill="#8a6d2f">ÉTAPE 3 · entités et seuils</text>
+  <text x="257" y="532" font-size="11" fill="#8a6d2f">un modèle après l'autre, image par image ; carte graphique si elle est retenue</text>
+
+  <!-- points d'entrée -->
+  <g fill="#ffffff" stroke="#2f5d7c" stroke-width="1.2">
+    <rect x="30" y="20" width="190" height="30" rx="15"/>
+    <rect x="260" y="20" width="190" height="30" rx="15"/>
+    <rect x="490" y="20" width="190" height="30" rx="15"/>
+    <rect x="950" y="20" width="190" height="30" rx="15"/>
+    <rect x="95" y="320" width="190" height="30" rx="15"/>
+  </g>
+  <g text-anchor="middle" font-size="11.5">
+    <text x="125" y="39">tous les modes</text>
+    <text x="355" y="39">mode Téléchargement IGN</text>
+    <text x="585" y="39">mode Nuages locaux</text>
+    <text x="1045" y="39">mode MNT existant</text>
+    <text x="190" y="339">mode Indices RVT existants</text>
+  </g>
+  <g stroke="#22262b" stroke-width="1.2" fill="none">
+    <line x1="125" y1="50" x2="125" y2="102"/>
+    <line x1="355" y1="50" x2="355" y2="102"/>
+    <line x1="585" y1="50" x2="585" y2="102"/>
+    <line x1="1045" y1="50" x2="1045" y2="102"/>
+    <line x1="190" y1="350" x2="190" y2="402"/>
+  </g>
+  <g fill="#22262b" stroke="none">
+    <polygon points="120,102 125,110 130,102"/>
+    <polygon points="350,102 355,110 360,102"/>
+    <polygon points="580,102 585,110 590,102"/>
+    <polygon points="1040,102 1045,110 1050,102"/>
+    <polygon points="185,402 190,410 195,402"/>
+  </g>
+
+  <!-- rangée A -->
+  <g fill="#ffffff" stroke="#22262b" stroke-width="1.4">
+    <rect x="30" y="110" width="190" height="64" rx="4"/>
+    <rect x="260" y="110" width="190" height="64" rx="4"/>
+    <rect x="490" y="110" width="190" height="64" rx="4"/>
+    <rect x="720" y="110" width="190" height="64" rx="4"/>
+    <rect x="950" y="110" width="190" height="64" rx="4"/>
+  </g>
+  <g text-anchor="middle" font-weight="600" font-size="13">
+    <text x="125" y="136">Vérifications</text>
+    <text x="355" y="136">Téléchargement IGN</text>
+    <text x="585" y="136">Fusion avec les voisines</text>
+    <text x="815" y="136">MNT · densité · couverture</text>
+    <text x="1045" y="136">Indices de visualisation</text>
+  </g>
+  <g text-anchor="middle" font-size="10.5" fill="#5d6670">
+    <text x="125" y="154">outils, moteurs, dossiers</text>
+    <text x="125" y="167">réglages hors bornes refusés</text>
+    <text x="355" y="154">dalles LiDAR HD, Géoplateforme</text>
+    <text x="355" y="167">reprise après une coupure</text>
+    <text x="585" y="154">chaque dalle et ses voisines</text>
+    <text x="585" y="167">avec la marge de l'étape 2</text>
+    <text x="815" y="154">sol nu, grille calée</text>
+    <text x="815" y="167">densité, couverture : qualité</text>
+    <text x="1045" y="154">ombrages, SVF, LD…</text>
+    <text x="1045" y="167">un dossier par réglage</text>
+  </g>
+  <g stroke="#22262b" stroke-width="1.4" fill="none">
+    <line x1="220" y1="142" x2="252" y2="142"/>
+    <line x1="450" y1="142" x2="482" y2="142"/>
+    <line x1="680" y1="142" x2="712" y2="142"/>
+    <line x1="910" y1="142" x2="942" y2="142"/>
+  </g>
+  <g fill="#22262b" stroke="none">
+    <polygon points="252,137 260,142 252,147"/>
+    <polygon points="482,137 490,142 482,147"/>
+    <polygon points="712,137 720,142 712,147"/>
+    <polygon points="942,137 950,142 942,147"/>
+  </g>
+  <g text-anchor="middle" font-size="10" fill="#5d6670">
+    <text x="469" y="190">LAZ</text>
+    <text x="699" y="190">LAZ fusionné</text>
+    <text x="929" y="190">MNT (TIF)</text>
+  </g>
+
+  <!-- retour vers la rangée B -->
+  <path d="M1045,174 L1045,290 L70,290 L70,402" fill="none" stroke="#22262b" stroke-width="1.4"/>
+  <polygon points="65,402 70,410 75,402" fill="#22262b" stroke="none"/>
+  <text x="560" y="283" text-anchor="middle" font-size="10" fill="#5d6670">indices (TIF) → livrable/indices/ · la dalle avec sa marge → technique/intermediaires/</text>
+
+  <!-- rangée B -->
+  <g fill="#ffffff" stroke="#22262b" stroke-width="1.4">
+    <rect x="30" y="410" width="190" height="64" rx="4"/>
+    <rect x="260" y="410" width="190" height="64" rx="4"/>
+    <rect x="490" y="410" width="190" height="64" rx="4"/>
+    <rect x="720" y="410" width="190" height="64" rx="4"/>
+  </g>
+  <g text-anchor="middle" font-weight="600" font-size="13">
+    <text x="125" y="436">Images d'analyse</text>
+    <text x="355" y="436">Détection</text>
+    <text x="585" y="436">Post-traitement</text>
+    <text x="815" y="436">Finalisation</text>
+  </g>
+  <g text-anchor="middle" font-size="10.5" fill="#5d6670">
+    <text x="125" y="454">PNG de la dalle et sa marge</text>
+    <text x="125" y="467">objets de bord vus entiers</text>
+    <text x="355" y="454">un modèle par entité</text>
+    <text x="355" y="467">carte graphique si retenue</text>
+    <text x="585" y="454">doublons de bord, regroupements</text>
+    <text x="585" y="467">seuils, aires, fiabilité</text>
+    <text x="815" y="454">mosaïques, projet QGIS</text>
+    <text x="815" y="467">rapport, traitement.json</text>
+  </g>
+  <g stroke="#22262b" stroke-width="1.4" fill="none">
+    <line x1="220" y1="442" x2="252" y2="442"/>
+    <line x1="450" y1="442" x2="482" y2="442"/>
+    <line x1="680" y1="442" x2="712" y2="442"/>
+    <line x1="910" y1="442" x2="942" y2="442"/>
+  </g>
+  <g fill="#22262b" stroke="none">
+    <polygon points="252,437 260,442 252,447"/>
+    <polygon points="482,437 490,442 482,447"/>
+    <polygon points="712,437 720,442 712,447"/>
+    <polygon points="942,437 950,442 942,447"/>
+  </g>
+  <g text-anchor="middle" font-size="10" fill="#5d6670">
+    <text x="239" y="490">PNG</text>
+    <text x="469" y="490">détections brutes</text>
+    <text x="699" y="490">GeoPackage</text>
+  </g>
+
+  <!-- sortie -->
+  <rect x="950" y="410" width="190" height="64" rx="4" fill="#ffffff" stroke="#2f5d7c" stroke-width="1.4" stroke-dasharray="5 3"/>
+  <text x="1045" y="436" text-anchor="middle" font-weight="600" font-size="13" fill="#2f5d7c">Dossier de sortie</text>
+  <text x="1045" y="454" text-anchor="middle" font-size="10.5" fill="#5d6670">livrable/ à garder et transmettre</text>
+  <text x="1045" y="467" text-anchor="middle" font-size="10.5" fill="#5d6670">technique/ à supprimer</text>
+
+  <!-- étape 5 -->
+  <text x="590" y="596" text-anchor="middle" font-size="11" fill="#5d6670">ÉTAPE 5 · tout au long, le journal dit ce qui est décidé et pourquoi, avec un renvoi au manuel ;</text>
+  <text x="590" y="612" text-anchor="middle" font-size="11" fill="#5d6670">la frise porte l'état ; Annuler arrête en quelques secondes et garde ce qui est écrit.</text>
+</svg>

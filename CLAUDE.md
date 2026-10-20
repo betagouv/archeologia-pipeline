@@ -2,7 +2,15 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-QGIS plugin (Python) that runs a LiDAR processing pipeline → DTM / density / RVT indices, with an optional ONNX-based computer-vision detection step. README.md is the authoritative reference (~820 lines, French) — read the relevant section before doing anything non-trivial. This file captures only what isn't obvious from the file tree.
+QGIS plugin (Python) that runs a LiDAR processing pipeline → DTM / density / RVT indices, with an optional ONNX-based computer-vision detection step. README.md (French) is the developer entry point and `aide/*.md` the user manual — read the relevant section before doing anything non-trivial. This file captures only what isn't obvious from the file tree.
+
+## Vérification — trois règles (2026-10-20)
+
+- **Un correctif = son test qui échouait avant, dans le même commit** (c'était déjà le cas pour 32 des 35 `fix` de 0.14.1 à 0.16.1 ; l'écrire verrouille).
+- **Preuve = la sortie de la commande**, jamais « les tests passent » : coller les dernières lignes de `run_tests.py`, de `ruff`, du rendu hors écran.
+- **Tout rendu hors écran se lance sous les deux QGIS** (3.44/Qt5 par OSGeo4W, 4.0.3/Qt6) : les largeurs de texte diffèrent.
+
+Deux hooks Claude Code (`.claude/settings.json`, scripts `dev/hooks/`) les tiennent : `Stop` lance `run_tests.py -q -x` dès que `src/` ou `tests/` a changé et bloque si rouge ; `PostToolUse` sur Edit/Write balaie les énumérations Qt plates et `ruff` sur chaque fichier de `src/` touché.
 
 ## Trois dépôts — où travailler (règle 2026-09-28)
 
@@ -11,7 +19,7 @@ QGIS plugin (Python) that runs a LiDAR processing pipeline → DTM / density / R
 | Plugin QGIS : UI, pipeline local, CV, onglet ② (lecture du catalogue) | **ici** (public) |
 | Calcul distant + **publication Géoplateforme** : livraisons, pyramides, grille et format des tuiles, offres, clé, écriture du catalogue de l'onglet ② | `C:/projets/Archeologia/archeologia-ovh` (**privé**) : son `CLAUDE.md`, son runbook `.claude/commands/publish-gpf.md`, son `.venv`, ses `tests/` |
 | Entraînement, évaluation, corpus des modèles | `C:/projets/Archeologia/training-models` (cf. « Installation d'un modèle » plus bas) |
-| Carte des dépôts, skills communs aux dépôts | marketplace locale `C:/projets/Archeologia/claude-plugins` (plugin Claude Code `archeologia`, enregistré par `.claude/settings.json`) : `/archeologia:depots` à invoquer dès qu'une demande touche un autre dépôt |
+| Carte des dépôts, skills communs aux dépôts | marketplace locale `C:/projets/Archeologia/claude-plugins` (plugin Claude Code `archeologia`, enregistré par `.claude/settings.local.json`, gitignoré) : `/archeologia:depots` à invoquer dès qu'une demande touche un autre dépôt |
 
 Un défaut **vu dans le flux** (qualité des tuiles, grille, 401/403) se diagnostique et se corrige dans `archeologia-ovh`, jamais ici : le plugin ne fait qu'ouvrir les descripteurs `GDAL_WMS` que cet outil écrit dans `data/local_catalogue/` (gitignoré, porte la clé d'accès). Session ouverte ici pour un tel sujet : le dire, lire le `CLAUDE.md` et les `.claude/commands/` de l'autre dépôt **avant** d'agir, y faire les modifications et y lancer ses tests — sans jamais recopier ici son code, ses secrets ni ses documents (dépôt public).
 
@@ -199,8 +207,9 @@ et installé ici (`data/models/<id>/`, contrat `docs/model_contract.md`, validat
 `dev/fiches/zones_corpus.py` → `data/zones_corpus.json`). La procédure est portée par deux skills
 **partagés, qui n'existent qu'une fois** : dans la marketplace locale
 `C:/projets/Archeologia/claude-plugins` (plugin `archeologia`, lu en place), enregistrée par le
-`.claude/settings.json` de chaque dépôt (`extraKnownMarketplaces` + `enabledPlugins`) — ici le seul
-fichier de `.claude/` suivi avec `commands/` et le skill `manuel-integre`, le reste est gitignoré.
+`.claude/settings.local.json` de chaque dépôt (`extraKnownMarketplaces` + `enabledPlugins` ; gitignoré,
+il porte un chemin de poste) ; le `.claude/settings.json` suivi ne porte que les hooks Claude Code
+(scripts `dev/hooks/`), à côté de `commands/` et du skill `manuel-integre` ; le reste de `.claude/` est gitignoré.
 `/archeologia:installer-modele-plugin` puis `/archeologia:fiche-classe-plugin` (chaîne `suivant:`
 héritée de training-models), et `/archeologia:depots` pour la carte des dépôts : **les invoquer dès
 que le sujet apparaît**, jamais re-dériver la procédure. Modifier un skill partagé = l'éditer et le
@@ -244,7 +253,7 @@ La procédure de livraison complète (grille, manuel, binaire, Talisman, PR, tag
 1. Lister les changements depuis la dernière version (`git log <last-tag>..HEAD --oneline` ou `git log main..HEAD --oneline` si pas de tag).
 2. Classer le changement le plus impactant selon le tableau ci-dessus → c'est lui qui fixe le bump.
 3. Proposer le nouveau numéro + une nouvelle entrée à ajouter **en tête** du champ `changelog=` de `metadata.txt` (le champ existe et est déjà rempli, vers la ligne 23).
-4. Si l'utilisateur valide : éditer **tous les fichiers qui portent la version en dur** — `metadata.txt` (`version=` **et** nouvelle entrée en tête de `changelog=`) **et** `README.md` (ligne ~6 `- Version : **X.Y.Z**`) — puis suggérer `git tag v<version>` au moment du merge. Le reste dérive de `metadata.txt` au runtime (`app/plugin_metadata.py`, le titre du dialogue, et `dev/package_plugin.py:zip_filename` qui nomme le ZIP `ArcheologIA_v<version>.zip`) → rien d'autre à éditer. ⚠️ Ne pas toucher aux références **historiques** (historique du `changelog=`, notes sous `dev/docs/` qui citent une version passée). Vérifier par `git grep <ancienne X.Y.Z>` qu'il ne reste pas d'occurrence active.
+4. Si l'utilisateur valide : éditer **tous les fichiers qui portent la version en dur** — `metadata.txt` (`version=` **et** nouvelle entrée en tête de `changelog=`) **et** `README.md` (ligne ~6 `- Version : **X.Y.Z**`) — puis suggérer `git tag v<version>` au moment du merge. Le reste dérive de `metadata.txt` au runtime (`app/plugin_metadata.py`, le titre du dialogue, et `dev/package_plugin.py:zip_filename` qui nomme le ZIP `archeologia.<version>.zip`) → rien d'autre à éditer. ⚠️ Ne pas toucher aux références **historiques** (historique du `changelog=`, notes sous `dev/docs/` qui citent une version passée). Vérifier par `git grep <ancienne X.Y.Z>` qu'il ne reste pas d'occurrence active.
 
 ## Git hooks (Talisman)
 

@@ -1,0 +1,24 @@
+# Suite de tests du plugin sur un poste propre (lot 3 du chantier d'outillage, 2026-10-20).
+# Un seul job, Windows : les utilisateurs sont sous Windows et le hook pre-push du poste
+# couvre déjà le reste ; ce job voit ce que le hook ne voit pas — l'environnement vierge
+# (une dépendance de test non déclarée, cf. commit 3b0e5bd « matplotlib déclaré »).
+# Sans modèles, binaire ni grille (gitignorés) : les tests qui en dépendent sautent (-rs).
+name: tests
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  tests:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: dev/requirements/test.txt
+      - run: pip install -r dev/requirements/test.txt
+      - run: ruff check src/ tests/
+      - run: python run_tests.py

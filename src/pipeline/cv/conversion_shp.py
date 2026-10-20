@@ -138,7 +138,7 @@ def read_world_file(world_file_path: str) -> Tuple[Optional[float], Optional[flo
     logger = logging.getLogger(__name__)
 
     try:
-        with open(world_file_path, "r") as f:
+        with open(world_file_path, "r", encoding="utf-8") as f:
             lines = f.readlines()
 
         if len(lines) >= 6:
@@ -996,7 +996,7 @@ def create_shapefile_from_detections(
             
             if json_file.exists():
                 try:
-                    with open(json_file, 'r') as f:
+                    with open(json_file, 'r', encoding='utf-8') as f:
                         json_data = json.load(f)
                         # Indexer les détections par leur position dans la liste
                         detections_list = json_data.get('detections', [])
@@ -1093,7 +1093,7 @@ def create_shapefile_from_detections(
 
             # Lire les détections dans le fichier
             try:
-                with open(label_file, "r") as f:
+                with open(label_file, "r", encoding="utf-8") as f:
                     for line_num, line in enumerate(f, 1):
                         parts = line.strip().split()
                         if len(parts) < 5:

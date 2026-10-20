@@ -77,7 +77,7 @@ def test_fichier_livre_lisible():
     assert set(data["noms"].values()) <= set(data["zones"]), "un nom pointe une zone sans emprise"
 
 
-def test_toute_zone_des_fiches_installees_est_situee():
+def test_toute_zone_des_fiches_installees_est_situee(exiger_ou_sauter):
     """Un modèle installé dont la fiche cite une zone nouvelle : relancer
     ``C:/OSGeo4W/bin/python-qgis.bat dev/fiches/zones_corpus.py``."""
     yaml = pytest.importorskip("yaml")
@@ -85,7 +85,7 @@ def test_toute_zone_des_fiches_installees_est_situee():
 
     cards = sorted((RACINE / "data" / "models").glob("*/model_card.yaml"))
     if not cards:
-        pytest.skip("aucun modèle installé")
+        exiger_ou_sauter("aucun modèle installé")
     data = charger(RACINE)
     manquants = []
     for card_path in cards:

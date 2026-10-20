@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 
@@ -13,6 +14,20 @@ for p in list(sys.path):
         sys.path.remove(p)
 
 sys.path.insert(0, str(SRC_ROOT))
+
+
+@pytest.fixture
+def exiger_ou_sauter():
+    """Donnée du poste absente (binaire, modèles, vignettes, grille) : le test saute — sauf si
+    ``ARCHEO_EXIGER_DONNEES=1``, posé par le hook pre-push dans le dossier principal (où ces données
+    existent) : un skip y cacherait une régression, il devient un échec. Appeler ``exiger_ou_sauter(raison)``."""
+
+    def _exiger_ou_sauter(raison: str):
+        if os.environ.get("ARCHEO_EXIGER_DONNEES", "") == "1":
+            pytest.fail(f"ARCHEO_EXIGER_DONNEES=1 : {raison}")
+        pytest.skip(raison)
+
+    return _exiger_ou_sauter
 
 
 @pytest.fixture

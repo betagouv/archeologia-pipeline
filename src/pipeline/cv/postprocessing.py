@@ -396,7 +396,7 @@ def postprocess_detection_files(
 
     # Réécrire le TXT YOLO
     txt_path = json_path.with_suffix(".txt")
-    with open(txt_path, "w") as f:
+    with open(txt_path, "w", encoding="utf-8") as f:
         for det in cleaned:
             class_id = det.get("class_id", 0)
             if "polygon" in det:

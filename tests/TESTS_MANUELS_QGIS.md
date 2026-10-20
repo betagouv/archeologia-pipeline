@@ -954,6 +954,8 @@ Lot 3 du chantier d'accélération (2026-10-15) : une dalle lue en entier reçoi
 - [ ] **50.3 Interruption** : fermer QGIS pendant un téléchargement → seul `<dalle>.partial` est sur le disque, aucun LAZ sous le nom final ; relancer → le `.partial` est supprimé et la dalle retéléchargée en entier.
 - [ ] **50.4 Qt6** : rejouer 50.1 sous QGIS 4.
 - [ ] **50.5 Note impossible à écrire** : rendre `technique/sources/dalles/` en lecture seule après le téléchargement, relancer → le journal complet dit « Note « vérifiée » de … non écrite (…) : la dalle sera relue en entier à la prochaine relance » et le traitement continue.
+- [ ] **50.6 Dalle qui n'avance plus** (2026-10-19, vu sur data.geopf.fr : 19 Mo reçus puis un filet d'octets pendant 8 min, aucune reprise) : sur un vrai lancement de plusieurs dalles, si une dalle reste sans progression, le journal complet doit porter au plus 2 min après « ⚠️ <dalle> : aucun octet reçu depuis 120 s, connexion coupée » puis « Tentative 1/3 échouée … » et « 📥 Reprise de <dalle> à l'octet N sur M », et la dalle finit par « Validation PDAL rapide » ; la ligne ⚠️ renvoie à « Le téléchargement échoue » dans le journal de l'assistant. Impossible à simuler dans QGIS (liste blanche des hôtes) : le cas est couvert par `tests/unit/test_telechargement_blocage.py` (serveur local qui n'envoie qu'un octet par seconde).
+- [ ] **50.7 Annulation pendant un blocage** : annuler pendant qu'une dalle n'avance plus → « Traitement annulé » en une à deux secondes, aucun `.partial` laissé dans `technique/sources/dalles/`.
 
 ## 51. Moteur d'indices intégré : mêmes images, sans Processing ⭐ P0
 

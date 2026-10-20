@@ -4,7 +4,7 @@ fileignoreconfig:
 - filename: tests/unit/test_opns.py
   checksum: 0506c8a17e9157f23cf0cbcd449ce4703241b1ed07c051270b39ed4484dfcf4a
 - filename: metadata.txt
-  checksum: e7ac840b740749c5159c52d01814c18264725282343554bdf7797a0b4e18fb75
+  checksum: 833c2f3f06930c9355b63677238bb8a0451ac75e1ad03a684a17d2be946e49e1
 - filename: tests/unit/test_mnt_chien_de_garde.py
   checksum: fbb2c02d82caaf493cc5be4f107d9ad7b9e9b753a835b33de36e913e9ca7f7b5
 - filename: src/pipeline/ign/products/mnt.py
@@ -24,7 +24,7 @@ fileignoreconfig:
 - filename: CLAUDE.md
   checksum: 865f6759a3021642e09157bac17413f67e11695d46a2e7deb6fb96c3bdd3f01a
 - filename: README.md
-  checksum: 578f1f66228c778e6e52a9ad816077c3127b2b316f83c2450729387a3d17ed4b
+  checksum: 6ab2b7ef1955e53aac53f7687e8d6f3fb99f837114a6f9fe008864075b73299f
 - filename: dev/docs/documentation_utilisateur_v1.docx
   checksum: 9984314b88553c8aa0de31f28403d664eba5a2426681c22a6b1c29e5c787cc5e
 - filename: dev/docs/specs/2026-06-11-produit-couverture-design.md
@@ -82,7 +82,7 @@ fileignoreconfig:
 - filename: src/pipeline/ign/coords_fallback.py
   checksum: b1997408c2011b138fc5ffc525a10fa88a37848ffa763f355892b9d5dd0c1450
 - filename: src/pipeline/ign/downloader.py
-  checksum: b73e671abf80a249d0ff04349cf35602d3578a56fbb91bd4c92ddc8669057b01
+  checksum: b397b02a8659ea44ae5afcb45061ce902e310d0d89c63194c75d009beb67e5b8
 - filename: src/pipeline/ign/pdal_validation.py
   checksum: 2b4ed1d8b7ed8b47c769214f73f1898b79a26b2fdddfea938b003423488462af
 - filename: src/pipeline/ign/preprocess.py
@@ -122,9 +122,9 @@ fileignoreconfig:
 - filename: src/ui/widgets/entity_card.py
   checksum: 1d49e34c5a6cafe6cf058de8aadbf763fe5d756453dec3f4c413e0ab6ad9a65c
 - filename: src/ui/wizard_dialog.py
-  checksum: 83a14f16a07127e881e656185f5eec04b596c7795d5ed5d268927eb0961c0352
+  checksum: 2d0f23286c70b9fbdcd0f6c7e1c6e8bdb18a8c3160792ee537d5efc124e4705e
 - filename: tests/TESTS_MANUELS_QGIS.md
-  checksum: b57357556b59880cc15c77adf718a16bb0011f97ea953a678d413110f638fd79
+  checksum: ad6259ba9286a7fe7db7e615f0898d7c87d95b5eaebab6b91d18dc2a490f515e
 - filename: tests/integration/test_existing_mnt_runner_finalize.py
   checksum: e67c2e4c83cea0937bdfb39e8eec7aa7476f30648d4d858589e2308ad0565d63
 - filename: tests/integration/test_existing_rvt_runner_isolation.py
@@ -250,7 +250,7 @@ fileignoreconfig:
 - filename: aide/04-etape-2-produits.md
   checksum: 320ff9e0f4208bba0eeea63b859ad572c3e66c9f1930d2f285805024634cd603
 - filename: aide/09-depannage.md
-  checksum: 5f66f4f2cf34a01bf80c55620a3f1afe7732de651cd02b35fbb33b0a8852490a
+  checksum: 7fd293e7800fdf9e00a499bfe2b71982350d41f00bf689ca6b980d482d39118a
 - filename: src/ui/widgets/carte_zones.py
   checksum: fd7734612381cf74a5b64924b72739ed0e4796509d56f7a31fbc7a65b4e8297a
 - filename: tests/unit/test_aide.py
@@ -347,4 +347,6 @@ fileignoreconfig:
   checksum: 7607e5324ba40c467f5b8c8a077a5a5f4579af3c504e94a6bfcdb65861dfd396
 - filename: tests/unit/test_appareil.py
   checksum: c0edbd691a10ccbcb88ef3b9ba5f212f7c84057891f40e86f746421a7243eed7
+- filename: tests/unit/test_telechargement_blocage.py
+  checksum: 5d5072087c48a90c75202e4fc8d6aa917f79f4f48a0a267db657947e4775d6b5
 version: "1.0"

@@ -9,7 +9,7 @@ name=Archéolog'IA
 qgisMinimumVersion=3.34
 qgisMaximumVersion=4.99
 description=Détection de sites archéologiques par réseaux de neurones
-version=0.16.0
+version=0.16.1
 author=Valentin VIEUX
 email=valentin.vieux.pro@outlook.com
 about=Plugin pour automatiser la production d'indices de visualisation (avec la bibliothèque Relief Visualization Toolbox du ZRC SAZU et de l'Université de Ljubljana, intégrée sous licence Apache 2.0) à partir de données LiDAR ou de MNT et pour détecter des sites archéologiques à l'aide de réseaux de neurones (YOLO, RF-DETR détection ou segmentation)
@@ -21,7 +21,9 @@ repository=https://github.com/betagouv/archeologia-pipeline
 #
 
 hasProcessingProvider=no
-changelog=0.16.0 (2026-10-19)
+changelog=0.16.1 (2026-10-19)
+    * Téléchargement IGN : une dalle dont le serveur n'envoie plus rien, ou presque, bloquait le traitement sans limite (vu le 19 octobre : 19 Mo reçus puis un filet d'octets pendant huit minutes, que le délai réseau ne voyait pas). Le plugin coupe maintenant une connexion restée deux minutes sans un seul bloc reçu, le dit dans le journal, et reprend le téléchargement là où il s'était arrêté sans retélécharger ce qui est déjà sur le disque ; annuler pendant un tel blocage rend la main en une seconde ou deux au lieu d'attendre l'octet suivant.
+ 0.16.0 (2026-10-19)
     * Projet QGIS : dans la légende de chaque couche de détections, seuls les niveaux « très probable » et « probable » sont cochés à l'ouverture ; « possible » et « douteux » y restent, décochés, à cocher d'un clic. Toutes les détections sont toujours dans le GeoPackage, le bilan et le rapport.
     * Carte graphique : le nom de la carte retenue ou écartée est maintenant le bon dans le journal, le rapport et traitement.json. Le moteur de détection énumère lui-même les cartes ; QGIS les voyait dans un autre ordre, si bien que, sur un portable à deux cartes, le choix était juste mais l'étiquette inversée. Les objets proches du seuil que la carte place jusqu'à 0,10 au-dessus de lui ne la font plus écarter : les structures linéaires passent sur la carte comme les autres modèles (la première vérification est refaite, le moteur ayant changé).
  0.15.0 (2026-10-18)

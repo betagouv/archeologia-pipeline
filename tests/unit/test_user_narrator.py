@@ -331,7 +331,7 @@ class TestUserNarratorEvents:
         narrator, reporter = self._make()
         narrator.cv_complete(7)
         msg = reporter.user_info.call_args[0][0]
-        assert "7 zones détectées" in msg
+        assert "7 détections dans les couches" in msg
 
 
 class TestUserNarratorFactory:

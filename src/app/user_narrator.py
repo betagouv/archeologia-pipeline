@@ -380,7 +380,7 @@ class UserNarrator:
         else:
             self._r.user_info(
                 f"🤖 Détection terminée : "
-                f"{_human_count(n_detections, 'zone détectée', 'zones détectées')}"
+                f"{_human_count(n_detections, 'détection dans les couches', 'détections dans les couches')}"
             )
 
     def rapport_ecrit(self, nom: str) -> None:

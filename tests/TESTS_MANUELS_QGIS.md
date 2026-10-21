@@ -1049,3 +1049,14 @@ Lot 3 du chantier d'accélération (2026-10-15) : une dalle lue en entier reçoi
 - [ ] **57.2 Chargement direct** : depuis la vue d'exécution, « Ouvrir le projet QGIS » → même état des cases.
 - [ ] **57.3 Rien de perdu** : le nombre d'entités de la couche (propriétés › Information, ou la table d'attributs) et le bilan de fin de traitement comptent aussi les détections possibles et douteuses.
 - [ ] **57.4 Modèle sans fiabilité** : une couche catégorisée par tranches de score (`conf_bin`) garde toutes ses tranches cochées.
+
+## 58. Manuel : schéma de la chaîne, légende, Qt6, renvois du journal ⭐ P1
+
+> **Contexte** (2026-10-20, audit du manuel) : schéma de la chaîne de traitement au chapitre « Premier traitement »,
+> capture de la légende refaite (niveaux décochés), débord du chapitre « Vos résultats » sous QGIS 4 corrigé,
+> rubrique « Méthode de calcul mise à jour », renvoi « Erreur PDAL ou mémoire » branché sur les vrais messages.
+
+- [ ] **58.1 Schéma** : Manuel › Premier traitement → le schéma suit la liste des cinq phases, texte net à 100 % et à 150 % d'échelle d'écran ; un clic l'ouvre en grand.
+- [ ] **58.2 Qt6** : sous QGIS 4, Manuel › Vos résultats dans QGIS → aucune barre de défilement horizontale ; la capture de la légende montre « possible » et « douteux » décochés.
+- [ ] **58.3 Renvoi du cache** : relancer dans un dossier calculé par une version précédente → la ligne « ⚠️ Méthode de calcul mise à jour » finit par « voir Manuel › Dépannage › Méthode de calcul mise à jour » ; le clic ouvre la rubrique.
+- [ ] **58.4 Libellés** : les noms cités au manuel existent à l'écran : « ↺ Défauts » (étape 2), « Regrouper en clusters » (étape 3), les lignes du panneau « État du système » (étape 4), les modes du bandeau (étape 1).

@@ -271,7 +271,7 @@ _RUBRIQUES_DEPANNAGE: Tuple[Tuple[str, str], ...] = (
     (r"m[ée]thode de calcul mise [àa] jour|param[èe]tres de traitement modifi", "Méthode de calcul mise à jour"),
     # Les messages réels de la fusion et du MNT (ign_local_runner, existing_mnt) ; « en échec » seul
     # serait trop large (runs de détection), d'où les ancres dalle(s) / Dalle / MNT.
-    (r"PDAL a crash|moins de workers|max_workers|non fusionn|dalle\(s\).*en [ée]chec|\bDalle .* en [ée]chec|\bMNT .* en [ée]chec",
+    (r"PDAL a crash|moins de workers|max_workers|non fusionn|sans interpolation|dalle\(s\).*en [ée]chec|\bDalle .* en [ée]chec|\bMNT .* en [ée]chec",
      "Erreur PDAL ou mémoire"),
     (r"filtre des points (non reconnu|refus[ée] par pdal)", "Le filtre des points n'est pas reconnu"),
     (r"aucune zone d'int[ée]r[êe]t|aucun run", "Aucun run, ou aucune détection"),

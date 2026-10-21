@@ -65,7 +65,9 @@ Si le calcul d'un modèle de terrain ne rend pas la main après deux heures, la 
 
 ## Erreur PDAL ou mémoire
 
-Le journal dit « N dalle(s) non fusionnée(s) », « Dalle … en échec, ignorée », « N dalle(s) sur M en échec » ou « MNT … en échec, ignoré », et le journal complet donne l'erreur de PDAL. Une erreur de PDAL pendant la fusion d'une dalle avec ses voisines, ou le calcul du MNT, en particulier avec un code de violation d'accès, vient presque toujours d'un manque de mémoire : plusieurs dalles traitées en parallèle sur un poste qui ne peut pas les tenir. Réduisez les **workers** à 1 ou 2 à l'étape 4 et relancez dans le même dossier : les dalles déjà calculées sont conservées.
+Le journal dit « N dalle(s) non fusionnée(s) », « Dalle … en échec, ignorée », « N dalle(s) sur M en échec », « MNT … en échec, ignoré » ou « MNT de la dalle … calculé sans interpolation », et le journal complet donne l'erreur de PDAL. Une erreur de PDAL pendant la fusion d'une dalle avec ses voisines, ou le calcul du MNT, en particulier avec un code de violation d'accès, vient presque toujours d'un manque de mémoire : plusieurs dalles traitées en parallèle sur un poste qui ne peut pas les tenir. Réduisez les **workers** à 1 ou 2 à l'étape 4 et relancez dans le même dossier : les dalles déjà calculées sont conservées.
+
+Quand le calcul du MNT d'une dalle plante deux fois de suite, le plugin le calcule sans interpolation entre les points sol : la dalle peut garder quelques pixels vides là où le sol n'a pas été touché par le laser, et ses indices en héritent. Le journal le dit par « MNT de la dalle … calculé sans interpolation ». Relancez dans le même dossier, de préférence avec moins de programmes ouverts : ce MNT est recalculé, les autres sont réutilisés.
 
 ## Le filtre des points n'est pas reconnu
 

@@ -11,7 +11,7 @@ Rien n'est estimé : une phase sans compteur montre son chronomètre, pas un pou
 
 [![La vue d'exécution pendant une détection : la frise porte l'état, le journal raconte](img/run-journal.png)](img/run-journal.png)
 
-Pendant le traitement, les étapes 1 à 4 restent consultables mais en lecture seule, signalé par une pastille dans l'en-tête. **Annuler** arrête au prochain point de contrôle, en quelques secondes, y compris pendant un téléchargement qui n'avance plus ; ce qui est déjà écrit est gardé.
+Pendant le traitement, les étapes 1 à 4 restent consultables mais en lecture seule, signalé par une pastille dans l'en-tête. **Annuler** arrête au prochain point de contrôle, en quelques secondes (le journal dit « Annulation demandée… patientez quelques secondes »), y compris pendant un téléchargement qui n'avance plus ; ce qui est déjà écrit est gardé.
 
 ### Lire le journal
 

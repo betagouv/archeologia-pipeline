@@ -10,16 +10,16 @@
   <text x="30" y="13" font-size="10.5" font-weight="600" fill="#5d6670">ÉTAPE 1 · le point d'entrée fixe le mode</text>
 
   <!-- bandes de parallélisme, rangée A -->
-  <rect x="250" y="94" width="430" height="150" rx="6" fill="#e4edf3" stroke="#2f5d7c" stroke-width="1" stroke-dasharray="4 3"/>
+  <rect x="250" y="94" width="440" height="150" rx="6" fill="#e4edf3" stroke="#2f5d7c" stroke-width="1" stroke-dasharray="4 3"/>
   <text x="257" y="232" font-size="11" fill="#2f5d7c">en parallèle : autant de dalles que de workers (réglage de l'étape 4)</text>
-  <rect x="700" y="94" width="430" height="150" rx="6" fill="#f4efe4" stroke="#8a6d2f" stroke-width="1" stroke-dasharray="4 3"/>
-  <text x="707" y="105" font-size="10.5" font-weight="600" fill="#8a6d2f">ÉTAPE 2 · produits et réglages</text>
-  <text x="707" y="232" font-size="11" fill="#8a6d2f">une dalle après l'autre</text>
+  <rect x="710" y="94" width="440" height="150" rx="6" fill="#f4efe4" stroke="#8a6d2f" stroke-width="1" stroke-dasharray="4 3"/>
+  <text x="717" y="105" font-size="10.5" font-weight="600" fill="#8a6d2f">ÉTAPE 2 · produits et réglages</text>
+  <text x="717" y="232" font-size="11" fill="#8a6d2f">une dalle après l'autre</text>
 
   <!-- bandes de parallélisme, rangée B -->
   <rect x="20" y="394" width="210" height="150" rx="6" fill="#e4edf3" stroke="#2f5d7c" stroke-width="1" stroke-dasharray="4 3"/>
   <text x="27" y="532" font-size="11" fill="#2f5d7c">en parallèle : workers</text>
-  <rect x="250" y="394" width="430" height="150" rx="6" fill="#f4efe4" stroke="#8a6d2f" stroke-width="1" stroke-dasharray="4 3"/>
+  <rect x="250" y="394" width="440" height="150" rx="6" fill="#f4efe4" stroke="#8a6d2f" stroke-width="1" stroke-dasharray="4 3"/>
   <text x="257" y="405" font-size="10.5" font-weight="600" fill="#8a6d2f">ÉTAPE 3 · entités et seuils</text>
   <text x="257" y="532" font-size="11" fill="#8a6d2f">un modèle après l'autre, image par image ; carte graphique si elle est retenue</text>
 
@@ -92,10 +92,10 @@
     <polygon points="712,137 720,142 712,147"/>
     <polygon points="942,137 950,142 942,147"/>
   </g>
-  <g text-anchor="middle" font-size="10" fill="#5d6670">
-    <text x="469" y="190">LAZ</text>
-    <text x="699" y="190">LAZ fusionné</text>
-    <text x="929" y="190">MNT (TIF)</text>
+  <g text-anchor="end" font-size="10" fill="#5d6670">
+    <text x="445" y="190">LAZ</text>
+    <text x="675" y="190">LAZ fusionné</text>
+    <text x="905" y="190">MNT (TIF)</text>
   </g>
 
   <!-- retour vers la rangée B -->
@@ -138,10 +138,10 @@
     <polygon points="712,437 720,442 712,447"/>
     <polygon points="942,437 950,442 942,447"/>
   </g>
-  <g text-anchor="middle" font-size="10" fill="#5d6670">
-    <text x="239" y="490">PNG</text>
-    <text x="469" y="490">détections brutes</text>
-    <text x="699" y="490">GeoPackage</text>
+  <g text-anchor="end" font-size="10" fill="#5d6670">
+    <text x="215" y="490">PNG</text>
+    <text x="445" y="490">détections brutes</text>
+    <text x="675" y="490">GeoPackage</text>
   </g>
 
   <!-- sortie -->

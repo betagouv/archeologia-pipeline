@@ -1060,3 +1060,13 @@ Lot 3 du chantier d'accélération (2026-10-15) : une dalle lue en entier reçoi
 - [ ] **58.2 Qt6** : sous QGIS 4, Manuel › Vos résultats dans QGIS → aucune barre de défilement horizontale ; la capture de la légende montre « possible » et « douteux » décochés.
 - [ ] **58.3 Renvoi du cache** : relancer dans un dossier calculé par une version précédente → la ligne « ⚠️ Méthode de calcul mise à jour » finit par « voir Manuel › Dépannage › Méthode de calcul mise à jour » ; le clic ouvre la rubrique.
 - [ ] **58.4 Libellés** : les noms cités au manuel existent à l'écran : « ↺ Défauts » (étape 2), « Regrouper en clusters » (étape 3), les lignes du panneau « État du système » (étape 4), les modes du bandeau (étape 1).
+
+## 59. Correctifs de la recette du 2026-10-21 (séance B) ⭐ P0
+
+> **Contexte** : sur le run `D:\pipeline_results\test` (9 dalles IGN, machine chargée), le MNT d'une dalle a été calculé
+> sans interpolation sans le dire, une annulation pendant un téléchargement bloqué a pris 40 s, et la fin de la
+> détection annonçait 2 742 « zones » pour 310 détections dans les couches.
+
+- [ ] **59.1 MNT de repli** : si le journal complet porte « Échec création MNT avec pdal:exportrastertin (tentative 1/2) », il porte ensuite soit le MNT calculé à la seconde tentative, soit « (tentative 2/2) » puis, dans le journal de l'assistant, « ⚠️ MNT de la dalle … calculé sans interpolation » avec le renvoi « voir Manuel › Dépannage › Erreur PDAL ou mémoire ». À côté du MNT de travail (`technique/intermediaires/…_MNT.tif`), un fichier `.repli` ; relancer dans le même dossier → ce MNT seul est recalculé, le `.repli` disparaît.
+- [ ] **59.2 Annulation pendant un téléchargement** : annuler pendant le téléchargement des dalles (idéalement pendant une dalle lente) → « Traitement annulé » en une à deux secondes. Relancer aussitôt dans le même dossier → le téléchargement repart sans erreur, aucune dalle tronquée.
+- [ ] **59.3 Compte de fin de détection** : la ligne « 🤖 Détection terminée : N détections dans les couches » donne la somme des entités des GeoPackages, égale à la somme du bilan « Par où commencer ».

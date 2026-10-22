@@ -198,6 +198,11 @@ def test_rubriques_de_depannage_existent(chapitres):
     assert rubrique_depannage("LD : le noyau atteint 20 px mais la marge…") == "Le noyau atteint N pixels"
     assert rubrique_depannage("Connection to data.geopf.fr timed out") == "Le téléchargement échoue"
     assert rubrique_depannage("Dalle 3/12 : OK") == ""
+    # Repli du MNT (2026-10-21) : l'avertissement renvoie à la rubrique de PDAL.
+    assert rubrique_depannage(
+        "⚠️ MNT de la dalle LHD_FXX_0727_6569 : le calcul par interpolation a échoué deux fois dans PDAL, "
+        "calculé sans interpolation (quelques pixels vides possibles)."
+    ) == "Erreur PDAL ou mémoire"
 
 
 def test_ui_branche_le_manuel():

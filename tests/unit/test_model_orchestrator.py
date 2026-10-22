@@ -368,8 +368,49 @@ CRATERE_FIAB = CRATERE + """thresholds:
     provenance: p
 """
 
+# Classe linéaire (2026-10-22) : catégorie basse GARANTIE (possible ≥ 35 %) et bandes
+# ``sous_seuil`` des polygones formés entre eux sous le seuil du modèle.
+LINEAIRE_FIAB = """
+display_name: "Linéaires"
+status: production
+preferred_rvt:
+  type: LD
+classes:
+  - {id: 0, name: parcellaire, label_fr: "Parcellaire"}
+thresholds:
+  confidence_default: 0.26
+  confidence_per_class: {parcellaire: 0.26}
+  fiabilite:
+    par_classe:
+      parcellaire:
+      - {categorie: possible, seuil: 0.26, garanti: 0.35, mesure: 0.53, n: 1837}
+      - {categorie: probable, seuil: 0.3, garanti: 0.6, mesure: 0.664, n: 2674}
+    sous_seuil:
+      parcellaire:
+      - {lo: 0.15, tp: 10, fp: 70}
+      - {lo: 0.20, tp: 30, fp: 80}
+    provenance: p
+"""
+
 
 class TestFiabiliteDansLesRuns:
+    def test_seuil_abaisse_sous_seuil_et_seuil_de_fusion(self, tmp_path):
+        _write_model(tmp_path, "lineaires", LINEAIRE_FIAB)
+        installed = discover_installed_models(tmp_path)
+        assert [b["lo"] for b in installed[0].fiabilite_sous_seuil["parcellaire"]] == [0.15, 0.20]
+        run = resolve_runs_from_entities(
+            ["parcellaire"], {}, installed, _catalog(),
+            entity_thresholds={"parcellaire": {"confidence_threshold": 0.16}},
+        )[0]
+        # seuil de fusion = seuil du MODÈLE par classe (fusion en deux passes), pas celui du run
+        assert run["seuil_fusion_par_classe"] == {"parcellaire": 0.26}
+        assert run["confidence_per_class"] == {"parcellaire": 0.16}
+        cats = run["fiabilite"]["par_classe"]["parcellaire"]
+        assert cats[0] == {"categorie": "douteux", "seuil": 0.16, "garanti": 0.0,
+                           "mesure": round(40 / 190, 3), "n": 190, "sous_seuil": True}
+        assert cats[1]["categorie"] == "possible" and cats[1]["seuil"] == 0.26
+        json.dumps(run)
+
     def test_discovery_et_bloc_effectif(self, tmp_path):
         _write_model(tmp_path, "cratere_circulaire_2", CRATERE_FIAB)
         installed = discover_installed_models(tmp_path)

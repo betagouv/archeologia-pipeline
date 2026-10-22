@@ -220,6 +220,23 @@ class TestResolveCvRuns:
         assert runs[0]["fiabilite"] == bloc
         assert "fiabilite" not in runs[1] and "fiabilite" not in runs[2]
 
+    def test_propagates_seuil_fusion_par_classe(self):
+        # 2026-10-22 (recette § 60) : le seuil du modèle par classe, posé par
+        # l'orchestrateur pour la fusion en deux passes, doit survivre à la
+        # reconstruction du cv_config du run — sinon le post-traitement fusionne
+        # les ajoutés sous le seuil avec les bons polygones (vu au premier run).
+        cfg = {
+            "runs": [
+                {"model": "m1", "target_rvt": "LD", "seuil_fusion_par_classe": {"parcellaire": 0.26, "talus_fosse": "0.25", "x": "nan?"}},
+                {"model": "m2", "target_rvt": "LD"},
+                {"model": "m3", "target_rvt": "LD", "seuil_fusion_par_classe": "pas un dict"},
+            ],
+            "models_dir": "models",
+        }
+        runs = resolve_cv_runs(cfg)
+        assert runs[0]["seuil_fusion_par_classe"] == {"parcellaire": 0.26, "talus_fosse": 0.25}
+        assert "seuil_fusion_par_classe" not in runs[1] and "seuil_fusion_par_classe" not in runs[2]
+
     def test_skips_runs_without_model(self):
         cfg = {
             "runs": [{"model": "", "target_rvt": "LD"}, {"model": "m1", "target_rvt": "SVF"}],

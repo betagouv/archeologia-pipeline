@@ -29,7 +29,7 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 
 # ------------------------------------------------------------------ #
@@ -377,3 +377,38 @@ def aires_par_entite(output_dir: Path, run: Any) -> list:
         exemptes = frozenset(noms.get(c, c) for c in (ent.get("classes_synthese") or []))
         sorties += [(Path(gp), aire, exemptes) for gp in gpkgs]
     return sorties
+
+
+def detections_gardees(output_dir: Path, runs: Any) -> Optional[int]:
+    """Nombre de détections dans les couches des entités des ``runs`` : ce que l'utilisateur trouvera dans QGIS.
+
+    Après dédoublonnage entre dalles, seuil, aire minimale (2026-10-21 : le journal annonçait les détections
+    brutes du moteur, 2 742 pour 310 gardées). Une entité sans GeoPackage compte zéro (tout écarté). ``None`` si
+    aucun run ne déclare d'entité (run écrit à la main) : le compte n'est alors pas connu ici. Lecture sqlite3.
+    """
+    import sqlite3
+
+    couches = set()
+    connu = False
+    for run in runs or []:
+        entites = (run or {}).get("entities") if isinstance(run, dict) else None
+        if not entites:
+            continue
+        connu = True
+        for lst in build_entity_class_targets(output_dir, entites).values():
+            couches.update(lst)
+    if not connu:
+        return None
+    total = 0
+    for gpkg, couche in sorted(couches):
+        if not Path(gpkg).is_file():
+            continue
+        try:
+            con = sqlite3.connect(f"file:{Path(gpkg).as_posix()}?mode=ro", uri=True)
+            try:
+                total += con.execute(f'select count(*) from "{couche}"').fetchone()[0]
+            finally:
+                con.close()
+        except sqlite3.Error:
+            continue
+    return total

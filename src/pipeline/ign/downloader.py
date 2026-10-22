@@ -4,11 +4,12 @@ import json
 import os
 import re
 import shutil
+import socket
 import threading
 import time
 import urllib.parse
 import urllib.request
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Tuple
@@ -92,6 +93,16 @@ ALLOWED_DOWNLOAD_HOST_SUFFIXES = (
     "storage.sbg.cloud.ovh.net",
     "storage.gra.cloud.ovh.net",
 )
+
+# Fenêtre du chien de garde (audit 2026-10-19) : une connexion qui n'a pas livré un seul
+# chunk pendant ce temps est coupée et reprise. Le délai de lecture de `requests` ne suffit pas :
+# un serveur qui n'envoie plus qu'un filet d'octets (≈ 16 o/s, vécu sur data.geopf.fr) réarme
+# ce délai à chaque octet alors que ``iter_content(8192)`` ne rend rien avant 8 Ko — fichier
+# figé, connexion ouverte, aucune reprise pendant 8 minutes. 120 s : à 1,7–3,7 Mo/s un chunk
+# arrive toutes les 2 à 5 ms et une dalle entière passe en 60–150 s ; ne pas recevoir 8 Ko le
+# temps d'une dalle, c'est une connexion perdue — et 60 s couperait les proxys d'entreprise
+# qui « rassurent » le client par un filet pendant qu'ils analysent le fichier.
+BLOCAGE_S = 120.0
 
 # Cap de taille par dalle (AUDIT NET-01) : très au-dessus d'une dalle LiDAR HD
 # réelle (50-400 Mo) — protège le disque d'un flux anormal (×4 workers), la
@@ -301,6 +312,32 @@ def _partial_telechargement(dest: Path) -> Path:
     return dest.with_name(dest.name + ".partial")
 
 
+# Qui tient chaque ``.partial`` : une annulation n'attend plus les téléchargements en cours (une lecture réseau
+# bloquée ne se réveille pas sous Windows), et le fil abandonné finit plus tard. Si un nouveau lancement a repris
+# la même dalle entre-temps, le fil abandonné ne doit pas supprimer le fichier de ce nouveau lancement.
+_TENANTS_PARTIELS: Dict[str, int] = {}
+_TENANTS_VERROU = threading.Lock()
+
+
+def _prendre_partiel(partial: Path) -> int:
+    """Le téléchargement courant devient le seul à pouvoir supprimer ``partial`` ; rend son jeton."""
+    with _TENANTS_VERROU:
+        jeton = _TENANTS_PARTIELS.get(str(partial), 0) + 1
+        _TENANTS_PARTIELS[str(partial)] = jeton
+        return jeton
+
+
+def _liberer_partiel(partial: Path, jeton: int) -> None:
+    """Supprime ``partial`` s'il appartient encore à ce téléchargement (jamais celui d'un lancement plus récent)."""
+    with _TENANTS_VERROU:
+        if _TENANTS_PARTIELS.get(str(partial)) != jeton:
+            return
+    try:
+        partial.unlink(missing_ok=True)
+    except OSError:
+        pass
+
+
 def note_verifiee_path(dest: Path) -> Path:
     return dest.with_name(dest.name + ".verifie.json")
 
@@ -343,6 +380,58 @@ def _taille_annoncee(headers) -> Optional[int]:
     return n if n > 0 else None
 
 
+def _reprise_acceptee(resp, written: int, total: Optional[int]) -> bool:
+    """206 dont le ``Content-Range`` reprend exactement à ``written`` sur ``total`` octets."""
+    if total is None or int(getattr(resp, "status_code", 0) or 0) != 206:
+        return False
+    m = re.match(r"\s*bytes\s+(\d+)-(\d+)/(\d+)\s*$", str(resp.headers.get("Content-Range") or ""))
+    return bool(m) and int(m.group(1)) == written and int(m.group(3)) == total
+
+
+def _coupure(resp) -> Optional[Callable[[], None]]:
+    """Comment couper la connexion d'une réponse ``requests`` en cours de lecture, depuis un
+    autre fil : ``raw.shutdown()`` (urllib3 ≥ 2.3, fait pour cela), sinon ``shutdown`` du socket
+    de la connexion, sinon du socket que tient le fichier de lecture (urllib3 2.2 de QGIS, ou
+    réponse en ``Connection: close`` où la connexion a lâché son socket). Jamais
+    ``resp.close()`` : il attend le verrou de la lecture en cours et bloque. ``None`` si rien
+    n'est accessible (réponses doublées des tests) : pas de garde."""
+    brut = getattr(resp, "raw", None)
+    if brut is None:
+        return None
+    fn = getattr(brut, "shutdown", None)
+    if callable(fn):
+        return fn
+    for sock in (getattr(getattr(brut, "connection", None), "sock", None),
+                 getattr(getattr(getattr(getattr(brut, "_fp", None), "fp", None), "raw", None), "_sock", None)):
+        if sock is not None and callable(getattr(sock, "shutdown", None)):
+            return lambda s=sock: s.shutdown(socket.SHUT_RDWR)
+    return None
+
+
+def _chien_de_garde(couper: Callable[[], None], dernier: list, arret: threading.Event, cancel: CancelFn,
+                    blocage_s: float, motif: Dict[str, str]) -> threading.Thread:
+    """Fil démon qui coupe la connexion (:func:`_coupure`) si aucun chunk n'est arrivé depuis
+    ``blocage_s`` ou si l'annulation est demandée — la lecture lève alors à l'octet suivant,
+    en une seconde ; pendant un silence total, c'est le délai de lecture qui la réveille."""
+    def course():
+        while not arret.wait(0.5):
+            if cancel():
+                motif["cause"] = "annulation"
+            elif time.monotonic() - dernier[0] > blocage_s:
+                motif["cause"] = f"aucun octet reçu depuis {blocage_s:g} s"
+            else:
+                continue
+            try:
+                couper()
+            except Exception:  # noqa: BLE001 — socket déjà fermé par l'autre bout
+                pass
+            return
+
+    fil = threading.Thread(target=course, name="garde-telechargement", daemon=True)
+    fil.start()
+    return fil
+
+
 def download_one(
     url: str,
     filename: str,
@@ -354,8 +443,16 @@ def download_one(
     max_retries: int = 3,
     retry_delay_s: float = 5.0,
     proxies: Optional[Dict[str, str]] = None,
+    blocage_s: float = BLOCAGE_S,
 ) -> Tuple[bool, bool]:
-    """Returns (success, skipped_existing)."""
+    """Returns (success, skipped_existing).
+
+    ``blocage_s`` : fenêtre du chien de garde (``BLOCAGE_S``) ; sert aussi de délai de
+    lecture à ``requests`` (sous Windows, couper le socket ne réveille pas une lecture
+    pendant un silence total : le délai s'en charge). Les tentatives suivantes reprennent
+    à l'octet manquant (``Range``) quand le serveur l'accepte (206 + ``Content-Range``
+    cohérent), sinon depuis zéro.
+    """
 
     if cancel():
         return False, False
@@ -363,6 +460,7 @@ def download_one(
     dalles_dir.mkdir(parents=True, exist_ok=True)
     dest = dalles_dir / filename
     partial = _partial_telechargement(dest)
+    jeton = _prendre_partiel(partial)
     if partial.exists():
         # Reste d'un téléchargement tué (QGIS fermé, plantage) : jamais repris tel quel.
         try:
@@ -462,45 +560,84 @@ def download_one(
         return True
 
     last_err: Optional[Exception] = None
+    total: Optional[int] = None        # taille annoncée au premier essai : référence des reprises
+    etag: Optional[str] = None
+    lecture_s = min(float(timeout_s), float(blocage_s))
     for attempt in range(1, max_retries + 1):
         if cancel():
             return False, False
 
+        # Reprise à l'octet manquant : ce que l'essai précédent a écrit dans le .partial n'est pas
+        # retéléchargé quand le serveur accepte Range ; la taille totale vient du premier essai.
+        written = 0
+        if total is not None and partial.exists():
+            try:
+                written = partial.stat().st_size
+            except OSError:
+                written = 0
+            if written >= total:
+                written = 0
+        garde_motif: Dict[str, str] = {}
         try:
             # Écriture dans <nom>.partial (lot 3) : un flux coupé ou un QGIS tué
             # laissait un LAZ tronqué sous le nom final.
             if HAS_REQUESTS:
                 # Utiliser requests qui gère correctement les proxies HTTPS
+                entetes_req = {"User-Agent": "QGIS-ArcheologiaPipeline/1.0"}
+                if written > 0:
+                    entetes_req["Range"] = f"bytes={written}-"
+                    if etag:
+                        entetes_req["If-Range"] = etag
+                    log(f"📥 Reprise de {filename} à l'octet {written} sur {total}")
                 resp = requests.get(
                     url,
-                    headers={"User-Agent": "QGIS-ArcheologiaPipeline/1.0"},
+                    headers=entetes_req,
                     proxies=proxies if proxies else None,
-                    timeout=timeout_s,
+                    timeout=lecture_s,
                     stream=True,
                 )
                 resp.raise_for_status()
                 if _declared_too_big(resp.headers):
                     return False, False  # définitif : pas de retry
-                annoncee = _taille_annoncee(resp.headers)
-                written = 0
-                with open(partial, "wb") as f:
-                    for chunk in resp.iter_content(chunk_size=chunk_size):
-                        if cancel():
-                            f.close()
-                            if partial.exists():
-                                partial.unlink()
-                            return False, False
-                        if chunk:
-                            written += len(chunk)
-                            if _over_cap(written, f):
-                                return False, False  # définitif : pas de retry
-                            f.write(chunk)
+                if written > 0 and _reprise_acceptee(resp, written, total):
+                    annoncee = total
+                    mode = "ab"
+                else:
+                    if written > 0:
+                        log(f"ℹ️ {filename} : reprise refusée par le serveur, téléchargement depuis zéro")
+                        written = 0
+                    annoncee = _taille_annoncee(resp.headers)
+                    total = annoncee
+                    etag = str(resp.headers.get("ETag") or "") or None
+                    mode = "wb"
+                couper = _coupure(resp)
+                dernier = [time.monotonic()]
+                arret = threading.Event()
+                garde = (_chien_de_garde(couper, dernier, arret, cancel, blocage_s, garde_motif)
+                         if couper is not None else None)
+                try:
+                    with open(partial, mode) as f:
+                        for chunk in resp.iter_content(chunk_size=chunk_size):
+                            dernier[0] = time.monotonic()
+                            if cancel():
+                                f.close()
+                                _liberer_partiel(partial, jeton)
+                                return False, False
+                            if chunk:
+                                written += len(chunk)
+                                if _over_cap(written, f):
+                                    return False, False  # définitif : pas de retry
+                                f.write(chunk)
+                finally:
+                    arret.set()
+                    if garde is not None:
+                        garde.join(timeout=2.0)
             else:
                 # Fallback urllib (peut ne pas fonctionner avec proxy HTTPS)
                 req = urllib.request.Request(url, headers={"User-Agent": "QGIS-ArcheologiaPipeline/1.0"})
                 proxy_handler = urllib.request.ProxyHandler(proxies if proxies else None)
                 opener = urllib.request.build_opener(proxy_handler)
-                with opener.open(req, timeout=timeout_s) as r:
+                with opener.open(req, timeout=lecture_s) as r:
                     entetes = getattr(r, "headers", {})
                     if _declared_too_big(entetes):
                         return False, False  # définitif : pas de retry
@@ -510,8 +647,7 @@ def download_one(
                         while True:
                             if cancel():
                                 f.close()
-                                if partial.exists():
-                                    partial.unlink()
+                                _liberer_partiel(partial, jeton)
                                 return False, False
                             chunk = r.read(chunk_size)
                             if not chunk:
@@ -556,8 +692,15 @@ def download_one(
             ecrire_note_verifiee(dest, log)
             return True, False
         except Exception as e:
+            if cancel() or garde_motif.get("cause") == "annulation":
+                # Coupure voulue par l'utilisateur : rien à réessayer, rien à garder.
+                _liberer_partiel(partial, jeton)
+                return False, False
             last_err = e
-            log(f"Tentative {attempt}/{max_retries} échouée pour {filename}: {e}")
+            cause = garde_motif.get("cause")
+            if cause:
+                log(f"⚠️ {filename} : {cause}, connexion coupée")
+            log(f"Tentative {attempt}/{max_retries} échouée pour {filename}: {cause or e}")
             if attempt < max_retries:
                 log(f"Nouvelle tentative dans {int(retry_delay_s)} secondes...")
                 time.sleep(retry_delay_s)
@@ -668,25 +811,30 @@ def download_ign_dalles(
         for idx, (filename, url) in enumerate(file_list, start=1)
     ]
 
-    # Exécution parallèle
-    with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        future_to_task = {
-            executor.submit(
-                _download_task_worker,
-                task,
-                dalles_dir,
-                thread_safe_log,
-                cancel,
-                proxies,
-            ): task
-            for task in tasks
-        }
-
-        for future in as_completed(future_to_task):
+    # Exécution parallèle. L'annulation est examinée toutes les demi-secondes et n'attend pas les téléchargements
+    # en cours : une lecture réseau bloquée (serveur muet) ne se réveille pas sous Windows avant des octets ou le
+    # délai de lecture — 40 s d'attente en recette le 2026-10-21. Les fils abandonnés finissent seuls et ne
+    # suppriment que leur propre ``.partial`` (_liberer_partiel).
+    executor = ThreadPoolExecutor(max_workers=max_workers)
+    future_to_task = {
+        executor.submit(
+            _download_task_worker,
+            task,
+            dalles_dir,
+            thread_safe_log,
+            cancel,
+            proxies,
+        ): task
+        for task in tasks
+    }
+    en_cours = set(future_to_task)
+    annule = False
+    while en_cours and not annule:
+        finis, en_cours = wait(en_cours, timeout=0.5, return_when=FIRST_COMPLETED)
+        for future in finis:
             if cancel():
-                executor.shutdown(wait=False, cancel_futures=True)
+                annule = True
                 break
-
             try:
                 result = future.result()
                 update_progress_and_counts(result)
@@ -704,6 +852,10 @@ def download_ign_dalles(
                         on_tile_done(current, total, task.filename, False, False)
                     except Exception:
                         pass
+
+        if cancel():
+            annule = True
+    executor.shutdown(wait=not annule, cancel_futures=annule)
 
     # Log des fichiers échoués (mais on continue)
     if failed[0] > 0:

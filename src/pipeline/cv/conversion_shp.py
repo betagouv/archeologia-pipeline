@@ -777,6 +777,7 @@ def create_shapefile_from_detections(
     cancel_check: Optional[CancelCheckFn] = None,
     cell_bounds_by_stem: dict = None,
     fiabilite: dict = None,
+    seuil_fusion_par_classe: dict = None,
 ) -> bool:
     """
     Crée des shapefiles géoréférencés à partir des fichiers de détection YOLO
@@ -797,6 +798,9 @@ def create_shapefile_from_detections(
             détection dont le centre est hors de la cellule de son image est
             écartée (la dalle voisine la rapporte entière) — plus de doublons
             cross-dalles ni de fragments coupés au bord du halo. None = pas de halo.
+        seuil_fusion_par_classe (dict): ``computer_vision.runs[].seuil_fusion_par_classe``,
+            seuil du MODÈLE par classe (2026-10-22) : fusion intra-classe en deux
+            passes (``postprocess_geo_detections``) quand le seuil du run est abaissé.
         fiabilite (dict): bloc ``computer_vision.runs[].fiabilite`` (catégories
             douteux/possible/probable/quasi_certain PAR CLASSE au seuil effectif du
             run, cf. ``app.services.fiabilite``). Écrit les champs ``fiabilite``
@@ -1445,6 +1449,7 @@ def create_shapefile_from_detections(
                     overlap_ios_threshold=_overlap_ios,
                     overlap_min_area_ratio=_overlap_min_area_ratio,
                     overlap_keep_best_geometry=_keep_best,
+                    seuil_fusion_par_classe=seuil_fusion_par_classe,
                 )
                 total_pp = sum(len(v) for v in data_by_class_name.values())
                 logger.info(f"Post-traitement géo terminé: {total_raw} -> {total_pp} détections")
@@ -1649,8 +1654,10 @@ def create_shapefile_from_detections(
                         pass
 
                 # Colonnes numériques des briques de synthèse (clustering, enclos, axes)
+                if "n_membres" in gdf.columns:
+                    gdf["n_membres"] = gdf["n_membres"].fillna(1).astype(int)
                 for ncol in ("nb_detect", "area_m2", "density", "conf_p90", "elong_med", "surface_m2",
-                             "conf_fragments",
+                             "conf_fragments", "conf_max",
                              "closure_ratio", "ancrage", "isolement", "rectangularite",
                              "compacite", "elongation", "nb_sources",
                              "longueur_m", "couverture", "largeur_m", "azimut_deg",

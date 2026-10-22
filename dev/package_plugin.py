@@ -46,6 +46,9 @@ EXCLUDE_DIRS = {
     # Flux Géoplateforme privés de l'onglet Visualisation : les descripteurs
     # GDAL_WMS portent la clé d'accès (gitignoré, cf. .gitignore).
     "local_catalogue",
+    # Catalogue de démo de l'onglet Visualisation (désactivé) : sorti du dépôt le 2026-10-20
+    # (642 chemins de poste) ; ses restes gitignorés sur un poste (wms/, thumbs/) ne partent pas.
+    "demo_catalogue",
 }
 
 EXCLUDE_FILES = {

@@ -104,3 +104,15 @@ def test_extract_thresholds_absent():
     conf, pc, area, iou = _extract_thresholds({})
     # 0.3 = défaut UNIFIÉ de la chaîne CV (audit 2026-08-31, ex-0.2)
     assert pc == {} and abs(conf - 0.3) < 1e-9
+
+
+def test_boite_de_seuil_a_trois_decimales():
+    """Un seuil de modèle à trois décimales (chemins creux : 0,245) doit être représentable
+    dans la case « Confiance » de l'étape 3 : arrondi à 0,24, il passait SOUS le seuil du
+    modèle et faisait naître un « douteux » fantôme sur [0,24 ; 0,245[ (2026-10-22). Garde-fou
+    par lecture du source : src/ui/ n'est pas importable sans QGIS."""
+    from pathlib import Path
+
+    src = (Path(__file__).resolve().parents[2] / "src" / "ui" / "widgets" / "entity_card.py").read_text(encoding="utf-8")
+    assert "self._conf_spin.setDecimals(3)" in src
+    assert "self._conf_spin.setDecimals(2)" not in src

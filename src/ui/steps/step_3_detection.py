@@ -490,7 +490,8 @@ class DetectionPage(QWidget):
                 continue
             seuil = (float(conf_override) if conf_override is not None
                      else float(pc.get(c, model.default_confidence)))
-            par_classe[c] = categories_effectives(cats, seuil)
+            par_classe[c] = categories_effectives(
+                cats, seuil, sous_seuil=(getattr(model, "fiabilite_sous_seuil", None) or {}).get(c))
         return hint_etape3(par_classe)
 
     def _refresh(self) -> None:

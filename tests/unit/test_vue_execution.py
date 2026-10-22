@@ -70,3 +70,10 @@ def test_le_manuel_et_la_recette_suivent():
     recette = (RACINE / "tests/TESTS_MANUELS_QGIS.md").read_text(encoding="utf-8")
     assert "## 44." in recette and "Ouvrir le projet QGIS" in recette
     assert "## 45." in recette and "Vérifications" in recette
+
+
+def test_l_annulation_demande_de_patienter():
+    """2026-10-21 : au clic sur « Annuler », le journal dit d'attendre que l'étape en cours s'arrête."""
+    vue = _vue()
+    annuler = vue[vue.index("def request_cancel("):vue.index("def _worker(")]
+    assert "Annulation demandée" in annuler and "patientez quelques secondes" in annuler

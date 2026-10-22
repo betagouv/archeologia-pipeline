@@ -160,4 +160,5 @@ def test_echec_ordinaire_declenche_toujours_le_fallback(mnt_pret, monkeypatch):
     monkeypatch.setattr(mnt, "run_qgis_algorithm", algo)
     _creer_mnt(laz, temp_dir, feedback=_FeedbackArmable())
 
-    assert appels == ["pdal:exportrastertin", "pdal:exportraster"]
+    # Seconde tentative TIN avant le repli (recette séance B, 2026-10-21 : test_mnt_repli).
+    assert appels == ["pdal:exportrastertin", "pdal:exportrastertin", "pdal:exportraster"]

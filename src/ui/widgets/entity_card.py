@@ -255,7 +255,9 @@ class EntityCard(QFrame):
         self._conf_spin = NoWheelDoubleSpinBox()
         self._conf_spin.setRange(0.0, 1.0)
         self._conf_spin.setSingleStep(0.05)
-        self._conf_spin.setDecimals(2)
+        # Trois décimales (2026-10-22) : un seuil de modèle à 0,245 (chemins creux) arrondi à
+        # 0,24 passait SOUS le seuil et faisait naître un « douteux » fantôme sur [0,24 ; 0,245[.
+        self._conf_spin.setDecimals(3)
         self._conf_spin.setFixedWidth(58)
         self._conf_spin.valueChanged.connect(self._on_thresholds_changed)
         self._conf_spin.valueChanged.connect(self._maj_profils)

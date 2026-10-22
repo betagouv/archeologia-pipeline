@@ -9,7 +9,7 @@ import threading
 import time
 import urllib.parse
 import urllib.request
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Tuple
@@ -312,6 +312,32 @@ def _partial_telechargement(dest: Path) -> Path:
     return dest.with_name(dest.name + ".partial")
 
 
+# Qui tient chaque ``.partial`` : une annulation n'attend plus les téléchargements en cours (une lecture réseau
+# bloquée ne se réveille pas sous Windows), et le fil abandonné finit plus tard. Si un nouveau lancement a repris
+# la même dalle entre-temps, le fil abandonné ne doit pas supprimer le fichier de ce nouveau lancement.
+_TENANTS_PARTIELS: Dict[str, int] = {}
+_TENANTS_VERROU = threading.Lock()
+
+
+def _prendre_partiel(partial: Path) -> int:
+    """Le téléchargement courant devient le seul à pouvoir supprimer ``partial`` ; rend son jeton."""
+    with _TENANTS_VERROU:
+        jeton = _TENANTS_PARTIELS.get(str(partial), 0) + 1
+        _TENANTS_PARTIELS[str(partial)] = jeton
+        return jeton
+
+
+def _liberer_partiel(partial: Path, jeton: int) -> None:
+    """Supprime ``partial`` s'il appartient encore à ce téléchargement (jamais celui d'un lancement plus récent)."""
+    with _TENANTS_VERROU:
+        if _TENANTS_PARTIELS.get(str(partial)) != jeton:
+            return
+    try:
+        partial.unlink(missing_ok=True)
+    except OSError:
+        pass
+
+
 def note_verifiee_path(dest: Path) -> Path:
     return dest.with_name(dest.name + ".verifie.json")
 
@@ -434,6 +460,7 @@ def download_one(
     dalles_dir.mkdir(parents=True, exist_ok=True)
     dest = dalles_dir / filename
     partial = _partial_telechargement(dest)
+    jeton = _prendre_partiel(partial)
     if partial.exists():
         # Reste d'un téléchargement tué (QGIS fermé, plantage) : jamais repris tel quel.
         try:
@@ -594,8 +621,7 @@ def download_one(
                             dernier[0] = time.monotonic()
                             if cancel():
                                 f.close()
-                                if partial.exists():
-                                    partial.unlink()
+                                _liberer_partiel(partial, jeton)
                                 return False, False
                             if chunk:
                                 written += len(chunk)
@@ -621,8 +647,7 @@ def download_one(
                         while True:
                             if cancel():
                                 f.close()
-                                if partial.exists():
-                                    partial.unlink()
+                                _liberer_partiel(partial, jeton)
                                 return False, False
                             chunk = r.read(chunk_size)
                             if not chunk:
@@ -669,11 +694,7 @@ def download_one(
         except Exception as e:
             if cancel() or garde_motif.get("cause") == "annulation":
                 # Coupure voulue par l'utilisateur : rien à réessayer, rien à garder.
-                try:
-                    if partial.exists():
-                        partial.unlink()
-                except OSError:
-                    pass
+                _liberer_partiel(partial, jeton)
                 return False, False
             last_err = e
             cause = garde_motif.get("cause")
@@ -790,25 +811,30 @@ def download_ign_dalles(
         for idx, (filename, url) in enumerate(file_list, start=1)
     ]
 
-    # Exécution parallèle
-    with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        future_to_task = {
-            executor.submit(
-                _download_task_worker,
-                task,
-                dalles_dir,
-                thread_safe_log,
-                cancel,
-                proxies,
-            ): task
-            for task in tasks
-        }
-
-        for future in as_completed(future_to_task):
+    # Exécution parallèle. L'annulation est examinée toutes les demi-secondes et n'attend pas les téléchargements
+    # en cours : une lecture réseau bloquée (serveur muet) ne se réveille pas sous Windows avant des octets ou le
+    # délai de lecture — 40 s d'attente en recette le 2026-10-21. Les fils abandonnés finissent seuls et ne
+    # suppriment que leur propre ``.partial`` (_liberer_partiel).
+    executor = ThreadPoolExecutor(max_workers=max_workers)
+    future_to_task = {
+        executor.submit(
+            _download_task_worker,
+            task,
+            dalles_dir,
+            thread_safe_log,
+            cancel,
+            proxies,
+        ): task
+        for task in tasks
+    }
+    en_cours = set(future_to_task)
+    annule = False
+    while en_cours and not annule:
+        finis, en_cours = wait(en_cours, timeout=0.5, return_when=FIRST_COMPLETED)
+        for future in finis:
             if cancel():
-                executor.shutdown(wait=False, cancel_futures=True)
+                annule = True
                 break
-
             try:
                 result = future.result()
                 update_progress_and_counts(result)
@@ -826,6 +852,10 @@ def download_ign_dalles(
                         on_tile_done(current, total, task.filename, False, False)
                     except Exception:
                         pass
+
+        if cancel():
+            annule = True
+    executor.shutdown(wait=not annule, cancel_futures=annule)
 
     # Log des fichiers échoués (mais on continue)
     if failed[0] > 0:

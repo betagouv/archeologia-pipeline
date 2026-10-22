@@ -1049,3 +1049,37 @@ Lot 3 du chantier d'accélération (2026-10-15) : une dalle lue en entier reçoi
 - [ ] **57.2 Chargement direct** : depuis la vue d'exécution, « Ouvrir le projet QGIS » → même état des cases.
 - [ ] **57.3 Rien de perdu** : le nombre d'entités de la couche (propriétés › Information, ou la table d'attributs) et le bilan de fin de traitement comptent aussi les détections possibles et douteuses.
 - [ ] **57.4 Modèle sans fiabilité** : une couche catégorisée par tranches de score (`conf_bin`) garde toutes ses tranches cochées.
+
+## 58. Manuel : schéma de la chaîne, légende, Qt6, renvois du journal ⭐ P1
+
+> **Contexte** (2026-10-20, audit du manuel) : schéma de la chaîne de traitement au chapitre « Premier traitement »,
+> capture de la légende refaite (niveaux décochés), débord du chapitre « Vos résultats » sous QGIS 4 corrigé,
+> rubrique « Méthode de calcul mise à jour », renvoi « Erreur PDAL ou mémoire » branché sur les vrais messages.
+
+- [ ] **58.1 Schéma** : Manuel › Premier traitement → le schéma suit la liste des cinq phases, texte net à 100 % et à 150 % d'échelle d'écran ; un clic l'ouvre en grand.
+- [ ] **58.2 Qt6** : sous QGIS 4, Manuel › Vos résultats dans QGIS → aucune barre de défilement horizontale ; la capture de la légende montre « possible » et « douteux » décochés.
+- [ ] **58.3 Renvoi du cache** : relancer dans un dossier calculé par une version précédente → la ligne « ⚠️ Méthode de calcul mise à jour » finit par « voir Manuel › Dépannage › Méthode de calcul mise à jour » ; le clic ouvre la rubrique.
+- [ ] **58.4 Libellés** : les noms cités au manuel existent à l'écran : « ↺ Défauts » (étape 2), « Regrouper en clusters » (étape 3), les lignes du panneau « État du système » (étape 4), les modes du bandeau (étape 1).
+
+## 59. Correctifs de la recette du 2026-10-21 (séance B) ⭐ P0
+
+> **Contexte** : sur le run `D:\pipeline_results\test` (9 dalles IGN, machine chargée), le MNT d'une dalle a été calculé
+> sans interpolation sans le dire, une annulation pendant un téléchargement bloqué a pris 40 s, et la fin de la
+> détection annonçait 2 742 « zones » pour 310 détections dans les couches.
+
+- [ ] **59.1 MNT de repli** : si le journal complet porte « Échec création MNT avec pdal:exportrastertin (tentative 1/2) », il porte ensuite soit le MNT calculé à la seconde tentative, soit « (tentative 2/2) » puis, dans le journal de l'assistant, « ⚠️ MNT de la dalle … calculé sans interpolation » avec le renvoi « voir Manuel › Dépannage › Erreur PDAL ou mémoire ». À côté du MNT de travail (`technique/intermediaires/…_MNT.tif`), un fichier `.repli` ; relancer dans le même dossier → ce MNT seul est recalculé, le `.repli` disparaît.
+- [ ] **59.2 Annulation pendant un téléchargement** : annuler pendant le téléchargement des dalles (idéalement pendant une dalle lente) → « Traitement annulé » en une à deux secondes. Relancer aussitôt dans le même dossier → le téléchargement repart sans erreur, aucune dalle tronquée.
+- [ ] **59.3 Compte de fin de détection** : la ligne « 🤖 Détection terminée : N détections dans les couches » donne la somme des entités des GeoPackages, égale à la somme du bilan « Par où commencer ».
+
+## 60. Seuil abaissé : « douteux » mesuré, fusion en deux passes, critère de l'axe ⭐ P1
+
+> **Contexte** (2026-10-22, rapport sur l'évaluation des linéaires) : un seuil abaissé sous celui du modèle
+> prolongeait « possible » sur des polygones vrais à 13 % et tirait les bons polygones vers le bas par fusion ;
+> les linéaires sont désormais évalués par la distance de l'axe (5 m) et par polygone fusionné.
+
+- [ ] **60.1 Seuil abaissé** : parcellaire à 0,16 (seuil du modèle 0,26), indices existants → la légende porte « Douteux · sous le seuil du modèle » décoché et « Possible » commence toujours à 0,26 ; le journal complet (bouton « Log complet ») porte « Computer Vision: fiabilité parcellaire : douteux dès 0.16 · possible dès 0.26 · probable dès 0.35 · quasi_certain dès 0.55 » ; l'infobulle d'une détection douteuse commence par « Sous le seuil du modèle : » (mesurée ou non mesurée).
+- [ ] **60.2 Deux passes** : comparer avec un run au seuil du modèle (autre dossier) : les polygones ≥ 0,26 sont les mêmes dans les deux runs, en nombre (à 5 % près) et en forme (la plupart au bit près ; quelques contours bougent parce que le moteur de détection tourne au plancher du run, 0,16 contre 0,245, et fusionne ses fenêtres un peu différemment) ; aucun polygone ≥ 0,26 n'est absorbé ni tiré vers le bas par un ajouté, et les ajoutés (< 0,26) sont des polygones distincts. Journal complet : « Fusion intra-classe 'parcellaire' : N polygones (deux passes au seuil du modèle 0.26) ».
+- [ ] **60.3 Champs** : la table d'attributs porte `n_membres`, `conf_max`, `longueur_m` ; survoler un polygone à `n_membres` > 1 → « Polygone fusionné de N fragments, le plus sûr à 0,xx » dans l'infobulle ; un modèle de boîtes (ponctuelles) n'a pas cette ligne.
+- [ ] **60.4 Fiches** : fiche du modèle linéaires → section « MÉTRIQUES D'ÉVALUATION — CRITÈRE AXE », ligne « Critère : axe de la détection à 5 m au plus de l'axe annoté, comptée par polygone fusionné … » ; fiche de classe parcellaire : niveaux conformes au `model_card`, « Tester un seuil » sous 0,26 montre « douteux » sous le seuil du modèle.
+- [ ] **60.5 Modèle au critère objet** : cratères à 0,2 (seuil 0,29) → « Douteux » s'étend à 0,2 comme avant, sans mention « sous le seuil du modèle ».
+

@@ -2,7 +2,7 @@
 
 ## Le dossier de sortie
 
-Deux dossiers, une règle : `livrable/` se garde et se transmet, `technique/` se supprime.
+Deux dossiers, une règle : `livrable/` se garde et se transmet, `technique/` se supprime. Le [schéma de la chaîne](premier-traitement.md#ce-que-fait-le-plugin) montre quelle phase écrit chaque dossier.
 
 ```
 dossier_de_sortie/
@@ -19,9 +19,9 @@ dossier_de_sortie/
 │       ├── parcellaire/parcellaire.gpkg   un GeoPackage par entité
 │       └── parcellaire/fiabilite.json     les coupures de fiabilité de cette couche
 └── technique/                         ce que vous pouvez supprimer
-    ├── sources/dalles/                dalles LiDAR téléchargées, re-téléchargeables ; à côté de chacune,
-    │                                  une note « .verifie.json » (lue en entier, supprimable) et, si un
-    │                                  téléchargement a été interrompu, un « .partial » (retéléchargé au lancement suivant)
+    ├── sources/dalles/                dalles LiDAR, re-téléchargeables ; à côté :
+    │                                  une note « .verifie.json » (lue en entier)
+    │                                  et « .partial » après une coupure
     ├── intermediaires/                fichiers de calcul par dalle
     ├── png/                           images préparées pour la détection
     ├── detection/<modèle>/            sorties brutes et images annotées
@@ -40,7 +40,7 @@ Dans chaque dossier `tif/`, la mosaïque `index_<PRODUIT>.vrt` assemble toutes l
 
 `livrable/projet.qgs` est écrit à la fin de chaque traitement et constitue le point d'entrée pour valider les détections. Il contient les mosaïques des indices et, par entité, un groupe avec sa couche de détections stylée. Deux modèles comparés sur une même entité donnent deux couches dans un groupe marqué « comparaison ».
 
-Les mêmes couches sont chargées directement dans votre projet QGIS courant à la fin du traitement.
+Les mêmes couches sont chargées dans votre projet QGIS courant quand vous cliquez **Ouvrir le projet QGIS** à la fin du traitement, une seule fois ; rien ne se charge sans ce clic.
 
 ## La légende de fiabilité
 
@@ -49,6 +49,8 @@ Chaque couche de détections est catégorisée en quatre niveaux : **douteux**, 
 Le dessin : contour seul, sans remplissage, pour laisser lire la structure détectée dessous ; une couleur par classe, déclinée du plus foncé (très probable) au plus clair (douteux). L'infobulle de la couche et son résumé, dans les propriétés, donnent la part mesurée pour chaque niveau et le nombre de détections sur lequel elle a été mesurée.
 
 À l'ouverture, seuls **très probable** et **probable** sont cochés dans la légende ; **possible** et **douteux** y sont, décochés. Commencez par ce qui est sûr, puis cochez les deux autres niveaux d'un clic dans le panneau des couches pour élargir : toutes les détections sont dans le GeoPackage, dans le bilan de fin de traitement et dans le rapport. L'état des cases est enregistré dans le projet ; une couche chargée depuis le bouton « Ouvrir le projet QGIS » s'ouvre de la même façon.
+
+Quand vous avez baissé le seuil d'une entité sous celui du modèle, les détections ajoutées forment le niveau **douteux · sous le seuil du modèle** : la part de vrais y est celle mesurée pour cet intervalle quand le modèle la fournit, sinon « non mesurée » ; les autres niveaux gardent leurs coupures. Ces détections sont fusionnées entre elles, jamais avec celles qui passaient déjà le seuil : un bon polygone n'est pas tiré vers le bas par un fragment faible accolé. L'infobulle d'une détection dit, pour un polygone fusionné, de combien de fragments il est fait et le score du plus sûr.
 
 [![Dans QGIS : une couche par entité, quatre niveaux de fiabilité, contours sur l'indice](img/resultats-legende-fiabilite.jpg)](img/resultats-legende-fiabilite.jpg)
 
@@ -65,11 +67,14 @@ Une couche issue d'un modèle sans fiabilité mesurée est catégorisée par tra
 | `fiabilite` | le niveau de fiabilité affiché dans la légende |
 | `fiabilite_pct` | la part de vrais objets mesurée pour ce niveau, en pour cent |
 | `conf_bin` | la tranche de score, pour les modèles sans fiabilité mesurée |
+| `n_membres` | le nombre de fragments fusionnés dans ce polygone (1 : détection isolée) |
+| `conf_max` | le score du fragment le plus sûr ; `confidence` est la moyenne pondérée par l'aire |
+| `longueur_m` | la longueur du polygone, en mètres (celle d'un rectangle de même aire et de même périmètre : la longueur d'un tracé, sans sens particulier pour une forme trapue) |
 | `model_name` | le modèle qui a produit la détection |
 | `cluster_id` | le regroupement auquel la détection appartient, le cas échéant |
 | `corr_pred`, `validation` | deux champs vides, à votre usage pour corriger la classe et noter votre verdict |
 
-Les zones issues d'un regroupement portent en plus le nombre de détections qu'elles contiennent, leur surface en mètres carrés et leur densité par hectare.
+Les zones issues d'un regroupement portent en plus le nombre de détections qu'elles contiennent, leur surface en mètres carrés, leur densité par hectare, le score que dépassent les 10 % de détections les mieux notées (`conf_p90`) et l'élongation médiane des détections (`elong_med`).
 
 ## Valider les détections
 
@@ -79,7 +84,7 @@ Pour une dalle, les détections de toutes les entités se superposent sans doubl
 
 ## Les traces d'un traitement
 
-`livrable/traitement.json` résume le dernier traitement : version du plugin, date, nombre de dalles, version de PDAL qui a calculé le MNT, produits et leurs réglages, modèles lancés avec l'appareil qui a détecté (processeur ou carte graphique, et son nom), entités produites avec le chemin de leur GeoPackage, le bilan de fiabilité par entité, le moteur de détection employé ou, si la détection a été impossible, sa cause. Il ne porte aucun chemin de votre poste et se transmet avec le livrable.
+`livrable/traitement.json` résume le dernier traitement : version du plugin, date, nombre de dalles, version de PDAL qui a calculé le MNT et méthode de fusion des nuages, produits et leurs réglages, modèles lancés avec l'appareil qui a détecté (processeur ou carte graphique, et son nom), entités produites avec le chemin de leur GeoPackage, le bilan de fiabilité par entité, le moteur de détection employé ou, si la détection a été impossible, sa cause. Il ne porte aucun chemin de votre poste et se transmet avec le livrable.
 
 `technique/journaux/` garde, pour chaque lancement, le journal détaillé `pipeline_log_<date>.txt` et la trace complète `metadata_<date>.json`, avec la configuration entière de l'assistant, chemins de votre poste compris. C'est ce qu'il faut joindre à une demande d'aide.
 

@@ -88,3 +88,43 @@ def test_bloc_pour_une_autre_classe_ignore(env):
     gdf = _convert(env, fiabilite={"modele": "m", "par_classe": {"autre": BLOC["par_classe"]["obj"]}})
     assert "fiabilite" not in gdf.columns
     assert not (env["out"].parent / "fiabilite.json").exists()
+
+
+@pytest.fixture
+def env_accoles(tmp_path):
+    from PIL import Image
+
+    labels, pngs = tmp_path / "raw", tmp_path / "png"
+    labels.mkdir()
+    pngs.mkdir()
+    Image.new("L", (_W, _W), 128).save(pngs / "A.png")
+    # deux boîtes accolées (0,9 puis 0,2) et une isolée (0,2) ; seuil du run 0,16, seuil du modèle 0,3
+    (labels / "A.txt").write_text("\n".join([
+        _yolo_line(200, 800, 40, 40, 0.90), _yolo_line(240, 800, 40, 40, 0.20),
+        _yolo_line(800, 300, 40, 40, 0.20),
+    ]) + "\n", encoding="utf-8")
+    return {"labels": labels, "pngs": pngs, "out": tmp_path / "out" / "obj.gpkg"}
+
+
+def _convert_fusion(env, **kwargs):
+    ok = create_shapefile_from_detections(
+        labels_dir=str(env["labels"]), output_shapefile=str(env["out"]), png_dir=str(env["pngs"]),
+        tif_transform_data=_TRANSFORMS, class_names={0: "obj"}, model_task="instance_segmentation",
+        postprocess_config={"merge_adjacent": True, "remove_overlaps": False, "merge_buffer_m": 0.5},
+        min_confidence=0.16, model_name="modele_test", **kwargs,
+    )
+    assert ok is True
+    return gpd.read_file(env["out"], layer="obj")
+
+
+def test_seuil_de_fusion_fige_la_fusion_au_seuil_du_modele(env_accoles):
+    """Seuil abaissé à 0,16 (2026-10-22) : sans seuil de fusion, la boîte à 0,2 accolée
+    rétrograde celle à 0,9 (moyenne 0,55) ; avec ``seuil_fusion_par_classe`` = seuil du
+    modèle, les deux restent distinctes et les champs de fusion sont écrits."""
+    gdf = _convert_fusion(env_accoles)
+    assert len(gdf) == 2 and gdf["confidence"].max() == pytest.approx(0.55)
+    gdf = _convert_fusion(env_accoles, seuil_fusion_par_classe={"obj": 0.3}).sort_values("confidence")
+    assert len(gdf) == 3 and list(gdf["confidence"].round(2)) == [0.2, 0.2, 0.9]
+    assert list(gdf["n_membres"]) == [1, 1, 1]
+    assert list(gdf["conf_max"].round(2)) == [0.2, 0.2, 0.9]
+    assert "longueur_m" in gdf.columns

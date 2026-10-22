@@ -171,12 +171,12 @@ def run_cv_post_loop(
         from ...pipeline.batch import process_items_isolated
         from ...pipeline.cv.class_utils import resolve_cv_runs
         from ...pipeline.modes.existing_rvt import run_existing_rvt
-        from ...pipeline.output_paths import resolve_rvt_tif_dir
+        from ...pipeline.output_paths import detections_gardees, resolve_rvt_tif_dir
     except ImportError:  # pragma: no cover
         from pipeline.batch import process_items_isolated
         from pipeline.cv.class_utils import resolve_cv_runs
         from pipeline.modes.existing_rvt import run_existing_rvt
-        from pipeline.output_paths import resolve_rvt_tif_dir
+        from pipeline.output_paths import detections_gardees, resolve_rvt_tif_dir
 
     cv_cfg = ctx.cv.raw
     cv_runs = resolve_cv_runs(cv_cfg)
@@ -308,5 +308,9 @@ def run_cv_post_loop(
             f"⚠️ Computer Vision: {len(failed)} run(s) sur {len(cv_runs)} en échec "
             "— voir le journal."
         )
-    if detection_counts:
+    # Compte des couches (après dédoublonnage, seuil, aire minimale), pas les détections brutes du moteur.
+    gardees = detections_gardees(ctx.output_dir, cv_runs)
+    if gardees is not None:
+        narrator.cv_complete(gardees)
+    elif detection_counts:
         narrator.cv_complete(sum(detection_counts))

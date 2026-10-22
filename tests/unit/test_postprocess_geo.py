@@ -364,3 +364,67 @@ class TestPostprocessDifferenceStrategyUnchanged:
         assert len(out["cratere"]) == 2
         areas = sorted(d["geometry"].area for d in out["cratere"])
         assert areas[0] < c2.area  # le moins confiant a été découpé
+
+
+class TestFusionDeuxPasses:
+    """Seuil abaissé sous celui du modèle (2026-10-22) : les fragments ≥ seuil du modèle
+    fusionnent entre eux, les ajoutés entre eux, jamais ensemble — un bon polygone n'est
+    pas rétrogradé par une moyenne tirée vers le bas (78 % des groupes dont un membre
+    atteignait 0,30 passaient sous 0,30 au run 0,16, rapport linéaires)."""
+
+    def _chaine(self):
+        a, b, c = _square(0, 0), _square(10, 0), _square(20, 0)  # trois carrés accolés en chaîne
+        return {"parcellaire": [_det(a, 0.9, "parcellaire"), _det(b, 0.2, "parcellaire"),
+                                _det(c, 0.2, "parcellaire")]}
+
+    def test_les_ajoutees_fusionnent_entre_elles_pas_avec_le_bon_polygone(self):
+        out = postprocess_geo_detections(
+            self._chaine(), merge_buffer_m=0.5, do_merge=True, do_remove_overlaps=False,
+            seuil_fusion_par_classe={"parcellaire": 0.26},
+        )
+        dets = sorted(out["parcellaire"], key=lambda d: d["confidence"])
+        assert len(dets) == 2
+        assert dets[1]["confidence"] == 0.9 and dets[1]["n_membres"] == 1
+        assert dets[1]["geometry"].area == pytest.approx(100)
+        assert dets[0]["n_membres"] == 2 and dets[0]["conf_max"] == 0.2
+        assert dets[0]["geometry"].area == pytest.approx(200)
+
+    def test_sans_seuil_de_fusion_tout_fusionne(self):
+        out = postprocess_geo_detections(
+            self._chaine(), merge_buffer_m=0.5, do_merge=True, do_remove_overlaps=False)
+        (d,) = out["parcellaire"]
+        assert d["n_membres"] == 3 and d["conf_max"] == 0.9
+        assert d["geometry"].area == pytest.approx(300)
+        assert d["confidence"] == pytest.approx((0.9 + 0.2 + 0.2) / 3)
+
+    def test_classe_sans_seuil_declare_inchangee(self):
+        out = postprocess_geo_detections(
+            self._chaine(), merge_buffer_m=0.5, do_merge=True, do_remove_overlaps=False,
+            seuil_fusion_par_classe={"autre": 0.5},
+        )
+        assert len(out["parcellaire"]) == 1
+
+
+class TestChampsMesures:
+    """``n_membres``, ``conf_max``, ``longueur_m`` (rectangle équivalent) sur chaque polygone,
+    isolé compris — l'infobulle dit « polygone fusionné de N fragments, le plus sûr à … »."""
+
+    def test_polygone_isole(self):
+        out = postprocess_geo_detections(
+            {"c": [_det(_square(0, 0), 0.7, "c")]}, do_merge=True, do_remove_overlaps=False)
+        (d,) = out["c"]
+        assert d["n_membres"] == 1 and d["conf_max"] == 0.7
+        assert d["longueur_m"] == pytest.approx(10.0)
+
+    def test_longueur_du_ruban(self):
+        ruban = Polygon([(0, 0), (100, 0), (100, 10), (0, 10)])
+        out = postprocess_geo_detections(
+            {"c": [_det(ruban, 0.5, "c")]}, do_merge=True, do_remove_overlaps=False)
+        assert out["c"][0]["longueur_m"] == pytest.approx(100.0)
+
+    def test_superposition_relation_cumule_les_membres(self):
+        a = dict(_det(_circle(0, 0, 5), 0.8), n_membres=2, conf_max=0.8)
+        b = dict(_det(_circle(3, 0, 5), 0.3), n_membres=1, conf_max=0.3)
+        out = _resolve_same_class_overlaps([a, b], 0.5, unary_union, STRtree)
+        assert len(out) == 1
+        assert out[0]["n_membres"] == 3 and out[0]["conf_max"] == 0.8 and out[0]["confidence"] == 0.8

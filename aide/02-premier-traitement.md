@@ -7,12 +7,14 @@ Un parcours complet sur quelques dalles LiDAR HD de l'IGN, pour voir ce que prod
 À partir d'une zone et de données LiDAR, le plugin enchaîne automatiquement :
 
 1. le **téléchargement** ou l'import des nuages de points ;
-2. le calcul du **modèle numérique de terrain** (MNT) ;
+2. la **fusion** de chaque dalle avec ses voisines, avec une marge, puis le calcul du **modèle numérique de terrain** (MNT) ;
 3. le calcul des **indices de visualisation** du relief (ombrages, facteur de vue du ciel, dominance locale…) ;
 4. la **détection automatique** d'entités archéologiques par des modèles d'IA, si vous l'activez ;
 5. l'**assemblage** : mosaïques des rasters, GeoPackages de détections et un projet QGIS prêt à ouvrir.
 
-Selon vos données, vous entrez dans cette chaîne à un endroit différent : c'est le **mode**, choisi à l'étape 1.
+[![La chaîne de traitement : les quatre points d'entrée, les phases, ce que chacune produit et où cela va](img/pipeline.png)](img/pipeline.png)
+
+Selon vos données, vous entrez dans cette chaîne à un endroit différent : c'est le **mode**, choisi à l'étape 1. Le schéma montre où entre chaque mode, ce qui se fait dalle par dalle en parallèle, et ce qui finit dans `livrable/` (à garder) ou dans `technique/` (à supprimer).
 
 ## Ce manuel
 

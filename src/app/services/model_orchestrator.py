@@ -39,7 +39,7 @@ import json
 import logging
 import re
 
-from .fiabilite import parse_fiabilite, run_block
+from .fiabilite import parse_fiabilite, parse_sous_seuil, run_block
 import unicodedata
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -131,6 +131,10 @@ class InstalledModel:
     # conf_bin historiques.
     fiabilite_per_class: Dict[str, Tuple[Any, ...]] = field(default_factory=dict)
     fiabilite_provenance: str = ""
+    # Bandes ``thresholds.fiabilite.sous_seuil`` (2026-10-22) : part de vrais des polygones
+    # formés entre eux sous le seuil du modèle, pour mesurer « douteux » quand l'utilisateur
+    # abaisse le seuil (``fiabilite.parse_sous_seuil``). Vide = non mesuré.
+    fiabilite_sous_seuil: Dict[str, Tuple[Dict[str, Any], ...]] = field(default_factory=dict)
     # Dossier du modèle sur disque (``data/models/<name>/``). Utile côté UI pour
     # ouvrir le dossier dans l'explorateur ou (re)lire ``model_card.yaml`` /
     # ``args.yaml`` à la demande sans relancer ``discover_installed_models``.
@@ -254,6 +258,7 @@ def discover_installed_models(models_dir: Any) -> List[InstalledModel]:
             continue
         conf, conf_pc, area, iou = _extract_thresholds(card)
         fiab_pc, fiab_prov = parse_fiabilite(card.get("thresholds"))
+        fiab_sous = parse_sous_seuil(card.get("thresholds"))
         clustering_rules = _load_args_clustering(sub)
         # cluster_options construites AVANT le merge des cibles dérivées : sinon
         # une cible déjà agrégée se verrait proposer une case « cluster » redondante.
@@ -288,6 +293,7 @@ def discover_installed_models(models_dir: Any) -> List[InstalledModel]:
                 default_confidence_per_class=conf_pc,
                 fiabilite_per_class=fiab_pc,
                 fiabilite_provenance=fiab_prov,
+                fiabilite_sous_seuil=fiab_sous,
                 default_min_area=area,
                 default_iou=iou,
                 model_dir=sub,
@@ -1038,6 +1044,7 @@ def resolve_runs_from_entities(
             sorted(group["classes"]),
             modele=model.display_name,
             provenance=model.fiabilite_provenance,
+            sous_seuil=model.fiabilite_sous_seuil,
         )
         runs.append(
             {
@@ -1060,6 +1067,12 @@ def resolve_runs_from_entities(
                 ],
                 "confidence_threshold": float(plancher_conf),
                 "confidence_per_class": {c: float(v) for c, v in sorted(conf_par_classe.items())},
+                # Seuil du MODÈLE par classe (2026-10-22) : la fusion intra-classe se fait en
+                # deux passes de part et d'autre (postprocess_geo_detections) quand le seuil
+                # du run est abaissé — les ajoutées fusionnent entre elles, jamais avec les bonnes.
+                "seuil_fusion_par_classe": {
+                    c: float(model.default_confidence_per_class.get(c, model.default_confidence))
+                    for c in sorted(group["classes"])},
                 "iou_threshold": float(model.default_iou),
                 "min_area_m2": float(min(aire_par_entite.values(), default=model.default_min_area)),
             }

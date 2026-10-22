@@ -654,7 +654,10 @@ class RunView(QWidget):
         if self._running and not self._cancel_event.is_set():
             self._cancel_event.set()
             self._cancel_btn.setEnabled(False)
-            self._logger.log(USER_INFO, "Annulation demandée…")
+            self._logger.log(
+                USER_INFO,
+                "Annulation demandée… patientez quelques secondes, le temps que l'étape en cours s'arrête.",
+            )
 
     # ------------------------------------------------------------------
     def _worker(self, ctx) -> None:

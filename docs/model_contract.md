@@ -65,10 +65,29 @@ en faux positif une détection correcte mais fragmentée ou décalée de quelque
 séparée (`entrainement/evaluation_couverture/`, déclarée par `fiabilite.source`), et sur
 les seules **zones à annotation exhaustive** (`fiabilite.zones`) — sur une zone où les
 structures ne sont pas toutes annotées, les bonnes détections sont comptées fausses et la
-fiabilité est sous-estimée (constat Fénétrange, 2026-09-09). Côté
+fiabilité est sous-estimée (constat Fénétrange, 2026-09-09). **Depuis le 2026-10-22**
+(rapport sur l'évaluation des linéaires), la couverture, sensible aux bords des masques
+annotés (tampon fixe de 7 m : vérité 1 m plus étroite → précision 0,54 → 0,45), cède la
+place au **critère « axe »** (`courbes_eval --critere axe --tolerance 5 --unite polygone`) :
+une détection est vraie si son axe (squelette) longe un axe annoté à `tolerance_m` près, et
+l'unité mesurée est le **polygone fusionné** au seuil du modèle, celui que l'écran montre
+(un fragment vrai à 54 % devient un polygone vrai à 47 %). Le bloc déclare alors `critere:
+axe`, `unite: polygone`, `tolerance_m` (égale à celle de l'évaluation source) et
+`tolerance_provenance` (pourquoi cette tolérance ; l'évaluation publie la sensibilité des
+coupures à t ± 1,5 m) — **requis** au critère axe, le validateur refuse sinon — et
+`sous_seuil[classe]` = bandes de 0,05 `{lo, tp, fp}` des polygones formés **entre eux** sous
+le seuil du modèle (`etude_seuil.sous_seuil` de l'évaluation, re-dérivées par le
+validateur) : la part de vrais des détections qu'un seuil abaissé ajoute. Côté
 plugin (`app/services/fiabilite.py`) : l'orchestrateur pose dans chaque run les catégories
 *effectives* au seuil de la classe (surcharge UI comprise — la catégorie basse commence AU
-seuil) ; la conversion écrit les champs `fiabilite` (libellé) et `fiabilite_pct` (part
+seuil ; **sous le seuil du modèle, une catégorie basse garantie n'est jamais prolongée** : une
+catégorie « douteux » marquée `sous_seuil: true` couvre l'intervalle ajouté, mesurée sur
+`sous_seuil` ou non mesurée, « douteux » non garanti des modèles au critère objet s'étend
+comme avant) et `seuil_fusion_par_classe` = seuil du modèle par classe, qui fait la fusion
+intra-classe **en deux passes** (les fragments ≥ seuil entre eux, les ajoutés entre eux, jamais
+ensemble : un bon polygone n'est pas rétrogradé par la moyenne) ; chaque polygone livré porte
+`n_membres`, `conf_max` et `longueur_m` (rectangle équivalent) et l'infobulle dit « Polygone
+fusionné de N fragments, le plus sûr à 0,62 » ; la conversion écrit les champs `fiabilite` (libellé) et `fiabilite_pct` (part
 mesurée, %) sur chaque détection individuelle et un sidecar `fiabilite.json` à côté du
 GeoPackage ; `layer_loader`/`qgs_writer` en font une symbologie catégorisée sur
 `fiabilite` (rendu d'origine des tranches : contour seul, sans remplissage, dans la
@@ -193,9 +212,20 @@ thresholds:
   #     - {categorie: possible,      seuil: 0.35, garanti: 0.35, mesure: 0.43, n: 272}
   #     - {categorie: probable,      seuil: 0.45, garanti: 0.60, mesure: 0.71, n: 384}
   #     - {categorie: quasi_certain, seuil: 0.65, garanti: 0.85, mesure: 0.95, n: 1045}
-  #   source: entrainement/evaluation_couverture/metriques_eval.json  # OPTIONNEL : éval qui a
+  #   source: entrainement/evaluation_axe/metriques_eval.json  # OPTIONNEL : éval qui a
   #                             # calibré (défaut : entrainement/evaluation/) — les classes
-  #                             # LINÉAIRES se calibrent au critère « couverture »
+  #                             # LINÉAIRES se calibrent au critère « axe » (« couverture »
+  #                             # avant le 2026-10-22)
+  #   critere: axe              # OPTIONNEL : informatif, = critere de l'évaluation source
+  #   tolerance_m: 5            # REQUIS au critère axe : = tolerance_m de l'évaluation source
+  #   tolerance_provenance: "…" # REQUIS au critère axe : pourquoi cette tolérance (sensibilité
+  #                             # des coupures à 3,5 / 5 / 6,5 m publiée par l'évaluation)
+  #   unite: polygone           # OPTIONNEL : fragment (défaut historique) | polygone (fusionné au
+  #                             # seuil du modèle = ce que l'écran montre) ; = unite de l'éval
+  #   sous_seuil:               # OPTIONNEL (unité polygone) : part de vrais des polygones formés
+  #     parcellaire:            # ENTRE EUX sous le seuil du modèle, bandes de 0,05 {lo, tp, fp}
+  #     - {lo: 0.15, tp: 10, fp: 70}   # (etude_seuil.sous_seuil de l'évaluation) ; mesure le
+  #     - {lo: 0.20, tp: 30, fp: 80}   # « douteux » d'un seuil abaissé ; re-dérivé par le validateur
   #   zones: [grand_est/54_foret_de_haye]  # OPTIONNEL : zones à annotation EXHAUSTIVE
   #                             # seules (par_zone_classe.bandes sommées) ; sans elles, une
   #                             # zone mal annotée compte ses vraies détections en faux
@@ -495,11 +525,13 @@ Règles de contenu, apprises à l'usage :
   fiche) — sourcer, montrer le cadre, ou couper ;
 - `hors_cible` nomme les classes voisines du **même modèle** et les exclusions
   volontaires du corpus — c'est la question la plus posée ;
-- une classe **linéaire** se juge au critère `couverture`, pas en IoU 1-1 : le
-  bloc `fiabilite` doit alors porter la clé `source:` pointant
-  `entrainement/evaluation_couverture/metriques_eval.json`. Sans elle le
-  validateur re-dérive du mauvais fichier et signale un écart fantôme
-  (constaté sur `tranchees_seg_ld_v1`).
+- une classe **linéaire** se juge au critère `axe` (distance de son axe aux tracés
+  annotés, unité polygone ; `couverture` pour une carte antérieure au 2026-10-22),
+  pas en IoU 1-1 : le bloc `fiabilite` doit alors porter la clé `source:` pointant
+  l'évaluation qui l'a calibrée (`entrainement/evaluation_axe/metriques_eval.json`).
+  Sans elle le validateur re-dérive du mauvais fichier et signale un écart fantôme
+  (constaté sur `tranchees_seg_ld_v1`) ; la fiche dit « longe un tracé annoté à 5 m
+  près », jamais « recouvre la moitié d'un masque ».
 
 Enfin, `data/models/**` est **gitignoré** : une fiche écrite ici n'est pas
 versionnée et le prochain ré-export du modèle l'effacerait. La reporter dans

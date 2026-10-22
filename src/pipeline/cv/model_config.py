@@ -454,6 +454,20 @@ def resolve_cv_runs(cv_config: Dict) -> List[Dict]:
                         "non numérique — classe repliée sur le seuil global")
             if _pc:
                 run_cfg["confidence_per_class"] = _pc
+        # Seuil du MODÈLE par classe (2026-10-22) : la fusion intra-classe se fait en
+        # deux passes de part et d'autre (postprocess_geo_detections) ; perdu ici, les
+        # ajoutés d'un seuil abaissé fusionnaient avec les bons polygones (recette § 60).
+        if isinstance(run.get("seuil_fusion_par_classe"), dict):
+            _sf = {}
+            for _k, _v in run["seuil_fusion_par_classe"].items():
+                try:
+                    _sf[str(_k)] = float(_v)
+                except (TypeError, ValueError):
+                    logger.warning(
+                        f"Run {model}: seuil_fusion_par_classe[{_k!r}]={_v!r} "
+                        "non numérique — classe fusionnée en une passe")
+            if _sf:
+                run_cfg["seuil_fusion_par_classe"] = _sf
         # Charger la config SAHI depuis le dossier du modèle
         model_path = _resolve_model_path_for_sahi(model, cv_config)
         if model_path:

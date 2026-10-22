@@ -176,6 +176,7 @@ def deduplicate_cv_shapefiles_final(
             # désigner un autre run).
             model_name=_run_model_slug(cv_config),
             fiabilite=fiabilite,
+            seuil_fusion_par_classe=(cv_config or {}).get("seuil_fusion_par_classe") or None,
             cancel_check=cancel_check,
         ))
         qgs_root = shp_dir.parent if shp_dir.name.lower() in {"shapefiles", "shp"} else shp_dir

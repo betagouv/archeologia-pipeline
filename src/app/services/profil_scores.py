@@ -33,7 +33,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 
-from .fiabilite import Categorie
+from .fiabilite import Categorie, parse_sous_seuil
 
 PAS_DEFAUT = 0.05
 EVAL_DEFAUT = "entrainement/evaluation/metriques_eval.json"
@@ -67,6 +67,9 @@ class Profil:
     n_gt: Optional[int] = None             # objets annotés (zone ou classe) : rappel = vraies gardées / n_gt…
     critere: str = ""                      # … seulement au critère objet (« iou ») ; « couverture » = fragments
     zone: str = ""                         # identifiant de zone (profil par zone), "" = toutes
+    # Bandes thresholds.fiabilite.sous_seuil de la classe (2026-10-22) : « Tester un seuil »
+    # sous celui du modèle mesure le « douteux » ajouté comme au run.
+    sous_seuil: Tuple[Mapping[str, Any], ...] = ()
 
     @property
     def seuil(self) -> float:
@@ -211,8 +214,10 @@ def _charger_bloc(model_dir: Path, source_rel: Optional[str]) -> Mapping[str, An
 
 
 def critere_evaluation(model_dir: Path, source_rel: Optional[str] = None) -> str:
-    """``critere`` en tête de l'évaluation : « iou » (objets appariés un à un) ou
-    « couverture » (linéaires : les vraies sont des fragments, pas des objets) ; ``""`` inconnu.
+    """``critere`` en tête de l'évaluation : « iou » (objets appariés un à un),
+    « couverture » (linéaires avant le 2026-10-22 : les vraies sont des fragments) ou « axe »
+    (linéaires : vraie si son axe longe un axe annoté à ``tolerance_m`` près, comptée par
+    polygone fusionné) ; ``""`` inconnu.
 
     Les évaluations antérieures à l'ajout du champ (enclos, dépressions, ponctuelles)
     ne l'écrivent pas : on le déduit alors du nom de l'évaluation (« couverture » dans
@@ -222,6 +227,8 @@ def critere_evaluation(model_dir: Path, source_rel: Optional[str] = None) -> str
     explicite = str(evaluation.get("critere") or "").strip().lower()
     if explicite:
         return explicite
+    if "evaluation_axe" in (source_rel or "").lower():
+        return "axe"
     if "couverture" in (source_rel or "").lower():
         return "couverture"
     if evaluation and ("iou" in evaluation or "appariement" in evaluation):
@@ -595,10 +602,22 @@ def _source_et_zones(model_dir: Path, classe: str) -> Tuple[Optional[str], Optio
     return (str(source) if source else None), zones
 
 
+def _sous_seuil_carte(model_dir: Path, classe: str) -> Tuple[Mapping[str, Any], ...]:
+    """Bandes ``thresholds.fiabilite.sous_seuil`` de ``classe`` dans ``model_card.yaml`` ; ``()`` sinon."""
+    try:
+        import yaml  # import différé : le module reste importable sans PyYAML
+
+        card = yaml.safe_load((Path(model_dir) / "model_card.yaml").read_text(encoding="utf-8"))
+    except Exception:  # noqa: BLE001 — model_card absent/illisible : pas de bandes
+        return ()
+    return parse_sous_seuil((card or {}).get("thresholds")).get(classe, ())
+
+
 def _profil(classe: str, bandes: Sequence[Bande], categories: Sequence[Categorie], pas: float,
             seuil_eq: Optional[float], zone: str = "",
             tableau: Sequence[Tuple[float, float, float]] = (),
-            n_gt: Optional[int] = None, critere: str = "") -> Profil:
+            n_gt: Optional[int] = None, critere: str = "",
+            sous_seuil: Tuple[Mapping[str, Any], ...] = ()) -> Profil:
     cats = tuple(sorted(categories, key=lambda c: c.seuil))
     seuil = cats[0].seuil
     return Profil(
@@ -612,6 +631,7 @@ def _profil(classe: str, bandes: Sequence[Bande], categories: Sequence[Categorie
         tableau=tuple(tableau),
         n_gt=n_gt,
         critere=critere,
+        sous_seuil=tuple(sous_seuil),
     )
 
 
@@ -628,7 +648,8 @@ def profil_pour_classe(
     ngt = charger_ngt_par_zone(model_dir, classe, source, zones) if zones else {}
     return _profil(classe, bandes, categories, pas, seuil_f1max(model_dir, classe),
                    tableau=tableau_precision_rappel(model_dir, classe, source),
-                   n_gt=sum(ngt.values()) if ngt else None, critere=critere_evaluation(model_dir, source))
+                   n_gt=sum(ngt.values()) if ngt else None, critere=critere_evaluation(model_dir, source),
+                   sous_seuil=_sous_seuil_carte(model_dir, classe))
 
 
 def zones_sans_objet(model_dir: Path, classe: str) -> List[str]:
@@ -656,7 +677,8 @@ def profils_par_zone(
     critere = critere_evaluation(model_dir, source)
     # Point d'équilibre F1 de la zone : recalculé depuis ses bandes et ses objets annotés
     # (critère objet seulement — le fichier ne le donne pas par zone).
+    sous_seuil = _sous_seuil_carte(model_dir, classe)
     return [_profil(classe, bandes, categories, pas,
                     f1max_depuis_bandes(bandes, ngt.get(z)) if critere == "iou" else None,
-                    zone=z, n_gt=ngt.get(z), critere=critere)
+                    zone=z, n_gt=ngt.get(z), critere=critere, sous_seuil=sous_seuil)
             for z, bandes in par_zone]

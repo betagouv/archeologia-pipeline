@@ -50,6 +50,8 @@ Le dessin : contour seul, sans remplissage, pour laisser lire la structure déte
 
 À l'ouverture, seuls **très probable** et **probable** sont cochés dans la légende ; **possible** et **douteux** y sont, décochés. Commencez par ce qui est sûr, puis cochez les deux autres niveaux d'un clic dans le panneau des couches pour élargir : toutes les détections sont dans le GeoPackage, dans le bilan de fin de traitement et dans le rapport. L'état des cases est enregistré dans le projet ; une couche chargée depuis le bouton « Ouvrir le projet QGIS » s'ouvre de la même façon.
 
+Quand vous avez baissé le seuil d'une entité sous celui du modèle, les détections ajoutées forment le niveau **douteux · sous le seuil du modèle** : la part de vrais y est celle mesurée pour cet intervalle quand le modèle la fournit, sinon « non mesurée » ; les autres niveaux gardent leurs coupures. Ces détections sont fusionnées entre elles, jamais avec celles qui passaient déjà le seuil : un bon polygone n'est pas tiré vers le bas par un fragment faible accolé. L'infobulle d'une détection dit, pour un polygone fusionné, de combien de fragments il est fait et le score du plus sûr.
+
 [![Dans QGIS : une couche par entité, quatre niveaux de fiabilité, contours sur l'indice](img/resultats-legende-fiabilite.jpg)](img/resultats-legende-fiabilite.jpg)
 
 Pour voir d'où viennent les coupures d'une classe, ouvrez sa fiche à l'étape 3 : le **profil des scores** range les détections de l'évaluation par score, vraies en couleur et fausses en gris, et trace les coupures. Sous le seuil, presque tout est faux ; au-dessus de la dernière coupure, presque tout est vrai.
@@ -65,6 +67,9 @@ Une couche issue d'un modèle sans fiabilité mesurée est catégorisée par tra
 | `fiabilite` | le niveau de fiabilité affiché dans la légende |
 | `fiabilite_pct` | la part de vrais objets mesurée pour ce niveau, en pour cent |
 | `conf_bin` | la tranche de score, pour les modèles sans fiabilité mesurée |
+| `n_membres` | le nombre de fragments fusionnés dans ce polygone (1 : détection isolée) |
+| `conf_max` | le score du fragment le plus sûr ; `confidence` est la moyenne pondérée par l'aire |
+| `longueur_m` | la longueur du polygone, en mètres (celle d'un rectangle de même aire et de même périmètre : la longueur d'un tracé, sans sens particulier pour une forme trapue) |
 | `model_name` | le modèle qui a produit la détection |
 | `cluster_id` | le regroupement auquel la détection appartient, le cas échéant |
 | `corr_pred`, `validation` | deux champs vides, à votre usage pour corriger la classe et noter votre verdict |

@@ -5,6 +5,7 @@
 | Carte graphique | Processeur graphique de l'ordinateur, que l'étape 4 peut faire servir à la détection par DirectML (Windows) après vérification contre le processeur |
 | Cible dérivée | Résultat d'un regroupement présenté comme une entité cochable à part entière, par exemple le Regroupement de cratères |
 | Couverture | Part des cellules du MNT réellement appuyées sur des points sol, par opposition aux cellules interpolées ; un indicateur de qualité de la donnée |
+| Critère de l'axe | Règle d'évaluation des classes linéaires : une détection est vraie si son axe longe un tracé annoté à quelques mètres près (5 m), quelle que soit sa largeur ; la fiabilité des linéaires est mesurée ainsi, par polygone fusionné |
 | Dalle | Un carré d'un kilomètre de côté de la grille LiDAR HD de l'IGN, unité de téléchargement et de calcul |
 | Densité | Nombre de points LiDAR sol par cellule |
 | Détection | Un polygone produit par un modèle, avec sa classe, son score et sa fiabilité |

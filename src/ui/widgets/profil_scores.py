@@ -188,7 +188,7 @@ class ProfilScoresWidget(QWidget):
         self._seuil = None if seuil is None else float(seuil)
         self._cats = (
             self._p.categories if self._seuil is None
-            else categories_effectives(self._p.categories, self._seuil)
+            else categories_effectives(self._p.categories, self._seuil, sous_seuil=self._p.sous_seuil)
         )
         self._maj_infobulle()
         self._ajuster_rangees()
@@ -223,6 +223,8 @@ class ProfilScoresWidget(QWidget):
                            "équilibre (F1) de la zone recalculé sur ses bandes")
             elif p.critere == "couverture":
                 origine = "pas de rappel par zone au critère de couverture : les vraies sont des fragments, pas des objets"
+            elif p.critere == "axe":
+                origine = "pas de rappel par zone au critère de l'axe : la vérité est une longueur de tracé, pas des objets"
             else:
                 origine = "rappel indisponible dans l'évaluation"
             lignes.insert(0, f"Au seuil {_v(round(self.seuil, 3))} : {pr} (précision comptée sur les bandes, {origine}).")
@@ -338,7 +340,8 @@ class ProfilScoresWidget(QWidget):
         candidats = [s for s in candidats if 0.0 < s < 1.0]
         rangees = 1
         for s in candidats:
-            cats = self._p.categories if abs(s - self._p.seuil) < 1e-9 else categories_effectives(self._p.categories, s)
+            cats = (self._p.categories if abs(s - self._p.seuil) < 1e-9
+                    else categories_effectives(self._p.categories, s, sous_seuil=self._p.sous_seuil))
             etiquettes = self._etiquettes(cats, s)
             rangees = max(rangees, max((e.rangee for e in etiquettes), default=0) + 1)
         if rangees != self._rangees:

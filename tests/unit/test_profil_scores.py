@@ -48,6 +48,19 @@ def _modele(tmp_path: Path, nom="m1", cle_modeles=None, fiabilite=None, bloc=Non
     return d
 
 
+def test_sous_seuil_lu_dans_le_model_card(tmp_path):
+    """« Tester un seuil » sous celui du modèle (2026-10-22) : le profil porte les bandes
+    ``thresholds.fiabilite.sous_seuil`` de la classe, pour mesurer le « douteux » ajouté."""
+    bloc = {"global": {"etude_seuil": {"bandes": _bandes([(0.29, 4, 4), (0.30, 5, 1)])}}}
+    d = _modele(tmp_path, bloc=bloc, fiabilite={
+        "provenance": "x",
+        "sous_seuil": {"cratere": [{"lo": 0.20, "tp": 3, "fp": 30}, {"lo": 0.25, "tp": 6, "fp": 30}]},
+    })
+    p = profil_pour_classe(d, "cratere", CATS)
+    assert [b["lo"] for b in p.sous_seuil] == [0.20, 0.25]
+    assert profil_pour_classe(_modele(tmp_path, nom="m2", bloc=bloc), "cratere", CATS).sous_seuil == ()
+
+
 def test_bandes_globales_et_agregation(tmp_path):
     bloc = {"global": {"etude_seuil": {"bandes": _bandes([(0.05, 1, 10), (0.06, 2, 10), (0.10, 3, 5), (0.29, 4, 4), (0.30, 5, 1)])}}}
     d = _modele(tmp_path, bloc=bloc)

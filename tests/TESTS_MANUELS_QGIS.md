@@ -1070,3 +1070,16 @@ Lot 3 du chantier d'accélération (2026-10-15) : une dalle lue en entier reçoi
 - [ ] **59.1 MNT de repli** : si le journal complet porte « Échec création MNT avec pdal:exportrastertin (tentative 1/2) », il porte ensuite soit le MNT calculé à la seconde tentative, soit « (tentative 2/2) » puis, dans le journal de l'assistant, « ⚠️ MNT de la dalle … calculé sans interpolation » avec le renvoi « voir Manuel › Dépannage › Erreur PDAL ou mémoire ». À côté du MNT de travail (`technique/intermediaires/…_MNT.tif`), un fichier `.repli` ; relancer dans le même dossier → ce MNT seul est recalculé, le `.repli` disparaît.
 - [ ] **59.2 Annulation pendant un téléchargement** : annuler pendant le téléchargement des dalles (idéalement pendant une dalle lente) → « Traitement annulé » en une à deux secondes. Relancer aussitôt dans le même dossier → le téléchargement repart sans erreur, aucune dalle tronquée.
 - [ ] **59.3 Compte de fin de détection** : la ligne « 🤖 Détection terminée : N détections dans les couches » donne la somme des entités des GeoPackages, égale à la somme du bilan « Par où commencer ».
+
+## 60. Seuil abaissé : « douteux » mesuré, fusion en deux passes, critère de l'axe ⭐ P1
+
+> **Contexte** (2026-10-22, rapport sur l'évaluation des linéaires) : un seuil abaissé sous celui du modèle
+> prolongeait « possible » sur des polygones vrais à 13 % et tirait les bons polygones vers le bas par fusion ;
+> les linéaires sont désormais évalués par la distance de l'axe (5 m) et par polygone fusionné.
+
+- [ ] **60.1 Seuil abaissé** : parcellaire à 0,16 (seuil du modèle 0,26), indices existants → la légende porte « Douteux · sous le seuil du modèle » décoché et « Possible » commence toujours à 0,26 ; le journal dit « fiabilité parcellaire : douteux dès 0.16 · possible dès 0.26 … » ; l'infobulle d'une détection douteuse commence par « Sous le seuil du modèle : » (mesurée ou non mesurée).
+- [ ] **60.2 Deux passes** : comparer avec un run au seuil du modèle (autre dossier) : chaque polygone ≥ 0,26 du run au seuil existe à l'identique dans le run abaissé (même géométrie, même score) ; les ajoutés sont des polygones distincts, jamais soudés à un polygone ≥ 0,26.
+- [ ] **60.3 Champs** : la table d'attributs porte `n_membres`, `conf_max`, `longueur_m` ; survoler un polygone à `n_membres` > 1 → « Polygone fusionné de N fragments, le plus sûr à 0,xx » dans l'infobulle ; un modèle de boîtes (ponctuelles) n'a pas cette ligne.
+- [ ] **60.4 Fiches** : fiche du modèle linéaires → section « MÉTRIQUES D'ÉVALUATION — CRITÈRE AXE », ligne « Critère : axe de la détection à 5 m au plus de l'axe annoté, comptée par polygone fusionné … » ; fiche de classe parcellaire : niveaux conformes au `model_card`, « Tester un seuil » sous 0,26 montre « douteux » sous le seuil du modèle.
+- [ ] **60.5 Modèle au critère objet** : cratères à 0,2 (seuil 0,29) → « Douteux » s'étend à 0,2 comme avant, sans mention « sous le seuil du modèle ».
+

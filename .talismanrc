@@ -74,7 +74,7 @@ fileignoreconfig:
 - filename: src/pipeline/cv/conversion_shp.py
   checksum: 9ef34ae9fdeff3eb83d71329202a2700a763465f0ab1c7dcfe5ea0199b7f7bba
 - filename: src/pipeline/cv/model_config.py
-  checksum: 43c45153172c6547f26f39b36617bdb2d0bbf1bd3901fbb7b7c21e2a24547593
+  checksum: 9919e5d899a50054adac514eb36df5062a1a117d8356e4d989daf94bb4516b2a
 - filename: src/pipeline/cv/model_profile.py
   checksum: 4ecddfb93286c9de8b5bf6201aa967d14f3211a155eda0c045a481ac5026a28f
 - filename: src/pipeline/cv/postprocessing.py
@@ -124,7 +124,7 @@ fileignoreconfig:
 - filename: src/ui/wizard_dialog.py
   checksum: 2d0f23286c70b9fbdcd0f6c7e1c6e8bdb18a8c3160792ee537d5efc124e4705e
 - filename: tests/TESTS_MANUELS_QGIS.md
-  checksum: 38e30e26c6676dfe7b05ce290a0ed483207dac886dba6b61e6d791874937fc97
+  checksum: 128bdcd117b8a35b53cbd9094419da0475b2ea75b37a13f5bc7fb693bff00170
 - filename: tests/integration/test_existing_mnt_runner_finalize.py
   checksum: e67c2e4c83cea0937bdfb39e8eec7aa7476f30648d4d858589e2308ad0565d63
 - filename: tests/integration/test_existing_rvt_runner_isolation.py
@@ -284,7 +284,7 @@ fileignoreconfig:
 - filename: aide/img/etape3-fiche-classe.png
   checksum: eb5a829fe126141a65e3c62047b2ecff788d053daf622b26644ad695ff88ed3e
 - filename: data/third_party/cv_runner_onnx/windows/build_info.json
-  checksum: 147265a8c67b776f2a3cb409a862d708fb231582a6faf0db197653ca9132cb23
+  checksum: c68bf886e56268afb48b7168fa832b84115467971d91b39a9fa2163df7523614
 - filename: dev/rendu_hors_ecran.py
   checksum: ee231eb23ff1b7f46a3403b01f5d3754b0d556a5a12cae9e1578334af575a3fb
 - filename: aide/img/etape2-produits.png
@@ -365,4 +365,6 @@ fileignoreconfig:
   checksum: 6d0e2a0f80efa766286d23bfd8e11849b14d116c2a6c5303881e49ce0b1f138e
 - filename: aide/img/pipeline.png
   checksum: 84279d787d3b7f66d153cb1d69283502a4b44a2f5487154f54d80fe596cb5d19
+- filename: tests/unit/test_model_config.py
+  checksum: 82d0463bf90534eb61a47c625d2f98bf3369d8bc284b70d4acbd68eddcabd3fb
 version: '1.0'

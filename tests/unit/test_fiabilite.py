@@ -18,6 +18,7 @@ from app.services.fiabilite import (
     labels_legende,
     maptip_html,
     parse_fiabilite,
+    parse_sous_seuil,
     phrase_mesure,
     read_sidecar,
     run_block,
@@ -39,9 +40,36 @@ DEPRESSIONS = {
     },
 }
 
+# Classe linéaire (lineaires_seg_v3_1) : pas de « douteux », la catégorie basse est GARANTIE
+# (possible ≥ 35 %). Bandes ``sous_seuil`` = polygones formés entre eux sous le seuil du modèle
+# (2e passe de la fusion), pas de 0,05 (rapport linéaires du 2026-10-22, proposition 3).
+LINEAIRES = {
+    "fiabilite": {
+        "par_classe": {
+            "parcellaire": [
+                {"categorie": "possible", "seuil": 0.26, "garanti": 0.35, "mesure": 0.53, "n": 1837},
+                {"categorie": "probable", "seuil": 0.3, "garanti": 0.6, "mesure": 0.664, "n": 2674},
+                {"categorie": "quasi_certain", "seuil": 0.5, "garanti": 0.85, "mesure": 0.9, "n": 690},
+            ],
+        },
+        "sous_seuil": {
+            "parcellaire": [
+                {"lo": 0.10, "tp": 4, "fp": 60},
+                {"lo": 0.15, "tp": 10, "fp": 70},
+                {"lo": 0.20, "tp": 30, "fp": 80},
+            ],
+        },
+        "provenance": "p",
+    },
+}
+
 
 def _cats():
     return parse_fiabilite(DEPRESSIONS)[0]["depression_circulaire_grande"]
+
+
+def _lin():
+    return parse_fiabilite(LINEAIRES)[0]["parcellaire"]
 
 
 class TestParse:
@@ -98,6 +126,72 @@ class TestEffectives:
         assert categories_effectives((), 0.3) == ()
 
 
+class TestSousSeuil:
+    """Seuil abaissé sous celui du modèle : une catégorie GARANTIE n'est plus prolongée
+    (les polygones formés entièrement sous 0,26 sont vrais à 13 %, « possible ≥ 35 % »
+    mentait) ; les ajoutées sont « douteux », non mesurées ou mesurées par ``sous_seuil``."""
+
+    def test_seuil_abaisse_n_etend_plus_une_categorie_garantie(self):
+        eff = categories_effectives(_lin(), 0.16)
+        assert [c.categorie for c in eff] == ["douteux", "possible", "probable", "quasi_certain"]
+        assert eff[0] == Categorie("douteux", 0.16, 0.0, None, 0, sous_seuil=True)  # non mesuré
+        assert eff[1].seuil == 0.26 and eff[1].mesure == 0.53       # possible reste AU seuil du modèle
+
+    def test_douteux_non_garanti_est_toujours_prolonge(self):
+        # Modèle au critère objet dont la catégorie basse est déjà « douteux » (garanti 0) :
+        # rien n'est promis, le comportement historique reste (test_seuil_abaisse_etend…).
+        eff = categories_effectives(_cats(), 0.2)
+        assert eff[0].categorie == "douteux" and eff[0].seuil == 0.2
+
+    def test_parse_sous_seuil(self):
+        bandes = parse_sous_seuil(LINEAIRES)
+        assert [b["lo"] for b in bandes["parcellaire"]] == [0.10, 0.15, 0.20]
+        assert bandes["parcellaire"][2] == {"lo": 0.20, "tp": 30, "fp": 80}
+        assert parse_sous_seuil({}) == {} and parse_sous_seuil(None) == {}
+        # bandes non croissantes, lo hors [0,1], effectif négatif → classe ignorée
+        assert parse_sous_seuil({"fiabilite": {"sous_seuil": {"a": [{"lo": 0.2, "tp": 1, "fp": 1}, {"lo": 0.1, "tp": 1, "fp": 1}]}}}) == {}
+        assert parse_sous_seuil({"fiabilite": {"sous_seuil": {"a": [{"lo": 1.2, "tp": 1, "fp": 1}]}}}) == {}
+        assert parse_sous_seuil({"fiabilite": {"sous_seuil": {"a": [{"lo": 0.1, "tp": -1, "fp": 1}]}}}) == {}
+
+    def test_sous_seuil_mesure_les_ajoutees(self):
+        bandes = parse_sous_seuil(LINEAIRES)["parcellaire"]
+        # la bande de 0,05 qui contient le seuil compte entière : 0,16 → bandes 0,15 et 0,20
+        eff = categories_effectives(_lin(), 0.16, sous_seuil=bandes)
+        assert eff[0] == Categorie("douteux", 0.16, 0.0, round(40 / 190, 3), 190, True)
+        eff = categories_effectives(_lin(), 0.22, sous_seuil=bandes)
+        assert eff[0] == Categorie("douteux", 0.22, 0.0, round(30 / 110, 3), 110, True)
+        eff = categories_effectives(_lin(), 0.10, sous_seuil=bandes)
+        assert eff[0].n == 254 and eff[0].mesure == round(44 / 254, 3)
+        # effectif sous N_MIN_MESURE → mesure None, n gardé
+        peu = [{"lo": 0.20, "tp": 3, "fp": 10}]
+        assert categories_effectives(_lin(), 0.2, sous_seuil=peu)[0] == Categorie("douteux", 0.2, 0.0, None, 13, True)
+        # au seuil du modèle ou au-dessus : sous_seuil sans effet
+        assert categories_effectives(_lin(), 0.26, sous_seuil=bandes)[0].categorie == "possible"
+        assert categories_effectives(_lin(), 0.4, sous_seuil=bandes)[0].categorie == "probable"
+
+    def test_textes_sous_le_seuil_du_modele(self):
+        non_mesure = Categorie("douteux", 0.16, 0.0, None, 0, sous_seuil=True)
+        assert phrase_mesure(non_mesure) == "part de vrais objets non garantie (sous le seuil du modèle, non mesurée)"
+        assert labels_legende((non_mesure,) + _lin())["douteux"] == "Douteux · sous le seuil du modèle"
+        html = maptip_html((non_mesure,) + _lin(), "m")
+        assert "THEN 'Sous le seuil du modèle : part de vrais objets non mesurée.'" in html
+        mesure = Categorie("douteux", 0.16, 0.0, 0.211, 190, sous_seuil=True)
+        assert phrase_mesure(mesure) == "part de vrais objets non garantie (sous le seuil du modèle : 21 % sur 190 polygones ajoutés)"
+        assert "Sous le seuil du modèle : sur le banc, 21 % des polygones ajoutés" in maptip_html((mesure,), "m")
+        # le marqueur survit au bloc de run (JSON) et au sidecar
+        bloc = run_block({"c": (mesure,) + _lin()}, {"c": 0.16}, ["c"], modele="m")
+        assert categories_du_run(bloc, "c")[0].sous_seuil is True
+
+    def test_run_block_avec_sous_seuil(self):
+        par_classe = parse_fiabilite(LINEAIRES)[0]
+        bloc = run_block(par_classe, {"parcellaire": 0.16}, ["parcellaire"], modele="m",
+                         sous_seuil=parse_sous_seuil(LINEAIRES))
+        cats = bloc["par_classe"]["parcellaire"]
+        assert cats[0]["categorie"] == "douteux" and cats[0]["seuil"] == 0.16 and cats[0]["n"] == 190
+        assert cats[1]["categorie"] == "possible" and cats[1]["seuil"] == 0.26
+        json.dumps(bloc)
+
+
 class TestCategoriser:
     def test_bornes(self):
         cats = _cats()
@@ -145,6 +239,9 @@ class TestTextes:
         assert "(garantie ≥ 60 %)" in html and "ELSE 'Fiabilité non renseignée.'" in html
         faible = (Categorie("probable", 0.5, 0.6, None, 25),)
         assert "effectif insuffisant sur le banc : 25" in maptip_html(faible, "m")
+        # polygone fusionné (2026-10-22) : fragments et le plus sûr, NULL-safe si le champ manque
+        assert "coalesce(attribute($currentfeature, 'n_membres'), 1) > 1" in html
+        assert "' fragments, le plus sûr à ', round(attribute($currentfeature, 'conf_max'), 2)" in html
         # apostrophe dans le libellé/modèle : échappée dans l'expression
         assert "''" not in maptip_html(_cats(), "l'x")  # le nom du modèle n'est pas dans l'expression
 

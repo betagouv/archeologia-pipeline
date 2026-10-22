@@ -1,10 +1,35 @@
 {
-  "extraKnownMarketplaces": {
-    "archeologia": {
-      "source": { "source": "directory", "path": "C:/projets/Archeologia/claude-plugins" }
-    }
-  },
-  "enabledPlugins": {
-    "archeologia@archeologia": true
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python",
+            "args": [
+              "dev/hooks/stop_tests.py"
+            ],
+            "timeout": 900,
+            "statusMessage": "Suite de tests (hook Stop)"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python",
+            "args": [
+              "dev/hooks/enums_qt.py"
+            ],
+            "timeout": 60,
+            "statusMessage": "Énumérations Qt + ruff"
+          }
+        ]
+      }
+    ]
   }
 }

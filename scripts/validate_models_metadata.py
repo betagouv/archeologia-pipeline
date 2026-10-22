@@ -91,26 +91,133 @@ def find_model_dirs(models_root: Path) -> list[Path]:
 
 
 def _bandes_fiabilite(model_dir: Path, fiab_raw: dict, metriques_par_classe: dict,
-                      report: "ValidationReport") -> tuple[dict, dict]:
-    """``(bloc par_classe, bloc par_zone_classe)`` de l'évaluation qui a calibré la
-    fiabilité : ``fiabilite.source`` (chemin relatif, ex. ``entrainement/
-    evaluation_couverture/metriques_eval.json`` pour le critère couverture des
-    linéaires), sinon l'évaluation canonique déjà lue."""
+                      report: "ValidationReport") -> tuple[dict, dict, dict]:
+    """``(bloc par_classe, bloc par_zone_classe, en-tête)`` de l'évaluation qui a calibré
+    la fiabilité : ``fiabilite.source`` (chemin relatif, ex. ``entrainement/
+    evaluation_axe/metriques_eval.json`` pour les linéaires), sinon l'évaluation canonique
+    déjà lue. L'en-tête porte ``critere``, ``tolerance_m``, ``unite`` quand le fichier les a."""
     source = str(fiab_raw.get("source") or "").strip()
     if not source:
-        return metriques_par_classe, {}
+        return metriques_par_classe, {}, {}
     path = model_dir / source
     if not path.is_file():
         report.errors.append(f"thresholds.fiabilite.source introuvable : {source}")
-        return {}, {}
+        return {}, {}, {}
     try:
         m = json.loads(path.read_text(encoding="utf-8-sig"))
         modeles = m.get("modeles") or {}
         bloc = modeles.get(model_dir.name) or (next(iter(modeles.values())) if modeles else {})
-        return (bloc.get("par_classe") or {}), (bloc.get("par_zone_classe") or {})
+        en_tete = {k: m.get(k) for k in ("critere", "tolerance_m", "unite") if m.get(k) is not None}
+        return (bloc.get("par_classe") or {}), (bloc.get("par_zone_classe") or {}), en_tete
     except (ValueError, AttributeError) as exc:
         report.warnings.append(f"thresholds.fiabilite.source illisible : {exc}")
-        return {}, {}
+        return {}, {}, {}
+
+
+_UNITES_FIABILITE = ("fragment", "polygone")
+
+
+def _validate_critere_unite(fiab_raw: dict, en_tete: dict, report: "ValidationReport") -> str:
+    """Critère « axe » et unité « polygone » (rapport linéaires du 2026-10-22) : la tolérance
+    à l'axe annoté (m) se déclare, égale à celle de l'évaluation source, et se justifie
+    (``tolerance_provenance``) ; ``critere`` et ``unite`` déclarés sont ceux de l'évaluation
+    (``fragment`` par défaut = contrat historique). Rend l'unité de l'évaluation."""
+    critere_eval = str(en_tete.get("critere") or "").strip().lower()
+    critere_carte = str(fiab_raw.get("critere") or "").strip().lower()
+    if critere_carte and critere_eval and critere_carte != critere_eval:
+        report.warnings.append(
+            f"thresholds.fiabilite.critere '{critere_carte}' ≠ critère de l'évaluation source '{critere_eval}'"
+        )
+    unite_carte = fiab_raw.get("unite")
+    if unite_carte is not None and str(unite_carte) not in _UNITES_FIABILITE:
+        report.errors.append(
+            f"thresholds.fiabilite.unite '{unite_carte}' : attendu {list(_UNITES_FIABILITE)}"
+        )
+    unite_eval = str(en_tete.get("unite") or "").strip().lower()
+    if unite_eval and str(unite_carte or "fragment") != unite_eval:
+        report.warnings.append(
+            f"thresholds.fiabilite.unite '{unite_carte or 'fragment'}' ≠ unité de l'évaluation "
+            f"source '{unite_eval}' (ses bandes comptent des {unite_eval}s)"
+        )
+    if "axe" in (critere_eval, critere_carte):
+        tol = fiab_raw.get("tolerance_m")
+        tol_eval = en_tete.get("tolerance_m")
+        if not isinstance(tol, (int, float)) or isinstance(tol, bool):
+            report.errors.append(
+                "thresholds.fiabilite.tolerance_m manquante : au critère « axe », la tolérance (m) "
+                "à l'axe annoté se déclare, égale à celle de l'évaluation source"
+            )
+        elif isinstance(tol_eval, (int, float)) and abs(float(tol) - float(tol_eval)) > 1e-6:
+            report.errors.append(
+                f"thresholds.fiabilite.tolerance_m {float(tol)} ≠ tolerance_m de l'évaluation "
+                f"source {float(tol_eval)}"
+            )
+        if not str(fiab_raw.get("tolerance_provenance") or "").strip():
+            report.errors.append(
+                "thresholds.fiabilite.tolerance_provenance manquante : pourquoi cette tolérance "
+                "(l'évaluation publie la sensibilité des coupures à t ± 1,5 m)"
+            )
+    return unite_eval
+
+
+def _validate_sous_seuil(
+    fiab_raw: dict, class_set: set, seuils: dict, bandes_par_classe: dict,
+    unite_eval: str, report: "ValidationReport",
+) -> None:
+    """``thresholds.fiabilite.sous_seuil`` (2026-10-22) : part de vrais des polygones formés
+    entre eux sous le seuil du modèle, bandes de 0,05 ``{lo, tp, fp}`` sous le seuil de la
+    classe, re-dérivées des bandes fines de l'évaluation source (écart → WARN) ; absent en
+    unité polygone → WARN (un seuil abaissé affichera « douteux » non mesuré)."""
+    from app.services.fiabilite import PAS_SOUS_SEUIL, parse_sous_seuil
+
+    brut = fiab_raw.get("sous_seuil")
+    if brut is None:
+        if unite_eval == "polygone":
+            report.warnings.append(
+                "thresholds.fiabilite.sous_seuil absent : un seuil abaissé par l'utilisateur affichera "
+                "« douteux » non mesuré (courbes_eval publie etude_seuil.sous_seuil)"
+            )
+        return
+    if not isinstance(brut, dict):
+        report.errors.append("thresholds.fiabilite.sous_seuil : mapping {classe: [{lo, tp, fp}]}")
+        return
+    valides = parse_sous_seuil({"fiabilite": fiab_raw})
+    for classe in brut:
+        if class_set and classe not in class_set:
+            report.errors.append(f"thresholds.fiabilite.sous_seuil : '{classe}' absent de classes.txt")
+            continue
+        if classe not in valides:
+            report.errors.append(
+                f"thresholds.fiabilite.sous_seuil['{classe}'] invalide : liste de {{lo, tp, fp}}, "
+                "lo croissants dans [0,1], effectifs entiers ≥ 0"
+            )
+            continue
+        seuil = seuils.get(classe)
+        if not isinstance(seuil, (int, float)):
+            continue
+        hautes = [b["lo"] for b in valides[classe] if b["lo"] >= float(seuil) - 1e-9]
+        if hautes:
+            report.errors.append(
+                f"thresholds.fiabilite.sous_seuil['{classe}'] : bande(s) {hautes} au-dessus du seuil "
+                f"de la classe {seuil} — sous_seuil ne couvre que [plancher ; seuil["
+            )
+            continue
+        fines = bandes_par_classe.get(classe)
+        if not fines:
+            continue
+        ecarts = []
+        for b in valides[classe]:
+            fin = min(b["lo"] + PAS_SOUS_SEUIL, float(seuil))
+            dans = [f for f in fines if b["lo"] - 1e-9 <= float(f.get("lo", 0)) < fin - 1e-9]
+            tp = sum(int(f.get("tp", 0)) for f in dans)
+            fp = sum(int(f.get("fp", 0)) for f in dans)
+            if (tp, fp) != (b["tp"], b["fp"]):
+                ecarts.append(f"{b['lo']:.2f} : {b['tp']}/{b['fp']} ≠ re-dérivés {tp}/{fp}")
+        if ecarts:
+            report.warnings.append(
+                f"thresholds.fiabilite.sous_seuil['{classe}'] : " + " ; ".join(ecarts)
+                + " (tp/fp par bande de 0,05, bandes de l'évaluation source)"
+            )
 
 
 def _validate_fiabilite(
@@ -145,10 +252,13 @@ def _validate_fiabilite(
             "thresholds.fiabilite.provenance manquante (mesure + date + relecture des coupures)"
         )
     if model_dir is not None:
-        metriques_par_classe, par_zone_classe = _bandes_fiabilite(
+        metriques_par_classe, par_zone_classe, en_tete = _bandes_fiabilite(
             model_dir, fiab_raw, metriques_par_classe, report)
     else:
-        par_zone_classe = {}
+        par_zone_classe, en_tete = {}, {}
+    unite_eval = _validate_critere_unite(fiab_raw, en_tete, report)
+    bandes_utilisees: dict = {}
+    seuils_classe: dict = {}
     zones_raw = fiab_raw.get("zones")  # liste (toutes classes) OU {classe: liste}
     zones_par_classe: dict = {}
     if isinstance(zones_raw, list) and all(isinstance(z, str) for z in zones_raw):
@@ -183,6 +293,7 @@ def _validate_fiabilite(
             continue
         cats = par_classe[classe]
         seuil_classe = pc.get(classe) if isinstance(pc, dict) and classe in pc else conf_default
+        seuils_classe[classe] = seuil_classe
         if isinstance(seuil_classe, (int, float)) and abs(cats[0].seuil - float(seuil_classe)) > 1e-6:
             report.errors.append(
                 f"thresholds.fiabilite.par_classe['{classe}'] : première catégorie à "
@@ -215,6 +326,7 @@ def _validate_fiabilite(
             bandes = ((metriques_par_classe.get(classe) or {}).get("etude_seuil") or {}).get("bandes")
         if not (isinstance(bandes, list) and bandes):
             continue
+        bandes_utilisees[classe] = bandes
         for i, c in enumerate(cats):
             fin = cats[i + 1].seuil if i + 1 < len(cats) else 1.01
             dans = [b for b in bandes if c.seuil - 1e-9 <= float(b.get("lo", 0)) < fin - 1e-9]
@@ -230,6 +342,10 @@ def _validate_fiabilite(
                     f"{c.mesure}/{c.n} ≠ re-dérivés des bandes de metriques_eval.json "
                     f"({mesure}/{n}) — recalculer (courbes_eval.fiabilite_par_classe)"
                 )
+    for classe in fiab_raw.get("sous_seuil") or {}:
+        if isinstance(fiab_raw.get("sous_seuil"), dict) and classe not in seuils_classe:
+            seuils_classe[classe] = pc.get(classe) if isinstance(pc, dict) and classe in pc else conf_default
+    _validate_sous_seuil(fiab_raw, class_set, seuils_classe, bandes_utilisees, unite_eval, report)
 
 
 # ----------------------------------------------------------------------

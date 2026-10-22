@@ -346,6 +346,7 @@ def _build_notes(card: Mapping[str, Any]) -> Optional[Section]:
 _EVALUATIONS = (
     ("evaluation", ""),
     ("evaluation_couverture", " — CRITÈRE COUVERTURE"),
+    ("evaluation_axe", " — CRITÈRE AXE"),
 )
 
 # Courbes affichées, dans cet ordre ; les autres PNG du dossier (``*_3modeles.png``…) non.
@@ -370,7 +371,15 @@ def _lignes_metriques(m: Mapping[str, Any], model_name: str) -> List[Row]:
                         f"{_nombre(ds['n_images'])} images, {_nombre(ds.get('n_gt'))} objets annotés"
                         + (f" ({splits})" if splits else "")))
     iou = m.get("iou") if isinstance(m.get("iou"), Mapping) else {}
-    if m.get("critere") == "couverture":
+    if m.get("critere") == "axe":
+        # Linéaires (2026-10-22) : vraie si son axe longe un axe annoté à t près, comptée
+        # par polygone fusionné — insensible à la largeur des masques annotés.
+        tol = m.get("tolerance_m")
+        tol_txt = f"{tol:g} m".replace(".", ",") if isinstance(tol, (int, float)) else "la tolérance déclarée"
+        unite = ", comptée par polygone fusionné" if m.get("unite") == "polygone" else ""
+        rows.append(Row("Critère", f"axe de la détection à {tol_txt} au plus de l'axe annoté{unite} : "
+                                   "ne dépend pas de la largeur des masques"))
+    elif m.get("critere") == "couverture":
         rows.append(Row("Critère", f"couverture ≥ {iou.get('seuil', 0.5)} des objets annotés : "
                                    "tolère une détection fragmentée ou décalée"))
     elif iou:

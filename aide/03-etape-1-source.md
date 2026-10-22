@@ -1,6 +1,6 @@
 # Étape 1 · Source et mode
 
-La frise du haut représente la chaîne de traitement. Cliquez le point d'entrée qui correspond à vos données : il fixe le **mode**, rappelé dans un bandeau, et le champ **Source** s'adapte. Il n'y a pas de liste déroulante de modes.
+La frise du haut représente la chaîne de traitement (le [schéma complet](premier-traitement.md#ce-que-fait-le-plugin) est au chapitre Premier traitement). Cliquez le point d'entrée qui correspond à vos données : il fixe le **mode**, rappelé dans un bandeau, et le champ **Source** s'adapte. Il n'y a pas de liste déroulante de modes.
 
 [![Étape 1 : la frise des points d'entrée, le bandeau du mode, la source et le dossier de sortie](img/etape1-source.png)](img/etape1-source.png)
 
@@ -8,12 +8,12 @@ La frise du haut représente la chaîne de traitement. Cliquez le point d'entré
 
 | Point d'entrée | Mode | Vous fournissez | Internet |
 |---|---|---|---|
-| Téléchargement | IGN LiDAR HD | une zone d'étude, une liste de dalles, ou une sélection sur la carte | oui |
+| Téléchargement | Téléchargement IGN | une zone d'étude, une liste de dalles, ou une sélection sur la carte | oui |
 | Nuages LiDAR | Nuages locaux | un dossier de fichiers `.laz` ou `.las` | non |
 | MNT | MNT existant | un dossier de modèles de terrain `.tif`, `.tiff` ou `.asc` | non |
-| Indices RVT | Indices existants | un dossier d'indices de visualisation `.tif` | non |
+| Indices RVT | Indices RVT existants | un dossier d'indices de visualisation `.tif` | non |
 
-Les deux premiers modes exécutent toute la chaîne. Le mode MNT existant commence aux indices. Le mode Indices existants n'a de sens qu'avec la détection : il ne calcule rien, il analyse.
+Les deux premiers modes exécutent toute la chaîne. Le mode MNT existant commence aux indices. Le mode Indices existants ne calcule aucun indice : avec une entité cochée, il analyse ; sans détection, il se contente de publier les indices en mosaïque dans `livrable/indices/RVT/`.
 
 Dans tous les cas, indiquez un **dossier de sortie**, de préférence vide. Relancer dans le même dossier est possible : voir [Relancer dans le même dossier](etape-5-traitement.md#relancer-dans-le-meme-dossier).
 
@@ -33,7 +33,7 @@ Chaque dalle couvre un kilomètre carré. Les dalles voisines sont fusionnées a
 
 ## Nuages locaux
 
-Vous avez déjà les fichiers `.laz` ou `.las`. Le plugin lit le dossier, reconnaît les dalles IGN à leur nom, fusionne les voisines et applique le même traitement que le mode IGN. Les fichiers doivent être en Lambert-93.
+Vous avez déjà les fichiers `.laz` ou `.las`. Le plugin lit le dossier, reconnaît les dalles IGN à leur nom, fusionne les voisines et applique le même traitement que le mode IGN. Les fichiers doivent être en Lambert-93 ; ce n'est pas vérifié : un nuage dans une autre projection donne un MNT faux, sans message.
 
 ## MNT existant
 

@@ -260,6 +260,14 @@ def test_les_sauvegardes_horodatees_ne_partent_pas(pkg, tmp_path):
     assert pkg.should_exclude(f, "data/demo_catalogue/catalogue.json.bak-2026-09-23") is True
 
 
+def test_le_catalogue_de_demo_ne_part_pas(pkg, tmp_path):
+    """2026-10-20 : le catalogue de démo (chemins de poste, onglet désactivé) est sorti du dépôt ;
+    ses restes gitignorés sur le poste (wms/, thumbs/) ne doivent pas repartir dans le ZIP."""
+    d = tmp_path / "data" / "demo_catalogue"
+    d.mkdir(parents=True)
+    assert pkg.should_exclude(d, "data/demo_catalogue") is True
+
+
 def test_le_rvt_embarque_et_sa_licence_partent_dans_le_zip(pkg):
     """Lot 4 (0.15.0) : la copie de rvt, sa LICENSE et son NOTICE Apache 2.0 sont livrés."""
     d = _REPO_ROOT / "src" / "pipeline" / "ign" / "products" / "rvt_embarque"

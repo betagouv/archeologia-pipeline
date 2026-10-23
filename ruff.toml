@@ -4,7 +4,9 @@
 line-length = 120
 target-version = "py39"
 # Bibliothèque rvt embarquée (copie figée de rvt-qgis 1.0.1, NOTICE) : jamais retouchée, donc jamais lintée.
-extend-exclude = ["src/pipeline/ign/products/rvt_embarque"]
+# dev/docs/_local : brouillons du poste, non versionnés (gitignoré) — le hook pre-push et la CI lintent dev/,
+# un script jeté là ne doit pas bloquer un push.
+extend-exclude = ["src/pipeline/ign/products/rvt_embarque", "dev/docs/_local"]
 
 [lint]
 # PLW1514 : open() sans encoding — défaut Windows (cp1252) qu'une CI Linux ne verrait jamais ;

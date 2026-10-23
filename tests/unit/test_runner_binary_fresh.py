@@ -15,7 +15,6 @@ import importlib.util
 import json
 from pathlib import Path
 
-import pytest
 
 PLUGIN_ROOT = Path(__file__).resolve().parents[2]
 BIN_DIR = PLUGIN_ROOT / "data" / "third_party" / "cv_runner_onnx" / "windows"
@@ -30,10 +29,10 @@ def _module_build():
     return mod
 
 
-def test_binaire_a_jour():
+def test_binaire_a_jour(exiger_ou_sauter):
     exe = BIN_DIR / "cv_runner_onnx.exe"
     if not exe.exists():
-        pytest.skip("binaire externe absent (poste sans runner compilé)")
+        exiger_ou_sauter("binaire externe absent (poste sans runner compilé)")
     info_path = BIN_DIR / "build_info.json"
     assert info_path.exists(), (
         "binaire présent SANS build_info.json — impossible de dater ses sources. "
@@ -48,12 +47,12 @@ def test_binaire_a_jour():
     )
 
 
-def test_binaire_windows_avec_directml():
+def test_binaire_windows_avec_directml(exiger_ou_sauter):
     """0.15.0 : l'option « Détection sur la carte graphique » exige un binaire compilé avec
     onnxruntime-directml (build.py le fait par défaut sous Windows) ; build_info.json le dit."""
     exe = BIN_DIR / "cv_runner_onnx.exe"
     if not exe.exists():
-        pytest.skip("binaire externe absent (poste sans runner compilé)")
+        exiger_ou_sauter("binaire externe absent (poste sans runner compilé)")
     info = json.loads((BIN_DIR / "build_info.json").read_text(encoding="utf-8"))
     ort = info.get("onnxruntime") or {}
     assert ort.get("directml") is True and "directml" in str(ort.get("paquet")), (

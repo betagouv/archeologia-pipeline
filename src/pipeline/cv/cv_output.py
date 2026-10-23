@@ -116,7 +116,7 @@ def save_detections_to_files(
 
     detections_data = []
 
-    with open(txt_path, "w") as f:
+    with open(txt_path, "w", encoding="utf-8") as f:
         for det in detections:
             class_id = det.class_id
 

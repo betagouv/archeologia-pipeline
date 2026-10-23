@@ -33,14 +33,14 @@ def test_tailles_differentes_rend_l_annotee():
     assert recolorer(a, b, (1, 2, 3)) is b
 
 
-def test_vraies_vignettes_tous_les_traces_sont_recolores():
+def test_vraies_vignettes_tous_les_traces_sont_recolores(exiger_ou_sauter):
     """Sur les vignettes livrées : après recoloration, plus aucun pixel jaune franc."""
     Image = pytest.importorskip("PIL.Image")
     racine = Path(__file__).resolve().parents[2]
     paires = [(b, b.with_name(b.name.replace("_brut.", "_annote."))) for b in sorted((racine / "data" / "models").glob("*/vignettes/*_brut.*"))]
     paires = [(b, a) for b, a in paires if a.is_file()][:6]
     if not paires:
-        pytest.skip("aucune vignette installée")
+        exiger_ou_sauter("aucune vignette installée")
     for b, a in paires:
         brut = np.asarray(Image.open(b).convert("RGB"))
         annote = np.asarray(Image.open(a).convert("RGB"))

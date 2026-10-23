@@ -5,7 +5,6 @@ que la clé change (pilote, binaire, modèle)."""
 from __future__ import annotations
 
 import datetime as dt
-import json
 from pathlib import Path
 
 from app.services import carte_graphique as cg

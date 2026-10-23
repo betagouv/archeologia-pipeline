@@ -1,6 +1,7 @@
 # Tests & qualité de code
 pytest>=7.0
 pytest-cov>=4.0
+pytest-xdist>=3.0   # run_tests.py lance la suite en parallèle (-n auto) dès qu'il est là
 ruff>=0.4
 
 # Lecture des args.yaml de modèles CV (model_config.py, model_profile.py)
@@ -28,3 +29,9 @@ rasterio>=1.3
 # matplotlib.colors) : nécessaire aux tests de coexistence et du moteur d'indices.
 # QGIS l'embarque, mais les tests hors QGIS le requièrent.
 matplotlib>=3.5
+
+# Vérifié sur un venv vierge Windows (lot 3 du chantier d'outillage, 2026-10-20) : sans eux, 7 tests
+# geopandas et 1 test requests sautent, 1 test pandas échoue ; QGIS les embarque tous.
+geopandas>=1.0      # conversion_shp (GeoPackage), tests de conversion / fiabilité / aire minimale
+pillow>=10.0        # convert_tif_to_png, cv_output (dépendance de matplotlib, déclarée pour elle-même)
+requests>=2.28      # téléchargeur IGN (test_telechargement_blocage : serveur local, socket réelle)

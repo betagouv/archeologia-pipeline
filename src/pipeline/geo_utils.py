@@ -127,7 +127,7 @@ def write_world_file(
         col_rotation = 0.0
 
     world_path = image_path.with_suffix(world_ext)
-    with open(world_path, "w") as f:
+    with open(world_path, "w", encoding="utf-8") as f:
         f.write(f"{pixel_width:.10f}\n")
         f.write(f"{row_rotation:.10f}\n")
         f.write(f"{col_rotation:.10f}\n")

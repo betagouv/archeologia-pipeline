@@ -60,10 +60,8 @@ class TestBuildProgressPlan:
         for (a_lo, a_hi), (b_lo, b_hi) in zip(bands, bands[1:]):
             assert a_hi == b_lo, f"bandes non contiguës: {a_hi} != {b_lo}"
 
-    @pytest.mark.parametrize("mode", ALL_MODES)
+    @pytest.mark.parametrize("mode", [m for m in ALL_MODES if m != "existing_rvt"])  # existing_rvt a toujours une phase CV
     def test_cv_band_degenerate_when_cv_off(self, mode):
-        if mode == "existing_rvt":
-            pytest.skip("existing_rvt a toujours une phase CV")
         plan = build_progress_plan(mode, cv_enabled=False)
         assert plan.cv[0] == plan.cv[1], "CV off → bande CV dégénérée"
 

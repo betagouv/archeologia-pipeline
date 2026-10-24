@@ -33,22 +33,17 @@ FAMILY_ORDER = (FAMILY_BASE, FAMILY_RVT, FAMILY_QUALITE)
 # Libellé métier + famille, par clé de produit du pipeline. L'ordre de ce
 # dictionnaire est l'ordre d'affichage des cartes sur le mur : le socle
 # (relief nu, ombrage, creux) d'abord, la qualité de la donnée en dernier.
+_FAMILLE: Dict[str, str] = {
+    "MNT": FAMILY_BASE,
+    "M_HS": FAMILY_RVT, "SVF": FAMILY_RVT, "OPNS": FAMILY_RVT, "LD": FAMILY_RVT, "SLRM": FAMILY_RVT,
+    "VAT": FAMILY_RVT, "CVAT": FAMILY_RVT, "CRIM": FAMILY_RVT, "PRISM": FAMILY_RVT, "MSTP": FAMILY_RVT,
+    "HS": FAMILY_RVT, "SLO": FAMILY_RVT,
+    "DENSITE": FAMILY_QUALITE, "COUVERTURE": FAMILY_QUALITE,
+}
+# Le libellé métier vient du catalogue des produits (indices_model.ProductInfo.metier) :
+# un seul endroit le porte, l'étape 2 et le mur affichent le même mot (lexique 2026-10-24).
 _METIER: Dict[str, tuple] = {
-    "MNT":        ("Le relief nu",            FAMILY_BASE),
-    "M_HS":       ("Ombrage du relief",       FAMILY_RVT),
-    "SVF":        ("Creux & dépressions",     FAMILY_RVT),
-    "OPNS":       ("Saillies ou creux",       FAMILY_RVT),
-    "LD":         ("Structures en relief",    FAMILY_RVT),
-    "SLRM":       ("Micro-reliefs",           FAMILY_RVT),
-    "VAT":        ("Vue archéo optimisée",    FAMILY_RVT),
-    "CVAT":       ("Vue archéo renforcée",    FAMILY_RVT),
-    "CRIM":       ("Relief coloré",           FAMILY_RVT),
-    "PRISM":      ("Ouverture prismatique",   FAMILY_RVT),
-    "MSTP":       ("Bosses & cuvettes",       FAMILY_RVT),
-    "HS":         ("Ombrage simple",          FAMILY_RVT),
-    "SLO":        ("Pente du terrain",        FAMILY_RVT),
-    "DENSITE":    ("Qualité de la donnée",    FAMILY_QUALITE),
-    "COUVERTURE": ("Fiabilité du sol mesuré", FAMILY_QUALITE),
+    key: (product(key).metier, famille) for key, famille in _FAMILLE.items()
 }
 
 #: Ordre d'affichage des indices sur le mur.

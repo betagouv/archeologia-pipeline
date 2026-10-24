@@ -5,12 +5,18 @@
 
    - Rayons : 2px contrôles (champs, boutons, barres) · 3px badges/tags ·
      6px conteneurs (cartes, bulles, bandeaux, journal) · pilule = hauteur/2.
-   - Gris de bordure : #888888 contrôles · #a0a0a0 conteneurs interactifs ·
-     #c4c4c4 conteneurs passifs/séparateurs.
+   - Gris de bordure : #888888 contrôles · #8a94a0 cartes et conteneurs interactifs
+     (3:1 sur blanc) · #c4c4c4 séparateurs et conteneurs passifs.
    - Survol : #e8e8e8 (unique).
    - Avertissement : fond #f6efdc · bordure #b07a20 · texte #8a5e18 (AA).
-   - Texte atténué : #5a5a5a (jamais #909090 hors :disabled).
-   - Tailles : 9px réservé aux badges MAJUSCULES ; texte informatif ≥ 10px. */
+   - Texte atténué : #4f5a66 (7:1 sur blanc ; jamais #909090 hors :disabled).
+   - Liens et boutons-texte : #1d5a96 (AA sur blanc ET sur une carte cochée #d6e6f4 ;
+     #2b79c2 ne passe que sur blanc), survol #143f6b souligné.
+   - Focus clavier : couleur de bordure #2b79c2 (jamais une épaisseur, qui décalerait) ;
+     les cartes, elles, prennent un anneau de 2px.
+   - Cibles : boutons et boutons-texte ≥ 24 px de haut (min-height 20–22 + padding).
+   - Tailles : 9px réservé aux badges MAJUSCULES ; texte informatif ≥ 10px.
+   Tenu par tests/unit/test_qss_contrastes.py (lot 7, 2026-10-24). */
 
 QDialog { background: #f0f0f0; }
 QLabel { color: #2c2c2c; }
@@ -35,6 +41,7 @@ QCheckBox::indicator {
     background: #ffffff;
 }
 QCheckBox::indicator:hover { border-color: #2b79c2; }
+QCheckBox::indicator:focus { border: 1px solid #2b79c2; }
 QCheckBox::indicator:checked {
     background: #2b79c2; border-color: #1d5a96;
     image: url("@ICONS@/check-white.svg");
@@ -55,18 +62,21 @@ QPushButton:hover {
     background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #fdfdfd, stop:1 #c9dcef);
     border-color: #2b79c2;
 }
-QPushButton:disabled { color: #909090; border-color: #b0b0b0; }
+QPushButton:focus { border-color: #2b79c2; }
+/* Désactivé : plus qu'un gris, un motif (bordure pointillée) qui se lit aussi sans contraste. */
+QPushButton:disabled { color: #707070; border: 1px dashed #b0b0b0; background: #e3e3e3; }
 /* Ghost : action secondaire, mais avec un indice d'interactivité au repos
    (bordure discrète) — sans elle, le bouton ressemblait à un simple QLabel. */
-#GhostButton { background: transparent; border: 1px solid #c4c4c4; color: #2c2c2c; }
+#GhostButton { background: transparent; border: 1px solid #c4c4c4; color: #2c2c2c; min-height: 22px; }
 #GhostButton:hover { background: #e8e8e8; border: 1px solid #a0a0a0; }
+#GhostButton:focus { border-color: #2b79c2; }
 /* Bouton « Aide » tant que les Nouveautés de la version n'ont pas été lues. */
 #GhostButton[nouveautes="true"] { border-color: #2b79c2; color: #1d5a96; }
 
 /* ---- En-tête ---- */
 #WizardTitleBar { background: #ffffff; border-bottom: 1px solid #c4c4c4; }
 #WizardTitle { font-size: 14px; font-weight: bold; color: #000000; }
-#WizardSubtitle { font-size: 11px; color: #5a5a5a; }
+#WizardSubtitle { font-size: 11px; color: #4f5a66; }
 
 /* ---- Liseré de progression (étape n/4) ---- */
 #WizardProgress { border: none; background: #e3e3e3; }
@@ -78,14 +88,14 @@ QPushButton:disabled { color: #909090; border-color: #b0b0b0; }
 #RailItem:hover { background: #e8e8e8; }
 #RailItem[state="active"] { background: #d6e6f4; border-left: 3px solid #2b79c2; }
 #RailIdx {
-    background: #e3e3e3; color: #5a5a5a;
+    background: #e3e3e3; color: #4f5a66;
     border: 1px solid #a0a0a0; border-radius: 11px;
     font-size: 11px; font-weight: bold;
 }
 #RailItem[state="active"] #RailIdx { background: #2b79c2; border-color: #1d5a96; color: #ffffff; }
 #RailItem[state="done"]   #RailIdx { background: #418141; border-color: #2d6a2d; color: #ffffff; }
 #RailLabel { font-weight: 600; color: #000000; }
-#RailSub { font-size: 10px; color: #5a5a5a; }
+#RailSub { font-size: 10px; color: #4f5a66; }
 #RailOpt {
     background: #d0d0d0; color: #2c2c2c;
     font-size: 9px; font-weight: bold; letter-spacing: 0.5px;
@@ -100,8 +110,8 @@ QPushButton:disabled { color: #909090; border-color: #b0b0b0; }
 
 /* ---- Pages ---- */
 #WizardPageHeading { font-size: 13px; font-weight: bold; color: #000000; }
-#WizardPageSub { color: #5a5a5a; font-size: 11px; }
-#WizardPagePlaceholder { color: #5a5a5a; font-style: italic; }
+#WizardPageSub { color: #4f5a66; font-size: 11px; }
+#WizardPagePlaceholder { color: #4f5a66; font-style: italic; }
 
 /* ---- Cartes (#Card) — bordure « fieldset » peinte par _CardFrame ---- */
 #Card { background: transparent; border: none; }
@@ -111,18 +121,18 @@ QPushButton:disabled { color: #909090; border-color: #b0b0b0; }
     border-radius: 9px; font-size: 10px; font-weight: bold;
 }
 #CardTitle { color: #1d5a96; font-weight: bold; font-size: 12px; }
-#CardCounter { color: #5a5a5a; font-size: 11px; }
+#CardCounter { color: #4f5a66; font-size: 11px; }
 #FieldLabel { color: #000000; font-size: 11px; }
 /* Message sous un champ de l'étape 1 : le geste à faire, l'erreur, ou la confirmation. */
-#FieldMessage { font-size: 11px; color: #5a5a5a; }
+#FieldMessage { font-size: 11px; color: #4f5a66; }
 #FieldMessage[kind="error"] { color: #a83838; }
 #FieldMessage[kind="warn"]  { color: #8a5e18; }
 #FieldMessage[kind="ok"]    { color: #2d6a2d; }
 #CarteGraphiqueCheck { color: #000000; font-size: 11px; }
-#FieldUnit { color: #5a5a5a; font-size: 11px; }
+#FieldUnit { color: #4f5a66; font-size: 11px; }
 
 /* ---- Frise (StageButton) + connecteurs ▶ ---- */
-#StageButton { background: #ffffff; border: 1px solid #a0a0a0; border-radius: 6px; }
+#StageButton { background: #ffffff; border: 1px solid #8a94a0; border-radius: 6px; }
 #StageButton[role="entry"] { background: #d6e6f4; border: 1px solid #2b79c2; }
 /* Sauté ≠ désactivé : bordure pleine #a0a0a0 (pas le #c4c4c4 des cartes) et
    :hover bleu plus bas — cliquer un stade sauté EST le geste pour remonter
@@ -142,11 +152,11 @@ QPushButton:disabled { color: #909090; border-color: #b0b0b0; }
 #StageButton:disabled #StageName, #StageButton:disabled #StageSub { color: #909090; }
 #StageGlyph { color: #000000; }
 #StageButton[role="entry"] #StageGlyph { color: #1d5a96; }
-#StageButton[role="skipped"] #StageGlyph { color: #5a5a5a; }
+#StageButton[role="skipped"] #StageGlyph { color: #4f5a66; }
 #StageName { font-weight: bold; font-size: 11px; color: #000000; }
 #StageButton[role="entry"] #StageName { color: #1d5a96; }
-#StageButton[role="skipped"] #StageName { color: #5a5a5a; }
-#StageSub { font-size: 10px; color: #5a5a5a; }
+#StageButton[role="skipped"] #StageName { color: #4f5a66; }
+#StageSub { font-size: 10px; color: #4f5a66; }
 #StageButton[role="entry"] #StageSub { color: #1d5a96; }
 #StageBadge {
     background: #2b79c2; color: #ffffff;
@@ -161,14 +171,14 @@ QPushButton:disabled { color: #909090; border-color: #b0b0b0; }
     border-radius: 3px; font-size: 13px; font-weight: bold;
 }
 #ModeBannerTitle { color: #1d5a96; font-weight: bold; font-size: 12px; }
-#ModeBannerSub { color: #5a5a5a; font-size: 11px; }
+#ModeBannerSub { color: #4f5a66; font-size: 11px; }
 #ModeBannerText { color: #2c2c2c; font-size: 11px; }
 
 /* ---- Étape 2 : verrou MNT (les produits de base sont des #IndexCard) ---- */
-#MntHint { color: #5a5a5a; font-style: italic; font-size: 10px; }
+#MntHint { color: #4f5a66; font-style: italic; font-size: 10px; }
 
 /* ---- Étape 2 : cartes d'indices ---- */
-#IndexCard { background: #ffffff; border: 1px solid #c4c4c4; border-radius: 6px; }
+#IndexCard { background: #ffffff; border: 1px solid #8a94a0; border-radius: 6px; }
 #IndexCard:hover { border-color: #2b79c2; }
 #IndexCard:focus { border: 2px solid #2b79c2; }
 #IndexCard[checked="true"] { background: #d6e6f4; border: 1px solid #2b79c2; }
@@ -176,10 +186,12 @@ QPushButton:disabled { color: #909090; border-color: #b0b0b0; }
 #IndexCard[locked="true"] { border-style: dashed; }
 /* Lien « ▸ Réglages (n) » d'une carte cochée, et le cadre des réglages dépliés. */
 #CardToggle {
-    background: transparent; border: none; color: #2b79c2;
-    font-size: 11px; padding: 2px 0; min-height: 0; text-align: left;
+    background: transparent; border: none; color: #1d5a96;
+    font-size: 11px; padding: 2px 0; min-height: 20px; text-align: left;
 }
-#CardToggle:hover { color: #1d5a96; text-decoration: underline; }
+#CardToggle:hover { color: #143f6b; text-decoration: underline; }
+#CardToggle:focus { background: #d6e6f4; }
+#IndexCard[checked="true"] #CardToggle:focus { background: #ffffff; }
 #CardReglages { background: transparent; }
 /* Le seul bouton de fiche : « ⓘ » rond de 24 px (interface rationalisée). */
 #InfoButton {
@@ -190,8 +202,9 @@ QPushButton:disabled { color: #909090; border-color: #b0b0b0; }
 #InfoButton:focus { border: 2px solid #1d5a96; }
 #InfoButton:disabled { border-color: #c4c4c4; color: #c4c4c4; }
 /* Lien de page (« Comparer les images ▸ »). */
-#SeeLink { background: transparent; border: none; color: #2b79c2; font-size: 11px; padding: 0; min-height: 0; }
-#SeeLink:hover { color: #1d5a96; text-decoration: underline; }
+#SeeLink { background: transparent; border: none; color: #1d5a96; font-size: 11px; padding: 2px 0; min-height: 20px; }
+#SeeLink:hover { color: #143f6b; text-decoration: underline; }
+#SeeLink:focus { background: #d6e6f4; }
 #IndexTag {
     background: #e3e3e3; color: #2c2c2c; font-size: 9px; font-weight: bold;
     padding: 1px 7px; border-radius: 3px;
@@ -206,7 +219,7 @@ QPushButton:disabled { color: #909090; border-color: #b0b0b0; }
 #IndexCard[checked="true"] #IndexName { color: #1d5a96; }
 /* 11px : c'est le texte sur lequel l'utilisateur choisit ses indices,
    pas une aide contextuelle. */
-#IndexDesc { color: #5a5a5a; font-size: 11px; }
+#IndexDesc { color: #4f5a66; font-size: 11px; }
 
 /* ---- Étape 2 : réglages avancés (onglets RVT) ---- */
 #AdvTabs::pane {
@@ -230,8 +243,8 @@ QPushButton:disabled { color: #909090; border-color: #b0b0b0; }
 
 /* En-tête de panneau (paramètres détaillés) + aide par champ */
 #AdvIndexTitle { font-weight: bold; color: #000000; font-size: 12px; }
-#AdvIndexDesc { color: #5a5a5a; font-size: 10px; }
-#FieldHint { color: #5a5a5a; font-size: 10px; }
+#AdvIndexDesc { color: #4f5a66; font-size: 10px; }
+#FieldHint { color: #4f5a66; font-size: 10px; }
 
 /* ---- Bandeau info (mode) ---- */
 #InfoBanner {
@@ -273,7 +286,7 @@ QPushButton:disabled { color: #909090; border-color: #b0b0b0; }
 
 /* ---- Étape 3 : une ligne par structure ---- */
 #EntityScroll { background: transparent; }
-#EntityLine { background: #ffffff; border: 1px solid #c4c4c4; border-radius: 6px; }
+#EntityLine { background: #ffffff; border: 1px solid #8a94a0; border-radius: 6px; }
 #EntityLine[state="on"] { background: #d6e6f4; border: 1px solid #2b79c2; }
 #EntityLine[state="warn"] { background: #f6efdc; border: 1px solid #b07a20; }
 /* Indisponible : pointillés + libellé grisé + case neutralisée — la carte ne
@@ -294,8 +307,8 @@ QPushButton:disabled { color: #909090; border-color: #b0b0b0; }
 #EntityLine[state="nomodel"] #EntityCheck { background: #e3e3e3; border-color: #c4c4c4; }
 #EntityLabel { font-weight: bold; color: #000000; }
 #EntityLine[state="on"] #EntityLabel { color: #1d5a96; }
-#EntityLine[state="nomodel"] #EntityLabel { color: #909090; }
-#EntityDesc { color: #5a5a5a; font-size: 10px; }
+#EntityLine[state="nomodel"] #EntityLabel { color: #666666; }
+#EntityDesc { color: #4f5a66; font-size: 10px; }
 #EntityRvtTag {
     background: #d6e6f4; color: #1d5a96; font-size: 10px; font-weight: bold;
     padding: 1px 7px; border-radius: 3px;
@@ -305,19 +318,20 @@ QPushButton:disabled { color: #909090; border-color: #b0b0b0; }
 #EntityLine[state="on"] #EntityRvtTag { background: #ffffff; }
 #EntityRvtTag[missing="true"] { background: #8a5e18; color: #ffffff; }
 #EntityDerivedBadge { color: #1d5a96; font-size: 10px; font-style: italic; }
-#EntityFiabHint { color: #5a5a5a; font-size: 10px; }
+#EntityFiabHint { color: #4f5a66; font-size: 10px; }
 /* Aide au choix du seuil : mini-profil + bilan sur le banc (mode avancé). */
 #EntityProfil { background: transparent; border: none; }
 #EntityNoModel { color: #8a5e18; font-size: 11px; font-style: italic; }
 #EntityRvtWarn { color: #8a5e18; font-size: 11px; }
-#EntityActivateBtn { padding: 1px 8px; min-height: 16px; font-size: 10px; }
-#EntityModelLabel { color: #5a5a5a; font-size: 10px; }
+#EntityActivateBtn { padding: 1px 8px; min-height: 20px; font-size: 10px; }
+#EntityModelLabel { color: #4f5a66; font-size: 10px; }
 #EntityModelName { color: #2c2c2c; font-size: 10px; }
 #EntityChangeBtn {
-    background: transparent; border: none; color: #2b79c2;
-    font-size: 10px; padding: 0 2px; min-height: 0;
+    background: transparent; border: none; color: #1d5a96;
+    font-size: 10px; padding: 2px 2px; min-height: 20px;
 }
-#EntityChangeBtn:hover { color: #1d5a96; text-decoration: underline; }
+#EntityChangeBtn:hover { color: #143f6b; text-decoration: underline; }
+#EntityChangeBtn:focus { background: #ffffff; border: 1px solid #2b79c2; }
 /* Vignette de la structure : cadre plein quand une illustration existe,
    cadre d'attente en pointillés ocre tant que le model_card n'a pas de
    bloc fiche.vignettes (l'absence se voit, elle ne se devine pas). */
@@ -327,7 +341,7 @@ QPushButton:disabled { color: #909090; border-color: #b0b0b0; }
    jeu de règles : les deux fiches s'ouvrent avec le même visuel. */
 #EntityThumb, #FicheThumb {
     background: #ffffff; border: 1px solid #c4c4c4; border-radius: 3px;
-    padding: 0; color: #b07a20; font-size: 15px;
+    padding: 0; color: #8a5e18; font-size: 15px;
 }
 #FicheThumb:hover { border-color: #2b79c2; }   /* la vignette d'entité (étape 3) est inerte */
 #EntityThumb[state="vide"], #FicheThumb[state="vide"] {
@@ -340,19 +354,20 @@ QPushButton:disabled { color: #909090; border-color: #b0b0b0; }
    c'est une annulation, elle ne doit pas concurrencer les champs qu'elle rend
    à leur valeur de modèle. Grisé quand l'entité n'a rien à rétablir. */
 #EntityResetBtn {
-    background: transparent; border: none; color: #2b79c2;
-    font-size: 13px; padding: 0 5px; min-height: 0; min-width: 18px;
+    background: transparent; border: none; color: #1d5a96;
+    font-size: 13px; padding: 0 5px; min-height: 22px; min-width: 24px;
 }
-#EntityResetBtn:hover { color: #1d5a96; }
+#EntityResetBtn:hover { color: #143f6b; }
+#EntityResetBtn:focus { background: #ffffff; border: 1px solid #2b79c2; }
 #EntityResetBtn:disabled { color: #c4c4c4; }
 #FicheBtn {
-    background: transparent; border: none; color: #2b79c2;
-    font-size: 10px; padding: 0 4px; min-height: 0;
+    background: transparent; border: none; color: #1d5a96;
+    font-size: 10px; padding: 2px 4px; min-height: 20px;
 }
-#FicheBtn:hover { color: #1d5a96; text-decoration: underline; }
+#FicheBtn:hover { color: #143f6b; text-decoration: underline; }
 
 /* ---- Étape 3 : ce qui sera analysé ---- */
-#RunRow { background: #ffffff; border: 1px solid #c4c4c4; border-radius: 6px; }
+#RunRow { background: #ffffff; border: 1px solid #8a94a0; border-radius: 6px; }
 #RunTexte { color: #2c2c2c; font-size: 11px; }
 #RunRvtTag {
     background: #d6e6f4; color: #1d5a96; font-size: 10px; font-weight: bold;
@@ -369,21 +384,21 @@ QPushButton:disabled { color: #909090; border-color: #b0b0b0; }
 #ValidationBanner[state="pending"] { background: #e3e3e3; border: 1px solid #a0a0a0; color: #2c2c2c; }
 
 /* ---- Étape 4 : récapitulatif ---- */
-#RecapKey { color: #5a5a5a; font-size: 11px; }
+#RecapKey { color: #4f5a66; font-size: 11px; }
 #RecapVal { color: #000000; font-size: 11px; font-weight: 600; }
 #RecapBadge {
     background: #d6e6f4; color: #1d5a96;
     font-size: 9px; font-weight: bold;
     padding: 1px 7px; border-radius: 3px;
 }
-#RecapDetail { color: #5a5a5a; font-size: 10px; }
+#RecapDetail { color: #4f5a66; font-size: 10px; }
 #RecapListe { color: #2c2c2c; font-size: 11px; }
 
 /* ---- Étape 4 : zone défilante du récap ---- */
 #LaunchScroll { background: transparent; border: none; }
 #WizardPageScroll { background: transparent; border: none; }
 #LaunchScroll > QWidget { background: transparent; }
-#LaunchHint { color: #5a5a5a; font-size: 11px; font-style: italic; }
+#LaunchHint { color: #4f5a66; font-size: 11px; font-style: italic; }
 
 /* ---- Étape 4 : panneau « État du système » (préflight) ---- */
 #PreflightPill {
@@ -393,19 +408,19 @@ QPushButton:disabled { color: #909090; border-color: #b0b0b0; }
 #PreflightPill[kind="ok"]      { background: #e6f2e6; color: #2d6a2d; border: 1px solid #418141; }
 #PreflightPill[kind="warn"]    { background: #f6efdc; color: #8a5e18; border: 1px solid #b07a20; }
 #PreflightPill[kind="err"]     { background: #fbe7e7; color: #7a2727; border: 1px solid #a83838; }
-#PreflightPill[kind="neutral"] { background: #e3e3e3; color: #5a5a5a; border: 1px solid #a0a0a0; }
+#PreflightPill[kind="neutral"] { background: #e3e3e3; color: #4f5a66; border: 1px solid #a0a0a0; }
 #PreflightIcon { font-size: 12px; font-weight: bold; }
 #PreflightIcon[status="ok"]   { color: #418141; }
 #PreflightIcon[status="warn"] { color: #b07a20; }
 #PreflightIcon[status="err"]  { color: #a83838; }
 #PreflightName { color: #2c2c2c; font-size: 11px; }
 #PreflightDetail {
-    color: #5a5a5a; font-size: 10px;
+    color: #4f5a66; font-size: 10px;
     font-family: "Consolas", "Courier New", monospace;
 }
 
 /* ---- Étape 4 : section repliable (paramètres avancés) ---- */
-#Collapsible { background: #ffffff; border: 1px solid #a0a0a0; border-radius: 6px; }
+#Collapsible { background: #ffffff; border: 1px solid #8a94a0; border-radius: 6px; }
 #CollapsibleHeader { background: transparent; border-radius: 6px; }
 #CollapsibleHeader:hover { background: #e8e8e8; }
 #CollapsibleHeaderLabel { color: #000000; font-size: 11px; }
@@ -417,7 +432,7 @@ QPushButton:disabled { color: #909090; border-color: #b0b0b0; }
     font-family: "Consolas", "Courier New", monospace; color: #000000;
 }
 #WorkersSpin:focus { border: 1px solid #2b79c2; }
-#WorkersNote { color: #5a5a5a; font-size: 10px; font-style: italic; }
+#WorkersNote { color: #4f5a66; font-size: 10px; font-style: italic; }
 QPushButton[role="micro"] {
     min-width: 24px; max-width: 24px;
     min-height: 22px; max-height: 22px;
@@ -431,18 +446,18 @@ QPushButton[role="micro"] {
 #RunStep[state="active"] { background: #d6e6f4; border: 1px solid #2b79c2; }
 /* Pastille 22px / rayon 11 : même gabarit que #RailIdx (un seul stepper visuel). */
 #RunStepCircle {
-    background: #e3e3e3; color: #5a5a5a;
+    background: #e3e3e3; color: #4f5a66;
     border: 1px solid #a0a0a0; border-radius: 11px;
     font-size: 11px; font-weight: bold;
 }
 #RunStep[state="active"] #RunStepCircle { background: #2b79c2; border-color: #1d5a96; color: #ffffff; }
 #RunStep[state="done"]   #RunStepCircle { background: #418141; border-color: #2d6a2d; color: #ffffff; }
-#RunStepCaption { font-size: 10px; color: #5a5a5a; }
+#RunStepCaption { font-size: 10px; color: #4f5a66; }
 #RunStep[state="active"] #RunStepCaption { color: #1d5a96; font-weight: bold; }
 #RunStep[state="done"]   #RunStepCaption { color: #2d6a2d; }
-#RunStepSubtitle { font-size: 10px; color: #5a5a5a; }
+#RunStepSubtitle { font-size: 10px; color: #4f5a66; }
 #RunStep[state="active"] #RunStepSubtitle { color: #1d5a96; }
-#RunStepTiming { font-size: 10px; color: #5a5a5a; font-weight: 600; }
+#RunStepTiming { font-size: 10px; color: #4f5a66; font-weight: 600; }
 #RunStep[state="active"] #RunStepTiming { color: #1d5a96; }
 #RunStep[state="done"]   #RunStepTiming { color: #2d6a2d; }
 /* Fil vert derrière les étapes faites, comme le fil du rail latéral. */
@@ -454,12 +469,12 @@ QPushButton[role="micro"] {
 /* ---- Run view : en-tête (étape courante + sous-étape + chrono total) ---- */
 /* 12px max : le chrono ne doit pas dominer le titre d'étape (12px gras). */
 /* Point d'activité pulsé (opacité animée côté Python). */
-#RunHeaderSub { color: #5a5a5a; font-size: 10px; }
+#RunHeaderSub { color: #4f5a66; font-size: 10px; }
 #RunActivityDot { color: #2b79c2; font-size: 13px; font-weight: bold; }
 /* ---- Fil d'état de la vue d'exécution (V2, 2026-10-08) : les choix, puis la synthèse ---- */
 #RunFil { color: #2c2c2c; font-size: 11px; }
 #RunFil[kind="ok"]     { color: #2d6a2d; font-weight: bold; }
-#RunFil[kind="cancel"] { color: #5a5a5a; font-weight: bold; }
+#RunFil[kind="cancel"] { color: #4f5a66; font-weight: bold; }
 #RunFil[kind="err"]    { color: #7a2727; font-weight: bold; }
 #RunFilEtat { color: #1d5a96; font-weight: bold; font-size: 11px; }
 
@@ -469,17 +484,17 @@ QPushButton[role="micro"] {
 #JournalChipWarn, #JournalChipErr {
     font-size: 10px; font-weight: bold;
     border-radius: 3px; padding: 1px 7px;
-    min-height: 16px; min-width: 0;
+    min-height: 20px; min-width: 0;
 }
 #JournalChipWarn { background: #f6efdc; border: 1px solid #b07a20; color: #8a5e18; }
 #JournalChipWarn:hover { border-color: #8a5e18; }
-#JournalChipWarn:checked { background: #b07a20; border-color: #8a5e18; color: #ffffff; }
+#JournalChipWarn:checked { background: #8a5e18; border-color: #8a5e18; color: #ffffff; }
 #JournalChipErr { background: #fbe7e7; border: 1px solid #a83838; color: #7a2727; }
 #JournalChipErr:hover { border-color: #7a2727; }
 #JournalChipErr:checked { background: #a83838; border-color: #7a2727; color: #ffffff; }
 
 /* ---- Run view : progression ---- */
-#RunBilanBox { background: #ffffff; border: 1px solid #c4c4c4; border-radius: 6px; }
+#RunBilanBox { background: #ffffff; border: 1px solid #8a94a0; border-radius: 6px; }
 #RunJournal {
     background: #1c1b18; color: #d8d4cc;
     border: 1px solid #c4c4c4; border-radius: 6px;
@@ -508,6 +523,7 @@ QPushButton[role="micro"] {
     color: #ffffff;
 }
 #WizardPrimaryButton:hover { background: #1d5a96; }
+#WizardPrimaryButton:focus { background: #1d5a96; border-color: #0f3d6e; }
 #WizardPrimaryButton:disabled { background: #d0d0d0; border-color: #a0a0a0; color: #707070; }
 
 /* ---- Fiche d'un modèle (onglet « Modèle » du panneau ⓘ) ---- */
@@ -530,7 +546,7 @@ QPushButton[role="micro"] {
 #ModelInfoSlug { color: #000000; font-size: 14px; font-weight: bold; }
 #ModelInfoDisplayName { color: #1d5a96; font-size: 12px; }
 #ModelInfoDescription { color: #2c2c2c; font-size: 11px; }
-#ModelInfoMeta { color: #5a5a5a; font-size: 10px; font-style: italic; }
+#ModelInfoMeta { color: #4f5a66; font-size: 10px; font-style: italic; }
 
 /* Zone scrollable. */
 #ModelInfoScroll { background: transparent; border: none; }
@@ -551,7 +567,7 @@ QPushButton[role="micro"] {
 #ModelInfoSectionBody { background: transparent; }
 
 /* Lignes label / valeur dans une section. */
-#ModelInfoRowLabel { color: #5a5a5a; font-size: 11px; }
+#ModelInfoRowLabel { color: #4f5a66; font-size: 11px; }
 #ModelInfoRowValue { color: #000000; font-size: 11px; }
 #ModelInfoRowValueMono {
     color: #000000;
@@ -570,7 +586,7 @@ QPushButton[role="micro"] {
 #FichePanelTete { background: #f6f6f6; border-bottom: 1px solid #c4c4c4; }
 #FichePanelTitre { font-size: 12px; font-weight: bold; color: #000000; }
 #FichePanelFermer {
-    font-size: 13px; color: #5a5a5a; border: 1px solid transparent; border-radius: 3px;
+    font-size: 13px; color: #4f5a66; border: 1px solid transparent; border-radius: 3px;
     min-width: 22px; min-height: 22px;
 }
 #FichePanelFermer:hover { background: #e3e3e3; color: #000000; }
@@ -579,7 +595,7 @@ QPushButton[role="micro"] {
    QSS sur :checked ne recalcule pas la largeur du bouton). */
 #FicheTab {
     background: transparent; border: none; border-bottom: 2px solid transparent;
-    color: #5a5a5a; font-size: 11px; padding: 4px 10px; min-height: 0;
+    color: #4f5a66; font-size: 11px; padding: 4px 10px; min-height: 20px;
 }
 #FicheTab:hover { color: #1d5a96; }
 #FicheTab:checked { color: #1d5a96; border-bottom: 2px solid #2b79c2; }
@@ -598,7 +614,7 @@ QPushButton[role="micro"] {
 #FicheListe::item:selected { background: #d6e6f4; color: #1d5a96; }
 #FicheTitre { font-size: 15px; font-weight: bold; color: #000000; }
 #FicheId {
-    color: #5a5a5a; font-size: 10px;
+    color: #4f5a66; font-size: 10px;
     font-family: "Consolas", "Courier New", monospace;
 }
 #FicheResume { color: #2c2c2c; font-size: 12px; }
@@ -613,7 +629,7 @@ QPushButton[role="micro"] {
     padding: 6px 9px;
 }
 #FicheSep { color: #e3e3e3; max-height: 1px; }
-#FicheLegende { color: #5a5a5a; font-size: 10px; }
+#FicheLegende { color: #4f5a66; font-size: 10px; }
 /* Bandeau « Appris sur » (carte des zones d'apprentissage, 2026-10-08). */
 #CarteZonesBandeau { background: #fafafa; border: 1px solid #e3e3e3; border-radius: 4px; }
 #FicheSousTitre { color: #2c2c2c; font-size: 11px; font-weight: bold; margin-top: 4px; }
@@ -623,47 +639,47 @@ QPushButton[role="micro"] {
    « prêt », l'ocre des avertissements, un gris neutre pour l'inadapté, le
    vert foncé en gras pour le niveau haut. Le point du non-évalué est assez
    pâle pour ne pas se lire comme un verdict de plus. */
-#FicheColonne { color: #5a5a5a; font-size: 9px; font-weight: bold; }
+#FicheColonne { color: #4f5a66; font-size: 9px; font-weight: bold; }
 #VerdictFort    { color: #1f4d1f; font-size: 12px; font-weight: bold; }
 #VerdictOui     { color: #2d6a2d; font-size: 12px; }
 #VerdictPartiel { color: #8a5e18; font-size: 12px; }
 #VerdictNon     { color: #a0a0a0; font-size: 12px; }
 #VerdictVide    { color: #d8d8d8; font-size: 12px; }
-#FicheCompteur { color: #5a5a5a; font-size: 10px; padding: 0 4px; }
+#FicheCompteur { color: #4f5a66; font-size: 10px; padding: 0 4px; }
 /* Cadre de l'aperçu : plein = liseré neutre ; vide = attente ocre, même
    langage que la vignette de carte. */
 #FicheImage {
     background: #f6f6f6; border: 1px solid #c4c4c4; border-radius: 3px;
-    color: #5a5a5a; font-size: 11px;
+    color: #4f5a66; font-size: 11px;
 }
 #FicheImage[state="vide"] {
     border: 1px dashed #b07a20; background: #f6efdc; color: #8a5e18;
 }
 #FicheToggle {
-    font-size: 10px; padding: 2px 10px; min-height: 18px;
+    font-size: 10px; padding: 2px 10px; min-height: 20px;
     border: 1px solid #888888; border-radius: 0; background: #f0f0f0;
 }
 #FicheToggle:checked { background: #2b79c2; border-color: #1d5a96; color: #ffffff; }
 #FicheToggle:disabled { color: #909090; border-color: #c4c4c4; }
 #FicheNav {
-    font-size: 12px; padding: 0; min-height: 18px;
+    font-size: 12px; padding: 0; min-height: 20px; min-width: 24px;
     border: 1px solid #888888; border-radius: 2px; background: #f0f0f0;
 }
 
 /* ═══ Onglet « Visualisation » — mur visuel du catalogue ═══════════════════
    Mêmes tokens que le wizard : bleu #2b79c2 (pressé #1d5a96), sélection
-   #d6e6f4, bordures #c4c4c4 / #b8b8b8 (cartes), texte atténué #5a5a5a.
+   #d6e6f4, bordures #c4c4c4 / #b8b8b8 (cartes), texte atténué #4f5a66.
    Les cartes portent un rayon de 3px (badge) et non 6px : ce sont des
    éléments de grille répétés, pas des conteneurs de section. */
 
 #VisuHeader { background: #ffffff; border-bottom: 1px solid #c4c4c4; }
 #VisuTitle { font-size: 14px; font-weight: bold; color: #000000; }
-#VisuSubtitle { font-size: 11px; color: #5a5a5a; }
-#VisuStamp { font-family: Consolas, monospace; font-size: 10px; color: #5a5a5a; }
+#VisuSubtitle { font-size: 11px; color: #4f5a66; }
+#VisuStamp { font-family: Consolas, monospace; font-size: 10px; color: #4f5a66; }
 
 /* ---- Rail des départements ---- */
 #VisuRail { background: #f0f0f0; border-right: 1px solid #c4c4c4; }
-#VisuRailCount { font-size: 10px; color: #5a5a5a; }
+#VisuRailCount { font-size: 10px; color: #4f5a66; }
 #VisuRailList { background: transparent; }
 #VisuRailList::item { border-left: 3px solid transparent; }
 #VisuRailList::item:hover { background: #e8e8e8; }
@@ -674,7 +690,7 @@ QPushButton[role="micro"] {
     font-size: 11px; font-weight: bold; color: #2c2c2c;
 }
 #VisuRailName { font-size: 11px; font-weight: 600; color: #000000; }
-#VisuRailSub { font-size: 10px; color: #5a5a5a; }
+#VisuRailSub { font-size: 10px; color: #4f5a66; }
 #VisuRailItem[state="active"] #VisuRailCode {
     background: #2b79c2; border-color: #1d5a96; color: #ffffff;
 }
@@ -682,7 +698,7 @@ QPushButton[role="micro"] {
 
 /* ---- En-tête du mur ---- */
 #VisuWallTitle { font-size: 13px; font-weight: bold; color: #000000; }
-#VisuWallMeta { font-size: 11px; color: #5a5a5a; }
+#VisuWallMeta { font-size: 11px; color: #4f5a66; }
 #VisuFamilyBtn {
     font-size: 10px; padding: 2px 10px; min-height: 20px;
     border: 1px solid #a0a0a0; border-radius: 2px; background: #ffffff;
@@ -700,23 +716,23 @@ QPushButton[role="micro"] {
     background: #d6e6f4; border: 1px solid #2b79c2; border-radius: 6px;
     padding: 8px 12px; font-size: 11px; color: #1c1c1c;
 }
-#VisuEmpty { color: #5a5a5a; font-style: italic; font-size: 11px; }
+#VisuEmpty { color: #4f5a66; font-style: italic; font-size: 11px; }
 
 /* ---- Cartes du mur ---- */
-#VisuCard { background: #ffffff; border: 1px solid #b8b8b8; border-radius: 3px; }
+#VisuCard { background: #ffffff; border: 1px solid #8a94a0; border-radius: 3px; }
 #VisuCard:hover { border-color: #2b79c2; }
 #VisuCard[state="loading"] { border-color: #2b79c2; }
 #VisuCard[state="loaded"] { border: 1px solid #2b79c2; }
 #VisuCardTitle { font-size: 12px; font-weight: bold; color: #000000; }
 #VisuCard[state="loaded"] #VisuCardTitle { color: #1d5a96; }
-#VisuCardTech { font-size: 10px; color: #5a5a5a; }
+#VisuCardTech { font-size: 10px; color: #4f5a66; }
 #VisuCardBtn {
     font-size: 11px; min-height: 24px; border-radius: 2px;
-    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #3f8ad2, stop:1 #2b79c2);
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #2b79c2, stop:1 #1d5a96);
     border: 1px solid #1d5a96; color: #ffffff;
 }
 #VisuCardBtn:hover {
-    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #4e97dd, stop:1 #2f83d0);
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #2f83d0, stop:1 #1d5a96);
 }
 #VisuCardBtn:pressed { background: #1d5a96; }
 #VisuCardBtn:disabled {
@@ -725,14 +741,14 @@ QPushButton[role="micro"] {
 
 /* ---- Pied ---- */
 #VisuFooter { background: #f0f0f0; border-top: 1px solid #c4c4c4; }
-#VisuFooterState { font-size: 11px; color: #5a5a5a; }
+#VisuFooterState { font-size: 11px; color: #4f5a66; }
 #VisuPrimaryBtn {
     font-size: 11px; min-height: 24px; padding: 3px 14px; border-radius: 2px;
-    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #3f8ad2, stop:1 #2b79c2);
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #2b79c2, stop:1 #1d5a96);
     border: 1px solid #1d5a96; color: #ffffff; font-weight: bold;
 }
 #VisuPrimaryBtn:hover {
-    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #4e97dd, stop:1 #2f83d0);
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #2f83d0, stop:1 #1d5a96);
 }
 #VisuPrimaryBtn:pressed { background: #1d5a96; }
 

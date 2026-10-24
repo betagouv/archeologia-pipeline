@@ -64,3 +64,8 @@ Détail dans [Étape 5 · Traitement](etape-5-traitement.md).
 Le cadre **Par où commencer** apparaît sous la frise. **Ajouter au projet QGIS courant** y charge les mosaïques des images du relief et, par structure, un GeoPackage de détections avec sa légende de fiabilité ; **Ouvrir livrable/projet.qgs** ouvre le projet du dossier de sortie à la place du projet courant. Le projet `livrable/projet.qgs` dans le dossier de sortie regroupe tout, déjà stylé : c'est le point d'entrée pour valider les détections.
 
 Ce qu'il y a dans le dossier de sortie et comment le lire : [Vos résultats dans QGIS](resultats.md).
+
+## Au clavier
+
+Tab passe de commande en commande et un liseré bleu dit où l'on est ; Espace coche une image ou une structure, Entrée ouvre l'étape du rail de gauche ou le bouton qui a le focus ; Échap ferme le panneau des fiches, puis la fenêtre. Un bouton grisé porte une bordure pointillée, lisible sans la couleur.
+

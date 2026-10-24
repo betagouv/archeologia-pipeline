@@ -28,6 +28,7 @@ class _RailItem(QFrame):
         self.setProperty("state", "todo")
         self.setProperty("error", "false")
         self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)   # Tab atteint l'étape, Entrée ou Espace l'ouvre
 
         layout = QHBoxLayout(self)
         layout.setContentsMargins(14, 10, 14, 10)
@@ -124,6 +125,13 @@ class _RailItem(QFrame):
     def mousePressEvent(self, event):  # noqa: N802 (signature Qt)
         self.clicked.emit(self._index)
         super().mousePressEvent(event)
+
+    def keyPressEvent(self, event):  # noqa: N802 (signature Qt)
+        if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter, Qt.Key.Key_Space):
+            self.clicked.emit(self._index)
+            event.accept()
+            return
+        super().keyPressEvent(event)
 
 
 class StepperRail(QFrame):

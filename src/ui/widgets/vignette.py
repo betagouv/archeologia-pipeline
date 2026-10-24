@@ -196,18 +196,3 @@ class FicheThumb(QPushButton):
         # Repolish : la propriété dynamique pilote le style du cadre.
         self.style().unpolish(self)
         self.style().polish(self)
-
-
-class FicheButton(QPushButton):
-    """Le lien texte « Fiche » de l'en-tête d'une carte."""
-
-    def __init__(self, tooltip: str = "", parent=None):
-        super().__init__("Fiche", parent)
-        self.setObjectName("FicheBtn")
-        self.setFlat(True)
-        self.setCursor(Qt.CursorShape.PointingHandCursor)
-        if tooltip:
-            self.setToolTip(tooltip)
-
-
-__all__ = ["FicheButton", "FicheThumb", "TAILLE", "decouper_cadrage", "pixmap_ajuste"]

@@ -43,7 +43,6 @@ from ...app.services.fiabilite import pct
 from ..icons import colored_icon
 from ..widgets.vignette import (
     ARDOISE,
-    FicheButton,
     couleur_texte,
     pastille,
     pixmap_ajuste,
@@ -55,6 +54,18 @@ from ...app.services.carte_zones import charger as charger_zones_corpus
 from ..widgets.carte_zones import bandeau_appris_sur
 
 _ZONES_CORPUS: Optional[dict] = None
+
+
+class _LienFiche(QPushButton):
+    """Lien texte vers une autre fiche, à l'intérieur d'une fiche."""
+
+    def __init__(self, tooltip: str = "", parent=None):
+        super().__init__("", parent)
+        self.setObjectName("FicheBtn")
+        self.setFlat(True)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        if tooltip:
+            self.setToolTip(tooltip)
 
 
 def _zones_corpus() -> dict:
@@ -390,7 +401,7 @@ class _CorpsFiche(QWidget):
         lay.addWidget(_titre_bloc("Contexte technique"))
         lay.addWidget(_label(self._contexte(fiche), "FicheTexte"))
         if ouvrir_modele is not None:
-            lien = FicheButton(f"Architecture, entraînement et métriques d'évaluation de « {fiche.modele} »")
+            lien = _LienFiche(f"Architecture, entraînement et métriques d'évaluation de « {fiche.modele} »")
             lien.setText("Fiche du modèle")
             lien.setObjectName("FicheLienModele")    # ardoise : la couleur des fiches de modèle
             lien.setIcon(colored_icon("modele", ARDOISE, 14, dpr=self.devicePixelRatioF()))

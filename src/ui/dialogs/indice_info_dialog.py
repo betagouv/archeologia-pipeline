@@ -421,10 +421,13 @@ class IndiceInfoDialog(QDialog):
         root.addLayout(pied)
 
         if self._fiches:
-            depart = next(
-                (i for i, f in enumerate(self._fiches) if f.cle == cle_active), 0
-            )
-            self._liste.setCurrentRow(depart + self._decalage)
+            if cle_active == "__comparaison__" and self._comparaison is not None:
+                self._liste.setCurrentRow(0)   # « Comparer les images », depuis la page
+            else:
+                depart = next(
+                    (i for i, f in enumerate(self._fiches) if f.cle == cle_active), 0
+                )
+                self._liste.setCurrentRow(depart + self._decalage)
             self._afficher(depart + self._decalage)
         else:
             self._zone.setWidget(_label("Aucune fiche disponible.", "FicheManque"))

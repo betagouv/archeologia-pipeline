@@ -19,7 +19,7 @@ La liste dépend des modèles installés : une structure n'apparaît que si un m
 ## La carte d'une structure
 
 - **Cocher une structure** : cliquez n'importe où sur sa carte. Sur une carte cochée, la partie réglages ne coche ni ne décoche : un clic sur la ligne Confiance, la figure ou les paramètres de regroupement sert seulement à régler.
-- **Vignette** et lien **Fiche** : le lien ouvre la fiche de la structure, décrite ci-dessous.
+- **Vignette** et bouton **ⓘ** : le bouton ouvre la fiche de la structure, décrite ci-dessous.
 - **Image requise** : le sigle de l'image sur laquelle le modèle travaille. Si elle n'est pas cochée à l'étape 2, le sigle passe en orange et un bouton **+ Cocher** l'ajoute.
 - **Modèle** : « seul disponible », ou un menu **Changer ▾** quand plusieurs modèles couvrent la structure. Chaque entrée du menu indique le nombre de **fenêtres d'analyse** que le modèle découpe dans une dalle : c'est un fait sur le volume de calcul, pas une estimation de durée. Le bouton **ⓘ** ouvre la fiche du modèle : architecture, seuils, métriques d'évaluation et courbes.
 - **Regrouper en zones** : pour certaines structures, une case regroupe les détections proches en zones. Le **Regroupement de cratères** est une structure à part entière, avec le badge **regroupement automatique** : la cocher produit les zones et les cratères qui les composent ; elle coche d'office **Cratères**, dont la carte prend le badge « inclus dans » et perd son réglage de seuil : une seule couche de cratères, au seuil réglé sur la carte du regroupement.

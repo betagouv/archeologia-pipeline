@@ -170,7 +170,28 @@ QPushButton:disabled { color: #909090; border-color: #b0b0b0; }
 /* ---- Étape 2 : cartes d'indices ---- */
 #IndexCard { background: #ffffff; border: 1px solid #c4c4c4; border-radius: 6px; }
 #IndexCard:hover { border-color: #2b79c2; }
+#IndexCard:focus { border: 2px solid #2b79c2; }
 #IndexCard[checked="true"] { background: #d6e6f4; border: 1px solid #2b79c2; }
+/* Verrou du MNT (nécessaire aux images cochées) : cadenas dans la coche, infobulle. */
+#IndexCard[locked="true"] { border-style: dashed; }
+/* Lien « ▸ Réglages (n) » d'une carte cochée, et le cadre des réglages dépliés. */
+#CardToggle {
+    background: transparent; border: none; color: #2b79c2;
+    font-size: 11px; padding: 2px 0; min-height: 0; text-align: left;
+}
+#CardToggle:hover { color: #1d5a96; text-decoration: underline; }
+#CardReglages { background: transparent; }
+/* Le seul bouton de fiche : « ⓘ » rond de 24 px (interface rationalisée). */
+#InfoButton {
+    background: #ffffff; border: 1px solid #2b79c2; border-radius: 12px;
+    color: #2b79c2; font-size: 13px; font-weight: bold; padding: 0;
+}
+#InfoButton:hover { background: #d6e6f4; color: #1d5a96; }
+#InfoButton:focus { border: 2px solid #1d5a96; }
+#InfoButton:disabled { border-color: #c4c4c4; color: #c4c4c4; }
+/* Lien de page (« Comparer les images ▸ »). */
+#SeeLink { background: transparent; border: none; color: #2b79c2; font-size: 11px; padding: 0; min-height: 0; }
+#SeeLink:hover { color: #1d5a96; text-decoration: underline; }
 #IndexTag {
     background: #e3e3e3; color: #2c2c2c; font-size: 9px; font-weight: bold;
     padding: 1px 7px; border-radius: 3px;

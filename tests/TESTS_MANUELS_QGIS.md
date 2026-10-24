@@ -1110,3 +1110,18 @@ Lot 3 du chantier d'accélération (2026-10-15) : une dalle lue en entier reçoi
 - [ ] **62.4 Menu Configuration ▾** : un seul bouton dans l'en-tête ; entrées « Enregistrer sous… », « Charger : <nom> » par configuration, « Gérer les configurations… », « Importer un fichier… », « Tout remettre aux valeurs par défaut… » ; pendant un traitement, charger, importer et tout remettre sont grisés (infobulle « Indisponible pendant un traitement »), enregistrer reste actif.
 - [ ] **62.5 Manuel** : F1 sur l'étape 1 → le chapitre décrit la frise barrée, les messages sous les champs et le menu Configuration.
 
+## 63. Interface rationalisée — lot 3, l'étape 2 ⭐ P1
+
+> **Contexte** (2026-10-24, proposition A) : trois sections, trois images cochées d'avance à une ouverture vierge,
+> un seul bouton de fiche « ⓘ », verrou du MNT en infobulle, réglages en accordéon dans la carte, marge entre
+> dalles dans la page, « Comparer les images » depuis la page.
+
+- [ ] **63.1 Première ouverture** : profil QGIS neuf (ou dernière configuration supprimée) → MNT, SVF et LD cochées, aucune pastille rouge sur le rail ; une configuration enregistrée sans image cochée reste décochée.
+- [ ] **63.2 Sections** : « Recommandé pour commencer » (MNT, SVF, LD), « Autres images du relief » (douze cartes), « Qualité de la donnée » (Densité, Couverture, masquée depuis un MNT existant) ; depuis des images existantes, seule la phrase « cette étape est sans objet » reste.
+- [ ] **63.3 Cocher et fiche** : un clic sur la vignette coche la carte (il n'ouvre plus la fiche) ; seul « ⓘ » ouvre la fiche ; Tab puis Espace coche au clavier.
+- [ ] **63.4 Verrou du MNT** : avec SVF cochée, cliquer MNT ne fait rien : la carte porte un cadenas dans sa coche et l'infobulle « Nécessaire aux images cochées : SVF… » ; aucun toast.
+- [ ] **63.5 Réglages en accordéon** : sur une carte cochée, « ▸ Réglages (n) » déplie ses champs dans la carte (n = nombre de champs) ; un clic dans les champs ne décoche pas ; « ↺ » de la carte a pour infobulle « Revenir aux valeurs par défaut de « … » » et ne touche que cette image ; décocher la carte replie ses réglages ; le rayon min de LD pousse toujours le rayon max.
+- [ ] **63.6 Marge entre dalles** : la carte est en bas de la page avec son « ↺ » et le diagnostic « ✓ Contexte fourni… » / « ⚠ … » ; masquée depuis des images existantes ; champ masqué (diagnostic gardé) depuis un MNT existant.
+- [ ] **63.7 Comparer** : le lien « Comparer les images ▸ » en haut de la page ouvre les fiches directement sur les deux tableaux comparatifs.
+- [ ] **63.8 Manuel** : F1 sur l'étape 2 → sections, « ⓘ », accordéon, marge et comparaison décrits.
+

@@ -6,20 +6,21 @@ est verrouillé tant qu'un indice RVT est coché (clic → toast explicatif). Se
 le mode de données, les sections déjà fournies sont masquées (existing_mnt /
 existing_rvt). La logique pure vient de :mod:`app.services.indices_model`.
 
-Le bouton « Réglages avancés… » bascule (via un ``QStackedWidget`` interne) sur
-une vue plein écran à onglets reproduisant tous les paramètres RVT de l'ancien
-plugin (M-HS, SVF, Slope, LD, SLRM, VAT), un onglet par produit du modèle de
-base (MNT : filtre PDAL + résolution ; Densité ; Couverture) et la marge de
-tuilage. Ces réglages sont persistés dans ``rvt_params`` et
-``processing`` du config (consommés tels quels par le pipeline).
+Trois sections (interface rationalisée, 2026-10-24) : « Recommandé pour commencer »
+(MNT, SVF, LD, cochées d'avance), « Autres images du relief », « Qualité de la
+donnée ». Chaque carte = cocher + « ⓘ » (la fiche), et, une fois cochée, un lien
+« ▸ Réglages (n) » qui déplie SES réglages dans la carte : plus de vue séparée à
+onglets. La marge entre dalles est une carte de la page. Les réglages sont
+persistés dans ``rvt_params`` et ``processing`` du config (consommés tels quels
+par le pipeline).
 """
 from __future__ import annotations
 
 import logging
 from pathlib import Path
 
-from qgis.PyQt.QtCore import QRect, Qt, pyqtSignal
-from qgis.PyQt.QtGui import QColor, QPainter
+from qgis.PyQt.QtCore import QPoint, Qt, pyqtSignal
+from qgis.PyQt.QtGui import QPixmap
 from qgis.PyQt.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -29,9 +30,6 @@ from qgis.PyQt.QtWidgets import (
     QLabel,
     QLineEdit,
     QPushButton,
-    QStackedWidget,
-    QTabBar,
-    QTabWidget,
     QVBoxLayout,
     QWidget,
 )
@@ -51,11 +49,13 @@ from ...app.services.indice_fiche import (
 )
 from ...app.services.indices_model import (
     all_products,
-    base_keys,
     count_selected,
     default_products,
+    other_rvt_keys,
     product,
     products_unavailable_in_mode,
+    quality_keys,
+    recommended_keys,
     requires_mnt,
     rvt_keys,
     toggle,
@@ -67,10 +67,12 @@ from ...app.services.reglages_defaut import (
     produit_de_section,
 )
 from ...app.services.vocabulaire import pluriel
+from ..icons import colored_pixmap
 from ..widgets.card import build_card
+from ..widgets.info_button import InfoButton
 from ..widgets.no_wheel import NoWheelDoubleSpinBox, NoWheelSpinBox
 from ..widgets.toast import show_toast
-from ..widgets.vignette import FicheButton, FicheThumb
+from ..widgets.vignette import FicheThumb
 
 logger = logging.getLogger(__name__)
 
@@ -84,32 +86,6 @@ DEFAULT_FILTER = (
     "OR Classification = 67 OR Classification = 9"
 )
 
-# Descriptions longues affichées en tête de chaque onglet de paramètres détaillés.
-_TAB_DESC = {
-    "MNT": "Reconstruit le sol à partir du nuage de points LiDAR classé.",
-    "DENSITE": "Nombre de points LiDAR sol par cellule — où la donnée d'entrée "
-               "est dense ou clairsemée.",
-    "COUVERTURE": "Part de cellules avec points sol dans le voisinage — signale "
-                  "les zones où le MNT n'est qu'une interpolation.",
-    "HS": "Ombrage simple depuis une seule direction de lumière.",
-    "M_HS": "Combine plusieurs angles d'éclairage simulés pour révéler le micro-relief.",
-    "SVF": "Part de ciel visible en chaque point — révèle creux, fossés et dépressions.",
-    "OPNS": "Ouverture du relief : angle d'horizon moyen sur 16 directions. Le type "
-            "choisit ce qui ressort — positive : les saillies ; négative : les creux.",
-    "SLO": "Pente du terrain — met en évidence ruptures de pente et talus.",
-    "LD": "Dominance locale — fait ressortir les structures en relief positif.",
-    "SLRM": "Soustrait le relief général pour isoler les micro-reliefs.",
-    "VAT": "Combinaison d'images optimisée pour la prospection archéologique.",
-    "MSTP": "Position topographique multi-échelle : compose 3 échelles "
-            "(locale/méso/large) en une image RGB.",
-    "CVAT": "VAT combiné : fusionne les variantes « general » et « flat » du VAT. "
-            "Composition figée — aucun paramètre hormis la sortie 8 bits.",
-    "PRISM": "Ouverture prismatique : ouvertures positive et négative posées sur "
-             "un ombrage multi-directionnel. Image en couleurs, fort contraste.",
-    "CRIM": "Relief coloré : le micro-relief en nuances de gris, la PENTE en "
-            "couleurs. C'est la pente qui est colorée, jamais l'altitude.",
-}
-
 # Aides communes à plusieurs indices.
 _HELP_VE = "Exagération verticale (1 = aucune)."
 #: Bruit : rvt ignore max(arrondi(rayon × 10 / 20 / 40 %), 1) px du rayon ; au niveau 1, sous 15 px de rayon, cela
@@ -119,58 +95,15 @@ _HELP_BRUIT = ("Ignore le début du rayon pour gommer le bruit du nuage (0 = auc
 _HELP_8BIT = "Fichier plus léger, suffisant pour l'affichage."
 
 
-class _AdvTabBar(QTabBar):
-    """Barre d'onglets des paramètres détaillés : grise les onglets d'indices
-    désactivés et y dessine un badge « OFF » encadré.
-
-    L'état désactivé est porté par ``tabData(i)`` (``True`` = indice désactivé).
-    Les onglets sans données (``None``, ex. MNT) sont ignorés.
-    """
-
-    _PILL_W = 26
-    _RESERVE = 44  # largeur réservée à droite pour le badge (anti-chevauchement)
-
-    def tabSizeHint(self, index):  # noqa: N802 (signature Qt)
-        size = super().tabSizeHint(index)
-        if self.tabData(index):  # onglet désactivé → place pour le badge
-            size.setWidth(size.width() + self._RESERVE)
-        return size
-
-    def paintEvent(self, event):  # noqa: N802 (signature Qt)
-        super().paintEvent(event)  # onglets stylés par la QSS
-        painter = QPainter(self)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
-        font = painter.font()
-        font.setPointSize(max(8, font.pointSize() - 1))
-        font.setBold(True)
-        painter.setFont(font)
-        for i in range(self.count()):
-            if not self.tabData(i):  # actif ou onglet non-indice → rien
-                continue
-            rect = self.tabRect(i)
-            # Voile léger : l'onglet OFF reste lisible (il demeure cliquable
-            # pour réactiver l'indice — ne pas le confondre avec un disabled).
-            painter.fillRect(rect.adjusted(2, 2, -2, -2), QColor(236, 236, 236, 90))
-            # Badge « OFF » encadré, calé à droite (contraste AA : texte sombre).
-            pill = QRect(0, 0, self._PILL_W, 15)
-            pill.moveCenter(rect.center())
-            pill.moveRight(rect.right() - 8)
-            painter.setPen(QColor(0x90, 0x90, 0x90))
-            painter.setBrush(QColor(0xE3, 0xE3, 0xE3))
-            painter.drawRoundedRect(pill, 3, 3)
-            painter.setPen(QColor(0x2C, 0x2C, 0x2C))
-            painter.drawText(pill, Qt.AlignmentFlag.AlignCenter, "OFF")
-
-
 class _IndexCard(QFrame):
-    """Carte cliquable d'un produit (vignette + tag + nom + description + coche).
-
-    Même gabarit que la carte d'entité de l'étape 3 : la vignette de 44 px à
-    gauche et le lien « Fiche » dans l'en-tête ouvrent la fiche du produit, et
-    consomment leur propre clic — ils ne cochent donc pas la carte.
+    """Carte d'une image du relief : vignette + tag + nom + description + coche,
+    « ⓘ » pour la fiche, et, cochée, « ▸ Réglages (n) » qui déplie ses réglages
+    dans la carte (accordéon). Un clic n'importe où ailleurs coche ou décoche ;
+    la carte prend le focus clavier et se coche à Espace.
 
     Sert AUSSI aux produits de base (MNT, Densité, Couverture) : il n'y a qu'un
-    gabarit de carte à l'étape 2.
+    gabarit de carte à l'étape 2. Le MNT se verrouille (cadenas + infobulle) tant
+    qu'une image du relief est cochée : plus de toast.
     """
 
     clicked = pyqtSignal(str)
@@ -179,17 +112,24 @@ class _IndexCard(QFrame):
     def __init__(self, key: str, tag: str, full_name: str, desc: str, parent=None):
         super().__init__(parent)
         self._key = key
+        self._locked = False
+        self._reglages: QWidget | None = None
         self.setObjectName("IndexCard")
         self.setProperty("checked", False)
+        self.setProperty("locked", False)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
 
         # Colonne de gauche à largeur FIXE, occupée même sans vignette (cadre
-        # d'attente) : les libellés restent alignés d'une carte à l'autre.
+        # d'attente) : les libellés restent alignés d'une carte à l'autre. La
+        # vignette ne consomme plus le clic : un seul geste pour cocher, un seul
+        # bouton (« ⓘ ») pour la fiche.
         outer = QHBoxLayout(self)
         outer.setContentsMargins(10, 8, 10, 8)
         outer.setSpacing(9)
-        self._thumb = FicheThumb("Voir la fiche de cette image")
-        self._thumb.clicked.connect(lambda: self.fiche_requested.emit(self._key))
+        self._thumb = FicheThumb("")
+        self._thumb.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+        self._thumb.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         outer.addWidget(self._thumb, 0, Qt.AlignmentFlag.AlignTop)
 
         layout = QVBoxLayout()
@@ -201,18 +141,17 @@ class _IndexCard(QFrame):
         top.setSpacing(6)
         self._tag = QLabel(tag)
         self._tag.setObjectName("IndexTag")
-        self._fiche_btn = FicheButton(
-            "Ce que montre l'image, à quoi elle sert, ce qu'elle ne montre pas, "
-            "réglages et sources"
+        self._info_btn = InfoButton(
+            "Ce que montre l'image, à quoi elle sert, ce qu'elle ne montre pas, réglages et sources"
         )
-        self._fiche_btn.clicked.connect(lambda: self.fiche_requested.emit(self._key))
+        self._info_btn.clicked.connect(lambda: self.fiche_requested.emit(self._key))
         self._check = QLabel("")
         self._check.setObjectName("IndexCheck")
         self._check.setFixedSize(15, 15)
         self._check.setAlignment(Qt.AlignmentFlag.AlignCenter)
         top.addWidget(self._tag)
         top.addStretch(1)
-        top.addWidget(self._fiche_btn)
+        top.addWidget(self._info_btn)
         top.addWidget(self._check)
         self._name = QLabel(full_name)
         self._name.setObjectName("IndexName")
@@ -226,23 +165,95 @@ class _IndexCard(QFrame):
         layout.addWidget(self._name)
         layout.addWidget(desc_lbl)
 
+        # Accordéon des réglages : lien « ▸ Réglages (n) » visible quand la carte
+        # est cochée, le widget des réglages en dessous, replié par défaut.
+        self._toggle = QPushButton("")
+        self._toggle.setObjectName("CardToggle")
+        self._toggle.setFlat(True)
+        self._toggle.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._toggle.setVisible(False)
+        self._toggle.clicked.connect(self._basculer_reglages)
+        layout.addWidget(self._toggle, 0, Qt.AlignmentFlag.AlignLeft)
+        self._reglages_host = QVBoxLayout()
+        self._reglages_host.setContentsMargins(0, 2, 0, 0)
+        layout.addLayout(self._reglages_host)
+        self._n_reglages = 0
+        self._deplie = False
+
     def set_vignette(self, chemin, cadrage=None) -> None:
         """Pose la vignette de la fiche ; absente → cadre d'attente."""
         self._thumb.set_vignette(chemin, cadrage=cadrage)
 
+    def set_reglages(self, widget: QWidget, n_champs: int) -> None:
+        """Les réglages de cette image, dépliables dans la carte."""
+        self._reglages = widget
+        self._n_reglages = n_champs
+        widget.setVisible(False)
+        self._reglages_host.addWidget(widget)
+        self._rendre_toggle()
+
+    def _rendre_toggle(self) -> None:
+        self._toggle.setText(f"{'▾' if self._deplie else '▸'} Réglages ({self._n_reglages})")
+        self._toggle.setVisible(bool(self._reglages) and bool(self.property("checked")))
+
+    def _basculer_reglages(self) -> None:
+        self._deplie = not self._deplie
+        if self._reglages is not None:
+            self._reglages.setVisible(self._deplie)
+        self._rendre_toggle()
+
     def set_checked(self, on: bool) -> None:
         self.setProperty("checked", on)
-        self._check.setText("✓" if on else "")
-        self._check.setProperty("checked", on)
+        if not on and self._deplie:
+            self._basculer_reglages()   # décochée : ses réglages se replient
+        self._rendre_check()
+        self._rendre_toggle()
         # Re-polish la carte ET ses enfants stylés (tag/nom/coche) sinon les
         # sélecteurs descendants #IndexCard[checked] #IndexTag restent figés.
         for w in (self, self._check, self._tag, self._name):
             w.style().unpolish(w)
             w.style().polish(w)
 
+    def set_locked(self, on: bool, tooltip: str = "") -> None:
+        """Verrou (MNT nécessaire aux images cochées) : cadenas et infobulle, pas de toast."""
+        self._locked = bool(on)
+        self.setProperty("locked", self._locked)
+        self.setToolTip(tooltip if on else "")
+        self._rendre_check()
+        self.style().unpolish(self)
+        self.style().polish(self)
+
+    def _rendre_check(self) -> None:
+        on = bool(self.property("checked"))
+        self._check.setProperty("checked", on)
+        if self._locked and on:
+            self._check.setText("")
+            self._check.setPixmap(colored_pixmap("lock", "#ffffff", 10, dpr=self.devicePixelRatioF()))
+        else:
+            self._check.setPixmap(QPixmap())
+            self._check.setText("✓" if on else "")
+        self._check.style().unpolish(self._check)
+        self._check.style().polish(self._check)
+
+    def _dans_les_reglages(self, pos: QPoint) -> bool:
+        """Un clic dans les réglages dépliés règle, il ne coche pas."""
+        w = self._reglages
+        if w is None or not w.isVisible():
+            return False
+        haut = w.mapTo(self, QPoint(0, 0)).y()
+        return haut - 3 <= pos.y() <= haut + w.height() + 3
+
     def mousePressEvent(self, event):  # noqa: N802 (signature Qt)
-        self.clicked.emit(self._key)
+        pos = event.position().toPoint() if hasattr(event, "position") else event.pos()
+        if not self._dans_les_reglages(pos):
+            self.clicked.emit(self._key)
         super().mousePressEvent(event)
+
+    def keyPressEvent(self, event):  # noqa: N802 (signature Qt)
+        if event.key() in (Qt.Key.Key_Space, Qt.Key.Key_Return, Qt.Key.Key_Enter):
+            self.clicked.emit(self._key)
+            return
+        super().keyPressEvent(event)
 
 
 class IndicesPage(QWidget):
@@ -257,29 +268,17 @@ class IndicesPage(QWidget):
         # descripteurs (produit, section, key, widget, kind, default) — le produit
         # porte la PORTÉE de la réinitialisation, cf. app/services/reglages_defaut.
         self._adv_fields: list = []
-        self._reset_btns: dict = {}       # clé de produit → bouton « ↺ Défauts »
-        self._activate_checks: dict = {}  # clé RVT → QCheckBox « Indice activé »
+        self._reset_btns: dict = {}       # clé de produit → bouton « ↺ »
         self._fiches_cache = None         # fiches des produits, chargées à la demande
         self._comparaison_cache = None    # tableaux comparatifs, lus en même temps
-        self._tab_index: dict = {}        # clé RVT → index d'onglet (badge OFF)
+        self._reglages: dict = {}         # clé de produit → widget de ses réglages (accordéon)
         self._build()
         self._refresh()
 
     # ------------------------------------------------------------------
     def _build(self) -> None:
+        self._build_reglages()   # les champs d'abord : les cartes les reçoivent
         root = QVBoxLayout(self)
-        root.setContentsMargins(0, 0, 0, 0)
-        root.setSpacing(0)
-        self._stack = QStackedWidget()
-        self._overview_page = self._build_overview()
-        self._advanced_page = self._build_advanced()
-        self._stack.addWidget(self._overview_page)   # [0]
-        self._stack.addWidget(self._advanced_page)    # [1]
-        root.addWidget(self._stack)
-
-    def _build_overview(self) -> QWidget:
-        page = QWidget()
-        root = QVBoxLayout(page)
         root.setContentsMargins(16, 16, 16, 16)
         root.setSpacing(12)
 
@@ -291,101 +290,69 @@ class IndicesPage(QWidget):
         self._sub.setWordWrap(True)
         root.addWidget(self._sub)
 
+        # « Comparer les images » depuis la page : les deux tableaux de la
+        # documentation RVT, en tête des fiches.
+        self._comparer_btn = QPushButton("Comparer les images ▸")
+        self._comparer_btn.setObjectName("SeeLink")
+        self._comparer_btn.setFlat(True)
+        self._comparer_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._comparer_btn.setToolTip("Quelle image pour quelle forme, et ce que chacune sait faire")
+        self._comparer_btn.clicked.connect(lambda: self._open_fiche("__comparaison__"))
+        root.addWidget(self._comparer_btn, 0, Qt.AlignmentFlag.AlignLeft)
+
         self._mode_banner = QLabel("")
         self._mode_banner.setObjectName("InfoBanner")
         self._mode_banner.setWordWrap(True)
         self._mode_banner.setVisible(False)
         root.addWidget(self._mode_banner)
 
-        # ── ① Modèle de base — même gabarit de carte que les indices ──
-        self._base_card, bv = build_card("Modèle de base", "1")
-        base_grid = QGridLayout()
-        base_grid.setHorizontalSpacing(8)
-        base_grid.setVerticalSpacing(8)
-        for i, key in enumerate(base_keys()):
-            base_grid.addWidget(self._make_card(key), i // 3, i % 3)
-        bv.addLayout(base_grid)
-        self._mnt_hint = QLabel("MNT nécessaire tant qu'une image du relief est cochée.")
-        self._mnt_hint.setObjectName("MntHint")
-        self._mnt_hint.setVisible(False)
-        # Réserver la place du hint : le cocher d'un indice (qui force MNT et
-        # affiche ce hint) ne doit pas faire grandir la carte « Modèle de base ».
-        _hint_policy = self._mnt_hint.sizePolicy()
-        _hint_policy.setRetainSizeWhenHidden(True)
-        self._mnt_hint.setSizePolicy(_hint_policy)
-        bv.addWidget(self._mnt_hint)
-        adv_hint = QLabel(
-            "Résolution, filtre PDAL et seuils : bouton « Réglages avancés… » ci-dessous."
-        )
-        adv_hint.setObjectName("MntHint")
-        adv_hint.setWordWrap(True)
-        bv.addWidget(adv_hint)
-        root.addWidget(self._base_card)
+        # ── Trois sections, un seul gabarit de carte ──
+        self._reco_card, rv = build_card("Recommandé pour commencer", "1")
+        rv.addLayout(self._grille(recommended_keys(), 3))
+        root.addWidget(self._reco_card)
 
-        # ── ② Indices de visualisation ──
-        self._rvt_card, rv = build_card("Images du relief", "2")
-        grid = QGridLayout()
-        grid.setHorizontalSpacing(8)
-        grid.setVerticalSpacing(8)
-        for i, key in enumerate(rvt_keys()):
-            grid.addWidget(self._make_card(key), i // 3, i % 3)
-        rv.addLayout(grid)
+        self._rvt_card, av = build_card("Autres images du relief", "2")
+        av.addLayout(self._grille(other_rvt_keys(), 3))
         footer = QHBoxLayout()
         self._count_label = QLabel("")
         self._count_label.setObjectName("WizardPageSub")
-        self._adv_btn = QPushButton("Réglages avancés…")
-        self._adv_btn.setObjectName("GhostButton")
-        self._adv_btn.clicked.connect(self._on_advanced)
         footer.addWidget(self._count_label)
         footer.addStretch(1)
-        footer.addWidget(self._adv_btn)
-        rv.addLayout(footer)
+        av.addLayout(footer)
         root.addWidget(self._rvt_card)
 
+        self._quality_card, qv = build_card("Qualité de la donnée", "3")
+        qv.addLayout(self._grille(quality_keys(), 3))
+        root.addWidget(self._quality_card)
+
+        # ── Marge entre dalles : une carte de la page, avec son diagnostic ──
+        root.addWidget(self._marge_card)
+
         root.addStretch(1)
-        return page
+        self._comparer_btn.setVisible(self._comparaison() is not None)
+
+    def _grille(self, keys, colonnes: int) -> QGridLayout:
+        grid = QGridLayout()
+        grid.setHorizontalSpacing(8)
+        grid.setVerticalSpacing(8)
+        for i, key in enumerate(keys):
+            grid.addWidget(self._make_card(key), i // colonnes, i % colonnes, Qt.AlignmentFlag.AlignTop)
+        for c in range(colonnes):
+            grid.setColumnStretch(c, 1)
+        return grid
 
     # ------------------------------------------------------------------
-    # Vue avancée (onglets RVT — paramètres identiques à l'ancien plugin)
+    # Réglages par image (accordéon de chaque carte — valeurs d'origine de rvt-qgis)
     # ------------------------------------------------------------------
-    def _build_advanced(self) -> QWidget:
-        page = QWidget()
-        root = QVBoxLayout(page)
-        root.setContentsMargins(16, 16, 16, 16)
-        root.setSpacing(12)
+    def _build_reglages(self) -> None:
+        """Construit tous les champs de réglage et, pour chaque image, le widget
+        que sa carte déplie (``self._reglages[clé]``), plus la carte de la marge.
 
-        header = QHBoxLayout()
-        self._adv_back_btn = QPushButton("←  Vue d'ensemble")
-        self._adv_back_btn.setObjectName("GhostButton")
-        self._adv_back_btn.clicked.connect(self._show_overview)
-        titles = QVBoxLayout()
-        titles.setSpacing(2)
-        title = QLabel("Paramètres détaillés")
-        title.setObjectName("WizardPageHeading")
-        subtitle = QLabel(
-            "Tous les réglages, image par image · valeurs d'origine de rvt-qgis"
-        )
-        subtitle.setObjectName("WizardPageSub")
-        subtitle.setWordWrap(True)
-        titles.addWidget(title)
-        titles.addWidget(subtitle)
-        # Pas de réinitialisation globale ici : elle emportait tous les produits
-        # d'un coup (demande utilisateur 2026-09-16). Chaque onglet porte la
-        # sienne, qui ne touche qu'à ses propres champs.
-        header.addWidget(self._adv_back_btn)
-        header.addSpacing(10)
-        header.addLayout(titles)
-        header.addStretch(1)
-        root.addLayout(header)
-
-        self._adv_tabs = QTabWidget()
-        self._adv_tabs.setObjectName("AdvTabs")
-        self._adv_tabs.setTabBar(_AdvTabBar())  # voile + badge « OFF » des indices off
-
-        # — Onglets du modèle de base : un produit = un onglet, qui ne porte que
-        #   SES paramètres. La résolution MNT se règle ici et nulle part ailleurs
-        #   (elle était aussi sur la vue d'ensemble, juste à côté de la résolution
-        #   densité de cet onglet : deux champs, deux valeurs, même sens apparent).
+        Pas de réinitialisation globale : elle emportait tous les produits d'un
+        coup (demande utilisateur 2026-09-16). Chaque image porte la sienne.
+        """
+        # — Produits de base : un produit = ses seuls paramètres. La résolution
+        #   MNT se règle ici et nulle part ailleurs.
         self._filter_edit = QLineEdit()
         self._filter_edit.setPlaceholderText("Ex: Classification = 2 OR Classification = 6")
         self._filter_edit.textChanged.connect(self._on_changed)
@@ -421,13 +388,8 @@ class IndicesPage(QWidget):
                  "du raster de densité, dans sa résolution (onglet Densité)."),
             ]),
         ]
-        # Onglets « nuage de points » : neutralisés hors ign_laz/local_laz (set_mode).
-        self._base_tab_indices = []
         for _key, _rows in base_tabs:
-            _idx = self._adv_tabs.addTab(self._make_param_tab(_key, _rows), product(_key).tag)
-            self._base_tab_indices.append(_idx)
-            if _key != "MNT":  # badge « OFF » tant que le produit n'est pas coché
-                self._tab_index[_key] = _idx
+            self._reglages[_key] = self._make_reglages(_key, _rows)
 
         # — HS (hs) —
         hs_az = self._mk_spin(0, 360, 315)
@@ -438,14 +400,14 @@ class IndicesPage(QWidget):
         self._reg(("rvt_params", "hs"), "sun_elevation", hs_sun, "int", 35)
         self._reg(("rvt_params", "hs"), "ve_factor", hs_ve, "int", 1)
         self._reg(("rvt_params", "hs"), "save_as_8bit", hs_8, "bool", True)
-        self._tab_index["HS"] = self._adv_tabs.addTab(self._make_param_tab("HS", [
+        self._reglages["HS"] = self._make_reglages("HS", [
             ("Azimut solaire (°)", hs_az,
              "Direction de la lumière (0 = N, 90 = E, 180 = S, 270 = O)."),
             ("Élévation solaire (°)", hs_sun,
              "Hauteur du soleil au-dessus de l'horizon."),
             ("Facteur VE", hs_ve, _HELP_VE),
             ("", hs_8, _HELP_8BIT),
-        ]), "HS")
+        ])
 
         # — M-HS (mdh) —
         # Bornes des spins = celles du moteur (moteur_indices.BORNES) : au-delà, la dalle échouait au calcul.
@@ -457,14 +419,14 @@ class IndicesPage(QWidget):
         self._reg(("rvt_params", "mdh"), "sun_elevation", mdh_sun, "int", 35)
         self._reg(("rvt_params", "mdh"), "ve_factor", mdh_ve, "int", 1)
         self._reg(("rvt_params", "mdh"), "save_as_8bit", mdh_8, "bool", True)
-        self._tab_index["M_HS"] = self._adv_tabs.addTab(self._make_param_tab("M_HS", [
+        self._reglages["M_HS"] = self._make_reglages("M_HS", [
             ("Nombre de directions", mdh_dirs,
              "Angles d'éclairage simulés. 16 = bon compromis qualité/temps."),
             ("Élévation solaire (°)", mdh_sun,
              "Hauteur du soleil au-dessus de l'horizon."),
             ("Facteur VE", mdh_ve, _HELP_VE),
             ("", mdh_8, _HELP_8BIT),
-        ]), "M-HS")
+        ])
         # 8 bits : l'image compose trois éclairages (315°, 22,5°, 90°) ; le nombre de directions ne sert qu'au
         # fichier flottant (décision 0.15.0 ; nom de dossier inchangé, la valeur reste enregistrée).
         cellule_directions = mdh_dirs.parentWidget()
@@ -485,7 +447,7 @@ class IndicesPage(QWidget):
         self._reg(("rvt_params", "svf"), "radius", svf_radius, "int", 10)
         self._reg(("rvt_params", "svf"), "ve_factor", svf_ve, "int", 1)
         self._reg(("rvt_params", "svf"), "save_as_8bit", svf_8, "bool", True)
-        self._tab_index["SVF"] = self._adv_tabs.addTab(self._make_param_tab("SVF", [
+        self._reglages["SVF"] = self._make_reglages("SVF", [
             ("Suppression du bruit", svf_noise, _HELP_BRUIT),
             ("Nombre de directions", svf_dirs,
              "Directions d'horizon échantillonnées autour de chaque pixel."),
@@ -493,7 +455,7 @@ class IndicesPage(QWidget):
              "Distance de recherche de l'horizon, en pixels."),
             ("Facteur VE", svf_ve, _HELP_VE),
             ("", svf_8, _HELP_8BIT),
-        ]), "SVF")
+        ])
 
         # — OPNS (opns) : openness, un seul réglage de type comme rvt-qgis —
         # Bornes des spins = bornes DURES de rvt:rvt_opns (rayon 10-50,
@@ -513,7 +475,7 @@ class IndicesPage(QWidget):
         self._reg(("rvt_params", "opns"), "radius", opns_radius, "int", 10)
         self._reg(("rvt_params", "opns"), "ve_factor", opns_ve, "int", 1)
         self._reg(("rvt_params", "opns"), "save_as_8bit", opns_8, "bool", True)
-        self._tab_index["OPNS"] = self._adv_tabs.addTab(self._make_param_tab("OPNS", [
+        self._reglages["OPNS"] = self._make_reglages("OPNS", [
             ("Type d'ouverture", opns_type,
              "Positive : ce qui dépasse du voisinage (tertres, crêtes, lèvres de "
              "cratère). Négative : ce qui s'y enfonce (fossés, chemins creux). "
@@ -527,7 +489,7 @@ class IndicesPage(QWidget):
              "des formes vues : 10 px = 5 m au pas de 0,5 m."),
             ("Facteur VE", opns_ve, _HELP_VE),
             ("", opns_8, _HELP_8BIT),
-        ]), "OPNS")
+        ])
 
         # — Slope (slope) —
         slope_unit = QComboBox()
@@ -539,11 +501,11 @@ class IndicesPage(QWidget):
         self._reg(("rvt_params", "slope"), "unit", slope_unit, "combo", 0)
         self._reg(("rvt_params", "slope"), "ve_factor", slope_ve, "int", 1)
         self._reg(("rvt_params", "slope"), "save_as_8bit", slope_8, "bool", True)
-        self._tab_index["SLO"] = self._adv_tabs.addTab(self._make_param_tab("SLO", [
+        self._reglages["SLO"] = self._make_reglages("SLO", [
             ("Unité", slope_unit, "Pente exprimée en degrés ou en pourcentage."),
             ("Facteur VE", slope_ve, _HELP_VE),
             ("", slope_8, _HELP_8BIT),
-        ]), "SLO")
+        ])
 
         # — LD (ldo) —
         ld_ang = self._mk_spin(4, 32, 15)
@@ -563,7 +525,7 @@ class IndicesPage(QWidget):
         self._reg(("rvt_params", "ldo"), "observer_h", ld_obs, "float", 1.7)
         self._reg(("rvt_params", "ldo"), "ve_factor", ld_ve, "int", 1)
         self._reg(("rvt_params", "ldo"), "save_as_8bit", ld_8, "bool", True)
-        self._tab_index["LD"] = self._adv_tabs.addTab(self._make_param_tab("LD", [
+        self._reglages["LD"] = self._make_reglages("LD", [
             ("Résolution angulaire (°)", ld_ang,
              "Pas angulaire du balayage. Plus petit = plus précis mais plus lent."),
             ("Rayon min (px)", ld_rmin,
@@ -574,7 +536,7 @@ class IndicesPage(QWidget):
              "Hauteur de l'œil virtuel au-dessus du sol."),
             ("Facteur VE", ld_ve, _HELP_VE),
             ("", ld_8, _HELP_8BIT),
-        ]), "LD")
+        ])
 
         # — SLRM (slrm) —
         slrm_radius = self._mk_spin(10, 50, 20)
@@ -583,12 +545,12 @@ class IndicesPage(QWidget):
         self._reg(("rvt_params", "slrm"), "radius", slrm_radius, "int", 20)
         self._reg(("rvt_params", "slrm"), "ve_factor", slrm_ve, "int", 1)
         self._reg(("rvt_params", "slrm"), "save_as_8bit", slrm_8, "bool", True)
-        self._tab_index["SLRM"] = self._adv_tabs.addTab(self._make_param_tab("SLRM", [
+        self._reglages["SLRM"] = self._make_reglages("SLRM", [
             ("Rayon (px)", slrm_radius,
              "Rayon du lissage : sépare le micro-relief du relief général."),
             ("Facteur VE", slrm_ve, _HELP_VE),
             ("", slrm_8, _HELP_8BIT),
-        ]), "SLRM")
+        ])
 
         # — VAT (vat) —
         vat_terrain = QComboBox()
@@ -599,11 +561,11 @@ class IndicesPage(QWidget):
         vat_8 = self._mk_check()
         self._reg(("rvt_params", "vat"), "terrain_type", vat_terrain, "combo", 0)
         self._reg(("rvt_params", "vat"), "save_as_8bit", vat_8, "bool", True)
-        self._tab_index["VAT"] = self._adv_tabs.addTab(self._make_param_tab("VAT", [
+        self._reglages["VAT"] = self._make_reglages("VAT", [
             ("Type de terrain", vat_terrain,
              "Préréglage adapté au relief dominant de la zone."),
             ("", vat_8, _HELP_8BIT),
-        ]), "VAT")
+        ])
 
         # — MSTP (mstp) : position topographique multi-échelle —
         mstp_lmin = self._mk_spin(1, 100000, 3)
@@ -633,7 +595,7 @@ class IndicesPage(QWidget):
         self._reg(("rvt_params", "mstp"), "broad_scale_step", mstp_bstep, "int", 60)
         self._reg(("rvt_params", "mstp"), "lightness", mstp_light, "float", 0.9)
         self._reg(("rvt_params", "mstp"), "save_as_8bit", mstp_8, "bool", True)
-        self._tab_index["MSTP"] = self._adv_tabs.addTab(self._make_param_tab("MSTP", [
+        self._reglages["MSTP"] = self._make_reglages("MSTP", [
             ("Échelle locale — rayon min (px)", mstp_lmin,
              "Détails fins (canal bleu de la composition RGB)."),
             ("Échelle locale — rayon max (px)", mstp_lmax, "Borne haute de l'échelle locale."),
@@ -648,14 +610,14 @@ class IndicesPage(QWidget):
             ("Échelle large — pas (px)", mstp_bstep, "Pas d'échantillonnage de l'échelle large."),
             ("Luminosité", mstp_light, "Clarté globale de l'image composite (0.1–5)."),
             ("", mstp_8, _HELP_8BIT),
-        ]), "MSTP")
+        ])
 
         # — CVAT (cvat) : VAT combiné (general + flat), composition figée —
         cvat_8 = self._mk_check()
         self._reg(("rvt_params", "cvat"), "save_as_8bit", cvat_8, "bool", True)
-        self._tab_index["CVAT"] = self._adv_tabs.addTab(self._make_param_tab("CVAT", [
+        self._reglages["CVAT"] = self._make_reglages("CVAT", [
             ("", cvat_8, _HELP_8BIT),
-        ]), "CVAT")
+        ])
 
         # — PRISM (prism) : ouverture prismatique, combinaison 1 du blender —
         # Même forme que le VAT : le préréglage de terrain vaut pour TOUTE
@@ -673,11 +635,11 @@ class IndicesPage(QWidget):
         prism_8 = self._mk_check()
         self._reg(("rvt_params", "prism"), "terrain_type", prism_terrain, "combo", 0)
         self._reg(("rvt_params", "prism"), "save_as_8bit", prism_8, "bool", True)
-        self._tab_index["PRISM"] = self._adv_tabs.addTab(self._make_param_tab("PRISM", [
+        self._reglages["PRISM"] = self._make_reglages("PRISM", [
             ("Type de terrain", prism_terrain,
              "Préréglage adapté au relief dominant de la zone."),
             ("", prism_8, _HELP_8BIT),
-        ]), "PRISM")
+        ])
 
         # — CRIM (crim) : relief coloré par la pente —
         crim_cmap = QComboBox()
@@ -706,7 +668,7 @@ class IndicesPage(QWidget):
         self._reg(("rvt_params", "crim"), "min_colormap_cut", crim_cut_min, "float", 0.0)
         self._reg(("rvt_params", "crim"), "max_colormap_cut", crim_cut_max, "float", 1.0)
         self._reg(("rvt_params", "crim"), "save_as_8bit", crim_8, "bool", True)
-        self._tab_index["CRIM"] = self._adv_tabs.addTab(self._make_param_tab("CRIM", [
+        self._reglages["CRIM"] = self._make_reglages("CRIM", [
             ("Palette de couleurs", crim_cmap,
              "Palette appliquée à la PENTE du terrain, jamais à l'altitude."),
             ("Coupe basse de la palette", crim_cut_min,
@@ -714,11 +676,9 @@ class IndicesPage(QWidget):
             ("Coupe haute de la palette", crim_cut_max,
              "Retire le haut de la palette (1 = palette entière)."),
             ("", crim_8, _HELP_8BIT),
-        ]), "CRIM")
+        ])
 
-        root.addWidget(self._adv_tabs)
-
-        # — Tuilage (global à tous les indices) —
+        # — Marge entre dalles (vaut pour toutes les images) —
         ov_card, ovv = build_card("Marge entre dalles")
         self._overlap_spin = self._mk_spin(0, 100, 20)
         self._reg(("processing",), "tile_overlap", self._overlap_spin, "int", 20,
@@ -757,10 +717,7 @@ class IndicesPage(QWidget):
         ovv.addWidget(self._ov_marge)
         ovv.addWidget(ov_hint)
         ovv.addWidget(self._ctx_hint)
-        root.addWidget(ov_card)
-
-        root.addStretch(1)
-        return page
+        self._marge_card = ov_card
 
     # — fabriques de widgets (numériques wheel-safe) —
     def _mk_spin(self, lo: int, hi: int, val: int) -> NoWheelSpinBox:
@@ -797,44 +754,22 @@ class IndicesPage(QWidget):
         assert produit, f"champ {key} sans image : la réinitialisation le raterait"
         self._adv_fields.append((produit, section, key, widget, kind, default))
 
-    def _make_param_tab(self, key: str, rows) -> QWidget:
-        """Onglet de paramètres : en-tête (nom + description [+ « Indice activé »
-        pour les indices RVT]) puis grille 2 colonnes de champs avec aide.
+    def _make_reglages(self, key: str, rows) -> QWidget:
+        """Les réglages d'une image, dépliés dans sa carte : grille 2 colonnes de
+        champs avec aide, et le « ↺ » qui ne rend que SES valeurs par défaut.
 
         ``rows`` = liste de ``(label, widget, help_text)``. Un ``QLineEdit``
         occupe les deux colonnes (champ texte large, ex. filtre PDAL).
         """
         tab = QWidget()
+        tab.setObjectName("CardReglages")
         outer = QVBoxLayout(tab)
-        outer.setContentsMargins(14, 12, 14, 12)
-        outer.setSpacing(12)
+        outer.setContentsMargins(0, 4, 0, 2)
+        outer.setSpacing(8)
 
-        # — En-tête : nom complet + description + (case « Indice activé ») —
-        head = QHBoxLayout()
-        titles = QVBoxLayout()
-        titles.setSpacing(2)
-        title = QLabel(product(key).full_name)
-        title.setObjectName("AdvIndexTitle")
-        desc = QLabel(_TAB_DESC.get(key, product(key).description))
-        desc.setObjectName("AdvIndexDesc")
-        desc.setWordWrap(True)
-        titles.addWidget(title)
-        titles.addWidget(desc)
-        head.addLayout(titles, 1)
-        if key != "MNT":  # MNT : coché/verrouillé par les indices RVT, pas ici
-            chk = QCheckBox("Image activée")
-            chk.setObjectName("ActivateCheck")
-            chk.toggled.connect(lambda on, k=key: self._on_activate_toggled(k, on))
-            self._activate_checks[key] = chk
-            head.addWidget(chk, 0, Qt.AlignmentFlag.AlignTop)
-        head.addWidget(self._mk_reset_btn(key, product(key).full_name), 0,
-                       Qt.AlignmentFlag.AlignTop)
-        outer.addLayout(head)
-
-        # — Grille 2 colonnes de champs —
         grid = QGridLayout()
-        grid.setHorizontalSpacing(24)
-        grid.setVerticalSpacing(12)
+        grid.setHorizontalSpacing(16)
+        grid.setVerticalSpacing(8)
         grid.setColumnStretch(0, 1)
         grid.setColumnStretch(1, 1)
         r = c = 0
@@ -853,7 +788,11 @@ class IndicesPage(QWidget):
                     c = 0
                     r += 1
         outer.addLayout(grid)
-        outer.addStretch(1)
+        pied = QHBoxLayout()
+        pied.addStretch(1)
+        pied.addWidget(self._mk_reset_btn(key, product(key).full_name), 0,
+                       Qt.AlignmentFlag.AlignTop)
+        outer.addLayout(pied)
         return tab
 
     @staticmethod
@@ -911,8 +850,17 @@ class IndicesPage(QWidget):
         card.fiche_requested.connect(self._open_fiche)
         chemin, cadrage = self._vignette_de(key)
         card.set_vignette(chemin, cadrage)
+        reglages = self._reglages.get(key)
+        if reglages is not None:
+            card.set_reglages(reglages, len(champs_du_produit(self._adv_fields, key)))
         self._index_cards[key] = card
         return card
+
+    def _comparaison(self):
+        """Les tableaux comparatifs, ou ``None`` s'il n'y en a pas."""
+        self._fiches()
+        c = self._comparaison_cache
+        return c if (c is not None and not getattr(c, "est_vide", True)) else None
 
     def _fiches(self):
         """Les fiches de tous les produits, lues une fois par session.
@@ -952,40 +900,20 @@ class IndicesPage(QWidget):
         fiches = self._fiches()   # remplit aussi le cache de comparaison
         ouvrir_fiche_indice(
             fiches, _DATA_DIR, key, parent=self,
-            comparaison=self._comparaison_cache,
+            comparaison=self._comparaison(),
         )
 
     # ------------------------------------------------------------------
     # Logique
     # ------------------------------------------------------------------
     def _on_product_clicked(self, key: str) -> None:
-        new, toast = toggle(self._products, key)
-        if toast:
-            show_toast(self, toast)
+        new, verrou = toggle(self._products, key)
+        if verrou:
+            return   # MNT nécessaire aux images cochées : la carte le dit (cadenas, infobulle)
         self._products = new
         self._refresh()
         if not self._loading:
             self.changed.emit()
-
-    def _on_activate_toggled(self, key: str, checked: bool) -> None:
-        """Case « Indice activé » d'un onglet détaillé : même logique que les
-        cartes de la vue d'ensemble (l'activation d'un indice RVT force MNT)."""
-        if self._loading:
-            return
-        if checked == bool(self._products.get(key, False)):
-            return  # déjà à l'état voulu (typiquement une resynchronisation)
-        new, toast = toggle(self._products, key)
-        if toast:
-            show_toast(self, toast)
-        self._products = new
-        self._refresh()
-        self.changed.emit()
-
-    def _on_advanced(self) -> None:
-        self._stack.setCurrentWidget(self._advanced_page)
-
-    def _show_overview(self) -> None:
-        self._stack.setCurrentWidget(self._overview_page)
 
     def _on_changed(self, *_args) -> None:
         self._update_context_hint()
@@ -1025,20 +953,16 @@ class IndicesPage(QWidget):
             )
 
     def _refresh(self) -> None:
-        self._mnt_hint.setVisible(requires_mnt(self._products))
         for key, card in self._index_cards.items():
             card.set_checked(self._products.get(key, False))
-        # Vue détaillée : cases « Indice activé » + badges « OFF » sur les onglets.
-        for key, chk in self._activate_checks.items():
-            on = self._products.get(key, False)
-            chk.blockSignals(True)
-            chk.setChecked(on)
-            chk.blockSignals(False)
-        tab_bar = self._adv_tabs.tabBar()
-        for key, idx in self._tab_index.items():
-            tab_bar.setTabData(idx, not self._products.get(key))  # True = désactivé
-            tab_bar.setTabText(idx, product(key).tag)  # force le recalcul de largeur
-        tab_bar.update()
+        mnt = self._index_cards.get("MNT")
+        if mnt is not None:
+            actifs = [product(k).tag for k in rvt_keys() if self._products.get(k)]
+            mnt.set_locked(
+                requires_mnt(self._products),
+                f"Nécessaire aux images cochées : {', '.join(actifs)}. Décochez-les pour retirer le MNT."
+                if actifs else "",
+            )
         n = count_selected(self._products)
         self._count_label.setText(
             f"{pluriel(n, 'image')} cochée{'s' if n > 1 else ''}"
@@ -1055,8 +979,14 @@ class IndicesPage(QWidget):
     # ------------------------------------------------------------------
     def set_mode(self, mode: str) -> None:
         self._mode = mode
-        self._base_card.setVisible(mode not in ("existing_mnt", "existing_rvt"))
+        laz = mode in ("ign_laz", "local_laz")
+        # Depuis un MNT existant, le relief nu est la donnée d'entrée et la qualité
+        # de la donnée n'existe pas ; depuis des images existantes, rien à calculer.
+        self._index_cards["MNT"].setVisible(laz)
+        self._quality_card.setVisible(laz)
+        self._reco_card.setVisible(mode != "existing_rvt")
         self._rvt_card.setVisible(mode != "existing_rvt")
+        self._marge_card.setVisible(mode != "existing_rvt")
         if mode == "existing_mnt":
             self._mode_banner.setText(
                 "ℹ  Vous fournissez le MNT : le relief nu et la qualité de la donnée ne sont pas recalculés."
@@ -1069,10 +999,6 @@ class IndicesPage(QWidget):
             self._mode_banner.setVisible(True)
         else:
             self._mode_banner.setVisible(False)
-        # Les onglets du modèle de base n'ont de sens que pour les modes qui
-        # calculent un MNT depuis un nuage de points.
-        for idx in self._base_tab_indices:
-            self._adv_tabs.setTabEnabled(idx, mode in ("ign_laz", "local_laz"))
         # Marge entre dalles : seuls les modes LAZ fusionnent des voisines (sans effet ailleurs, mesuré au pixel).
         self._ov_marge.setVisible(mode in ("ign_laz", "local_laz"))
         self._ov_hint.setVisible(mode in ("ign_laz", "local_laz"))
@@ -1086,9 +1012,6 @@ class IndicesPage(QWidget):
             if self._products.get(key):
                 self._products[key] = False
                 purged = True
-        # En existing_rvt l'étape est sans objet : revenir à la vue d'ensemble.
-        if mode == "existing_rvt":
-            self._show_overview()
         self._refresh()
         # Persiste la purge (autosave nettoie last_ui_config). Garde anti-boucle
         # identique à activate_product ; au démarrage le signal n'est pas encore
@@ -1132,17 +1055,14 @@ class IndicesPage(QWidget):
     def set_readonly(self, ro: bool) -> None:
         """Verrouille la saisie pour consultation pendant un run (lecture seule).
 
-        Désactive uniquement les widgets de *saisie* ; les widgets de
-        navigation/dépliage (« Réglages avancés… », retour, barre d'onglets RVT,
-        scroll) restent actifs pour permettre de tout consulter. N'agit que sur
+        Désactive les cartes et leurs champs ; le défilement reste actif pour
+        tout consulter. N'agit que sur
         ``setEnabled``/``setReadOnly`` → aucun signal ``changed`` ni autosave.
         """
         for btn in self._reset_btns.values():
             btn.setEnabled(not ro)
         for card in self._index_cards.values():
             card.setEnabled(not ro)
-        for chk in self._activate_checks.values():
-            chk.setEnabled(not ro)
         for _p, _section, _key, widget, kind, _default in self._adv_fields:
             widget.setEnabled(not ro)
             if kind == "text":

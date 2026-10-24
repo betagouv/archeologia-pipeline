@@ -37,7 +37,7 @@ Détail dans [Étape 1 · Vos données](etape-1-source.md).
 
 ## Étape 2 · Images du relief
 
-Gardez le **MNT**, puis deux images qui se complètent bien pour un premier regard : **SVF** (facteur de vue du ciel, qui révèle les creux) et **LD** (dominance locale, qui fait ressortir les reliefs). Chaque carte a une vignette et un lien **Fiche** qui explique ce que montre l'image et ce qu'elle ne montre pas ; l'entrée **Comparer les images** dit laquelle choisir pour quel type de vestige.
+Les trois images recommandées sont déjà cochées : le **MNT** (le relief nu), **SVF** (facteur de vue du ciel, qui révèle les creux) et **LD** (dominance locale, qui fait ressortir les reliefs). Chaque carte a une vignette et un bouton **ⓘ** qui explique ce que montre l'image et ce qu'elle ne montre pas ; le lien **Comparer les images** dit laquelle choisir pour quel type de vestige.
 
 Laissez les réglages par défaut. Détail dans [Étape 2 · Images du relief](etape-2-produits.md).
 

@@ -25,6 +25,7 @@ from qgis.PyQt.QtWidgets import (
     QVBoxLayout,
 )
 
+from .info_button import InfoButton
 from .no_wheel import NoWheelDoubleSpinBox
 from .profil_scores import ProfilScoresWidget
 from .vignette import pixmap_ajuste
@@ -168,13 +169,9 @@ class EntityCard(QFrame):
         # devient une largeur MINIMALE, et deux colonnes de cartes ne tiennent
         # plus dans la page → barre de défilement horizontale (2026-09-17).
         self._label.setWordWrap(True)
-        self._fiche_btn = QPushButton("Fiche")
-        self._fiche_btn.setObjectName("EntityFicheBtn")
-        self._fiche_btn.setFlat(True)
-        self._fiche_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        self._fiche_btn.setToolTip(
-            "Illustration, provenance des données d'entraînement, hors-cible "
-            "et contexte d'utilisation"
+        # Un seul patron de fiche : le « ⓘ » rond (interface rationalisée, 2026-10-24).
+        self._fiche_btn = InfoButton(
+            "Illustration, provenance des données d'entraînement, hors-cible et contexte d'utilisation"
         )
         self._fiche_btn.clicked.connect(lambda: self.fiche_requested.emit(self._id))
         self._rvt_tag = QLabel("")

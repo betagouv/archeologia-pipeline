@@ -1,8 +1,8 @@
 # Étape 2 · Images du relief
 
-Cochez les images du relief à calculer pour chaque dalle. Chaque carte porte une vignette et un lien **Fiche** : ce que montre l'image, dans quelle optique s'en servir, ce qu'elle ne montre pas, comment elle est calculée, ses réglages et ses sources. Avant de choisir entre deux images, ouvrez **Comparer les images**, en tête de la liste des fiches : deux tableaux issus de la documentation de Relief Visualization Toolbox disent quel produit convient à quel type de forme.
+Cochez les images du relief à calculer pour chaque dalle. Trois sections : **Recommandé pour commencer** (le relief nu MNT, les creux SVF, les reliefs LD, cochées d'avance à la première ouverture), **Autres images du relief**, et **Qualité de la donnée** (densité et couverture des points sol, pour les points de départ LiDAR). Un clic n'importe où sur une carte la coche ou la décoche ; au clavier, Tab passe de carte en carte et Espace coche. Le bouton **ⓘ** de chaque carte ouvre sa fiche : ce que montre l'image, dans quelle optique s'en servir, ce qu'elle ne montre pas, comment elle est calculée, ses réglages et ses sources. Avant de choisir entre deux images, le lien **Comparer les images** en haut de la page ouvre deux tableaux issus de la documentation de Relief Visualization Toolbox, qui disent quelle image convient à quel type de forme.
 
-[![Étape 2 : le relief nu, la qualité de la donnée et les images du relief, chacune avec sa vignette et sa fiche](img/etape2-produits.png)](img/etape2-produits.png)
+[![Étape 2 : les images recommandées cochées d'avance, les autres images et la qualité de la donnée, chaque carte avec sa vignette et son « ⓘ »](img/etape2-produits.png)](img/etape2-produits.png)
 
 ## Les images du relief
 
@@ -30,14 +30,14 @@ Les détails de calcul et de lecture sont dans la fiche de chaque image, pas ici
 
 ## Ce qu'il faut savoir avant de cocher
 
-- **Le MNT est nécessaire** tant qu'une image du relief est cochée : il en est la source. Pour le décocher, décochez d'abord les images.
+- **Le MNT est nécessaire** tant qu'une image du relief est cochée : il en est la source. Sa carte porte alors un cadenas et dit, en infobulle, quelles images le retiennent ; pour le décocher, décochez-les d'abord.
 - **Un modèle de détection a besoin d'une image précise.** À l'étape 3, chaque structure indique l'image attendue ; si elle n'est pas cochée ici, un bouton **+ Cocher** l'ajoute.
 - **Chaque image cochée est calculée pour chaque dalle.** Décocher les images que vous ne regarderez pas raccourcit le traitement.
 - Les compositions (VAT, CVAT, PRISM, CRIM) sont calculées à partir des mêmes ingrédients que les images simples ; les cocher n'exige pas de cocher leurs ingrédients.
 
-## Réglages avancés
+## Réglages
 
-Le bouton **Réglages avancés…** ouvre une vue à onglets : un onglet par image cochée, plus les onglets communs. Chaque onglet commence par une phrase qui dit ce que montre l'image ; sous chaque réglage, une ligne dit à quoi il sert. Un bouton **↺ Défauts** par onglet remet les valeurs par défaut de cette seule image.
+Une carte cochée porte le lien **▸ Réglages (n)** : il déplie ses réglages dans la carte, sous la description, sans quitter la page ; la sélection reste visible et un clic dans les réglages règle sans décocher. Sous chaque réglage, une ligne dit à quoi il sert. Le bouton **↺** de la carte, « Revenir aux valeurs par défaut de … », ne remet que les valeurs de cette image.
 
 Les réglages qui comptent le plus :
 
@@ -54,7 +54,7 @@ Les réglages qui comptent le plus :
 
 ## Marge entre dalles
 
-La carte **Marge entre dalles** règle la **marge** ajoutée autour de chaque dalle lors du calcul des images. Les dalles voisines sont fusionnées avec cette marge, puis chaque image est recadré sur la dalle : les images se raccordent sans couture et les objets en bordure sont vus entiers par la détection.
+En bas de la page, la carte **Marge entre dalles** règle la **marge** ajoutée autour de chaque dalle lors du calcul des images. Les dalles voisines sont fusionnées avec cette marge, puis chaque image est recadré sur la dalle : les images se raccordent sans couture et les objets en bordure sont vus entiers par la détection.
 
 Sous les réglages, une ligne de diagnostic compare cette marge au rayon le plus grand demandé par vos images :
 
@@ -65,4 +65,4 @@ En MNT existant comme en Images du relief existantes, le champ de marge est masq
 
 ## Point de départ MNT existant
 
-Le relief nu et la qualité de la donnée ne sont pas proposés : le MNT est votre donnée d'entrée, et la densité comme la couverture se calculent depuis les points.
+Le relief nu et la qualité de la donnée ne sont pas proposés : le MNT est votre donnée d'entrée, et la densité comme la couverture se calculent depuis les points. Depuis des images du relief existantes, la page est sans objet et le dit.

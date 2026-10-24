@@ -20,6 +20,7 @@ from src.app.services.reglages_defaut import (
     a_des_surcharges,
     champs_du_produit,
     effacer_surcharges,
+    fusionner_surcharge,
     phrase_entite_reinitialisee,
     phrase_produit_reinitialise,
     produit_de_section,
@@ -189,4 +190,18 @@ def test_a_des_surcharges_ignore_un_argument_qui_n_est_pas_un_dict():
 def test_phrase_entite_vide_quand_rien_n_a_bouge():
     assert phrase_entite_reinitialisee("Cratères", 0) == ""
     assert "Cratères" in phrase_entite_reinitialisee("Cratères", 1)
+
+
+# ------------------------------------------------------- une clé à la fois (C-01)
+
+def test_fusionner_surcharge_ne_recopie_pas_l_autre_champ():
+    """Régler le seuil ne doit pas figer l'aire minimale (ni l'inverse) : seule la clé
+    modifiée devient une surcharge, l'autre suit toujours le modèle."""
+    s1 = fusionner_surcharge({}, "parcellaire", {"confidence_threshold": 0.3})
+    assert s1 == {"parcellaire": {"confidence_threshold": 0.3}}
+    s2 = fusionner_surcharge(s1, "parcellaire", {"min_area_m2": 120.0})
+    assert s2 == {"parcellaire": {"confidence_threshold": 0.3, "min_area_m2": 120.0}}
+    assert s1 == {"parcellaire": {"confidence_threshold": 0.3}}, "pure : l'entrée n'est pas modifiée"
+    assert fusionner_surcharge(s2, "", {"confidence_threshold": 0.1}) == s2, "clé vide : rien"
+    assert fusionner_surcharge(s2, "four", {}) == s2, "rien à fusionner : rien"
 

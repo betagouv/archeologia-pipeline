@@ -1,19 +1,22 @@
-"""Étape 3 — Détection IA (sélection par entités).
+"""Étape 3 — Structures à chercher (sélection par structures).
 
-L'utilisateur coche des **entités** ; l'orchestrateur
+L'utilisateur coche des **structures** ; l'orchestrateur
 (:mod:`app.services.model_orchestrator`) résout automatiquement les modèles et
-les runs ``(modèle, RVT)``. Chaque entité affiche son modèle assigné (modifiable
-si plusieurs candidats) et une option « regrouper en zones » (clustering) si le
-modèle en propose. Le tag RVT passe en orange si l'indice n'est pas activé à
-l'étape 2 (avec un bouton « + Activer »).
+les analyses ``(modèle, image du relief)``. Chaque structure est une ligne sous
+sa morphologie (:class:`~ui.widgets.entity_row.EntityRow`) : modèle retenu
+(modifiable si plusieurs candidats), option « regrouper en zones » si le modèle
+en propose, image lue par le modèle en orange si elle n'est pas cochée à
+l'étape 2 (avec « l'ajouter »). Les fiches (structure, modèle) ne s'ouvrent pas
+ici : la page émet ``fiche_requested`` / ``modele_requested`` et l'assistant les
+pose dans son panneau latéral (interface rationalisée, 2026-10-24).
 """
 from __future__ import annotations
 
+import html
 from pathlib import Path
 
 from qgis.PyQt.QtCore import Qt, pyqtSignal
 from qgis.PyQt.QtWidgets import (
-    QButtonGroup,
     QCheckBox,
     QFrame,
     QHBoxLayout,
@@ -21,7 +24,6 @@ from qgis.PyQt.QtWidgets import (
     QPushButton,
     QScrollArea,
     QStackedWidget,
-    QToolButton,
     QVBoxLayout,
     QWidget,
 )
@@ -37,7 +39,8 @@ from ...app.services.model_orchestrator import (
     resolve_runs_from_entities,
 )
 from ..widgets.card import build_card
-from ..widgets.entity_card import EntityCard
+from ..widgets.entity_row import EntityRow
+from ..widgets.info_button import InfoButton
 from ..widgets.profil_scores import couleur_de_classe
 from ...app.services.fiabilite_observee import observer
 from ...app.services.profil_scores import profil_pour_classe
@@ -45,6 +48,7 @@ from ...app.services.cout_modele import infobulle, libelle_menu
 from ...app.services.reglages_defaut import (
     a_des_surcharges,
     effacer_surcharges,
+    fusionner_surcharge,
     phrase_entite_reinitialisee,
 )
 from ...app.services.vocabulaire import pluriel
@@ -52,9 +56,23 @@ from ..widgets.toast import show_toast
 from ..widgets.toggle_switch import ToggleSwitch
 
 
+class _CadreInterrupteur(QFrame):
+    """Le bandeau de l'interrupteur : un clic n'importe où dessus (titre, phrase,
+    badge) bascule la détection — l'interrupteur seul était une cible de 36 px."""
+
+    clicked = pyqtSignal()
+
+    def mousePressEvent(self, event):  # noqa: N802 (signature Qt)
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.clicked.emit()
+        super().mousePressEvent(event)
+
+
 class DetectionPage(QWidget):
     changed = pyqtSignal()
-    activate_rvt = pyqtSignal(str)  # demande d'activer un indice RVT à l'étape 2
+    activate_rvt = pyqtSignal(str)        # demande de cocher une image du relief à l'étape 2
+    fiche_requested = pyqtSignal(str)     # id de structure → le panneau ⓘ de l'assistant
+    modele_requested = pyqtSignal(object)  # InstalledModel → le panneau ⓘ de l'assistant
 
     def __init__(self, plugin_root, parent=None):
         super().__init__(parent)
@@ -81,15 +99,12 @@ class DetectionPage(QWidget):
         self._active_rvts: set = set()
         self._loading = False
         self._readonly = False
-        self._cards: dict = {}
-        self._filter = "all"            # filtre morphologique courant (affichage only)
-        self._filter_buttons: dict = {}
-        self._section_widgets: dict = {}  # morpho_key -> (header, container)
+        self._rows: dict = {}
         self._run_rows: list = []
         self._content_scroll = None
         self._sel_count = None
-        # Runs d'une config legacy (sans entités) à préserver tant que
-        # l'utilisateur ne reprend pas la main par les entités. Cf. load_from.
+        # Analyses d'une configuration ancienne (sans structures) à préserver tant
+        # que l'utilisateur ne reprend pas la main par les structures. Cf. load_from.
         self._legacy_runs = None
 
         self._build()
@@ -101,10 +116,12 @@ class DetectionPage(QWidget):
         root.setContentsMargins(16, 16, 16, 16)
         root.setSpacing(12)
 
-        # ── Toggle d'activation (interrupteur pilule + libellé + badge) ──
-        toggle = QFrame()
+        # ── Interrupteur (pilule + libellé + badge), tout le bandeau cliquable ──
+        toggle = _CadreInterrupteur()
         toggle.setObjectName("DetectionToggle")
         toggle.setProperty("on", "false")
+        toggle.setCursor(Qt.CursorShape.PointingHandCursor)
+        toggle.clicked.connect(self._basculer_interrupteur)
         self._toggle_frame = toggle
         tl = QHBoxLayout(toggle)
         tl.setContentsMargins(14, 10, 14, 10)
@@ -127,7 +144,7 @@ class DetectionPage(QWidget):
         tl.addWidget(opt, 0, Qt.AlignmentFlag.AlignVCenter)
         root.addWidget(toggle)
 
-        # ── Empty state (détection désactivée) ──
+        # ── Détection désactivée ──
         self._empty_state = QFrame()
         self._empty_state.setObjectName("EmptyState")
         es = QVBoxLayout(self._empty_state)
@@ -157,64 +174,25 @@ class DetectionPage(QWidget):
         cv.setSpacing(12)
 
         ent_card, ev = build_card("Structures", "1")
-        self._sel_count = ent_card.counter  # « X sur Y sélectionnées » dans l'en-tête
+        self._sel_count = ent_card.counter  # « X sur Y cochées » dans l'en-tête
         adv_row = QHBoxLayout()
         adv_row.addStretch(1)
         # Plus de réinitialisation globale ici : elle effaçait les surcharges de
-        # TOUTES les entités d'un coup (demande utilisateur 2026-09-16). Chaque
-        # carte porte la sienne, sur sa ligne de réglages avancés, et ne remet
-        # que ses propres valeurs — le piège que le bouton global adressait (un
-        # seuil ancien qui tire tout le run vers son minimum, cf.
-        # model_orchestrator) reste couvert, entité par entité.
+        # TOUTES les structures d'un coup (demande utilisateur 2026-09-16). Chaque
+        # ligne porte la sienne et ne remet que ses propres valeurs.
         self._adv_check = QCheckBox("Seuils et réglages par structure")
         self._adv_check.setObjectName("WizardPageSub")
         self._adv_check.toggled.connect(self._on_advanced_toggled)
         adv_row.addWidget(self._adv_check)
         ev.addLayout(adv_row)
 
-        # ── Filtres morphologiques (organisation seulement, jamais la sélection) ──
-        groups = group_entities_by_morphology(self._catalog)
-        chip_row = QHBoxLayout()
-        chip_row.setContentsMargins(0, 0, 0, 0)
-        chip_row.setSpacing(6)
-        self._chip_group = QButtonGroup(self)
-        self._chip_group.setExclusive(True)
-        self._add_filter_chip(chip_row, "all", "Tout")
-        for key, label, glyph, _ents in groups:
-            self._add_filter_chip(chip_row, key, f"{glyph} {label.split(' / ')[0]}")
-        chip_row.addStretch(1)
-        ev.addLayout(chip_row)
-        hint = QLabel("Le filtre n'affecte que l'affichage, pas la sélection.")
-        hint.setObjectName("EntityDesc")
-        ev.addWidget(hint)
-
-        # ── Sections par morphologie (en-tête + cartes en 2 colonnes) ──
-        for key, label, glyph, ents in groups:
+        # ── Une liste par morphologie : en-tête puis une ligne par structure ──
+        for key, label, glyph, ents in group_entities_by_morphology(self._catalog):
             header = QLabel(f"{glyph}  {label}")
             header.setObjectName("EntitySectionHeader")
             ev.addWidget(header)
-            container = QWidget()
-            container.setObjectName("EntitySection")
-            cols = QHBoxLayout(container)
-            cols.setContentsMargins(0, 0, 0, 0)
-            cols.setSpacing(8)
-            left = QVBoxLayout()
-            left.setContentsMargins(0, 0, 0, 0)
-            left.setSpacing(8)
-            right = QVBoxLayout()
-            right.setContentsMargins(0, 0, 0, 0)
-            right.setSpacing(8)
-            # Deux colonnes INDÉPENDANTES : développer une carte ne pousse que
-            # les cartes sous elle dans la même colonne (pas toute la grille).
-            for i, entity in enumerate(ents):
-                card = self._make_entity_card(entity)
-                (left if i % 2 == 0 else right).addWidget(card)
-            left.addStretch(1)
-            right.addStretch(1)
-            cols.addLayout(left)
-            cols.addLayout(right)
-            ev.addWidget(container)
-            self._section_widgets[key] = (header, container)
+            for entity in ents:
+                ev.addWidget(self._make_entity_row(entity))
         cv.addWidget(ent_card)
 
         runs_card, rv = build_card("Ce qui sera analysé", "2")
@@ -223,31 +201,30 @@ class DetectionPage(QWidget):
         self._runs_layout = QVBoxLayout(self._runs_host)
         self._runs_layout.setContentsMargins(0, 0, 0, 0)
         self._runs_layout.setSpacing(5)
-        self._runs_layout.addStretch(1)  # garde les runs compacts en haut
+        self._runs_layout.addStretch(1)  # garde les analyses compactes en haut
         rv.addWidget(self._runs_host)
         rv.addLayout(self._build_footer())
         cv.addWidget(runs_card)
         cv.addStretch(1)
 
         # Le contenu défile au niveau de la PAGE : la section ① a toute la place,
-        # et l'utilisateur atteint la section ② en scrollant (pas de sous-zone
-        # défilante bornée qui rétrécit ①).
+        # et l'utilisateur atteint la section ② en défilant.
         content_scroll = QScrollArea()
         content_scroll.setObjectName("DetectionScroll")
         content_scroll.setWidgetResizable(True)
         content_scroll.setFrameShape(QFrame.Shape.NoFrame)
         # Un seul sens de défilement : la page descend, elle ne va jamais de
-        # côté (demande utilisateur 2026-09-17). Les libellés de cartes et de
-        # runs se replient (setWordWrap) pour que le contenu tienne vraiment
-        # dans la largeur — la politique ci-dessous n'est que le garde-fou.
+        # côté (demande utilisateur 2026-09-17). La description de chaque ligne
+        # s'élide pour que le contenu tienne vraiment dans la largeur — la
+        # politique ci-dessous n'est que le garde-fou.
         content_scroll.setHorizontalScrollBarPolicy(
             Qt.ScrollBarPolicy.ScrollBarAlwaysOff
         )
         content_scroll.setWidget(self._content)
         self._content_scroll = content_scroll
 
-        # Empty-state et contenu dans un QStackedWidget : sa taille = le MAX des
-        # deux → activer/désactiver la détection ne redimensionne plus la fenêtre.
+        # Détection désactivée et contenu dans un QStackedWidget : sa taille = le MAX
+        # des deux → activer/désactiver la détection ne redimensionne plus la fenêtre.
         self._body_stack = QStackedWidget()
         self._body_stack.addWidget(self._empty_state)    # index 0
         self._body_stack.addWidget(content_scroll)       # index 1
@@ -262,34 +239,12 @@ class DetectionPage(QWidget):
         footer.addStretch(1)
         return footer
 
-    def _add_filter_chip(self, row, key: str, text: str) -> None:
-        btn = QPushButton(text)
-        btn.setObjectName("EntityChip")
-        btn.setCheckable(True)
-        btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        btn.setChecked(key == "all")
-        btn.clicked.connect(lambda _checked=False, k=key: self._on_filter_changed(k))
-        self._chip_group.addButton(btn)
-        self._filter_buttons[key] = btn
-        row.addWidget(btn)
-
-    def _make_entity_card(self, entity) -> EntityCard:
-        """Crée et câble une EntityCard pour une entité du catalogue."""
+    def _make_entity_row(self, entity) -> EntityRow:
+        """Crée et câble la ligne d'une structure du catalogue."""
         ec = self._coverage.get(entity.id)
-        card = EntityCard(entity.id, entity.label, entity.description)
+        row = EntityRow(entity.id, entity.label, entity.description)
         cand_names = list(ec.candidate_models if ec else ())
         candidates = [(name, self._models[name].display_name) for name in cand_names]
-        has_cluster = any(
-            self._models[name].cluster_options.get(entity.id) for name in cand_names
-        )
-        is_derived = any(
-            entity.id in self._models[name].derived_entities for name in cand_names
-        )
-        # Entité qu'une cible dérivée peut INCLURE (ex. Cratères sous Regroupement
-        # de cratères) : la carte réserve la place du badge « inclus dans ».
-        implicable = any(
-            entity.id in self._models[name].implied_entities for name in cand_names
-        )
         # Coût structurel (fenêtres d'analyse par dalle) : menu « Changer ▾ » et
         # infobulle du modèle — un fait calculé d'args.yaml, jamais une durée.
         couts = {
@@ -300,37 +255,28 @@ class DetectionPage(QWidget):
             for name in cand_names
             for m in (self._models[name],)
         }
-        card.set_candidates(
-            candidates, has_cluster=has_cluster, is_derived=is_derived,
-            implicable=implicable, couts=couts,
-        )
+        row.set_candidates(candidates, couts=couts)
         vignette, cadrage = self._premiere_vignette(entity.id)
-        card.set_fiche(vignette, disponible=bool(cand_names), cadrage=cadrage)
-        card.fiche_requested.connect(self._open_class_fiche)
-        card.reset_requested.connect(self._on_reset_entity)
-        card.toggled.connect(self._on_entity_toggled)
-        card.models_changed.connect(self._on_models_changed)
-        card.cluster_toggled.connect(self._on_cluster_toggled)
-        card.activate_rvt.connect(self.activate_rvt)
-        card.thresholds_changed.connect(self._on_thresholds_changed)
-        card.cluster_params_changed.connect(self._on_cluster_params_changed)
-        self._cards[entity.id] = card
-        return card
-
-    def _on_filter_changed(self, key: str) -> None:
-        # Filtre d'AFFICHAGE uniquement : ne touche jamais self._selected ni runs.
-        self._filter = key
-        self._apply_filter()
-
-    def _apply_filter(self) -> None:
-        for key, (header, container) in self._section_widgets.items():
-            visible = self._filter == "all" or self._filter == key
-            header.setVisible(visible)
-            container.setVisible(visible)
+        row.set_fiche(vignette, disponible=bool(cand_names), cadrage=cadrage)
+        row.fiche_requested.connect(self.fiche_requested)
+        row.modele_requested.connect(self._on_modele_demande)
+        row.reset_requested.connect(self._on_reset_entity)
+        row.toggled.connect(self._on_entity_toggled)
+        row.models_changed.connect(self._on_models_changed)
+        row.cluster_toggled.connect(self._on_cluster_toggled)
+        row.activate_rvt.connect(self.activate_rvt)
+        row.thresholds_changed.connect(self._on_thresholds_changed)
+        row.cluster_params_changed.connect(self._on_cluster_params_changed)
+        self._rows[entity.id] = row
+        return row
 
     # ------------------------------------------------------------------
     # Handlers
     # ------------------------------------------------------------------
+    def _basculer_interrupteur(self) -> None:
+        if self._enable_check.isEnabled():
+            self._enable_check.toggle()
+
     def _on_enable_toggled(self, checked: bool) -> None:
         self._enabled = checked
         self._refresh()
@@ -346,11 +292,11 @@ class DetectionPage(QWidget):
             self.changed.emit()
 
     def _incluses(self) -> dict:
-        """``{entité de base: cible dérivée cochée qui l'inclut}``.
+        """``{structure de base: cible dérivée cochée qui l'inclut}``.
 
         Cocher « Regroupement de cratères » produit déjà la couche Cratères
         (une seule, dans le groupe du regroupement) : « Cratères » est alors
-        cochée d'office, non décochable, et son seuil se règle sur la carte du
+        cochée d'office, non décochable, et son seuil se règle sur la ligne du
         regroupement. ``self._selected`` reste le choix EXPLICITE de
         l'utilisateur ; l'inclusion se recalcule, elle n'est jamais persistée.
         """
@@ -367,12 +313,12 @@ class DetectionPage(QWidget):
         return out
 
     def _selection_effective(self) -> list:
-        """Entités cochées explicitement + celles incluses par une dérivée cochée."""
+        """Structures cochées explicitement + celles incluses par une dérivée cochée."""
         explicites = [e for e, on in self._selected.items() if on]
         return explicites + [b for b in self._incluses() if not self._selected.get(b)]
 
     def _on_models_changed(self, entity_id: str, model_names: list) -> None:
-        # 1..n modèles cochés dans le menu de la carte (≥2 = comparaison A/B).
+        # 1..n modèles cochés dans le menu de la ligne (≥2 = comparaison A/B).
         # La surcharge persistée accepte str (legacy) ou liste — on stocke la liste.
         self._overrides[entity_id] = [str(n) for n in model_names]
         self._refresh()
@@ -394,15 +340,16 @@ class DetectionPage(QWidget):
 
     def _on_advanced_toggled(self, on: bool) -> None:
         self._advanced = on
-        for card in self._cards.values():
-            card.set_advanced(on)
+        for row in self._rows.values():
+            row.set_advanced(on)
         self._refresh()
 
-    def _on_thresholds_changed(self, entity_id: str, confidence: float, min_area: float) -> None:
-        self._entity_thresholds[entity_id] = {
-            "confidence_threshold": float(confidence),
-            "min_area_m2": float(min_area),
-        }
+    def _on_thresholds_changed(self, entity_id: str, changes: dict) -> None:
+        """Une seule clé à la fois (C-01) : régler le seuil ne fige pas l'aire minimale,
+        qui continue de suivre le modèle. La valeur est stockée telle qu'émise."""
+        self._entity_thresholds = fusionner_surcharge(
+            self._entity_thresholds, entity_id, dict(changes or {})
+        )
         self._armer_reinit(entity_id)
         if not self._loading:
             self.changed.emit()
@@ -414,23 +361,23 @@ class DetectionPage(QWidget):
             self.changed.emit()
 
     def _armer_reinit(self, entity_id: str) -> None:
-        """Le « ↺ » de la carte s'active au moment même où une surcharge apparaît."""
-        card = self._cards.get(entity_id)
-        if card is not None and not self._readonly:
-            card.set_reinit_possible(True)
+        """Le « ↺ » de la ligne s'active au moment même où une surcharge apparaît."""
+        row = self._rows.get(entity_id)
+        if row is not None and not self._readonly:
+            row.set_reinit_possible(True)
 
     def _cle_surcharge(self, entity_id: str) -> str:
-        """Entité sous laquelle les surcharges de ``entity_id`` sont rangées.
+        """Structure sous laquelle les surcharges de ``entity_id`` sont rangées.
 
-        Une entité incluse par une cible dérivée n'a pas de seuil propre : c'est
-        celui de la dérivée qui s'applique (règle 2026-09-15). Sa ligne avancée
+        Une structure incluse par une cible dérivée n'a pas de seuil propre : c'est
+        celui de la dérivée qui s'applique (règle 2026-09-15). Sa ligne de réglages
         est d'ailleurs désactivée, bouton compris ; cette résolution n'est donc
         qu'une sécurité si le chemin change.
         """
         return self._incluses().get(entity_id) or entity_id
 
     def _on_reset_entity(self, entity_id: str) -> None:
-        """Rétablit les valeurs du modèle pour UNE entité. Les autres sont intactes.
+        """Rétablit les valeurs du modèle pour UNE structure. Les autres sont intactes.
 
         On retire les entrées plutôt que d'y réécrire les valeurs du modèle : une
         valeur recopiée redeviendrait une surcharge, figée sur l'ancien modèle, et
@@ -442,9 +389,9 @@ class DetectionPage(QWidget):
         )
         if not touches:
             return
-        # Pas besoin de geler les signaux : EntityCard.update_state met déjà son
+        # Pas besoin de geler les signaux : EntityRow.update_state met déjà son
         # propre `_loading` autour de ses setValue, et n'émet donc pas pendant
-        # qu'on repeuple les spinbox avec les défauts du modèle.
+        # qu'on repeuple les cases avec les défauts du modèle.
         self._refresh()
         couverture = self._coverage.get(cle)
         show_toast(self, phrase_entite_reinitialisee(
@@ -453,18 +400,23 @@ class DetectionPage(QWidget):
         if not self._loading:
             self.changed.emit()
 
+    def _on_modele_demande(self, model_name: str) -> None:
+        model = self._models.get(model_name)
+        if model is not None:
+            self.modele_requested.emit(model)
+
     # ------------------------------------------------------------------
     # Rafraîchissement
     # ------------------------------------------------------------------
     @staticmethod
     def _default_conf_entite(model, eid: str) -> float:
-        """Défaut de confiance affiché pour UNE entité.
+        """Défaut de confiance affiché pour UNE structure.
 
-        Si le model_card porte des seuils par classe (mesurés au banc), l'entité
+        Si le model_card porte des seuils par classe (mesurés au banc), la structure
         hérite du seuil de SES classes — c'est aussi la valeur vers laquelle le
-        bouton « ↺ » de la carte la ramène. ``min`` si l'entité
-        couvre plusieurs classes aux seuils différents (cohérent avec le plancher
-        de décodage). Sinon, défaut global du modèle, comme avant.
+        « ↺ » de la ligne la ramène. ``min`` si elle couvre plusieurs classes aux
+        seuils différents (cohérent avec le plancher de décodage). Sinon, défaut
+        global du modèle, comme avant.
         """
         if model is None:
             return 0.3   # = model_config.DEFAULT_CONFIDENCE (0,2 ici jusqu'alors)
@@ -474,9 +426,9 @@ class DetectionPage(QWidget):
 
     @staticmethod
     def _fiabilite_hint(model, eid: str, conf_override) -> str:
-        """Aide « Fiabilité affichée — douteux dès 0,29 · … » pour UNE entité : les
+        """Aide « Fiabilité affichée — douteux dès 0,29 · … » pour UNE structure : les
         catégories EFFECTIVES de chacune de ses classes au seuil courant (surcharge
-        UI si posée, sinon seuil par classe du modèle) — même règle que le run."""
+        UI si posée, sinon seuil par classe du modèle) — même règle que le traitement."""
         if model is None or not getattr(model, "fiabilite_per_class", None):
             return ""
         try:
@@ -507,16 +459,16 @@ class DetectionPage(QWidget):
             return
 
         incluses = self._incluses()
-        for eid, card in self._cards.items():
+        for eid, row in self._rows.items():
             ec = self._coverage.get(eid)
             model_names = effective_model_names(ec, self._overrides) if ec else []
             # Modèle « primaire » (1ᵉʳ de la liste) : porte les défauts des
-            # spinbox. En comparaison A/B les surcharges de seuils s'appliquent
-            # identiquement aux deux runs (comparaison à seuil égal).
+            # cases. En comparaison A/B les surcharges de seuils s'appliquent
+            # identiquement aux deux analyses (comparaison à seuil égal).
             model = self._models.get(model_names[0]) if model_names else None
-            # Garde RVT sur TOUS les modèles cochés : sans elle, le run du
-            # modèle secondaire dont l'indice n'est pas activé à l'étape 2
-            # partirait sans avertissement et échouerait à l'exécution.
+            # Garde sur TOUS les modèles cochés : sans elle, l'analyse du modèle
+            # secondaire dont l'image n'est pas cochée à l'étape 2 partirait sans
+            # avertissement et échouerait à l'exécution.
             rvts: list = []
             for _n in model_names:
                 _m = self._models.get(_n)
@@ -526,14 +478,14 @@ class DetectionPage(QWidget):
             missing_rvts = [r for r in rvts if r not in self._active_rvts]
             cluster_outputs = model.cluster_options.get(eid, ()) if model else ()
             is_derived = bool(model) and eid in model.derived_entities
-            # Entité incluse par une dérivée cochée : cochée d'office, ses seuils
+            # Structure incluse par une dérivée cochée : cochée d'office, ses seuils
             # sont CEUX de la dérivée (un seul réglage, affiché ici en lecture seule).
             par = incluses.get(eid)
             ov = self._entity_thresholds.get(par or eid, {})
             label_par = self._coverage[par].entity.label if par else ""
             conf_label, conf_tip = "Confiance", ""
             if par:
-                conf_tip = f"Réglé sur la carte « {label_par} », qui inclut cette structure"
+                conf_tip = f"Réglé sur la ligne « {label_par} », qui inclut cette structure"
             elif is_derived and model.derived_source_classes.get(eid):
                 sources = model.derived_source_labels.get(eid) or ", ".join(
                     self._coverage[b].entity.label
@@ -545,8 +497,8 @@ class DetectionPage(QWidget):
                     f"Seuil appliqué aux {sources.lower()} détectés, dont les zones sont "
                     f"calculées : le relever change les zones (règle calibrée au seuil {defaut})"
                 )
-            # Défauts des paramètres de regroupement (DBSCAN) pour cette entité :
-            # ceux de la 1ʳᵉ sortie de clustering qu'elle produit (dérivée ou cluster).
+            # Défauts des paramètres de regroupement (DBSCAN) pour cette structure :
+            # ceux de la 1ʳᵉ sortie de regroupement qu'elle produit (dérivée ou cluster).
             cluster_default_params: dict = {}
             if model:
                 if is_derived:
@@ -558,13 +510,13 @@ class DetectionPage(QWidget):
                     if oc in model.cluster_defaults:
                         cluster_default_params = model.cluster_defaults[oc]
                         break
-            # Aide au choix du seuil (mode avancé) : mini-profils des classes de
-            # l'entité sur le modèle primaire, lus une fois par (modèle, classe).
-            card.set_profils(
+            # Aide au choix du seuil (réglages) : mini-profils des classes de la
+            # structure sur le modèle primaire, lus une fois par (modèle, classe).
+            row.set_profils(
                 self._profils_entite(model, eid, len(model_names) > 1)
                 if (model is not None and self._advanced and not par) else []
             )
-            card.update_state(
+            row.update_state(
                 selected=bool(self._selected.get(eid) or par),
                 implique_par=label_par,
                 conf_label=conf_label,
@@ -583,14 +535,13 @@ class DetectionPage(QWidget):
                 cluster_default_params=cluster_default_params,
                 cluster_params_override=self._entity_cluster_params.get(eid),
                 fiabilite_hint=self._fiabilite_hint(model, eid, ov.get("confidence_threshold")),
-                # Le bouton de la carte ne sert que si CETTE entité a été réglée.
+                # Le « ↺ » de la ligne ne sert que si CETTE structure a été réglée.
                 reinit_possible=not self._readonly and a_des_surcharges(
                     par or eid, self._entity_thresholds, self._entity_cluster_params
                 ),
             )
         self._update_selection_count()
         self._rebuild_runs()
-        self._apply_filter()
 
     def _update_selection_count(self) -> None:
         if self._sel_count is None:
@@ -629,54 +580,35 @@ class DetectionPage(QWidget):
         for idx, run in enumerate(runs):
             model = self._models.get(run["model"])
             disp = model.display_name if model else run["model"]
+            # Une phrase par analyse : « <modèle> lit l'image <sigle> : Cratères, Parcellaire »
+            # (libellés du catalogue portés par run["entities"] ; repli sur les noms
+            # de classes bruts pour une analyse d'une configuration ancienne).
+            noms = [
+                e["label"] for e in (run.get("entities") or []) if e.get("label")
+            ] or [str(c) for c in (run.get("selected_classes") or [])]
             row = QFrame()
             row.setObjectName("RunRow")
             h = QHBoxLayout(row)
             h.setContentsMargins(10, 6, 10, 6)
             h.setSpacing(8)
-            name = QLabel(disp)
-            name.setObjectName("RunName")
-            name.setWordWrap(True)  # nom long = largeur mini de la page sinon
-            # Bouton ⓘ : ouvre un dialog modal d'info détaillée sur le modèle
-            # (model_card.yaml + args.yaml). Désactivé si le modèle n'est pas
-            # résolu (run orphelin, ne devrait pas arriver en pratique).
-            info_btn = QToolButton()
-            info_btn.setObjectName("ModelInfoButton")
-            info_btn.setText("ⓘ")
-            info_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-            info_btn.setToolTip("Voir les détails du modèle")
+            texte = QLabel(
+                f"<b>{html.escape(str(disp))}</b> lit l'image <b>{html.escape(str(run['target_rvt']))}</b>"
+                f" : {html.escape(', '.join(noms))}"
+            )
+            texte.setObjectName("RunTexte")
+            texte.setTextFormat(Qt.TextFormat.RichText)
+            texte.setWordWrap(True)  # nom long = largeur mini de la page sinon
+            # Le « ⓘ » du modèle : sa fiche dans le panneau latéral. Désactivé si le
+            # modèle n'est pas résolu (analyse orpheline, ne devrait pas arriver).
+            info_btn = InfoButton("Fiche du modèle : architecture, entraînement, évaluation")
             if model is not None:
                 # Capture du modèle dans la signature par défaut pour figer la
-                # référence (sans ça, toutes les lambdas pointeraient sur le
-                # dernier modèle du loop).
-                info_btn.clicked.connect(lambda _checked=False, m=model: self._open_model_info(m))
+                # référence (sans ça, toutes les lambdas pointeraient sur le dernier).
+                info_btn.clicked.connect(lambda _checked=False, m=model: self.modele_requested.emit(m))
             else:
                 info_btn.setEnabled(False)
-            # Classes sélectionnées en pastilles « entité » lisibles (libellés du
-            # catalogue, déjà portés par run["entities"]) plutôt qu'un texte gris
-            # de noms techniques. Repli sur les noms de classes bruts pour un run
-            # legacy (sans bloc "entities").
-            chips = QFrame()
-            chips.setObjectName("RunClassChips")
-            ch = QHBoxLayout(chips)
-            ch.setContentsMargins(0, 0, 0, 0)
-            ch.setSpacing(4)
-            chip_labels = [
-                e["label"] for e in (run.get("entities") or []) if e.get("label")
-            ] or list(run.get("selected_classes") or [])
-            for cl in chip_labels:
-                chip = QLabel(str(cl))
-                chip.setObjectName("RunClassChip")
-                ch.addWidget(chip)
-            ch.addStretch(1)
-            # Pas d'émoji couleur (rendu hétérogène, non teintable par le QSS) :
-            # le fond bleu de la pastille identifie déjà le tag RVT.
-            rvt_tag = QLabel(str(run["target_rvt"]))
-            rvt_tag.setObjectName("RunRvtTag")
-            h.addWidget(name)
-            h.addWidget(info_btn)
-            h.addWidget(chips, 1)
-            h.addWidget(rvt_tag)
+            h.addWidget(texte, 1)
+            h.addWidget(info_btn, 0, Qt.AlignmentFlag.AlignTop)
             self._runs_layout.insertWidget(idx, row)  # au-dessus du stretch final
             self._run_rows.append(row)
 
@@ -750,12 +682,15 @@ class DetectionPage(QWidget):
                     return str(p), v.cadrage
         return None, None
 
-    def _open_class_fiche(self, entity_id: str) -> None:
-        """Ouvre la fiche de la structure. Import différé du dialog Qt."""
+    def corps_fiche(self, entity_id: str):
+        """``(corps, titre)`` de la fiche de la structure, à poser dans le panneau ⓘ de
+        l'assistant ; ``None`` s'il n'y a rien à montrer. Le corps émet
+        ``modele_demande(model)`` pour son lien « Fiche du modèle ». Import différé
+        des widgets de fiche : la plupart des sessions n'en ouvrent aucune."""
         fiches = self._fiches_for_entity(entity_id)
         if not fiches:
-            return
-        from ..dialogs.class_info_dialog import ouvrir_fiche_entite
+            return None
+        from ..dialogs.class_info_dialog import corps_fiche_entite
 
         dirs = {
             m.name: m.model_dir for m in self._installed if m.model_dir is not None
@@ -764,7 +699,7 @@ class DetectionPage(QWidget):
         titre = couverture.entity.label if couverture else entity_id
         # Couleur de la COUCHE (qualifiée par le modèle en comparaison A/B) et
         # seuil effectif de chaque classe (surcharge UI, sinon seuil du modèle) :
-        # la figure de la fiche montre la même couleur et le même seuil que le run.
+        # la figure de la fiche montre la même couleur et le même seuil que le traitement.
         noms = effective_model_names(couverture, self._overrides) if couverture else []
         compared = len(noms) > 1
         ov = self._entity_thresholds.get(self._incluses().get(entity_id) or entity_id, {})
@@ -781,7 +716,7 @@ class DetectionPage(QWidget):
             seuils[(f.modele_id, f.nom)] = (
                 float(conf) if conf is not None else float(pc.get(f.nom, model.default_confidence))
             )
-        # Fiabilité observée : vos verdicts (champ validation) sur les runs connus.
+        # Fiabilité observée : vos verdicts (champ validation) sur les traitements connus.
         from ..run_view import profil_archeologia
 
         observes = {}
@@ -790,23 +725,11 @@ class DetectionPage(QWidget):
                 observes[(f.modele_id, f.nom)] = observer(profil_archeologia(), f.modele_id, f.nom)
             except Exception:  # noqa: BLE001 — jamais bloquant
                 continue
-        ouvrir_fiche_entite(
-            fiches, dirs, titre, parent=self, models=self._models,
+        corps = corps_fiche_entite(
+            fiches, dirs, titre, models=self._models,
             couleurs=couleurs, seuils=seuils, observes=observes,
         )
-
-    # ------------------------------------------------------------------
-    def _open_model_info(self, model) -> None:
-        """Ouvre la fenêtre d'info détaillée pour ``model`` (carte modèle).
-
-        Import différé du dialog pour éviter de charger les widgets Qt du
-        sous-package ``ui.dialogs`` tant qu'on n'en a pas besoin (la majorité
-        des sessions n'ouvrent jamais cette fenêtre).
-        """
-        if model is None:
-            return
-        from ..dialogs.model_info_dialog import ModelInfoDialog
-        ModelInfoDialog(model, parent=self).exec()
+        return corps, titre
 
     # ------------------------------------------------------------------
     # API page
@@ -816,21 +739,19 @@ class DetectionPage(QWidget):
         self._refresh()
 
     def set_readonly(self, ro: bool) -> None:
-        """Verrouille la saisie pour consultation pendant un run (lecture seule).
+        """Verrouille la saisie pour consultation pendant un traitement (lecture seule).
 
-        Désactive l'interrupteur, les cartes d'entités et la case « images
-        annotées » ; garde actifs le scroll, les filtres morphologiques
-        (navigation) et la case « Réglages avancés » (révèle les seuils en
+        Désactive l'interrupteur, les réglages des lignes et la case « images
+        annotées » ; garde actifs le défilement, les « ⓘ » (le panneau des fiches
+        reste ouvrable) et la case « Seuils et réglages » (révèle les seuils en
         lecture seule). N'agit que sur ``setEnabled`` → aucun ``changed``/autosave.
         """
         self._readonly = bool(ro)
         self._enable_check.setEnabled(not ro)
         self._annot_check.setEnabled(not ro)
         self._es_btn.setEnabled(not ro)
-        # Les boutons de réinitialisation vivent désormais SUR les cartes, que la
-        # boucle ci-dessous désactive : plus rien à neutraliser à part.
-        for card in self._cards.values():
-            card.setEnabled(not ro)
+        for row in self._rows.values():
+            row.set_readonly(ro)
 
     def summary(self) -> str:
         if not self._enabled:
@@ -849,16 +770,17 @@ class DetectionPage(QWidget):
         return f"{pluriel(n_ent, 'structure')} · {pluriel(n_mod, 'modèle')}"
 
     def recap_entities(self) -> list:
-        """Libellés des entités cochées, dans l'ordre du catalogue (récap étape 4)."""
+        """Libellés des structures cochées, dans l'ordre du catalogue (récap étape 4)."""
         if not self._enabled:
             return []
         effectives = set(self._selection_effective())
         return [e.label for e in self._catalog if e.id in effectives]
 
     def recap_runs(self) -> list:
-        """Une chaîne par run résolu : « <modèle> sur <RVT> » (récap étape 4).
+        """Une chaîne par analyse résolue : « <modèle> sur <image> » (récap étape 4).
 
-        Couvre aussi le cas legacy (runs préservés sans entité sélectionnée).
+        Couvre aussi le cas d'une configuration ancienne (analyses préservées
+        sans structure sélectionnée).
         """
         if not self._enabled:
             return []
@@ -878,7 +800,7 @@ class DetectionPage(QWidget):
         return out
 
     def model_count(self) -> int:
-        """Nombre de modèles distincts impliqués (sous-libellé timeline)."""
+        """Nombre de modèles distincts impliqués (sous-libellé du rail)."""
         selected_ids = self._selection_effective()
         if selected_ids:
             runs = resolve_runs_from_entities(
@@ -900,14 +822,14 @@ class DetectionPage(QWidget):
             self._entity_thresholds = dict(cv.get("entity_thresholds") or {})
             self._entity_cluster_params = dict(cv.get("entity_cluster_params") or {})
             self._annot_check.setChecked(bool(cv.get("generate_annotated_images", False)))
-            # Rétrocompat : config legacy avec des « runs » explicites mais aucune
-            # entité → on préserve ces runs (jamais d'écrasement silencieux) tant
-            # que l'utilisateur ne sélectionne pas d'entité (cf. collect_into).
+            # Rétrocompat : configuration ancienne avec des analyses explicites mais
+            # aucune structure → on les préserve (jamais d'écrasement silencieux) tant
+            # que l'utilisateur ne sélectionne pas de structure (cf. collect_into).
             legacy = cv.get("runs") or []
             self._legacy_runs = list(legacy) if (legacy and not self._selected) else None
-            # Config d'avant l'inclusion (2026-09-15) : un seuil posé sur « Cratères »
+            # Configuration d'avant l'inclusion (2026-09-15) : un seuil posé sur « Cratères »
             # avec le regroupement coché s'appliquait ; il se règle désormais sur la
-            # carte du regroupement → on l'y recopie si elle n'en a pas, sinon le
+            # ligne du regroupement → on l'y recopie si elle n'en a pas, sinon le
             # choix enregistré serait ignoré en silence.
             for base, derived in self._incluses().items():
                 if base in self._entity_thresholds and derived not in self._entity_thresholds:
@@ -921,8 +843,8 @@ class DetectionPage(QWidget):
         cv["enabled"] = self._enabled
         selected_ids = self._selection_effective()
         if selected_ids:
-            self._legacy_runs = None  # l'utilisateur pilote par entités désormais
-        # Persisté : le choix EXPLICITE seulement — une entité incluse par une
+            self._legacy_runs = None  # l'utilisateur pilote par structures désormais
+        # Persisté : le choix EXPLICITE seulement — une structure incluse par une
         # dérivée se recalcule au rechargement (sinon elle resterait cochée
         # après qu'on a décoché la dérivée).
         cv["selected_entities"] = [e for e, on in self._selected.items() if on]
@@ -930,16 +852,15 @@ class DetectionPage(QWidget):
             e: m for e, m in self._overrides.items() if self._selected.get(e)
         }
         cv["entity_cluster_enabled"] = sorted(e for e in self._cluster if self._selected.get(e))
-        cv["entity_thresholds"] = {
-            e: t for e, t in self._entity_thresholds.items() if self._selected.get(e)
-        }
-        cv["entity_cluster_params"] = {
-            e: p for e, p in self._entity_cluster_params.items() if self._selected.get(e)
-        }
+        # Seuils et paramètres de regroupement de TOUTES les structures, cochées ou
+        # non (C-02, 2026-10-24) : décocher puis recocher ne perd pas un réglage.
+        # L'aval ne lit que ceux des structures cochées (resolve_runs_from_entities).
+        cv["entity_thresholds"] = dict(self._entity_thresholds)
+        cv["entity_cluster_params"] = dict(self._entity_cluster_params)
         cv["generate_annotated_images"] = self._annot_check.isChecked()
         cv["generate_shapefiles"] = True  # toujours : le GeoPackage des détections est produit
-        # Runs pour le pipeline (l'aval ne consomme que 'runs') : résolus depuis
-        # les entités, ou — config legacy sans entités — les runs préservés tels quels.
+        # Analyses pour le traitement (l'aval ne consomme que 'runs') : résolues depuis
+        # les structures, ou — configuration ancienne sans structures — préservées telles quelles.
         if not self._enabled:
             cv["runs"] = []
         elif selected_ids:

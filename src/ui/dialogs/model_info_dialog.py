@@ -1,10 +1,14 @@
-"""Dialog modal d'information sur un modèle CV.
+"""Fiche d'un modèle de détection.
 
 Affiche le contenu du ``model_card.yaml`` (et le clustering du ``args.yaml``)
 sous forme de sections pliables : ARCHITECTURE, INDICE RVT D'ENTRAÎNEMENT,
 MNT D'ENTRAÎNEMENT, REGROUPEMENT (DBSCAN), MÉTRIQUES D'ÉVALUATION (résumé +
 courbes de ``entrainement/evaluation*/``), NOTES & LIMITES. Un bouton
 « Ouvrir le dossier » lance l'explorateur de fichiers sur ``model_dir``.
+
+:func:`corps_fiche_modele` fabrique le corps que l'assistant pose dans son panneau
+latéral (onglet « Modèle ») ; :class:`ModelInfoDialog` n'est qu'une enveloppe pour
+le rendu hors écran.
 
 La logique de présentation (humanisation, alias non-canoniques, builders de
 sections) est isolée dans :mod:`._model_info_data` (testable hors-QGIS) ; ce
@@ -18,12 +22,10 @@ from typing import Any, Dict, Optional, Sequence
 from qgis.PyQt.QtCore import Qt, QUrl, pyqtSignal
 from qgis.PyQt.QtGui import QDesktopServices
 from qgis.PyQt.QtWidgets import (
-    QDialog,
     QFrame,
     QHBoxLayout,
     QLabel,
     QPushButton,
-    QScrollArea,
     QVBoxLayout,
     QWidget,
 )
@@ -36,11 +38,12 @@ from ..widgets.profil_scores import couleur_de_classe, figure_profil, ligne_essa
 from ..widgets.vignette import ARDOISE, pastille
 from ..widgets.vignette import pixmap_ajuste
 from ._model_info_data import Section, build_sections
+from .class_info_dialog import FicheDialog
 
-# Largeur des courbes : celle du corps de section dans le dialog de 620 px.
+# Largeur des courbes : celle du corps de section dans le panneau de 420 px.
 # ponytail: fixée à l'ouverture, ne suit pas un redimensionnement — le clic ouvre
 # l'image en taille réelle.
-_LARGEUR_COURBE = 540
+_LARGEUR_COURBE = 340
 
 
 # ----------------------------------------------------------------------
@@ -182,193 +185,162 @@ class _SectionWidget(QFrame):
 
 
 # ----------------------------------------------------------------------
-# Dialog principal
+# Le corps de la fiche, et l'enveloppe hors écran
 # ----------------------------------------------------------------------
-class ModelInfoDialog(QDialog):
-    """Fenêtre modale présentant les détails d'un :class:`InstalledModel`.
+def titre_fiche_modele(model: InstalledModel) -> str:
+    """« Modèle · <nom> », sans doublon si le nom commence déjà par « Modèle »."""
+    nom = model.display_name or model.name
+    return nom if nom.lower().startswith("modèle") else f"Modèle · {nom}"
 
-    Construite à partir du ``model_card.yaml`` (et du ``args.yaml`` si présent)
-    via :func:`._model_info_data.build_sections`. Dégrade gracieusement si le
-    YAML est absent ou illisible (en-tête tiré de ``InstalledModel``, sections
-    omises).
-    """
+
+def _figures_fiabilite(section: Section, card: Dict[str, Any], model_dir: Optional[Path]) -> list:
+    """Sous FIABILITÉ DES DÉTECTIONS : le profil des scores de chaque classe
+    (bandes de l'évaluation livrée avec le modèle) — rien si elle ne l'est pas."""
+    if model_dir is None or not section.title.startswith("FIABILITÉ"):
+        return []
+    par_classe, _provenance = parse_fiabilite((card or {}).get("thresholds"))
+    out: list = []
+    for classe, cats in par_classe.items():
+        fig = figure_profil(model_dir, classe, cats)
+        if fig is None:
+            continue
+        titre = QLabel(f"Profil des scores — {classe}")
+        titre.setObjectName("ModelInfoRowLabel")
+        titre.setContentsMargins(0, 10, 0, 2)
+        # Essai de seuil (sans effet sur le traitement) : ligne, niveaux,
+        # précision et rappel au banc suivent la case.
+        out.extend([titre, fig, ligne_essai_seuil(fig)])
+    return out
+
+
+def _entete(model: InstalledModel, card: Dict[str, Any], dpr: float) -> QWidget:
+    header = QFrame()
+    header.setObjectName("ModelInfoHeader")
+    lay = QVBoxLayout(header)
+    lay.setContentsMargins(20, 16, 20, 14)
+    lay.setSpacing(4)
+
+    nature = QHBoxLayout()
+    nature.setSpacing(6)
+    icone = QLabel()
+    icone.setPixmap(colored_pixmap("modele", ARDOISE, 12, dpr=dpr))
+    kicker = QLabel("MODÈLE DE DÉTECTION · ONNX")
+    kicker.setObjectName("ModelInfoKicker")
+    nature.addWidget(icone)
+    nature.addWidget(kicker)
+    nature.addStretch(1)
+    lay.addLayout(nature)
+
+    slug_text = str(card.get("id") or model.name)
+    slug = QLabel(slug_text)
+    slug.setObjectName("ModelInfoSlug")
+    slug.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+    lay.addWidget(slug)
+
+    disp = str(card.get("display_name") or model.display_name or "").strip()
+    if disp and disp != slug_text:
+        sub = QLabel(disp)
+        sub.setObjectName("ModelInfoDisplayName")
+        sub.setWordWrap(True)
+        lay.addWidget(sub)
+
+    desc = card.get("description")
+    if desc:
+        d = QLabel(str(desc).strip())
+        d.setObjectName("ModelInfoDescription")
+        d.setWordWrap(True)
+        lay.addWidget(d)
+
+    meta_parts = []
+    version = card.get("version")
+    if version:
+        meta_parts.append(f"Version {version}")
+    status = str(card.get("status") or model.status or "").strip()
+    if status:
+        meta_parts.append(status)
+    if meta_parts:
+        meta = QLabel(" · ".join(meta_parts))
+        meta.setObjectName("ModelInfoMeta")
+        lay.addWidget(meta)
+
+    # « Détecte : » les classes du modèle, chacune avec la pastille de sa couleur de
+    # couche — le lien visible avec les fiches de structure (option A, 2026-10-08).
+    classes = [c for c in (card.get("classes") or []) if isinstance(c, dict) and c.get("name")]
+    if classes:
+        ligne = QHBoxLayout()
+        ligne.setSpacing(6)
+        libelle = QLabel("Détecte :")
+        libelle.setObjectName("ModelInfoMeta")
+        ligne.addWidget(libelle)
+        for c in classes:
+            rgb = couleur_de_classe(str(c["name"])) or (42, 120, 214)
+            point = QLabel()
+            point.setPixmap(pastille(rgb, 9, dpr))
+            nom = QLabel(str(c.get("label_fr") or c["name"]))
+            nom.setObjectName("ModelInfoDetecte")
+            ligne.addWidget(point)
+            ligne.addWidget(nom)
+        ligne.addStretch(1)
+        lay.addLayout(ligne)
+    return header
+
+
+def corps_fiche_modele(model: InstalledModel) -> QWidget:
+    """Le corps de la fiche d'un modèle : liseré ardoise, en-tête, sections pliables
+    (profil des scores sous FIABILITÉ), « Ouvrir le dossier ». Dégrade gracieusement
+    si le YAML est absent ou illisible (en-tête tiré de ``InstalledModel``, sections
+    omises)."""
+    # Lecture best-effort des YAML. Toute défaillance laisse ``card``/``args``
+    # vides → l'en-tête se rabat sur les champs de InstalledModel et les
+    # sections vides sont automatiquement omises par ``build_sections``.
+    card: Dict[str, Any] = {}
+    args: Optional[Dict[str, Any]] = None
+    if model.model_dir is not None:
+        loaded = load_model_card(model.model_dir)
+        if isinstance(loaded, dict):
+            card = loaded
+        args = _load_args_yaml(model.model_dir)
+
+    hote = QWidget()
+    hote.setObjectName("ModelInfoCorps")
+    root = QVBoxLayout(hote)
+    root.setContentsMargins(0, 0, 0, 0)
+    root.setSpacing(0)
+    # Liseré ardoise : la fiche d'un modèle est neutre ; la couleur d'une classe
+    # est réservée à sa fiche (option A, 2026-10-08).
+    lisere = QFrame()
+    lisere.setObjectName("ModelInfoLisere")
+    lisere.setFixedHeight(4)
+    root.addWidget(lisere)
+    root.addWidget(_entete(model, card, hote.devicePixelRatioF()))
+
+    content = QWidget()
+    content_lay = QVBoxLayout(content)
+    content_lay.setContentsMargins(20, 4, 20, 12)
+    content_lay.setSpacing(6)
+    for section in build_sections(card, args, model.model_dir):
+        extras = _figures_fiabilite(section, card, model.model_dir)
+        content_lay.addWidget(_SectionWidget(section, extras=extras))
+
+    open_btn = QPushButton("📁  Ouvrir le dossier")
+    open_btn.setObjectName("ModelInfoOpenDirButton")
+    dossier = model.model_dir
+    if dossier is None or not dossier.is_dir():
+        open_btn.setEnabled(False)
+        open_btn.setToolTip("Chemin du modèle indisponible sur le disque")
+    else:
+        open_btn.setToolTip(str(dossier))
+        open_btn.clicked.connect(lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(str(dossier))))
+    content_lay.addSpacing(8)
+    content_lay.addWidget(open_btn, 0, Qt.AlignmentFlag.AlignLeft)
+    content_lay.addStretch(1)
+    root.addWidget(content)
+    return hote
+
+
+class ModelInfoDialog(FicheDialog):
+    """La fiche d'un modèle en dialogue (rendu hors écran)."""
 
     def __init__(self, model: InstalledModel, parent: Optional[QWidget] = None):
-        super().__init__(parent)
-        self.setObjectName("ModelInfoDialog")
-        self.setModal(True)
-        # Nature dans le titre de la fenêtre, comme « Structure · … » pour la fiche de
-        # classe (option A, 2026-10-08) ; sans doublon si le nom commence déjà par « Modèle ».
-        nom = model.display_name or model.name
-        self.setWindowTitle(nom if nom.lower().startswith("modèle") else f"Modèle · {nom}")
-        self.resize(620, 720)
-
-        self._model = model
-
-        # Lecture best-effort des YAML. Toute défaillance laisse ``card``/``args``
-        # vides → l'en-tête se rabat sur les champs de InstalledModel et les
-        # sections vides sont automatiquement omises par ``build_sections``.
-        card: Dict[str, Any] = {}
-        args: Optional[Dict[str, Any]] = None
-        if model.model_dir is not None:
-            loaded = load_model_card(model.model_dir)
-            if isinstance(loaded, dict):
-                card = loaded
-            args = _load_args_yaml(model.model_dir)
-
-        root = QVBoxLayout(self)
-        root.setContentsMargins(0, 0, 0, 0)
-        root.setSpacing(0)
-
-        # Liseré ardoise : la fiche d'un modèle est neutre ; la couleur d'une classe
-        # est réservée à sa fiche (option A, 2026-10-08).
-        lisere = QFrame()
-        lisere.setObjectName("ModelInfoLisere")
-        lisere.setFixedHeight(4)
-        root.addWidget(lisere)
-        root.addWidget(self._build_header(card))
-
-        # Zone scrollable pour les sections (modèles à beaucoup de classes /
-        # limitations peuvent dépasser la hauteur initiale).
-        scroll = QScrollArea()
-        scroll.setObjectName("ModelInfoScroll")
-        scroll.setWidgetResizable(True)
-        scroll.setFrameShape(QFrame.Shape.NoFrame)
-        content = QWidget()
-        content_lay = QVBoxLayout(content)
-        content_lay.setContentsMargins(20, 4, 20, 12)
-        content_lay.setSpacing(6)
-        for section in build_sections(card, args, model.model_dir):
-            extras = self._figures_fiabilite(section, card, model.model_dir)
-            content_lay.addWidget(_SectionWidget(section, extras=extras))
-        content_lay.addStretch(1)
-        scroll.setWidget(content)
-        root.addWidget(scroll, 1)
-
-        root.addWidget(self._build_footer())
-
-    # ------------------------------------------------------------------
-    @staticmethod
-    def _figures_fiabilite(section: Section, card: Dict[str, Any], model_dir: Optional[Path]) -> list:
-        """Sous FIABILITÉ DES DÉTECTIONS : le profil des scores de chaque classe
-        (bandes de l'évaluation livrée avec le modèle) — rien si elle ne l'est pas."""
-        if model_dir is None or not section.title.startswith("FIABILITÉ"):
-            return []
-        par_classe, _provenance = parse_fiabilite((card or {}).get("thresholds"))
-        out: list = []
-        for classe, cats in par_classe.items():
-            fig = figure_profil(model_dir, classe, cats)
-            if fig is None:
-                continue
-            titre = QLabel(f"Profil des scores — {classe}")
-            titre.setObjectName("ModelInfoRowLabel")
-            titre.setContentsMargins(0, 10, 0, 2)
-            # Essai de seuil (sans effet sur le traitement) : ligne, niveaux,
-            # précision et rappel au banc suivent la case.
-            out.extend([titre, fig, ligne_essai_seuil(fig)])
-        return out
-
-    def _build_header(self, card: Dict[str, Any]) -> QWidget:
-        header = QFrame()
-        header.setObjectName("ModelInfoHeader")
-        lay = QVBoxLayout(header)
-        lay.setContentsMargins(20, 16, 20, 14)
-        lay.setSpacing(4)
-
-        nature = QHBoxLayout()
-        nature.setSpacing(6)
-        icone = QLabel()
-        icone.setPixmap(colored_pixmap("modele", ARDOISE, 12, dpr=self.devicePixelRatioF()))
-        kicker = QLabel("MODÈLE DE DÉTECTION · ONNX")
-        kicker.setObjectName("ModelInfoKicker")
-        nature.addWidget(icone)
-        nature.addWidget(kicker)
-        nature.addStretch(1)
-        lay.addLayout(nature)
-
-        slug_text = str(card.get("id") or self._model.name)
-        slug = QLabel(slug_text)
-        slug.setObjectName("ModelInfoSlug")
-        slug.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
-        lay.addWidget(slug)
-
-        disp = str(card.get("display_name") or self._model.display_name or "").strip()
-        if disp and disp != slug_text:
-            sub = QLabel(disp)
-            sub.setObjectName("ModelInfoDisplayName")
-            sub.setWordWrap(True)
-            lay.addWidget(sub)
-
-        desc = card.get("description")
-        if desc:
-            d = QLabel(str(desc).strip())
-            d.setObjectName("ModelInfoDescription")
-            d.setWordWrap(True)
-            lay.addWidget(d)
-
-        meta_parts = []
-        version = card.get("version")
-        if version:
-            meta_parts.append(f"Version {version}")
-        status = str(card.get("status") or self._model.status or "").strip()
-        if status:
-            meta_parts.append(status)
-        if meta_parts:
-            meta = QLabel(" · ".join(meta_parts))
-            meta.setObjectName("ModelInfoMeta")
-            lay.addWidget(meta)
-
-        # « Détecte : » les classes du modèle, chacune avec la pastille de sa couleur de
-        # couche — le lien visible avec les fiches de structure (option A, 2026-10-08).
-        classes = [c for c in (card.get("classes") or []) if isinstance(c, dict) and c.get("name")]
-        if classes:
-            ligne = QHBoxLayout()
-            ligne.setSpacing(6)
-            libelle = QLabel("Détecte :")
-            libelle.setObjectName("ModelInfoMeta")
-            ligne.addWidget(libelle)
-            dpr = self.devicePixelRatioF()
-            for c in classes:
-                rgb = couleur_de_classe(str(c["name"])) or (42, 120, 214)
-                point = QLabel()
-                point.setPixmap(pastille(rgb, 9, dpr))
-                nom = QLabel(str(c.get("label_fr") or c["name"]))
-                nom.setObjectName("ModelInfoDetecte")
-                ligne.addWidget(point)
-                ligne.addWidget(nom)
-            ligne.addStretch(1)
-            lay.addLayout(ligne)
-
-        return header
-
-    def _build_footer(self) -> QWidget:
-        footer = QFrame()
-        footer.setObjectName("ModelInfoFooter")
-        lay = QHBoxLayout(footer)
-        lay.setContentsMargins(16, 10, 16, 12)
-        lay.setSpacing(8)
-
-        open_btn = QPushButton("📁  Ouvrir le dossier")
-        open_btn.setObjectName("ModelInfoOpenDirButton")
-        if self._model.model_dir is None or not self._model.model_dir.is_dir():
-            open_btn.setEnabled(False)
-            open_btn.setToolTip("Chemin du modèle indisponible sur le disque")
-        else:
-            open_btn.setToolTip(str(self._model.model_dir))
-            open_btn.clicked.connect(self._open_dir)
-        lay.addWidget(open_btn)
-
-        lay.addStretch(1)
-
-        close_btn = QPushButton("Fermer")
-        close_btn.setObjectName("ModelInfoCloseButton")
-        close_btn.setDefault(True)
-        close_btn.clicked.connect(self.accept)
-        lay.addWidget(close_btn)
-
-        return footer
-
-    def _open_dir(self) -> None:
-        d = self._model.model_dir
-        if d is not None and d.is_dir():
-            QDesktopServices.openUrl(QUrl.fromLocalFile(str(d)))
+        super().__init__(corps_fiche_modele(model), titre_fiche_modele(model), "ModelInfoDialog",
+                         parent, taille=(620, 720))

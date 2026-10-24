@@ -265,46 +265,36 @@ QPushButton:disabled { color: #909090; border-color: #b0b0b0; }
 #EmptyStateTitle { font-weight: bold; color: #2c2c2c; font-size: 13px; }
 
 /* ---- Étape 3 : filtres morphologiques + sections ---- */
-#EntityChip {
-    background: #ffffff; border: 1px solid #c4c4c4; border-radius: 11px;
-    color: #5a5a5a; font-size: 10px; padding: 4px 14px; min-height: 16px;
-}
-#EntityChip:hover { border-color: #2b79c2; color: #1d5a96; }
-/* Pas de font-weight ici : un changement de graisse via QSS sur :checked ne
-   recalcule pas la largeur du bouton (texte tronqué). Le fond bleu + texte blanc
-   suffisent à marquer l'état actif. */
-#EntityChip:checked { background: #2b79c2; border-color: #1d5a96; color: #ffffff; }
 #EntitySectionHeader {
     color: #1d5a96; font-size: 11px; font-weight: bold;
     letter-spacing: 1px; margin-top: 10px;
 }
-#EntitySection { background: transparent; border: none; }
 #EntityClusterParams { background: transparent; border: none; }
 
-/* ---- Étape 3 : cartes d'entités ---- */
+/* ---- Étape 3 : une ligne par structure ---- */
 #EntityScroll { background: transparent; }
-#EntityRow { background: transparent; border: none; }
-#EntityCard { background: #ffffff; border: 1px solid #c4c4c4; border-radius: 6px; }
-#EntityCard[state="on"] { background: #d6e6f4; border: 1px solid #2b79c2; }
-#EntityCard[state="warn"] { background: #f6efdc; border: 1px solid #b07a20; }
+#EntityLine { background: #ffffff; border: 1px solid #c4c4c4; border-radius: 6px; }
+#EntityLine[state="on"] { background: #d6e6f4; border: 1px solid #2b79c2; }
+#EntityLine[state="warn"] { background: #f6efdc; border: 1px solid #b07a20; }
 /* Indisponible : pointillés + libellé grisé + case neutralisée — la carte ne
    doit pas paraître aussi actionnable qu'une carte couverte par un modèle. */
-#EntityCard[state="nomodel"] { background: #f0f0f0; border: 1px dashed #c4c4c4; }
-#EntityCard:hover { border-color: #2b79c2; }
-#EntityCard[state="warn"]:hover { border-color: #8a5e18; }
-#EntityCard[state="nomodel"]:hover { border-color: #c4c4c4; }
+#EntityLine[state="nomodel"] { background: #f0f0f0; border: 1px dashed #c4c4c4; }
+#EntityLine:hover { border-color: #2b79c2; }
+#EntityLine:focus { border: 2px solid #2b79c2; }
+#EntityLine[state="warn"]:hover { border-color: #8a5e18; }
+#EntityLine[state="nomodel"]:hover { border-color: #c4c4c4; }
 #EntityCheck {
     border: 1px solid #707070; border-radius: 2px;
     background: #ffffff; color: #ffffff; font-size: 10px; font-weight: bold;
 }
-#EntityCard[state="on"] #EntityCheck { background: #2b79c2; border-color: #1d5a96; }
+#EntityLine[state="on"] #EntityCheck { background: #2b79c2; border-color: #1d5a96; }
 /* Sans cette règle, le ✓ blanc restait sur case blanche (invisible) dès que
    la carte passait en warn (sélectionnée avec RVT inactif). */
-#EntityCard[state="warn"] #EntityCheck { background: #b07a20; border-color: #8a5e18; }
-#EntityCard[state="nomodel"] #EntityCheck { background: #e3e3e3; border-color: #c4c4c4; }
+#EntityLine[state="warn"] #EntityCheck { background: #b07a20; border-color: #8a5e18; }
+#EntityLine[state="nomodel"] #EntityCheck { background: #e3e3e3; border-color: #c4c4c4; }
 #EntityLabel { font-weight: bold; color: #000000; }
-#EntityCard[state="on"] #EntityLabel { color: #1d5a96; }
-#EntityCard[state="nomodel"] #EntityLabel { color: #909090; }
+#EntityLine[state="on"] #EntityLabel { color: #1d5a96; }
+#EntityLine[state="nomodel"] #EntityLabel { color: #909090; }
 #EntityDesc { color: #5a5a5a; font-size: 10px; }
 #EntityRvtTag {
     background: #d6e6f4; color: #1d5a96; font-size: 10px; font-weight: bold;
@@ -312,7 +302,7 @@ QPushButton:disabled { color: #909090; border-color: #b0b0b0; }
 }
 /* Sur carte cochée, le fond de la carte = celui du tag : fond blanc pour que
    la pastille garde sa forme. */
-#EntityCard[state="on"] #EntityRvtTag { background: #ffffff; }
+#EntityLine[state="on"] #EntityRvtTag { background: #ffffff; }
 #EntityRvtTag[missing="true"] { background: #8a5e18; color: #ffffff; }
 #EntityDerivedBadge { color: #1d5a96; font-size: 10px; font-style: italic; }
 #EntityFiabHint { color: #5a5a5a; font-size: 10px; }
@@ -323,7 +313,6 @@ QPushButton:disabled { color: #909090; border-color: #b0b0b0; }
 #EntityActivateBtn { padding: 1px 8px; min-height: 16px; font-size: 10px; }
 #EntityModelLabel { color: #5a5a5a; font-size: 10px; }
 #EntityModelName { color: #2c2c2c; font-size: 10px; }
-#EntityModelSingle { color: #5a5a5a; font-size: 10px; font-style: italic; }
 #EntityChangeBtn {
     background: transparent; border: none; color: #2b79c2;
     font-size: 10px; padding: 0 2px; min-height: 0;
@@ -356,22 +345,15 @@ QPushButton:disabled { color: #909090; border-color: #b0b0b0; }
 }
 #EntityResetBtn:hover { color: #1d5a96; }
 #EntityResetBtn:disabled { color: #c4c4c4; }
-#EntityFicheBtn, #FicheBtn {
+#FicheBtn {
     background: transparent; border: none; color: #2b79c2;
     font-size: 10px; padding: 0 4px; min-height: 0;
 }
-#EntityFicheBtn:hover, #FicheBtn:hover { color: #1d5a96; text-decoration: underline; }
+#FicheBtn:hover { color: #1d5a96; text-decoration: underline; }
 
-/* ---- Étape 3 : runs IA programmés ---- */
+/* ---- Étape 3 : ce qui sera analysé ---- */
 #RunRow { background: #ffffff; border: 1px solid #c4c4c4; border-radius: 6px; }
-#RunName { font-weight: bold; color: #000000; }
-/* Classes sélectionnées : pastilles « entité » lisibles (libellés du catalogue).
-   Fond neutre clair pour se lire comme un groupe, sans concurrencer le tag RVT bleu. */
-#RunClassChips { background: transparent; border: none; }
-#RunClassChip {
-    background: #f1f5f9; color: #2c2c2c; font-size: 10px;
-    padding: 1px 8px; border-radius: 9px; border: 1px solid #c8d2dc;
-}
+#RunTexte { color: #2c2c2c; font-size: 11px; }
 #RunRvtTag {
     background: #d6e6f4; color: #1d5a96; font-size: 10px; font-weight: bold;
     padding: 1px 7px; border-radius: 3px;
@@ -523,23 +505,7 @@ QPushButton[role="micro"] {
 #WizardPrimaryButton:hover { background: #1d5a96; }
 #WizardPrimaryButton:disabled { background: #d0d0d0; border-color: #a0a0a0; color: #707070; }
 
-/* ---- Dialog d'info modèle (ⓘ depuis « Runs IA programmés ») ---- */
-/* Bouton ⓘ à droite du nom du modèle dans chaque ligne de récap. */
-#ModelInfoButton {
-    background: transparent;
-    border: 1px solid transparent;
-    border-radius: 9px;
-    color: #2b79c2;
-    font-size: 13px;
-    padding: 0px 4px;
-    min-width: 18px;
-    min-height: 18px;
-}
-#ModelInfoButton:hover { background: #d6e6f4; border: 1px solid #2b79c2; color: #1d5a96; }
-#ModelInfoButton:disabled { color: #b0b0b0; }
-
-/* Fenêtre. Le QDialog hérite déjà du fond #f0f0f0 global. */
-#ModelInfoDialog { background: #f0f0f0; }
+/* ---- Fiche d'un modèle (onglet « Modèle » du panneau ⓘ) ---- */
 
 /* En-tête fixe au-dessus du scroll. */
 #ModelInfoHeader { background: #ffffff; border-bottom: 1px solid #c4c4c4; }
@@ -592,13 +558,32 @@ QPushButton[role="micro"] {
     padding: 2px 6px;
 }
 
-/* Pied avec « Ouvrir le dossier » + « Fermer ». */
-#ModelInfoFooter { background: #f0f0f0; border-top: 1px solid #c4c4c4; }
 #ModelInfoOpenDirButton { padding: 4px 12px; }
-#ModelInfoCloseButton { padding: 4px 18px; font-weight: bold; }
+
+/* ---- Panneau ⓘ : les fiches à côté de la page (2026-10-24) ---- */
+#FichePanel { background: #ffffff; border-left: 1px solid #c4c4c4; }
+#FichePanelTete { background: #f6f6f6; border-bottom: 1px solid #c4c4c4; }
+#FichePanelTitre { font-size: 12px; font-weight: bold; color: #000000; }
+#FichePanelFermer {
+    font-size: 13px; color: #5a5a5a; border: 1px solid transparent; border-radius: 3px;
+    min-width: 22px; min-height: 22px;
+}
+#FichePanelFermer:hover { background: #e3e3e3; color: #000000; }
+#FichePanelFermer:focus { border: 2px solid #1d5a96; }
+/* Onglets : couleur + soulignement, jamais la graisse (un changement de graisse via
+   QSS sur :checked ne recalcule pas la largeur du bouton). */
+#FicheTab {
+    background: transparent; border: none; border-bottom: 2px solid transparent;
+    color: #5a5a5a; font-size: 11px; padding: 4px 10px; min-height: 0;
+}
+#FicheTab:hover { color: #1d5a96; }
+#FicheTab:checked { color: #1d5a96; border-bottom: 2px solid #2b79c2; }
+#FicheTab:disabled { color: #b0b0b0; }
+#FicheTab:focus { background: #d6e6f4; }
+#FicheChoix { font-size: 11px; }
 
 /* ---- Fiche d'une structure détectable (class_info_dialog) ---- */
-#ClassInfoDialog { background: #f0f0f0; }
+#ClassInfoDialog, #IndiceInfoDialog, #ModelInfoDialog { background: #f0f0f0; }
 #FicheScroll { background: #ffffff; }
 #FicheListe {
     background: #f6f6f6; border: none; border-right: 1px solid #c4c4c4;

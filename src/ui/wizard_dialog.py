@@ -12,7 +12,7 @@ import copy
 import json
 from pathlib import Path
 
-from qgis.PyQt.QtCore import QSize, Qt, QTimer
+from qgis.PyQt.QtCore import QCoreApplication, QEvent, QSize, QTimer, Qt
 from qgis.PyQt.QtGui import QIcon, QKeySequence
 
 # QShortcut a changé de module entre Qt5 (QtWidgets) et Qt6 (QtGui).
@@ -55,6 +55,7 @@ from .steps.step_3_detection import DetectionPage
 from .steps.step_4_launch import LaunchPage, RecapSection
 from .visualisation_tab import VisualisationTab
 from .widgets.card import build_card
+from .widgets.fiche_panel import LARGEUR as LARGEUR_PANNEAU, FichePanel
 from .widgets.stepper_rail import StepperRail
 from .widgets.toast import show_toast
 
@@ -166,6 +167,13 @@ class WizardDialog(QDialog):
         self._stack.addWidget(self._build_run_page())          # étape 5
         body.addWidget(self._rail)
         body.addWidget(self._stack, 1)
+        # Panneau ⓘ : les fiches (image, structure, modèle) à droite de la page, non
+        # modal — on lit la fiche et on coche en même temps (2026-10-24). Caché tant
+        # qu'aucune fiche n'est demandée ; la fenêtre s'élargit d'autant à l'ouverture.
+        self._panel = FichePanel()
+        self._largeur_avant_panneau = 0
+        self._panel.ferme.connect(self._on_panel_ferme)
+        body.addWidget(self._panel)
         wizard_layout.addLayout(body, 1)
         wizard_layout.addWidget(self._build_action_bar())
 
@@ -195,6 +203,9 @@ class WizardDialog(QDialog):
         self._detection_page.changed.connect(self._autosave)
         self._detection_page.changed.connect(self._refresh_rail_subs)
         self._detection_page.activate_rvt.connect(self._indices_page.activate_product)
+        self._indices_page.fiche_requested.connect(self.ouvrir_fiche_image)
+        self._detection_page.fiche_requested.connect(self.ouvrir_fiche_structure)
+        self._detection_page.modele_requested.connect(self.ouvrir_fiche_modele)
         self._source_page.mode_changed.connect(self._on_mode_changed)
         self._run_view.run_started.connect(self._on_run_started)
         self._run_view.run_finished.connect(self._on_run_finished)
@@ -204,6 +215,67 @@ class WizardDialog(QDialog):
 
         self._goto_step(1)
         self._refresh_validation()
+
+    # ------------------------------------------------------------------
+    # Panneau ⓘ : les fiches à côté de la page, jamais en modal
+    # ------------------------------------------------------------------
+    def ouvrir_fiche_image(self, key: str) -> None:
+        """La fiche d'une image du relief (ou les tableaux comparatifs) dans l'onglet « Image »."""
+        widget, titre = self._indices_page.corps_fiche(key)
+        self._poser_fiche("Image", widget, titre)
+
+    def ouvrir_fiche_structure(self, entity_id: str) -> None:
+        """La fiche d'une structure dans l'onglet « Structure » ; son lien « Fiche du
+        modèle » ouvre l'onglet « Modèle »."""
+        res = self._detection_page.corps_fiche(entity_id)
+        if res is None:
+            return   # aucun modèle ne couvre la structure : rien à montrer
+        widget, titre = res
+        widget.modele_demande.connect(self.ouvrir_fiche_modele)
+        self._poser_fiche("Structure", widget, titre)
+
+    def ouvrir_fiche_modele(self, model) -> None:
+        if model is None:
+            return
+        from .dialogs.model_info_dialog import corps_fiche_modele, titre_fiche_modele  # différé
+
+        self._poser_fiche("Modèle", corps_fiche_modele(model), titre_fiche_modele(model))
+
+    def _poser_fiche(self, onglet: str, widget, titre: str) -> None:
+        if self._panel.isVisible():
+            self._panel.ouvrir(onglet, widget, titre)
+            return
+        # La fenêtre s'élargit du panneau à l'ouverture (bornée à l'écran, jamais
+        # resserrée) et reprend sa largeur d'avant à la fermeture.
+        self._largeur_avant_panneau = self.width()
+        self._panel.ouvrir(onglet, widget, titre)
+        if not self.isMaximized():
+            voulue = self.width() + LARGEUR_PANNEAU
+            try:
+                voulue = min(voulue, max(self.width(), self.screen().availableGeometry().width() - 40))
+            except Exception:
+                pass  # pas d'écran (tests hors session graphique)
+            self.resize(voulue, self.height())
+
+    def _on_panel_ferme(self) -> None:
+        if self._largeur_avant_panneau and not self.isMaximized():
+            # Le minimum de la fenêtre compte encore le panneau tant que les mises en page
+            # ne sont pas recalculées, de l'onglet jusqu'au dialogue : chaque niveau poste une
+            # demande au suivant. Les livrer maintenant, sinon le resize est borné à l'ancien
+            # minimum (vécu hors écran, 2026-10-24).
+            for _niveau in range(4):
+                QCoreApplication.sendPostedEvents(None, QEvent.Type.LayoutRequest)
+            self.layout().activate()
+            self.resize(self._largeur_avant_panneau, self.height())   # jamais sous le minimum : Qt borne
+        self._largeur_avant_panneau = 0
+
+    def keyPressEvent(self, event):  # noqa: N802 (signature Qt)
+        # Échap ferme d'abord le panneau des fiches ; sinon le dialogue (reject, avec sa garde).
+        if event.key() == Qt.Key.Key_Escape and self._panel.isVisible():
+            self._panel.fermer()
+            event.accept()
+            return
+        super().keyPressEvent(event)
 
     def _on_mode_changed(self, mode: str) -> None:
         """Le mode (étape 1) pilote la neutralisation des sections de l'étape 2."""

@@ -34,6 +34,7 @@ class CollapsibleSection(QFrame):
         preview_getter: Optional[Callable[[], str]] = None,
         *,
         expanded: bool = False,
+        invite: str = "Cliquer pour modifier",
         parent=None,
     ):
         super().__init__(parent)
@@ -41,6 +42,7 @@ class CollapsibleSection(QFrame):
         self._title = title
         self._preview_getter = preview_getter
         self._expanded = expanded
+        self._invite = invite   # suffixe du header replié ; vide pour une figure
 
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
@@ -92,6 +94,10 @@ class CollapsibleSection(QFrame):
     def is_expanded(self) -> bool:
         return self._expanded
 
+    def set_expanded(self, on: bool) -> None:
+        if bool(on) != self._expanded:
+            self._toggle()
+
     # ------------------------------------------------------------------
     def _refresh_header(self) -> None:
         chevron = "▾" if self._expanded else "▸"
@@ -102,10 +108,11 @@ class CollapsibleSection(QFrame):
                 text = self._preview_getter()
                 if text:
                     extra += f"<span style='color:#5a5a5a;'>{sep}{text}</span>"
-            extra += (
-                f"<span style='color:#5a5a5a; font-style:italic;'>{sep}"
-                "Cliquer pour modifier</span>"
-            )
+            if self._invite:
+                extra += (
+                    f"<span style='color:#5a5a5a; font-style:italic;'>{sep}"
+                    f"{self._invite}</span>"
+                )
         self._header_label.setText(
             f"<span style='color:#5a5a5a;'>{chevron}</span>&nbsp;&nbsp;"
             f"<b>{self._title}</b>{extra}"

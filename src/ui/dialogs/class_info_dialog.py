@@ -11,8 +11,13 @@ Répond à trois questions que l'étape 3 ne savait pas poser :
 
 Les données viennent du bloc ``classes[].fiche`` du ``model_card.yaml``, lu par
 le module PUR :mod:`app.services.class_fiche` ; ce module ne fait que des
-widgets Qt. Une entité couverte par plusieurs classes (cible dérivée, ou
-comparaison A/B) affiche une fiche par classe, sélectionnable à gauche.
+widgets Qt. Une structure couverte par plusieurs classes (cible dérivée, ou
+comparaison A/B) affiche une fiche par classe, choisie dans la liste en tête.
+
+Depuis le 2026-10-24 la fiche se lit dans le **panneau latéral** de l'assistant
+(:class:`~ui.widgets.fiche_panel.FichePanel`, 420 px) : :func:`corps_fiche_entite`
+en fabrique le corps, vignette au-dessus du texte ; :class:`ClassInfoDialog` n'est
+plus qu'une enveloppe pour le rendu hors écran (``dev/rendu_hors_ecran.py profil``).
 
 Compatible Qt5/Qt6 : tous les énumérés sont scopés (``Qt.AlignmentFlag…``).
 """
@@ -21,19 +26,17 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Callable, List, Optional, Sequence
 
-from qgis.PyQt.QtCore import Qt
+from qgis.PyQt.QtCore import Qt, pyqtSignal
 from qgis.PyQt.QtGui import QPixmap
 from qgis.PyQt.QtWidgets import (
-    QGridLayout,
+    QComboBox,
     QDialog,
     QFrame,
+    QGridLayout,
     QHBoxLayout,
     QLabel,
-    QListWidget,
-    QListWidgetItem,
     QPushButton,
     QScrollArea,
-    QSizePolicy,
     QVBoxLayout,
     QWidget,
 )
@@ -184,7 +187,6 @@ class _Apercu(QWidget):
 
         self._legende = _label("", "FicheLegende")
         lay.addWidget(self._legende)
-        lay.addStretch(1)
 
         self._refresh()
 
@@ -268,13 +270,25 @@ class _CorpsFiche(QWidget):
         du registre pour la classe ; ``seuil`` : seuil effectif réglé à l'étape 3,
         pour que la figure et son bilan montrent ce que le run appliquera."""
         super().__init__(parent)
-        lay = QVBoxLayout(self)
-        lay.setContentsMargins(18, 16, 18, 18)
+        base = couleur or couleur_de_classe(fiche.nom) or (42, 120, 214)
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(0)
+        # Liseré de 4 px dans la couleur de la classe, en tête du corps : la fiche du
+        # modèle a le sien, ardoise (option A, 2026-10-08).
+        lisere = QFrame()
+        lisere.setObjectName("FicheLisere")
+        lisere.setFixedHeight(4)
+        lisere.setStyleSheet("background: rgb(%d, %d, %d);" % tuple(int(v) for v in base))
+        outer.addWidget(lisere)
+        corps = QWidget()
+        outer.addWidget(corps)
+        lay = QVBoxLayout(corps)
+        lay.setContentsMargins(18, 14, 18, 18)
         lay.setSpacing(12)
 
         # — en-tête : étiquette de nature dans la couleur de la classe (celle de sa
         #   couche dans QGIS), puis le titre (option A, 2026-10-08) —
-        base = couleur or couleur_de_classe(fiche.nom) or (42, 120, 214)
         nature = QHBoxLayout()
         nature.setSpacing(6)
         point = QLabel()
@@ -303,10 +317,10 @@ class _CorpsFiche(QWidget):
         # zones, d'un seul tenant) → limites → contexte technique et fiche du modèle.
         blocs = dict(self._blocs(fiche, base))
 
-        # — aperçu + reconnaître côte à côte —
-        haut = QHBoxLayout()
-        haut.setSpacing(18)
-        haut.addWidget(_Apercu(fiche, model_dir, couleur=base))
+        # — aperçu, puis reconnaître : empilés, la fiche se lit dans un panneau de 420 px —
+        haut = QVBoxLayout()
+        haut.setSpacing(10)
+        haut.addWidget(_Apercu(fiche, model_dir, couleur=base))   # pleine largeur : la légende se replie
         colonne = QVBoxLayout()
         colonne.setSpacing(8)
         if fiche.reconnaitre:
@@ -319,8 +333,7 @@ class _CorpsFiche(QWidget):
             if contenu is not None:
                 colonne.addWidget(_titre_bloc(titre_bloc))
                 colonne.addWidget(contenu)
-        colonne.addStretch(1)
-        haut.addLayout(colonne, 1)
+        haut.addLayout(colonne)
         lay.addLayout(haut)
 
         def _bloc(titre_bloc: str) -> None:
@@ -389,7 +402,7 @@ class _CorpsFiche(QWidget):
                         "FicheLegende",
                     ))
                     cellule.addWidget(fig)
-                    grille.addLayout(cellule, i // 2, i % 2)
+                    grille.addLayout(cellule, i, 0)   # une colonne : le panneau fait 420 px
                 lay.addLayout(grille)
 
         _bloc("Limites connues du modèle")
@@ -531,10 +544,150 @@ class _CorpsFiche(QWidget):
 
 
 # ----------------------------------------------------------------------
-# Dialog
+# Feuilleter plusieurs fiches dans un seul corps
 # ----------------------------------------------------------------------
-class ClassInfoDialog(QDialog):
-    """Fiche(s) des classes qui portent une entité."""
+class Feuilleteur(QWidget):
+    """Un corps de fiche parmi plusieurs : une liste déroulante en tête dès qu'il y
+    en a au moins deux, le corps choisi en dessous. Les corps sont construits à la
+    demande (les figures se calculent à la construction) et conservés, cachés.
+
+    ``entrees`` : ``[(libellé, infobulle, fabrique() -> QWidget), …]``.
+    """
+
+    change = pyqtSignal(int)
+
+    def __init__(self, entrees, parent=None):
+        super().__init__(parent)
+        self._fabriques = [f for _l, _t, f in entrees]
+        self._corps: dict = {}
+        self._courant = None
+        lay = QVBoxLayout(self)
+        lay.setContentsMargins(0, 0, 0, 0)
+        lay.setSpacing(0)
+        self._choix = QComboBox()
+        self._choix.setObjectName("FicheChoix")
+        for i, (libelle, infobulle, _f) in enumerate(entrees):
+            self._choix.addItem(libelle)
+            if infobulle:
+                self._choix.setItemData(i, infobulle, Qt.ItemDataRole.ToolTipRole)
+        self._choix.setVisible(len(entrees) > 1)
+        self._choix.currentIndexChanged.connect(self._afficher)
+        hote = QWidget()
+        hl = QHBoxLayout(hote)
+        hl.setContentsMargins(12, 8, 12, 0)
+        hl.addWidget(self._choix, 1)
+        hote.setVisible(len(entrees) > 1)
+        lay.addWidget(hote)
+        self._lay = lay
+        if entrees:
+            self._afficher(0)
+
+    def selectionner(self, i: int) -> None:
+        self._choix.setCurrentIndex(i)
+        self._afficher(i)
+
+    def _afficher(self, i: int) -> None:
+        if not (0 <= i < len(self._fabriques)):
+            return
+        if self._courant is not None:
+            self._corps[self._courant].hide()
+        if i not in self._corps:
+            w = self._fabriques[i]()
+            self._corps[i] = w
+            self._lay.addWidget(w)
+        self._corps[i].show()
+        self._courant = i
+        self.change.emit(i)
+
+
+class CorpsEntite(QWidget):
+    """Hôte du corps d'une fiche de structure ; ``modele_demande(model)`` quand on
+    clique « Fiche du modèle » — l'assistant l'ouvre dans l'onglet « Modèle »."""
+
+    modele_demande = pyqtSignal(object)
+
+
+def corps_fiche_entite(
+    fiches: Sequence[ClassFiche],
+    model_dirs: Optional[dict],
+    titre: str,
+    models: Optional[dict] = None,
+    couleurs: Optional[dict] = None,
+    seuils: Optional[dict] = None,
+    observes: Optional[dict] = None,
+) -> CorpsEntite:
+    """Le corps de la fiche d'une structure (une fiche par classe qui la porte, à
+    feuilleter). ``models`` (nom → ``InstalledModel``) active le lien « Fiche du
+    modèle » ; ``couleurs`` et ``seuils`` (clé ``(modèle, classe)``) alignent la
+    figure sur la couche et le seuil du traitement ; ``observes`` = vos verdicts."""
+    del titre   # le panneau le porte
+    hote = CorpsEntite()
+    lay = QVBoxLayout(hote)
+    lay.setContentsMargins(0, 0, 0, 0)
+    lay.setSpacing(0)
+    fiches = list(fiches)
+    dirs = dict(model_dirs or {})
+    models = dict(models or {})
+    couleurs = dict(couleurs or {})
+    seuils = dict(seuils or {})
+    observes = dict(observes or {})
+    if not fiches:
+        manque = _label("Aucun modèle installé ne couvre cette structure.", "FicheManque")
+        manque.setContentsMargins(18, 16, 18, 16)
+        lay.addWidget(manque)
+        return hote
+
+    def fabrique(f: ClassFiche):
+        def _construire() -> QWidget:
+            model = models.get(f.modele_id)
+            ouvrir = (lambda m=model: hote.modele_demande.emit(m)) if model is not None else None
+            return _CorpsFiche(
+                f, dirs.get(f.modele_id), ouvrir_modele=ouvrir,
+                couleur=couleurs.get((f.modele_id, f.nom)),
+                seuil=seuils.get((f.modele_id, f.nom)),
+                observe=observes.get((f.modele_id, f.nom)),
+            )
+        return _construire
+
+    lay.addWidget(Feuilleteur([(f.label, f"{f.nom} — {f.modele}", fabrique(f)) for f in fiches]))
+    return hote
+
+
+# ----------------------------------------------------------------------
+# Enveloppe hors écran : le corps dans un dialogue (dev/rendu_hors_ecran.py)
+# ----------------------------------------------------------------------
+class FicheDialog(QDialog):
+    """Un corps de fiche dans un dialogue. L'assistant pose les corps dans son
+    panneau latéral ; ce dialogue ne sert qu'aux rendus et contrôles hors écran."""
+
+    def __init__(self, corps: QWidget, titre: str, nom_objet: str, parent=None,
+                 taille=(900, 640)):
+        super().__init__(parent)
+        self.setObjectName(nom_objet)
+        self.setWindowTitle(titre)
+        self.setMinimumSize(560, 480)
+        self.resize(*taille)
+        root = QVBoxLayout(self)
+        root.setContentsMargins(0, 0, 0, 0)
+        root.setSpacing(0)
+        zone = QScrollArea()
+        zone.setObjectName("FicheScroll")
+        zone.setWidgetResizable(True)
+        zone.setFrameShape(QFrame.Shape.NoFrame)
+        zone.setWidget(corps)
+        root.addWidget(zone, 1)
+        pied = QHBoxLayout()
+        pied.setContentsMargins(14, 10, 14, 12)
+        pied.addStretch(1)
+        fermer = QPushButton("Fermer")
+        fermer.setCursor(Qt.CursorShape.PointingHandCursor)
+        fermer.clicked.connect(self.accept)
+        pied.addWidget(fermer)
+        root.addLayout(pied)
+
+
+class ClassInfoDialog(FicheDialog):
+    """Fiche(s) des classes qui portent une structure, en dialogue (hors écran)."""
 
     def __init__(
         self,
@@ -547,111 +700,16 @@ class ClassInfoDialog(QDialog):
         seuils: Optional[dict] = None,
         observes: Optional[dict] = None,
     ):
-        super().__init__(parent)
-        self._fiches = list(fiches)
-        self._dirs = dict(model_dirs or {})
-        self._models = dict(models or {})  # nom → InstalledModel, pour « Fiche du modèle »
-        self._couleurs = dict(couleurs or {})  # (modèle, classe) → couleur de la couche
-        self._seuils = dict(seuils or {})      # (modèle, classe) → seuil effectif (étape 3)
-        self._observes = dict(observes or {})  # (modèle, classe) → Observation (vos verdicts)
-        self.setObjectName("ClassInfoDialog")
-        # Nature dans le titre de la fenêtre : utile dans la barre des tâches, et quand
-        # la fiche du modèle s'ouvre par-dessus (option A, 2026-10-08).
-        self.setWindowTitle(f"Structure · {titre}" if titre else "Structure détectable")
-        self.setMinimumSize(760, 560)
-        self.resize(900, 640)
-
-        root = QVBoxLayout(self)
-        root.setContentsMargins(0, 0, 0, 0)
-        root.setSpacing(0)
-        # Liseré de 4 px dans la couleur de la classe affichée (recoloré à chaque
-        # changement de classe dans la liste) ; la fiche du modèle a le sien, ardoise.
-        self._liseré = QFrame()
-        self._liseré.setObjectName("FicheLisere")
-        self._liseré.setFixedHeight(4)
-        root.addWidget(self._liseré)
-
-        corps = QHBoxLayout()
-        corps.setContentsMargins(0, 0, 0, 0)
-        corps.setSpacing(0)
-
-        # Liste de gauche : seulement quand l'entité a plusieurs classes
-        self._liste = QListWidget()
-        self._liste.setObjectName("FicheListe")
-        self._liste.setFixedWidth(200)
-        for f in self._fiches:
-            item = QListWidgetItem(f.label)
-            item.setToolTip(f"{f.nom} — {f.modele}")
-            self._liste.addItem(item)
-        self._liste.currentRowChanged.connect(self._afficher)
-        self._liste.setVisible(len(self._fiches) > 1)
-        corps.addWidget(self._liste)
-
-        self._zone = QScrollArea()
-        self._zone.setObjectName("FicheScroll")
-        self._zone.setWidgetResizable(True)
-        self._zone.setFrameShape(QFrame.Shape.NoFrame)
-        self._zone.setSizePolicy(
-            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
+        corps = corps_fiche_entite(
+            fiches, model_dirs, titre, models=models, couleurs=couleurs, seuils=seuils, observes=observes,
         )
-        corps.addWidget(self._zone, 1)
-        root.addLayout(corps, 1)
-
-        pied = QHBoxLayout()
-        pied.setContentsMargins(14, 10, 14, 12)
-        pied.addStretch(1)
-        fermer = QPushButton("Fermer")
-        fermer.setCursor(Qt.CursorShape.PointingHandCursor)
-        fermer.clicked.connect(self.accept)
-        pied.addWidget(fermer)
-        root.addLayout(pied)
-
-        if self._fiches:
-            self._liste.setCurrentRow(0)
-            self._afficher(0)
-        else:
-            self._zone.setWidget(_label(
-                "Aucun modèle installé ne couvre cette structure.", "FicheManque"
-            ))
-
-    def _afficher(self, row: int) -> None:
-        if not (0 <= row < len(self._fiches)):
-            return
-        f = self._fiches[row]
-        base = self._couleurs.get((f.modele_id, f.nom)) or couleur_de_classe(f.nom) or (42, 120, 214)
-        self._liseré.setStyleSheet("background: rgb(%d, %d, %d);" % tuple(int(v) for v in base))
-        model = self._models.get(f.modele_id)
-        ouvrir = (lambda: self._ouvrir_modele(model)) if model is not None else None
-        self._zone.setWidget(_CorpsFiche(
-            f, self._dirs.get(f.modele_id), ouvrir_modele=ouvrir,
-            couleur=self._couleurs.get((f.modele_id, f.nom)),
-            seuil=self._seuils.get((f.modele_id, f.nom)),
-            observe=self._observes.get((f.modele_id, f.nom)),
-        ))
+        # Nature dans le titre de la fenêtre (option A, 2026-10-08).
+        super().__init__(corps, f"Structure · {titre}" if titre else "Structure détectable",
+                         "ClassInfoDialog", parent)
+        corps.modele_demande.connect(self._ouvrir_modele)
 
     def _ouvrir_modele(self, model) -> None:
         """Fiche ⓘ du modèle de la classe affichée, par-dessus celle-ci."""
-        from .model_info_dialog import ModelInfoDialog  # différé, comme à l'étape 3
+        from .model_info_dialog import ModelInfoDialog  # différé
+
         ModelInfoDialog(model, parent=self).exec()
-
-
-def ouvrir_fiche_entite(
-    fiches: Sequence[ClassFiche],
-    model_dirs: Optional[dict],
-    titre: str,
-    parent=None,
-    models: Optional[dict] = None,
-    couleurs: Optional[dict] = None,
-    seuils: Optional[dict] = None,
-    observes: Optional[dict] = None,
-) -> None:
-    """Ouvre la fiche en modal. Rien à afficher → rien ne s'ouvre. ``models``
-    (nom → ``InstalledModel``) active le lien « Fiche du modèle » ; ``couleurs`` et
-    ``seuils`` (clé ``(modèle, classe)``) alignent la figure sur la couche et le
-    seuil du run."""
-    if not fiches:
-        return
-    ClassInfoDialog(
-        fiches, model_dirs, titre, parent=parent, models=models,
-        couleurs=couleurs, seuils=seuils, observes=observes,
-    ).exec()

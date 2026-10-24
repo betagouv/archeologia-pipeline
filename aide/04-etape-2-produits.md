@@ -1,6 +1,6 @@
 # Étape 2 · Images du relief
 
-Cochez les images du relief à calculer pour chaque dalle. Trois sections : **Recommandé pour commencer** (le relief nu MNT, les creux SVF, les reliefs LD, cochées d'avance à la première ouverture), **Autres images du relief**, et **Qualité de la donnée** (densité et couverture des points sol, pour les points de départ LiDAR). Un clic n'importe où sur une carte la coche ou la décoche ; au clavier, Tab passe de carte en carte et Espace coche. Le bouton **ⓘ** de chaque carte ouvre sa fiche : ce que montre l'image, dans quelle optique s'en servir, ce qu'elle ne montre pas, comment elle est calculée, ses réglages et ses sources. Avant de choisir entre deux images, le lien **Comparer les images** en haut de la page ouvre deux tableaux issus de la documentation de Relief Visualization Toolbox, qui disent quelle image convient à quel type de forme.
+Cochez les images du relief à calculer pour chaque dalle. Trois sections : **Recommandé pour commencer** (le relief nu MNT, les creux SVF, les reliefs LD, cochées d'avance à la première ouverture), **Autres images du relief**, et **Qualité de la donnée** (densité et couverture des points sol, pour les points de départ LiDAR). Un clic n'importe où sur une carte la coche ou la décoche ; au clavier, Tab passe de carte en carte et Espace coche. Le bouton **ⓘ** de chaque carte ouvre sa fiche dans un panneau à droite de la page, qui ne bloque rien (✕ ou Échap le ferme) : ce que montre l'image, dans quelle optique s'en servir, ce qu'elle ne montre pas, comment elle est calculée, ses réglages et ses sources. Avant de choisir entre deux images, le lien **Comparer les images** en haut de la page ouvre deux tableaux issus de la documentation de Relief Visualization Toolbox, qui disent quelle image convient à quel type de forme.
 
 [![Étape 2 : les images recommandées cochées d'avance, les autres images et la qualité de la donnée, chaque carte avec sa vignette et son « ⓘ »](img/etape2-produits.png)](img/etape2-produits.png)
 
@@ -26,7 +26,7 @@ Cochez les images du relief à calculer pour chaque dalle. Trois sections : **Re
 
 Les détails de calcul et de lecture sont dans la fiche de chaque image, pas ici.
 
-[![La fiche d'une image : ce que montre l'image, dans quelle optique l'utiliser, et la liste des autres images à gauche](img/etape2-fiche-produit.png)](img/etape2-fiche-produit.png)
+[![La fiche d'une image dans le panneau à droite de l'étape 2 : ce que montre l'image, dans quelle optique l'utiliser ; la liste en tête passe aux autres images](img/etape2-fiche-produit.png)](img/etape2-fiche-produit.png)
 
 ## Ce qu'il faut savoir avant de cocher
 

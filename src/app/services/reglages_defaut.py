@@ -11,7 +11,7 @@ entité**.
 
 Ce module porte cette portée, et rien d'autre : pas de Qt, pas de QGIS. Le
 câblage vit dans ``ui/steps/step_2_indices.py``, ``ui/steps/step_3_detection.py``
-et ``ui/widgets/entity_card.py``, qui ne sont pas collectés par pytest —
+et ``ui/widgets/entity_row.py``, qui ne sont pas collectés par pytest —
 ``tests/unit/test_reset_defauts_ui.py`` vérifie par AST qu'ils appellent bien
 d'ici.
 """
@@ -113,6 +113,25 @@ def effacer_surcharges(cle: str, *dicos: MutableMapping[str, Any]) -> int:
             del d[cle]
             touches += 1
     return touches
+
+
+def fusionner_surcharge(
+    surcharges: Mapping[str, Mapping[str, Any]], cle: str, changements: Mapping[str, Any]
+) -> dict:
+    """Les surcharges après qu'une seule valeur a été réglée. Pur : rend un nouveau dict.
+
+    Seules les clés présentes dans ``changements`` deviennent des surcharges de
+    ``cle`` ; les autres champs de la même entité gardent leur état (règle C-01,
+    2026-10-24). Recopier l'autre champ figerait, par exemple, l'aire minimale
+    sur la valeur du modèle du jour, qui ne suivrait plus un changement de
+    modèle. ``cle`` vide ou ``changements`` vide : l'entrée est rendue telle quelle.
+    """
+    if not cle or not changements:
+        return {k: dict(v) for k, v in surcharges.items()}
+    out = {k: dict(v) for k, v in surcharges.items()}
+    entree = out.setdefault(cle, {})
+    entree.update(changements)
+    return out
 
 
 def a_des_surcharges(cle: str, *dicos: Mapping[str, Any]) -> bool:

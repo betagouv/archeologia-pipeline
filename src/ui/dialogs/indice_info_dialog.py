@@ -1,7 +1,9 @@
 """Fiche d'un produit de l'étape 2 — ce que l'archéologue lit avant de cocher.
 
-Pendant, côté produits, de :mod:`class_info_dialog` : mêmes helpers de mise en
-page, même gabarit (liste à gauche, fiche à droite), même visuel d'accès. Elle
+Pendant, côté images du relief, de :mod:`class_info_dialog` : mêmes helpers de
+mise en page, même gabarit (choix de la fiche en tête, corps en dessous), même
+panneau latéral de l'assistant (:func:`corps_fiche_indice` en fabrique le corps ;
+:class:`IndiceInfoDialog` n'est qu'une enveloppe pour le rendu hors écran). Elle
 répond à quatre questions que l'étape 2 ne savait pas poser :
 
 1. **Qu'est-ce que je vais voir ?** — vignette du produit et lecture de l'image ;
@@ -24,16 +26,10 @@ from typing import List, Optional, Sequence
 from qgis.PyQt.QtCore import Qt
 from qgis.PyQt.QtGui import QPixmap
 from qgis.PyQt.QtWidgets import (
-    QDialog,
-    QFrame,
     QGridLayout,
     QHBoxLayout,
     QLabel,
-    QListWidget,
-    QListWidgetItem,
     QPushButton,
-    QScrollArea,
-    QSizePolicy,
     QVBoxLayout,
     QWidget,
 )
@@ -43,7 +39,7 @@ from ..widgets.vignette import pixmap_ajuste
 # Helpers de mise en page de la fiche de classe : même gabarit, donc même code.
 # Les extraire dans un module tiers ne ferait qu'ajouter un fichier pour quatre
 # fabriques de QLabel.
-from .class_info_dialog import _label, _puces, _separateur, _titre_bloc
+from .class_info_dialog import Feuilleteur, FicheDialog, _label, _puces, _separateur, _titre_bloc
 
 _VIGNETTE_MAX = 320  # côté max de l'aperçu, en px logiques
 
@@ -105,7 +101,6 @@ class _Apercu(QWidget):
 
         self._legende = _label("", "FicheLegende")
         lay.addWidget(self._legende)
-        lay.addStretch(1)
 
         self._refresh()
 
@@ -182,17 +177,16 @@ class _CorpsFiche(QWidget):
         if fiche.resume:
             lay.addWidget(_label(fiche.resume, "FicheResume"))
 
-        # — aperçu + lecture de l'image côte à côte —
-        haut = QHBoxLayout()
-        haut.setSpacing(18)
-        haut.addWidget(_Apercu(fiche, racine))
+        # — aperçu, puis lecture de l'image : empilés, la fiche se lit dans un panneau de 420 px —
+        haut = QVBoxLayout()
+        haut.setSpacing(10)
+        haut.addWidget(_Apercu(fiche, racine))   # pleine largeur : la légende se replie
         colonne = QVBoxLayout()
         colonne.setSpacing(8)
         if fiche.lire:
             colonne.addWidget(_titre_bloc("Ce que montre l'image"))
             colonne.addWidget(_label(fiche.lire, "FicheTexte"))
-        colonne.addStretch(1)
-        haut.addLayout(colonne, 1)
+        haut.addLayout(colonne)
         lay.addLayout(haut)
 
         # — blocs textuels —
@@ -255,7 +249,7 @@ class _CorpsFiche(QWidget):
         if f.methode:
             out.append(("Comment c'est calculé", _puces(f.methode)))
         if f.parametres:
-            out.append(("Réglages (étape 2 → Réglages avancés…)", self._parametres(f)))
+            out.append(("Réglages (étape 2, « ▸ Réglages » de la carte)", self._parametres(f)))
         if f.references:
             out.append(("Sources", self._references(f)))
         if not f.est_complete:
@@ -350,10 +344,43 @@ class _CorpsComparaison(QWidget):
 
 
 # ----------------------------------------------------------------------
-# Dialog
+# Le corps à poser dans le panneau ⓘ, et l'enveloppe hors écran
 # ----------------------------------------------------------------------
-class IndiceInfoDialog(QDialog):
-    """Les fiches des produits de l'étape 2, feuilletables."""
+def corps_fiche_indice(
+    fiches: Sequence[IndiceFiche],
+    racine: Optional[Path],
+    cle_active: str = "",
+    comparaison: Optional[Comparaison] = None,
+) -> QWidget:
+    """Les fiches des images, à feuilleter, ouvertes sur ``cle_active`` ;
+    ``comparaison`` ajoute les tableaux comparatifs en tête de liste (absente ou
+    vide, l'entrée n'apparaît pas) et ``cle_active == "__comparaison__"`` les ouvre."""
+    fiches = list(fiches)
+    comparaison = comparaison if (comparaison and not comparaison.est_vide) else None
+    if not fiches:
+        return _label("Aucune fiche disponible.", "FicheManque")
+    entrees = []
+    if comparaison is not None:
+        entrees.append((
+            "\u229e  Comparer les images",
+            "Quelle image pour quelle forme, et ce que chacune sait faire",
+            lambda: _CorpsComparaison(comparaison, fiches),
+        ))
+    for f in fiches:
+        entrees.append((f"{f.tag} · {f.titre}", f"{f.nom} — {f.famille}",
+                        lambda f=f: _CorpsFiche(f, racine)))
+    feuilleteur = Feuilleteur(entrees)
+    decalage = 1 if comparaison is not None else 0
+    if cle_active == "__comparaison__" and comparaison is not None:
+        depart = 0
+    else:
+        depart = next((i for i, f in enumerate(fiches) if f.cle == cle_active), 0) + decalage
+    feuilleteur.selectionner(depart)
+    return feuilleteur
+
+
+class IndiceInfoDialog(FicheDialog):
+    """Les fiches des images de l'étape 2, en dialogue (rendu hors écran)."""
 
     def __init__(
         self,
@@ -363,106 +390,5 @@ class IndiceInfoDialog(QDialog):
         parent=None,
         comparaison: Optional[Comparaison] = None,
     ):
-        super().__init__(parent)
-        self._fiches = list(fiches)
-        self._racine = racine
-        # La comparaison occupe la première ligne de la liste quand elle
-        # existe ; les fiches sont alors décalées d'un rang (cf. _decalage).
-        self._comparaison = (
-            comparaison if (comparaison and not comparaison.est_vide) else None
-        )
-        self.setObjectName("IndiceInfoDialog")
-        self.setWindowTitle("Images du relief")
-        self.setMinimumSize(760, 560)
-        self.resize(940, 660)
-
-        root = QVBoxLayout(self)
-        root.setContentsMargins(0, 0, 0, 0)
-        root.setSpacing(0)
-
-        corps = QHBoxLayout()
-        corps.setContentsMargins(0, 0, 0, 0)
-        corps.setSpacing(0)
-
-        # Liste de gauche : tous les produits, pour comparer avant de cocher.
-        self._liste = QListWidget()
-        self._liste.setObjectName("FicheListe")
-        self._liste.setFixedWidth(210)
-        if self._comparaison is not None:
-            entree = QListWidgetItem("\u229e  Comparer les images")
-            entree.setToolTip(
-                "Quelle image pour quelle forme, et ce que chacune sait faire"
-            )
-            self._liste.addItem(entree)
-        for f in self._fiches:
-            item = QListWidgetItem(f"{f.tag} · {f.titre}")
-            item.setToolTip(f"{f.nom} — {f.famille}")
-            self._liste.addItem(item)
-        self._liste.currentRowChanged.connect(self._afficher)
-        corps.addWidget(self._liste)
-
-        self._zone = QScrollArea()
-        self._zone.setObjectName("FicheScroll")
-        self._zone.setWidgetResizable(True)
-        self._zone.setFrameShape(QFrame.Shape.NoFrame)
-        self._zone.setSizePolicy(
-            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
-        )
-        corps.addWidget(self._zone, 1)
-        root.addLayout(corps, 1)
-
-        pied = QHBoxLayout()
-        pied.setContentsMargins(14, 10, 14, 12)
-        pied.addStretch(1)
-        fermer = QPushButton("Fermer")
-        fermer.setCursor(Qt.CursorShape.PointingHandCursor)
-        fermer.clicked.connect(self.accept)
-        pied.addWidget(fermer)
-        root.addLayout(pied)
-
-        if self._fiches:
-            if cle_active == "__comparaison__" and self._comparaison is not None:
-                self._liste.setCurrentRow(0)   # « Comparer les images », depuis la page
-            else:
-                depart = next(
-                    (i for i, f in enumerate(self._fiches) if f.cle == cle_active), 0
-                )
-                self._liste.setCurrentRow(depart + self._decalage)
-            self._afficher(depart + self._decalage)
-        else:
-            self._zone.setWidget(_label("Aucune fiche disponible.", "FicheManque"))
-
-    @property
-    def _decalage(self) -> int:
-        """Nombre de lignes qui précèdent les fiches dans la liste."""
-        return 1 if self._comparaison is not None else 0
-
-    def _afficher(self, row: int) -> None:
-        if self._comparaison is not None and row == 0:
-            self._zone.setWidget(
-                _CorpsComparaison(self._comparaison, self._fiches)
-            )
-            return
-        i = row - self._decalage
-        if not (0 <= i < len(self._fiches)):
-            return
-        self._zone.setWidget(_CorpsFiche(self._fiches[i], self._racine))
-
-
-def ouvrir_fiche_indice(
-    fiches: Sequence[IndiceFiche],
-    racine: Optional[Path],
-    cle_active: str = "",
-    parent=None,
-    comparaison: Optional[Comparaison] = None,
-) -> None:
-    """Ouvre les fiches en modal, positionnées sur ``cle_active``.
-
-    ``comparaison`` ajoute les tableaux comparatifs en tête de liste ;
-    absente ou vide, l'entrée n'apparaît simplement pas.
-    """
-    if not fiches:
-        return
-    IndiceInfoDialog(
-        fiches, racine, cle_active, parent=parent, comparaison=comparaison
-    ).exec()
+        super().__init__(corps_fiche_indice(fiches, racine, cle_active, comparaison),
+                         "Images du relief", "IndiceInfoDialog", parent)

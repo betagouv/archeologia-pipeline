@@ -1125,3 +1125,21 @@ Lot 3 du chantier d'accélération (2026-10-15) : une dalle lue en entier reçoi
 - [ ] **63.7 Comparer** : le lien « Comparer les images ▸ » en haut de la page ouvre les fiches directement sur les deux tableaux comparatifs.
 - [ ] **63.8 Manuel** : F1 sur l'étape 2 → sections, « ⓘ », accordéon, marge et comparaison décrits.
 
+## 64. Interface rationalisée — lot 4, l'étape 3 et le panneau ⓘ ⭐ P1
+
+> **Contexte** (2026-10-24, proposition A) : une ligne par structure sous sa morphologie (plus de filtres), fiches
+> dans un panneau latéral non modal à trois onglets, seuil à deux décimales (seuil du modèle conservé à trois),
+> une clé réglée à la fois, réglages d'une structure décochée conservés, « Ce qui sera analysé » en phrases.
+
+- [ ] **64.1 Lignes** : étape 3, détection activée → une ligne par structure sous chaque morphologie, sans pastille de filtre ; les onze lignes tiennent sans défiler à 700 px de haut ; une description longue est coupée par « … », texte complet en infobulle ; aucune barre horizontale, même fenêtre étroite.
+- [ ] **64.2 Cocher** : un clic sur la ligne (hors « ⓘ », « Changer ▾ », « l'ajouter ») coche ; Tab puis Espace coche au clavier ; un clic sur le bandeau de l'interrupteur (titre ou phrase) active ou désactive la détection.
+- [ ] **64.3 Panneau ⓘ** : « ⓘ » d'une structure → panneau à droite, onglet « Structure », fenêtre élargie de 420 px (bornée à l'écran) ; la page reste utilisable (cocher une autre ligne, changer d'étape) ; « ⓘ » d'une image à l'étape 2 → onglet « Image » ; « ⓘ » d'un modèle (ligne ou « Ce qui sera analysé ») et lien « Fiche du modèle » dans la fiche → onglet « Modèle » ; chaque onglet garde la dernière fiche ouverte ; ✕ ou Échap ferme le panneau et resserre la fenêtre ; Échap sans panneau ouvert ferme l'assistant comme avant.
+- [ ] **64.4 Fiche dans 420 px** : vignette au-dessus du texte ; liste déroulante en tête quand plusieurs classes portent la structure, ou pour passer d'une image à l'autre (« Comparer les images » en première entrée) ; aucune barre horizontale ; profil des scores et petits multiples par zone sur une colonne ; « Ouvrir le dossier » en bas de la fiche du modèle.
+- [ ] **64.5 Seuils et réglages** : la case déplie sous chaque ligne cochée : Confiance à deux décimales, Aire min, « ↺ » dont l'infobulle dit « Revenir au seuil du modèle (0,29)… » ; l'infobulle de la case Confiance montre le seuil appliqué à trois décimales (chemins creux : 0,245 affiché arrondi, « Seuil appliqué : 0,245 (seuil du modèle) » tant qu'on ne touche pas) ; « ▸ Profil des scores » se déplie à la demande et la ligne orange suit la case.
+- [ ] **64.6 Une clé à la fois** : régler la Confiance puis changer de modèle (« Changer ▾ ») : l'aire minimale suit le nouveau modèle (elle n'a pas été figée) ; régler l'aire ne fige pas le seuil ; `last_ui_config.json` ne porte que la clé réglée.
+- [ ] **64.7 Décocher conserve** : régler un seuil, décocher la structure, enregistrer la configuration, la recharger, recocher : le seuil est encore là ; l'étape 4 ne récapitule que les structures cochées.
+- [ ] **64.8 Regroupement** : « Regrouper en zones » apparaît dès que la ligne est cochée (sans la case des réglages) ; « Regroupement de cratères » coche Cratères d'office avec le badge « inclus dans », seuils grisés sur Cratères.
+- [ ] **64.9 Ce qui sera analysé** : une phrase par analyse « Modèle X lit l'image LD : Cratères, Parcellaire » avec son « ⓘ » ; compteur « N analyses · un modèle lit une image ».
+- [ ] **64.10 Lecture seule** : pendant un traitement, l'étape 3 est grisée (interrupteur, coches, réglages) mais les « ⓘ » restent cliquables et le panneau s'ouvre.
+- [ ] **64.11 Manuel** : F1 sur l'étape 3 → lignes, panneau ⓘ, deux décimales, réglages conservés décrits ; les captures montrent les lignes, le panneau ouvert sur Cratères et une ligne dépliée ; l'étape 2 montre le panneau sur SVF.
+

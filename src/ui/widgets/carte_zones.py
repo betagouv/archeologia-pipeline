@@ -4,8 +4,8 @@ Posé en tête du bloc « Ce que le modèle a appris » de la fiche de classe (d
 utilisateur 2026-10-08 : une carte unique qui dit où la classe a été apprise et mesurée,
 pas de carte dans « Par zone d'évaluation »). À gauche, une petite carte par pays
 concerné (France, Irlande) : un disque par zone, dans la couleur de la couche, d'aire
-proportionnelle aux objets annotés. À droite, les zones avec une barre et leurs
-effectifs. Survol croisé (demande utilisateur 2026-10-08) : survoler un disque l'entoure
+proportionnelle aux objets annotés. En dessous (la fiche se lit dans un panneau de
+420 px depuis le 2026-10-24), les zones avec une barre et leurs effectifs. Survol croisé (demande utilisateur 2026-10-08) : survoler un disque l'entoure
 et met sa ligne en valeur, survoler une ligne fait de même ; un seul état, porté par
 ``CarteZonesWidget.surligner``. Données et géométrie : module pur
 :mod:`app.services.carte_zones`. Compatible Qt5/Qt6 : énumérés scopés.
@@ -32,6 +32,7 @@ from .vignette import couleur_texte
 
 RGB = Tuple[int, int, int]
 _COTE = 150          # côté d'une carte de pays, px logiques
+_PISTE = 60          # longueur de la barre d'effectifs d'une zone, px logiques
 _ECART = 8
 _TERRE = QColor("#eef0ea")
 _TRAIT = QColor("#a3aaa3")
@@ -156,20 +157,18 @@ class _LigneZone(QWidget):
         nom.setObjectName("FicheTexte")
         nom.setWordWrap(True)
         piste = QWidget()
-        piste.setFixedSize(110, 8)
+        piste.setFixedSize(_PISTE, 8)
         barre = QFrame(piste)
         barre.setObjectName("CarteZonesBarre")
-        largeur = max(3, round(110 * (zone.objets or 0) / maximum)) if maximum else 3
+        largeur = max(3, round(_PISTE * (zone.objets or 0) / maximum)) if maximum else 3
         barre.setGeometry(0, 0, largeur, 8)
         barre.setStyleSheet("background: rgb(%d, %d, %d); border-radius: 2px;" % tuple(couleur))  # couleur de la couche
         chiffres = QLabel(_effectifs(zone))
         chiffres.setObjectName("FicheLegende")
-        chiffres.setMinimumWidth(150)
-        # Colonne fixe : barres et chiffres restent près des noms. 160 et non 260 : à 260 le bandeau
-        # exigeait 734 px, la fiche d'un modèle à plusieurs classes n'en offre que 686 (900 px moins
-        # la liste des classes) → barre horizontale et texte coupé (2026-10-09). Les noms passent à la ligne.
-        # ponytail: une carte de deux pays (2 × 150 px) déborderait encore — empiler carte et liste le jour venu.
-        nom.setFixedWidth(160)
+        # Colonne fixe : barres et chiffres restent près des noms. 110 px : la fiche se lit dans
+        # le panneau de 420 px (370 px de contenu), une ligne ne doit rien imposer de plus large
+        # (2026-10-24, après 160 pour 686 px le 2026-10-09). Les noms passent à la ligne.
+        nom.setFixedWidth(110)
         lay.addWidget(nom)
         lay.addWidget(piste, 0, Qt.AlignmentFlag.AlignVCenter)
         lay.addWidget(chiffres)
@@ -216,11 +215,11 @@ def bandeau_appris_sur(zones: Sequence[Any], data: Mapping[str, Any], couleur: R
         return None
     cadre = QFrame(parent)
     cadre.setObjectName("CarteZonesBandeau")
-    lay = QHBoxLayout(cadre)
+    lay = QVBoxLayout(cadre)   # carte au-dessus de la liste : le panneau fait 420 px
     lay.setContentsMargins(10, 8, 10, 8)
-    lay.setSpacing(14)
+    lay.setSpacing(8)
     carte = CarteZonesWidget(situees, data, couleur)
-    lay.addWidget(carte, 0, Qt.AlignmentFlag.AlignTop)
+    lay.addWidget(carte, 0, Qt.AlignmentFlag.AlignLeft)
     colonne = QVBoxLayout()
     colonne.setSpacing(1)
     titre = QLabel(f"Appris sur · {phrase_resume(zones)}")
@@ -231,6 +230,5 @@ def bandeau_appris_sur(zones: Sequence[Any], data: Mapping[str, Any], couleur: R
     for ligne in lignes:
         colonne.addWidget(ligne)
     carte.survol.connect(lambda nom: [li.mettre_en_valeur(li.nom == nom) for li in lignes])
-    colonne.addStretch(1)
-    lay.addLayout(colonne, 1)
+    lay.addLayout(colonne)
     return cadre

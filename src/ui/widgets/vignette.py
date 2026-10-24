@@ -1,7 +1,7 @@
 """Vignette d'accès à une fiche — le carré cliquable de 44 px, partagé.
 
 Deux endroits montrent la même chose au même format : la carte d'une entité à
-détecter (étape 3, :mod:`entity_card`) et la carte d'un produit à calculer
+détecter (étape 3, :mod:`entity_row`) et la carte d'un produit à calculer
 (étape 2, :mod:`steps.step_2_indices`). Un seul widget, donc un seul visuel —
 c'est la demande : la fiche d'un indice s'ouvre comme celle d'un modèle.
 

@@ -396,7 +396,7 @@ def test_couleur_de_la_couche_qualifiee_en_comparaison():
     racine = Path(__file__).resolve().parents[2]
     etape3 = (racine / "src/ui/steps/step_3_detection.py").read_text(encoding="utf-8")
     assert etape3.count("layer_name_for_class(") >= 2      # carte (mini-profil) ET fiche
-    assert "card.set_profils(" in etape3
+    assert "row.set_profils(" in etape3
 
 
 def test_le_widget_suit_le_seuil_et_les_fiches_posent_les_zones():
@@ -407,7 +407,7 @@ def test_le_widget_suit_le_seuil_et_les_fiches_posent_les_zones():
                   "QToolTip.showText", "def contextMenuEvent", "def figures_par_zone",
                   "disposer_etiquettes(", "def resizeEvent", "placer_libelles_lignes("):
         assert motif in widget, motif
-    carte = (racine / "src/ui/widgets/entity_card.py").read_text(encoding="utf-8")
+    carte = (racine / "src/ui/widgets/entity_row.py").read_text(encoding="utf-8")
     assert "fig.set_seuil(seuil)" in carte and "phrase_bilan" not in carte      # bilan dans l'infobulle seulement
     assert "self.phrase_bilan()" in widget
     fiche = (racine / "src/ui/dialogs/class_info_dialog.py").read_text(encoding="utf-8")
@@ -418,10 +418,10 @@ def test_le_widget_suit_le_seuil_et_les_fiches_posent_les_zones():
     assert "def phrase_precision_rappel" in widget and "def ligne_essai_seuil" in widget
 
 
-def test_carte_entite_selection_par_le_haut_et_vignette_inerte():
+def test_ligne_entite_selection_par_le_haut_et_vignette_inerte():
     """Garde-fou sans QGIS : la vignette n'ouvre plus la fiche ; le clic coche partout
-    dans la carte sauf dans la bande des réglages (2026-10-08)."""
-    carte = (Path(__file__).resolve().parents[2] / "src/ui/widgets/entity_card.py").read_text(encoding="utf-8")
+    dans la ligne sauf dans la bande des réglages (2026-10-08, lignes depuis le 2026-10-24)."""
+    carte = (Path(__file__).resolve().parents[2] / "src/ui/widgets/entity_row.py").read_text(encoding="utf-8")
     assert "self._thumb.clicked.connect" not in carte
     assert "WA_TransparentForMouseEvents" in carte
     assert "_bande_reglages()" in carte and "_bas_zone_selection" not in carte

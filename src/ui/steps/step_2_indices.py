@@ -258,6 +258,7 @@ class _IndexCard(QFrame):
 
 class IndicesPage(QWidget):
     changed = pyqtSignal()
+    fiche_requested = pyqtSignal(str)   # clé d'image (ou « __comparaison__ ») → le panneau ⓘ
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -890,17 +891,19 @@ class IndicesPage(QWidget):
         return None, None
 
     def _open_fiche(self, key: str) -> None:
-        """Ouvre les fiches des produits, positionnées sur ``key``.
+        """Demande la fiche de ``key`` (ou « __comparaison__ ») : l'assistant la pose
+        dans son panneau latéral, à côté de la page."""
+        self.fiche_requested.emit(key)
 
-        Import différé du dialog : les widgets de la fiche ne se chargent que
-        si l'utilisateur la demande.
-        """
-        from ..dialogs.indice_info_dialog import ouvrir_fiche_indice
+    def corps_fiche(self, key: str):
+        """``(corps, titre)`` des fiches des images, ouvertes sur ``key``. Import
+        différé des widgets de fiche : ils ne se chargent que si on la demande."""
+        from ..dialogs.indice_info_dialog import corps_fiche_indice
 
         fiches = self._fiches()   # remplit aussi le cache de comparaison
-        ouvrir_fiche_indice(
-            fiches, _DATA_DIR, key, parent=self,
-            comparaison=self._comparaison(),
+        return (
+            corps_fiche_indice(fiches, _DATA_DIR, key, comparaison=self._comparaison()),
+            "Images du relief",
         )
 
     # ------------------------------------------------------------------

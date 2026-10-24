@@ -43,7 +43,7 @@ Laissez les réglages par défaut. Détail dans [Étape 2 · Images du relief](e
 
 ## Étape 3 · Structures à chercher
 
-Activez la détection, puis cochez une structure, par exemple **Parcellaire** ou **Cratères**. Vous ne choisissez pas de modèle : le plugin retient le modèle entraîné pour cette structure et vérifie que l'image dont il a besoin est bien cochée à l'étape 2 (sinon, un bouton **+ Cocher** l'ajoute). Le lien **Fiche** de chaque structure montre à quoi ressemble la structure sur le relief et où le modèle l'a apprise.
+Activez la détection, puis cochez une structure, par exemple **Parcellaire** ou **Cratères**. Vous ne choisissez pas de modèle : le plugin retient le modèle entraîné pour cette structure et vérifie que l'image dont il a besoin est bien cochée à l'étape 2 (sinon, un bouton **+ Cocher** l'ajoute). Le bouton **ⓘ** de chaque structure ouvre sa fiche dans le panneau de droite, sans bloquer la page : à quoi ressemble la structure sur le relief et où le modèle l'a apprise.
 
 Détail dans [Étape 3 · Structures à chercher](etape-3-detection.md).
 

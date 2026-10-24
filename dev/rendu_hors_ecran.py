@@ -10,8 +10,9 @@
 
 Monte un ``QgsApplication`` en ``QT_QPA_PLATFORM=offscreen`` avec le thème QSS du plugin, puis :
 
-- ``captures`` : l'assistant aux étapes 1 à 4, la carte d'une entité en réglages avancés, la fiche d'une
-  classe et la vue d'exécution (en cours, puis à la fin avec « Par où commencer »), avec des
+- ``captures`` : l'assistant aux étapes 1 à 4, la ligne d'une structure en réglages, le panneau ⓘ
+  ouvert sur une image puis sur une structure, et la vue d'exécution (en cours, puis à la fin avec
+  « Par où commencer »), avec des
   chemins neutres dans les champs et quelques produits cochés, en **double résolution**
   (``QT_SCALE_FACTOR=2``, posé avant la création de l'application) → ``aide/img/``. L'étape 4 est
   au vert : Processing et le fournisseur de rvt-qgis sont chargés hors écran, les contrôles du
@@ -23,7 +24,7 @@ Monte un ``QgsApplication`` en ``QT_QPA_PLATFORM=offscreen`` avec le thème QSS 
 - ``journal`` : la vue d'exécution hors run, avec une ligne ⚠ dont le renvoi au manuel est un lien ; puis les
   étapes 4 et 5 de l'assistant : bouton principal, « Suivant » vers le suivi pendant un run, journal gardé.
 - ``profil`` : la fiche de classe et la fiche ⓘ d'un modèle, avec la figure du profil des scores,
-  puis l'étape 3 en réglages avancés (mini-profil et bilan sur les cartes des entités du modèle).
+  puis l'étape 3 en réglages (mini-profil déplié sur les lignes des structures du modèle).
 
 Ce qu'il faut savoir (appris le 2026-10-07) : l'écran virtuel fait 800×600, d'où ``resize()`` après
 ``show()`` ; le ``.bat`` avale stdout, les contrôles sont écrits dans ``<sortie>/controles.txt`` ;
@@ -192,28 +193,61 @@ def _journal_fin(app, img: Path, log) -> bool:
     return v._bilan_box.isVisible() and not defile
 
 
-def _carte_avancee(app, w, img: Path, log, entite: str = "parcellaire") -> bool:
-    """aide/img/etape3-carte-avancee.png : la carte d'une entité en réglages avancés — confiance,
-    aire minimale, mini-profil des scores avec le seuil en orange."""
+def _ligne_reglages(app, w, img: Path, log, entite: str = "parcellaire") -> bool:
+    """aide/img/etape3-ligne-reglages.png : la ligne d'une structure, seuils et réglages dépliés —
+    confiance à deux décimales, aire minimale, « ↺ », profil des scores déplié, seuil en orange."""
     from qgis.PyQt.QtWidgets import QScrollArea
 
     page = w._detection_page
     page._on_entity_toggled(entite, True)
     page._adv_check.setChecked(True)
     app.processEvents()
-    carte = page._cards.get(entite)
-    if carte is None:
-        log("carte avancée : entité absente :", entite)
+    ligne = page._rows.get(entite)
+    if ligne is None:
+        log("ligne réglages : structure absente :", entite)
         return False
+    ligne.deplier_profil(True)
+    app.processEvents()
     zone = page.findChild(QScrollArea)
     if zone is not None:
-        zone.ensureWidgetVisible(carte, 0, 20)
+        zone.ensureWidgetVisible(ligne, 0, 20)
     app.processEvents()
-    carte.grab().save(str(img / "etape3-carte-avancee.png"))
+    ligne.grab().save(str(img / "etape3-ligne-reglages.png"))
+    log("ligne réglages :", entite, ligne.width(), "x", ligne.height(), "| décimales :",
+        ligne._conf_spin.decimals(), "| infobulle :", ligne._conf_spin.toolTip().split("\n")[0])
+    ligne.deplier_profil(False)
     page._adv_check.setChecked(False)
     app.processEvents()
-    log("carte avancée :", entite, carte.width(), "x", carte.height())
-    return True
+    return ligne._conf_spin.decimals() == 2
+
+
+def _fiches_panneau(app, w, img: Path, log) -> bool:
+    """aide/img/etape2-fiche-produit.png et etape3-fiche-classe.png : le panneau ⓘ ouvert à côté
+    de la page, sur la fiche d'une image (étape 2) puis d'une structure (étape 3)."""
+    w.resize(1400, 760)   # la fenêtre d'un poste de bureau : la page garde sa place à côté du panneau
+    w._goto_step(2)
+    w._indices_page.fiche_requested.emit("SVF")
+    app.processEvents()
+    ok_image = w._panel.isVisible() and w._panel.onglet_courant() == "Image"
+    w.grab().save(str(img / "etape2-fiche-produit.png"))
+    log("panneau ⓘ, image :", w._panel.onglet_courant(), "| visible :", w._panel.isVisible(),
+        "| fenêtre :", w.width(), "x", w.height())
+    w._panel.fermer()
+    app.processEvents()
+    w._goto_step(3)
+    w._detection_page.fiche_requested.emit("cratere")
+    app.processEvents()
+    ok_structure = w._panel.isVisible() and w._panel.onglet_courant() == "Structure"
+    w.grab().save(str(img / "etape3-fiche-classe.png"))
+    log("panneau ⓘ, structure :", w._panel.onglet_courant(), "| visible :", w._panel.isVisible(),
+        "| fenêtre :", w.width(), "x", w.height())
+    w._panel.fermer()
+    app.processEvents()
+    ok_fermeture = w.width() == 1400
+    log("panneau ⓘ fermé : fenêtre", w.width(), "x", w.height(), "(attendu 1400)")
+    w.resize(980, 760)
+    app.processEvents()
+    return ok_image and ok_structure and ok_fermeture
 
 
 def _processing_hors_ecran(log) -> bool:
@@ -240,29 +274,6 @@ def _processing_hors_ecran(log) -> bool:
     except Exception as e:  # noqa: BLE001
         log("Processing / rvt-qgis non chargés hors écran :", repr(e))
         return False
-
-
-def _fiche_classe(app, img: Path, log, modele: str = "crateres_seg_ld_v1") -> bool:
-    """aide/img/etape3-fiche-classe.png : la fiche d'une classe en haut, vérité terrain affichée."""
-    from archeo.src.app.services.class_fiche import build_all_fiches
-    from archeo.src.app.services.model_orchestrator import discover_installed_models, load_model_card
-    from archeo.src.ui.dialogs.class_info_dialog import ClassInfoDialog
-
-    modeles = {m.name: m for m in discover_installed_models(RACINE / "data" / "models")}
-    if modele not in modeles:
-        log("fiche de classe : modèle absent :", modele)
-        return False
-    m = modeles[modele]
-    card = load_model_card(m.model_dir)
-    card = card[0] if isinstance(card, tuple) else card
-    fiches = build_all_fiches(card)
-    dlg = ClassInfoDialog(fiches, model_dirs={f.modele_id: m.model_dir for f in fiches}, titre=modele)
-    dlg.show()
-    dlg.resize(900, 640)
-    app.processEvents()
-    dlg.grab().save(str(img / "etape3-fiche-classe.png"))
-    log("fiche de classe :", modele, dlg.width(), "x", dlg.height())
-    return True
 
 
 def _etape4(app, w, img: Path, log) -> bool:
@@ -342,14 +353,14 @@ def captures(app, sortie: Path, log) -> int:
     w._detection_page._enable_check.setChecked(True)
     w._goto_step(3)
     app.processEvents()
-    n = len(getattr(w._detection_page, "_cards", {}) or [])
-    log("entités affichées à l'étape 3 :", n, "(0 = aucun modèle sous data/models)")
+    n = len(getattr(w._detection_page, "_rows", {}) or [])
+    log("structures affichées à l'étape 3 :", n, "(0 = aucun modèle sous data/models)")
     w.grab().save(str(img / "etape3-detection.png"))
-    carte_ok = _carte_avancee(app, w, img, log)
-    fiche_ok = _fiche_classe(app, img, log)
+    ligne_ok = _ligne_reglages(app, w, img, log)
+    fiche_ok = _fiches_panneau(app, w, img, log)
     etape4_ok = _etape4(app, w, img, log)
     log("captures écrites dans", img, "— taille de l'assistant :", w.width(), "x", w.height())
-    return 0 if n and fin_ok and carte_ok and fiche_ok and etape4_ok else 1
+    return 0 if n and fin_ok and ligne_ok and fiche_ok and etape4_ok else 1
 
 
 def manuel(app, sortie: Path, log, chapitre: str, ancre: str, recherche: str = "", tous: bool = False) -> int:
@@ -468,6 +479,8 @@ def profil(app, sortie: Path, log, modele: str) -> int:
     for eid in m.coverage:
         page._on_entity_toggled(eid, True)
     page._adv_check.setChecked(True)
+    for ligne in page._rows.values():
+        ligne.deplier_profil(True)
     w._goto_step(3)
     app.processEvents()
     minis = [f for f in page.findChildren(ProfilScoresWidget) if f.objectName() == "ProfilScoresMini" and f.isVisible()]
@@ -478,7 +491,7 @@ def profil(app, sortie: Path, log, modele: str) -> int:
             zone.ensureWidgetVisible(minis[0], 0, 120)
         app.processEvents()
         log("  bilan :", minis[0].phrase_bilan())
-    w.grab().save(str(sortie / f"carte_{modele}.png"))
+    w.grab().save(str(sortie / f"lignes_{modele}.png"))
     return 0 if figures and not debord else 1
 
 

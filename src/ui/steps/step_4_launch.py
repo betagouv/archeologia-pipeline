@@ -28,6 +28,7 @@ from qgis.PyQt.QtWidgets import (
     QWidget,
 )
 
+from ...app.services.vocabulaire import pluriel
 from ..widgets.card import build_card
 from ..widgets.collapsible import CollapsibleSection
 from ..widgets.no_wheel import NoWheelSpinBox
@@ -160,7 +161,7 @@ class LaunchPage(QWidget):
         v.addWidget(self._build_preflight_card())
 
         # ② Récapitulatif du run
-        recap_card, rv = build_card("Récapitulatif du run", "2")
+        recap_card, rv = build_card("Récapitulatif", "2")
         self._recap_host = QWidget()
         self._recap_layout = QVBoxLayout(self._recap_host)
         self._recap_layout.setContentsMargins(0, 0, 0, 0)
@@ -170,13 +171,13 @@ class LaunchPage(QWidget):
 
         # ③ Paramètres avancés (replié) — workers, carte graphique
         self._adv = CollapsibleSection(
-            "Paramètres avancés",
-            preview_getter=lambda: f"workers : {self._workers} · carte graphique : {'oui' if self._carte else 'non'}",
+            "Réglages du poste",
+            preview_getter=lambda: f"{pluriel(self._workers, 'dalle')} en parallèle · carte graphique : {'oui' if self._carte else 'non'}",
         )
         self._adv.set_body(self._build_workers_body())
         v.addWidget(self._adv)
 
-        hint = QLabel("Le run produira un projet QGIS consolidé prêt à ouvrir.")
+        hint = QLabel("Le traitement écrit un projet QGIS prêt à ouvrir dans livrable/.")
         hint.setObjectName("LaunchHint")
         hint.setWordWrap(True)
         hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -187,7 +188,7 @@ class LaunchPage(QWidget):
         outer.addWidget(scroll)
 
     def _build_preflight_card(self) -> QWidget:
-        card, cv = build_card("État du système", "1")
+        card, cv = build_card("Environnement", "1")
 
         pill_row = QHBoxLayout()
         pill_row.setContentsMargins(0, 0, 0, 0)
@@ -217,7 +218,7 @@ class LaunchPage(QWidget):
         h.setSpacing(8)
         colonne.addLayout(h)
 
-        lbl = QLabel("Workers parallèles")
+        lbl = QLabel("Dalles traitées en parallèle")
         lbl.setObjectName("FieldLabel")
         h.addWidget(lbl)
 
@@ -247,8 +248,8 @@ class LaunchPage(QWidget):
 
         note = QLabel(
             "Nombre de dalles téléchargées, fusionnées et préparées pour la détection en "
-            "parallèle ; le MNT et les indices sont calculés une dalle après l'autre. "
-            "Plus de workers accélère ces étapes mais consomme plus de mémoire."
+            "même temps ; le MNT et les images sont calculés une dalle après l'autre. "
+            "Plus de dalles en parallèle accélère ces étapes mais consomme plus de mémoire."
         )
         note.setObjectName("WorkersNote")
         note.setWordWrap(True)
@@ -349,19 +350,18 @@ class LaunchPage(QWidget):
         """
         if self._validation_errors:
             lines = "<br>".join(f"• {e}" for e in self._validation_errors)
-            self._banner.setText(f"<b>⚠ Impossible de lancer — corrigez :</b><br>{lines}")
+            self._banner.setText(f"<b>Impossible de lancer tant que :</b><br>{lines}")
             self._banner.setProperty("state", "error")
         elif self._preflight_status == "pending":
-            self._banner.setText("Configuration valide — vérification de l'environnement…")
+            self._banner.setText("Vérification de l'environnement…")
             self._banner.setProperty("state", "pending")
         elif self._preflight_status == "err":
             self._banner.setText(
-                "<b>⚠ Configuration valide, mais l'environnement n'est pas prêt</b> — "
-                "voir « État du système » ci-dessous."
+                "<b>Un outil manque sur ce poste</b> — voir « Environnement » ci-dessous."
             )
             self._banner.setProperty("state", "error")
         else:
-            self._banner.setText("✓ Configuration valide — prêt à lancer.")
+            self._banner.setText("Prêt à lancer.")
             self._banner.setProperty("state", "ok")
         self._banner.setVisible(True)
         self._banner.style().unpolish(self._banner)

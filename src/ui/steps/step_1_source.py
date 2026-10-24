@@ -71,12 +71,12 @@ class SourcePage(QWidget):
         root.setContentsMargins(16, 16, 16, 16)
         root.setSpacing(12)
 
-        heading = QLabel("Où voulez-vous démarrer le pipeline ?")
+        heading = QLabel("Qu'avez-vous déjà ?")
         heading.setObjectName("WizardPageHeading")
         root.addWidget(heading)
         sub = QLabel(
-            "Cliquez sur l'étape où vous voulez injecter vos données. "
-            "Les étapes amont sont sautées."
+            "Cliquez sur ce que vous possédez : le traitement part de là, "
+            "les étapes précédentes sont barrées."
         )
         sub.setObjectName("WizardPageSub")
         sub.setWordWrap(True)
@@ -85,7 +85,7 @@ class SourcePage(QWidget):
         # ── Carte frise + bandeau ──
         # Numérotée « 1 » : la carte « Entrée & sortie » porte le « 2 », la
         # séquence visuelle doit être complète sur la page.
-        self._frise_card, fv = build_card("Point d'entrée du pipeline", "1")
+        self._frise_card, fv = build_card("Point de départ", "1")
         frise_row = QHBoxLayout()
         frise_row.setContentsMargins(0, 12, 0, 0)  # place en haut pour le badge ENTRÉE
         frise_row.setSpacing(0)
@@ -114,7 +114,7 @@ class SourcePage(QWidget):
         self._entry_badge.hide()
 
         # ── Carte entrée & sortie ──
-        io_card, iv = build_card("Entrée & sortie", "2")
+        io_card, iv = build_card("Vos fichiers", "2")
         self._source_label = QLabel("")
         self._source_label.setObjectName("FieldLabel")
         row1 = QHBoxLayout()
@@ -130,9 +130,9 @@ class SourcePage(QWidget):
             "(points, lignes ou polygones)"
         )
         self._qgis_btn.clicked.connect(self._pick_qgis_layer)
-        self._dalles_btn = QPushButton("Sélectionner les dalles")
+        self._dalles_btn = QPushButton("Choisir sur la carte")
         self._dalles_btn.setObjectName("GhostButton")
-        self._dalles_btn.setToolTip("Choisir les dalles IGN directement sur la carte")
+        self._dalles_btn.setToolTip("Choisir les dalles IGN en cliquant sur la carte de QGIS")
         self._dalles_btn.clicked.connect(self._pick_dalles_on_canvas)
         row1.addWidget(self._source_edit, 1)
         row1.addWidget(self._browse_btn)
@@ -584,13 +584,15 @@ class SourcePage(QWidget):
 
         n = len(ids)
         if n > _LARGE_SELECTION_THRESHOLD:
-            resp = QMessageBox.question(
-                self,
-                "Téléchargement volumineux",
-                f"{n} dalles sélectionnées ({estimate_download_size(n)}). "
-                "Lancer un tel téléchargement ?",
-            )
-            if resp != QMessageBox.StandardButton.Yes:
+            box = QMessageBox(self)
+            box.setWindowTitle("Téléchargement volumineux")
+            box.setIcon(QMessageBox.Icon.Question)
+            box.setText(f"{n} dalles choisies ({estimate_download_size(n)}).")
+            telecharger = box.addButton(f"Télécharger {n} dalles", QMessageBox.ButtonRole.AcceptRole)
+            box.addButton("Revenir à la sélection", QMessageBox.ButtonRole.RejectRole)
+            box.setDefaultButton(telecharger)
+            box.exec()
+            if box.clickedButton() is not telecharger:
                 return  # rester en mode sélection
 
         # Lecture des entités + écriture du fichier : si ça échoue (champ illisible,

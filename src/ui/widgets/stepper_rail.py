@@ -11,7 +11,7 @@ from typing import List, Sequence
 
 from qgis.PyQt.QtCore import Qt, pyqtSignal
 from qgis.PyQt.QtGui import QColor, QPainter, QPen
-from qgis.PyQt.QtWidgets import QFrame, QHBoxLayout, QLabel, QVBoxLayout
+from qgis.PyQt.QtWidgets import QFrame, QHBoxLayout, QLabel, QSizePolicy, QVBoxLayout
 
 
 class _RailItem(QFrame):
@@ -42,12 +42,18 @@ class _RailItem(QFrame):
         label_row.setSpacing(5)
         self._label = QLabel(label)
         self._label.setObjectName("RailLabel")
-        label_row.addWidget(self._label)
+        # « Structures à chercher » tient sur deux lignes dans le rail de 210 px, à côté de la puce « OPT. ».
+        self._label.setWordWrap(True)
+        # Un QLabel qui replie se contente de sa largeur minimale : lui donner toute la
+        # largeur disponible, sinon « Images du relief » se coupe sans raison.
+        self._label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        label_row.addWidget(self._label, 1)
         if optional:
             chip = QLabel("OPT.")
             chip.setObjectName("RailOpt")
-            label_row.addWidget(chip)
-        label_row.addStretch(1)
+            label_row.addWidget(chip, 0, Qt.AlignmentFlag.AlignTop)
+        # Pas d'étirement en fin de ligne : il partageait la largeur avec le libellé replié,
+        # qui se coupait en deux (« Images du / relief ») ; la puce « OPT. » reste à droite.
         self._sub = QLabel(sub)
         self._sub.setObjectName("RailSub")
         self._sub.setWordWrap(True)

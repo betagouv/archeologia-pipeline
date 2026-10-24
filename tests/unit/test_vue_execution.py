@@ -38,7 +38,7 @@ def test_verifications_et_traitement_sont_deux_etapes():
     from src.app.services.aide import CHAPITRE_PAR_ETAPE
 
     wizard = (RACINE / "src/ui/wizard_dialog.py").read_text(encoding="utf-8")
-    assert '{"label": "Vérifications"' in wizard and '{"label": "Traitement"' in wizard
+    assert '{"label": "Prêt à lancer"' in wizard and '{"label": "Traitement"' in wizard
     assert "self._stack.addWidget(self._build_run_page())" in wizard
     lancer = wizard[wizard.index("def _on_launch("):wizard.index("def _update_launch_recap(")]
     assert lancer.index("self._goto_step(self.STEP_TRAITEMENT)") < lancer.index(".start_run(")

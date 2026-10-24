@@ -35,7 +35,8 @@ from qgis.PyQt.QtWidgets import (
 )
 
 from ..app.progress_reporter import USER_INFO
-from ..app.user_narrator import PRODUCT_LABELS, _format_duration
+from ..app.user_narrator import _format_duration
+from ..app.services.vocabulaire import pluriel, titre_image
 from ..app.progress_stages import STAGE_LABELS, build_stage_sequence
 from ..app.services.aide import AIDE_DIRNAME, CLE_DEPANNAGE, resoudre_cible, rubrique_depannage, slug
 from ..app.services.bilan_fiabilite import collecter as collecter_bilan
@@ -458,7 +459,7 @@ class RunView(QWidget):
 
         jhead = QHBoxLayout()
         jhead.setSpacing(8)
-        jtitle = QLabel("Journal d'exécution")
+        jtitle = QLabel("Journal")
         jtitle.setObjectName("RunJournalTitle")
         # Compteurs ⚠/✗ cliquables : cochés, ils filtrent le journal sur leur
         # niveau (première UI du mécanisme _log_show, déjà présent côté modèle).
@@ -507,7 +508,7 @@ class RunView(QWidget):
         zone.setMinimumWidth(contenu.minimumSizeHint().width() + zone.verticalScrollBar().sizeHint().width())
 
         actions = QHBoxLayout()
-        self._open_log_btn = QPushButton("Log complet")
+        self._open_log_btn = QPushButton("Journal complet (fichier)")
         self._open_log_btn.setObjectName("GhostButton")
         self._open_log_btn.setIcon(colored_icon("file-text", "#2c2c2c", 14, dpr=dpr))
         self._open_log_btn.setIconSize(QSize(14, 14))
@@ -596,7 +597,7 @@ class RunView(QWidget):
         self._reset_view()
         for w in warnings:
             self._logger.warning(w)
-        self._logger.log(USER_INFO, "Lancement du pipeline…")
+        self._logger.log(USER_INFO, "Lancement du traitement…")
 
         # Re-run dans le même dossier : retirer les couches VRT/GPKG périmées encore
         # chargées (run précédent) AVANT que le worker régénère les VRT. Sinon QGIS,
@@ -607,12 +608,15 @@ class RunView(QWidget):
         plan = plan_migration(ctx.output_dir)
         if plan:
             texte = decrire(plan, ctx.output_dir, non_reconnus(ctx.output_dir, plan))
-            rep = QMessageBox.question(
-                self, "Réorganiser le dossier de sortie ?", texte,
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel,
-                QMessageBox.StandardButton.Yes,
-            )
-            if rep != QMessageBox.StandardButton.Yes:
+            box = QMessageBox(self)
+            box.setWindowTitle("Réorganiser le dossier de sortie ?")
+            box.setIcon(QMessageBox.Icon.Question)
+            box.setText(texte)
+            reorganiser = box.addButton("Réorganiser et lancer", QMessageBox.ButtonRole.AcceptRole)
+            box.addButton("Annuler", QMessageBox.ButtonRole.RejectRole)
+            box.setDefaultButton(reorganiser)
+            box.exec()
+            if box.clickedButton() is not reorganiser:
                 self._reset_view()
                 self._append_log("INFO", "Lancement annulé : le dossier de sortie garde son ancienne organisation. "
                                          "Choisissez un autre dossier de sortie, ou acceptez la réorganisation.")
@@ -678,9 +682,9 @@ class RunView(QWidget):
         except PipelineCancelled:
             # Annulation propre (filet de sécurité) : jamais journalisée comme erreur.
             self._run_outcome = "cancel"
-            self._logger.log(USER_INFO, "Pipeline annulé.")
+            self._logger.log(USER_INFO, "Traitement annulé.")
         except Exception:
-            self._logger.exception("Erreur pendant l'exécution du pipeline")
+            self._logger.exception("Erreur pendant le traitement")
         finally:
             self._emitter.run_enabled.emit(True)
 
@@ -752,7 +756,7 @@ class RunView(QWidget):
             if rubrique:
                 body += (
                     f'&nbsp;&nbsp;<a href="manuel:{CLE_DEPANNAGE}#{slug(rubrique)}" '
-                    'style="color:#9c9686;">· voir Manuel › Dépannage › '
+                    'style="color:#9c9686;">· voir Aide › Dépannage › '
                     f"« {html.escape(rubrique)} »</a>"
                 )
         stamp = f'<span style="color:#7d786c;">{ts}</span>&nbsp;&nbsp;' if ts else ""
@@ -875,9 +879,9 @@ class RunView(QWidget):
         except Exception:  # noqa: BLE001 — mode inconnu : rien
             pass
         produits = ((self._config.get("processing") or {}).get("products") or {})
-        actifs = [PRODUCT_LABELS.get(code, code) for code, on in produits.items() if on] if isinstance(produits, dict) else []
+        actifs = [titre_image(code) for code, on in produits.items() if on] if isinstance(produits, dict) else []
         if actifs:
-            morceaux.append(", ".join(actifs) if len(actifs) <= 3 else f"{len(actifs)} produits")
+            morceaux.append(", ".join(actifs) if len(actifs) <= 3 else pluriel(len(actifs), "image"))
         cv = self._config.get("computer_vision") or {}
         if cv.get("enabled"):
             n = len(cv.get("runs") or [])

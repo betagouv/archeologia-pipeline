@@ -47,6 +47,7 @@ from ...app.services.reglages_defaut import (
     effacer_surcharges,
     phrase_entite_reinitialisee,
 )
+from ...app.services.vocabulaire import pluriel
 from ..widgets.toast import show_toast
 from ..widgets.toggle_switch import ToggleSwitch
 
@@ -110,9 +111,9 @@ class DetectionPage(QWidget):
         tl.setSpacing(12)
         self._enable_check = ToggleSwitch()
         self._enable_check.toggled.connect(self._on_enable_toggled)
-        title = QLabel("Détection automatique par IA")
+        title = QLabel("Chercher des structures automatiquement")
         title.setObjectName("DetectionSwitch")
-        sub = QLabel("Sélectionnez les entités à détecter — les modèles sont choisis automatiquement.")
+        sub = QLabel("Cochez les structures à chercher : le modèle est choisi pour vous.")
         sub.setObjectName("WizardPageSub")
         sub.setWordWrap(True)  # sinon ses 869 px deviennent la largeur mini de la fenêtre
         text = QVBoxLayout()
@@ -133,17 +134,17 @@ class DetectionPage(QWidget):
         es.setContentsMargins(24, 24, 24, 24)
         es.setSpacing(6)
         es.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        es_title = QLabel("Détection IA désactivée")
+        es_title = QLabel("Détection désactivée")
         es_title.setObjectName("EmptyStateTitle")
         es_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         es_desc = QLabel(
-            "Passez à l'étape 4 pour calculer les rasters seuls, ou activez la "
-            "détection pour analyser automatiquement vos indices."
+            "Passez à l'étape suivante pour calculer les images seules, ou activez "
+            "la détection pour y chercher des structures."
         )
         es_desc.setObjectName("WizardPageSub")
         es_desc.setAlignment(Qt.AlignmentFlag.AlignCenter)
         es_desc.setWordWrap(True)
-        self._es_btn = QPushButton("Activer la détection")
+        self._es_btn = QPushButton("Chercher des structures")
         self._es_btn.clicked.connect(lambda: self._enable_check.setChecked(True))
         es.addWidget(es_title)
         es.addWidget(es_desc)
@@ -155,7 +156,7 @@ class DetectionPage(QWidget):
         cv.setContentsMargins(0, 0, 0, 0)
         cv.setSpacing(12)
 
-        ent_card, ev = build_card("Entités à détecter", "1")
+        ent_card, ev = build_card("Structures", "1")
         self._sel_count = ent_card.counter  # « X sur Y sélectionnées » dans l'en-tête
         adv_row = QHBoxLayout()
         adv_row.addStretch(1)
@@ -165,7 +166,7 @@ class DetectionPage(QWidget):
         # que ses propres valeurs — le piège que le bouton global adressait (un
         # seuil ancien qui tire tout le run vers son minimum, cf.
         # model_orchestrator) reste couvert, entité par entité.
-        self._adv_check = QCheckBox("Réglages avancés (seuils par entité)")
+        self._adv_check = QCheckBox("Seuils et réglages par structure")
         self._adv_check.setObjectName("WizardPageSub")
         self._adv_check.toggled.connect(self._on_advanced_toggled)
         adv_row.addWidget(self._adv_check)
@@ -216,7 +217,7 @@ class DetectionPage(QWidget):
             self._section_widgets[key] = (header, container)
         cv.addWidget(ent_card)
 
-        runs_card, rv = build_card("Runs IA programmés", "2")
+        runs_card, rv = build_card("Ce qui sera analysé", "2")
         self._runs_count = runs_card.counter  # compteur dans l'en-tête de la carte
         self._runs_host = QWidget()
         self._runs_layout = QVBoxLayout(self._runs_host)
@@ -255,7 +256,7 @@ class DetectionPage(QWidget):
     def _build_footer(self):
         footer = QHBoxLayout()
         footer.setSpacing(10)
-        self._annot_check = QCheckBox("Générer images annotées")
+        self._annot_check = QCheckBox("Enregistrer aussi les images annotées")
         self._annot_check.toggled.connect(self._on_changed)
         footer.addWidget(self._annot_check)
         footer.addStretch(1)
@@ -532,7 +533,7 @@ class DetectionPage(QWidget):
             label_par = self._coverage[par].entity.label if par else ""
             conf_label, conf_tip = "Confiance", ""
             if par:
-                conf_tip = f"Réglé sur la carte « {label_par} », qui inclut cette entité"
+                conf_tip = f"Réglé sur la carte « {label_par} », qui inclut cette structure"
             elif is_derived and model.derived_source_classes.get(eid):
                 sources = model.derived_source_labels.get(eid) or ", ".join(
                     self._coverage[b].entity.label
@@ -599,7 +600,7 @@ class DetectionPage(QWidget):
             if (self._coverage.get(e.id) and self._coverage[e.id].default_model)
         )
         n = len(self._selection_effective())
-        self._sel_count.setText(f"{n} sur {total} sélectionnée{'s' if n != 1 else ''}")
+        self._sel_count.setText(f"{n} sur {total} cochée{'s' if n != 1 else ''}")
 
     def _rebuild_runs(self) -> None:
         # Retrait SYNCHRONE des anciennes lignes : deleteLater() seul les laisse
@@ -618,9 +619,9 @@ class DetectionPage(QWidget):
             entity_thresholds=self._entity_thresholds,
             entity_cluster_params=self._entity_cluster_params,
         )
-        self._runs_count.setText(f"{len(runs)} run{'s' if len(runs) > 1 else ''} · 1 modèle = 1 indice")
+        self._runs_count.setText(f"{pluriel(len(runs), 'analyse')} · un modèle lit une image")
         if not runs:
-            row = QLabel("Aucun run — sélectionnez au moins une entité couverte par un modèle.")
+            row = QLabel("Rien à analyser : cochez une structure.")
             row.setObjectName("EntityDesc")
             self._runs_layout.insertWidget(0, row)  # au-dessus du stretch final
             self._run_rows.append(row)
@@ -838,14 +839,14 @@ class DetectionPage(QWidget):
         if not selected_ids:
             if self._legacy_runs:
                 n = len(self._legacy_runs)
-                return f"{n} run{'s' if n > 1 else ''} (config importée)"
-            return "aucune entité"
+                return f"{pluriel(n, 'analyse')} (configuration importée)"
+            return "aucune structure"
         runs = resolve_runs_from_entities(
             selected_ids, self._overrides, self._installed, self._catalog, self._cluster
         )
         n_ent = len(selected_ids)
         n_mod = len({r["model"] for r in runs})
-        return f"{n_ent} entité{'s' if n_ent > 1 else ''} · {n_mod} modèle{'s' if n_mod > 1 else ''}"
+        return f"{pluriel(n_ent, 'structure')} · {pluriel(n_mod, 'modèle')}"
 
     def recap_entities(self) -> list:
         """Libellés des entités cochées, dans l'ordre du catalogue (récap étape 4)."""

@@ -1059,7 +1059,7 @@ Lot 3 du chantier d'accélération (2026-10-15) : une dalle lue en entier reçoi
 - [ ] **58.1 Schéma** : Manuel › Premier traitement → le schéma suit la liste des cinq phases, texte net à 100 % et à 150 % d'échelle d'écran ; un clic l'ouvre en grand.
 - [ ] **58.2 Qt6** : sous QGIS 4, Manuel › Vos résultats dans QGIS → aucune barre de défilement horizontale ; la capture de la légende montre « possible » et « douteux » décochés.
 - [ ] **58.3 Renvoi du cache** : relancer dans un dossier calculé par une version précédente → la ligne « ⚠️ Méthode de calcul mise à jour » finit par « voir Manuel › Dépannage › Méthode de calcul mise à jour » ; le clic ouvre la rubrique.
-- [ ] **58.4 Libellés** : les noms cités au manuel existent à l'écran : « ↺ Défauts » (étape 2), « Regrouper en clusters » (étape 3), les lignes du panneau « État du système » (étape 4), les modes du bandeau (étape 1).
+- [ ] **58.4 Libellés** : les noms cités au manuel existent à l'écran : « ↺ Défauts » (étape 2), « Regrouper en zones » (étape 3), les lignes du panneau « État du système » (étape 4), les modes du bandeau (étape 1).
 
 ## 59. Correctifs de la recette du 2026-10-21 (séance B) ⭐ P0
 
@@ -1082,4 +1082,19 @@ Lot 3 du chantier d'accélération (2026-10-15) : une dalle lue en entier reçoi
 - [ ] **60.3 Champs** : la table d'attributs porte `n_membres`, `conf_max`, `longueur_m` ; survoler un polygone à `n_membres` > 1 → « Polygone fusionné de N fragments, le plus sûr à 0,xx » dans l'infobulle ; un modèle de boîtes (ponctuelles) n'a pas cette ligne.
 - [ ] **60.4 Fiches** : fiche du modèle linéaires → section « MÉTRIQUES D'ÉVALUATION — CRITÈRE AXE », ligne « Critère : axe de la détection à 5 m au plus de l'axe annoté, comptée par polygone fusionné … » ; fiche de classe parcellaire : niveaux conformes au `model_card`, « Tester un seuil » sous 0,26 montre « douteux » sous le seuil du modèle.
 - [ ] **60.5 Modèle au critère objet** : cratères à 0,2 (seuil 0,29) → « Douteux » s'étend à 0,2 comme avant, sans mention « sous le seuil du modèle ».
+
+## 61. Interface rationalisée — lot 1, le lexique ⭐ P1
+
+> **Contexte** (2026-10-24, audit UI/UX, proposition A) : un seul mot par objet dans toute l'interface, le journal
+> et le rapport : traitement (plus « pipeline », « run »), images du relief (plus « indices », « produits »),
+> structures (plus « entités »), dalles (plus « tuiles »), Aide (plus « Manuel » à l'écran), dalles en parallèle
+> (plus « workers »). Les images sont nommées sigle + ce qu'elles montrent (« LD · Structures en relief »).
+
+- [ ] **61.1 Rail et titres** : le rail dit « Vos données · Images du relief · Structures à chercher · Prêt à lancer · Traitement » ; chaque titre d'étape suit (« Vos données », « Quelles images du relief voulez-vous ? »…) ; rien ne déborde du rail de 210 px sous QGIS 3 et 4.
+- [ ] **61.2 Frise de l'étape 1** : les quatre points de départ s'appellent « Dalles IGN à télécharger », « Nuages LiDAR », « MNT existant », « Images du relief existantes », avec leur exigence en sous-libellé ; le bouton « Choisir sur la carte » remplace « Sélectionner les dalles ».
+- [ ] **61.3 Boutons** : « Lancer le traitement » (étape 4), « Journal complet (fichier) » (étape 5), « Charger une configuration » / « Enregistrer la configuration » (en-tête), « Aide » (en-tête, F1, menu Extensions › Archéolog'IA).
+- [ ] **61.4 Confirmations** : « Tout remettre aux valeurs par défaut… » → boîte à deux boutons « Tout remettre par défaut » / « Garder mes réglages » ; dossier de sortie v2 au lancement → « Réorganiser et lancer » / « Annuler » ; plus de 50 dalles sur la carte → « Télécharger N dalles » / « Revenir à la sélection ». Aucun Oui/Non, aucun Yes/Cancel.
+- [ ] **61.5 Journal et rapport** : la ligne de fin dit « images : MNT · Relief nu, SVF · Creux & dépressions… » ; la frise de l'étape 5 nomme « Images du relief » et « Structures » ; le rapport écrit les niveaux « très probable / probable / possible / douteux » au masculin singulier.
+- [ ] **61.6 Messages de l'étape 4** : avec un champ vide, le bandeau liste « Indiquez le dossier de sortie », « Indiquez la zone d'étude ou choisissez des dalles sur la carte », « Cochez au moins une image à calculer à l'étape 2 » (plus de « sélectionné mais… n'est configuré »).
+- [ ] **61.7 Manuel** : F1 ouvre « Aide — Archéolog'IA » ; les chapitres s'intitulent « Étape 1 · Vos données », « Étape 2 · Images du relief », « Étape 3 · Structures à chercher », « Étape 4 · Prêt à lancer » ; le glossaire porte « Image du relief », « Structure », « Point de départ », « Traitement », « Dalles en parallèle ».
 

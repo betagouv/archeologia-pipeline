@@ -135,7 +135,7 @@ class _Apercu(QWidget):
             self._image.setPixmap(QPixmap())
             self._image.setProperty("state", "vide")
             self._image.setText(
-                "Illustration à produire\npour ce produit" if not n
+                "Illustration à produire\npour cette image" if not n
                 else "Vignette introuvable\ndans le dossier data/"
             )
         else:
@@ -251,7 +251,7 @@ class _CorpsFiche(QWidget):
         if f.limites:
             # Même traitement visuel que le « Ne détecte pas » d'une classe :
             # c'est le bloc qu'on lit pour ne pas se tromper.
-            out.append(("Ce que ce produit ne montre pas", _puces(f.limites, "FicheHorsCible")))
+            out.append(("Ce que cette image ne montre pas", _puces(f.limites, "FicheHorsCible")))
         if f.methode:
             out.append(("Comment c'est calculé", _puces(f.methode)))
         if f.parametres:
@@ -262,7 +262,7 @@ class _CorpsFiche(QWidget):
             out.append((
                 "Fiche incomplète",
                 _label(
-                    "Blocs à écrire pour ce produit : "
+                    "Blocs à écrire pour cette image : "
                     + ", ".join(f.manques)
                     + " (data/indices_fiches.json).",
                     "FicheManque",
@@ -288,7 +288,7 @@ class _CorpsComparaison(QWidget):
         lay.setContentsMargins(18, 16, 18, 18)
         lay.setSpacing(12)
 
-        lay.addWidget(_label("Comparer les produits", "FicheTitre", wrap=False))
+        lay.addWidget(_label("Comparer les images", "FicheTitre", wrap=False))
         if comparaison.note:
             lay.addWidget(_label(comparaison.note, "FicheResume"))
         if comparaison.legende:
@@ -372,7 +372,7 @@ class IndiceInfoDialog(QDialog):
             comparaison if (comparaison and not comparaison.est_vide) else None
         )
         self.setObjectName("IndiceInfoDialog")
-        self.setWindowTitle("Produits de visualisation")
+        self.setWindowTitle("Images du relief")
         self.setMinimumSize(760, 560)
         self.resize(940, 660)
 
@@ -389,9 +389,9 @@ class IndiceInfoDialog(QDialog):
         self._liste.setObjectName("FicheListe")
         self._liste.setFixedWidth(210)
         if self._comparaison is not None:
-            entree = QListWidgetItem("\u229e  Comparer les produits")
+            entree = QListWidgetItem("\u229e  Comparer les images")
             entree.setToolTip(
-                "Quel produit pour quelle forme, et ce que chacun sait faire"
+                "Quelle image pour quelle forme, et ce que chacune sait faire"
             )
             self._liste.addItem(entree)
         for f in self._fiches:

@@ -43,6 +43,7 @@ from ..app.services.source_modes import mode_info
 from ..app.services.config_store import ConfigStore
 from ..config.config_manager import ConfigManager
 from ..app.services.aide import AIDE_DIRNAME, CHAPITRE_PAR_ETAPE
+from ..app.services.vocabulaire import nombre, pluriel
 from .dialogs.aide_dialog import nouveautes_non_lues, ouvrir_aide
 from .dialogs.config_dialogs import ConfigsDialog, demander_nom
 from .icons import colored_icon, colored_pixmap
@@ -85,18 +86,18 @@ class WizardDialog(QDialog):
     """Dialogue principal V2 en wizard 5 étapes."""
 
     RAIL_STEPS = [
-        {"label": "Source", "sub": "—"},
-        {"label": "Produits", "sub": "—"},
-        {"label": "Détection IA", "sub": "—", "optional": True},
-        {"label": "Vérifications", "sub": "État du système & récap"},
-        {"label": "Traitement", "sub": "Frise & journal"},
+        {"label": "Vos données", "sub": "—"},
+        {"label": "Images du relief", "sub": "—"},
+        {"label": "Structures à chercher", "sub": "—", "optional": True},
+        {"label": "Prêt à lancer", "sub": "Environnement et récapitulatif"},
+        {"label": "Traitement", "sub": "Frise et journal"},
     ]
     TITLES = {
-        1: ("Nouveau traitement LiDAR", "Points d'entrée du pipeline"),
-        2: ("Produits à calculer", "MNT, qualité de la donnée, indices de visualisation"),
-        3: ("Détection automatique", "Sélection par entités archéologiques"),
-        4: ("Vérifications avant lancement", "État du système & récapitulatif"),
-        5: ("Suivi du traitement", "Frise des phases & journal"),
+        1: ("Vos données", "Par où commence le traitement"),
+        2: ("Images du relief", "Le relief nu, la qualité de la donnée, les images qui révèlent les structures"),
+        3: ("Structures à chercher", "La détection automatique est facultative"),
+        4: ("Prêt à lancer", "Environnement et récapitulatif"),
+        5: ("Traitement", "Frise et journal"),
     }
     STEP_VERIFS = 4      # le bouton principal y devient « Lancer le pipeline »
     STEP_TRAITEMENT = 5  # frise + journal ; le lancement y mène
@@ -183,10 +184,10 @@ class WizardDialog(QDialog):
         self._visu_tab = None
         if VISUALISATION_TAB_ENABLED:
             self._tabs = QTabWidget()
-            self._tabs.addTab(wizard_tab, "Nouveau traitement")
+            self._tabs.addTab(wizard_tab, "Traitement")
             self._visu_tab = VisualisationTab(self._plugin_root, iface=self._iface)
             self._visu_tab.layer_count_changed.connect(self._on_visu_layer_count)
-            self._tabs.addTab(self._visu_tab, "Visualisation")
+            self._tabs.addTab(self._visu_tab, "Consulter les flux")
             self._tabs.setCurrentIndex(0)      # le wizard reste l'entrée principale
             root.addWidget(self._tabs)
         else:
@@ -245,7 +246,7 @@ class WizardDialog(QDialog):
         # Référence conservée : désactivé pendant un run (lecture seule
         # étanche — AUDIT v2 UIX-02 : charger une config pendant un run
         # remplaçait l'affichage ET last_ui_config.json).
-        load_btn = QPushButton("Charger une config")
+        load_btn = QPushButton("Charger une configuration")
         load_btn.setObjectName("GhostButton")
         # Bouton-MENU : le navigateur de fichiers obligeait à retrouver soi-même
         # un .json rangé n'importe où. Le menu liste les configurations
@@ -256,7 +257,7 @@ class WizardDialog(QDialog):
         self._load_menu.aboutToShow.connect(self._rebuild_load_menu)
         load_btn.setMenu(self._load_menu)
         self._load_btn = load_btn
-        save_btn = QPushButton("Enregistrer la config")
+        save_btn = QPushButton("Enregistrer la configuration")
         save_btn.setObjectName("GhostButton")
         save_btn.clicked.connect(self._save_config_file)
         # Pastille « lecture seule » (pendant un run) : logée dans la barre de
@@ -272,7 +273,7 @@ class WizardDialog(QDialog):
         lock_icon.setPixmap(
             colored_pixmap("lock", "#8a5e18", 12, dpr=self.devicePixelRatioF())
         )
-        pill_text = QLabel("Lecture seule — run en cours")
+        pill_text = QLabel("Consultation seule pendant le traitement")
         pill_text.setObjectName("ReviewPillText")
         pl.addWidget(lock_icon)
         pl.addWidget(pill_text)
@@ -283,7 +284,7 @@ class WizardDialog(QDialog):
         # seul rendait mal et ne disait pas ce qu'il ouvrait.
         aide_btn = QPushButton("Aide")
         aide_btn.setObjectName("GhostButton")
-        aide_btn.setToolTip("Manuel : le chapitre de cette étape (F1)")
+        aide_btn.setToolTip("Aide : le chapitre de cette étape (F1)")
         aide_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         aide_btn.setIcon(colored_icon("info", "#2c2c2c", 14, dpr=self.devicePixelRatioF()))
         aide_btn.setIconSize(QSize(14, 14))
@@ -322,7 +323,7 @@ class WizardDialog(QDialog):
         self._aide_btn.setProperty("nouveautes", "true" if non_lues else "false")
         self._aide_btn.setToolTip(
             "Nouveautés de cette version non lues — le manuel s'ouvrira dessus (F1)"
-            if non_lues else "Manuel : le chapitre de cette étape (F1)"
+            if non_lues else "Aide : le chapitre de cette étape (F1)"
         )
         self._aide_btn.style().unpolish(self._aide_btn)
         self._aide_btn.style().polish(self._aide_btn)
@@ -463,25 +464,25 @@ class WizardDialog(QDialog):
         self._launch_page.set_carte_graphique(bool(cv.get("carte_graphique", False)))
         self._config.setdefault("computer_vision", {})["carte_graphique"] = self._launch_page.carte_graphique_value()
 
-        sections = [RecapSection("Mode", badges=[mode_info(mode).banner_label])]
+        sections = [RecapSection("Données", badges=[mode_info(mode).banner_label])]
 
         prods = self._indices_page.recap_products()
         res = self._indices_page.resolution()
-        sections.append(RecapSection("Produits raster", badges=prods, value=f"{res:g} m/pixel"))
+        sections.append(RecapSection("Images du relief", badges=prods, value=f"{nombre(res, 2)} m/pixel"))
 
         if not cv.get("enabled"):
-            sections.append(RecapSection("Détection IA", value="désactivée"))
+            sections.append(RecapSection("Structures", value="détection désactivée"))
         else:
             ents = self._detection_page.recap_entities()
             runs = self._detection_page.recap_runs()
             detail = (
-                f"→ {len(runs)} run{'s' if len(runs) > 1 else ''} · " + " · ".join(runs)
+                f"→ {pluriel(len(runs), 'analyse')} · " + " · ".join(runs)
                 if runs else ""
             )
-            val = "" if (ents or runs) else "aucune entité"
-            sections.append(RecapSection("Détection IA", badges=ents, value=val, detail=detail))
+            val = "" if (ents or runs) else "aucune structure"
+            sections.append(RecapSection("Structures", badges=ents, value=val, detail=detail))
 
-        sections.append(RecapSection("Sortie", value=files.get("output_dir") or "—"))
+        sections.append(RecapSection("Dossier de sortie", value=files.get("output_dir") or "—"))
         # (Plus de ligne « Performance » : les workers sont dans les paramètres avancés.)
 
         self._launch_page.update_recap(sections)
@@ -504,7 +505,7 @@ class WizardDialog(QDialog):
         rvt_tags = [product(k).tag for k in rvt_keys() if k in active]
         # Pastille « Produits » = MNT + indices fusionnés : on combine la
         # résolution et les tags RVT en un seul sous-libellé.
-        products_sub = " · ".join([f"{res:g} m/pixel", *rvt_tags])
+        products_sub = " · ".join([f"{nombre(res, 2)} m/pixel", *rvt_tags])
         subs = {
             Stage.DOWNLOAD: "",  # téléchargement : comptage de dalles différé (préflight)
             Stage.PRODUCTS: products_sub,
@@ -618,12 +619,12 @@ class WizardDialog(QDialog):
             self._next_btn.setEnabled(True)
             self._next_btn.setToolTip("")
             return
-        self._next_btn.setText("Lancer le pipeline")
+        self._next_btn.setText("Lancer le traitement")
         self._next_btn.setIcon(self._play_icon)
         if self._run_view.is_running():
             # Étape 5 pendant un run : jamais de relance possible.
             self._next_btn.setEnabled(False)
-            self._next_btn.setToolTip("Run en cours — relance impossible")
+            self._next_btn.setToolTip("Traitement en cours")
             return
         ok = not self._validation_errors
         self._next_btn.setEnabled(ok)
@@ -709,7 +710,7 @@ class WizardDialog(QDialog):
 
     def _on_visu_layer_count(self, count: int) -> None:
         """Compteur sur l'onglet : « Visualisation (3) » quand des couches sont ouvertes."""
-        self._tabs.setTabText(1, "Visualisation" + (f" ({count})" if count else ""))
+        self._tabs.setTabText(1, "Consulter les flux" + (f" ({count})" if count else ""))
 
     def request_cancel_if_running(self) -> None:
         """Annulation propre demandée par l'hôte (unload du plugin) —
@@ -786,9 +787,9 @@ class WizardDialog(QDialog):
         # configuration comme les autres, elle jette les réglages en cours.
         reset = menu.addAction(
             colored_icon("reset", "#5a6672", 14, dpr=self.devicePixelRatioF()),
-            "Réinitialiser — valeurs par défaut",
+            "Tout remettre aux valeurs par défaut…",
         )
-        reset.setToolTip("Remet TOUS les réglages du plugin à leurs valeurs d'origine.")
+        reset.setToolTip("Remet TOUS les réglages de l'assistant à leurs valeurs d'origine.")
         reset.triggered.connect(self._reset_to_defaults)
         menu.addSeparator()
 
@@ -814,15 +815,15 @@ class WizardDialog(QDialog):
         self._last_config_name = nom
 
     def _reset_to_defaults(self) -> None:
-        rep = QMessageBox.question(
-            self, "Réinitialiser ?",
-            "Remettre tous les réglages à leurs valeurs par défaut ? "
-            "Les réglages en cours seront perdus (les configurations "
-            "enregistrées, elles, sont conservées).",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.No,
-        )
-        if rep != QMessageBox.StandardButton.Yes:
+        box = QMessageBox(self)
+        box.setWindowTitle("Tout remettre aux valeurs par défaut ?")
+        box.setIcon(QMessageBox.Icon.Question)
+        box.setText("Les réglages en cours seront perdus. Les configurations enregistrées sont conservées.")
+        tout = box.addButton("Tout remettre par défaut", QMessageBox.ButtonRole.DestructiveRole)
+        garder = box.addButton("Garder mes réglages", QMessageBox.ButtonRole.RejectRole)
+        box.setDefaultButton(garder)
+        box.exec()
+        if box.clickedButton() is not tout:
             return
         self._apply_config(self._cm.default_config())
         self._last_config_name = ""

@@ -202,7 +202,7 @@ class EntityCard(QFrame):
         self._rvt_warn = QLabel("")
         self._rvt_warn.setObjectName("EntityRvtWarn")
         self._rvt_warn.setWordWrap(True)
-        self._rvt_btn = QPushButton("+ Activer")
+        self._rvt_btn = QPushButton("+ Cocher")
         self._rvt_btn.setObjectName("EntityActivateBtn")
         self._rvt_btn.clicked.connect(lambda: self.activate_rvt.emit(self._rvt_key))
         self._rvt_row.addWidget(self._rvt_warn, 1)
@@ -282,8 +282,8 @@ class EntityCard(QFrame):
         self._reinit_btn.setFlat(True)
         self._reinit_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self._reinit_btn.setToolTip(
-            "Rétablit les valeurs recommandées par le modèle pour cette entité. "
-            "Les autres entités ne sont pas touchées."
+            "Revenir aux valeurs recommandées par le modèle pour cette structure. "
+            "Les autres structures ne sont pas touchées."
         )
         self._reinit_btn.clicked.connect(lambda: self.reset_requested.emit(self._id))
         self._adv_row.addWidget(conf_lbl)
@@ -517,7 +517,7 @@ class EntityCard(QFrame):
         self._rvt_row.setVisible(show_rvt_warn)
         if show_rvt_warn:
             self._rvt_warn.setText(
-                f"Indice {missing_rvt or rvt} non activé à l'étape 2"
+                f"Image {missing_rvt or rvt} non cochée à l'étape 2"
             )
 
         # Ligne modèle : nom du modèle + « Changer ▾ » discret (si plusieurs).
@@ -550,7 +550,7 @@ class EntityCard(QFrame):
         if show_cluster:
             self._loading = True
             try:
-                self._cluster_check.setText("Regrouper en clusters")
+                self._cluster_check.setText("Regrouper en zones")
                 self._cluster_check.setChecked(cluster_on)
             finally:
                 self._loading = False

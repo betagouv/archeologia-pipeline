@@ -48,12 +48,12 @@ DATA_MODES: Dict[str, ModeInfo] = {
         entry_stage=1,
         config_key="input_file",
         is_file=True,
-        source_label="Zone d'étude (polygone ou points)",
+        source_label="Zone d'étude, liste de dalles ou dalles choisies sur la carte",
         placeholder="fichier.shp/.gpkg (polygone ou points) ou liste de dalles .txt",
         banner_label="Téléchargement IGN",
         banner_sub="à partir d'un polygone ou de points",
-        description="Le plugin télécharge les dalles LiDAR HD de l'IGN puis exécute "
-        "le pipeline complet.",
+        description="Le plugin télécharge les dalles LiDAR HD de l'IGN, puis calcule tout : "
+        "le MNT, les images du relief et, si vous le demandez, les structures.",
         valid_exts=(".shp", ".dbf", ".geojson", ".json", ".gpkg", ".txt"),
     ),
     "local_laz": ModeInfo(
@@ -66,8 +66,8 @@ DATA_MODES: Dict[str, ModeInfo] = {
         placeholder="C:/data/laz/",
         banner_label="Nuages locaux",
         banner_sub="LAZ / LAS sur disque",
-        description="Vous avez déjà les nuages de points. Le pipeline calcule MNT, "
-        "indices RVT et IA.",
+        description="Vous avez déjà les nuages de points : le traitement calcule le MNT, "
+        "les images du relief et cherche les structures.",
     ),
     "existing_mnt": ModeInfo(
         mode="existing_mnt",
@@ -79,8 +79,8 @@ DATA_MODES: Dict[str, ModeInfo] = {
         placeholder="C:/data/mnt/",
         banner_label="MNT existant",
         banner_sub="TIF / ASC",
-        description="Vous fournissez un MNT déjà calculé. Le pipeline calcule les "
-        "indices puis l'IA.",
+        description="Vous fournissez un MNT déjà calculé : le traitement calcule les "
+        "images du relief puis cherche les structures.",
     ),
     "existing_rvt": ModeInfo(
         mode="existing_rvt",
@@ -88,21 +88,21 @@ DATA_MODES: Dict[str, ModeInfo] = {
         entry_stage=4,
         config_key="existing_rvt_dir",
         is_file=False,
-        source_label="Dossier des indices RVT",
+        source_label="Dossier des images du relief",
         placeholder="C:/data/indices/",
-        banner_label="Indices RVT existants",
+        banner_label="Images du relief existantes",
         banner_sub="TIF (SVF, LD, M-HS…)",
-        description="Vous avez les indices déjà calculés. Ce mode n'a de sens "
-        "qu'avec la détection IA.",
+        description="Vous avez déjà les images du relief : ce point de départ n'a de sens "
+        "que pour y chercher des structures.",
     ),
 }
 
 PIPELINE_STAGES: List[StageInfo] = [
-    StageInfo(1, "download", "Téléchargement", "LAZ depuis IGN", "ign_laz"),
-    StageInfo(2, "pointcloud", "Nuages LiDAR", "LAZ / LAS", "local_laz"),
-    StageInfo(3, "raster", "MNT", "raster altitude", "existing_mnt"),
-    StageInfo(4, "indices", "Indices RVT", "M-HS · SVF · LD…", "existing_rvt"),
-    StageInfo(5, "detection", "Détection IA", "modèles ONNX", None, optional=True),
+    StageInfo(1, "download", "Dalles IGN à télécharger", "connexion Internet", "ign_laz"),
+    StageInfo(2, "pointcloud", "Nuages LiDAR", "fichiers LAZ ou LAS", "local_laz"),
+    StageInfo(3, "raster", "MNT existant", "TIF en Lambert-93", "existing_mnt"),
+    StageInfo(4, "indices", "Images du relief existantes", "TIF en Lambert-93", "existing_rvt"),
+    StageInfo(5, "detection", "Structures à chercher", "facultatif", None, optional=True),
 ]
 
 _ORDER = ["ign_laz", "local_laz", "existing_mnt", "existing_rvt"]

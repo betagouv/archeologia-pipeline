@@ -274,7 +274,7 @@ _RUBRIQUES_DEPANNAGE: Tuple[Tuple[str, str], ...] = (
     (r"PDAL a crash|moins de workers|max_workers|non fusionn|sans interpolation|dalle\(s\).*en [ée]chec|\bDalle .* en [ée]chec|\bMNT .* en [ée]chec",
      "Erreur PDAL ou mémoire"),
     (r"filtre des points (non reconnu|refus[ée] par pdal)", "Le filtre des points n'est pas reconnu"),
-    (r"aucune zone d'int[ée]r[êe]t|aucun run", "Aucun run, ou aucune détection"),
+    (r"aucune zone d'int[ée]r[êe]t|aucun run|rien à analyser", "Rien à analyser, ou aucune détection"),
     (r"interromp", "Le traitement s'est interrompu"),
 )
 

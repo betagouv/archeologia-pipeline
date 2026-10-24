@@ -253,7 +253,7 @@ def _build_rvt(card: Mapping[str, Any]) -> Optional[Section]:
         for key, value in params.items():
             label = labels_map.get(str(key), str(key))
             rows.append(Row(label, _fmt_value(value)))
-    title = f"INDICE RVT D'ENTRAÎNEMENT — {pretty_rvt_name(rvt_type)}"
+    title = f"IMAGE DU RELIEF D'ENTRAÎNEMENT — {pretty_rvt_name(rvt_type)}"
     return Section(title=title, rows=tuple(rows))
 
 
@@ -431,7 +431,7 @@ def build_sections(
     Sections principales (ouvertes par défaut, omises si vides) :
       1. ARCHITECTURE (architecture, tâche, taille d'image, fenêtres d'analyse
          si ``args["sahi"]``, classes)
-      2. INDICE RVT D'ENTRAÎNEMENT — *<nom long>*
+      2. IMAGE DU RELIEF D'ENTRAÎNEMENT — *<nom long>*
       3. MNT D'ENTRAÎNEMENT
       3bis. FIABILITÉ DES DÉTECTIONS — si ``thresholds.fiabilite`` (catégories par classe)
 

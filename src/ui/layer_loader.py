@@ -575,7 +575,7 @@ def purge_output_dir_layers(output_dir, logger: logging.Logger) -> int:
         if to_remove:
             project.removeMapLayers(to_remove)  # libère chaque dataProvider/dataset
             logger.info(
-                f"{len(to_remove)} couche(s) périmée(s) du run précédent retirée(s) "
+                f"{len(to_remove)} couche(s) du traitement précédent retirée(s) "
                 "avant régénération (même dossier de sortie)."
             )
         return len(to_remove)

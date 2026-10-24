@@ -438,10 +438,10 @@ class _CorpsFiche(QWidget):
             return ""
         n = observe.total_verifies
         if not n and not observe.total_a_revoir:
-            return (f"Aucun verdict pour cette classe dans vos {observe.n_runs} run(s) connus : "
+            return (f"Aucun verdict pour cette classe dans vos {observe.n_runs} traitement(s) connu(s) : "
                     "renseignez le champ « validation » (oui / non / peut-être) dans QGIS.")
         return (f"« Chez vous » = vos verdicts (champ « validation » : oui / non / peut-être) sur "
-                f"{observe.n_runs} run(s) connus, {n} vérification(s). Le banc est un plancher annoncé ; "
+                f"{observe.n_runs} traitement(s) connu(s), {n} vérification(s). Le banc est un plancher annoncé ; "
                 "le terrain dit ce qu'il vaut ici.")
 
     @staticmethod
@@ -468,7 +468,7 @@ class _CorpsFiche(QWidget):
         if e.splits:
             lignes.append("")
             parts = [
-                f"{s.nom} {_nb(s.tuiles)} tuiles / {_nb(s.objets)} objets"
+                f"{s.nom} {_nb(s.tuiles)} dalles / {_nb(s.objets)} objets"
                 for s in e.splits
             ]
             lignes.append("Répartition : " + "  ·  ".join(parts))
@@ -600,7 +600,7 @@ class ClassInfoDialog(QDialog):
             self._afficher(0)
         else:
             self._zone.setWidget(_label(
-                "Aucune classe installée ne porte cette entité.", "FicheManque"
+                "Aucun modèle installé ne couvre cette structure.", "FicheManque"
             ))
 
     def _afficher(self, row: int) -> None:

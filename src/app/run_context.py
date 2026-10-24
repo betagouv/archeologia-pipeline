@@ -467,45 +467,45 @@ def validate_run_context(ctx: RunContext) -> Tuple[List[str], List[str]]:
     warnings: List[str] = []
 
     if not ctx.mode:
-        errors.append("Aucun mode d'acquisition (data_mode) configuré")
+        errors.append("Choisissez un point de départ à l'étape 1")
 
     if ctx.output_dir is None:
-        errors.append("Aucun dossier de sortie n'est configuré")
+        errors.append("Indiquez le dossier de sortie")
 
     if ctx.mode == "ign_laz":
         if ctx.files.input_file is None:
-            errors.append("Mode IGN sélectionné mais aucun fichier de zone/liste n'est configuré")
+            errors.append("Indiquez la zone d'étude ou choisissez des dalles sur la carte")
         elif not ctx.files.input_file.exists():
-            errors.append(f"Fichier IGN introuvable : {ctx.files.input_file}")
+            errors.append(f"Ce fichier est introuvable : {ctx.files.input_file}")
         elif (
             ctx.files.input_file.suffix.lower() == ".dbf"
             and not ctx.files.input_file.with_suffix(".shp").exists()
         ):
             errors.append(
-                "Fichier .dbf sans .shp associé (la géométrie du polygone est "
-                f"dans le .shp) : {ctx.files.input_file}"
+                "Ce fichier .dbf est seul : indiquez le .shp qui porte la géométrie "
+                f"du polygone, à côté de {ctx.files.input_file}"
             )
 
     elif ctx.mode == "local_laz":
         if ctx.files.local_laz_dir is None:
-            errors.append("Mode LAZ local sélectionné mais aucun dossier nuages locaux n'est configuré")
+            errors.append("Indiquez le dossier des fichiers LAZ")
         elif not ctx.files.local_laz_dir.exists():
-            errors.append(f"Dossier LAZ local introuvable : {ctx.files.local_laz_dir}")
+            errors.append(f"Ce dossier est introuvable : {ctx.files.local_laz_dir}")
 
     elif ctx.mode == "existing_mnt":
         if ctx.files.existing_mnt_dir is None:
-            errors.append("Mode MNT existant sélectionné mais aucun dossier MNT n'est configuré")
+            errors.append("Indiquez le dossier des MNT")
         elif not ctx.files.existing_mnt_dir.exists():
-            errors.append(f"Dossier MNT introuvable : {ctx.files.existing_mnt_dir}")
+            errors.append(f"Ce dossier est introuvable : {ctx.files.existing_mnt_dir}")
 
     elif ctx.mode == "existing_rvt":
         if ctx.files.existing_rvt_dir is None:
-            errors.append("Mode RVT existant sélectionné mais aucun dossier RVT n'est configuré")
+            errors.append("Indiquez le dossier des images du relief")
         elif not ctx.files.existing_rvt_dir.exists():
-            errors.append(f"Dossier RVT introuvable : {ctx.files.existing_rvt_dir}")
+            errors.append(f"Ce dossier est introuvable : {ctx.files.existing_rvt_dir}")
 
     elif ctx.mode:  # mode renseigné mais inconnu
-        errors.append(f"Mode d'acquisition inconnu : {ctx.mode!r}")
+        errors.append(f"Point de départ inconnu : {ctx.mode!r}")
 
     # Règle métier transverse : il faut au moins un produit actif, sauf
     # en mode existing_rvt qui ne calcule rien (lance juste la CV sur
@@ -516,9 +516,9 @@ def validate_run_context(ctx: RunContext) -> Tuple[List[str], List[str]]:
             # constitue un calcul à faire (cf. _VISUALIZATION_PRODUCTS, source
             # unique — ne jamais réénumérer les indices à la main ici).
             if not ctx.processing.products.has_visualization_index():
-                errors.append("Cochez au moins un indice de visualisation")
+                errors.append("Cochez au moins une image du relief à l'étape 2")
         elif not ctx.processing.products.active():
-            errors.append("Cochez au moins un produit à générer")
+            errors.append("Cochez au moins une image à calculer à l'étape 2")
 
     # ── Warnings (non bloquants) ─────────────────────────────────────
     # tile_overlap=0 : pas de marge entre dalles. Calcul réussit mais
@@ -526,7 +526,7 @@ def validate_run_context(ctx: RunContext) -> Tuple[List[str], List[str]]:
     # de bord PDAL/RVT sur les pixels en bordure).
     if ctx.processing.tile_overlap == 0 and ctx.mode in ("ign_laz", "local_laz"):
         warnings.append(
-            "Tile overlap à 0 : pas de marge entre dalles, possibles artefacts en bordure."
+            "Marge entre dalles à 0 : possibles artefacts aux bordures des dalles."
         )
 
     # CV runs : signaler ceux qui seront court-circuités (sélection
@@ -535,9 +535,9 @@ def validate_run_context(ctx: RunContext) -> Tuple[List[str], List[str]]:
     for i, run in enumerate(ctx.cv.runs, start=1):
         sel = run.get("selected_classes")
         if isinstance(sel, list) and len(sel) == 0:
-            model_name = run.get("model") or f"run #{i}"
+            model_name = run.get("model") or f"analyse n° {i}"
             warnings.append(
-                f"Run CV « {model_name} » : aucune classe sélectionnée — sera court-circuité."
+                f"Analyse « {model_name} » : aucune structure cochée, elle sera ignorée."
             )
 
     # Cohérence cross-config : si le seuil global de confiance est
@@ -550,11 +550,11 @@ def validate_run_context(ctx: RunContext) -> Tuple[List[str], List[str]]:
             runtime_conf = float(run.get("confidence_threshold", 0.3) or 0.3)
             cluster_min = _peek_clustering_min_confidence(run)
             if cluster_min is not None and runtime_conf > cluster_min:
-                model_name = run.get("model") or f"run #{i}"
+                model_name = run.get("model") or f"analyse n° {i}"
                 warnings.append(
-                    f"Run CV « {model_name} » : seuil de confiance global "
-                    f"({runtime_conf:.2f}) > min_confidence clustering ({cluster_min:.2f}) — "
-                    "le clustering ne verra aucune détection."
+                    f"Analyse « {model_name} » : seuil de confiance ({runtime_conf:.2f}) "
+                    f"au-dessus du seuil de regroupement ({cluster_min:.2f}) : "
+                    "le regroupement ne verra aucune détection."
                 )
 
     # Contexte spatial des noyaux RVT. Un noyau plus large que la marge entre

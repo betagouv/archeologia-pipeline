@@ -246,8 +246,8 @@ class TestUserNarratorEvents:
         success_msg = reporter.user_success.call_args[0][0]
         assert "✅" in success_msg
         assert "3 dalles traitées" in success_msg
-        assert "modèle de terrain" in success_msg
-        assert "facteur de vue du ciel" in success_msg
+        assert "MNT · Relief nu" in success_msg
+        assert "SVF · Creux & dépressions" in success_msg
 
     def test_pipeline_complete_explicit_start_time(self):
         """``start_time`` explicite court-circuite l'horodatage interne."""

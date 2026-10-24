@@ -1,28 +1,28 @@
-# Étape 3 · Détection
+# Étape 3 · Structures à chercher
 
-La détection est facultative : tant qu'elle est désactivée, le traitement s'arrête après les indices. Activez-la, puis cochez les **entités** à chercher. Vous ne choisissez pas de modèle : pour chaque entité, le plugin retient le modèle entraîné pour elle et l'indice de visualisation sur lequel il a appris.
+La détection est facultative : tant qu'elle est désactivée, le traitement s'arrête après les images. Activez-la, puis cochez les **structures** à chercher. Vous ne choisissez pas de modèle : pour chaque structure, le plugin retient le modèle entraîné pour elle et l'image du relief sur laquelle il a appris.
 
-## Les entités
+## Les structures
 
-Les entités sont groupées par morphologie. Les pastilles de filtre, au-dessus, ne changent que l'affichage, pas votre sélection.
+Les structures sont groupées par morphologie. Les pastilles de filtre, au-dessus, ne changent que l'affichage, pas votre sélection.
 
-| Morphologie | Entités |
+| Morphologie | Structures |
 |---|---|
 | Circulaires et ponctuelles | Cratères · Charbonnières · Fours · Dépressions circulaires grandes · Enclos · Enclos circulaires |
 | Linéaires | Tranchées et boyaux · Chemins creux · Parcellaire · Talus et fossés |
 | Zones | Regroupement de cratères |
 
-La liste dépend des modèles installés : une entité n'apparaît que si un modèle la couvre.
+La liste dépend des modèles installés : une structure n'apparaît que si un modèle la couvre.
 
-[![Étape 3 : les entités par morphologie, avec vignette, fiche et indice requis](img/etape3-detection.png)](img/etape3-detection.png)
+[![Étape 3 : les structures par morphologie, avec vignette, fiche et image requise](img/etape3-detection.png)](img/etape3-detection.png)
 
-## La carte d'une entité
+## La carte d'une structure
 
-- **Cocher une entité** : cliquez n'importe où sur sa carte. Sur une carte cochée, la partie réglages ne coche ni ne décoche : un clic sur la ligne Confiance, la figure ou les paramètres de regroupement sert seulement à régler.
+- **Cocher une structure** : cliquez n'importe où sur sa carte. Sur une carte cochée, la partie réglages ne coche ni ne décoche : un clic sur la ligne Confiance, la figure ou les paramètres de regroupement sert seulement à régler.
 - **Vignette** et lien **Fiche** : le lien ouvre la fiche de la structure, décrite ci-dessous.
-- **Indice requis** : le sigle de l'indice sur lequel le modèle travaille. S'il n'est pas coché à l'étape 2, le sigle passe en orange et un bouton **+ Activer** l'ajoute.
-- **Modèle** : « seul disponible », ou un menu **Changer ▾** quand plusieurs modèles couvrent l'entité. Chaque entrée du menu indique le nombre de **fenêtres d'analyse** que le modèle découpe dans une dalle : c'est un fait sur le volume de calcul, pas une estimation de durée. Le bouton **ⓘ** ouvre la fiche du modèle : architecture, seuils, métriques d'évaluation et courbes.
-- **Regrouper en clusters** : pour certaines entités, une case regroupe les détections proches en zones. Le **Regroupement de cratères** est une entité à part entière, avec le badge **regroupement automatique** : la cocher produit les zones et les cratères qui les composent ; elle coche d'office **Cratères**, dont la carte prend le badge « inclus dans » et perd son réglage de seuil : une seule couche de cratères, au seuil réglé sur la carte du regroupement.
+- **Image requise** : le sigle de l'image sur laquelle le modèle travaille. Si elle n'est pas cochée à l'étape 2, le sigle passe en orange et un bouton **+ Cocher** l'ajoute.
+- **Modèle** : « seul disponible », ou un menu **Changer ▾** quand plusieurs modèles couvrent la structure. Chaque entrée du menu indique le nombre de **fenêtres d'analyse** que le modèle découpe dans une dalle : c'est un fait sur le volume de calcul, pas une estimation de durée. Le bouton **ⓘ** ouvre la fiche du modèle : architecture, seuils, métriques d'évaluation et courbes.
+- **Regrouper en zones** : pour certaines structures, une case regroupe les détections proches en zones. Le **Regroupement de cratères** est une structure à part entière, avec le badge **regroupement automatique** : la cocher produit les zones et les cratères qui les composent ; elle coche d'office **Cratères**, dont la carte prend le badge « inclus dans » et perd son réglage de seuil : une seule couche de cratères, au seuil réglé sur la carte du regroupement.
 
 ### La fiche d'une structure
 
@@ -36,16 +36,16 @@ Fiche de structure et fiche de modèle se distinguent d'un coup d'œil : la prem
 
 ## Comparer deux modèles
 
-Quand deux modèles couvrent une entité, cochez-les tous les deux dans le menu **Changer ▾**. L'entité est détectée deux fois, une fois par modèle ; les sorties portent le nom du modèle et QGIS les charge dans un même groupe marqué « comparaison », pour les superposer.
+Quand deux modèles couvrent une structure, cochez-les tous les deux dans le menu **Changer ▾**. L'structure est détectée deux fois, une fois par modèle ; les sorties portent le nom du modèle et QGIS les charge dans un même groupe marqué « comparaison », pour les superposer.
 
-## Seuils et réglages par entité
+## Seuils et réglages par structure
 
-La case **Réglages avancés (seuils par entité)** déplie, sur chaque carte :
+La case **Seuils et réglages par structure** déplie, sur chaque carte :
 
 - **Seuil de confiance** : les détections dont le score est sous ce seuil sont écartées. Le défaut vient du modèle, fixé à son évaluation ; il est choisi un peu en dessous du point d'équilibre entre précision et rappel, parce qu'en prospection une structure manquée ne se rattrape pas alors qu'une fausse détection s'écarte en quelques secondes sur le relief. Baisser le seuil augmente le rappel et les fausses détections ; le monter fait l'inverse. Sous le seuil du modèle, les détections ajoutées sont fusionnées entre elles, jamais avec celles qui passaient déjà le seuil, et prennent le niveau **douteux**, avec la part de vrais mesurée pour cet intervalle quand le modèle la fournit, sinon « non mesurée » : les autres niveaux gardent leurs coupures.
-- **Aire minimale** des détections conservées, en mètres carrés. Elle ne vaut que pour cette entité, même quand un seul modèle en détecte plusieurs (parcellaire, talus et chemins creux, par exemple).
+- **Aire minimale** des détections conservées, en mètres carrés. Elle ne vaut que pour cette structure, même quand un seul modèle en détecte plusieurs (parcellaire, talus et chemins creux, par exemple).
 - Pour les regroupements : distance maximale entre deux détections, nombre minimal de détections, confiance minimale pour ouvrir une zone (quand le modèle le prévoit, les détections un peu en dessous s'y rattachent sans en ouvrir, et ce seuil de rattachement suit le réglage), aire minimale d'une zone, marge autour de la zone. Les enclos et les axes linéaires ont leurs propres réglages (fermeture, élongation, longueur minimale…), expliqués en infobulle.
-- Le bouton **↺** d'une carte remet cette seule entité aux valeurs du modèle.
+- Le bouton **↺** d'une carte remet cette seule structure aux valeurs du modèle.
 
 Quand le modèle est livré avec son évaluation, un **profil des scores** en miniature apparaît sous la case : les barres grises sont les fausses détections du banc d'évaluation, les barres colorées les vraies, et la ligne orange du seuil suit la valeur que vous saisissez. Au-dessus, la précision, le rappel et le F1 mesurés au banc pour ce seuil ; le pointillé marque le point d'équilibre. Sous l'axe, une barre découpée en segments montre la plage de scores de chaque niveau, dans sa teinte de la légende, avec son nom dessous. Survoler la figure dit ce que votre réglage change par rapport au seuil du modèle : détections correctes et fausses détections gagnées ou perdues sur le banc. Ces chiffres sont ceux du banc, sur votre terrain ils varient ; ils donnent le sens et l'ordre de grandeur d'un réglage, pas une promesse.
 
@@ -61,10 +61,10 @@ La **fiche** d'une classe montre le profil complet : les quatre niveaux sous l'a
 
 ## Objets à cheval sur deux dalles
 
-Les images analysées débordent de la dalle, grâce à la marge de l'étape 2 ou, en mode Indices existants, grâce aux dalles voisines du dossier. Un objet coupé par le bord est vu entier par l'une des deux dalles, et chaque dalle ne rapporte que les détections dont le centre est chez elle : pas de doublon et pas de fragment au bord.
+Les images analysées débordent de la dalle, grâce à la marge de l'étape 2 ou, en point de départ Images du relief existantes, grâce aux dalles voisines du dossier. Un objet coupé par le bord est vu entier par l'une des deux dalles, et chaque dalle ne rapporte que les détections dont le centre est chez elle : pas de doublon et pas de fragment au bord.
 
 ## Récapitulatif
 
-La carte **Runs IA programmés** liste ce qui sera lancé : un modèle, ses classes, l'indice sur lequel il travaille. Un modèle travaille toujours sur un seul indice. La case **Générer images annotées** produit en plus des images avec les détections dessinées, rangées dans la zone technique du dossier de sortie.
+La carte **Ce qui sera analysé** liste ce qui sera lancé : un modèle, ses structures, l'image sur laquelle il travaille. Un modèle travaille toujours sur une seule image. La case **Enregistrer aussi les images annotées** produit en plus des images avec les détections dessinées, rangées dans la zone technique du dossier de sortie.
 
 À la fin du traitement, le journal donne pour chaque modèle le nombre d'images analysées et la durée mesurée, pour comparer deux modèles sur un cas réel.

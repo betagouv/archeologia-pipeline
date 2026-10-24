@@ -22,29 +22,16 @@ from __future__ import annotations
 import time
 from typing import Any, Dict, Optional, TYPE_CHECKING
 
+from .services.indices_model import all_products
+from .services.vocabulaire import titre_image
+
 if TYPE_CHECKING:
     from .progress_reporter import ProgressReporter
 
 
-# Libellés métier des produits RVT — évite "M_HS", "SVF" pour
-# l'utilisateur non technique. Le code interne garde les codes courts.
-PRODUCT_LABELS = {
-    "MNT": "modèle de terrain (MNT)",
-    "DENSITE": "carte de densité",
-    "COUVERTURE": "carte de couverture (QA points sol)",
-    "HS": "ombrage simple",
-    "M_HS": "ombrage multi-directionnel",
-    "SVF": "facteur de vue du ciel (SVF)",
-    "OPNS": "ouverture du relief (openness)",
-    "SLO": "carte des pentes",
-    "LD": "détection des dépressions locales",
-    "SLRM": "résidu local (SLRM)",
-    "VAT": "visualisation pour l'archéologie (VAT)",
-    "MSTP": "position topographique multi-échelle (MSTP)",
-    "CVAT": "visualisation archéo combinée (CVAT)",
-    "PRISM": "ouverture prismatique (PRISM)",
-    "CRIM": "relief coloré par la pente (CRIM)",
-}
+# Libellés des images du relief — ceux du lexique de l'interface (« LD · Structures
+# en relief »), pour que le journal et le rapport disent le même mot que l'écran.
+PRODUCT_LABELS = {p.key: titre_image(p.key) for p in all_products()}
 
 
 def _human_count(n: int, singular: str, plural: Optional[str] = None) -> str:
@@ -146,8 +133,8 @@ class UserNarrator:
         if tiles_processed > 0:
             parts.append(_human_count(tiles_processed, "dalle traitée", "dalles traitées"))
         if products:
-            labels = [PRODUCT_LABELS.get(p, p) for p in products]
-            parts.append("produits : " + ", ".join(labels))
+            labels = [titre_image(p) for p in products]
+            parts.append("images : " + ", ".join(labels))
         self._r.user_success(" — ".join(parts))
 
     def pipeline_failed(self, message: str, start_time: Optional[float] = None) -> None:
@@ -251,7 +238,7 @@ class UserNarrator:
         else:
             details = " (MNT seul)"
         self._r.user_info(
-            f"🛠 Calcul des produits sur "
+            f"🛠 Calcul des images du relief sur "
             f"{_human_count(total_tiles, 'dalle', 'dalles')}{details}…"
         )
         self._metric(0, total_tiles, "dalles")  # initialise le total de la phase

@@ -161,7 +161,7 @@ class WizardDialog(QDialog):
         self._indices_page = IndicesPage()
         self._detection_page = DetectionPage(self._plugin_root)
         self._launch_page = LaunchPage()
-        self._run_view = RunView(self._config)
+        self._run_view = RunView(self._config, iface=self._iface)
         self._stack.addWidget(self._defilante(self._source_page))    # étape 1
         self._stack.addWidget(self._defilante(self._indices_page))   # étape 2
         self._stack.addWidget(self._detection_page)            # étape 3
@@ -280,6 +280,15 @@ class WizardDialog(QDialog):
             event.accept()
             return
         super().keyPressEvent(event)
+
+    def _relancer(self) -> None:
+        """Relance depuis les étapes 1 à 3 : la validation d'abord ; un point à corriger
+        ramène à l'étape 4, qui le dit."""
+        self._refresh_validation()
+        if self._validation_errors or self._run_view.is_running():
+            self._goto_step(self.STEP_VERIFS)
+            return
+        self._on_launch()
 
     def _on_mode_changed(self, mode: str) -> None:
         """Le mode (étape 1) pilote la neutralisation des sections de l'étape 2."""
@@ -416,8 +425,16 @@ class WizardDialog(QDialog):
         self._next_hint.setObjectName("ActionHint")
         self._next_hint.setWordWrap(True)
         self._next_hint.setVisible(False)
+        # « Relancer maintenant » (étapes 1 à 3, après un premier traitement) : même chemin
+        # que « Lancer le traitement », validation comprise.
+        self._relancer_btn = QPushButton("Relancer maintenant")
+        self._relancer_btn.setObjectName("GhostButton")
+        self._relancer_btn.setToolTip("Relance le traitement avec les réglages en cours")
+        self._relancer_btn.setVisible(False)
+        self._relancer_btn.clicked.connect(self._relancer)
         layout.addWidget(self._prev_btn)
         layout.addStretch(1)
+        layout.addWidget(self._relancer_btn)
         layout.addWidget(self._next_hint, 2)
         layout.addWidget(self._next_btn)
         return bar
@@ -686,6 +703,10 @@ class WizardDialog(QDialog):
     def _update_launch_button(self) -> None:
         self._next_hint.setText("")
         self._next_hint.setVisible(False)
+        self._relancer_btn.setVisible(
+            self._current_step < self.STEP_VERIFS
+            and self._run_view.a_deja_tourne() and not self._run_view.is_running()
+        )
         if not self._next_launches():
             # « Suivant » = navigation pure, autorisée même pendant un traitement
             # (permet de remonter jusqu'à l'étape 5 = suivi du traitement).

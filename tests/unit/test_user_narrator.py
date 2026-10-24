@@ -592,3 +592,23 @@ class TestCvRunDone:
         narrator, reporter = self._make()
         narrator.cv_run_done("M", 0, 3.0)
         reporter.user_info.assert_not_called()
+
+
+class TestCheminsRelatifsV3:
+    """Les phrases qui citent le journal ou le rapport donnent le chemin réel du livrable
+    (arborescence v3), jamais « le dossier de sortie » tout court (lot 6, 2026-10-24)."""
+
+    def _make(self):
+        reporter = MagicMock()
+        return create_user_narrator(reporter), reporter
+
+    def test_chemins_relatifs_v3(self):
+        narrator, reporter = self._make()
+        narrator.pipeline_starting("X")
+        narrator.pipeline_failed("erreur réseau", journal="technique/journaux/pipeline_log_20261024_1200.txt")
+        msg = reporter.user_warning.call_args[0][0]
+        assert "technique/journaux/pipeline_log_20261024_1200.txt" in msg and "dossier de sortie pour plus" not in msg
+        narrator.pipeline_failed("erreur réseau")
+        assert "technique/journaux/" in reporter.user_warning.call_args[0][0]
+        narrator.rapport_ecrit("livrable/rapport.html")
+        assert "livrable/rapport.html" in reporter.user_info.call_args[0][0]

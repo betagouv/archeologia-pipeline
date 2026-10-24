@@ -137,7 +137,7 @@ class UserNarrator:
             parts.append("images : " + ", ".join(labels))
         self._r.user_success(" — ".join(parts))
 
-    def pipeline_failed(self, message: str, start_time: Optional[float] = None) -> None:
+    def pipeline_failed(self, message: str, start_time: Optional[float] = None, journal: str = "") -> None:
         # Même logique que pipeline_complete : ``start_time`` explicite quand le
         # narrateur n'est pas celui qui a vu ``pipeline_starting`` (cas typique :
         # narrateur instancié dans finalize_service — sinon durée « 0s »).
@@ -145,10 +145,10 @@ class UserNarrator:
             duration = _format_duration(time.time() - start_time)
         else:
             duration = self._elapsed_str()
-        self._r.user_warning(
-            f"⚠ Le traitement s'est interrompu après {duration} : {message}. "
-            f"Voir le journal détaillé dans le dossier de sortie pour plus d'informations."
-        )
+        # Le chemin réel du journal (arborescence v3), jamais « le dossier de sortie » tout court.
+        ou = (f"Voir le journal {journal}" if journal
+              else "Voir le journal complet dans technique/journaux/ du dossier de sortie")
+        self._r.user_warning(f"⚠ Le traitement s'est interrompu après {duration} : {message}. {ou}.")
 
     def pipeline_cancelled(self) -> None:
         self._r.user_info("⏹ Traitement annulé par l'utilisateur")

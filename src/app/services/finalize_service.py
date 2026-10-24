@@ -365,6 +365,19 @@ def echec_detection(output_dir: Path, lance_le: float) -> str:
     return str(trace.get("cv_motif") or "moteur de détection indisponible")
 
 
+def _journal_relatif(output_dir: Path) -> str:
+    """``technique/journaux/pipeline_log_<ts>.txt`` du dernier lancement, ``""`` sans journal."""
+    try:
+        from ...pipeline.output_paths import DIR_JOURNAUX, DIR_TECHNIQUE, journaux_dir
+    except ImportError:  # standalone (tests)
+        from pipeline.output_paths import DIR_JOURNAUX, DIR_TECHNIQUE, journaux_dir  # type: ignore[no-redef]
+    try:
+        logs = sorted(journaux_dir(Path(output_dir)).glob("pipeline_log_*.txt"))
+    except OSError:
+        return ""
+    return f"{DIR_TECHNIQUE}/{DIR_JOURNAUX}/{logs[-1].name}" if logs else ""
+
+
 def _ecrire_rapport_run(
     *, output_dir: Path, vrt_paths: List[str], cv_runs: Any, cv_cfg: Any, cv_stats: List[Dict[str, Any]],
     bilan: Any, rvt_params: Dict[str, Any], active_products: List[str], ui_config: Dict[str, Any],
@@ -449,6 +462,17 @@ def _ecrire_rapport_run(
         date = _dt.datetime.fromisoformat(meta_date).strftime("%d/%m/%Y à %H:%M")
     except ValueError:
         date = meta_date
+    # Couleurs des couches (registre du profil, lu en JSON pur) déclinées par niveau : les
+    # barres du rapport ont les teintes de la légende QGIS. Jamais bloquant.
+    try:
+        from .couleurs_couches import couleurs_du_bilan, lire_registre
+        try:
+            from ...pipeline.cv.class_color_registry import default_registry
+        except ImportError:
+            from pipeline.cv.class_color_registry import default_registry  # type: ignore[no-redef]
+        couleurs = couleurs_du_bilan(lire_registre(default_registry().path), [ligne.couche for ligne in bilan])
+    except Exception:  # noqa: BLE001
+        couleurs = {}
     donnees = DonneesRapport(
         version=get_plugin_version(), date=date,
         mode=mode_info(mode).banner_label if mode else "", data_mode=mode,
@@ -460,6 +484,7 @@ def _ecrire_rapport_run(
         cv_runs=tuple(runs_rapport),
         bilan=tuple(ligne.to_dict() for ligne in bilan), etapes=tuple(etapes),
         avertissements=tuple(avertissements), vignette=vignette, motif_detection=motif_detection,
+        couleurs=couleurs,
     )
     ecrire_rapport(livrable_dir(Path(output_dir)), donnees)
     return f"{DIR_LIVRABLE}/{NOM_RAPPORT}"
@@ -731,7 +756,8 @@ def finalize_pipeline(
     # « ⏹ Traitement annulé » est émis par le runner après la finalisation —
     # rien à annoncer ici dans le cas cancelled.
     if outcome == "failed":
-        narrator.pipeline_failed("erreur inattendue pendant le traitement", start_time=start_time)
+        narrator.pipeline_failed("erreur inattendue pendant le traitement", start_time=start_time,
+                                 journal=_journal_relatif(output_dir))
     elif outcome == "success" and detection_impossible:
         from .rapport_run import suite_detection_impossible
         reporter.error(
@@ -739,7 +765,8 @@ def finalize_pipeline(
             f"Les produits sont calculés ; {suite_detection_impossible(cv_stats or [])}"
         )
     elif outcome == "success" and all_tiles_failed:
-        narrator.pipeline_failed("aucune dalle n'a produit de sortie", start_time=start_time)
+        narrator.pipeline_failed("aucune dalle n'a produit de sortie", start_time=start_time,
+                                 journal=_journal_relatif(output_dir))
     elif success:
         narrator.pipeline_complete(
             tiles_processed=tiles_processed,

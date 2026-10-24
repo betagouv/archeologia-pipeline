@@ -40,7 +40,7 @@ Dans chaque dossier `tif/`, la mosaïque `index_<PRODUIT>.vrt` assemble toutes l
 
 `livrable/projet.qgs` est écrit à la fin de chaque traitement et constitue le point d'entrée pour valider les détections. Il contient les mosaïques des images du relief et, par structure, un groupe avec sa couche de détections stylée. Deux modèles comparés sur une même structure donnent deux couches dans un groupe marqué « comparaison ».
 
-Les mêmes couches sont chargées dans votre projet QGIS courant quand vous cliquez **Ouvrir le projet QGIS** à la fin du traitement, une seule fois ; rien ne se charge sans ce clic.
+Les mêmes couches sont chargées dans votre projet QGIS courant quand vous cliquez **Ajouter au projet QGIS courant** à la fin du traitement, une seule fois ; **Ouvrir livrable/projet.qgs** ouvre ce projet à la place du projet courant. Rien ne se charge sans l'un de ces clics.
 
 ## La légende de fiabilité
 
@@ -48,7 +48,7 @@ Chaque couche de détections est catégorisée en quatre niveaux : **douteux**, 
 
 Le dessin : contour seul, sans remplissage, pour laisser lire la structure détectée dessous ; une couleur par classe, déclinée du plus foncé (très probable) au plus clair (douteux). L'infobulle de la couche et son résumé, dans les propriétés, donnent la part mesurée pour chaque niveau et le nombre de détections sur lequel elle a été mesurée.
 
-À l'ouverture, seuls **très probable** et **probable** sont cochés dans la légende ; **possible** et **douteux** y sont, décochés. Commencez par ce qui est sûr, puis cochez les deux autres niveaux d'un clic dans le panneau des couches pour élargir : toutes les détections sont dans le GeoPackage, dans le bilan de fin de traitement et dans le rapport. L'état des cases est enregistré dans le projet ; une couche chargée depuis le bouton « Ouvrir le projet QGIS » s'ouvre de la même façon.
+À l'ouverture, seuls **très probable** et **probable** sont cochés dans la légende ; **possible** et **douteux** y sont, décochés. Commencez par ce qui est sûr, puis cochez les deux autres niveaux d'un clic dans le panneau des couches pour élargir : toutes les détections sont dans le GeoPackage, dans le bilan de fin de traitement et dans le rapport. L'état des cases est enregistré dans le projet ; une couche chargée depuis le bouton « Ajouter au projet QGIS courant » s'ouvre de la même façon.
 
 Quand vous avez baissé le seuil d'une structure sous celui du modèle, les détections ajoutées forment le niveau **douteux · sous le seuil du modèle** : la part de vrais y est celle mesurée pour cet intervalle quand le modèle la fournit, sinon « non mesurée » ; les autres niveaux gardent leurs coupures. Ces détections sont fusionnées entre elles, jamais avec celles qui passaient déjà le seuil : un bon polygone n'est pas tiré vers le bas par un fragment faible accolé. L'infobulle d'une détection dit, pour un polygone fusionné, de combien de fragments il est fait et le score du plus sûr.
 

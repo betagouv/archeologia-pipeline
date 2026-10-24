@@ -106,7 +106,7 @@ Relancez ensuite dans le même dossier : les images déjà calculés sont conser
 
 ## Les couches ne se chargent pas dans QGIS
 
-Les couches ne se chargent plus d'elles-mêmes : à la fin du traitement, cliquez **Ouvrir le projet QGIS** dans le cadre « Par où commencer » ; le bouton n'agit qu'une fois. S'il est grisé, le traitement n'a pas abouti ou le bouton a déjà servi : tout est dans le dossier de sortie, ouvrez `livrable/projet.qgs`, ou ajoutez les mosaïques `index_<PRODUIT>.vrt` et les GeoPackages à la main.
+Les couches ne se chargent plus d'elles-mêmes : à la fin du traitement, cliquez **Ajouter au projet QGIS courant** dans le cadre « Par où commencer » (ou **Ouvrir livrable/projet.qgs** pour ouvrir le projet écrit à la place du vôtre) ; le premier n'agit qu'une fois. S'il est grisé, le traitement n'a pas abouti ou le bouton a déjà servi : tout est dans le dossier de sortie, ouvrez `livrable/projet.qgs`, ou ajoutez les mosaïques `index_<PRODUIT>.vrt` et les GeoPackages à la main.
 
 ## Le traitement s'est interrompu
 

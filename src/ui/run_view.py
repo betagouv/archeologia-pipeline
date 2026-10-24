@@ -267,15 +267,31 @@ def profil_archeologia() -> Path:
         return Path(__file__).resolve().parents[2] / "data" / "temp_zones"   # gitignoré
 
 
+class _TamponAvantJournal(logging.Handler):
+    """Garde ce qui est émis entre la remise à zéro de la vue et le départ du thread :
+    avertissements de la configuration, « Lancement… », purge des couches. Le journal
+    de fichier n'existe pas encore à ce moment-là ; ces lignes lui manquaient (C-03)."""
+
+    def __init__(self, cible: list):
+        super().__init__(logging.INFO)
+        self._cible = cible
+        self.actif = False
+
+    def emit(self, record: logging.LogRecord) -> None:
+        if self.actif:
+            self._cible.append(record)
+
+
 class RunView(QWidget):
-    """Vue d'exécution : en-tête + timeline + barre de progression + journal."""
+    """Vue d'exécution : fil d'état, frise, cadre de fin et journal."""
 
     run_started = pyqtSignal()
     run_finished = pyqtSignal()
 
-    def __init__(self, config_ref: Optional[dict] = None, parent=None):
+    def __init__(self, config_ref: Optional[dict] = None, parent=None, iface=None):
         super().__init__(parent)
         self._config = config_ref or {}
+        self._iface = iface   # pour « Ouvrir livrable/projet.qgs » ; None hors QGIS de bureau
         self._cancel_event = threading.Event()
         self._bucket = -1
         self._running = False
@@ -312,6 +328,10 @@ class RunView(QWidget):
         # Couches du run, à charger dans le projet QGIS courant SEULEMENT au clic sur
         # « Ouvrir le projet QGIS » (V2, 2026-10-08 : plus de chargement automatique).
         self._couches_a_charger: Optional[tuple] = None
+        # Messages émis avant l'ouverture du journal de fichier (avertissements de la
+        # configuration, lancement, purge des couches) : gardés pour y être rejoués (C-03).
+        self._avant_journal: List[logging.LogRecord] = []
+        self._tampon = _TamponAvantJournal(self._avant_journal)
 
         # ── Logger + pont Qt ──
         self._logger = logging.getLogger("archeologia_pipeline")
@@ -335,9 +355,10 @@ class RunView(QWidget):
         # sinon les logs partiraient vers un émetteur mort et le journal resterait
         # muet. On garantit qu'un seul QtLogHandler — celui-ci — est attaché.
         for h in list(self._logger.handlers):
-            if isinstance(h, QtLogHandler):
+            if isinstance(h, (QtLogHandler, _TamponAvantJournal)):
                 self._logger.removeHandler(h)
         self._logger.addHandler(self._log_handler)
+        self._logger.addHandler(self._tampon)
 
         self._build()
         # Timeline initiale (au cas où la vue est affichée avant le 1er run) :
@@ -419,13 +440,23 @@ class RunView(QWidget):
         dpr = self.devicePixelRatioF()
         actions_fin = QHBoxLayout()
         actions_fin.setSpacing(6)
-        self._open_project_btn = QPushButton("Ouvrir le projet QGIS")
+        # Deux gestes, deux verbes (2026-10-24) : ajouter les couches au projet ouvert, ou
+        # ouvrir le projet écrit dans le livrable à la place du projet courant.
+        self._open_project_btn = QPushButton("Ajouter au projet QGIS courant")
         self._open_project_btn.setObjectName("WizardPrimaryButton")
         self._open_project_btn.setToolTip(
-            "Charge les mosaïques et les couches de détections dans le projet QGIS courant"
+            "Charge les mosaïques et les couches de détections, stylées, dans le projet QGIS ouvert (une fois)"
         )
         self._open_project_btn.setEnabled(False)
         self._open_project_btn.clicked.connect(self._ouvrir_projet_qgis)
+        self._open_livrable_btn = QPushButton("Ouvrir livrable/projet.qgs")
+        self._open_livrable_btn.setObjectName("GhostButton")
+        self._open_livrable_btn.setToolTip(
+            "Ouvre le projet du dossier de sortie à la place du projet courant ; "
+            "QGIS propose d'enregistrer celui-ci s'il a changé"
+        )
+        self._open_livrable_btn.setEnabled(False)
+        self._open_livrable_btn.clicked.connect(self._ouvrir_livrable)
         # Le dossier de sortie, à côté du projet (demande utilisateur 2026-10-08).
         # Icônes SVG du thème (teintées, nettes) plutôt que des émojis couleur au
         # rendu hétérogène ; iconSize = taille de rendu (14 px), sinon upscale
@@ -450,6 +481,7 @@ class RunView(QWidget):
         self._bilan_legende.setObjectName("RunHeaderSub")
         self._bilan_legende.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         actions_fin.addWidget(self._open_project_btn)
+        actions_fin.addWidget(self._open_livrable_btn)
         actions_fin.addWidget(self._open_dir_btn)
         actions_fin.addWidget(self._open_report_btn)
         actions_fin.addWidget(self._bilan_legende, 1)
@@ -529,6 +561,10 @@ class RunView(QWidget):
     def is_running(self) -> bool:
         return self._running
 
+    def a_deja_tourne(self) -> bool:
+        """Un traitement a déjà été lancé dans cette fenêtre (« Relancer maintenant »)."""
+        return self._run_started_at is not None
+
     def preview(self, config: dict) -> None:
         """Avant le premier run, la frise et la ligne d'état suivent la config courante
         (l'étape 5 est consultable avant de lancer). Après un run : rien ne bouge,
@@ -595,6 +631,8 @@ class RunView(QWidget):
             return
 
         self._reset_view()
+        self._avant_journal.clear()
+        self._tampon.actif = True   # jusqu'au départ du thread : rejoué dans le fichier
         for w in warnings:
             self._logger.warning(w)
         self._logger.log(USER_INFO, "Lancement du traitement…")
@@ -652,6 +690,7 @@ class RunView(QWidget):
         self._fil_droite.setText("en cours · 0s")
         self._update_header()
         self.run_started.emit()
+        self._tampon.actif = False
         threading.Thread(target=self._worker, args=(ctx,), daemon=True).start()
 
     def request_cancel(self) -> None:
@@ -675,6 +714,7 @@ class RunView(QWidget):
 
             reporter = QtProgressReporter(self._logger, self._emitter)
             with file_logging(ctx.output_dir, reporter):
+                self._rejouer_avant_journal()
                 ok = PipelineController().run(
                     ctx=ctx, reporter=reporter, cancel=CancelToken(self._cancel_event)
                 )
@@ -691,6 +731,15 @@ class RunView(QWidget):
     # ------------------------------------------------------------------
     # Slots (signaux émis depuis le worker → thread UI)
     # ------------------------------------------------------------------
+    def _rejouer_avant_journal(self) -> None:
+        """Rejoue dans le journal de fichier, tout juste ouvert, ce qui a été dit avant lui
+        (C-03) : il raconte le lancement depuis le début, comme l'écran."""
+        fichiers = [h for h in self._logger.handlers if isinstance(h, logging.FileHandler)]
+        for rec in list(self._avant_journal):
+            for h in fichiers:
+                h.handle(rec)
+        self._avant_journal.clear()
+
     def _reset_view(self) -> None:
         self._bucket = -1
         self._last_stage_text = ""
@@ -1014,6 +1063,7 @@ class RunView(QWidget):
         out_dir = self._output_dir()
         self._open_report_btn.setEnabled(bool(out_dir and (livrable_dir(out_dir) / NOM_RAPPORT).is_file()))
         self._open_project_btn.setEnabled(bool(self._couches_a_charger))
+        self._open_livrable_btn.setEnabled(bool(out_dir))   # le fichier est vérifié au clic
         self._afficher_bilan()
         self._bilan_box.setVisible(True)
         self.run_finished.emit()
@@ -1094,6 +1144,21 @@ class RunView(QWidget):
         self._couches_a_charger = None
         self._open_project_btn.setEnabled(False)
         self._open_project_btn.setToolTip("Les couches de ce traitement sont déjà dans le projet QGIS")
+
+    def _ouvrir_livrable(self) -> None:
+        """Ouvre livrable/projet.qgs à la place du projet courant. QGIS propose lui-même
+        d'enregistrer le projet courant s'il a changé : pas de boîte de plus."""
+        d = self._output_dir()
+        p = projet_qgs_path(d) if d else None
+        if p is None or not p.is_file():
+            self._logger.log(USER_INFO, "Le projet livrable/projet.qgs n'a pas été écrit pour ce traitement.")
+            return
+        if self._iface is not None:
+            self._iface.addProject(str(p))
+            return
+        from qgis.core import QgsProject   # hors QGIS de bureau (rendu hors écran)
+
+        QgsProject.instance().read(str(p))
 
     def _write_validation_project(
         self, vrt_paths, shapefile_paths, class_colors, qa_paths, conf,

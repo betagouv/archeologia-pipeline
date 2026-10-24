@@ -140,7 +140,7 @@ def _journal_fin(app, img: Path, log) -> bool:
                {"selected_model": "ponctuelles_2cl_det_ld_v1", "target_rvt": "LD"}]}}
     v = RunView(cfg)
     v.show()
-    v.resize(880, 580)                               # tout tient sans défilement
+    v.resize(880, 620)                               # tout tient sans défilement (rangées du bilan à 34 px)
     v._apply_stage_sequence()
     v._running = True
     durees = (61, 1202, 590, 82)                     # 32min 15s au total
@@ -588,11 +588,11 @@ def journal(app, sortie: Path, log) -> int:
     w._goto_step(5)
     app.processEvents()
     garde = "Terminé" in w._run_view._journal.toPlainText()
-    etapes_ok = (etape4 == (3, "Lancer le pipeline") and pendant == ("Suivant  →", True, False)
-                 and suivi == (5, "Lancer le pipeline", False) and garde)
+    etapes_ok = (etape4 == (3, "Lancer le traitement") and pendant == ("Suivant  →", True, False)
+                 and suivi == (5, "Lancer le traitement", False) and garde)
     log("étape 4 (page, bouton) =", etape4, "| pendant un run (bouton, pastille, workers actifs) =", pendant,
         "| Suivant → (étape, bouton, actif) =", suivi, "| journal gardé après navigation =", garde,
-        "| attendu (3, 'Lancer le pipeline'), ('Suivant  →', True, False), (5, 'Lancer le pipeline', False), True")
+        "| attendu (3, 'Lancer le traitement'), ('Suivant  →', True, False), (5, 'Lancer le traitement', False), True")
     return 0 if n_liens == 2 and v._bilan_box.isVisible() and etapes_ok else 1
 
 

@@ -1161,3 +1161,17 @@ Lot 3 du chantier d'accélération (2026-10-15) : une dalle lue en entier reçoi
 - [ ] **65.9 Lecture seule** : pendant un traitement, les réglages du poste sont grisés, « Revérifier » et « modifier » restent actifs.
 - [ ] **65.10 Manuel** : F1 sur l'étape 4 → quatre états, Environnement, Revérifier, Réglages du poste, Oublier, Ce qui sera produit, modifier décrits ; deux captures (à corriger, prête).
 
+## 66. Interface rationalisée — lot 6, la fin de traitement ⭐ P1
+
+> **Contexte** (2026-10-24, proposition A) : deux boutons de fin explicites, « Relancer maintenant » aux
+> étapes 1 à 3, les messages d'avant le journal de fichier rejoués dedans, le bilan lisible sans la couleur,
+> le rapport dans les couleurs des couches avec les libellés de l'écran, le chemin réel du journal cité.
+
+- [ ] **66.1 Deux boutons** : à la fin d'un traitement avec détection, le cadre « Par où commencer » porte « Ajouter au projet QGIS courant » (bleu) et « Ouvrir livrable/projet.qgs » ; le premier charge les couches dans le projet ouvert une seule fois puis se grise ; le second ouvre le projet du livrable à la place du projet courant, QGIS proposant d'enregistrer celui-ci s'il a changé ; sans `projet.qgs` écrit, le journal le dit.
+- [ ] **66.2 Relancer maintenant** : après un premier traitement, revenir à l'étape 2 → « Relancer maintenant » dans la barre du bas ; cliquer relance (étape 5) ; avec un point à corriger (dossier de sortie effacé), il ramène à l'étape 4 ; invisible avant tout traitement, pendant un traitement et aux étapes 4 et 5.
+- [ ] **66.3 Journal de fichier** : lancer avec un avertissement de configuration (marge à 0) → `technique/journaux/pipeline_log_<date>.txt` commence par cet avertissement et « Lancement du traitement… », comme l'écran.
+- [ ] **66.4 Bilan lisible** : sous chaque barre du cadre de fin, « très probable 120 · probable 80 · possible 40 · douteux 12 » ; la rangée fait 34 px ; l'infobulle garde la phrase.
+- [ ] **66.5 Rapport** : les barres du bilan sont dans la couleur de chaque couche déclinée par niveau (comme la légende QGIS) ; la colonne « Par niveau » dit « très probable 12 · probable 30 · … » ; une couche inconnue du registre garde les bleus.
+- [ ] **66.6 Échec** : un traitement qui s'interrompt cite « Voir le journal technique/journaux/pipeline_log_<date>.txt ».
+- [ ] **66.7 Manuel** : F1 sur l'étape 5 → deux boutons, Relancer maintenant, bilan lisible, journal nommé ; Vos résultats → rapport en couleurs de couche.
+

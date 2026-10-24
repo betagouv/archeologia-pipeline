@@ -95,6 +95,8 @@ QPushButton:disabled { color: #909090; border-color: #b0b0b0; }
    pour gagner en priorité quand error="true". */
 #RailItem[error="true"] #RailIdx { background: #a83838; border-color: #7a2727; color: #ffffff; }
 #RailItem[error="true"] #RailLabel { color: #a83838; }
+#RailSub[error="true"] { color: #a83838; font-weight: 600; }
+#RailItem:focus { border-left: 3px solid #2b79c2; }
 
 /* ---- Pages ---- */
 #WizardPageHeading { font-size: 13px; font-weight: bold; color: #000000; }
@@ -128,6 +130,8 @@ QPushButton:disabled { color: #909090; border-color: #b0b0b0; }
 /* Affordance : retour visuel au survol des stades cliquables uniquement. */
 #StageButton[clickable="true"]:hover { background: #eaf2fa; border-color: #2b79c2; }
 #StageButton[role="entry"][clickable="true"]:hover { background: #d6e6f4; border-color: #1d5a96; }
+/* Focus clavier d'un stade : anneau bleu, comme les champs. */
+#StageButton:focus { border: 2px solid #2b79c2; }
 /* Lecture seule pendant un run : la frise verrouillée doit se voir. */
 #StageButton:disabled { background: #e3e3e3; border-color: #c4c4c4; }
 #StageButton:disabled #StageName, #StageButton:disabled #StageSub { color: #909090; }

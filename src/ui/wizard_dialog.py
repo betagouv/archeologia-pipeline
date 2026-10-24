@@ -43,6 +43,7 @@ from ..app.services.source_modes import mode_info
 from ..app.services.config_store import ConfigStore
 from ..config.config_manager import ConfigManager
 from ..app.services.aide import AIDE_DIRNAME, CHAPITRE_PAR_ETAPE
+from ..app.services.validation_ui import classer_erreurs, etat_rail
 from ..app.services.vocabulaire import nombre, pluriel
 from .dialogs.aide_dialog import nouveautes_non_lues, ouvrir_aide
 from .dialogs.config_dialogs import ConfigsDialog, demander_nom
@@ -67,19 +68,6 @@ try:
 except Exception:  # pragma: no cover - défensif (hors QGIS)
     def get_plugin_version() -> str:
         return ""
-
-
-def _classify_error_step(err: str) -> int:
-    """Range une erreur de validation sur l'étape qui la corrige (pastille rail).
-
-    Indices/produits → étape 2 ; tout le reste (mode, dossier de sortie, chemins
-    d'entrée) → étape 1. La détection (étape 3) est facultative : aucune erreur
-    bloquante n'en provient.
-    """
-    low = err.lower()
-    if "indice" in low or "produit" in low:
-        return 2
-    return 1
 
 
 class WizardDialog(QDialog):
@@ -409,7 +397,7 @@ class WizardDialog(QDialog):
         step = max(1, min(self._n_steps, int(step)))
         self._current_step = step
         self._stack.setCurrentIndex(step - 1)
-        self._rail.set_current(step)
+        self._sync_rail()
         self._progress.setValue(step)
         title, subtitle = self.TITLES[step]
         self._title_label.setText(title)
@@ -603,12 +591,16 @@ class WizardDialog(QDialog):
         collecté). Les erreurs sont réparties par étape pour les pastilles."""
         errors = self._compute_errors()
         self._validation_errors = errors
-        by_step: dict = {}
-        for err in errors:
-            by_step.setdefault(_classify_error_step(err), []).append(err)
-        self._rail.set_errors(by_step)
+        self._sync_rail()
         self._launch_page.set_validation(errors)
         self._update_launch_button()
+
+    def _sync_rail(self) -> None:
+        """Le rail porte l'état de chaque étape : active, faite, à corriger (avec ses
+        messages en infobulle) ou à venir — rangement pur de ``validation_ui``."""
+        by_step = classer_erreurs(self._validation_errors)
+        etats = {n: etat_rail(n, self._current_step, by_step) for n in range(1, self._n_steps + 1)}
+        self._rail.set_states(etats, by_step)
 
     def _update_launch_button(self) -> None:
         if not self._next_launches():

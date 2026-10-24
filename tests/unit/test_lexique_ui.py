@@ -14,6 +14,7 @@ FICHIERS = sorted((RACINE / "src" / "ui").rglob("*.py")) + [
     RACINE / "src" / "app" / "run_context.py",
     RACINE / "src" / "app" / "services" / "source_modes.py",
     RACINE / "src" / "app" / "progress_stages.py",
+    RACINE / "src" / "app" / "services" / "rvt_kernel_context.py",
 ]
 
 #: (motif interdit, mot du lexique qui le remplace)

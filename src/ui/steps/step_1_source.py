@@ -107,8 +107,8 @@ class SourcePage(QWidget):
         fv.addWidget(self._build_banner())
         root.addWidget(self._frise_card)
 
-        # Badge « ENTRÉE » flottant — overlay sur la bordure haute du stade d'entrée.
-        self._entry_badge = QLabel("ENTRÉE", self._frise_card)
+        # Badge « POINT DE DÉPART » flottant — overlay sur la bordure haute du stade d'entrée.
+        self._entry_badge = QLabel("POINT DE DÉPART", self._frise_card)
         self._entry_badge.setObjectName("StageBadge")
         self._entry_badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._entry_badge.hide()
@@ -253,7 +253,7 @@ class SourcePage(QWidget):
         QTimer.singleShot(0, self._reposition_entry_badge)
 
     def _reposition_entry_badge(self) -> None:
-        """Place le badge « ENTRÉE » à cheval sur la bordure haute du stade d'entrée."""
+        """Place le badge « POINT DE DÉPART » à cheval sur la bordure haute du stade d'entrée."""
         badge = getattr(self, "_entry_badge", None)
         if badge is None:
             return

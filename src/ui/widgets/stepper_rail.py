@@ -22,6 +22,8 @@ class _RailItem(QFrame):
         self._index = index
         self._is_first = False
         self._is_last = False
+        self._sub_text = sub        # le résumé de l'étape, rendu quand rien n'est à corriger
+        self._a_corriger = False
         self.setObjectName("RailItem")
         self.setProperty("state", "todo")
         self.setProperty("error", "false")
@@ -76,16 +78,27 @@ class _RailItem(QFrame):
         self.update()  # redessine le fil
 
     def set_sub(self, text: str) -> None:
-        self._sub.setText(text)
+        self._sub_text = text
+        self._rendre_sub()
+
+    def _rendre_sub(self) -> None:
+        """« à corriger » remplace le résumé tant que l'étape porte une erreur (le
+        résumé reste en infobulle avec les messages) ; sinon le résumé revient."""
+        self._sub.setText("à corriger" if self._a_corriger else self._sub_text)
+        self._sub.setProperty("error", "true" if self._a_corriger else "false")
+        self._sub.style().unpolish(self._sub)
+        self._sub.style().polish(self._sub)
 
     def set_error(self, on: bool, tooltip: str = "") -> None:
         """Marqueur d'erreur indépendant de l'état (active/done/todo) : pastille
         rouge + infobulle listant les problèmes bloquants de cette étape."""
         flag = "true" if on else "false"
+        self._a_corriger = bool(on)
         self.setProperty("error", flag)
         self._idx.setProperty("error", flag)
         self._label.setProperty("error", flag)
         self.setToolTip(tooltip if on else "")
+        self._rendre_sub()
         for w in (self, self._idx, self._label):
             try:
                 w.style().unpolish(w)
@@ -141,17 +154,17 @@ class StepperRail(QFrame):
     def _relay_click(self, n: int) -> None:
         self.step_clicked.emit(n)
 
-    def set_current(self, step: int) -> None:
-        """Items avant ``step`` = faits, ``step`` = actif, après = à faire."""
+    def set_states(self, etats: dict, messages: dict) -> None:
+        """``etats`` = {n: 'active' | 'ok' | 'a_corriger' | 'a_venir'} (cf.
+        ``app.services.validation_ui.etat_rail``), ``messages`` = {n: [erreurs…]}.
+        Une étape « à corriger » garde son aspect (faite ou à venir) et prend la
+        pastille rouge, le texte « à corriger » et les messages en infobulle."""
         for idx, item in enumerate(self._items, start=1):
-            item.set_state("done" if idx < step else ("active" if idx == step else "todo"))
+            etat = etats.get(idx, "a_venir")
+            item.set_state("active" if etat == "active" else ("done" if etat == "ok" else "todo"))
+            msgs = messages.get(idx) or []
+            item.set_error(etat == "a_corriger", "\n".join(msgs))
 
     def set_sub(self, step: int, text: str) -> None:
         if 1 <= step <= len(self._items):
             self._items[step - 1].set_sub(text)
-
-    def set_errors(self, errors_by_step: dict) -> None:
-        """``errors_by_step`` = {n: [messages…]} ; marque les étapes fautives."""
-        for idx, item in enumerate(self._items, start=1):
-            msgs = errors_by_step.get(idx)
-            item.set_error(bool(msgs), "\n".join(msgs) if msgs else "")

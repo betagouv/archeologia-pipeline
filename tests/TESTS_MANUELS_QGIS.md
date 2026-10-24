@@ -1143,3 +1143,21 @@ Lot 3 du chantier d'accélération (2026-10-15) : une dalle lue en entier reçoi
 - [ ] **64.10 Lecture seule** : pendant un traitement, l'étape 3 est grisée (interrupteur, coches, réglages) mais les « ⓘ » restent cliquables et le panneau s'ouvre.
 - [ ] **64.11 Manuel** : F1 sur l'étape 3 → lignes, panneau ⓘ, deux décimales, réglages conservés décrits ; les captures montrent les lignes, le panneau ouvert sur Cratères et une ligne dépliée ; l'étape 2 montre le panneau sur SVF.
 
+## 65. Interface rationalisée — lot 5, l'étape 4 ⭐ P1
+
+> **Contexte** (2026-10-24, proposition A) : bandeau à quatre états, contrôles de l'environnement en
+> français (détail en infobulle), « Revérifier », récapitulatif avec « modifier » et « Ce qui sera
+> produit », réglages du poste avec la décision mémorisée de la carte graphique et « Oublier », bouton
+> gris qui dit pourquoi.
+
+- [ ] **65.1 À corriger** : effacer le dossier de sortie à l'étape 1, aller à l'étape 4 → bandeau rouge « Lancement impossible : • Étape 1 : Indiquez le dossier de sortie » ; à gauche du bouton gris : « Lancement impossible : 1 point à corriger (étape 1) » ; deux points sur deux étapes → « 2 points à corriger (étapes 1, 2) ».
+- [ ] **65.2 Vérification puis prêt** : dossier rempli → bandeau gris « Vérification de l'environnement… » puis vert « Prêt à lancer. » ; la pastille de l'Environnement donne N/N.
+- [ ] **65.3 Outil manquant** : renommer temporairement `pdal.exe` (ou vider le PATH) → bandeau rouge « Un outil manque : Lecteur de nuages de points (pdal). Voir l'aide › Dépannage » ; le lien ouvre le manuel sur la rubrique ; le bouton reste actif (le traitement s'arrête sur ses vérifications).
+- [ ] **65.4 Avertissement** : en MNT existant avec un raster sans CRS lisible → bandeau orange « Prêt à lancer, avec un avertissement : Système de coordonnées des rasters. ».
+- [ ] **65.5 Environnement en français** : chaque ligne porte le libellé français (« Reprojection des rasters (gdalwarp) ») et un mot dans la colonne (« trouvé », « manquant », « non requis », « trouvé · 120 Go libres », une version) ; le chemin ou l'erreur n'apparaît qu'en infobulle, sur la colonne et sur le nom (nom technique).
+- [ ] **65.6 Revérifier** : le bouton relance les vérifications (pastille « … » puis N/N), grisé pendant qu'elles tournent.
+- [ ] **65.7 Récapitulatif** : chaque section porte « modifier » à droite → ramène à l'étape 1 (Données, Dossier de sortie), 2 (Images), 3 (Structures) ; « Ce qui sera produit » liste `livrable/projet.qgs`, `rapport.html`, `traitement.json`, un `indices/<nom>/tif/` par image cochée (nom avec les réglages : `SVF_R10_D16_V1_N0`), un `detections/<slug>/` par structure cochée ; depuis des images existantes, aucun `indices/`.
+- [ ] **65.8 Réglages du poste** : après un traitement avec la carte graphique cochée, l'étape 4 montre « Décision mémorisée pour ce poste : carte graphique « … », retenue le jj/mm/aaaa » (ou « processeur (motif), décidé le … ») et « Oublier » ; cliquer efface `archeologia/carte_graphique.json` du profil et masque la ligne ; sans décision, ni ligne ni bouton.
+- [ ] **65.9 Lecture seule** : pendant un traitement, les réglages du poste sont grisés, « Revérifier » et « modifier » restent actifs.
+- [ ] **65.10 Manuel** : F1 sur l'étape 4 → quatre états, Environnement, Revérifier, Réglages du poste, Oublier, Ce qui sera produit, modifier décrits ; deux captures (à corriger, prête).
+

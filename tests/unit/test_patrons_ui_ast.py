@@ -148,3 +148,51 @@ def test_lignes_sans_modele():
     assert "elidedText(" in src, "la description est élidée, texte complet en infobulle"
     assert "thresholds_changed = pyqtSignal(str, dict)" in src
 
+
+# ---------------------------------------------------------------- lot 5 : étape 4
+
+STEP4 = UI / "steps" / "step_4_launch.py"
+
+
+def test_bandeau_quatre_etats():
+    src = STEP4.read_text(encoding="utf-8")
+    for etat in ("incomplete", "pending", "tool_missing", "warn", "ok"):
+        assert f'setProperty("state", "{etat}")' in src, etat
+    assert 'setProperty("state", "error")' not in src, "l'ancien état « error » est remplacé"
+    assert "manuel:depannage#" in src, "le bandeau « outil manquant » renvoie au Dépannage"
+    assert "classer_erreurs(" in src, "les points à corriger sont rangés par étape"
+
+
+def test_details_en_infobulle():
+    """Dans l'Environnement, le détail brut (chemin, erreur) ne va qu'en infobulle ;
+    la colonne porte le résumé français (resume_detail) et le nom est traduit."""
+    fn = _fonction(STEP4, "_render_preflight")
+    usages = []
+    for n in ast.walk(fn):
+        if isinstance(n, ast.Call):
+            for a in n.args:
+                if isinstance(a, ast.Attribute) and a.attr == "details":
+                    usages.append(getattr(n.func, "attr", None) or getattr(n.func, "id", ""))
+    assert usages and set(usages) <= {"setToolTip", "resume_detail"}, usages
+    texte = ast.unparse(fn)
+    assert "libelle_environnement(" in texte
+
+
+def test_recap_modifier_par_section():
+    src = STEP4.read_text(encoding="utf-8")
+    assert "step: int = 0" in src and "modifier_demande = pyqtSignal(int)" in src
+    assert 'QPushButton("modifier")' in src
+    wizard = WIZARD.read_text(encoding="utf-8")
+    recap = ast.unparse(_fonction(WIZARD, "_update_launch_recap"))
+    for n in (1, 2, 3):
+        assert f"step={n}" in recap, f"section sans lien « modifier » vers l'étape {n}"
+    assert "modifier_demande.connect(self._goto_step)" in wizard
+    assert "reverifier_demande.connect(" in wizard
+    assert "sorties_prevues(" in recap
+
+
+def test_bouton_gris_dit_pourquoi():
+    src = WIZARD.read_text(encoding="utf-8")
+    assert "_next_hint" in src and 'setObjectName("ActionHint")' in src
+    texte = ast.unparse(_fonction(WIZARD, "_update_launch_button"))
+    assert "Lancement impossible" in texte and "classer_erreurs(" in texte

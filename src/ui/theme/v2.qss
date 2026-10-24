@@ -361,7 +361,9 @@ QPushButton:disabled { color: #909090; border-color: #b0b0b0; }
 
 /* ---- Étape 4 : bandeau de validation ---- */
 #ValidationBanner { border-radius: 6px; padding: 8px 12px; font-size: 11px; }
-#ValidationBanner[state="error"]   { background: #fbe7e7; border: 1px solid #a83838; color: #7a2727; }
+#ValidationBanner[state="incomplete"],
+#ValidationBanner[state="tool_missing"] { background: #fbe7e7; border: 1px solid #a83838; color: #7a2727; }
+#ValidationBanner[state="warn"]    { background: #f6efdc; border: 1px solid #b07a20; color: #8a5e18; }
 #ValidationBanner[state="ok"]      { background: #e6f2e6; border: 1px solid #418141; color: #2d6a2d; }
 /* Préflight en cours : neutre — le vert est réservé à « réellement prêt ». */
 #ValidationBanner[state="pending"] { background: #e3e3e3; border: 1px solid #a0a0a0; color: #2c2c2c; }
@@ -375,6 +377,7 @@ QPushButton:disabled { color: #909090; border-color: #b0b0b0; }
     padding: 1px 7px; border-radius: 3px;
 }
 #RecapDetail { color: #5a5a5a; font-size: 10px; }
+#RecapListe { color: #2c2c2c; font-size: 11px; }
 
 /* ---- Étape 4 : zone défilante du récap ---- */
 #LaunchScroll { background: transparent; border: none; }
@@ -492,6 +495,8 @@ QPushButton[role="micro"] {
 
 /* ---- Barre d'actions ---- */
 #WizardActionBar { background: #f0f0f0; border-top: 1px solid #c4c4c4; }
+/* Pourquoi le bouton principal est gris : à sa gauche, dans le rouge des points à corriger. */
+#ActionHint { color: #7a2727; font-size: 11px; }
 /* Bouton primaire plein : l'action principale doit dominer un bouton standard
    survolé (l'ancien gradient bleu pâle s'y confondait). */
 #WizardPrimaryButton {

@@ -181,3 +181,28 @@ def test_le_journal_renvoie_au_depannage():
         "La carte graphique n'est pas utilisée"
     assert rubrique_depannage("⚠️ « Cratères » : carte graphique : erreur à l'image 3 ; suite sur le processeur") == \
         "La carte graphique n'est pas utilisée"
+
+
+def test_decision_memorisee_la_plus_recente():
+    reg = {
+        "k1": {**REFUSEE, "date": T0.isoformat()},
+        "k2": {**RETENUE, "date": (T0 + dt.timedelta(days=2)).isoformat()},
+        "k3": "n'importe quoi",
+        "k4": {**RETENUE, "date": "hier"},
+    }
+    d = cg.decision_memorisee(reg)
+    assert d is not None and d["carte"] == "RTX" and d["date_fr"] == "20/10/2026"
+    assert cg.decision_memorisee({}) is None
+    assert cg.decision_memorisee({"k": "x"}) is None
+    assert "RTX" in cg.phrase_decision(d) and "20/10/2026" in cg.phrase_decision(d)
+    refus = cg.decision_memorisee({"k1": reg["k1"]})
+    assert "processeur" in cg.phrase_decision(refus) and "18/10/2026" in cg.phrase_decision(refus)
+
+
+def test_oublier_supprime_le_registre(tmp_path):
+    p = tmp_path / "profil" / cg.NOM_REGISTRE
+    cg.memoriser(p, "k", RETENUE, T0)
+    assert p.is_file()
+    assert cg.oublier(p) is True
+    assert not p.exists()
+    assert cg.oublier(p) is False          # rien à oublier : rien, sans erreur

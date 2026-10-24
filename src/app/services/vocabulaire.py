@@ -6,6 +6,7 @@ ils les prennent ici, ce qui garde le même vocabulaire partout.
 """
 from __future__ import annotations
 
+import re
 from typing import Dict
 
 from .fiabilite import LABELS_FR
@@ -63,6 +64,33 @@ def pluriel(n: int, singulier: str, pluriel_: str = "") -> str:
     """``"1 dalle"``, ``"12 dalles"``, ``"2 journaux"``."""
     mot = singulier if n in (0, 1) else (pluriel_ or singulier + "s")
     return f"{n} {mot}"
+
+
+_MANQUANT = ("not found", "introuvable", "manquant", "absent", "no module", "modulenotfound", "error")
+_CHEMIN = re.compile(r"^(?:[A-Za-z]:[\\/]|/|\\\\)")
+
+
+def resume_detail(details: str) -> str:
+    """Le détail d'un contrôle de l'environnement en un mot pour la colonne de l'étape 4 ;
+    le texte complet (chemin, erreur) reste en infobulle. Un chemin → « trouvé » (avec
+    son complément « · 120 Go libres » s'il y en a un) ; une absence ou une erreur →
+    « manquant » ; un contrôle sauté → « non requis » ; le reste (une version, un
+    système de coordonnées) est rendu tel quel."""
+    texte = (details or "").strip()
+    bas = texte.lower()
+    if not texte:
+        return ""
+    if bas.startswith("skipped"):
+        return "non requis"
+    if any(m in bas for m in _MANQUANT):
+        return "manquant"
+    if bas.startswith("import ok"):
+        version = re.search(r"version=([^,\s)]+)", texte)
+        return f"trouvé · version {version.group(1)}" if version else "trouvé"
+    if _CHEMIN.match(texte):
+        complement = texte.split(" · ", 1)[1] if " · " in texte else ""
+        return f"trouvé · {complement}" if complement else "trouvé"
+    return texte
 
 
 def libelle_environnement(name: str) -> str:

@@ -10,7 +10,7 @@
 
 Monte un ``QgsApplication`` en ``QT_QPA_PLATFORM=offscreen`` avec le thème QSS du plugin, puis :
 
-- ``captures`` : l'assistant aux étapes 1 à 4, la ligne d'une structure en réglages, le panneau ⓘ
+- ``captures`` : l'assistant aux étapes 1 à 4 (la 4 à corriger, puis prête), la ligne d'une structure en réglages, le panneau ⓘ
   ouvert sur une image puis sur une structure, et la vue d'exécution (en cours, puis à la fin avec
   « Par où commencer »), avec des
   chemins neutres dans les champs et quelques produits cochés, en **double résolution**
@@ -276,6 +276,27 @@ def _processing_hors_ecran(log) -> bool:
         return False
 
 
+def _etape4_a_corriger(app, w, img: Path, log, fichiers) -> bool:
+    """aide/img/etape4-a-corriger.png : le bandeau rouge rangé par étape et le bouton gris qui
+    dit pourquoi, avec un dossier de sortie effacé."""
+    del fichiers   # le champ de la page est la source de vérité : on passe par lui
+    champ = w._source_page._output_edit
+    sauve = champ.text()
+    champ.setText("")
+    w._refresh_validation()
+    w._goto_step(4)
+    app.processEvents()
+    etat = w._launch_page._banner.property("state")
+    log("étape 4 à corriger : bandeau =", etat, "| bouton actif :", w._next_btn.isEnabled(),
+        "| indication :", w._next_hint.text())
+    w.grab().save(str(img / "etape4-a-corriger.png"))
+    ok = etat == "incomplete" and not w._next_btn.isEnabled() and bool(w._next_hint.text())
+    champ.setText(sauve)
+    w._refresh_validation()
+    app.processEvents()
+    return ok
+
+
 def _etape4(app, w, img: Path, log) -> bool:
     """aide/img/etape4-verifications.png : bandeau, état du système au vert, récapitulatif."""
     import time
@@ -300,7 +321,11 @@ def _etape4(app, w, img: Path, log) -> bool:
             time.sleep(0.05)
     finally:
         pf.collect_preflight_results = brut
-    app.processEvents()
+    # Les résultats viennent d'arriver : chaque niveau de mise en page poste sa demande au
+    # suivant (grille → carte → page → zone défilante). Plusieurs passes, sinon la capture
+    # montre la page tassée dans l'ancienne hauteur (descendantes rognées, liste écrasée).
+    for _ in range(8):
+        app.processEvents()
     w.grab().save(str(img / "etape4-verifications.png"))
     statut = w._launch_page._preflight_status
     log("étape 4 : préflight =", statut, "| bouton :", w._next_btn.text(), "| actif :", w._next_btn.isEnabled())
@@ -359,8 +384,13 @@ def captures(app, sortie: Path, log) -> int:
     ligne_ok = _ligne_reglages(app, w, img, log)
     fiche_ok = _fiches_panneau(app, w, img, log)
     etape4_ok = _etape4(app, w, img, log)
+    # Après l'étape 4 prête : un second passage lance une vérification de fond pendant que
+    # Processing s'initialise, et la première finissait en « QGIS processing » manquant.
+    corriger_ok = _etape4_a_corriger(app, w, img, log, fichiers) if fichiers is not None else False
     log("captures écrites dans", img, "— taille de l'assistant :", w.width(), "x", w.height())
-    return 0 if n and fin_ok and ligne_ok and fiche_ok and etape4_ok else 1
+    log("contrôles : structures", bool(n), "| fin", fin_ok, "| ligne", ligne_ok, "| panneau", fiche_ok,
+        "| à corriger", corriger_ok, "| étape 4", etape4_ok)
+    return 0 if n and fin_ok and ligne_ok and fiche_ok and corriger_ok and etape4_ok else 1
 
 
 def manuel(app, sortie: Path, log, chapitre: str, ancre: str, recherche: str = "", tous: bool = False) -> int:

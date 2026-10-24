@@ -12,6 +12,7 @@ from app.services.vocabulaire import (
     niveau,
     nombre,
     pluriel,
+    resume_detail,
     titre_image,
 )
 
@@ -86,3 +87,23 @@ def test_aucun_anglais_dans_les_libelles_environnement():
     for libelle in ENVIRONNEMENT.values():
         for mot in ("external", "not found", "skipped", "processing"):
             assert mot not in libelle.lower(), libelle
+
+
+@pytest.mark.parametrize("details, attendu", [
+    ("C:\\OSGeo4W\\bin\\pdal.exe", "trouvé"),
+    ("/usr/bin/gdalwarp", "trouvé"),
+    ("import ok", "trouvé"),
+    ("import ok (version=1.0.1, file=C:\\x\\geopandas\\__init__.py)", "trouvé · version 1.0.1"),
+    ("not found in PATH", "manquant"),
+    ("not found (expected: C:\\x\\cv_runner_onnx.exe)", "manquant"),
+    ("ModuleNotFoundError(\"No module named 'onnxruntime'\")", "manquant"),
+    ("skipped (external runner present)", "non requis"),
+    ("C:\\sortie · 120 Go libres", "trouvé · 120 Go libres"),
+    ("1.17.0", "1.17.0"),
+    ("EPSG:2154 · 16 dalle(s)", "EPSG:2154 · 16 dalle(s)"),
+    ("", ""),
+])
+def test_resume_detail(details, attendu):
+    """Le détail d'un contrôle se résume en un mot dans la colonne ; le texte complet
+    (chemin, erreur) reste en infobulle."""
+    assert resume_detail(details) == attendu

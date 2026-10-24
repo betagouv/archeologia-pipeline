@@ -119,6 +119,46 @@ def _date_fr(iso: Any) -> str:
         return "?"
 
 
+def decision_memorisee(registre: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """La décision la plus récente du registre (toutes clés confondues), avec sa date
+    française sous ``date_fr`` ; ``None`` si rien de lisible. Sert à l'étape 4 : dire ce
+    que ce poste a mémorisé, et le laisser oublier."""
+    meilleure, quand = None, None
+    for d in (registre or {}).values():
+        if not isinstance(d, dict) or d.get("appareil") not in (CARTE, PROCESSEUR):
+            continue
+        try:
+            date = dt.datetime.fromisoformat(str(d.get("date")))
+        except (TypeError, ValueError):
+            continue
+        if quand is None or date > quand:
+            meilleure, quand = d, date
+    if meilleure is None:
+        return None
+    return {**meilleure, "date_fr": _date_fr(meilleure.get("date"))}
+
+
+def phrase_decision(decision: Dict[str, Any]) -> str:
+    """« carte graphique « RTX », retenue le 20/10/2026 » ou « processeur (motif), décidé le … »."""
+    date = decision.get("date_fr") or _date_fr(decision.get("date"))
+    if decision.get("appareil") == CARTE:
+        return f"carte graphique « {decision.get('carte') or '?'} », retenue le {date}"
+    motif = decision.get("motif")
+    return f"processeur ({motif}), décidé le {date}" if motif else f"processeur, décidé le {date}"
+
+
+def oublier(path: Path) -> bool:
+    """Supprime le registre des décisions de ce poste. Vrai s'il y en avait un."""
+    p = Path(path)
+    try:
+        p.unlink()
+    except FileNotFoundError:
+        return False
+    except OSError:
+        return False
+    return True
+
+
 def binaire_directml(binaire: Dict[str, Any]) -> bool:
     ort = binaire.get("onnxruntime") if isinstance(binaire.get("onnxruntime"), dict) else {}
     return "directml" in str(ort.get("paquet") or "").lower()

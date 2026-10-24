@@ -43,6 +43,8 @@ from ..app.services.source_modes import mode_info
 from ..app.services.config_store import ConfigStore
 from ..config.config_manager import ConfigManager
 from ..app.services.aide import AIDE_DIRNAME, CHAPITRE_PAR_ETAPE
+from ..app.services.carte_graphique import decision_memorisee, lire as lire_registre_carte, registre_path
+from ..app.services.sorties_prevues import sorties_prevues
 from ..app.services.validation_ui import classer_erreurs, etat_rail
 from ..app.services.vocabulaire import nombre, pluriel
 from .dialogs.aide_dialog import nouveautes_non_lues, ouvrir_aide
@@ -211,6 +213,8 @@ class WizardDialog(QDialog):
         self._run_view.run_finished.connect(self._on_run_finished)
         self._launch_page.workers_changed.connect(self._on_workers_changed)
         self._launch_page.carte_graphique_changed.connect(self._on_carte_graphique_changed)
+        self._launch_page.modifier_demande.connect(self._goto_step)
+        self._launch_page.reverifier_demande.connect(self._update_launch_recap)
         self._refresh_rail_subs()
 
         self._goto_step(1)
@@ -407,8 +411,14 @@ class WizardDialog(QDialog):
         dpr = self.devicePixelRatioF()
         self._play_icon = colored_icon("play", "#ffffff", 14, dpr=dpr)
         self._play_icon.addPixmap(colored_pixmap("play", "#707070", 14, dpr=dpr), QIcon.Mode.Disabled)
+        # À gauche du bouton principal : pourquoi il est gris (points à corriger, étapes).
+        self._next_hint = QLabel("")
+        self._next_hint.setObjectName("ActionHint")
+        self._next_hint.setWordWrap(True)
+        self._next_hint.setVisible(False)
         layout.addWidget(self._prev_btn)
         layout.addStretch(1)
+        layout.addWidget(self._next_hint, 2)
         layout.addWidget(self._next_btn)
         return bar
 
@@ -517,14 +527,14 @@ class WizardDialog(QDialog):
         self._launch_page.set_carte_graphique(bool(cv.get("carte_graphique", False)))
         self._config.setdefault("computer_vision", {})["carte_graphique"] = self._launch_page.carte_graphique_value()
 
-        sections = [RecapSection("Données", badges=[mode_info(mode).banner_label])]
+        sections = [RecapSection("Données", badges=[mode_info(mode).banner_label], step=1)]
 
         prods = self._indices_page.recap_products()
         res = self._indices_page.resolution()
-        sections.append(RecapSection("Images du relief", badges=prods, value=f"{nombre(res, 2)} m/pixel"))
+        sections.append(RecapSection("Images du relief", badges=prods, value=f"{nombre(res, 2)} m/pixel", step=2))
 
         if not cv.get("enabled"):
-            sections.append(RecapSection("Structures", value="détection désactivée"))
+            sections.append(RecapSection("Structures", value="détection désactivée", step=3))
         else:
             ents = self._detection_page.recap_entities()
             runs = self._detection_page.recap_runs()
@@ -533,12 +543,22 @@ class WizardDialog(QDialog):
                 if runs else ""
             )
             val = "" if (ents or runs) else "aucune structure"
-            sections.append(RecapSection("Structures", badges=ents, value=val, detail=detail))
+            sections.append(RecapSection("Structures", badges=ents, value=val, detail=detail, step=3))
 
-        sections.append(RecapSection("Dossier de sortie", value=files.get("output_dir") or "—"))
-        # (Plus de ligne « Performance » : les workers sont dans les paramètres avancés.)
+        sections.append(RecapSection("Dossier de sortie", value=files.get("output_dir") or "—", step=1))
+        # Ce que le traitement écrira dans le dossier de sortie (chemins relatifs du livrable).
+        try:
+            sorties = sorties_prevues(self._config)
+        except Exception:  # noqa: BLE001 — le nom d'un dossier d'image tire QGIS : sans lui, les codes
+            sorties = sorties_prevues(self._config, nom_dossier_indice=lambda k, _p: k)
+        sections.append(RecapSection("Ce qui sera produit", value=chr(10).join(sorties)))
 
         self._launch_page.update_recap(sections)
+        # La décision mémorisée pour la carte graphique de ce poste, et « Oublier ».
+        try:
+            self._launch_page.set_decision_carte(decision_memorisee(lire_registre_carte(registre_path())))
+        except Exception:  # noqa: BLE001 — jamais bloquant
+            self._launch_page.set_decision_carte(None)
         self._run_view.set_step_subtitles(self._step_subtitles())
         if self._current_step == self.STEP_VERIFS:
             # Le préflight lance des sous-processus : seulement là où il s'affiche.
@@ -664,9 +684,11 @@ class WizardDialog(QDialog):
         self._rail.set_states(etats, by_step)
 
     def _update_launch_button(self) -> None:
+        self._next_hint.setText("")
+        self._next_hint.setVisible(False)
         if not self._next_launches():
-            # « Suivant » = navigation pure, autorisée même pendant un run
-            # (permet de remonter jusqu'à l'étape 5 = suivi du run).
+            # « Suivant » = navigation pure, autorisée même pendant un traitement
+            # (permet de remonter jusqu'à l'étape 5 = suivi du traitement).
             self._next_btn.setText("Suivant  →")
             self._next_btn.setIcon(QIcon())
             self._next_btn.setEnabled(True)
@@ -675,7 +697,7 @@ class WizardDialog(QDialog):
         self._next_btn.setText("Lancer le traitement")
         self._next_btn.setIcon(self._play_icon)
         if self._run_view.is_running():
-            # Étape 5 pendant un run : jamais de relance possible.
+            # Étape 5 pendant un traitement : jamais de relance possible.
             self._next_btn.setEnabled(False)
             self._next_btn.setToolTip("Traitement en cours")
             return
@@ -685,6 +707,16 @@ class WizardDialog(QDialog):
             "" if ok
             else "Corrigez avant de lancer :\n• " + "\n• ".join(self._validation_errors)
         )
+        if not ok:
+            # Un bouton gris dit pourquoi, à côté de lui : combien de points, à quelles étapes.
+            par_etape = classer_erreurs(self._validation_errors)
+            etapes = sorted(n for n in par_etape if n)
+            ou = (f" (étape{'s' if len(etapes) > 1 else ''} {', '.join(str(n) for n in etapes)})"
+                  if etapes else "")
+            self._next_hint.setText(
+                f"Lancement impossible : {pluriel(len(self._validation_errors), 'point')} à corriger{ou}"
+            )
+            self._next_hint.setVisible(True)
 
     def _refresh_rail_subs(self) -> None:
         self._rail.set_sub(1, self._source_page.summary())

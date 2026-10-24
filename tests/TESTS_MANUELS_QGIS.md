@@ -1098,3 +1098,15 @@ Lot 3 du chantier d'accélération (2026-10-15) : une dalle lue en entier reçoi
 - [ ] **61.6 Messages de l'étape 4** : avec un champ vide, le bandeau liste « Indiquez le dossier de sortie », « Indiquez la zone d'étude ou choisissez des dalles sur la carte », « Cochez au moins une image à calculer à l'étape 2 » (plus de « sélectionné mais… n'est configuré »).
 - [ ] **61.7 Manuel** : F1 ouvre « Aide — Archéolog'IA » ; les chapitres s'intitulent « Étape 1 · Vos données », « Étape 2 · Images du relief », « Étape 3 · Structures à chercher », « Étape 4 · Prêt à lancer » ; le glossaire porte « Image du relief », « Structure », « Point de départ », « Traitement », « Dalles en parallèle ».
 
+## 62. Interface rationalisée — lot 2, l'étape 1 ⭐ P1
+
+> **Contexte** (2026-10-24, proposition A, choix de l'utilisateur) : la frise reste le sélecteur du point de départ,
+> les étapes qui le précèdent sont barrées ; chaque champ porte son message ; les erreurs sont rangées sur
+> l'étape et le champ qui les corrigent ; un seul menu « Configuration ▾ ».
+
+- [ ] **62.1 Frise** : cliquer « MNT existant » → les deux premiers stades sont barrés et disent « sautée », le badge « POINT DE DÉPART » se pose sur MNT existant, l'indicateur ◉ le marque et ○ les autres stades cliquables ; Tab puis Espace choisit un stade au clavier, l'anneau de focus bleu se voit.
+- [ ] **62.2 Messages sous les champs** : vider la source → « Indiquez la zone d'étude (.shp, .gpkg, .geojson), une liste de dalles (.txt), ou choisissez les dalles sur la carte. » ; un chemin inexistant → « Ce fichier est introuvable : … » en rouge ; un dossier de sortie dans le dossier source → « Ce dossier est dans le dossier de vos données : … » ; après « Choisir sur la carte » et Valider → « N dalles choisies sur la carte » en vert.
+- [ ] **62.3 Rail à états** : sur une configuration sans image cochée, l'étape 2 porte la pastille rouge et le texte « à corriger » (infobulle : le message), même depuis l'étape 1 ; un rayon MSTP incohérent (configuration chargée) marque l'étape 2, pas l'étape 1 ; les étapes parcourues sans erreur portent « ✓ ».
+- [ ] **62.4 Menu Configuration ▾** : un seul bouton dans l'en-tête ; entrées « Enregistrer sous… », « Charger : <nom> » par configuration, « Gérer les configurations… », « Importer un fichier… », « Tout remettre aux valeurs par défaut… » ; pendant un traitement, charger, importer et tout remettre sont grisés (infobulle « Indisponible pendant un traitement »), enregistrer reste actif.
+- [ ] **62.5 Manuel** : F1 sur l'étape 1 → le chapitre décrit la frise barrée, les messages sous les champs et le menu Configuration.
+

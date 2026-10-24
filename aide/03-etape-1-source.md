@@ -1,6 +1,6 @@
 # Étape 1 · Vos données
 
-La frise du haut représente la chaîne de traitement (le [schéma complet](premier-traitement.md#ce-que-fait-le-plugin) est au chapitre Premier traitement). Cliquez sur ce que vous possédez déjà : c'est le **point de départ** du traitement, rappelé dans un bandeau ; le champ de vos fichiers s'adapte. Il n'y a pas de liste déroulante.
+La frise du haut représente la chaîne de traitement (le [schéma complet](premier-traitement.md#ce-que-fait-le-plugin) est au chapitre Premier traitement). Cliquez sur ce que vous possédez déjà : c'est le **point de départ** du traitement, marqué d'un badge et rappelé dans un bandeau. Les étapes qui le précèdent sont barrées et disent « sautée » : le traitement ne passe pas par là. Le champ de vos fichiers s'adapte. Il n'y a pas de liste déroulante ; au clavier, la touche Tab passe d'un point de départ à l'autre et Espace le choisit.
 
 [![Étape 1 : la frise des points d'entrée, le bandeau du point de départ, la source et le dossier de sortie](img/etape1-source.png)](img/etape1-source.png)
 
@@ -16,6 +16,8 @@ La frise du haut représente la chaîne de traitement (le [schéma complet](prem
 Les deux premiers points de départ exécutent toute la chaîne. Depuis un MNT existant, le traitement commence aux images du relief. Depuis des images du relief existantes, il ne calcule aucune image : avec une structure cochée, il les analyse ; sans détection, il se contente de les publier en mosaïque dans `livrable/images/RVT/`.
 
 Dans tous les cas, indiquez un **dossier de sortie**, de préférence vide. Relancer dans le même dossier est possible : voir [Relancer dans le même dossier](etape-5-traitement.md#relancer-dans-le-meme-dossier).
+
+Sous chaque champ, une ligne dit ce qui manque et le geste à faire : « Indiquez la zone d'étude… », « Ce dossier est introuvable : vérifiez le chemin », « Ce dossier est dans le dossier de vos données : choisissez un dossier de sortie à part ». Elle disparaît quand le champ est bon, et dit « 3 dalles choisies sur la carte » après une sélection sur la carte. Le rail de gauche marque « à corriger » l'étape qui porte encore un problème.
 
 ## Téléchargement IGN
 
@@ -57,4 +59,4 @@ Pour que les objets à cheval sur deux dalles soient vus entiers, le plugin fabr
 
 ## Enregistrer et recharger une configuration
 
-Dans l'en-tête de l'assistant, **Enregistrer la configuration** garde l'ensemble de vos choix sous un nom ; **Charger une configuration** liste les configurations enregistrées et propose **Tout remettre aux valeurs par défaut** pour revenir aux réglages par défaut. Ces configurations vivent dans votre profil QGIS, pas dans le dossier du plugin : elles survivent aux mises à jour. Pendant un traitement, le chargement est désactivé.
+Dans l'en-tête de l'assistant, le menu **Configuration ▾** réunit tout ce qui touche à vos réglages : **Enregistrer sous…** garde l'ensemble de vos choix sous un nom ; les configurations enregistrées se chargent d'un clic ; **Gérer les configurations…** les renomme ou les supprime ; **Importer un fichier…** lit une configuration reçue d'un collègue ; **Tout remettre aux valeurs par défaut…** revient aux réglages d'origine après confirmation. Ces configurations vivent dans votre profil QGIS, pas dans le dossier du plugin : elles survivent aux mises à jour. Pendant un traitement, charger, importer et tout remettre sont grisés ; enregistrer reste possible.

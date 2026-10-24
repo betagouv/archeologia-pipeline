@@ -15,6 +15,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
+from .vocabulaire import pluriel
+
 
 @dataclass(frozen=True)
 class ModeInfo:
@@ -169,3 +171,55 @@ def normalize_vector_input(path: Path) -> Path:
 def path_is_valid(text: str, *, expect_dir: bool, allow_create: bool = False) -> bool:
     """Compat : ``True`` si le chemin n'est pas en erreur (ok ou warn)."""
     return path_state(text, expect_dir=expect_dir, allow_create=allow_create) != "error"
+
+
+_GESTE_VIDE = {
+    "ign_laz": "Indiquez la zone d'étude (.shp, .gpkg, .geojson), une liste de dalles (.txt), "
+               "ou choisissez les dalles sur la carte.",
+    "local_laz": "Indiquez le dossier des fichiers LAZ ou LAS.",
+    "existing_mnt": "Indiquez le dossier des MNT (TIF en Lambert-93).",
+    "existing_rvt": "Indiquez le dossier des images du relief (TIF en Lambert-93).",
+}
+_NOM_LISTE_CARTE = "dalles_selection.txt"
+
+
+def _dans(enfant: Path, parent: Path) -> bool:
+    try:
+        return enfant.resolve().is_relative_to(parent.resolve())
+    except (OSError, ValueError):
+        return False
+
+
+def message_champ(mode: str, texte: str, state: str, *, sortie: bool = False, source: str = "") -> str:
+    """Le message sous un champ de l'étape 1 : ce qui manque et le geste à faire,
+    ou rien quand tout va bien (lot 2 de l'interface rationalisée).
+
+    ``state`` vient de :func:`path_state`. Pour le dossier de sortie (``sortie``),
+    ``source`` est le chemin de vos données : un dossier de sortie à l'intérieur est
+    refusé, comme au lancement.
+    """
+    texte = (texte or "").strip()
+    if sortie:
+        if not texte:
+            return "Indiquez le dossier qui recevra livrable/ et technique/ ; il peut ne pas exister encore."
+        if state == "error":
+            return "Ce chemin n'est pas un dossier : indiquez un dossier, existant ou à créer."
+        if source and _dans(Path(texte), Path(source)):
+            return "Ce dossier est dans le dossier de vos données : choisissez un dossier de sortie à part."
+        return ""
+    info = mode_info(mode)
+    if not texte:
+        return _GESTE_VIDE.get(mode, _GESTE_VIDE["ign_laz"])
+    if state == "error":
+        return ("Ce fichier est introuvable : vérifiez le chemin, ou choisissez les dalles sur la carte."
+                if info.is_file else "Ce dossier est introuvable : vérifiez le chemin.")
+    if state == "warn":
+        return "Extension inattendue : attendu .shp, .gpkg, .geojson ou une liste .txt."
+    if mode == "ign_laz" and Path(texte).name == _NOM_LISTE_CARTE:
+        try:
+            n = sum(1 for ligne in Path(texte).read_text(encoding="utf-8").splitlines() if ligne.strip())
+        except OSError:
+            return ""
+        return f"{pluriel(n, 'dalle')} choisie{'s' if n > 1 else ''} sur la carte"
+    return ""
+

@@ -25,6 +25,7 @@ from qgis.PyQt.QtWidgets import (
 )
 
 from ...app.services.source_modes import (
+    message_champ,
     mode_info,
     normalize_vector_input,
     ordered_modes,
@@ -140,6 +141,12 @@ class SourcePage(QWidget):
         row1.addWidget(self._dalles_btn)
         iv.addWidget(self._source_label)
         iv.addLayout(row1)
+        # Le message sous le champ dit ce qui manque et le geste (lot 2, 2026-10-24) :
+        # la bordure rouge seule ne disait rien.
+        self._source_msg = QLabel("")
+        self._source_msg.setObjectName("FieldMessage")
+        self._source_msg.setWordWrap(True)
+        iv.addWidget(self._source_msg)
 
         out_label = QLabel("Dossier de sortie")
         out_label.setObjectName("FieldLabel")
@@ -154,6 +161,10 @@ class SourcePage(QWidget):
         row2.addWidget(self._out_browse_btn)
         iv.addWidget(out_label)
         iv.addLayout(row2)
+        self._output_msg = QLabel("")
+        self._output_msg.setObjectName("FieldMessage")
+        self._output_msg.setWordWrap(True)
+        iv.addWidget(self._output_msg)
 
         root.addWidget(io_card)
         root.addStretch(1)
@@ -721,6 +732,7 @@ class SourcePage(QWidget):
     # ------------------------------------------------------------------
     def _on_source_text_changed(self) -> None:
         self._refresh_source_validation()
+        self._refresh_output_validation()   # « dossier de sortie dans vos données » dépend des deux
         if not self._loading:
             self._stash_current_source()
             self.changed.emit()
@@ -740,10 +752,34 @@ class SourcePage(QWidget):
             self._source_edit.text(), expect_dir=not info.is_file, valid_exts=info.valid_exts
         )
         self._set_state(self._source_edit, state)
+        self._poser_message(self._source_msg, message_champ(self._mode, self._source_edit.text(), state), state)
 
     def _refresh_output_validation(self) -> None:
         state = path_state(self._output_edit.text(), expect_dir=True, allow_create=True)
         self._set_state(self._output_edit, state)
+        self._poser_message(
+            self._output_msg,
+            message_champ(self._mode, self._output_edit.text(), state, sortie=True, source=self._source_edit.text()),
+            state,
+        )
+
+    @staticmethod
+    def _poser_message(label: QLabel, texte: str, state: str) -> None:
+        """Affiche (ou retire) le message sous un champ, teinté comme l'état :
+        erreur, avertissement, confirmation (« 3 dalles choisies ») ou simple geste."""
+        label.setText(texte)
+        label.setVisible(bool(texte))
+        if not texte:
+            kind = ""
+        elif state in ("error", "warn") or texte.startswith("Ce dossier est dans"):
+            kind = "error" if state == "error" or texte.startswith("Ce dossier est dans") else "warn"
+        elif texte[:1].isdigit():
+            kind = "ok"
+        else:
+            kind = "hint"
+        label.setProperty("kind", kind)
+        label.style().unpolish(label)
+        label.style().polish(label)
 
     @staticmethod
     def _set_state(edit: QLineEdit, state: str) -> None:

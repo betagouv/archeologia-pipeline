@@ -230,24 +230,18 @@ class WizardDialog(QDialog):
         self._subtitle_label.setObjectName("WizardSubtitle")
         titles.addWidget(self._title_label)
         titles.addWidget(self._subtitle_label)
-        # Deux actions sœurs → même style (ghost) et même casse.
-        # Référence conservée : désactivé pendant un run (lecture seule
-        # étanche — AUDIT v2 UIX-02 : charger une config pendant un run
-        # remplaçait l'affichage ET last_ui_config.json).
-        load_btn = QPushButton("Charger une configuration")
-        load_btn.setObjectName("GhostButton")
-        # Bouton-MENU : le navigateur de fichiers obligeait à retrouver soi-même
-        # un .json rangé n'importe où. Le menu liste les configurations
-        # enregistrées et est reconstruit à chaque ouverture (aboutToShow) —
-        # une config enregistrée ou supprimée apparaît sans relancer le plugin.
-        self._load_menu = QMenu(load_btn)
-        self._load_menu.setToolTipsVisible(True)  # sinon l'infobulle de « Réinitialiser » ne s'affiche pas
-        self._load_menu.aboutToShow.connect(self._rebuild_load_menu)
-        load_btn.setMenu(self._load_menu)
-        self._load_btn = load_btn
-        save_btn = QPushButton("Enregistrer la configuration")
-        save_btn.setObjectName("GhostButton")
-        save_btn.clicked.connect(self._save_config_file)
+        # Un seul menu « Configuration ▾ » (lot 2, 2026-10-24) : enregistrer sous,
+        # charger une configuration enregistrée, gérer, importer, tout remettre
+        # par défaut. Reconstruit à chaque ouverture (aboutToShow) : une
+        # configuration enregistrée ou supprimée apparaît sans relancer le plugin,
+        # et pendant un traitement les entrées qui remplaceraient les réglages
+        # consultés sont grisées (lecture seule étanche — AUDIT v2 UIX-02).
+        config_btn = QPushButton("Configuration")   # Qt dessine lui-même la flèche du menu
+        config_btn.setObjectName("GhostButton")
+        self._config_menu = QMenu(config_btn)
+        self._config_menu.setToolTipsVisible(True)
+        self._config_menu.aboutToShow.connect(self._rebuild_config_menu)
+        config_btn.setMenu(self._config_menu)
         # Pastille « lecture seule » (pendant un run) : logée dans la barre de
         # titre — hauteur fixe — pour ne JAMAIS décaler le contenu en dessous
         # (l'ancien bandeau pleine largeur faisait sauter toute l'UI à son
@@ -287,8 +281,7 @@ class WizardDialog(QDialog):
         layout.addStretch(1)
         layout.addWidget(self._review_pill)
         layout.addWidget(aide_btn)
-        layout.addWidget(load_btn)
-        layout.addWidget(save_btn)
+        layout.addWidget(config_btn)
         return bar
 
     def _ouvrir_aide(self) -> None:
@@ -540,10 +533,8 @@ class WizardDialog(QDialog):
         self._indices_page.set_readonly(True)
         self._detection_page.set_readonly(True)
         self._launch_page.set_readonly(True)
-        # Lecture seule étanche : charger une config pendant le run
-        # remplacerait les paramètres consultés (≠ ceux qui tournent).
-        self._load_btn.setEnabled(False)
-        self._load_btn.setToolTip("Indisponible pendant un traitement")
+        # Lecture seule étanche : le menu « Configuration ▾ » grise ce qui
+        # remplacerait les réglages consultés (cf. _rebuild_config_menu).
         self._rail.setEnabled(True)
         self._prev_btn.setEnabled(self._current_step > 1)
         self._update_launch_button()
@@ -556,8 +547,6 @@ class WizardDialog(QDialog):
         self._indices_page.set_readonly(False)
         self._detection_page.set_readonly(False)
         self._launch_page.set_readonly(False)
-        self._load_btn.setEnabled(True)
-        self._load_btn.setToolTip("")
         self._rail.setEnabled(True)
         self._prev_btn.setEnabled(self._current_step > 1)
         self._update_launch_button()
@@ -770,32 +759,41 @@ class WizardDialog(QDialog):
         self._last_config_name = nom
 
     # ------------------------------------------------------------------
-    # Menu « Charger une config »
+    # Menu « Configuration ▾ »
     # ------------------------------------------------------------------
-    def _rebuild_load_menu(self) -> None:
-        menu = self._load_menu
+    def _rebuild_config_menu(self) -> None:
+        menu = self._config_menu
         menu.clear()
-        # En TÊTE et isolée par un séparateur : la réinitialisation n'est pas une
-        # configuration comme les autres, elle jette les réglages en cours.
+        indisponible = "Indisponible pendant un traitement"
+        menu.addAction("Enregistrer sous…").triggered.connect(self._save_config_file)
+        menu.addSeparator()
+        noms = self._store.list_names()
+        if noms:
+            for nom in noms:
+                act = menu.addAction(f"Charger : {nom}")
+                act.triggered.connect(lambda _=False, n=nom: self._load_saved_config(n))
+                if self._review_mode:
+                    act.setEnabled(False)
+                    act.setToolTip(indisponible)
+        else:
+            vide = menu.addAction("Aucune configuration enregistrée")
+            vide.setEnabled(False)
+        menu.addSeparator()
+        menu.addAction("Gérer les configurations…").triggered.connect(self._manage_configs)
+        importer = menu.addAction("Importer un fichier…")
+        importer.triggered.connect(self._load_config_file)
+        menu.addSeparator()
+        # En dernier et isolée : la réinitialisation jette les réglages en cours.
         reset = menu.addAction(
             colored_icon("reset", "#5a6672", 14, dpr=self.devicePixelRatioF()),
             "Tout remettre aux valeurs par défaut…",
         )
         reset.setToolTip("Remet TOUS les réglages de l'assistant à leurs valeurs d'origine.")
         reset.triggered.connect(self._reset_to_defaults)
-        menu.addSeparator()
-
-        noms = self._store.list_names()
-        if noms:
-            for nom in noms:
-                act = menu.addAction(nom)
-                act.triggered.connect(lambda _=False, n=nom: self._load_saved_config(n))
-        else:
-            vide = menu.addAction("Aucune configuration enregistrée")
-            vide.setEnabled(False)
-        menu.addSeparator()
-        menu.addAction("Gérer les configurations…").triggered.connect(self._manage_configs)
-        menu.addAction("Importer un fichier…").triggered.connect(self._load_config_file)
+        for act in (importer, reset):
+            if self._review_mode:
+                act.setEnabled(False)
+                act.setToolTip(indisponible)
 
     def _load_saved_config(self, nom: str) -> None:
         try:

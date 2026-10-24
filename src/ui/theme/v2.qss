@@ -113,6 +113,11 @@ QPushButton:disabled { color: #909090; border-color: #b0b0b0; }
 #CardTitle { color: #1d5a96; font-weight: bold; font-size: 12px; }
 #CardCounter { color: #5a5a5a; font-size: 11px; }
 #FieldLabel { color: #000000; font-size: 11px; }
+/* Message sous un champ de l'étape 1 : le geste à faire, l'erreur, ou la confirmation. */
+#FieldMessage { font-size: 11px; color: #5a5a5a; }
+#FieldMessage[kind="error"] { color: #a83838; }
+#FieldMessage[kind="warn"]  { color: #8a5e18; }
+#FieldMessage[kind="ok"]    { color: #2d6a2d; }
 #CarteGraphiqueCheck { color: #000000; font-size: 11px; }
 #FieldUnit { color: #5a5a5a; font-size: 11px; }
 

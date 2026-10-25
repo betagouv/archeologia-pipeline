@@ -13,6 +13,7 @@ from app.services.vocabulaire import (
     nombre,
     pluriel,
     resume_detail,
+    titre_dossier_image,
     titre_image,
 )
 
@@ -107,3 +108,12 @@ def test_resume_detail(details, attendu):
     """Le détail d'un contrôle se résume en un mot dans la colonne ; le texte complet
     (chemin, erreur) reste en infobulle."""
     assert resume_detail(details) == attendu
+
+
+def test_titre_dossier_image():
+    """N-03 : la mosaïque est nommée comme l'image de l'étape 2, les réglages du dossier à la suite."""
+    assert titre_dossier_image("MNT") == "MNT · Relief nu"
+    assert titre_dossier_image("SVF_R10_D16_V1_N0") == "SVF · Creux & dépressions · R10_D16_V1_N0"
+    assert titre_dossier_image("M_HS_D16") == "M-HS · Ombrage du relief · D16"
+    assert titre_dossier_image("RVT") == "RVT"
+    assert titre_dossier_image("") == "index"

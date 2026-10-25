@@ -39,6 +39,7 @@ from qgis.PyQt.QtWidgets import (
     QWidget,
 )
 
+from ..app.services.aide import AIDE_DIRNAME, resoudre_cible
 from ..app.services.visu_catalogue import (
     FAMILY_ORDER,
     Catalogue,
@@ -67,6 +68,12 @@ DEFAULT_CATALOGUE = Path("data") / "demo_catalogue" / "catalogue.json"
 #: côté par l'outillage OVH (``publish_gpf.py catalogue --catalogue-rel
 #: data/local_catalogue/catalogue.json``) et fusionnés par code de département.
 LOCAL_CATALOGUE = Path("data") / "local_catalogue" / "catalogue.json"
+#: Plugin livré sans catalogue (demo_ et local_catalogue ne sont pas dans le ZIP) : ce n'est
+#: pas une panne, la page le dit et renvoie au manuel (N-04, 2026-10-25).
+SANS_CATALOGUE = (
+    "Aucun catalogue n'est installé sur ce poste : cette page sert aux flux publiés par votre organisation.<br>"
+    "<a href='manuel:consulter-les-flux'>Aide › Consulter les flux</a>"
+)
 
 
 class _DeptItem(QWidget):
@@ -266,6 +273,8 @@ class VisualisationTab(QWidget):
         self._empty.setObjectName("VisuEmpty")
         self._empty.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._empty.setVisible(False)
+        self._empty.setWordWrap(True)
+        self._empty.linkActivated.connect(self._sur_lien)
         lay.addWidget(self._empty)
         return wall
 
@@ -301,8 +310,17 @@ class VisualisationTab(QWidget):
         self._refresh_btn.setText("Actualisation…")
         QApplication.processEvents()
         path = self._plugin_root / DEFAULT_CATALOGUE
+        if not path.is_file() and not (self._plugin_root / LOCAL_CATALOGUE).is_file():
+            self._catalogue = Catalogue()
+            self._erreur_catalogue = SANS_CATALOGUE
+            self._cat_stamp.setText("aucun catalogue")
+            self._refresh_btn.setEnabled(True)
+            self._refresh_btn.setText("Actualiser le catalogue")
+            self._refresh_rail()
+            return
         try:
-            self._catalogue = load_catalogue(path)
+            # Un poste peut n'avoir que le catalogue local de son organisation.
+            self._catalogue = load_catalogue(path) if path.is_file() else Catalogue()
             self._catalogue_dir = path.parent
             local = self._plugin_root / LOCAL_CATALOGUE
             if local.is_file():
@@ -505,6 +523,15 @@ class VisualisationTab(QWidget):
             if self._cards:
                 self._relayout_grid()
         return super().eventFilter(obj, event)
+
+    def _sur_lien(self, lien: str) -> None:
+        """Lien « manuel:… » du message sans catalogue → le chapitre du manuel."""
+        if not lien.startswith("manuel:"):
+            return
+        from .dialogs.aide_dialog import ouvrir_aide  # différé
+
+        cle, ancre = resoudre_cible(lien[len("manuel:"):])
+        ouvrir_aide(self._plugin_root / AIDE_DIRNAME, parent=self.window(), cle=cle, ancre=ancre)
 
     def _show_empty(self, message: str) -> None:
         self._empty.setText(message)

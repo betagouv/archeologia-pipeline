@@ -129,3 +129,39 @@ class TestRobustesse:
         # l'ordre encode le rang (cratere avant tranchee)
         classes = data["classes"] if isinstance(data, dict) else data
         assert classes.index("cratere") < classes.index("tranchee")
+
+
+# ---------------------------------------------------------------- alias (N-01, 2026-10-25)
+
+def test_alias_conserve_la_couleur_de_l_ancien_nom(tmp_path):
+    """Une couche renommée par la structure (« Parcellaire ») garde la couleur que « parcellaire »
+    avait : l'alias pointe sur l'ancien rang, le registre reste append-only."""
+    reg = _reg(tmp_path)
+    reg.rank_for("cratere")
+    reg.rank_for("talus")
+    assert reg.alias("Cratères", "cratere") is True
+    assert reg.rank_for("Cratères") == reg.rank_for("cratere") == 0
+    assert reg.color_for("Cratères") == reg.color_for("cratere")
+    assert reg.alias("Cratères", "talus") is False               # déjà résolu : on ne bouge plus
+    assert reg.alias("Inconnue", "jamais_vue") is False          # l'ancien nom est inconnu : rien
+    assert reg.alias("talus", "cratere") is False                # un nom qui a son rang le garde
+    assert reg.alias("Parcellaire", "parcellaire") is False      # même clé normalisée : rien à faire
+    assert reg.rank_for("talus") == 1 and len(json.loads(reg.path.read_text(encoding="utf-8"))["classes"]) == 2
+    # Persistance : relu depuis le JSON, l'alias tient ; les classes n'ont pas bougé.
+    d = json.loads(reg.path.read_text(encoding="utf-8"))
+    assert d["classes"] == ["cratere", "talus"] and d["alias"] == {"cratères": "cratere"}
+    relu = _reg(tmp_path)
+    assert relu.rank_for("Cratères") == 0 and relu.rank_for("talus") == 1
+    # Depuis les runs : une couche nommée par sa structure prend la couleur de sa classe,
+    # jamais une variante A/B (group_label), qui garde sa clé propre.
+    from pipeline.cv.class_color_registry import aliaser_depuis_runs, set_default_registry
+    set_default_registry(relu)
+    try:
+        runs = [{"entities": [{"slug": "talus", "layer_names": {"talus": "Talus et fossés"}},
+                              {"slug": "cratere--m2", "group_label": "Cratères (comparaison)",
+                               "layer_names": {"cratere": "Cratères — Modèle 2"}}]}, "pas un run"]
+        assert aliaser_depuis_runs(runs) == 1
+        assert relu.rank_for("Talus et fossés") == 1
+        assert relu.rank_for("Cratères — Modèle 2") == 2        # rang propre, pas un alias
+    finally:
+        set_default_registry(None)

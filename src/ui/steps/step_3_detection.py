@@ -646,6 +646,11 @@ class DetectionPage(QWidget):
             out.extend(fiches_par_entite(card, model.coverage.get(entity_id, ())))
         return out
 
+    def _libelle(self, eid: str) -> str:
+        """Le libellé de la structure, celui que portent ses couches (N-01)."""
+        couverture = self._coverage.get(eid)
+        return couverture.entity.label if couverture else eid
+
     def _profils_entite(self, model, eid: str, compared: bool) -> list:
         """``[(classe, Profil, couleur), …]`` des classes de ``eid`` dont le modèle
         livre son évaluation. La couleur est celle de la **couche** (qualifiée
@@ -662,7 +667,10 @@ class DetectionPage(QWidget):
                 self._profils_cache[cle] = profil_pour_classe(Path(model.model_dir), classe, cats)
             profil = self._profils_cache[cle]
             if profil is not None:
-                couleur = couleur_de_classe(layer_name_for_class(model, eid, classe, compared))
+                couleur = couleur_de_classe(
+                    layer_name_for_class(model, eid, classe, compared, label=self._libelle(eid)),
+                    ancien="" if compared else classe,
+                )
                 out.append((classe, profil, couleur))
         return out
 
@@ -709,7 +717,8 @@ class DetectionPage(QWidget):
             if model is None:
                 continue
             couleurs[(f.modele_id, f.nom)] = couleur_de_classe(
-                layer_name_for_class(model, entity_id, f.nom, compared)
+                layer_name_for_class(model, entity_id, f.nom, compared, label=titre),
+                ancien="" if compared else f.nom,
             )
             conf = ov.get("confidence_threshold")
             pc = getattr(model, "default_confidence_per_class", None) or {}

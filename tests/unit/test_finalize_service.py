@@ -577,3 +577,17 @@ class TestExistingMntResultCandidates:
 
         assert ExistingMntResult(total=3).candidates == 0
         assert ExistingMntResult(total=0, candidates=2).candidates == 2
+
+
+def test_groupe_structures_dans_les_deux_chemins():
+    """N-02 (choix du 2026-10-25) : toutes les couches de détections vont sous un groupe
+    « Structures », dans le .qgs comme au chargement en direct ; un regroupement ou une
+    comparaison y a son sous-groupe ; les mosaïques portent le nom de l'image (N-03)."""
+    from pathlib import Path
+
+    assert finalize_service.GROUPE_STRUCTURES == "Structures"
+    racine = Path(__file__).resolve().parents[2]
+    for rel in ("src/ui/layer_loader.py", "src/ui/qgs_writer.py"):
+        src = (racine / rel).read_text(encoding="utf-8")
+        assert "GROUPE_STRUCTURES" in src and "titre_dossier_image(" in src, rel
+        assert 'f"index_{rvt_type}"' not in src and "Dalles RVT" not in src, rel

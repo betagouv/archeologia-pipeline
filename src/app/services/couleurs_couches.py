@@ -23,7 +23,7 @@ Declinaison = Callable[[RGB, float], RGB]
 
 
 def lire_registre(chemin: Path) -> Dict[str, Any]:
-    """Le registre ``{"classes": [...]}`` ; ``{}`` s'il manque ou est illisible."""
+    """Le registre ``{"classes": [...], "alias": {...}}`` ; ``{}`` s'il manque ou est illisible."""
     try:
         d = json.loads(Path(chemin).read_text(encoding="utf-8"))
     except (OSError, ValueError):
@@ -36,13 +36,17 @@ def _normaliser(nom: str) -> str:
 
 
 def rang_de_couche(registre: Mapping[str, Any], couche: str) -> Optional[int]:
-    """Le rang (position) de ``couche`` dans le registre, ``None`` si elle n'y est pas."""
+    """Le rang (position) de ``couche`` dans le registre, ``None`` si elle n'y est pas ;
+    une couche renommée par sa structure passe par son alias (N-01, 2026-10-25)."""
     classes = registre.get("classes") if isinstance(registre, Mapping) else None
     if not isinstance(classes, list):
         return None
     voulu = _normaliser(couche)
     if not voulu:
         return None
+    alias = registre.get("alias")
+    if isinstance(alias, Mapping):
+        voulu = _normaliser(alias.get(voulu, voulu))
     for i, nom in enumerate(classes):
         if _normaliser(nom) == voulu:
             return i

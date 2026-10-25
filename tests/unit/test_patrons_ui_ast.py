@@ -241,3 +241,12 @@ def test_tampon_avant_journal_referme_sur_chaque_sortie():
 def test_largeur_avant_panneau_ignoree_si_maximisee():
     texte = ast.unparse(_fonction(WIZARD, "_poser_fiche"))
     assert "if not self.isMaximized()" in texte or "isMaximized() else 0" in texte
+
+
+# ---------------------------------------------------------------- lot 8 (2026-10-25)
+
+def test_etape_3_nomme_les_couches_par_la_structure():
+    src = STEP3.read_text(encoding="utf-8")
+    assert src.count("label=") >= 2 and "ancien=" in src, "layer_name_for_class(label=…) et couleur_de_classe(ancien=…)"
+    profil = (UI / "widgets" / "profil_scores.py").read_text(encoding="utf-8")
+    assert "def couleur_de_classe(classe: str, ancien: str = \"\")" in profil

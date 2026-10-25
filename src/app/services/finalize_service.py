@@ -9,14 +9,20 @@ if TYPE_CHECKING:
 
 LogFn = Callable[[str], None]
 
+#: Groupe QGIS qui reçoit toutes les couches de détections (N-02, choix du 2026-10-25), dans
+#: le ``.qgs`` (``ui/qgs_writer``) comme au chargement en direct (``ui/layer_loader``) ; un
+#: regroupement ou une comparaison A/B y a son sous-groupe (``build_entity_grouping``).
+GROUPE_STRUCTURES = "Structures"
+
 
 def build_entity_grouping(
     runs: Optional[List[Dict[str, Any]]],
 ) -> "tuple[Dict[str, str], set]":
     """Depuis les runs, renvoie ``(entity_labels: slug→libellé, grouped_slugs)``.
 
-    ``grouped_slugs`` = slugs dont les couches forment un groupe QGIS — dans le
-    ``.qgs`` (``ui/qgs_writer``) **et** au chargement live
+    ``grouped_slugs`` = slugs dont les couches forment un sous-groupe du groupe
+    « Structures » (``GROUPE_STRUCTURES``, qui reçoit toutes les couches de
+    détections) — dans le ``.qgs`` (``ui/qgs_writer``) **et** au chargement live
     (``layer_loader.load_result_layers``). Helper partagé par les deux chemins
     pour garantir le **même** regroupement. Deux cas :
 
@@ -570,6 +576,16 @@ def finalize_pipeline(
     except ImportError:  # pragma: no cover
         from pipeline.cv.class_utils import resolve_cv_runs
     cv_runs = resolve_cv_runs(cv_cfg or {})
+    # N-01 (2026-10-25) : une couche nommée par sa structure garde la couleur de sa classe
+    # (alias du registre partagé), avant le .qgs, le chargement en direct et le rapport.
+    try:
+        try:
+            from ...pipeline.cv.class_color_registry import aliaser_depuis_runs
+        except ImportError:  # pragma: no cover
+            from pipeline.cv.class_color_registry import aliaser_depuis_runs  # type: ignore[no-redef]
+        aliaser_depuis_runs(cv_runs)
+    except Exception as _e:  # noqa: BLE001 — jamais bloquant
+        log(f"Alias de couleurs ignorés ({_e})")
     # Purge des variantes d'entité PÉRIMÉES (bascule mono ↔ comparaison A/B
     # dans le même output_dir) AVANT la collecte : sinon leurs GPKG seraient
     # re-collectés (couches dupliquées, seuil de symbologie de repli faux).

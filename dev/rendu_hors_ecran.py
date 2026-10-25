@@ -319,6 +319,43 @@ def _etape6(app, w, img: Path, log) -> bool:
     return len(w._resultats_page.resultats()) == 2 and not w._next_btn.isEnabled()
 
 
+def _consulter_flux(app, w, img: Path, log) -> bool:
+    """aide/img/consulter-les-flux.png : l'onglet sur un catalogue fictif (départements neutres,
+    vignettes du poste si présentes) — jamais le catalogue local, qui porte des zones de test."""
+    from archeo.src.app.services.visu_catalogue import CatalogItem, Catalogue, Department
+
+    tabs = getattr(w, "_tabs", None)
+    visu = w._visu_tab
+    if tabs is None or visu is None:
+        log("onglet Consulter les flux absent")
+        return False
+    vignettes = RACINE / "data" / "local_catalogue" / "thumbs"
+
+    def dept(code, nom, date, images, featured=False):
+        items = [CatalogItem(k, f"https://exemple.org/flux/{code}/{k}", f"21_{k}.png", go) for k, go in images]
+        return Department(code, nom, items, date, 0.5, featured)
+
+    visu._catalogue = Catalogue([
+        dept("21", "Côte-d'Or", "2026-09", [("M_HS", 2.4), ("SVF", 1.1), ("LD", 1.3)], featured=True),
+        dept("30", "Gard", "2026-08", [("M_HS", 3.0), ("SVF", 1.4), ("LD", 1.6)]),
+        dept("35", "Ille-et-Vilaine", "2026-06", [("M_HS", 2.1), ("LD", 1.2)]),
+        dept("55", "Meuse", "2026-10", [("M_HS", 2.8), ("SVF", 1.3), ("LD", 1.5)]),
+    ], "2026-10")
+    visu._catalogue_dir = vignettes
+    visu._erreur_catalogue = None
+    visu._cat_stamp.setText("catalogue 2026-10")
+    visu._refresh_rail()
+    tabs.setCurrentIndex(1)
+    for _ in range(6):
+        app.processEvents()
+    w.grab().save(str(img / "consulter-les-flux.png"))
+    log("consulter les flux : départements", len(visu._catalogue.covered), "| vignettes :", vignettes.is_dir(),
+        "| mur :", visu._wall_title.text())
+    tabs.setCurrentIndex(0)
+    app.processEvents()
+    return len(visu._catalogue.covered) == 4 and visu._wall_title.text() == "Côte-d'Or"
+
+
 def _etape4(app, w, img: Path, log) -> bool:
     """aide/img/etape4-verifications.png : bandeau, état du système au vert, récapitulatif."""
     import time
@@ -355,14 +392,9 @@ def _etape4(app, w, img: Path, log) -> bool:
 
 
 def captures(app, sortie: Path, log) -> int:
-    """Étapes 1 à 4 de l'assistant, la fiche d'une classe et la vue d'exécution en cours →
-    aide/img/, chemins neutres, SVF + LD cochés, détection activée."""
-    import archeo.src.ui.wizard_dialog as wizard
+    """Étapes 1 à 4 et 6 de l'assistant, la fiche d'une classe, la vue d'exécution et l'onglet
+    « Consulter les flux » → aide/img/, chemins neutres, SVF + LD cochés, détection activée."""
     from archeo.src.ui.wizard_dialog import WizardDialog
-
-    # ponytail: l'onglet Visualisation n'a pas de chapitre et reste masqué sur dev et main ; les
-    # captures montrent l'assistant livré, quelle que soit la branche. Retirer le jour où il est livré.
-    wizard.VISUALISATION_TAB_ENABLED = False
 
     img = RACINE / "aide" / "img"
     img.mkdir(exist_ok=True)
@@ -407,13 +439,14 @@ def captures(app, sortie: Path, log) -> int:
     fiche_ok = _fiches_panneau(app, w, img, log)
     etape4_ok = _etape4(app, w, img, log)
     etape6_ok = _etape6(app, w, img, log)
+    flux_ok = _consulter_flux(app, w, img, log)
     # Après l'étape 4 prête : un second passage lance une vérification de fond pendant que
     # Processing s'initialise, et la première finissait en « QGIS processing » manquant.
     corriger_ok = _etape4_a_corriger(app, w, img, log, fichiers) if fichiers is not None else False
     log("captures écrites dans", img, "— taille de l'assistant :", w.width(), "x", w.height())
     log("contrôles : structures", bool(n), "| fin", fin_ok, "| ligne", ligne_ok, "| panneau", fiche_ok,
-        "| à corriger", corriger_ok, "| étape 4", etape4_ok, "| étape 6", etape6_ok)
-    return 0 if n and fin_ok and ligne_ok and fiche_ok and corriger_ok and etape4_ok and etape6_ok else 1
+        "| à corriger", corriger_ok, "| étape 4", etape4_ok, "| étape 6", etape6_ok, "| flux", flux_ok)
+    return 0 if n and fin_ok and ligne_ok and fiche_ok and corriger_ok and etape4_ok and etape6_ok and flux_ok else 1
 
 
 def manuel(app, sortie: Path, log, chapitre: str, ancre: str, recherche: str = "", tous: bool = False) -> int:

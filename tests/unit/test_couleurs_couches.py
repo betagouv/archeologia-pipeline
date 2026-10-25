@@ -42,3 +42,12 @@ def test_teintes_par_niveau_suivent_la_legende():
 def test_couleurs_du_bilan_ignore_les_couches_inconnues():
     c = couleurs_du_bilan(REGISTRE, ["parcellaire", "inconnue"], palette=_palette, declinaison=_declinaison)
     assert set(c) == {"parcellaire"} and c["parcellaire"]["possible"] == "#000000"
+
+
+def test_rang_resout_un_alias():
+    """Le rapport lit le registre en JSON pur : un alias (couche renommée) donne le rang de l'ancien nom."""
+    reg = {"classes": ["parcellaire", "cratere"], "alias": {"cratères": "cratere", "fantôme": "absente"}}
+    assert rang_de_couche(reg, "Parcellaire") == 0
+    assert rang_de_couche(reg, " Cratères ") == 1
+    assert rang_de_couche(reg, "Fantôme") is None
+    assert rang_de_couche(reg, "inconnue") is None

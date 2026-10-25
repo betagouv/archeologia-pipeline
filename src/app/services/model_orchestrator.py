@@ -730,12 +730,14 @@ def _pick_default_model(candidates: Sequence[InstalledModel]) -> Optional[str]:
 
 
 def _compute_layer_names(
-    model: InstalledModel, eid: str, ent_classes: Sequence[str]
+    model: InstalledModel, eid: str, ent_classes: Sequence[str], label: str = ""
 ) -> Dict[str, str]:
     """Renommage des couches d'une entité ``classe → nom_de_couche``.
 
-    Vide pour une entité non dérivée (chaque couche garde le nom de sa classe).
-    Pour une entité dérivée :
+    Entité non dérivée (N-01, 2026-10-25) : la couche porte le **libellé de la
+    structure** (« Cratères ») ; plusieurs classes → « <Structure> · <classe> »,
+    sans collision ; sans ``label`` (appel historique), vide : la couche garde le
+    nom de sa classe. Pour une entité dérivée :
 
     - classe **cluster** (sortie) : ``output_label`` si configuré, sinon le nom
       de classe est conservé (pas de renommage par défaut) ;
@@ -746,7 +748,9 @@ def _compute_layer_names(
     pour éviter une collision de noms de couche dans le même GeoPackage.
     """
     if eid not in model.derived_entities:
-        return {}
+        if not label:
+            return {}
+        return {c: (label if len(ent_classes) == 1 else f"{label} · {c}") for c in ent_classes}
     src = set(model.derived_source_classes.get(eid, ()))
     out_label = model.derived_output_labels.get(eid)
     src_label = model.derived_source_labels.get(eid)
@@ -765,14 +769,15 @@ def _compute_layer_names(
 
 
 def layer_name_for_class(
-    model: InstalledModel, eid: str, classe: str, compared: bool = False
+    model: InstalledModel, eid: str, classe: str, compared: bool = False, label: str = ""
 ) -> str:
     """Nom de la couche de détections de ``classe`` pour l'entité ``eid`` — la
     **clé du registre de couleurs** (``class_color_registry``, indexé par nom de
     couche). Même règle que ``_entity_block`` : nom de classe (ou libellé d'une
     dérivée), suffixé « — Modèle » en comparaison A/B. Sert à l'UI pour donner
-    à la figure du profil la couleur de la couche qu'elle décrit (A9, 2026-10-08)."""
-    noms = _compute_layer_names(model, eid, sorted(model.coverage.get(eid, ())))
+    à la figure du profil la couleur de la couche qu'elle décrit (A9, 2026-10-08).
+    ``label`` = libellé de la structure, celui que ``_entity_block`` donne à la couche (N-01)."""
+    noms = _compute_layer_names(model, eid, sorted(model.coverage.get(eid, ())), label=label)
     nom = noms.get(classe, classe)
     return f"{nom} — {model.display_name}" if compared else nom
 
@@ -814,7 +819,7 @@ def _entity_block(
     """
     base_label = label_by_id.get(eid, eid)
     base_slug = slugify(base_label) or eid
-    layer_names = _compute_layer_names(model, eid, classes_sorted)
+    layer_names = _compute_layer_names(model, eid, classes_sorted, label=base_label)
     block: Dict[str, Any] = {
         "id": eid,
         "label": base_label,

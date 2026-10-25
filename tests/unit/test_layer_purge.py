@@ -87,3 +87,15 @@ def test_posix_paths_under_output_dir_are_selected():
 def test_empty_output_dir_selects_nothing():
     sources = {"L1": r"D:\pipeline_results\output_bretagne\indices\CVAT\tif\index.vrt"}
     assert select_layers_to_purge(sources, "") == []
+
+
+def test_purge_par_chemin_pas_par_nom(tmp_path):
+    """Les couches sont purgées par leur source sous livrable/, jamais par leur nom : renommer
+    une couche (« Parcellaire », « LD · Structures en relief ») ne change rien à la purge."""
+    out = tmp_path / "sortie"
+    sources = {
+        "Parcellaire": str(out / "livrable" / "detections" / "parcellaire" / "parcellaire.gpkg") + "|layername=Parcellaire",
+        "LD · Structures en relief": str(out / "livrable" / "indices" / "LD_A15" / "tif" / "index_LD_A15.vrt"),
+        "index_LD": str(tmp_path / "ailleurs" / "index_LD.vrt"),
+    }
+    assert sorted(select_layers_to_purge(sources, out)) == ["LD · Structures en relief", "Parcellaire"]

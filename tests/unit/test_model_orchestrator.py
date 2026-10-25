@@ -571,8 +571,8 @@ class TestMultiModelComparison:
             assert ent["slug"] == f"parcellaire--{r['model']}"
             assert ent["group_label"] == "Parcellaire (comparaison)"
             assert ent["label"].startswith("Parcellaire — ")
-            # chaque classe reçoit un nom de couche qualifié par le modèle
-            assert ent["layer_names"]["parcellaire"].startswith("parcellaire — ")
+            # chaque classe reçoit un nom de couche = libellé de la structure, qualifié par le modèle
+            assert ent["layer_names"]["parcellaire"].startswith("Parcellaire — ")
         assert runs[0]["entities"][0]["label"] != runs[1]["entities"][0]["label"]
         assert (runs[0]["entities"][0]["layer_names"]["parcellaire"]
                 != runs[1]["entities"][0]["layer_names"]["parcellaire"])
@@ -587,7 +587,7 @@ class TestMultiModelComparison:
         assert ent["slug"] == "parcellaire"
         assert ent["label"] == "Parcellaire"
         assert "group_label" not in ent
-        assert ent["layer_names"] == {}
+        assert ent["layer_names"] == {"parcellaire": "Parcellaire"}   # N-01 : la couche porte le nom de la structure
 
     def test_legacy_str_override_unchanged(self, tmp_path):
         runs = resolve_runs_from_entities(
@@ -765,7 +765,7 @@ class TestRunEntities:
         run = resolve_runs_from_entities(["parcellaire"], {}, installed, _catalog())[0]
         assert run["entities"] == [
             {"id": "parcellaire", "label": "Parcellaire", "slug": "parcellaire",
-             "classes": ["parcellaire"], "is_derived": False, "layer_names": {},
+             "classes": ["parcellaire"], "is_derived": False, "layer_names": {"parcellaire": "Parcellaire"},
              "min_area_m2": 0.0, "classes_synthese": []},
         ]
 
@@ -831,12 +831,31 @@ class TestRunEntities:
         ent = run["entities"][0]
         assert ent["layer_names"] == {"cratere": "cratere_source"}
 
-    def test_non_derived_entity_no_layer_names(self, tmp_path):
+    def test_couche_nommee_par_la_structure(self, tmp_path):
+        """N-01 (2026-10-25) : une structure à une classe nomme sa couche comme elle."""
         _write_model(tmp_path, "formes", FORMES)
         installed = discover_installed_models(tmp_path)
         run = resolve_runs_from_entities(["parcellaire"], {}, installed, _catalog())[0]
         ent = run["entities"][0]
-        assert ent["layer_names"] == {}
+        assert ent["layer_names"] == {"parcellaire": "Parcellaire"}
+
+    def test_structure_multi_classes_qualifie_la_classe(self):
+        """Plusieurs classes pour une structure : « <Structure> · <classe> », sans collision."""
+        from app.services.model_orchestrator import InstalledModel, _compute_layer_names, layer_name_for_class
+        m = InstalledModel(name="lin", display_name="Modèle linéaires", weights_path=None, target_rvt="LD",
+                           status="production", coverage={"talus_fosse": ("talus", "fosse"), "parcellaire": ("parcellaire",)},
+                           class_names=("talus", "fosse", "parcellaire"))
+        assert _compute_layer_names(m, "talus_fosse", ["talus", "fosse"], label="Talus et fossés") == {
+            "talus": "Talus et fossés · talus", "fosse": "Talus et fossés · fosse"}
+        assert _compute_layer_names(m, "parcellaire", ["parcellaire"], label="Parcellaire") == {"parcellaire": "Parcellaire"}
+        assert _compute_layer_names(m, "parcellaire", ["parcellaire"]) == {}          # sans libellé : nom de classe
+        assert layer_name_for_class(m, "parcellaire", "parcellaire", label="Parcellaire") == "Parcellaire"
+
+    def test_comparaison_suffixe_conserve(self):
+        from app.services.model_orchestrator import InstalledModel, layer_name_for_class
+        m = InstalledModel(name="lin", display_name="Modèle linéaires", weights_path=None, target_rvt="LD",
+                           status="production", coverage={"parcellaire": ("parcellaire",)}, class_names=("parcellaire",))
+        assert layer_name_for_class(m, "parcellaire", "parcellaire", compared=True, label="Parcellaire") == "Parcellaire — Modèle linéaires"
 
 
 # ----------------------------------------------------------------------

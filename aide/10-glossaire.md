@@ -14,6 +14,7 @@
 | Fenêtre d'analyse | Portion d'image sur laquelle un modèle travaille ; une dalle est découpée en fenêtres qui se recouvrent |
 | Fiabilité | Niveau affiché dans la légende, douteux à très probable, défini par la part de vrais objets mesurée à l'évaluation du modèle dans la bande de scores |
 | Fiche | Page d'explication d'une image du relief, d'une structure détectable ou d'un modèle, ouverte par le bouton ⓘ dans le panneau à droite de la page (onglets Image, Structure, Modèle) |
+| Flux | Image du relief déjà publiée par votre organisation, lue à la demande dans QGIS depuis l'onglet Consulter les flux, sans rien télécharger ni calculer |
 | GeoPackage | Format vectoriel des couches de détections, un fichier par structure |
 | Image du relief | Ce qui se coche à l'étape 2 : une image dérivée du MNT qui rend lisible une propriété du relief (ombrage, pente, facteur de vue du ciel…), nommée par son sigle et ce qu'elle montre (« LD · Structures en relief ») ; le relief nu (MNT) et les cartes de qualité de la donnée en font partie |
 | Lambert-93 | La projection de référence de la France métropolitaine (EPSG:2154), exigée pour les rasters fournis en entrée |
@@ -24,7 +25,7 @@
 | MNT | Modèle numérique de terrain : raster de l'altitude du sol nu ; « Relief nu » à l'étape 2 |
 | Modèle | Réseau de neurones entraîné à reconnaître une ou plusieurs classes sur une image du relief donnée |
 | Morphologie | Famille de formes qui groupe les structures : circulaires, linéaires, zones |
-| Mosaïque | Fichier `index_<PRODUIT>.vrt` qui assemble toutes les dalles d'une image du relief en une seule couche QGIS |
+| Mosaïque | Fichier `index_<PRODUIT>.vrt` qui assemble toutes les dalles d'une image du relief en une seule couche QGIS, nommée comme l'image à l'étape 2 |
 | PDAL | Bibliothèque de traitement des nuages de points, fournie avec QGIS par OSGeo4W |
 | Point de départ | Ce que vous possédez déjà, choisi sur la frise de l'étape 1 : des dalles IGN à télécharger, des nuages LiDAR, un MNT existant ou des images du relief existantes ; le traitement part de là et les étapes précédentes sont barrées |
 | Regroupement | Agrégation de détections proches en zones, par densité |

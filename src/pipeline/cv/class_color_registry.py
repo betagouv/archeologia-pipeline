@@ -10,6 +10,10 @@ Persisté en JSON dans le dossier de profil QGIS (cohérent avec
 (I/O fichier, pas d'API QGIS) → testable hors QGIS et utilisable depuis le
 thread worker comme depuis l'UI (la cohérence live/.qgs vient du fichier partagé).
 
+Depuis le 2026-10-25 (N-01) la couche d'une structure porte le libellé de la structure
+(« Cratères ») ; la clé du registre étant le nom de couche, un **alias** nom de couche →
+classe lui garde le rang (donc la couleur) que la classe avait. Append-only lui aussi.
+
 Voir docs/superpowers/specs/2026-06-12-couleurs-detections-design.md.
 """
 from __future__ import annotations
@@ -39,6 +43,7 @@ class ClassColorRegistry:
         self.path = Path(path)
         self._lock = threading.Lock()
         self._ranks: Dict[str, int] = {}
+        self._alias: Dict[str, str] = {}   # nom de couche renommée → classe dont elle garde le rang
         self._load()
 
     def _load(self) -> None:
@@ -52,9 +57,16 @@ class ClassColorRegistry:
                     norm = _normalize(name)
                     if norm and norm not in self._ranks:
                         self._ranks[norm] = i
+            alias = data.get("alias") if isinstance(data, dict) else None
+            if isinstance(alias, dict):
+                for k, v in alias.items():
+                    nk, nv = _normalize(k), _normalize(v)
+                    if nk and nk not in self._ranks and nv in self._ranks:
+                        self._alias[nk] = nv
         except Exception as e:  # noqa: BLE001 — registre best-effort
             logger.warning(f"Registre couleurs illisible ({self.path}): {e} — réinitialisé")
             self._ranks = {}
+            self._alias = {}
 
     def _persist(self) -> None:
         # Ordre = rang : on sérialise la liste triée par rang.
@@ -64,8 +76,11 @@ class ClassColorRegistry:
         try:
             self.path.parent.mkdir(parents=True, exist_ok=True)
             tmp = self.path.with_name(self.path.name + ".tmp")
+            payload: Dict[str, object] = {"classes": ordered}
+            if self._alias:
+                payload["alias"] = dict(self._alias)
             tmp.write_text(
-                json.dumps({"classes": ordered}, ensure_ascii=False, indent=2),
+                json.dumps(payload, ensure_ascii=False, indent=2),
                 encoding="utf-8",
             )
             os.replace(tmp, self.path)  # écriture atomique
@@ -75,6 +90,7 @@ class ClassColorRegistry:
     def rank_for(self, class_name: str) -> int:
         norm = _normalize(class_name)
         with self._lock:
+            norm = self._alias.get(norm, norm)
             rank = self._ranks.get(norm)
             if rank is None:
                 rank = len(self._ranks)
@@ -84,6 +100,18 @@ class ClassColorRegistry:
 
     def color_for(self, class_name: str) -> RGB:
         return base_color_for_rank(self.rank_for(class_name))
+
+    def alias(self, nouveau: str, ancien: str) -> bool:
+        """``nouveau`` (une couche renommée) prend le rang d'``ancien`` (sa classe) ; vrai si
+        l'alias est posé. Rien si ``nouveau`` a déjà un rang ou un alias, si les deux
+        noms se confondent une fois normalisés, ou si ``ancien`` est inconnu."""
+        n, a = _normalize(nouveau), _normalize(ancien)
+        with self._lock:
+            if not n or not a or n == a or n in self._ranks or n in self._alias or a not in self._ranks:
+                return False
+            self._alias[n] = a
+            self._persist()
+            return True
 
 
 # ---------------------------------------------------------------------------
@@ -129,3 +157,21 @@ def color_for_class(class_name: str) -> RGB:
 def rank_for_class(class_name: str) -> int:
     """Rang stable d'une classe via le registre partagé."""
     return default_registry().rank_for(class_name)
+
+
+def aliaser_depuis_runs(runs) -> int:
+    """Chaque couche nommée par sa structure (``entities[].layer_names`` : classe → nom de
+    couche) prend la couleur de sa classe, pour que « Cratères » garde celle que « cratere »
+    avait. Les variantes d'une comparaison A/B (``group_label``) gardent leur clé propre,
+    donc leur couleur propre. Renvoie le nombre d'alias posés."""
+    reg = default_registry()
+    n = 0
+    for r in runs or []:
+        if not isinstance(r, dict):
+            continue
+        for ent in r.get("entities") or []:
+            if not isinstance(ent, dict) or ent.get("group_label"):
+                continue
+            for classe, couche in (ent.get("layer_names") or {}).items():
+                n += int(reg.alias(str(couche), str(classe)))
+    return n

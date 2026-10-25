@@ -10,6 +10,8 @@ from pathlib import Path
 from typing import List, Optional
 
 from ..app.progress_reporter import USER_INFO
+from ..app.services.finalize_service import GROUPE_STRUCTURES
+from ..app.services.vocabulaire import titre_dossier_image
 
 
 def _apply_cluster_style(layer, logger: logging.Logger) -> None:
@@ -361,11 +363,11 @@ def load_result_layers(
     """Charge les VRT (raster) et vecteurs (détections) dans le projet QGIS,
     applique la symbologie, puis zoome sur l'étendue combinée (déféré).
 
-    ``derived_slugs`` (slugs d'entités dérivées) + ``entity_labels`` (slug→libellé)
-    pilotent le **regroupement** des couches de détection : une couche dont le slug
-    de dossier est dans ``derived_slugs`` est placée dans un groupe d'arbre nommé
-    par son libellé (zone + constituants ensemble, ex. « Regroupement de cratères ») ;
-    toutes les autres restent à plat. Miroir de ``ui/qgs_writer.write_validation_project``."""
+    Toutes les couches de détection vont sous le groupe « Structures » (N-02, 2026-10-25) ;
+    ``derived_slugs`` (slugs d'entités dérivées ou comparées) + ``entity_labels``
+    (slug→libellé) y font un **sous-groupe** par libellé (zone + constituants ensemble,
+    « Regroupement de cratères » ; variantes d'une comparaison). Les mosaïques portent le
+    nom de l'image (``titre_dossier_image``). Miroir de ``ui/qgs_writer.write_validation_project``."""
     try:
         from qgis.core import (
             QgsProject,
@@ -394,7 +396,7 @@ def load_result_layers(
             vrt_path_str = str(vrt_path)
             _vp = Path(vrt_path_str)
             rvt_type = _vp.parent.parent.name if _vp.parent.name == "tif" else _vp.parent.name
-            layer_name = f"index_{rvt_type}" if rvt_type else "index"
+            layer_name = titre_dossier_image(rvt_type)   # « SVF · Creux & dépressions · R10_… » (N-03)
 
             if _reuse_existing(project, layer_name, vrt_path_str, loaded_layers, combined_extent):
                 logger.info(f"Couche raster déjà présente: {layer_name}")
@@ -437,17 +439,16 @@ def load_result_layers(
                 confidence_threshold=layer_conf, logger=logger,
             )
             if layer is not None:
-                # Entité dérivée → groupe d'arbre (zone + constituants ensemble) ;
-                # sinon couche à plat (racine), comme le .qgs.
+                # Toutes les détections sous « Structures » (insertGroup(0) : EN HAUT de
+                # l'arbre, au-dessus des mosaïques) ; une entité dérivée ou comparée y a
+                # son sous-groupe (zone + constituants ensemble). Même arbre que le .qgs.
+                project.addMapLayer(layer, False)  # pas à la racine
+                structures = root.findGroup(GROUPE_STRUCTURES) or root.insertGroup(0, GROUPE_STRUCTURES)
+                parent = structures
                 if slug in derived_slugs:
                     label = entity_labels.get(slug, slug)
-                    project.addMapLayer(layer, False)  # pas à la racine
-                    # insertGroup(0) (et non addGroup, qui appende EN BAS) : le groupe
-                    # se place EN HAUT de l'arbre, donc au-dessus des rasters MNT/indices.
-                    grp = root.findGroup(label) or root.insertGroup(0, label)
-                    grp.addLayer(layer)
-                else:
-                    project.addMapLayer(layer)
+                    parent = structures.findGroup(label) or structures.insertGroup(0, label)
+                parent.addLayer(layer)
                 loaded_layers.append(layer)
                 combined_extent = _combine(combined_extent, layer.extent())
                 loaded_count += 1

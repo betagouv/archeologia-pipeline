@@ -10,6 +10,7 @@ import re
 from typing import Dict
 
 from .fiabilite import LABELS_FR
+from .indices_model import all_products as _all_products
 from .indices_model import product as _product
 
 IMAGE = "image du relief"
@@ -47,6 +48,22 @@ def titre_image(key: str) -> str:
     except KeyError:
         return key
     return f"{p.tag} · {p.metier}" if p.metier else p.tag
+
+
+def titre_dossier_image(nom_dossier: str) -> str:
+    """Nom de la mosaïque dans QGIS depuis son dossier d'image (N-03, 2026-10-25) :
+    ``SVF_R10_D16_V1_N0`` → « SVF · Creux & dépressions · R10_D16_V1_N0 », le titre de
+    l'étape 2 puis les réglages du dossier. Un dossier inconnu (``RVT``) reste tel
+    quel ; vide → « index »."""
+    nom = str(nom_dossier or "")
+    if not nom:
+        return "index"
+    for p in sorted(_all_products(), key=lambda p: -len(p.key)):   # M_HS avant HS
+        if nom == p.key:
+            return titre_image(p.key)
+        if nom.startswith(p.key + "_"):
+            return f"{titre_image(p.key)} · {nom[len(p.key) + 1:]}"
+    return nom
 
 
 def nombre(x: float, decimales: int = 2) -> str:

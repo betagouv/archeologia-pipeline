@@ -1,6 +1,6 @@
 # Étape 5 · Traitement
 
-**Lancer le traitement**, à l'[étape 4](etape-4-verifications.md), ouvre cette étape. Elle est consultable avant même le lancement et montre alors ce qui a été choisi : la ligne du haut résume le point de départ, les images du relief et les modèles, et la frise annonce les phases du point de départ, Téléchargement, Images du relief, Structures, Finalisation.
+**Lancer le traitement**, à l'[étape 4](etape-4-verifications.md), ouvre cette étape. Elle est consultable avant même le lancement et montre alors ce qui a été choisi : la ligne du haut résume le point de départ, les produits et les modèles, et la frise annonce les phases du point de départ, Téléchargement, Visualisation du relief, Structures, Finalisation.
 
 ## Pendant le traitement
 
@@ -18,11 +18,11 @@ Pendant le traitement, les étapes 1 à 4 restent consultables mais en lecture s
 - **▶ Démarrage**, puis les vérifications préalables.
 - **Téléchargement** : les dalles identifiées, puis chaque dalle téléchargée, ou « déjà présente (vérifiée) » si un lancement précédent l'a laissée sur le disque après l'avoir lue en entier : elle n'est alors pas relue.
 - **Fusion des dalles avec leurs voisines** : la marge est constituée.
-- **Calcul des images du relief** : une ligne par dalle, puis par modèle de terrain.
-- **Détection** : une ligne par modèle, nommé comme à l'étape 3, puis par image analysée ; à la fin de chaque modèle, le nombre d'images et la durée mesurée ; à la fin de la détection, le nombre de détections gardées dans les couches, après dédoublonnage entre dalles, seuil et aire minimale. Sans structure cochée, en point de départ Images du relief existantes, une seule ligne « Publication des images ».
+- **Visualisation du relief** : une ligne par dalle, puis par modèle de terrain.
+- **Détection** : une ligne par modèle, nommé comme à l'étape 3, puis par image analysée ; à la fin de chaque modèle, le nombre d'images et la durée mesurée ; à la fin de la détection, le nombre de détections gardées dans les couches, après dédoublonnage entre dalles, seuil et aire minimale. Sans structure cochée, en point de départ Indices de visualisation existants, une seule ligne « Publication des images ».
 - **Assemblage** : mosaïques, GeoPackages, puis « Projet QGIS écrit : livrable/projet.qgs » ; le nombre de couches ajoutées ne s'affiche qu'au clic sur **Ajouter au projet QGIS courant**.
 
-Un **⚠** signale quelque chose qui n'arrête pas le traitement mais mérite d'être lu : un raster trop petit pour le rayon d'une image, une dalle écartée. Un **✗** est une erreur ; si le traitement s'interrompt, le message en donne la cause et nomme le journal complet (`technique/journaux/pipeline_log_<date>.txt`), qui porte le détail technique ; les lignes dites avant son ouverture (avertissements de la configuration, lancement) y sont reportées. Quand ce manuel a une rubrique pour le message, la ligne se termine par « voir Aide › Dépannage › … » : un clic l'ouvre directement.
+Un **⚠** signale quelque chose qui n'arrête pas le traitement mais mérite d'être lu : un raster trop petit pour le rayon d'un indice, une dalle écartée. Un **✗** est une erreur ; si le traitement s'interrompt, le message en donne la cause et nomme le journal complet (`technique/journaux/pipeline_log_<date>.txt`), qui porte le détail technique ; les lignes dites avant son ouverture (avertissements de la configuration, lancement) y sont reportées. Quand ce manuel a une rubrique pour le message, la ligne se termine par « voir Aide › Dépannage › … » : un clic l'ouvre directement.
 
 ## À la fin
 
@@ -44,13 +44,13 @@ Ce que contient le dossier et comment lire les couches : [Vos résultats dans QG
 
 ## Relancer dans le même dossier
 
-Vous pouvez relancer un traitement dans un dossier de sortie déjà utilisé, par exemple pour ajouter une image ou une structure :
+Vous pouvez relancer un traitement dans un dossier de sortie déjà utilisé, par exemple pour ajouter un produit ou une structure :
 
-- une image déjà calculé avec les mêmes réglages n'est pas recalculé ;
-- une image relancée avec d'autres réglages va dans un dossier distinct, dont le nom porte les réglages ;
+- un produit déjà calculé avec les mêmes réglages n'est pas recalculé ;
+- un produit relancé avec d'autres réglages va dans un dossier distinct, dont le nom porte les réglages ;
 - une détection relancée avec un autre modèle, un autre seuil ou après une mise à jour du moteur de détection est refaite ; à réglages identiques, les images déjà analysées ne le sont pas de nouveau ;
 - les mosaïques sont régénérées et les couches périmées retirées du projet QGIS au lancement, pour que les nouvelles dalles apparaissent ;
-- un dossier calculé par une version précédente du plugin, ou des réglages de fusion ou de MNT changés depuis, refont une fois la fusion, le MNT et les images : le journal le dit par « ⚠️ Méthode de calcul mise à jour » ou « ⚠️ Paramètres de traitement modifiés », voir [Méthode de calcul mise à jour](depannage.md#methode-de-calcul-mise-a-jour).
+- un dossier calculé par une version précédente du plugin, ou des réglages de fusion ou de MNT changés depuis, refont une fois la fusion, le MNT et les indices : le journal le dit par « ⚠️ Méthode de calcul mise à jour » ou « ⚠️ Paramètres de traitement modifiés », voir [Méthode de calcul mise à jour](depannage.md#methode-de-calcul-mise-a-jour).
 
 Les sorties intermédiaires ne sont jamais supprimées par le plugin : vous pouvez les effacer vous-même une fois satisfait, voir [Faire de la place](resultats.md#faire-de-la-place).
 

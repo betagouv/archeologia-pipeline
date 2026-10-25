@@ -67,7 +67,7 @@ def test_cartes_focusables_au_clavier():
 
 
 def test_lien_comparer_depuis_la_page():
-    assert "Comparer les images ▸" in STEP2.read_text(encoding="utf-8")
+    assert "Comparer les produits ▸" in STEP2.read_text(encoding="utf-8")
     assert "__comparaison__" in DIALOG.read_text(encoding="utf-8")
 
 

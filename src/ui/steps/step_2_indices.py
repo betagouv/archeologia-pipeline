@@ -7,7 +7,7 @@ le mode de données, les sections déjà fournies sont masquées (existing_mnt /
 existing_rvt). La logique pure vient de :mod:`app.services.indices_model`.
 
 Trois sections (interface rationalisée, 2026-10-24) : « Recommandé pour commencer »
-(MNT, SVF, LD, cochées d'avance), « Autres images du relief », « Qualité de la
+(MNT, SVF, LD, cochés d'avance), « Autres indices de visualisation », « Qualité de la
 donnée ». Chaque carte = cocher + « ⓘ » (la fiche), et, une fois cochée, un lien
 « ▸ Réglages (n) » qui déplie SES réglages dans la carte : plus de vue séparée à
 onglets. La marge entre dalles est une carte de la page. Les réglages sont
@@ -96,14 +96,14 @@ _HELP_8BIT = "Fichier plus léger, suffisant pour l'affichage."
 
 
 class _IndexCard(QFrame):
-    """Carte d'une image du relief : vignette + tag + nom + description + coche,
+    """Carte d'un produit : vignette + tag + nom + description + coche,
     « ⓘ » pour la fiche, et, cochée, « ▸ Réglages (n) » qui déplie ses réglages
     dans la carte (accordéon). Un clic n'importe où ailleurs coche ou décoche ;
     la carte prend le focus clavier et se coche à Espace.
 
     Sert AUSSI aux produits de base (MNT, Densité, Couverture) : il n'y a qu'un
     gabarit de carte à l'étape 2. Le MNT se verrouille (cadenas + infobulle) tant
-    qu'une image du relief est cochée : plus de toast.
+    qu'un produit est coché : plus de toast.
     """
 
     clicked = pyqtSignal(str)
@@ -143,7 +143,7 @@ class _IndexCard(QFrame):
         self._tag = QLabel(tag)
         self._tag.setObjectName("IndexTag")
         self._info_btn = InfoButton(
-            "Ce que montre l'image, à quoi elle sert, ce qu'elle ne montre pas, réglages et sources"
+            "Ce que montre le produit, à quoi il sert, ce qu'il ne montre pas, réglages et sources"
         )
         self._info_btn.clicked.connect(lambda: self.fiche_requested.emit(self._key))
         self._check = QLabel("")
@@ -293,7 +293,7 @@ class IndicesPage(QWidget):
         root.setContentsMargins(16, 16, 16, 16)
         root.setSpacing(12)
 
-        heading = QLabel("Quelles images du relief voulez-vous ?")
+        heading = QLabel("Quels produits voulez-vous ?")
         heading.setObjectName("WizardPageHeading")
         root.addWidget(heading)
         self._sub = QLabel("")
@@ -303,11 +303,11 @@ class IndicesPage(QWidget):
 
         # « Comparer les images » depuis la page : les deux tableaux de la
         # documentation RVT, en tête des fiches.
-        self._comparer_btn = QPushButton("Comparer les images ▸")
+        self._comparer_btn = QPushButton("Comparer les produits ▸")
         self._comparer_btn.setObjectName("SeeLink")
         self._comparer_btn.setFlat(True)
         self._comparer_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        self._comparer_btn.setToolTip("Quelle image pour quelle forme, et ce que chacune sait faire")
+        self._comparer_btn.setToolTip("Quel produit pour quelle forme, et ce que chacun sait faire")
         self._comparer_btn.clicked.connect(lambda: self._open_fiche("__comparaison__"))
         root.addWidget(self._comparer_btn, 0, Qt.AlignmentFlag.AlignLeft)
 
@@ -322,7 +322,7 @@ class IndicesPage(QWidget):
         rv.addLayout(self._grille(recommended_keys(), 3))
         root.addWidget(self._reco_card)
 
-        self._rvt_card, av = build_card("Autres images du relief", "2")
+        self._rvt_card, av = build_card("Autres indices de visualisation", "2")
         av.addLayout(self._grille(other_rvt_keys(), 3))
         footer = QHBoxLayout()
         self._count_label = QLabel("")
@@ -386,7 +386,7 @@ class IndicesPage(QWidget):
                 ("Filtre PDAL", self._filter_edit,
                  "Classes LiDAR conservées pour reconstruire le sol (codes ASPRS)."),
                 ("Résolution MNT (m/pixel)", self._res_spin,
-                 "Taille de cellule du MNT, base de toutes les images du relief."),
+                 "Taille de cellule du MNT, base de tous les autres produits."),
             ]),
             ("DENSITE", [
                 ("Résolution densité (m)", self._density_spin,
@@ -713,8 +713,8 @@ class IndicesPage(QWidget):
         # plus aucune réinitialisation depuis le retrait du bouton global.
         ov_row.addWidget(self._mk_reset_btn(TUILAGE, "Marge entre dalles"))
         ov_hint = QLabel(
-            "Chevauchement entre dalles voisines pour le calcul des images. Évite "
-            "les artefacts aux bordures. Vaut pour toutes les images."
+            "Chevauchement entre dalles voisines pour le calcul des produits. Évite "
+            "les artefacts aux bordures. Vaut pour tous les produits."
         )
         ov_hint.setObjectName("MntHint")
         ov_hint.setWordWrap(True)
@@ -913,7 +913,7 @@ class IndicesPage(QWidget):
         fiches = self._fiches()   # remplit aussi le cache de comparaison
         return (
             corps_fiche_indice(fiches, _DATA_DIR, key, comparaison=self._comparaison()),
-            "Images du relief",
+            "Produits",
         )
 
     # ------------------------------------------------------------------
@@ -962,7 +962,7 @@ class IndicesPage(QWidget):
         else:
             self._ctx_hint.setText(
                 f"✓  Contexte fourni aux noyaux RVT : {tile_margin_px(overlap, resolution)} px "
-                "de chaque côté de la dalle — suffisant pour les images cochées."
+                "de chaque côté de la dalle — suffisant pour les produits cochés."
             )
 
     def _refresh(self) -> None:
@@ -973,17 +973,17 @@ class IndicesPage(QWidget):
             actifs = [product(k).tag for k in rvt_keys() if self._products.get(k)]
             mnt.set_locked(
                 requires_mnt(self._products),
-                f"Nécessaire aux images cochées : {', '.join(actifs)}. Décochez-les pour retirer le MNT."
+                f"Nécessaire aux produits cochés : {', '.join(actifs)}. Décochez-les pour retirer le MNT."
                 if actifs else "",
             )
         n = count_selected(self._products)
         self._count_label.setText(
-            f"{pluriel(n, 'image')} cochée{'s' if n > 1 else ''}"
+            f"{pluriel(n, 'produit')} coché{'s' if n > 1 else ''}"
         )
         self._sub.setText(
-            "Cliquez une image pour la cocher. Le MNT est la base de toutes les autres."
+            "Cliquez un produit pour le cocher. Le MNT est la base de tous les autres."
             if self._mode not in ("existing_mnt", "existing_rvt")
-            else "Vous fournissez le MNT : cochez les images du relief à calculer."
+            else "Vous fournissez le MNT : cochez les produits à calculer."
         )
         self._update_context_hint()
 
@@ -1007,7 +1007,7 @@ class IndicesPage(QWidget):
             self._mode_banner.setVisible(True)
         elif mode == "existing_rvt":
             self._mode_banner.setText(
-                "ℹ  Vous fournissez les images du relief : cette étape est sans objet, passez aux structures."
+                "ℹ  Vous fournissez les indices de visualisation : cette étape est sans objet, passez aux structures."
             )
             self._mode_banner.setVisible(True)
         else:
@@ -1062,7 +1062,7 @@ class IndicesPage(QWidget):
         n_rvt = sum(1 for k in rvt_keys() if self._products.get(k))
         base = "MNT" if self._products.get("MNT") else "—"
         if n_rvt:
-            return f"{base} + {pluriel(n_rvt, 'image')} du relief"
+            return f"{base} + {pluriel(n_rvt, 'indice')}"   # sous-libellé du rail : « MNT + 2 indices »
         return base
 
     def set_readonly(self, ro: bool) -> None:
@@ -1140,7 +1140,7 @@ class IndicesPage(QWidget):
         btn.setCursor(Qt.CursorShape.PointingHandCursor)
         btn.setToolTip(
             f"Revenir aux valeurs par défaut de « {libelle} ». "
-            "Les autres images ne sont pas touchées."
+            "Les autres produits ne sont pas touchés."
         )
         btn.clicked.connect(lambda _c=False, p=produit, lib=libelle: self._reset_produit(p, lib))
         self._reset_btns[produit] = btn

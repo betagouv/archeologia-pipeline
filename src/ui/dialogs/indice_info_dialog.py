@@ -1,6 +1,6 @@
 """Fiche d'un produit de l'étape 2 — ce que l'archéologue lit avant de cocher.
 
-Pendant, côté images du relief, de :mod:`class_info_dialog` : mêmes helpers de
+Pendant, côté produits, de :mod:`class_info_dialog` : mêmes helpers de
 mise en page, même gabarit (choix de la fiche en tête, corps en dessous), même
 panneau latéral de l'assistant (:func:`corps_fiche_indice` en fabrique le corps ;
 :class:`IndiceInfoDialog` n'est qu'une enveloppe pour le rendu hors écran). Elle
@@ -130,7 +130,7 @@ class _Apercu(QWidget):
             self._image.setPixmap(QPixmap())
             self._image.setProperty("state", "vide")
             self._image.setText(
-                "Illustration à produire\npour cette image" if not n
+                "Illustration à produire\npour ce produit" if not n
                 else "Vignette introuvable\ndans le dossier data/"
             )
         else:
@@ -184,7 +184,7 @@ class _CorpsFiche(QWidget):
         colonne = QVBoxLayout()
         colonne.setSpacing(8)
         if fiche.lire:
-            colonne.addWidget(_titre_bloc("Ce que montre l'image"))
+            colonne.addWidget(_titre_bloc("Ce que montre le produit"))
             colonne.addWidget(_label(fiche.lire, "FicheTexte"))
         haut.addLayout(colonne)
         lay.addLayout(haut)
@@ -245,7 +245,7 @@ class _CorpsFiche(QWidget):
         if f.limites:
             # Même traitement visuel que le « Ne détecte pas » d'une classe :
             # c'est le bloc qu'on lit pour ne pas se tromper.
-            out.append(("Ce que cette image ne montre pas", _puces(f.limites, "FicheHorsCible")))
+            out.append(("Ce que ce produit ne montre pas", _puces(f.limites, "FicheHorsCible")))
         if f.methode:
             out.append(("Comment c'est calculé", _puces(f.methode)))
         if f.parametres:
@@ -256,7 +256,7 @@ class _CorpsFiche(QWidget):
             out.append((
                 "Fiche incomplète",
                 _label(
-                    "Blocs à écrire pour cette image : "
+                    "Blocs à écrire pour ce produit : "
                     + ", ".join(f.manques)
                     + " (data/indices_fiches.json).",
                     "FicheManque",
@@ -282,7 +282,7 @@ class _CorpsComparaison(QWidget):
         lay.setContentsMargins(18, 16, 18, 18)
         lay.setSpacing(12)
 
-        lay.addWidget(_label("Comparer les images", "FicheTitre", wrap=False))
+        lay.addWidget(_label("Comparer les produits", "FicheTitre", wrap=False))
         if comparaison.note:
             lay.addWidget(_label(comparaison.note, "FicheResume"))
         if comparaison.legende:
@@ -362,8 +362,8 @@ def corps_fiche_indice(
     entrees = []
     if comparaison is not None:
         entrees.append((
-            "\u229e  Comparer les images",
-            "Quelle image pour quelle forme, et ce que chacune sait faire",
+            "\u229e  Comparer les produits",
+            "Quel produit pour quelle forme, et ce que chacun sait faire",
             lambda: _CorpsComparaison(comparaison, fiches),
         ))
     for f in fiches:
@@ -391,4 +391,4 @@ class IndiceInfoDialog(FicheDialog):
         comparaison: Optional[Comparaison] = None,
     ):
         super().__init__(corps_fiche_indice(fiches, racine, cle_active, comparaison),
-                         "Images du relief", "IndiceInfoDialog", parent)
+                         "Produits", "IndiceInfoDialog", parent)

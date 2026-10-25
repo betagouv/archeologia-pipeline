@@ -25,7 +25,7 @@ _REGLES: Tuple[Tuple[str, int, str], ...] = (
     (r"^Indiquez (la zone d'étude|le dossier)", ETAPE_DONNEES, "source"),
     (r"^Ce (fichier|dossier) est introuvable", ETAPE_DONNEES, "source"),
     (r"^Ce fichier \.dbf", ETAPE_DONNEES, "source"),
-    (r"^Cochez au moins une image", ETAPE_IMAGES, "images"),
+    (r"^Cochez au moins un (produit|indice)", ETAPE_IMAGES, "images"),
     (r"^(Image|Indice) [A-Z0-9-]+ / «", ETAPE_IMAGES, "images"),
     (r"^MSTP / «", ETAPE_IMAGES, "images"),
     (r"^Marge entre dalles", ETAPE_IMAGES, "images"),

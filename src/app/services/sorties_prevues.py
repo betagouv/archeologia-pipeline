@@ -31,7 +31,7 @@ def sorties_prevues(
 ) -> List[str]:
     """Chemins relatifs du livrable, dans l'ordre où on les cherche : le projet QGIS,
     le rapport, la trace, puis un dossier par image cochée et un par structure.
-    Depuis des images du relief existantes, aucune image n'est calculée."""
+    Depuis des indices de visualisation existants, aucun produit n'est calculé."""
     files = (config.get("app") or {}).get("files") or {}
     mode = str(files.get("data_mode") or "ign_laz")
     proc = config.get("processing") or {}

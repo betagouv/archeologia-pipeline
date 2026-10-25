@@ -79,7 +79,7 @@ def quality_keys() -> List[str]:
 
 
 def other_rvt_keys() -> List[str]:
-    """Section « Autres images du relief » : les RVT hors recommandées, dans l'ordre du catalogue."""
+    """Section « Autres indices de visualisation » : les RVT hors recommandés, dans l'ordre du catalogue."""
     return [p.key for p in _PRODUCTS if p.is_rvt and p.key not in _RECOMMANDEES]
 
 

@@ -27,8 +27,9 @@ INTERDITS = [
     (r"\btuiles?\b", "dalle"),
     (r"\bYes\b|\bCancel\b", "bouton nommé par le verbe de l'action"),
     (r"\bconfig\b", "configuration"),
-    (r"\bindices?\b", "image du relief"),
-    (r"\bproduits?\b", "image du relief"),
+    # 2026-10-25 : l'étape 2 « Visualisation du relief » calcule des « produits » (MNT, qualité
+    # de la donnée, « indices de visualisation ») ; « image du relief » est retiré du lexique.
+    (r"\bimages? du relief\b", "produit / indice de visualisation"),
     (r"\bentités?\b", "structure"),
     (r"\bIA\b", "détection automatique"),
     (r"\bPATH\b", "libellé français (vocabulaire.ENVIRONNEMENT)"),

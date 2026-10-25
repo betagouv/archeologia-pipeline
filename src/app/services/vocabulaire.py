@@ -13,8 +13,13 @@ from .fiabilite import LABELS_FR
 from .indices_model import all_products as _all_products
 from .indices_model import product as _product
 
-IMAGE = "image du relief"
-IMAGES = "images du relief"
+# 2026-10-25 : l'étape 2 « Visualisation du relief » calcule des PRODUITS — le MNT, les produits de
+# qualité de la donnée (densité, couverture) et les INDICES DE VISUALISATION (SVF, LD, M-HS…).
+VISUALISATION = "Visualisation du relief"
+IMAGE = "produit"
+IMAGES = "produits"
+INDICE = "indice de visualisation"
+INDICES = "indices de visualisation"
 STRUCTURE = "structure"
 STRUCTURES = "structures"
 TRAITEMENT = "traitement"
@@ -28,8 +33,8 @@ ENVIRONNEMENT: Dict[str, str] = {
     "gdalwarp": "Reprojection des rasters (gdalwarp)",
     "gdal_translate": "Conversion des rasters (gdal_translate)",
     "gdaladdo": "Aperçus des rasters (gdaladdo)",
-    "Moteur d'indices intégré": "Calcul des images du relief (moteur intégré)",
-    "Algorithmes RVT (Processing)": "Images du relief par l'extension rvt-qgis",
+    "Moteur d'indices intégré": "Calcul des indices de visualisation (moteur intégré)",
+    "Algorithmes RVT (Processing)": "Indices de visualisation par l'extension rvt-qgis",
     "cv_runner_onnx (external)": "Moteur de détection",
     "python:onnxruntime": "Bibliothèque de détection (onnxruntime)",
     "python:PIL": "Bibliothèque d'images (Pillow)",

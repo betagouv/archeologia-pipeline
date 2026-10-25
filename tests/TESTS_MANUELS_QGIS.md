@@ -1086,17 +1086,17 @@ Lot 3 du chantier d'accélération (2026-10-15) : une dalle lue en entier reçoi
 ## 61. Interface rationalisée — lot 1, le lexique ⭐ P1
 
 > **Contexte** (2026-10-24, audit UI/UX, proposition A) : un seul mot par objet dans toute l'interface, le journal
-> et le rapport : traitement (plus « pipeline », « run »), images du relief (plus « indices », « produits »),
+> et le rapport : traitement (plus « pipeline », « run »), produits et indices de visualisation (décision du 2026-10-25 ; plus « images du relief »),
 > structures (plus « entités »), dalles (plus « tuiles »), Aide (plus « Manuel » à l'écran), dalles en parallèle
-> (plus « workers »). Les images sont nommées sigle + ce qu'elles montrent (« LD · Structures en relief »).
+> (plus « workers »). Les produits sont nommés sigle + ce qu'ils montrent (« LD · Structures en relief »).
 
-- [ ] **61.1 Rail et titres** : le rail dit « Vos données · Images du relief · Structures à chercher · Prêt à lancer · Traitement » ; chaque titre d'étape suit (« Vos données », « Quelles images du relief voulez-vous ? »…) ; rien ne déborde du rail de 210 px sous QGIS 3 et 4.
-- [ ] **61.2 Frise de l'étape 1** : les quatre points de départ s'appellent « Dalles IGN à télécharger », « Nuages LiDAR », « MNT existant », « Images du relief existantes », avec leur exigence en sous-libellé ; le bouton « Choisir sur la carte » remplace « Sélectionner les dalles ».
+- [ ] **61.1 Rail et titres** : le rail dit « Vos données · Visualisation du relief · Structures à chercher · Prêt à lancer · Traitement » ; chaque titre d'étape suit (« Vos données », « Quels produits voulez-vous ? »…) ; rien ne déborde du rail de 210 px sous QGIS 3 et 4.
+- [ ] **61.2 Frise de l'étape 1** : les quatre points de départ s'appellent « Dalles IGN à télécharger », « Nuages LiDAR », « MNT existant », « Indices de visualisation existants », avec leur exigence en sous-libellé ; le bouton « Choisir sur la carte » remplace « Sélectionner les dalles ».
 - [ ] **61.3 Boutons** : « Lancer le traitement » (étape 4), « Journal complet (fichier) » (étape 5), « Charger une configuration » / « Enregistrer la configuration » (en-tête), « Aide » (en-tête, F1, menu Extensions › Archéolog'IA).
 - [ ] **61.4 Confirmations** : « Tout remettre aux valeurs par défaut… » → boîte à deux boutons « Tout remettre par défaut » / « Garder mes réglages » ; dossier de sortie v2 au lancement → « Réorganiser et lancer » / « Annuler » ; plus de 50 dalles sur la carte → « Télécharger N dalles » / « Revenir à la sélection ». Aucun Oui/Non, aucun Yes/Cancel.
-- [ ] **61.5 Journal et rapport** : la ligne de fin dit « images : MNT · Relief nu, SVF · Creux & dépressions… » ; la frise de l'étape 5 nomme « Images du relief » et « Structures » ; le rapport écrit les niveaux « très probable / probable / possible / douteux » au masculin singulier.
-- [ ] **61.6 Messages de l'étape 4** : avec un champ vide, le bandeau liste « Indiquez le dossier de sortie », « Indiquez la zone d'étude ou choisissez des dalles sur la carte », « Cochez au moins une image à calculer à l'étape 2 » (plus de « sélectionné mais… n'est configuré »).
-- [ ] **61.7 Manuel** : F1 ouvre « Aide — Archéolog'IA » ; les chapitres s'intitulent « Étape 1 · Vos données », « Étape 2 · Images du relief », « Étape 3 · Structures à chercher », « Étape 4 · Prêt à lancer » ; le glossaire porte « Image du relief », « Structure », « Point de départ », « Traitement », « Dalles en parallèle ».
+- [ ] **61.5 Journal et rapport** : la ligne de fin dit « produits : MNT · Relief nu, SVF · Creux & dépressions… » ; la frise de l'étape 5 nomme « Visualisation du relief » et « Structures » ; le rapport écrit les niveaux « très probable / probable / possible / douteux » au masculin singulier.
+- [ ] **61.6 Messages de l'étape 4** : avec un champ vide, le bandeau liste « Indiquez le dossier de sortie », « Indiquez la zone d'étude ou choisissez des dalles sur la carte », « Cochez au moins un produit à calculer à l'étape 2 » (plus de « sélectionné mais… n'est configuré »).
+- [ ] **61.7 Manuel** : F1 ouvre « Aide — Archéolog'IA » ; les chapitres s'intitulent « Étape 1 · Vos données », « Étape 2 · Visualisation du relief », « Étape 3 · Structures à chercher », « Étape 4 · Prêt à lancer » ; le glossaire porte « Produit », « Indice de visualisation », « Structure », « Point de départ », « Traitement », « Dalles en parallèle ».
 
 ## 62. Interface rationalisée — lot 2, l'étape 1 ⭐ P1
 
@@ -1117,7 +1117,7 @@ Lot 3 du chantier d'accélération (2026-10-15) : une dalle lue en entier reçoi
 > dalles dans la page, « Comparer les images » depuis la page.
 
 - [ ] **63.1 Première ouverture** : profil QGIS neuf (ou dernière configuration supprimée) → MNT, SVF et LD cochées, aucune pastille rouge sur le rail ; une configuration enregistrée sans image cochée reste décochée.
-- [ ] **63.2 Sections** : « Recommandé pour commencer » (MNT, SVF, LD), « Autres images du relief » (douze cartes), « Qualité de la donnée » (Densité, Couverture, masquée depuis un MNT existant) ; depuis des images existantes, seule la phrase « cette étape est sans objet » reste.
+- [ ] **63.2 Sections** : « Recommandé pour commencer » (MNT, SVF, LD), « Autres indices de visualisation » (douze cartes), « Qualité de la donnée » (Densité, Couverture, masquée depuis un MNT existant) ; depuis des images existantes, seule la phrase « cette étape est sans objet » reste.
 - [ ] **63.3 Cocher et fiche** : un clic sur la vignette coche la carte (il n'ouvre plus la fiche) ; seul « ⓘ » ouvre la fiche ; Tab puis Espace coche au clavier.
 - [ ] **63.4 Verrou du MNT** : avec SVF cochée, cliquer MNT ne fait rien : la carte porte un cadenas dans sa coche et l'infobulle « Nécessaire aux images cochées : SVF… » ; aucun toast.
 - [ ] **63.5 Réglages en accordéon** : sur une carte cochée, « ▸ Réglages (n) » déplie ses champs dans la carte (n = nombre de champs) ; un clic dans les champs ne décoche pas ; « ↺ » de la carte a pour infobulle « Revenir aux valeurs par défaut de « … » » et ne touche que cette image ; décocher la carte replie ses réglages ; le rayon min de LD pousse toujours le rayon max.
@@ -1214,3 +1214,12 @@ Lot 3 du chantier d'accélération (2026-10-15) : une dalle lue en entier reçoi
 - [ ] **69.5 Descriptions** : à 980 px de large, aucune description de structure ne finit par « … » (Cratères, Dépressions circulaires grandes, Regroupement de cratères, Enclos, Enclos circulaires raccourcies) ; le détail (corpus, résolution) est dans la fiche.
 - [ ] **69.6 Vignette** : un clic sur la vignette d'une ligne (cochée ou non) ouvre la fiche du modèle dans le panneau, onglet Modèle, sans cocher ni décocher la ligne ; curseur main et infobulle « Fiche du modèle… » au survol ; en comparaison, la fiche du premier modèle.
 - [ ] **69.7 Bouton de fiche** : tous les « ⓘ » (étapes 2 et 3, « Ce qui sera analysé ») sont un « i » gras dans un rond bleu de 24 px, sans second cercle à l'intérieur ; survol bleu clair, anneau de focus au clavier.
+
+## 70. Vocabulaire de l'étape 2 : Visualisation du relief, produits, indices de visualisation ⭐ P1
+
+> **Contexte** (2026-10-25, décision de l'utilisateur) : l'étape 2 s'appelle « Visualisation du relief » ; elle calcule des
+> **produits** : le MNT, les produits de qualité de la donnée (densité, couverture) et les **indices de visualisation**
+> (SVF, LD, M-HS…). Plus d'« image du relief » nulle part.
+
+- [ ] **70.1 Écrans** : rail et titre de l'étape 2 « Visualisation du relief » ; en-tête « Quels produits voulez-vous ? », sections « Recommandé pour commencer », « Autres indices de visualisation », « Qualité de la donnée » ; compteur « N produits cochés » ; lien « Comparer les produits ▸ » ; étape 1 : point de départ « Indices de visualisation existants » ; étape 3 : infobulle du sigle « Indice de visualisation lu par le modèle : LD », « Ce qui sera analysé » dit « lit l'indice LD » ; étape 4 : section « Visualisation du relief », contrôle « Calcul des indices de visualisation (moteur intégré) », message « Cochez au moins un produit à calculer à l'étape 2 » ; étape 5 : phase « Visualisation du relief », journal « Calcul des indices de visualisation sur N dalles », ligne de fin « produits : … » ; onglet Consulter les flux : « N produits · publiés … ».
+- [ ] **70.2 Manuel et glossaire** : chapitre « Étape 2 · Visualisation du relief », section « Les produits » dont les familles Indice et Composition sont les indices de visualisation ; glossaire « Produit » et « Indice de visualisation » (plus d'« Image du relief ») ; arborescence du dossier de sortie avec `livrable/indices/` (le manuel disait `images/`).

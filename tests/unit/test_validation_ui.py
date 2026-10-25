@@ -56,13 +56,13 @@ def test_dossier_de_sortie_et_source_vont_a_l_etape_1():
 
 
 def test_images_vont_a_l_etape_2_et_inconnu_a_zero():
-    out = classer_erreurs(["Cochez au moins une image à calculer à l'étape 2", "Une phrase que personne n'attend"])
-    assert out == {2: ["Cochez au moins une image à calculer à l'étape 2"], 0: ["Une phrase que personne n'attend"]}
+    out = classer_erreurs(["Cochez au moins un produit à calculer à l'étape 2", "Une phrase que personne n'attend"])
+    assert out == {2: ["Cochez au moins un produit à calculer à l'étape 2"], 0: ["Une phrase que personne n'attend"]}
     assert champ_de_l_erreur("Une phrase que personne n'attend") == ""
 
 
 def test_etat_rail():
-    erreurs = {2: ["Cochez au moins une image à calculer à l'étape 2"]}
+    erreurs = {2: ["Cochez au moins un produit à calculer à l'étape 2"]}
     assert [etat_rail(n, 1, erreurs) for n in range(1, 6)] == ["active", "a_corriger", "a_venir", "a_venir", "a_venir"]
     assert [etat_rail(n, 4, erreurs) for n in range(1, 6)] == ["ok", "a_corriger", "ok", "active", "a_venir"]
     assert [etat_rail(n, 3, {}) for n in range(1, 6)] == ["ok", "ok", "active", "a_venir", "a_venir"]

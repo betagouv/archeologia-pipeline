@@ -27,7 +27,7 @@ Certains antivirus signalent ou mettent en quarantaine `cv_runner_onnx.exe`, le 
 Le panneau **Environnement** de l'étape 4 nomme ce qui manque :
 
 - **PDAL** ou **GDAL** introuvables : installez QGIS par OSGeo4W, qui les fournit, ou ajoutez-les au chemin du système.
-- **Moteur d'images intégré** indisponible : une bibliothèque livrée avec QGIS (numpy, scipy ou matplotlib) manque ou ne se charge pas ; le détail la nomme. Réinstallez QGIS par OSGeo4W.
+- **Calcul des indices de visualisation (moteur intégré)** indisponible : une bibliothèque livrée avec QGIS (numpy, scipy ou matplotlib) manque ou ne se charge pas ; le détail la nomme. Réinstallez QGIS par OSGeo4W.
 - **Algorithmes RVT** absents : n'apparaît que si l'ancien calcul par l'extension a été forcé pour un diagnostic (variable d'environnement `ARCHEO_INDICES_MOTEUR=processing`) ; installez alors Relief Visualization Toolbox, puis relancez QGIS. Ce mode de secours garde les comportements de l'extension : pente « Pourcentage » étirée de 0 à 51 % en 8 bits, nombre de directions du M-HS limité à 64 même en 8 bits ; ses images sont réutilisées d'une relance à l'autre tant qu'on y reste, et recalculées une fois au retour du calcul intégré.
 - « cv_runner_onnx (external) » en ✗, puis « python:onnxruntime » signalé : le moteur de détection manque, voir l'alerte antivirus ci-dessus.
 - « CRS des rasters » refusé : un raster d'entrée n'est pas en Lambert-93 (EPSG:2154). Reprojetez-le avant.
@@ -35,7 +35,7 @@ Le panneau **Environnement** de l'étape 4 nomme ce qui manque :
 
 ## Impossible de lancer, corrigez
 
-Le bandeau de l'étape 4 liste les points bloquants et le rail pose une pastille sur l'étape concernée : une source manquante, un dossier de sortie absent, aucune image cochée.
+Le bandeau de l'étape 4 liste les points bloquants et le rail pose une pastille sur l'étape concernée : une source manquante, un dossier de sortie absent, aucun produit coché.
 
 ## Le téléchargement échoue
 
@@ -53,11 +53,11 @@ Le journal dit « ⚠️ Méthode de calcul mise à jour » ou « ⚠️ Paramè
 
 ## Le noyau atteint N pixels
 
-Le rayon d'une image dépasse la marge entre dalles, ou la taille d'un raster en MNT existant. Au-delà, l'algorithme reconstruit le voisinage par symétrie : les dalles ne se raccordent plus, ou l'image n'est pas fiable sur une partie de l'emprise. Réduisez le rayon nommé, ou augmentez la marge à l'étape 2. Sur un lot de rasters, ne réduisez le rayon que si la plupart ont cette taille : le réglage vaut pour tous. Voir [Marge entre dalles](etape-2-produits.md#marge-entre-dalles).
+Le rayon d'un indice dépasse la marge entre dalles, ou la taille d'un raster en MNT existant. Au-delà, l'algorithme reconstruit le voisinage par symétrie : les dalles ne se raccordent plus, ou l'indice n'est pas fiable sur une partie de l'emprise. Réduisez le rayon nommé, ou augmentez la marge à l'étape 2. Sur un lot de rasters, ne réduisez le rayon que si la plupart ont cette taille : le réglage vaut pour tous. Voir [Marge entre dalles](etape-2-produits.md#marge-entre-dalles).
 
 ## Une couture entre deux dalles
 
-Sur une image à grand rayon, une ligne droite visible à la frontière de deux dalles vient d'une marge insuffisante : même cause et même remède que ci-dessus. En MNT existant, chaque raster est calculé sans voisin et la couture est possible : fournissez une mosaïque plutôt que des dalles découpées si vous le pouvez.
+Sur un indice à grand rayon, une ligne droite visible à la frontière de deux dalles vient d'une marge insuffisante : même cause et même remède que ci-dessus. En MNT existant, chaque raster est calculé sans voisin et la couture est possible : fournissez une mosaïque plutôt que des dalles découpées si vous le pouvez.
 
 ## Une dalle est abandonnée
 
@@ -67,7 +67,7 @@ Si le calcul d'un modèle de terrain ne rend pas la main après deux heures, la 
 
 Le journal dit « N dalle(s) non fusionnée(s) », « Dalle … en échec, ignorée », « N dalle(s) sur M en échec », « MNT … en échec, ignoré » ou « MNT de la dalle … calculé sans interpolation », et le journal complet donne l'erreur de PDAL. Une erreur de PDAL pendant la fusion d'une dalle avec ses voisines, ou le calcul du MNT, en particulier avec un code de violation d'accès, vient presque toujours d'un manque de mémoire : plusieurs dalles traitées en parallèle sur un poste qui ne peut pas les tenir. Réduisez les **dalles en parallèle** à 1 ou 2 à l'étape 4 et relancez dans le même dossier : les dalles déjà calculées sont conservées.
 
-Quand le calcul du MNT d'une dalle plante deux fois de suite, le plugin le calcule sans interpolation entre les points sol : la dalle peut garder quelques pixels vides là où le sol n'a pas été touché par le laser, et ses images en héritent. Le journal le dit par « MNT de la dalle … calculé sans interpolation ». Relancez dans le même dossier, de préférence avec moins de programmes ouverts : ce MNT est recalculé, les autres sont réutilisés.
+Quand le calcul du MNT d'une dalle plante deux fois de suite, le plugin le calcule sans interpolation entre les points sol : la dalle peut garder quelques pixels vides là où le sol n'a pas été touché par le laser, et ses indices en héritent. Le journal le dit par « MNT de la dalle … calculé sans interpolation ». Relancez dans le même dossier, de préférence avec moins de programmes ouverts : ce MNT est recalculé, les autres sont réutilisés.
 
 ## Le filtre des points n'est pas reconnu
 
@@ -90,17 +90,17 @@ Pour forcer une nouvelle vérification avant les sept jours, supprimez le fichie
 
 ## La détection est impossible
 
-Le moteur de détection est un programme livré avec l'extension. S'il manque, l'état du système de l'étape 4 le signale en rouge, et un traitement lancé quand même s'arrête aussitôt sur ses vérifications. S'il s'arrête en cours de traitement, par exemple mis en quarantaine par un antivirus à sa première exécution, la fin du traitement le dit en rouge, avec la cause, et le rapport aussi. Les images du relief, eux, sont calculés ; seules manquent les détections du modèle en cause. Quand deux modèles sont comparés sur une même structure, l'autre détecte normalement et la ligne de fin nomme celui qui a échoué.
+Le moteur de détection est un programme livré avec l'extension. S'il manque, l'état du système de l'étape 4 le signale en rouge, et un traitement lancé quand même s'arrête aussitôt sur ses vérifications. S'il s'arrête en cours de traitement, par exemple mis en quarantaine par un antivirus à sa première exécution, la fin du traitement le dit en rouge, avec la cause, et le rapport aussi. Les produits, eux, sont calculés ; seules manquent les détections du modèle en cause. Quand deux modèles sont comparés sur une même structure, l'autre détecte normalement et la ligne de fin nomme celui qui a échoué.
 
 - Un antivirus l'a mis en quarantaine : voir [Alerte antivirus à l'installation](#alerte-antivirus-a-l-installation).
 - Le fichier est endommagé, ou une mise à jour a été interrompue : réinstallez l'extension depuis le dépôt.
 
-Relancez ensuite dans le même dossier : les images déjà calculés sont conservés, seule la détection est refaite.
+Relancez ensuite dans le même dossier : les produits déjà calculés sont conservés, seule la détection est refaite.
 
 ## Rien à analyser, ou aucune détection
 
 - Au moins une structure est cochée et couverte par un modèle : la carte **Ce qui sera analysé** le dit.
-- L'image requise par le modèle est cochée à l'étape 2 : le sigle sur la carte de structure est orange sinon.
+- L'indice requis par le modèle est coché à l'étape 2 : le sigle sur la carte de structure est orange sinon.
 - Le seuil de confiance de la structure n'est pas trop haut : baissez-le pour diagnostiquer.
 - Une structure dont toutes les détections sont écartées par le seuil ou l'aire minimale ne produit pas de couche : ce n'est pas une erreur.
 
@@ -114,7 +114,7 @@ Le dernier message du journal donne la cause. **Journal complet (fichier)** ouvr
 
 ## Le traitement est très long
 
-La durée dépend du nombre de dalles, des images cochées, des modèles et de votre machine. Leviers, dans l'ordre : décocher les images que vous ne regarderez pas ; baisser la résolution du MNT ; augmenter les dalles en parallèle si la mémoire le permet ; traiter une grande zone en plusieurs lots. Le nombre de fenêtres d'analyse affiché à l'étape 3 permet de comparer le coût de deux modèles avant de lancer.
+La durée dépend du nombre de dalles, des produits cochés, des modèles et de votre machine. Leviers, dans l'ordre : décocher les produits que vous ne regarderez pas ; baisser la résolution du MNT ; augmenter les dalles en parallèle si la mémoire le permet ; traiter une grande zone en plusieurs lots. Le nombre de fenêtres d'analyse affiché à l'étape 3 permet de comparer le coût de deux modèles avant de lancer.
 
 ## Signaler un problème
 

@@ -55,7 +55,7 @@ DATA_MODES: Dict[str, ModeInfo] = {
         banner_label="Téléchargement IGN",
         banner_sub="à partir d'un polygone ou de points",
         description="Le plugin télécharge les dalles LiDAR HD de l'IGN, puis calcule tout : "
-        "le MNT, les images du relief et, si vous le demandez, les structures.",
+        "le MNT, les indices de visualisation et, si vous le demandez, les structures.",
         valid_exts=(".shp", ".dbf", ".geojson", ".json", ".gpkg", ".txt"),
     ),
     "local_laz": ModeInfo(
@@ -69,7 +69,7 @@ DATA_MODES: Dict[str, ModeInfo] = {
         banner_label="Nuages locaux",
         banner_sub="LAZ / LAS sur disque",
         description="Vous avez déjà les nuages de points : le traitement calcule le MNT, "
-        "les images du relief et cherche les structures.",
+        "les indices de visualisation et cherche les structures.",
     ),
     "existing_mnt": ModeInfo(
         mode="existing_mnt",
@@ -82,7 +82,7 @@ DATA_MODES: Dict[str, ModeInfo] = {
         banner_label="MNT existant",
         banner_sub="TIF / ASC",
         description="Vous fournissez un MNT déjà calculé : le traitement calcule les "
-        "images du relief puis cherche les structures.",
+        "indices de visualisation puis cherche les structures.",
     ),
     "existing_rvt": ModeInfo(
         mode="existing_rvt",
@@ -90,11 +90,11 @@ DATA_MODES: Dict[str, ModeInfo] = {
         entry_stage=4,
         config_key="existing_rvt_dir",
         is_file=False,
-        source_label="Dossier des images du relief",
+        source_label="Dossier des indices de visualisation",
         placeholder="C:/data/indices/",
-        banner_label="Images du relief existantes",
+        banner_label="Indices de visualisation existants",
         banner_sub="TIF (SVF, LD, M-HS…)",
-        description="Vous avez déjà les images du relief : ce point de départ n'a de sens "
+        description="Vous avez déjà les indices de visualisation (SVF, LD…) : ce point de départ n'a de sens "
         "que pour y chercher des structures.",
     ),
 }
@@ -103,7 +103,7 @@ PIPELINE_STAGES: List[StageInfo] = [
     StageInfo(1, "download", "Dalles IGN à télécharger", "connexion Internet", "ign_laz"),
     StageInfo(2, "pointcloud", "Nuages LiDAR", "fichiers LAZ ou LAS", "local_laz"),
     StageInfo(3, "raster", "MNT existant", "TIF en Lambert-93", "existing_mnt"),
-    StageInfo(4, "indices", "Images du relief existantes", "TIF en Lambert-93", "existing_rvt"),
+    StageInfo(4, "indices", "Indices de visualisation existants", "TIF en Lambert-93", "existing_rvt"),
     StageInfo(5, "detection", "Structures à chercher", "facultatif", None, optional=True),
 ]
 
@@ -178,7 +178,7 @@ _GESTE_VIDE = {
                "ou choisissez les dalles sur la carte.",
     "local_laz": "Indiquez le dossier des fichiers LAZ ou LAS.",
     "existing_mnt": "Indiquez le dossier des MNT (TIF en Lambert-93).",
-    "existing_rvt": "Indiquez le dossier des images du relief (TIF en Lambert-93).",
+    "existing_rvt": "Indiquez le dossier des indices de visualisation (TIF en Lambert-93).",
 }
 _NOM_LISTE_CARTE = "dalles_selection.txt"
 

@@ -29,7 +29,7 @@ if TYPE_CHECKING:
     from .progress_reporter import ProgressReporter
 
 
-# Libellés des images du relief — ceux du lexique de l'interface (« LD · Structures
+# Libellés des produits — ceux du lexique de l'interface (« LD · Structures
 # en relief »), pour que le journal et le rapport disent le même mot que l'écran.
 PRODUCT_LABELS = {p.key: titre_image(p.key) for p in all_products()}
 
@@ -134,7 +134,7 @@ class UserNarrator:
             parts.append(_human_count(tiles_processed, "dalle traitée", "dalles traitées"))
         if products:
             labels = [titre_image(p) for p in products]
-            parts.append("images : " + ", ".join(labels))
+            parts.append("produits : " + ", ".join(labels))
         self._r.user_success(" — ".join(parts))
 
     def pipeline_failed(self, message: str, start_time: Optional[float] = None, journal: str = "") -> None:
@@ -238,7 +238,7 @@ class UserNarrator:
         else:
             details = " (MNT seul)"
         self._r.user_info(
-            f"🛠 Calcul des images du relief sur "
+            f"🛠 Calcul des indices de visualisation sur "
             f"{_human_count(total_tiles, 'dalle', 'dalles')}{details}…"
         )
         self._metric(0, total_tiles, "dalles")  # initialise le total de la phase

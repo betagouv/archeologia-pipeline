@@ -48,7 +48,7 @@ class _RailItem(QFrame):
         # « Structures à chercher » tient sur deux lignes dans le rail de 210 px, à côté de la puce « OPT. ».
         self._label.setWordWrap(True)
         # Un QLabel qui replie se contente de sa largeur minimale : lui donner toute la
-        # largeur disponible, sinon « Images du relief » se coupe sans raison.
+        # largeur disponible, sinon « Visualisation du relief » se coupe sans raison.
         self._label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         label_row.addWidget(self._label, 1)
         if optional:

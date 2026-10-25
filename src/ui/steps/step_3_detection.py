@@ -2,7 +2,7 @@
 
 L'utilisateur coche des **structures** ; l'orchestrateur
 (:mod:`app.services.model_orchestrator`) résout automatiquement les modèles et
-les analyses ``(modèle, image du relief)``. Chaque structure est une ligne sous
+les analyses ``(modèle, indice de visualisation)``. Chaque structure est une ligne sous
 sa morphologie (:class:`~ui.widgets.entity_row.EntityRow`) : modèle retenu
 (modifiable si plusieurs candidats), option « regrouper en zones » si le modèle
 en propose, image lue par le modèle en orange si elle n'est pas cochée à
@@ -70,7 +70,7 @@ class _CadreInterrupteur(QFrame):
 
 class DetectionPage(QWidget):
     changed = pyqtSignal()
-    activate_rvt = pyqtSignal(str)        # demande de cocher une image du relief à l'étape 2
+    activate_rvt = pyqtSignal(str)        # demande de cocher un indice de visualisation à l'étape 2
     fiche_requested = pyqtSignal(str)     # id de structure → le panneau ⓘ de l'assistant
     modele_requested = pyqtSignal(object)  # InstalledModel → le panneau ⓘ de l'assistant
 
@@ -572,7 +572,7 @@ class DetectionPage(QWidget):
         for idx, run in enumerate(runs):
             model = self._models.get(run["model"])
             disp = model.display_name if model else run["model"]
-            # Une phrase par analyse : « <modèle> lit l'image <sigle> : Cratères, Parcellaire »
+            # Une phrase par analyse : « <modèle> lit l'indice <sigle> : Cratères, Parcellaire »
             # (libellés du catalogue portés par run["entities"] ; repli sur les noms
             # de classes bruts pour une analyse d'une configuration ancienne).
             noms = [
@@ -584,7 +584,7 @@ class DetectionPage(QWidget):
             h.setContentsMargins(10, 6, 10, 6)
             h.setSpacing(8)
             texte = QLabel(
-                f"<b>{html.escape(str(disp))}</b> lit l'image <b>{html.escape(str(run['target_rvt']))}</b>"
+                f"<b>{html.escape(str(disp))}</b> lit l'indice <b>{html.escape(str(run['target_rvt']))}</b>"
                 f" : {html.escape(', '.join(noms))}"
             )
             texte.setObjectName("RunTexte")

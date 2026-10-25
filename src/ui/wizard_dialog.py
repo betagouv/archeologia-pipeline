@@ -78,7 +78,7 @@ class WizardDialog(QDialog):
 
     RAIL_STEPS = [
         {"label": "Vos données", "sub": "—"},
-        {"label": "Images du relief", "sub": "—"},
+        {"label": "Visualisation du relief", "sub": "—"},
         {"label": "Structures à chercher", "sub": "—", "optional": True},
         {"label": "Prêt à lancer", "sub": "Environnement et récapitulatif"},
         {"label": "Traitement", "sub": "Frise et journal"},
@@ -86,7 +86,7 @@ class WizardDialog(QDialog):
     ]
     TITLES = {
         1: ("Vos données", "Par où commence le traitement"),
-        2: ("Images du relief", "Le relief nu, la qualité de la donnée, les images qui révèlent les structures"),
+        2: ("Visualisation du relief", "Le relief nu, la qualité de la donnée, les indices qui révèlent les structures"),
         3: ("Structures à chercher", "La détection automatique est facultative"),
         4: ("Prêt à lancer", "Environnement et récapitulatif"),
         5: ("Traitement", "Frise et journal"),
@@ -228,9 +228,9 @@ class WizardDialog(QDialog):
     # Fiches : une fenêtre à part par sorte, jamais modale
     # ------------------------------------------------------------------
     def ouvrir_fiche_image(self, key: str) -> None:
-        """La fiche d'une image du relief (ou les tableaux comparatifs) dans sa fenêtre."""
+        """La fiche d'un produit (ou les tableaux comparatifs) dans sa fenêtre."""
         widget, titre = self._indices_page.corps_fiche(key)
-        self._poser_fiche("Image", widget, titre)
+        self._poser_fiche("Produit", widget, titre)
 
     def ouvrir_fiche_structure(self, entity_id: str) -> None:
         """La fiche d'une structure dans sa fenêtre ; son lien « Fiche du modèle » ouvre
@@ -250,7 +250,7 @@ class WizardDialog(QDialog):
         self._poser_fiche("Modèle", corps_fiche_modele(model), titre_fiche_modele(model))
 
     _FENETRE_FICHE = {   # sorte → (objectName du thème, taille d'ouverture)
-        "Image": ("IndiceInfoDialog", (640, 720)),
+        "Produit": ("IndiceInfoDialog", (640, 720)),
         "Structure": ("ClassInfoDialog", (640, 720)),
         "Modèle": ("ModelInfoDialog", (620, 720)),
     }
@@ -556,7 +556,7 @@ class WizardDialog(QDialog):
 
         prods = self._indices_page.recap_products()
         res = self._indices_page.resolution()
-        sections.append(RecapSection("Images du relief", badges=prods, value=f"{nombre(res, 2)} m/pixel", step=2))
+        sections.append(RecapSection("Visualisation du relief", badges=prods, value=f"{nombre(res, 2)} m/pixel", step=2))
 
         if not cv.get("enabled"):
             sections.append(RecapSection("Structures", value="détection désactivée", step=3))

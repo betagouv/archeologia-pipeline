@@ -342,7 +342,7 @@ class TestValidateRunContext:
     def test_existing_rvt_missing_dir(self):
         ctx = self._ctx(files={"data_mode": "existing_rvt", "existing_rvt_dir": None})
         errors, _ = validate_run_context(ctx)
-        assert any("images du relief" in e for e in errors)
+        assert any("indices de visualisation" in e for e in errors)
 
     def test_unknown_mode(self):
         ctx = self._ctx(files={"data_mode": "drone_lidar"})
@@ -388,7 +388,7 @@ class TestValidateProductsRule:
     def test_ign_laz_no_product_active_errors(self, tmp_path: Path):
         ctx = self._ctx("ign_laz", ProductsConfig(MNT=False), tmp_path)
         errors, _ = validate_run_context(ctx)
-        assert any("image à calculer" in e for e in errors)
+        assert any("produit à calculer" in e for e in errors)
 
     def test_ign_laz_mnt_only_ok(self, tmp_path: Path):
         ctx = self._ctx("ign_laz", ProductsConfig(MNT=True), tmp_path)
@@ -398,7 +398,7 @@ class TestValidateProductsRule:
         # En existing_mnt, MNT seul ne suffit pas (pas de calcul à faire)
         ctx = self._ctx("existing_mnt", ProductsConfig(MNT=True), tmp_path)
         errors, _ = validate_run_context(ctx)
-        assert any("image du relief" in e for e in errors)
+        assert any("indice de visualisation" in e for e in errors)
 
     def test_existing_mnt_svf_ok(self, tmp_path: Path):
         ctx = self._ctx("existing_mnt", ProductsConfig(SVF=True), tmp_path)

@@ -97,7 +97,7 @@ class _DeptItem(QWidget):
         texts.setSpacing(1)
         name = QLabel(dept.name)
         name.setObjectName("VisuRailName")
-        sub = QLabel(f"{dept.count} images · maj {dept.updated or '—'}")
+        sub = QLabel(f"{dept.count} produits · maj {dept.updated or '—'}")
         sub.setObjectName("VisuRailSub")
         texts.addWidget(name)
         texts.addWidget(sub)
@@ -164,7 +164,7 @@ class VisualisationTab(QWidget):
         texts.setSpacing(1)
         title = QLabel("Consulter les flux")
         title.setObjectName("VisuTitle")
-        sub = QLabel("Images du relief déjà publiées, à afficher dans QGIS sans traitement")
+        sub = QLabel("Produits déjà publiés, à afficher dans QGIS sans traitement")
         sub.setObjectName("VisuSubtitle")
         texts.addWidget(title)
         texts.addWidget(sub)
@@ -435,7 +435,7 @@ class VisualisationTab(QWidget):
         res = f" · dalle {dept.resolution:g} m".replace(".", ",") if dept.resolution else ""
         self._wall_title.setText(dept.name)
         self._wall_meta.setText(
-            f"{dept.count} images · publiées {dept.updated or '—'}{res}")
+            f"{dept.count} produits · publiés {dept.updated or '—'}{res}")
 
         present = dept.families
         for fam, btn in self._family_btns.items():
@@ -448,7 +448,7 @@ class VisualisationTab(QWidget):
 
         items = dept.items_in_family(self._family)
         if not items:
-            self._show_empty("Aucune image dans cette famille.")
+            self._show_empty("Aucun produit dans cette famille.")
             return
         self._empty.setVisible(False)
         self._scroll.setVisible(True)
@@ -472,7 +472,7 @@ class VisualisationTab(QWidget):
         diffusion distante qui n'existe pas encore. On le dit, et on dit ce que
         le même geste fera en production.
         """
-        geste = ("Utilisez « Afficher dans QGIS » pour ouvrir une image, "
+        geste = ("Utilisez « Afficher dans QGIS » pour ouvrir un produit, "
                  "derrière cette fenêtre.")
         if any(item.streamed for item in dept.items):
             return (f"<b>Lecture en flux</b> · {geste} Le raster est lu à la demande "

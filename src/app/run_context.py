@@ -500,7 +500,7 @@ def validate_run_context(ctx: RunContext) -> Tuple[List[str], List[str]]:
 
     elif ctx.mode == "existing_rvt":
         if ctx.files.existing_rvt_dir is None:
-            errors.append("Indiquez le dossier des images du relief")
+            errors.append("Indiquez le dossier des indices de visualisation")
         elif not ctx.files.existing_rvt_dir.exists():
             errors.append(f"Ce dossier est introuvable : {ctx.files.existing_rvt_dir}")
 
@@ -516,9 +516,9 @@ def validate_run_context(ctx: RunContext) -> Tuple[List[str], List[str]]:
             # constitue un calcul à faire (cf. _VISUALIZATION_PRODUCTS, source
             # unique — ne jamais réénumérer les indices à la main ici).
             if not ctx.processing.products.has_visualization_index():
-                errors.append("Cochez au moins une image du relief à l'étape 2")
+                errors.append("Cochez au moins un indice de visualisation à l'étape 2")
         elif not ctx.processing.products.active():
-            errors.append("Cochez au moins une image à calculer à l'étape 2")
+            errors.append("Cochez au moins un produit à calculer à l'étape 2")
 
     # ── Warnings (non bloquants) ─────────────────────────────────────
     # tile_overlap=0 : pas de marge entre dalles. Calcul réussit mais

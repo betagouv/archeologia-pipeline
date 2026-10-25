@@ -32,7 +32,7 @@ Si le dépôt refuse les identifiants ou reste muet, voir [Dépannage](depannage
 
 1. Onglet **Tout** (ou **Non installées**), recherche `Arché`.
 2. **Archéolog'IA** → **Installer le plugin**. Le téléchargement est long ; la barre peut sembler figée, c'est normal.
-3. Aucune autre extension n'est nécessaire : les images du relief sont calculées par le plugin avec la bibliothèque Relief Visualization Toolbox, intégrée (ZRC SAZU et Université de Ljubljana, licence Apache 2.0).
+3. Aucune autre extension n'est nécessaire : les indices de visualisation sont calculés par le plugin avec la bibliothèque Relief Visualization Toolbox, intégrée (ZRC SAZU et Université de Ljubljana, licence Apache 2.0).
 
 Le plugin apparaît dans le menu **Extensions → Archéolog'IA** et dans la barre d'outils. Le même menu contient **Aide**, qui ouvre cette aide.
 
@@ -66,7 +66,7 @@ Le plugin lit cette configuration pour télécharger les dalles. À défaut, il 
 
 ## Vérifier l'installation
 
-Rien à faire de particulier : à l'étape 4 de l'assistant, le panneau **Environnement** vérifie en tâche de fond les outils (PDAL, GDAL), QGIS Processing et le moteur intégré de calcul des images, le moteur de détection, et vos dossiers d'entrée et de sortie. Un élément manquant est nommé en rouge ; lancé quand même, le traitement s'arrête aussitôt sur ses vérifications préalables. Voir [Étape 4 · Vérifications](etape-4-verifications.md#environnement).
+Rien à faire de particulier : à l'étape 4 de l'assistant, le panneau **Environnement** vérifie en tâche de fond les outils (PDAL, GDAL), QGIS Processing et le moteur intégré de calcul des indices, le moteur de détection, et vos dossiers d'entrée et de sortie. Un élément manquant est nommé en rouge ; lancé quand même, le traitement s'arrête aussitôt sur ses vérifications préalables. Voir [Étape 4 · Vérifications](etape-4-verifications.md#environnement).
 
 ## Mettre à jour
 

@@ -938,7 +938,7 @@ class RunView(QWidget):
         produits = ((self._config.get("processing") or {}).get("products") or {})
         actifs = [titre_image(code) for code, on in produits.items() if on] if isinstance(produits, dict) else []
         if actifs:
-            morceaux.append(", ".join(actifs) if len(actifs) <= 3 else pluriel(len(actifs), "image"))
+            morceaux.append(", ".join(actifs) if len(actifs) <= 3 else pluriel(len(actifs), "produit"))
         cv = self._config.get("computer_vision") or {}
         if cv.get("enabled"):
             n = len(cv.get("runs") or [])

@@ -1,6 +1,6 @@
 # Étape 3 · Structures à chercher
 
-La détection est facultative : tant qu'elle est désactivée, le traitement s'arrête après les images. Activez-la, puis cochez les **structures** à chercher. Vous ne choisissez pas de modèle : pour chaque structure, le plugin retient le modèle entraîné pour elle et l'image du relief sur laquelle il a appris.
+La détection est facultative : tant qu'elle est désactivée, le traitement s'arrête après les produits. Activez-la, puis cochez les **structures** à chercher. Vous ne choisissez pas de modèle : pour chaque structure, le plugin retient le modèle entraîné pour elle et l'produit sur laquelle il a appris.
 
 Un clic n'importe où sur le bandeau du haut (le titre, la phrase ou l'interrupteur) active ou désactive la détection.
 
@@ -22,17 +22,17 @@ La liste dépend des modèles installés : une structure n'apparaît que si un m
 
 - **Cocher une structure** : cliquez n'importe où sur sa ligne. Au clavier, Tab passe de ligne en ligne et Espace coche. Sur une ligne cochée, la partie réglages qui s'ouvre dessous ne coche ni ne décoche : un clic sur le seuil, la figure ou les paramètres de regroupement sert seulement à régler.
 - **Vignette** : un clic sur elle ouvre la fiche du modèle qui détecte la structure, dans sa propre fenêtre. **Description** : une phrase ; si elle est coupée par « … », son texte complet est en infobulle.
-- **Image requise** : le sigle de l'image sur laquelle le modèle travaille. Si elle n'est pas cochée à l'étape 2, le sigle passe en orange et un lien **l'ajouter** la coche.
+- **Indice requis** : le sigle de l'indice de visualisation sur lequel le modèle travaille. S'il n'est pas coché à l'étape 2, le sigle passe en orange et un lien **l'ajouter** le coche.
 - **Modèle ▾** : seulement quand plusieurs modèles couvrent la structure, sur une ligne cochée ; le menu coche le modèle retenu et chaque entrée indique le nombre de **fenêtres d'analyse** que le modèle découpe dans une dalle : c'est un fait sur le volume de calcul, pas une estimation de durée. Le nom du modèle n'est pas sur la ligne : il se lit dans **Ce qui sera analysé**, sous la liste, une phrase par modèle avec son **ⓘ** qui ouvre la fiche du modèle, dans la fiche de la structure, et d'un clic sur la vignette de la ligne.
 - Le **ⓘ** en bout de ligne ouvre la fiche de la structure.
-- **▸ Réglages**, sous la ligne cochée, déplie ses seuils et réglages (voir plus bas), comme pour une image à l'étape 2.
+- **▸ Réglages**, sous la ligne cochée, déplie ses seuils et réglages (voir plus bas), comme pour un produit à l'étape 2.
 - **Regrouper en zones** : pour certaines structures, une case sous la ligne regroupe les détections proches en zones. Le **Regroupement de cratères** est une structure à part entière, avec le badge **regroupement automatique** : la cocher produit les zones et les cratères qui les composent ; elle coche d'office **Cratères**, dont la ligne prend le badge « inclus dans » et perd son réglage de seuil : une seule couche de cratères, au seuil réglé sur la ligne du regroupement.
 
 ## Les fiches
 
 Un bouton **ⓘ** ouvre sa fiche dans une **fenêtre à part**, qui ne bloque pas l'assistant : vous lisez la fiche et vous cochez en même temps, vous changez d'étape, la fiche reste ouverte. La fenêtre se déplace et se redimensionne comme vous voulez ; **Fermer** ou la touche **Échap** la ferme.
 
-Une fenêtre par sorte de fiche, **Image**, **Structure** et **Modèle** : ouvrir une autre structure remplace la fiche dans sa fenêtre, à la même place ; la fiche du modèle s'ouvre à côté de celle de la structure, pour les lire ensemble.
+Une fenêtre par sorte de fiche, **Produit**, **Structure** et **Modèle** : ouvrir une autre structure remplace la fiche dans sa fenêtre, à la même place ; la fiche du modèle s'ouvre à côté de celle de la structure, pour les lire ensemble.
 
 Quand plusieurs classes portent la structure (une comparaison de deux modèles, un regroupement et ses détections sources), une liste en tête de la fiche passe de l'une à l'autre.
 
@@ -74,10 +74,10 @@ La **fiche** d'une classe montre le profil complet : les quatre niveaux sous l'a
 
 ## Objets à cheval sur deux dalles
 
-Les images analysées débordent de la dalle, grâce à la marge de l'étape 2 ou, en point de départ Images du relief existantes, grâce aux dalles voisines du dossier. Un objet coupé par le bord est vu entier par l'une des deux dalles, et chaque dalle ne rapporte que les détections dont le centre est chez elle : pas de doublon et pas de fragment au bord.
+Les images analysées débordent de la dalle, grâce à la marge de l'étape 2 ou, en point de départ Indices de visualisation existants, grâce aux dalles voisines du dossier. Un objet coupé par le bord est vu entier par l'une des deux dalles, et chaque dalle ne rapporte que les détections dont le centre est chez elle : pas de doublon et pas de fragment au bord.
 
 ## Récapitulatif
 
-La carte **Ce qui sera analysé** dit, en une phrase par analyse, quel modèle lit quelle image pour quelles structures : « Modèle cratères lit l'image LD : Cratères ». Un modèle travaille toujours sur une seule image ; le **ⓘ** de la phrase ouvre sa fiche. La case **Enregistrer aussi les images annotées** produit en plus des images avec les détections dessinées, rangées dans la zone technique du dossier de sortie.
+La carte **Ce qui sera analysé** dit, en une phrase par analyse, quel modèle lit quel indice pour quelles structures : « Modèle cratères lit l'indice LD : Cratères ». Un modèle travaille toujours sur un seul indice ; le **ⓘ** de la phrase ouvre sa fiche. La case **Enregistrer aussi les images annotées** produit en plus des images avec les détections dessinées, rangées dans la zone technique du dossier de sortie.
 
 À la fin du traitement, le journal donne pour chaque modèle le nombre d'images analysées et la durée mesurée, pour comparer deux modèles sur un cas réel.

@@ -239,7 +239,7 @@ def _fiches_fenetres(app, w, img: Path, log) -> bool:
 
     w._goto_step(2)
     w._indices_page.fiche_requested.emit("SVF")
-    ok_image = _fiche("Image", "etape2-fiche-produit.png")
+    ok_image = _fiche("Produit", "etape2-fiche-produit.png")
     w._goto_step(3)
     w._detection_page.fiche_requested.emit("cratere")
     ok_structure = _fiche("Structure", "etape3-fiche-classe.png")

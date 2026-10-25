@@ -2,7 +2,7 @@
 
 Une ligne par structure, rangée sous sa morphologie (interface rationalisée,
 2026-10-24 ; remplace la carte à deux colonnes) : coche · vignette · libellé et
-description élidée · image du relief lue par le modèle (orange, avec
+description élidée · indice de visualisation lu par le modèle (orange, avec
 « l'ajouter », si elle n'est pas cochée à l'étape 2) · « Modèle ▾ » quand
 plusieurs modèles couvrent la structure (le nom du modèle n'est plus sur la
 ligne depuis le 2026-10-25 : il se lit dans « Ce qui sera analysé » et dans la
@@ -509,16 +509,16 @@ class EntityRow(QFrame):
         self._rvt_key = missing_rvt or rvt
         self._check.setText("✓" if selected else "")
 
-        # Image du relief lue par le modèle (orange si elle n'est pas cochée à l'étape 2)
+        # Indice de visualisation lu par le modèle (orange s'il n'est pas coché à l'étape 2)
         missing = bool(selected and self._has_model and not rvt_active)
         self._rvt_tag.setText(f"⚠ {rvt}" if missing else rvt)
         self._rvt_tag.setProperty("missing", missing)
         self._rvt_tag.setToolTip(
-            f"Image {missing_rvt or rvt} non cochée à l'étape 2" if missing
-            else f"Image du relief lue par le modèle : {rvt}"
+            f"Indice {missing_rvt or rvt} non coché à l'étape 2" if missing
+            else f"Indice de visualisation lu par le modèle : {rvt}"
         )
         self._rvt_btn.setVisible(missing)
-        self._rvt_btn.setToolTip(f"Cocher l'image {missing_rvt or rvt} à l'étape 2")
+        self._rvt_btn.setToolTip(f"Cocher l'indice {missing_rvt or rvt} à l'étape 2")
 
         # État global de la ligne (couleur)
         if not self._has_model:

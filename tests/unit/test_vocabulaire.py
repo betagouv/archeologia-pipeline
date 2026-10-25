@@ -117,3 +117,16 @@ def test_titre_dossier_image():
     assert titre_dossier_image("M_HS_D16") == "M-HS · Ombrage du relief · D16"
     assert titre_dossier_image("RVT") == "RVT"
     assert titre_dossier_image("") == "index"
+
+
+def test_lexique_visualisation_du_relief_et_produits():
+    """Décision du 2026-10-25 : l'étape 2 s'appelle « Visualisation du relief », ce qu'elle
+    calcule sont des « produits », dont les « indices de visualisation » (SVF, LD…)."""
+    from app.services.vocabulaire import IMAGE, IMAGES, INDICE, INDICES, VISUALISATION
+    assert (IMAGE, IMAGES) == ("produit", "produits")
+    assert (INDICE, INDICES) == ("indice de visualisation", "indices de visualisation")
+    assert VISUALISATION == "Visualisation du relief"
+    src = (RACINE / "src" / "ui" / "wizard_dialog.py").read_text(encoding="utf-8")
+    assert '{"label": "Visualisation du relief"' in src and '2: ("Visualisation du relief"' in src
+    etape2 = (RACINE / "src" / "ui" / "steps" / "step_2_indices.py").read_text(encoding="utf-8")
+    assert "'image')" not in etape2 and "du relief\"" not in etape2   # « MNT + 2 indices », pas « images du relief »

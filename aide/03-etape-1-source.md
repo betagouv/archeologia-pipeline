@@ -11,9 +11,9 @@ La frise du haut représente la chaîne de traitement (le [schéma complet](prem
 | Dalles IGN à télécharger | une zone d'étude, une liste de dalles, ou des dalles choisies sur la carte | oui |
 | Nuages LiDAR | un dossier de fichiers `.laz` ou `.las` | non |
 | MNT existant | un dossier de modèles de terrain `.tif`, `.tiff` ou `.asc` en Lambert-93 | non |
-| Images du relief existantes | un dossier d'images du relief `.tif` en Lambert-93 | non |
+| Indices de visualisation existants | un dossier d'indices (SVF, LD…) `.tif` en Lambert-93 | non |
 
-Les deux premiers points de départ exécutent toute la chaîne. Depuis un MNT existant, le traitement commence aux images du relief. Depuis des images du relief existantes, il ne calcule aucune image : avec une structure cochée, il les analyse ; sans détection, il se contente de les publier en mosaïque dans `livrable/images/RVT/`.
+Les deux premiers points de départ exécutent toute la chaîne. Depuis un MNT existant, le traitement commence aux indices de visualisation. Depuis des indices de visualisation existants, il ne calcule aucun produit : avec une structure cochée, il les analyse ; sans détection, il se contente de les publier en mosaïque dans `livrable/images/RVT/`.
 
 Dans tous les cas, indiquez un **dossier de sortie**, de préférence vide. Relancer dans le même dossier est possible : voir [Relancer dans le même dossier](etape-5-traitement.md#relancer-dans-le-meme-dossier).
 
@@ -31,7 +31,7 @@ Le plugin identifie les dalles LiDAR HD de l'IGN qui couvrent votre zone, les t�
 
 La grille des dalles est livrée avec le plugin et remise à jour à chaque version. Le bandeau du point de départ indique sa date et son nombre de dalles : les dalles publiées par l'IGN depuis cette date n'y figurent pas encore.
 
-Chaque dalle couvre un kilomètre carré. Les dalles voisines sont fusionnées avant le calcul des images, avec une marge, pour que les images se raccordent sans couture : voir [Marge entre dalles](etape-2-produits.md#marge-entre-dalles).
+Chaque dalle couvre un kilomètre carré. Les dalles voisines sont fusionnées avant le calcul des produits, avec une marge, pour que les produits se raccordent sans couture : voir [Marge entre dalles](etape-2-produits.md#marge-entre-dalles).
 
 ## Nuages locaux
 
@@ -39,7 +39,7 @@ Vous avez déjà les fichiers `.laz` ou `.las`. Le plugin lit le dossier, reconn
 
 ## MNT existant
 
-Vous fournissez un dossier de modèles de terrain. Le plugin calcule les images cochées à l'étape 2 puis, si elle est activée, la détection. Le relief nu et la qualité de la donnée ne sont pas proposés à l'étape 2 : le MNT existe déjà.
+Vous fournissez un dossier de modèles de terrain. Le plugin calcule les produits cochés à l'étape 2 puis, si elle est activée, la détection. Le relief nu et la qualité de la donnée ne sont pas proposés à l'étape 2 : le MNT existe déjà.
 
 Les rasters doivent être en **Lambert-93 (EPSG:2154)**. Un raster dans une autre projection est refusé à la vérification de l'étape 4, avec un message qui le nomme : reprojetez-le avant.
 
@@ -47,13 +47,13 @@ Le plugin inspecte l'emprise de chaque raster :
 
 - **dalle IGN** d'un kilomètre, alignée sur la grille : traitement habituel ;
 - **petit raster**, moins d'un kilomètre ou non aligné : l'emprise est conservée telle quelle ;
-- **grand raster**, plus d'un kilomètre dans une dimension : aucun pré-découpage, les images sont calculés sur toute l'emprise et la détection découpe elle-même l'image en fenêtres d'analyse.
+- **grand raster**, plus d'un kilomètre dans une dimension : aucun pré-découpage, les produits sont calculés sur toute l'emprise et la détection découpe elle-même l'indice en fenêtres d'analyse.
 
-Chaque raster est calculé seul, sans voisin : sur un lot de petites dalles, les images à grand rayon peuvent montrer une couture entre deux dalles. La carte **Marge entre dalles** de l'étape 2 signale quand le rayon d'une image dépasse ce que la dalle peut fournir.
+Chaque raster est calculé seul, sans voisin : sur un lot de petites dalles, les indices à grand rayon peuvent montrer une couture entre deux dalles. La carte **Marge entre dalles** de l'étape 2 signale quand le rayon d'un indice dépasse ce que la dalle peut fournir.
 
-## Images du relief existantes
+## Indices de visualisation existants
 
-Vous avez déjà les images du relief, par exemple produites par un traitement précédent ou par un autre outil. Le dossier est lu tel quel, les images sont préparées pour les modèles et la détection s'exécute. Même exigence de projection : Lambert-93. Les résultats sont rangés sous `livrable/images/RVT/`, le plugin ne connaissant pas les réglages qui ont produit ces images.
+Vous avez déjà les indices de visualisation (SVF, LD, M-HS…), par exemple produits par un traitement précédent ou par un autre outil. Le dossier est lu tel quel, les indices sont préparés pour les modèles et la détection s'exécute. Même exigence de projection : Lambert-93. Les résultats sont rangés sous `livrable/images/RVT/`, le plugin ne connaissant pas les réglages qui ont produit ces images.
 
 Pour que les objets à cheval sur deux dalles soient vus entiers, le plugin fabrique une marge à partir des dalles voisines présentes dans le dossier. Une dalle isolée n'en a pas.
 

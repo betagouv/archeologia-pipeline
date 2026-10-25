@@ -588,26 +588,7 @@ QPushButton[role="micro"] {
 
 #ModelInfoOpenDirButton { padding: 4px 12px; }
 
-/* ---- Panneau ⓘ : les fiches à côté de la page (2026-10-24) ---- */
-#FichePanel { background: #ffffff; border-left: 1px solid #c4c4c4; }
-#FichePanelTete { background: #f6f6f6; border-bottom: 1px solid #c4c4c4; }
-#FichePanelTitre { font-size: 12px; font-weight: bold; color: #000000; }
-#FichePanelFermer {
-    font-size: 13px; color: #4f5a66; border: 1px solid transparent; border-radius: 3px;
-    min-width: 22px; min-height: 22px;
-}
-#FichePanelFermer:hover { background: #e3e3e3; color: #000000; }
-#FichePanelFermer:focus { border: 2px solid #1d5a96; }
-/* Onglets : couleur + soulignement, jamais la graisse (un changement de graisse via
-   QSS sur :checked ne recalcule pas la largeur du bouton). */
-#FicheTab {
-    background: transparent; border: none; border-bottom: 2px solid transparent;
-    color: #4f5a66; font-size: 11px; padding: 4px 10px; min-height: 20px;
-}
-#FicheTab:hover { color: #1d5a96; }
-#FicheTab:checked { color: #1d5a96; border-bottom: 2px solid #2b79c2; }
-#FicheTab:disabled { color: #b0b0b0; }
-#FicheTab:focus { background: #d6e6f4; }
+/* ---- Fiches en fenêtre à part (2026-10-25) : la liste de tête d'une fiche à plusieurs classes ---- */
 #FicheChoix { font-size: 11px; }
 
 /* ---- Fiche d'une structure détectable (class_info_dialog) ---- */

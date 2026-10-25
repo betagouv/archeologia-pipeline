@@ -25,12 +25,12 @@ BADGES_9PX = {"#RailOpt", "#StageBadge", "#IndexTag", "#RecapBadge", "#Facultati
 CARTES = ("#IndexCard", "#EntityLine", "#RunRow", "#Collapsible", "#RunBilanBox", "#StageButton", "#VisuCard")
 #: Boutons et liens : hauteur de contenu déclarée ≥ 20 px (24 px avec le padding).
 CIBLES = ("QPushButton", "#GhostButton", "#EntityResetBtn", "#SeeLink", "#CardToggle", "#EntityChangeBtn",
-          "#FicheTab", "#EntityActivateBtn", "#FicheNav", "#FicheToggle", "#FichePanelFermer",
+          "#EntityActivateBtn", "#FicheNav", "#FicheToggle",
           "#JournalChipWarn", "#JournalChipErr", "#VisuFamilyBtn")
 #: Anneaux de focus attendus (clavier).
 FOCUS = ("#IndexCard:focus", "#EntityLine:focus", "#StageButton:focus", "#RailItem:focus", "#InfoButton:focus",
          "QPushButton:focus", "QCheckBox::indicator:focus", "#SeeLink:focus", "#CardToggle:focus",
-         "#EntityChangeBtn:focus", "#EntityResetBtn:focus", "#FicheTab:focus")
+         "#EntityChangeBtn:focus", "#EntityResetBtn:focus")
 
 
 def regles() -> dict:

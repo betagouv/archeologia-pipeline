@@ -657,8 +657,8 @@ def corps_fiche_entite(
 # Enveloppe hors écran : le corps dans un dialogue (dev/rendu_hors_ecran.py)
 # ----------------------------------------------------------------------
 class FicheDialog(QDialog):
-    """Un corps de fiche dans un dialogue. L'assistant pose les corps dans son
-    panneau latéral ; ce dialogue ne sert qu'aux rendus et contrôles hors écran."""
+    """Un corps de fiche dans sa fenêtre à part, non modale : c'est ainsi que l'assistant
+    ouvre toute fiche depuis le 2026-10-25 (le panneau latéral du 2026-10-24 est retiré)."""
 
     def __init__(self, corps: QWidget, titre: str, nom_objet: str, parent=None,
                  taille=(900, 640)):

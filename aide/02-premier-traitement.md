@@ -43,7 +43,7 @@ Laissez les réglages par défaut. Détail dans [Étape 2 · Images du relief](e
 
 ## Étape 3 · Structures à chercher
 
-Activez la détection, puis cochez une structure, par exemple **Parcellaire** ou **Cratères**. Vous ne choisissez pas de modèle : le plugin retient le modèle entraîné pour cette structure et vérifie que l'image dont il a besoin est bien cochée à l'étape 2 (sinon, un bouton **+ Cocher** l'ajoute). Le bouton **ⓘ** de chaque structure ouvre sa fiche dans le panneau de droite, sans bloquer la page : à quoi ressemble la structure sur le relief et où le modèle l'a apprise.
+Activez la détection, puis cochez une structure, par exemple **Parcellaire** ou **Cratères**. Vous ne choisissez pas de modèle : le plugin retient le modèle entraîné pour cette structure et vérifie que l'image dont il a besoin est bien cochée à l'étape 2 (sinon, un bouton **+ Cocher** l'ajoute). Le bouton **ⓘ** de chaque structure ouvre sa fiche dans une fenêtre à part, sans bloquer la page : à quoi ressemble la structure sur le relief et où le modèle l'a apprise.
 
 Détail dans [Étape 3 · Structures à chercher](etape-3-detection.md).
 
@@ -67,5 +67,5 @@ Ce qu'il y a dans le dossier de sortie et comment le lire : [Vos résultats dans
 
 ## Au clavier
 
-Tab passe de commande en commande et un liseré bleu dit où l'on est ; Espace coche une image ou une structure, Entrée ouvre l'étape du rail de gauche ou le bouton qui a le focus ; Échap ferme le panneau des fiches, puis la fenêtre. Un bouton grisé porte une bordure pointillée, lisible sans la couleur.
+Tab passe de commande en commande et un liseré bleu dit où l'on est ; Espace coche une image ou une structure, Entrée ouvre l'étape du rail de gauche ou le bouton qui a le focus ; Échap ferme la fiche qui a le focus, ou l'assistant. Un bouton grisé porte une bordure pointillée, lisible sans la couleur.
 

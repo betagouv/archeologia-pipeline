@@ -13,7 +13,7 @@
 | Détection | Un polygone produit par un modèle, avec sa classe, son score et sa fiabilité |
 | Fenêtre d'analyse | Portion d'image sur laquelle un modèle travaille ; une dalle est découpée en fenêtres qui se recouvrent |
 | Fiabilité | Niveau affiché dans la légende, douteux à très probable, défini par la part de vrais objets mesurée à l'évaluation du modèle dans la bande de scores |
-| Fiche | Page d'explication d'une image du relief, d'une structure détectable ou d'un modèle, ouverte par le bouton ⓘ dans le panneau à droite de la page (onglets Image, Structure, Modèle) |
+| Fiche | Page d'explication d'une image du relief, d'une structure détectable ou d'un modèle, ouverte par le bouton ⓘ dans une fenêtre à part, une par sorte de fiche |
 | Flux | Image du relief déjà publiée par votre organisation, lue à la demande dans QGIS depuis l'onglet Consulter les flux, sans rien télécharger ni calculer |
 | GeoPackage | Format vectoriel des couches de détections, un fichier par structure |
 | Image du relief | Ce qui se coche à l'étape 2 : une image dérivée du MNT qui rend lisible une propriété du relief (ombrage, pente, facteur de vue du ciel…), nommée par son sigle et ce qu'elle montre (« LD · Structures en relief ») ; le relief nu (MNT) et les cartes de qualité de la donnée en font partie |

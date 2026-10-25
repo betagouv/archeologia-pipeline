@@ -10,7 +10,7 @@
 
 Monte un ``QgsApplication`` en ``QT_QPA_PLATFORM=offscreen`` avec le thème QSS du plugin, puis :
 
-- ``captures`` : l'assistant aux étapes 1 à 4 (la 4 à corriger, puis prête), la ligne d'une structure en réglages, le panneau ⓘ
+- ``captures`` : l'assistant aux étapes 1 à 4 (la 4 à corriger, puis prête), la ligne d'une structure en réglages, les fiches en fenêtre
   ouvert sur une image puis sur une structure, et la vue d'exécution (en cours, puis à la fin avec
   « Par où commencer »), avec des
   chemins neutres dans les champs et quelques produits cochés, en **double résolution**
@@ -221,33 +221,30 @@ def _ligne_reglages(app, w, img: Path, log, entite: str = "parcellaire") -> bool
     return ligne._conf_spin.decimals() == 2
 
 
-def _fiches_panneau(app, w, img: Path, log) -> bool:
-    """aide/img/etape2-fiche-produit.png et etape3-fiche-classe.png : le panneau ⓘ ouvert à côté
-    de la page, sur la fiche d'une image (étape 2) puis d'une structure (étape 3)."""
-    w.resize(1400, 760)   # la fenêtre d'un poste de bureau : la page garde sa place à côté du panneau
+def _fiches_fenetres(app, w, img: Path, log) -> bool:
+    """aide/img/etape2-fiche-produit.png et etape3-fiche-classe.png : la fiche d'une image (étape 2)
+    puis d'une structure (étape 3), chacune dans sa fenêtre à part (2026-10-25)."""
+    def _fiche(sorte: str, nom_png: str) -> bool:
+        for _ in range(3):
+            app.processEvents()
+        dlg = w._fiches.get(sorte)
+        ok = dlg is not None and dlg.isVisible()
+        if dlg is not None:
+            dlg.grab().save(str(img / nom_png))
+            log(f"fiche {sorte} :", dlg.windowTitle(), "| visible :", dlg.isVisible(),
+                "| fenêtre :", dlg.width(), "x", dlg.height())
+            dlg.close()
+        app.processEvents()
+        return ok
+
     w._goto_step(2)
     w._indices_page.fiche_requested.emit("SVF")
-    app.processEvents()
-    ok_image = w._panel.isVisible() and w._panel.onglet_courant() == "Image"
-    w.grab().save(str(img / "etape2-fiche-produit.png"))
-    log("panneau ⓘ, image :", w._panel.onglet_courant(), "| visible :", w._panel.isVisible(),
-        "| fenêtre :", w.width(), "x", w.height())
-    w._panel.fermer()
-    app.processEvents()
+    ok_image = _fiche("Image", "etape2-fiche-produit.png")
     w._goto_step(3)
     w._detection_page.fiche_requested.emit("cratere")
-    app.processEvents()
-    ok_structure = w._panel.isVisible() and w._panel.onglet_courant() == "Structure"
-    w.grab().save(str(img / "etape3-fiche-classe.png"))
-    log("panneau ⓘ, structure :", w._panel.onglet_courant(), "| visible :", w._panel.isVisible(),
-        "| fenêtre :", w.width(), "x", w.height())
-    w._panel.fermer()
-    app.processEvents()
-    ok_fermeture = w.width() == 1400
-    log("panneau ⓘ fermé : fenêtre", w.width(), "x", w.height(), "(attendu 1400)")
-    w.resize(980, 760)
-    app.processEvents()
-    return ok_image and ok_structure and ok_fermeture
+    ok_structure = _fiche("Structure", "etape3-fiche-classe.png")
+    log("assistant après les fiches : fenêtre", w.width(), "x", w.height(), "(attendu 980)")
+    return ok_image and ok_structure and w.width() == 980
 
 
 def _processing_hors_ecran(log) -> bool:
@@ -436,7 +433,7 @@ def captures(app, sortie: Path, log) -> int:
     log("structures affichées à l'étape 3 :", n, "(0 = aucun modèle sous data/models)")
     w.grab().save(str(img / "etape3-detection.png"))
     ligne_ok = _ligne_reglages(app, w, img, log)
-    fiche_ok = _fiches_panneau(app, w, img, log)
+    fiche_ok = _fiches_fenetres(app, w, img, log)
     etape4_ok = _etape4(app, w, img, log)
     etape6_ok = _etape6(app, w, img, log)
     flux_ok = _consulter_flux(app, w, img, log)
@@ -444,7 +441,7 @@ def captures(app, sortie: Path, log) -> int:
     # Processing s'initialise, et la première finissait en « QGIS processing » manquant.
     corriger_ok = _etape4_a_corriger(app, w, img, log, fichiers) if fichiers is not None else False
     log("captures écrites dans", img, "— taille de l'assistant :", w.width(), "x", w.height())
-    log("contrôles : structures", bool(n), "| fin", fin_ok, "| ligne", ligne_ok, "| panneau", fiche_ok,
+    log("contrôles : structures", bool(n), "| fin", fin_ok, "| ligne", ligne_ok, "| fiches", fiche_ok,
         "| à corriger", corriger_ok, "| étape 4", etape4_ok, "| étape 6", etape6_ok, "| flux", flux_ok)
     return 0 if n and fin_ok and ligne_ok and fiche_ok and corriger_ok and etape4_ok and etape6_ok and flux_ok else 1
 

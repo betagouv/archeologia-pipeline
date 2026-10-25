@@ -15,7 +15,6 @@ DIALOG = UI / "dialogs" / "indice_info_dialog.py"
 DIALOG_CLASSE = UI / "dialogs" / "class_info_dialog.py"
 DIALOG_MODELE = UI / "dialogs" / "model_info_dialog.py"
 WIZARD = UI / "wizard_dialog.py"
-PANEL = UI / "widgets" / "fiche_panel.py"
 
 
 def _fonctions(source: str) -> dict:
@@ -81,7 +80,8 @@ def _fonction(fichier: Path, nom: str) -> ast.AST:
 
 
 def test_fiches_sans_exec_depuis_les_pages():
-    """Une fiche s'ouvre dans le panneau latéral, jamais en modal depuis une page."""
+    """Une fiche s'ouvre dans une fenêtre à part, non modale (show), jamais en modal
+    depuis une page (le panneau latéral du lot 4 est retiré le 2026-10-25)."""
     for fichier in (STEP2, STEP3, CARD):
         src = fichier.read_text(encoding="utf-8")
         # Seul le menu « Changer ▾ » (QMenu) a le droit de s'ouvrir sur place.
@@ -92,7 +92,9 @@ def test_fiches_sans_exec_depuis_les_pages():
         ]
         assert not modaux, f"{fichier.name} ouvre encore un dialogue modal : {modaux}"
         assert "fiche_requested" in src, fichier.name
-    assert "class FichePanel" in PANEL.read_text(encoding="utf-8")
+    poser = ast.unparse(_fonction(WIZARD, "_poser_fiche"))
+    assert "FicheDialog(" in poser and ".show()" in poser and ".exec(" not in poser
+    assert not (UI / "widgets" / "fiche_panel.py").exists(), "le panneau latéral est retiré"
     for fichier, fabrique in ((DIALOG, "corps_fiche_indice"), (DIALOG_CLASSE, "corps_fiche_entite"),
                               (DIALOG_MODELE, "corps_fiche_modele")):
         assert f"def {fabrique}(" in fichier.read_text(encoding="utf-8"), fabrique
@@ -101,12 +103,12 @@ def test_fiches_sans_exec_depuis_les_pages():
 
 
 def test_lecture_seule_conserve_fiches():
-    """Pendant un traitement, les pages sont en lecture seule mais le panneau ⓘ reste ouvrable."""
+    """Pendant un traitement, les pages sont en lecture seule mais les fiches restent ouvrables."""
     src = WIZARD.read_text(encoding="utf-8")
-    assert "self._panel = FichePanel(" in src
+    assert "self._fiches" in src
     fn = _fonction(WIZARD, "_enter_review_mode")
     texte = ast.unparse(fn)
-    assert "_panel" not in texte, "la lecture seule ne doit pas toucher au panneau des fiches"
+    assert "_fiches" not in texte, "la lecture seule ne doit pas toucher aux fenêtres des fiches"
     # Les boutons ⓘ des lignes de l'étape 3 ne sont pas désactivés par la lecture seule.
     ro = ast.unparse(_fonction(CARD, "set_readonly"))
     assert "_fiche_btn" not in ro and "_model_info" not in ro, "les ⓘ restent cliquables en lecture seule"
@@ -236,11 +238,6 @@ def test_tampon_avant_journal_referme_sur_chaque_sortie():
     lancer = src[src.index("def start_run("):src.index("def request_cancel(")]
     apres = lancer[lancer.index("self._tampon.actif = True"):]
     assert apres.count("return") == apres.count("self._tampon.actif = False") - 1   # + la fermeture avant le thread
-
-
-def test_largeur_avant_panneau_ignoree_si_maximisee():
-    texte = ast.unparse(_fonction(WIZARD, "_poser_fiche"))
-    assert "if not self.isMaximized()" in texte or "isMaximized() else 0" in texte
 
 
 # ---------------------------------------------------------------- lot 8 (2026-10-25)

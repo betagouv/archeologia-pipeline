@@ -21,30 +21,30 @@ La liste dépend des modèles installés : une structure n'apparaît que si un m
 ## La ligne d'une structure
 
 - **Cocher une structure** : cliquez n'importe où sur sa ligne. Au clavier, Tab passe de ligne en ligne et Espace coche. Sur une ligne cochée, la partie réglages qui s'ouvre dessous ne coche ni ne décoche : un clic sur le seuil, la figure ou les paramètres de regroupement sert seulement à régler.
-- **Vignette** : un clic sur elle ouvre la fiche du modèle qui détecte la structure, dans l'onglet Modèle du panneau. **Description** : une phrase ; si elle est coupée par « … », son texte complet est en infobulle.
+- **Vignette** : un clic sur elle ouvre la fiche du modèle qui détecte la structure, dans sa propre fenêtre. **Description** : une phrase ; si elle est coupée par « … », son texte complet est en infobulle.
 - **Image requise** : le sigle de l'image sur laquelle le modèle travaille. Si elle n'est pas cochée à l'étape 2, le sigle passe en orange et un lien **l'ajouter** la coche.
 - **Modèle ▾** : seulement quand plusieurs modèles couvrent la structure, sur une ligne cochée ; le menu coche le modèle retenu et chaque entrée indique le nombre de **fenêtres d'analyse** que le modèle découpe dans une dalle : c'est un fait sur le volume de calcul, pas une estimation de durée. Le nom du modèle n'est pas sur la ligne : il se lit dans **Ce qui sera analysé**, sous la liste, une phrase par modèle avec son **ⓘ** qui ouvre la fiche du modèle, dans la fiche de la structure, et d'un clic sur la vignette de la ligne.
 - Le **ⓘ** en bout de ligne ouvre la fiche de la structure.
 - **▸ Réglages**, sous la ligne cochée, déplie ses seuils et réglages (voir plus bas), comme pour une image à l'étape 2.
 - **Regrouper en zones** : pour certaines structures, une case sous la ligne regroupe les détections proches en zones. Le **Regroupement de cratères** est une structure à part entière, avec le badge **regroupement automatique** : la cocher produit les zones et les cratères qui les composent ; elle coche d'office **Cratères**, dont la ligne prend le badge « inclus dans » et perd son réglage de seuil : une seule couche de cratères, au seuil réglé sur la ligne du regroupement.
 
-## Le panneau des fiches
+## Les fiches
 
-Un bouton **ⓘ** ouvre sa fiche dans un **panneau à droite de la page**, jamais dans une fenêtre qui bloque : vous lisez la fiche et vous cochez en même temps, vous changez d'étape, la fiche reste. La fenêtre s'élargit du panneau à l'ouverture et se resserre à la fermeture, dans la limite de l'écran.
+Un bouton **ⓘ** ouvre sa fiche dans une **fenêtre à part**, qui ne bloque pas l'assistant : vous lisez la fiche et vous cochez en même temps, vous changez d'étape, la fiche reste ouverte. La fenêtre se déplace et se redimensionne comme vous voulez ; **Fermer** ou la touche **Échap** la ferme.
 
-Le panneau a trois onglets, **Image**, **Structure** et **Modèle**, un par sorte de fiche ; chacun garde la dernière fiche ouverte, pour revenir de la fiche du modèle à celle de la structure d'un clic. Le bouton **✕** ou la touche **Échap** ferme le panneau ; Échap sans panneau ouvert ferme l'assistant, comme avant.
+Une fenêtre par sorte de fiche, **Image**, **Structure** et **Modèle** : ouvrir une autre structure remplace la fiche dans sa fenêtre, à la même place ; la fiche du modèle s'ouvre à côté de celle de la structure, pour les lire ensemble.
 
 Quand plusieurs classes portent la structure (une comparaison de deux modèles, un regroupement et ses détections sources), une liste en tête de la fiche passe de l'une à l'autre.
 
 ### La fiche d'une structure
 
-La fiche se lit dans l'ordre des questions qu'on se pose avant de cocher : à quoi ressemble la structure sur le relief, dans quelle optique l'utiliser et ce que le modèle ne détecte pas, dans quel corpus et sur quel terrain il l'a apprise, sa fiabilité mesurée avec le **profil des scores** (les détections de l'évaluation rangées par score, les vraies en couleur et les fausses en gris, avec les coupures des quatre niveaux), ses limites, puis le contexte technique. Depuis la fiche, le lien **Fiche du modèle** ouvre l'onglet Modèle.
+La fiche se lit dans l'ordre des questions qu'on se pose avant de cocher : à quoi ressemble la structure sur le relief, dans quelle optique l'utiliser et ce que le modèle ne détecte pas, dans quel corpus et sur quel terrain il l'a apprise, sa fiabilité mesurée avec le **profil des scores** (les détections de l'évaluation rangées par score, les vraies en couleur et les fausses en gris, avec les coupures des quatre niveaux), ses limites, puis le contexte technique. Depuis la fiche, le lien **Fiche du modèle** ouvre la fiche du modèle dans sa propre fenêtre.
 
 En « Vérité terrain », les contours des objets annotés sont tracés dans la couleur de la couche de la classe, celle que vous retrouvez dans QGIS. Dans « Ce que le modèle a appris », une petite carte montre les zones où la structure a été apprise et mesurée, chacune en disque de la couleur de sa couche, d'autant plus grand qu'elle compte d'objets annotés ; à côté, la liste des zones avec leurs effectifs. Survoler une zone de la liste ou un disque de la carte met les deux en valeur : la ligne se teinte et le disque s'entoure.
 
 Fiche de structure et fiche de modèle se distinguent d'un coup d'œil : la première porte un liseré et l'étiquette « Structure détectable » dans la couleur de sa couche, la seconde un liseré ardoise, l'étiquette « Modèle de détection » et la liste des structures qu'il détecte, chacune avec sa pastille de couleur.
 
-[![Le panneau des fiches ouvert sur Cratères, à droite de l'étape 3 : l'étiquette « Structure détectable », la vignette du corpus avec la bascule relief seul / vérité terrain, puis ce qu'il faut savoir avant de cocher](img/etape3-fiche-classe.png)](img/etape3-fiche-classe.png)
+[![La fiche de Cratères dans sa fenêtre : l'étiquette « Structure détectable », la vignette du corpus avec la bascule relief seul / vérité terrain, puis ce qu'il faut savoir avant de cocher](img/etape3-fiche-classe.png)](img/etape3-fiche-classe.png)
 
 ## Comparer deux modèles
 

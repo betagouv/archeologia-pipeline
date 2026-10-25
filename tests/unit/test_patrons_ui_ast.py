@@ -263,7 +263,11 @@ def test_la_ligne_ne_porte_plus_le_nom_du_modele():
     assert "_model_name" not in src and "_model_info" not in src
     assert src.count("InfoButton(") == 1 and 'QPushButton("Modèle ▾")' in src
     page = STEP3.read_text(encoding="utf-8")
-    assert "row.modele_requested" not in page and "self.modele_requested.emit(m)" in page
+    assert "self.modele_requested.emit(m)" in page
+    # La vignette de la ligne ouvre la fiche du modèle (demande du 2026-10-25) : la page
+    # relaie le signal de la ligne ; aucun « ⓘ » de modèle sur la ligne pour autant.
+    assert "row.modele_requested.connect(" in page
+    assert "class _Vignette(QLabel)" in src and "WA_TransparentForMouseEvents" not in src
 
 
 def test_reglages_sous_chaque_ligne_comme_a_l_etape_2():
@@ -277,3 +281,13 @@ def test_reglages_sous_chaque_ligne_comme_a_l_etape_2():
     src = CARD.read_text(encoding="utf-8")
     assert 'setObjectName("CardToggle")' in src and "reglages_toggled = pyqtSignal(str, bool)" in src
     assert "def est_deplie(self)" in src and "def _basculer_reglages(self)" in src
+
+
+def test_le_bouton_de_fiche_est_un_i_dans_un_rond():
+    """Demande de l'utilisateur (2026-10-25) : le bouton de fiche du plugin reprend le « i » des
+    maquettes, un « i » gras dans un rond de 24 px ; le glyphe ⓘ dessinait un second cercle."""
+    src = (UI / "widgets" / "info_button.py").read_text(encoding="utf-8")
+    assert 'setText("i")' in src and 'setText("ⓘ")' not in src
+    qss = (UI / "theme" / "v2.qss").read_text(encoding="utf-8")
+    regle = qss[qss.index("#InfoButton {"):qss.index("#InfoButton:hover")]
+    assert "border-radius: 12px" in regle and "font-weight: bold" in regle

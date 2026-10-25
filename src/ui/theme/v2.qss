@@ -195,9 +195,10 @@ QPushButton:disabled { color: #707070; border: 1px dashed #b0b0b0; background: #
 #EntityLine[state="on"] #CardToggle:focus { background: #ffffff; }
 #CardReglages { background: transparent; }
 /* Le seul bouton de fiche : « ⓘ » rond de 24 px (interface rationalisée). */
+/* Un « i » gras dans un rond (2026-10-25) : le texte du bouton est « i », pas le glyphe ⓘ. */
 #InfoButton {
     background: #ffffff; border: 1px solid #2b79c2; border-radius: 12px;
-    color: #2b79c2; font-size: 13px; font-weight: bold; padding: 0;
+    color: #2b79c2; font-size: 14px; font-weight: bold; padding: 0 0 1px 0;
 }
 #InfoButton:hover { background: #d6e6f4; color: #1d5a96; }
 #InfoButton:focus { border: 2px solid #1d5a96; }

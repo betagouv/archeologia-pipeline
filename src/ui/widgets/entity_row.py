@@ -119,6 +119,19 @@ _CLUSTER_PARAM_SPECS = (
 _THUMB = 28  # côté de la vignette de ligne, en px logiques
 
 
+class _Vignette(QLabel):
+    """La vignette de la ligne : un clic ouvre la fiche du modèle (demande de l'utilisateur,
+    2026-10-25) et ne coche pas la ligne."""
+
+    clicked = pyqtSignal()
+
+    def mousePressEvent(self, event):  # noqa: N802 (signature Qt)
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.clicked.emit()
+            return   # consommé : la ligne ne bascule pas
+        super().mousePressEvent(event)
+
+
 class _Ligne(QWidget):
     """Petite rangée horizontale (QWidget transparent + QHBoxLayout)."""
 
@@ -180,6 +193,7 @@ class EntityRow(QFrame):
     fiche_requested = pyqtSignal(str)      # entity_id — ouvrir la fiche de structure
     reset_requested = pyqtSignal(str)      # entity_id — rétablir SES valeurs de modèle
     reglages_toggled = pyqtSignal(str, bool)   # entity_id — « ▸ Réglages » déplié / replié
+    modele_requested = pyqtSignal(str)     # nom du modèle primaire — sa fiche, depuis la vignette
 
     def __init__(self, entity_id: str, label: str, description: str, parent=None):
         super().__init__(parent)
@@ -214,13 +228,15 @@ class EntityRow(QFrame):
         self._check.setObjectName("EntityCheck")
         self._check.setFixedSize(15, 15)
         self._check.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        # Vignette inerte (demande utilisateur 2026-10-08) : un clic dessus coche ou
-        # décoche la ligne ; seul le « ⓘ » ouvre la fiche.
-        self._thumb = QLabel("")
+        # Vignette : un clic ouvre la fiche du MODÈLE (demande utilisateur 2026-10-25, qui
+        # remplace la vignette inerte de 2026-10-08) ; le « ⓘ » ouvre celle de la structure.
+        self._thumb = _Vignette("")
         self._thumb.setObjectName("EntityThumb")
         self._thumb.setFixedSize(_THUMB, _THUMB)
         self._thumb.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._thumb.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+        self._thumb.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._thumb.setToolTip("Fiche du modèle : architecture, entraînement, évaluation")
+        self._thumb.clicked.connect(self._demander_modele)
         self._label = QLabel(label)
         self._label.setObjectName("EntityLabel")
         self._desc = _Elide(description)
@@ -522,8 +538,8 @@ class EntityRow(QFrame):
         show_model = bool(selected and self._has_model)
         multi = len(self._candidates) > 1
         self._change_btn.setVisible(show_model and multi)
+        self._current_models = list(current_models or [])   # aussi décochée : la vignette
         if show_model:
-            self._current_models = list(current_models or [])
             disps = [self._candidates.get(n, n) for n in self._current_models]
             tips = [self._couts.get(n, ("", ""))[1] for n in self._current_models]
             self._change_btn.setToolTip("\n\n".join([t for t in tips if t] or disps))
@@ -738,6 +754,12 @@ class EntityRow(QFrame):
             val = self._cluster_spins[key].value()
             params[key] = int(round(val)) if key in self._cluster_int_keys else float(val)
         self.cluster_params_changed.emit(self._id, params)
+
+    def _demander_modele(self) -> None:
+        """Clic sur la vignette : la fiche du modèle retenu (le premier en comparaison)."""
+        noms = list(self._current_models) or list(self._candidates)
+        if noms and self._has_model:
+            self.modele_requested.emit(str(noms[0]))
 
     # ------------------------------------------------------------------
     def _on_change_clicked(self) -> None:

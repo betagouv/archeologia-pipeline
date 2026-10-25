@@ -418,12 +418,13 @@ def test_le_widget_suit_le_seuil_et_les_fiches_posent_les_zones():
     assert "def phrase_precision_rappel" in widget and "def ligne_essai_seuil" in widget
 
 
-def test_ligne_entite_selection_par_le_haut_et_vignette_inerte():
-    """Garde-fou sans QGIS : la vignette n'ouvre plus la fiche ; le clic coche partout
-    dans la ligne sauf dans la bande des réglages (2026-10-08, lignes depuis le 2026-10-24)."""
+def test_ligne_entite_selection_par_le_haut_et_vignette_vers_le_modele():
+    """Garde-fou sans QGIS : la vignette ouvre la fiche du MODÈLE et consomme son clic
+    (demande du 2026-10-25, qui remplace la vignette inerte du 2026-10-08) ; le clic coche
+    partout ailleurs dans la ligne sauf dans la bande des réglages (lignes depuis le 2026-10-24)."""
     carte = (Path(__file__).resolve().parents[2] / "src/ui/widgets/entity_row.py").read_text(encoding="utf-8")
-    assert "self._thumb.clicked.connect" not in carte
-    assert "WA_TransparentForMouseEvents" in carte
+    assert "self._thumb.clicked.connect(self._demander_modele)" in carte
+    assert "WA_TransparentForMouseEvents" not in carte
     assert "_bande_reglages()" in carte and "_bas_zone_selection" not in carte
 
 

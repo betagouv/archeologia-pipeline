@@ -508,6 +508,12 @@ QPushButton[role="micro"] {
 #RunCancelBtn:hover { background: #f5d4d4; border-color: #7a2727; }
 #RunCancelBtn:disabled { background: #e3e3e3; border-color: #b0b0b0; color: #909090; }
 
+/* ---- Étape 6 : un traitement connu par ligne ---- */
+#ResultatLigne { background: #ffffff; border: 1px solid #8a94a0; border-radius: 6px; }
+#ResultatTitre { font-weight: bold; color: #000000; font-size: 12px; }
+#ResultatDossier { color: #4f5a66; font-size: 10px; font-family: "Consolas", "Courier New", monospace; }
+#ResultatDetail { color: #2c2c2c; font-size: 11px; }
+
 /* ---- Barre d'actions ---- */
 #WizardActionBar { background: #f0f0f0; border-top: 1px solid #c4c4c4; }
 /* Pourquoi le bouton principal est gris : à sa gauche, dans le rouge des points à corriger. */

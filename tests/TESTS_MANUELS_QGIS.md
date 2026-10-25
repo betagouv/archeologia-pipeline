@@ -412,7 +412,7 @@ Cette grille indique, pour chaque vague livrée, **quelles sections de tests son
 
 - [ ] **21.1 Visibilité du bouton** : « Sélectionner les dalles » visible **uniquement** en mode `ign_laz` (masqué dans les autres modes).
 - [ ] **21.1 bis Fraîcheur de la grille** (2026-10-08) : en mode `ign_laz`, le bandeau du mode se termine par « Grille IGN du <jour> <mois> <année>, <N> dalles. Les dalles publiées depuis n'y sont pas encore. » — la date est celle de l'en-tête du `.dbf` livré (régénération par `build_quadrillage_from_wfs.py`), l'effectif celui du fichier (524 687 au 7 octobre 2026) ; rien de tel dans les trois autres modes.
-- [ ] **21.2 Activation** : clic → la couche « Quadrillage IGN LiDAR HD » apparaît (contour seul, intérieur transparent) dans un groupe « Quadrillage IGN » ; **seul le dialogue du plugin se minimise** (la fenêtre QGIS reste affichée, le canevas visible) ; une barre de message QGIS « Valider (0 dalle) / Tout effacer / Annuler » s'affiche.
+- [ ] **21.2 Activation** (à rejouer, lot 9 du 2026-10-24) : clic → la couche « Quadrillage IGN LiDAR HD » apparaît (contour seul, intérieur transparent) dans un groupe « Quadrillage IGN » ; **l'assistant ne se réduit plus** : il se range contre le bord droit de l'écran, à sa largeur minimale, et reprend sa place à Valider ou Annuler ; une barre de message QGIS « Valider (0 dalle) / Tout effacer / Annuler » s'affiche.
 - [ ] **21.3 Orientation + garde (U1)** : depuis une vue monde/ailleurs, le clic sur le bouton **zoome automatiquement à une échelle où la grille rend**, centré sur la zone visée (bornée à la France) ; tant que la vue est trop dézoomée (grille masquée), un clic/encadré **ne sélectionne rien** et affiche « Zoomez davantage… » ; après zoom, la sélection fonctionne. Dézoomé sur toute la France, la grille n'est pas dessinée (pas de figeage) ; en zoomant elle apparaît et reste fluide (index `.qix`).
 - [ ] **21.4 Clic toggle + estimation (U2)** : cliquer une dalle → surlignée ; recliquer → désélectionnée ; le bouton affiche « Valider (N dalles ≈ X–Y Go/Mo) ».
 - [ ] **21.5 Glisser-boîte (ajout)** : tracer un rectangle → toutes les dalles intersectées s'ajoutent ; rectangle **orange** ; compteur à jour.
@@ -1174,4 +1174,16 @@ Lot 3 du chantier d'accélération (2026-10-15) : une dalle lue en entier reçoi
 - [ ] **66.5 Rapport** : les barres du bilan sont dans la couleur de chaque couche déclinée par niveau (comme la légende QGIS) ; la colonne « Par niveau » dit « très probable 12 · probable 30 · … » ; une couche inconnue du registre garde les bleus.
 - [ ] **66.6 Échec** : un traitement qui s'interrompt cite « Voir le journal technique/journaux/pipeline_log_<date>.txt ».
 - [ ] **66.7 Manuel** : F1 sur l'étape 5 → deux boutons, Relancer maintenant, bilan lisible, journal nommé ; Vos résultats → rapport en couleurs de couche.
+
+## 67. Interface rationalisée — lot 9, revoir un résultat et choisir les dalles sans réduire ⭐ P1
+
+> **Contexte** (2026-10-24, proposition A) : sixième écran « Résultats » du rail (traitements connus de ce poste),
+> « Revoir les résultats » à la fin d'un traitement, l'assistant rangé contre le bord de l'écran pendant le choix des dalles.
+
+- [ ] **67.1 Rail** : six étapes ; « Résultats » porte « N traitements connus » ; à l'étape 6, « Suivant » est grisé (dernier écran) ; F1 ouvre « Vos résultats dans QGIS ».
+- [ ] **67.2 Liste** : chaque traitement lancé depuis ce poste, du plus récent au plus ancien : date, point de départ, dossier, images, structures, détections ; un dossier supprimé disparaît de la liste ; sans traitement : « Aucun traitement connu sur ce poste. ».
+- [ ] **67.3 Gestes** : « Ajouter au projet QGIS courant » charge les couches stylées (seuils et groupes de la trace) ; « Ouvrir livrable/projet.qgs » ouvre le projet (QGIS propose d'enregistrer le courant) ; « Rapport » ouvre le rapport ; « Relancer avec un seuil changé » recharge la configuration de la trace et ouvre l'étape 3 (grisé sans trace complète) ; pendant un traitement, relancer ramène à l'étape 5.
+- [ ] **67.4 Fin de traitement** : « Revoir les résultats » dans le cadre « Par où commencer » mène à l'étape 6, où le traitement qui vient de finir est en tête.
+- [ ] **67.5 Choisir sur la carte** : « Choisir sur la carte » range l'assistant contre le bord droit de l'écran, réduit à sa largeur minimale, sans le minimiser ; Valider ou Annuler lui rend sa taille et sa place ; QGIS n'est jamais minimisé.
+- [ ] **67.6 Manuel** : Vos résultats → « Revoir un résultat » ; Premier traitement → six étapes ; Étape 1 → l'assistant rangé contre le bord.
 

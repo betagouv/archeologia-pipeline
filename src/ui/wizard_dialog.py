@@ -55,6 +55,7 @@ from .steps.step_1_source import SourcePage
 from .steps.step_2_indices import IndicesPage
 from .steps.step_3_detection import DetectionPage
 from .steps.step_4_launch import LaunchPage, RecapSection
+from .steps.step_6_resultats import ResultatsPage
 from .visualisation_tab import VisualisationTab
 from .widgets.card import build_card
 from .widgets.fiche_panel import LARGEUR as LARGEUR_PANNEAU, FichePanel
@@ -82,6 +83,7 @@ class WizardDialog(QDialog):
         {"label": "Structures à chercher", "sub": "—", "optional": True},
         {"label": "Prêt à lancer", "sub": "Environnement et récapitulatif"},
         {"label": "Traitement", "sub": "Frise et journal"},
+        {"label": "Résultats", "sub": "revoir un traitement"},
     ]
     TITLES = {
         1: ("Vos données", "Par où commence le traitement"),
@@ -89,9 +91,11 @@ class WizardDialog(QDialog):
         3: ("Structures à chercher", "La détection automatique est facultative"),
         4: ("Prêt à lancer", "Environnement et récapitulatif"),
         5: ("Traitement", "Frise et journal"),
+        6: ("Résultats", "Revoir un traitement lancé depuis ce poste"),
     }
     STEP_VERIFS = 4      # le bouton principal y devient « Lancer le pipeline »
     STEP_TRAITEMENT = 5  # frise + journal ; le lancement y mène
+    STEP_RESULTATS = 6   # revoir un traitement de ce poste (dernier écran)
 
     def __init__(self, parent=None, iface=None):
         super().__init__(parent)
@@ -162,11 +166,13 @@ class WizardDialog(QDialog):
         self._detection_page = DetectionPage(self._plugin_root)
         self._launch_page = LaunchPage()
         self._run_view = RunView(self._config, iface=self._iface)
+        self._resultats_page = ResultatsPage(iface=self._iface)
         self._stack.addWidget(self._defilante(self._source_page))    # étape 1
         self._stack.addWidget(self._defilante(self._indices_page))   # étape 2
         self._stack.addWidget(self._detection_page)            # étape 3
         self._stack.addWidget(self._launch_page)               # étape 4
         self._stack.addWidget(self._build_run_page())          # étape 5
+        self._stack.addWidget(self._defilante(self._resultats_page))   # étape 6
         body.addWidget(self._rail)
         body.addWidget(self._stack, 1)
         # Panneau ⓘ : les fiches (image, structure, modèle) à droite de la page, non
@@ -210,6 +216,8 @@ class WizardDialog(QDialog):
         self._detection_page.modele_requested.connect(self.ouvrir_fiche_modele)
         self._source_page.mode_changed.connect(self._on_mode_changed)
         self._run_view.run_started.connect(self._on_run_started)
+        self._run_view.revoir_resultats.connect(lambda: self._goto_step(self.STEP_RESULTATS))
+        self._resultats_page.relancer.connect(self._relancer_depuis_resultat)
         self._run_view.run_finished.connect(self._on_run_finished)
         self._launch_page.workers_changed.connect(self._on_workers_changed)
         self._launch_page.carte_graphique_changed.connect(self._on_carte_graphique_changed)
@@ -289,6 +297,15 @@ class WizardDialog(QDialog):
             self._goto_step(self.STEP_VERIFS)
             return
         self._on_launch()
+
+    def _relancer_depuis_resultat(self, config: dict) -> None:
+        """« Relancer avec un seuil changé » (étape 6) : la configuration de la trace est
+        rechargée par le point de passage unique, et l'assistant s'ouvre à l'étape 3."""
+        if self._run_view.is_running():
+            self._goto_step(self.STEP_TRAITEMENT)
+            return
+        self._apply_config(config)
+        self._goto_step(3)
 
     def _on_mode_changed(self, mode: str) -> None:
         """Le mode (étape 1) pilote la neutralisation des sections de l'étape 2."""
@@ -495,9 +512,13 @@ class WizardDialog(QDialog):
         self._title_label.setText(title)
         self._subtitle_label.setText(f"Étape {step} sur {self._n_steps} · {subtitle}")
         self._prev_btn.setEnabled(step > 1)
-        if step >= self.STEP_VERIFS:
+        if step in (self.STEP_VERIFS, self.STEP_TRAITEMENT):
             self._update_launch_recap()
             self._apply_validation()  # met aussi à jour le bouton principal
+        elif step == self.STEP_RESULTATS:
+            self._resultats_page.rafraichir()
+            self._refresh_rail_subs()
+            self._update_launch_button()
         else:
             self._update_launch_button()
         self._update_review_banner()
@@ -508,7 +529,7 @@ class WizardDialog(QDialog):
     def _next_launches(self) -> bool:
         """Le bouton principal lance le traitement aux étapes 4 et 5 — sauf à
         l'étape 4 pendant un run : il y mène au suivi (étape 5)."""
-        if self._current_step < self.STEP_VERIFS:
+        if self._current_step < self.STEP_VERIFS or self._current_step >= self.STEP_RESULTATS:
             return False
         return not (self._current_step == self.STEP_VERIFS and self._run_view.is_running())
 
@@ -712,8 +733,9 @@ class WizardDialog(QDialog):
             # (permet de remonter jusqu'à l'étape 5 = suivi du traitement).
             self._next_btn.setText("Suivant  →")
             self._next_btn.setIcon(QIcon())
-            self._next_btn.setEnabled(True)
-            self._next_btn.setToolTip("")
+            # Dernier écran (Résultats) : plus de suivant.
+            self._next_btn.setEnabled(self._current_step < self.STEP_RESULTATS)
+            self._next_btn.setToolTip("" if self._current_step < self.STEP_RESULTATS else "Dernier écran")
             return
         self._next_btn.setText("Lancer le traitement")
         self._next_btn.setIcon(self._play_icon)
@@ -743,6 +765,7 @@ class WizardDialog(QDialog):
         self._rail.set_sub(1, self._source_page.summary())
         self._rail.set_sub(2, self._indices_page.summary())
         self._rail.set_sub(3, self._detection_page.summary())
+        self._rail.set_sub(6, self._resultats_page.summary())
 
     # ------------------------------------------------------------------
     # Persistance (autosave de last_ui_config.json)

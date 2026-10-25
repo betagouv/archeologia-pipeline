@@ -35,6 +35,7 @@ CHAPITRE_PAR_ETAPE: Dict[int, str] = {
     3: "etape-3-detection",
     4: "etape-4-verifications",
     5: "etape-5-traitement",
+    6: "resultats",
 }
 
 _TITRE = re.compile(r"^(#{1,3})\s+(.+?)\s*#*\s*$")

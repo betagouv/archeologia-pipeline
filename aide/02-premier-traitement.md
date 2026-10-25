@@ -22,9 +22,9 @@ Le bouton **Aide** de l'assistant et la touche **F1** ouvrent ce manuel sur le c
 
 Dans la fenêtre : le sommaire à gauche, le texte à droite. **Ctrl+F** cherche dans tout le manuel : les occurrences s'affichent dans le sommaire, par chapitre et par section, et un clic saute dedans ; Entrée ou **F3** passe à la suivante dans le chapitre ouvert, vider le champ rend le sommaire. Les flèches **Précédent** et **Suivant** (Alt+← et Alt+→) rejouent la navigation après un lien. **Ctrl+molette** règle la taille du texte, Ctrl+0 la remet. **Exporter en PDF** écrit le manuel complet dans un fichier.
 
-## L'assistant en cinq étapes
+## L'assistant en six étapes
 
-Le plugin s'ouvre sur un assistant : un rail à gauche indique l'étape courante, **Précédent** et **Suivant** en bas. Le rail signale par une pastille toute erreur qui empêcherait de lancer. Vos choix sont sauvegardés en continu : à la réouverture, vous retrouvez vos derniers réglages. Le bouton **Aide** en haut à droite, ou la touche **F1**, ouvre le chapitre de cette aide qui correspond à l'étape affichée.
+Le plugin s'ouvre sur un assistant : un rail à gauche indique l'étape courante, **Précédent** et **Suivant** en bas. Les quatre premières étapes préparent le traitement, la cinquième le suit, la sixième, **Résultats**, retrouve les traitements lancés depuis ce poste. Le rail signale par une pastille toute erreur qui empêcherait de lancer. Vos choix sont sauvegardés en continu : à la réouverture, vous retrouvez vos derniers réglages. Le bouton **Aide** en haut à droite, ou la touche **F1**, ouvre le chapitre de cette aide qui correspond à l'étape affichée.
 
 ## Étape 1 · Vos données
 

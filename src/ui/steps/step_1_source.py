@@ -57,6 +57,7 @@ class SourcePage(QWidget):
         self._tile_tool = None
         self._grid_layer = None
         self._prev_map_tool = None
+        self._geometrie_avant_carte = None   # géométrie de l'assistant avant le choix sur la carte (H-02)
         self._msg_item = None
         self._validate_btn = None
         # Bandeau persistant « zoomez pour voir les dalles » + canevas connecté à
@@ -496,13 +497,19 @@ class SourcePage(QWidget):
         self._refresh_scale_notice()
 
         self._dalles_btn.setEnabled(False)
-        # Minimiser le dialogue du plugin pour dégager le canevas. NE PAS utiliser
-        # lower() : sur Windows, abaisser une fenêtre possédée par la fenêtre QGIS
-        # minimise QGIS lui-même. showMinimized() ne réduit que le dialogue.
+        # Dégager le canevas SANS réduire l'assistant (H-02, 2026-10-24) : la fenêtre
+        # garde sa géométrie, se resserre à sa largeur minimale et se range contre le
+        # bord droit de l'écran ; elle reprend sa place à la fin. NE PAS utiliser
+        # lower() : sur Windows, abaisser une fenêtre possédée par QGIS minimise QGIS.
         try:
-            self.window().showMinimized()
+            win = self.window()
+            self._geometrie_avant_carte = win.geometry()
+            ecran = win.screen().availableGeometry()
+            largeur = max(win.minimumWidth(), win.minimumSizeHint().width())
+            win.setGeometry(ecran.right() - largeur - 8, win.y(), largeur, win.height())
+            win.raise_()
         except Exception:
-            pass
+            self._geometrie_avant_carte = None
 
     def _on_tiles_selection_changed(self, n: int) -> None:
         if self._validate_btn is not None:
@@ -718,10 +725,12 @@ class SourcePage(QWidget):
         # Ne ré-activer le bouton que hors lecture seule (run en cours).
         if not self._source_edit.isReadOnly():
             self._dalles_btn.setEnabled(True)
-        # Restaurer le dialogue minimisé (showNormal dé-minimise ; raise le ramène).
+        # Rendre à l'assistant sa place et sa largeur d'avant le choix sur la carte.
         try:
             win = self.window()
-            win.showNormal()
+            if getattr(self, "_geometrie_avant_carte", None) is not None:
+                win.setGeometry(self._geometrie_avant_carte)
+                self._geometrie_avant_carte = None
             win.raise_()
             win.activateWindow()
         except Exception:

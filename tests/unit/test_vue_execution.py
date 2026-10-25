@@ -44,7 +44,7 @@ def test_verifications_et_traitement_sont_deux_etapes():
     assert lancer.index("self._goto_step(self.STEP_TRAITEMENT)") < lancer.index(".start_run(")
     page = (RACINE / "src/ui/steps/step_4_launch.py").read_text(encoding="utf-8")
     assert "import RunView" not in page and "QStackedWidget" not in page and "_vers_journal_btn" not in page
-    assert sorted(CHAPITRE_PAR_ETAPE) == [1, 2, 3, 4, 5]
+    assert sorted(CHAPITRE_PAR_ETAPE) == [1, 2, 3, 4, 5, 6]
 
 
 def test_le_journal_reste_accessible_apres_le_run():

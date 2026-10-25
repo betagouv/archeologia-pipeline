@@ -297,6 +297,28 @@ def _etape4_a_corriger(app, w, img: Path, log, fichiers) -> bool:
     return ok
 
 
+def _etape6(app, w, img: Path, log) -> bool:
+    """aide/img/etape6-resultats.png : deux traitements fictifs de ce poste, avec leurs gestes."""
+    from archeo.src.app.services.resultats_connus import Resultat
+
+    base = Path("C:/Temp/archeologia_demo")
+    fictifs = [
+        Resultat(base / "foret_de_parroy", "2026-10-24T09:30:00", "Téléchargement IGN", ("MNT", "SVF", "LD"),
+                 ("Cratères", "Parcellaire", "Talus et fossés"), 952, base / "foret_de_parroy/livrable/projet.qgs",
+                 base / "foret_de_parroy/livrable/rapport.html", base / "foret_de_parroy/technique/journaux/metadata_20261024_093000.json"),
+        Resultat(base / "verdun_nord", "2026-10-18T14:05:00", "Nuages LiDAR locaux", ("MNT", "LD"),
+                 ("Cratères",), 4120, base / "verdun_nord/livrable/projet.qgs",
+                 base / "verdun_nord/livrable/rapport.html", None),
+    ]
+    w._goto_step(6)
+    w._resultats_page.set_resultats(fictifs)
+    w._refresh_rail_subs()
+    app.processEvents()
+    w.grab().save(str(img / "etape6-resultats.png"))
+    log("étape 6 :", w._resultats_page.summary(), "| bouton :", w._next_btn.text(), "| actif :", w._next_btn.isEnabled())
+    return len(w._resultats_page.resultats()) == 2 and not w._next_btn.isEnabled()
+
+
 def _etape4(app, w, img: Path, log) -> bool:
     """aide/img/etape4-verifications.png : bandeau, état du système au vert, récapitulatif."""
     import time
@@ -384,13 +406,14 @@ def captures(app, sortie: Path, log) -> int:
     ligne_ok = _ligne_reglages(app, w, img, log)
     fiche_ok = _fiches_panneau(app, w, img, log)
     etape4_ok = _etape4(app, w, img, log)
+    etape6_ok = _etape6(app, w, img, log)
     # Après l'étape 4 prête : un second passage lance une vérification de fond pendant que
     # Processing s'initialise, et la première finissait en « QGIS processing » manquant.
     corriger_ok = _etape4_a_corriger(app, w, img, log, fichiers) if fichiers is not None else False
     log("captures écrites dans", img, "— taille de l'assistant :", w.width(), "x", w.height())
     log("contrôles : structures", bool(n), "| fin", fin_ok, "| ligne", ligne_ok, "| panneau", fiche_ok,
-        "| à corriger", corriger_ok, "| étape 4", etape4_ok)
-    return 0 if n and fin_ok and ligne_ok and fiche_ok and corriger_ok and etape4_ok else 1
+        "| à corriger", corriger_ok, "| étape 4", etape4_ok, "| étape 6", etape6_ok)
+    return 0 if n and fin_ok and ligne_ok and fiche_ok and corriger_ok and etape4_ok and etape6_ok else 1
 
 
 def manuel(app, sortie: Path, log, chapitre: str, ancre: str, recherche: str = "", tous: bool = False) -> int:

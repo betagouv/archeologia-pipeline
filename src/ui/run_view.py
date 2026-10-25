@@ -287,6 +287,7 @@ class RunView(QWidget):
 
     run_started = pyqtSignal()
     run_finished = pyqtSignal()
+    revoir_resultats = pyqtSignal()   # « Revoir les résultats » → l'étape 6 de l'assistant
 
     def __init__(self, config_ref: Optional[dict] = None, parent=None, iface=None):
         super().__init__(parent)
@@ -477,6 +478,10 @@ class RunView(QWidget):
         self._open_report_btn.setToolTip("Le rapport du traitement, dans le navigateur (livrable/rapport.html)")
         self._open_report_btn.setEnabled(False)
         self._open_report_btn.clicked.connect(self._open_report)
+        self._revoir_btn = QPushButton("Revoir les résultats")
+        self._revoir_btn.setObjectName("GhostButton")
+        self._revoir_btn.setToolTip("Tous les traitements lancés depuis ce poste, pour y revenir")
+        self._revoir_btn.clicked.connect(self.revoir_resultats)
         self._bilan_legende = QLabel("")
         self._bilan_legende.setObjectName("RunHeaderSub")
         self._bilan_legende.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
@@ -484,6 +489,7 @@ class RunView(QWidget):
         actions_fin.addWidget(self._open_livrable_btn)
         actions_fin.addWidget(self._open_dir_btn)
         actions_fin.addWidget(self._open_report_btn)
+        actions_fin.addWidget(self._revoir_btn)
         actions_fin.addWidget(self._bilan_legende, 1)
         bl.addLayout(actions_fin)
         self._bilan_box.setVisible(False)

@@ -42,6 +42,12 @@ Dans chaque dossier `tif/`, la mosaïque `index_<PRODUIT>.vrt` assemble toutes l
 
 Les mêmes couches sont chargées dans votre projet QGIS courant quand vous cliquez **Ajouter au projet QGIS courant** à la fin du traitement, une seule fois ; **Ouvrir livrable/projet.qgs** ouvre ce projet à la place du projet courant. Rien ne se charge sans l'un de ces clics.
 
+## Revoir un résultat
+
+La sixième étape de l'assistant, **Résultats**, liste les traitements lancés depuis ce poste, du plus récent au plus ancien : la date, le point de départ, le dossier, les images, les structures et le nombre de détections. Pour chacun, **Ajouter au projet QGIS courant** charge ses couches, stylées, dans le projet ouvert ; **Ouvrir livrable/projet.qgs** ouvre son projet à la place du projet courant ; **Rapport** ouvre son rapport ; **Relancer avec un seuil changé** recharge ses réglages dans l'assistant et l'ouvre à l'étape 3, pour modifier un seuil et relancer dans le même dossier. Un dossier déplacé ou supprimé disparaît de la liste ; un traitement d'une version précédente, sans trace complète, se consulte mais ne se relance pas d'ici. Le bouton **Revoir les résultats** du cadre « Par où commencer », à la fin d'un traitement, mène à cette étape.
+
+[![Étape 6 : les traitements lancés depuis ce poste, chacun avec ses quatre gestes](img/etape6-resultats.png)](img/etape6-resultats.png)
+
 ## La légende de fiabilité
 
 Chaque couche de détections est catégorisée en quatre niveaux : **douteux**, **possible**, **probable**, **très probable**. Un niveau est défini par la part de vrais objets mesurée à l'évaluation du modèle dans la bande de scores correspondante : au moins 35 % pour possible, 60 % pour probable, 85 % pour très probable. Le mot veut donc dire la même chose pour tous les modèles ; seuls les scores de coupure changent.

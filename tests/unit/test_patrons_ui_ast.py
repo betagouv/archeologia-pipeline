@@ -196,3 +196,48 @@ def test_bouton_gris_dit_pourquoi():
     assert "_next_hint" in src and 'setObjectName("ActionHint")' in src
     texte = ast.unparse(_fonction(WIZARD, "_update_launch_button"))
     assert "Lancement impossible" in texte and "classer_erreurs(" in texte
+
+
+# ---------------------------------------------------------------- revue de branche (2026-10-25)
+
+def test_entree_ne_coche_pas_une_carte_depuis_ses_reglages():
+    """Entrée dans un champ des réglages dépliés remonte à la carte (QAbstractSpinBox,
+    QComboBox et QLineEdit l'ignorent) : seule Espace coche, à l'étape 2 comme à la 3."""
+    for fichier, classe in ((STEP2, "_IndexCard"), (CARD, "EntityRow")):
+        arbre = ast.parse(fichier.read_text(encoding="utf-8"))
+        cls = next(n for n in ast.walk(arbre) if isinstance(n, ast.ClassDef) and n.name == classe)
+        fn = next(n for n in cls.body if isinstance(n, ast.FunctionDef) and n.name == "keyPressEvent")
+        texte = ast.unparse(fn)
+        assert "Key_Space" in texte and "Key_Return" not in texte and "Key_Enter" not in texte, classe
+
+
+def test_lecture_seule_rend_le_reinit_et_garde_les_fiches_de_l_etape_2():
+    """Fin de traitement : la page de l'étape 3 se rafraîchit (le « ↺ » d'une structure réglée
+    redevient actif) ; à l'étape 2, la lecture seule ne grise plus toute la carte (son « ⓘ » et
+    « ▸ Réglages » restent) : elle passe par IndexCard.set_readonly."""
+    ro3 = ast.unparse(_fonction(STEP3, "set_readonly"))
+    assert "self._refresh()" in ro3
+    src2 = STEP2.read_text(encoding="utf-8")
+    assert "card.setEnabled(not ro)" not in src2 and "card.set_readonly(ro)" in src2
+    assert "def set_readonly" in src2
+
+
+def test_le_profil_suit_le_seuil_applique():
+    """D-07 : la ligne orange du mini-profil suit le seuil appliqué (trois décimales), pas la
+    valeur arrondie de la case."""
+    texte = ast.unparse(_fonction(CARD, "_maj_profils"))
+    assert "_seuil_effectif" in texte
+
+
+def test_tampon_avant_journal_referme_sur_chaque_sortie():
+    """Les sorties anticipées de start_run (réorganisation refusée ou incomplète) referment le
+    tampon, sinon tout ce que le journal émet hors traitement s'y accumule."""
+    src = (UI / "run_view.py").read_text(encoding="utf-8")
+    lancer = src[src.index("def start_run("):src.index("def request_cancel(")]
+    apres = lancer[lancer.index("self._tampon.actif = True"):]
+    assert apres.count("return") == apres.count("self._tampon.actif = False") - 1   # + la fermeture avant le thread
+
+
+def test_largeur_avant_panneau_ignoree_si_maximisee():
+    texte = ast.unparse(_fonction(WIZARD, "_poser_fiche"))
+    assert "if not self.isMaximized()" in texte or "isMaximized() else 0" in texte

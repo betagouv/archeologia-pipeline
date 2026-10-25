@@ -661,6 +661,7 @@ class RunView(QWidget):
             box.setDefaultButton(reorganiser)
             box.exec()
             if box.clickedButton() is not reorganiser:
+                self._tampon.actif = False
                 self._reset_view()
                 self._append_log("INFO", "Lancement annulé : le dossier de sortie garde son ancienne organisation. "
                                          "Choisissez un autre dossier de sortie, ou acceptez la réorganisation.")
@@ -668,6 +669,7 @@ class RunView(QWidget):
             purge_output_dir_layers(ctx.output_dir, self._logger)   # couches sur les anciens chemins
             erreurs = appliquer(plan, log=lambda m: self._logger.log(USER_INFO, m))
             if erreurs:
+                self._tampon.actif = False
                 self._reset_view()
                 self._append_log("ERROR", "❌ Réorganisation incomplète — fermez les couches QGIS chargées depuis ce dossier, puis relancez :")
                 for e in erreurs:

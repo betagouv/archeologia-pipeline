@@ -55,7 +55,8 @@ def _dernier_metadata(dossier: Path) -> Optional[Path]:
 
 def _mode(metadata: Optional[Path]) -> str:
     d = _json(metadata) if metadata else None
-    files = ((d or {}).get("ui_config") or {}).get("app", {}).get("files") or {}
+    app = (((d or {}).get("ui_config") or {}).get("app")) or {}
+    files = (app.get("files") if isinstance(app, dict) else None) or {}
     code = str(files.get("data_mode") or "")
     if not code:
         return ""

@@ -752,6 +752,8 @@ class DetectionPage(QWidget):
         self._es_btn.setEnabled(not ro)
         for row in self._rows.values():
             row.set_readonly(ro)
+        if not ro:
+            self._refresh()   # le « ↺ » d'une structure réglée redevient actif (reinit_possible)
 
     def summary(self) -> str:
         if not self._enabled:

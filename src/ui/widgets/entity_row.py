@@ -689,8 +689,9 @@ class EntityRow(QFrame):
         self._maj_visibilite_profils()
 
     def _maj_profils(self, *_args) -> None:
-        """La ligne du seuil suit la case « Confiance » ; le bilan est recalculé."""
-        seuil = float(self._conf_spin.value())
+        """La ligne du seuil suit le seuil APPLIQUÉ (trois décimales, D-07), pas la valeur
+        arrondie de la case ; le bilan est recalculé."""
+        seuil = float(self._seuil_effectif if self._seuil_effectif is not None else self._conf_spin.value())
         for fig in getattr(self, "_profils", []):
             fig.set_seuil(seuil)   # la ligne suit la case ; le bilan est dans l'infobulle
 

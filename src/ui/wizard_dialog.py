@@ -259,7 +259,7 @@ class WizardDialog(QDialog):
             return
         # La fenêtre s'élargit du panneau à l'ouverture (bornée à l'écran, jamais
         # resserrée) et reprend sa largeur d'avant à la fermeture.
-        self._largeur_avant_panneau = self.width()
+        self._largeur_avant_panneau = self.width() if not self.isMaximized() else 0
         self._panel.ouvrir(onglet, widget, titre)
         if not self.isMaximized():
             voulue = self.width() + LARGEUR_PANNEAU

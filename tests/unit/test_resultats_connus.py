@@ -99,3 +99,14 @@ def test_chemins_du_livrable(tmp_path):
     assert vrt == [str(d / "livrable" / "indices" / "SVF_R10" / "tif" / "index_SVF.vrt")]
     assert gpkg == [str(d / "livrable" / "detections" / "parcellaire" / "parcellaire.gpkg")]
     assert qa == [str(d / "livrable" / "indices" / "COUVERTURE" / "zones_mal_couvertes.gpkg")]
+
+
+def test_trace_avec_app_nul_ne_vide_pas_la_liste(tmp_path):
+    """Une trace dont ``ui_config.app`` vaut explicitement null ne doit pas faire tomber
+    toute la liste : le point de départ est simplement inconnu."""
+    d = _dossier(tmp_path, "r", "2026-10-24T09:30:00")
+    (d / "technique" / "journaux" / "metadata_20261025_0000.json").write_text(
+        json.dumps({"ui_config": {"app": None}}), encoding="utf-8")
+    enregistrer_run(tmp_path / "profil", d)
+    r = lister(tmp_path / "profil")
+    assert len(r) == 1 and r[0].mode == ""

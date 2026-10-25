@@ -113,6 +113,7 @@ class _IndexCard(QFrame):
         super().__init__(parent)
         self._key = key
         self._locked = False
+        self._readonly = False
         self._reglages: QWidget | None = None
         self.setObjectName("IndexCard")
         self.setProperty("checked", False)
@@ -243,14 +244,23 @@ class _IndexCard(QFrame):
         haut = w.mapTo(self, QPoint(0, 0)).y()
         return haut - 3 <= pos.y() <= haut + w.height() + 3
 
+    def set_readonly(self, ro: bool) -> None:
+        """Pendant un traitement : la carte ne se coche plus, mais son « ⓘ » et son lien
+        « ▸ Réglages » restent cliquables (consulter, pas modifier) ; les champs des
+        réglages sont grisés par la page."""
+        self._readonly = bool(ro)
+        self.setCursor(Qt.CursorShape.ArrowCursor if ro else Qt.CursorShape.PointingHandCursor)
+
     def mousePressEvent(self, event):  # noqa: N802 (signature Qt)
         pos = event.position().toPoint() if hasattr(event, "position") else event.pos()
-        if not self._dans_les_reglages(pos):
+        if not self._readonly and not self._dans_les_reglages(pos):
             self.clicked.emit(self._key)
         super().mousePressEvent(event)
 
     def keyPressEvent(self, event):  # noqa: N802 (signature Qt)
-        if event.key() in (Qt.Key.Key_Space, Qt.Key.Key_Return, Qt.Key.Key_Enter):
+        # Espace seulement : Entrée dans un champ des réglages dépliés remonte ici (les
+        # QAbstractSpinBox, QComboBox et QLineEdit l'ignorent) et décochait la carte.
+        if event.key() == Qt.Key.Key_Space and not self._readonly:
             self.clicked.emit(self._key)
             return
         super().keyPressEvent(event)
@@ -1058,14 +1068,14 @@ class IndicesPage(QWidget):
     def set_readonly(self, ro: bool) -> None:
         """Verrouille la saisie pour consultation pendant un run (lecture seule).
 
-        Désactive les cartes et leurs champs ; le défilement reste actif pour
-        tout consulter. N'agit que sur
+        Les cartes ne se cochent plus et leurs champs sont grisés ; « ⓘ », « ▸ Réglages »
+        et le défilement restent, pour tout consulter. N'agit que sur
         ``setEnabled``/``setReadOnly`` → aucun signal ``changed`` ni autosave.
         """
         for btn in self._reset_btns.values():
             btn.setEnabled(not ro)
         for card in self._index_cards.values():
-            card.setEnabled(not ro)
+            card.set_readonly(ro)
         for _p, _section, _key, widget, kind, _default in self._adv_fields:
             widget.setEnabled(not ro)
             if kind == "text":

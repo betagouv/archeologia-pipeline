@@ -1,7 +1,7 @@
 {
-  "commit": "ac679d5",
-  "date": "2026-10-23T08:57:24",
-  "sources_sha256": "00f575305f41762777e0eeaae63b6778a6892f94fd780eb642bea5a872235242",
+  "commit": "d39e0ba",
+  "date": "2026-10-25T10:59:36",
+  "sources_sha256": "6b15eec1817b3639237ef5729d4c1c2fb358479942f60be22fb25b39fa85e121",
   "onnxruntime": {
     "paquet": "onnxruntime-directml",
     "version": "1.24.4",

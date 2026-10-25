@@ -4,7 +4,7 @@
     {
       "id": "cratere",
       "label": "Cratères",
-      "description": "Cratères circulaires en cuvette. Détectés par un modèle entraîné à l'origine sur les trous d'obus de Verdun (Première Guerre mondiale) ; applicable à d'autres cratères de signature comparable.",
+      "description": "Cratères circulaires en cuvette (trous d'obus et cratères comparables).",
       "display_order": 10,
       "morphology": "circulaire"
     },
@@ -53,28 +53,28 @@
     {
       "id": "depression_circulaire_grande",
       "label": "Dépressions circulaires grandes",
-      "description": "Grandes dépressions circulaires en cuvette (mardelles, dolines, cuvettes >= 14 m de diamètre), segmentation d instances sur LD 0,5 m. Les petites dépressions (< 14 m) ne sont pas ciblées.",
+      "description": "Mardelles, dolines et cuvettes circulaires de 14 m de diamètre et plus.",
       "display_order": 90,
       "morphology": "circulaire"
     },
     {
       "id": "regroupement_crateres",
       "label": "Regroupement de cratères",
-      "description": "Regroupe en zones les cratères proches détectés (clustering DBSCAN). Peut indiquer des zones d'extraction de matériaux. Détection issue d'un modèle de cratères.",
+      "description": "Zones où les cratères détectés se concentrent (extraction possible).",
       "display_order": 95,
       "morphology": "zone"
     },
     {
       "id": "enclos",
       "label": "Enclos",
-      "description": "Enclos à talus/fossé français (circulaires, curvilignes ou quadrangulaires) — modèle par transfert affiné sur le corpus français (Bretagne + IdF), LD 1 m.",
+      "description": "Enclos à talus ou fossé, circulaires, curvilignes ou quadrangulaires.",
       "display_order": 96,
       "morphology": "circulaire"
     },
     {
       "id": "enclos_circulaire",
       "label": "Enclos circulaires",
-      "description": "Enclos à morphologie circulaire (ringforts, enclosures) — modèle entraîné sur le corpus irlandais, LD 1 m. Adapté à la prospection de formes circulaires.",
+      "description": "Enclos de forme circulaire (ringforts).",
       "display_order": 97,
       "morphology": "circulaire"
     }

@@ -200,12 +200,12 @@ def _ligne_reglages(app, w, img: Path, log, entite: str = "parcellaire") -> bool
 
     page = w._detection_page
     page._on_entity_toggled(entite, True)
-    page._adv_check.setChecked(True)
     app.processEvents()
     ligne = page._rows.get(entite)
     if ligne is None:
         log("ligne réglages : structure absente :", entite)
         return False
+    ligne._basculer_reglages()   # « ▸ Réglages » de la ligne, comme un clic
     ligne.deplier_profil(True)
     app.processEvents()
     zone = page.findChild(QScrollArea)
@@ -216,7 +216,7 @@ def _ligne_reglages(app, w, img: Path, log, entite: str = "parcellaire") -> bool
     log("ligne réglages :", entite, ligne.width(), "x", ligne.height(), "| décimales :",
         ligne._conf_spin.decimals(), "| infobulle :", ligne._conf_spin.toolTip().split("\n")[0])
     ligne.deplier_profil(False)
-    page._adv_check.setChecked(False)
+    ligne._basculer_reglages()
     app.processEvents()
     return ligne._conf_spin.decimals() == 2
 
@@ -564,7 +564,9 @@ def profil(app, sortie: Path, log, modele: str) -> int:
     page._enable_check.setChecked(True)
     for eid in m.coverage:
         page._on_entity_toggled(eid, True)
-    page._adv_check.setChecked(True)
+    for ligne in page._rows.values():
+        ligne.set_advanced(True)
+    page._refresh()
     for ligne in page._rows.values():
         ligne.deplier_profil(True)
     w._goto_step(3)

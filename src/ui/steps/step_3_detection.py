@@ -90,7 +90,6 @@ class DetectionPage(QWidget):
         self._profils_cache: dict = {}  # (modèle, classe) -> Profil ou None (évaluation lue une fois)
 
         self._enabled = False
-        self._advanced = False
         self._selected: dict = {}
         self._overrides: dict = {}
         self._cluster: set = set()
@@ -175,16 +174,9 @@ class DetectionPage(QWidget):
 
         ent_card, ev = build_card("Structures", "1")
         self._sel_count = ent_card.counter  # « X sur Y cochées » dans l'en-tête
-        adv_row = QHBoxLayout()
-        adv_row.addStretch(1)
-        # Plus de réinitialisation globale ici : elle effaçait les surcharges de
-        # TOUTES les structures d'un coup (demande utilisateur 2026-09-16). Chaque
-        # ligne porte la sienne et ne remet que ses propres valeurs.
-        self._adv_check = QCheckBox("Seuils et réglages par structure")
-        self._adv_check.setObjectName("WizardPageSub")
-        self._adv_check.toggled.connect(self._on_advanced_toggled)
-        adv_row.addWidget(self._adv_check)
-        ev.addLayout(adv_row)
+        # Ni réinitialisation globale (demande utilisateur 2026-09-16) ni case « Seuils et
+        # réglages par structure » (2026-10-25) : chaque ligne porte son « ▸ Réglages »
+        # et son « ↺ », comme une image à l'étape 2.
 
         # ── Une liste par morphologie : en-tête puis une ligne par structure ──
         for key, label, glyph, ents in group_entities_by_morphology(self._catalog):
@@ -259,7 +251,7 @@ class DetectionPage(QWidget):
         vignette, cadrage = self._premiere_vignette(entity.id)
         row.set_fiche(vignette, disponible=bool(cand_names), cadrage=cadrage)
         row.fiche_requested.connect(self.fiche_requested)
-        row.modele_requested.connect(self._on_modele_demande)
+        row.reglages_toggled.connect(self._on_reglages_toggled)
         row.reset_requested.connect(self._on_reset_entity)
         row.toggled.connect(self._on_entity_toggled)
         row.models_changed.connect(self._on_models_changed)
@@ -338,10 +330,8 @@ class DetectionPage(QWidget):
         if not self._loading:
             self.changed.emit()
 
-    def _on_advanced_toggled(self, on: bool) -> None:
-        self._advanced = on
-        for row in self._rows.values():
-            row.set_advanced(on)
+    def _on_reglages_toggled(self, _entity_id: str, _on: bool) -> None:
+        # Les profils d'une ligne ne sont chargés que dépliée : rafraîchir pour les poser.
         self._refresh()
 
     def _on_thresholds_changed(self, entity_id: str, changes: dict) -> None:
@@ -399,11 +389,6 @@ class DetectionPage(QWidget):
         ))
         if not self._loading:
             self.changed.emit()
-
-    def _on_modele_demande(self, model_name: str) -> None:
-        model = self._models.get(model_name)
-        if model is not None:
-            self.modele_requested.emit(model)
 
     # ------------------------------------------------------------------
     # Rafraîchissement
@@ -514,7 +499,7 @@ class DetectionPage(QWidget):
             # structure sur le modèle primaire, lus une fois par (modèle, classe).
             row.set_profils(
                 self._profils_entite(model, eid, len(model_names) > 1)
-                if (model is not None and self._advanced and not par) else []
+                if (model is not None and row.est_deplie() and not par) else []
             )
             row.update_state(
                 selected=bool(self._selected.get(eid) or par),
@@ -752,7 +737,7 @@ class DetectionPage(QWidget):
 
         Désactive l'interrupteur, les réglages des lignes et la case « images
         annotées » ; garde actifs le défilement, les « ⓘ » (le panneau des fiches
-        reste ouvrable) et la case « Seuils et réglages » (révèle les seuils en
+        reste ouvrable) et le « ▸ Réglages » de chaque ligne (révèle les seuils en
         lecture seule). N'agit que sur ``setEnabled`` → aucun ``changed``/autosave.
         """
         self._readonly = bool(ro)

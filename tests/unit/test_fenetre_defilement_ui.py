@@ -76,8 +76,8 @@ def test_la_taille_d_ouverture_est_bornee_a_l_ecran():
 
 def test_les_libelles_de_ligne_ne_forcent_pas_la_largeur():
     """Un texte non élidé fait de sa largeur une largeur mini : la description de la ligne
-    est élidée à la largeur disponible (texte complet en infobulle), le nom du modèle est
-    raccourci."""
+    est élidée à la largeur disponible (texte complet en infobulle). Le nom du modèle a
+    quitté la ligne le 2026-10-25 : plus rien d'autre à raccourcir."""
     src = _source("src/ui/widgets/entity_row.py")
     assert "elidedText(" in src and "def resizeEvent" in src
-    assert "disp[:27]" in src, "le nom du modèle est raccourci, infobulle complète"
+    assert "_model_name" not in src

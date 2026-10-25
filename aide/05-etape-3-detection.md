@@ -23,8 +23,9 @@ La liste dépend des modèles installés : une structure n'apparaît que si un m
 - **Cocher une structure** : cliquez n'importe où sur sa ligne. Au clavier, Tab passe de ligne en ligne et Espace coche. Sur une ligne cochée, la partie réglages qui s'ouvre dessous ne coche ni ne décoche : un clic sur le seuil, la figure ou les paramètres de regroupement sert seulement à régler.
 - **Vignette** et **description** : la description longue est coupée par « … », son texte complet est en infobulle.
 - **Image requise** : le sigle de l'image sur laquelle le modèle travaille. Si elle n'est pas cochée à l'étape 2, le sigle passe en orange et un lien **l'ajouter** la coche.
-- **Modèle** : sur une ligne cochée, le nom du modèle retenu, puis **Changer ▾** quand plusieurs modèles couvrent la structure. Chaque entrée du menu indique le nombre de **fenêtres d'analyse** que le modèle découpe dans une dalle : c'est un fait sur le volume de calcul, pas une estimation de durée. Le **ⓘ** qui suit le nom ouvre la fiche du modèle.
+- **Modèle ▾** : seulement quand plusieurs modèles couvrent la structure, sur une ligne cochée ; le menu coche le modèle retenu et chaque entrée indique le nombre de **fenêtres d'analyse** que le modèle découpe dans une dalle : c'est un fait sur le volume de calcul, pas une estimation de durée. Le nom du modèle n'est pas sur la ligne : il se lit dans **Ce qui sera analysé**, sous la liste, une phrase par modèle avec son **ⓘ** qui ouvre la fiche du modèle, et dans la fiche de la structure.
 - Le **ⓘ** en bout de ligne ouvre la fiche de la structure.
+- **▸ Réglages**, sous la ligne cochée, déplie ses seuils et réglages (voir plus bas), comme pour une image à l'étape 2.
 - **Regrouper en zones** : pour certaines structures, une case sous la ligne regroupe les détections proches en zones. Le **Regroupement de cratères** est une structure à part entière, avec le badge **regroupement automatique** : la cocher produit les zones et les cratères qui les composent ; elle coche d'office **Cratères**, dont la ligne prend le badge « inclus dans » et perd son réglage de seuil : une seule couche de cratères, au seuil réglé sur la ligne du regroupement.
 
 ## Le panneau des fiches
@@ -47,11 +48,11 @@ Fiche de structure et fiche de modèle se distinguent d'un coup d'œil : la prem
 
 ## Comparer deux modèles
 
-Quand deux modèles couvrent une structure, cochez-les tous les deux dans le menu **Changer ▾**. La structure est détectée deux fois, une fois par modèle ; les sorties portent le nom du modèle et QGIS les charge dans un même groupe marqué « comparaison », pour les superposer.
+Quand deux modèles couvrent une structure, cochez-les tous les deux dans le menu **Modèle ▾**. La structure est détectée deux fois, une fois par modèle ; les sorties portent le nom du modèle et QGIS les charge dans un même groupe marqué « comparaison », pour les superposer.
 
-## Seuils et réglages par structure
+## Réglages par structure
 
-La case **Seuils et réglages par structure**, en haut de la liste, déplie sous chaque ligne cochée :
+Sous chaque ligne cochée, le lien **▸ Réglages** déplie, pour cette structure seulement :
 
 - **Confiance** : le seuil sous lequel les détections sont écartées, à deux décimales. Le défaut vient du modèle, fixé à son évaluation ; il est choisi un peu en dessous du point d'équilibre entre précision et rappel, parce qu'en prospection une structure manquée ne se rattrape pas alors qu'une fausse détection s'écarte en quelques secondes sur le relief. Certains modèles ont un seuil à trois décimales (0,245) : la case l'affiche arrondi, mais tant que vous n'y touchez pas c'est bien le seuil du modèle qui s'applique, et l'infobulle de la case le dit à trois décimales. Baisser le seuil augmente le rappel et les fausses détections ; le monter fait l'inverse. Sous le seuil du modèle, les détections ajoutées sont fusionnées entre elles, jamais avec celles qui passaient déjà le seuil, et prennent le niveau **douteux**, avec la part de vrais mesurée pour cet intervalle quand le modèle la fournit, sinon « non mesurée » : les autres niveaux gardent leurs coupures.
 - **Aire min** des détections conservées, en mètres carrés. Elle ne vaut que pour cette structure, même quand un seul modèle en détecte plusieurs (parcellaire, talus et chemins creux, par exemple).

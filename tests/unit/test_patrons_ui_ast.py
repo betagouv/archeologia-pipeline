@@ -250,3 +250,30 @@ def test_etape_3_nomme_les_couches_par_la_structure():
     assert src.count("label=") >= 2 and "ancien=" in src, "layer_name_for_class(label=…) et couleur_de_classe(ancien=…)"
     profil = (UI / "widgets" / "profil_scores.py").read_text(encoding="utf-8")
     assert "def couleur_de_classe(classe: str, ancien: str = \"\")" in profil
+
+
+# ---------------------------------------------------------------- nom du modèle hors de la ligne (2026-10-25)
+
+def test_la_ligne_ne_porte_plus_le_nom_du_modele():
+    """Demande de l'utilisateur : ni nom du modèle ni son « ⓘ » sur la ligne d'une structure ;
+    un seul ⓘ par ligne (la structure). Le modèle se lit dans « Ce qui sera analysé » (phrase
+    + ⓘ), dans la fiche de la structure (lien « Fiche du modèle ») et dans le menu « Modèle ▾ »
+    quand plusieurs modèles couvrent la structure."""
+    src = CARD.read_text(encoding="utf-8")
+    assert "_model_name" not in src and "_model_info" not in src
+    assert src.count("InfoButton(") == 1 and 'QPushButton("Modèle ▾")' in src
+    page = STEP3.read_text(encoding="utf-8")
+    assert "row.modele_requested" not in page and "self.modele_requested.emit(m)" in page
+
+
+def test_reglages_sous_chaque_ligne_comme_a_l_etape_2():
+    """Demande de l'utilisateur (2026-10-25) : plus de case globale « Seuils et réglages par
+    structure » ; chaque ligne cochée porte son lien « ▸ Réglages » (même patron #CardToggle
+    que les images de l'étape 2) qui déplie ses seuils, son profil et ses paramètres de
+    regroupement ; la page recharge les profils d'une ligne quand elle se déplie."""
+    page = STEP3.read_text(encoding="utf-8")
+    assert "Seuils et réglages par structure" not in page and "_adv_check" not in page
+    assert "row.reglages_toggled.connect(" in page and "row.est_deplie()" in page
+    src = CARD.read_text(encoding="utf-8")
+    assert 'setObjectName("CardToggle")' in src and "reglages_toggled = pyqtSignal(str, bool)" in src
+    assert "def est_deplie(self)" in src and "def _basculer_reglages(self)" in src

@@ -3,11 +3,13 @@
 Une ligne par structure, rangée sous sa morphologie (interface rationalisée,
 2026-10-24 ; remplace la carte à deux colonnes) : coche · vignette · libellé et
 description élidée · image du relief lue par le modèle (orange, avec
-« l'ajouter », si elle n'est pas cochée à l'étape 2) · modèle retenu
-(« Changer ▾ » quand plusieurs le couvrent) et son « ⓘ » · le « ⓘ » de la
-structure. Sous la ligne, quand elle est cochée : la case « Regrouper en
-zones » ou le badge de regroupement, puis, si la case « Seuils et réglages par
-structure » de la page est cochée : le seuil de confiance à deux décimales
+« l'ajouter », si elle n'est pas cochée à l'étape 2) · « Modèle ▾ » quand
+plusieurs modèles couvrent la structure (le nom du modèle n'est plus sur la
+ligne depuis le 2026-10-25 : il se lit dans « Ce qui sera analysé » et dans la
+fiche) · le « ⓘ » de la structure. Sous la ligne, quand elle est cochée : le lien
+« ▸ Réglages » (même patron que les images de l'étape 2, 2026-10-25), la case
+« Regrouper en zones » ou le badge de regroupement, puis, quand « Réglages » est
+déplié : le seuil de confiance à deux décimales
 (l'infobulle montre la valeur appliquée à trois), l'aire minimale, le « ↺ » de
 cette seule structure, le profil des scores repliable et les paramètres du
 regroupement.
@@ -176,8 +178,8 @@ class EntityRow(QFrame):
     thresholds_changed = pyqtSignal(str, dict)  # entity_id, {la seule clé modifiée: valeur} (C-01)
     cluster_params_changed = pyqtSignal(str, dict)  # entity_id, {param: valeur}
     fiche_requested = pyqtSignal(str)      # entity_id — ouvrir la fiche de structure
-    modele_requested = pyqtSignal(str)     # nom du modèle primaire — ouvrir sa fiche
     reset_requested = pyqtSignal(str)      # entity_id — rétablir SES valeurs de modèle
+    reglages_toggled = pyqtSignal(str, bool)   # entity_id — « ▸ Réglages » déplié / replié
 
     def __init__(self, entity_id: str, label: str, description: str, parent=None):
         super().__init__(parent)
@@ -238,20 +240,15 @@ class EntityRow(QFrame):
         self._rvt_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self._rvt_btn.clicked.connect(lambda: self.activate_rvt.emit(self._rvt_key))
         self._rvt_btn.setVisible(False)
-        # Pas de libellé « Modèle » séparé : le display_name le porte déjà
-        # (préfixé « Modèle … » dans chaque model_card.yaml) → évite le doublon.
-        self._model_name = QLabel("")
-        self._model_name.setObjectName("EntityModelName")
-        self._model_name.setVisible(False)
-        self._change_btn = QPushButton("Changer ▾")
+        # Le nom du modèle n'est plus sur la ligne (demande de l'utilisateur, 2026-10-25) :
+        # il se lit dans « Ce qui sera analysé », dans la fiche de la structure et dans ce
+        # menu, montré seulement quand plusieurs modèles couvrent la structure.
+        self._change_btn = QPushButton("Modèle ▾")
         self._change_btn.setObjectName("EntityChangeBtn")
         self._change_btn.setFlat(True)
         self._change_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self._change_btn.clicked.connect(self._on_change_clicked)
         self._change_btn.setVisible(False)
-        self._model_info = InfoButton("Fiche du modèle : architecture, entraînement, évaluation")
-        self._model_info.clicked.connect(self._demander_modele)
-        self._model_info.setVisible(False)
         # Un seul patron de fiche : le « ⓘ » rond (interface rationalisée, 2026-10-24).
         self._fiche_btn = InfoButton(
             "Fiche de la structure : à quoi elle ressemble, où le modèle l'a apprise, "
@@ -260,14 +257,22 @@ class EntityRow(QFrame):
         self._fiche_btn.clicked.connect(lambda: self.fiche_requested.emit(self._id))
         for w, stretch in (
             (self._check, 0), (self._thumb, 0), (self._label, 0), (self._desc, 1),
-            (self._nomodel, 0), (self._rvt_tag, 0), (self._rvt_btn, 0), (self._model_name, 0),
-            (self._change_btn, 0), (self._model_info, 0), (self._fiche_btn, 0),
+            (self._nomodel, 0), (self._rvt_tag, 0), (self._rvt_btn, 0),
+            (self._change_btn, 0), (self._fiche_btn, 0),
         ):
             tete.addWidget(w, stretch, Qt.AlignmentFlag.AlignVCenter)
         root.addLayout(tete)
 
-        # ── Sous la ligne, dès qu'elle est cochée : regroupement ──
+        # ── Sous la ligne, dès qu'elle est cochée : « ▸ Réglages » puis regroupement ──
         self._options = _Ligne()
+        self._reglages_toggle = QPushButton("▸ Réglages")
+        self._reglages_toggle.setObjectName("CardToggle")
+        self._reglages_toggle.setFlat(True)
+        self._reglages_toggle.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._reglages_toggle.setToolTip("Seuil de confiance, aire minimale, profil des scores, regroupement")
+        self._reglages_toggle.clicked.connect(self._basculer_reglages)
+        self._reglages_toggle.setVisible(False)
+        self._options.addWidget(self._reglages_toggle)
         self._cluster_check = QCheckBox("Regrouper en zones")
         self._cluster_check.setObjectName("EntityCluster")
         self._cluster_check.toggled.connect(self._on_cluster_toggled)
@@ -284,7 +289,7 @@ class EntityRow(QFrame):
         self._options.setVisible(False)
         root.addWidget(self._options)
 
-        # ── Seuils et réglages (case de la page) : confiance + aire min surchargeables ──
+        # ── Seuils et réglages (« ▸ Réglages » de la ligne) : confiance + aire min surchargeables ──
         self._adv_row = _Ligne()
         conf_lbl = QLabel("Confiance")
         conf_lbl.setObjectName("EntityModelLabel")
@@ -511,31 +516,17 @@ class EntityRow(QFrame):
         self.setProperty("state", state)
         self._nomodel.setVisible(not self._has_model)
 
-        # Modèle : nom + « Changer ▾ » discret (si plusieurs) + son « ⓘ ».
-        # Plusieurs modèles cochés (comparaison A/B) → « N modèles (comparaison) »
-        # avec la liste complète en infobulle.
+        # Modèle : « Modèle ▾ » discret, seulement si plusieurs le couvrent (comparaison
+        # A/B possible) ; son infobulle nomme le ou les modèles retenus avec leur coût
+        # (une phrase par modèle). Le nom n'est plus affiché sur la ligne (2026-10-25).
         show_model = bool(selected and self._has_model)
-        self._model_name.setVisible(show_model)
-        self._model_info.setVisible(show_model)
         multi = len(self._candidates) > 1
         self._change_btn.setVisible(show_model and multi)
         if show_model:
             self._current_models = list(current_models or [])
             disps = [self._candidates.get(n, n) for n in self._current_models]
-            if len(disps) > 1:
-                disp = " + ".join(disps)
-                short = f"{len(disps)} modèles (comparaison)"
-            else:
-                disp = disps[0] if disps else ""
-                short = disp if len(disp) <= 28 else disp[:27] + "…"
-            self._model_name.setText(short)
-            # Infobulle : le coût structurel de chaque modèle courant (une
-            # phrase par modèle) ; sans coût connu, la liste des noms complets.
             tips = [self._couts.get(n, ("", ""))[1] for n in self._current_models]
-            tips = [t for t in tips if t] or [disp]
-            if not multi:
-                tips.append("Seul modèle installé pour cette structure.")
-            self._model_name.setToolTip("\n\n".join(tips))
+            self._change_btn.setToolTip("\n\n".join([t for t in tips if t] or disps))
 
         # Case « Regrouper en zones » / badge de regroupement, dès que la ligne est cochée
         show_cluster = bool(selected and self._has_model and cluster_outputs)
@@ -552,9 +543,15 @@ class EntityRow(QFrame):
         )
         show_badge = bool(selected and self._has_model and (is_derived or implique_par))
         self._derived_badge.setVisible(show_badge)
-        self._options.setVisible(show_cluster or show_badge)
+        # « ▸ Réglages » dès que la ligne est cochée ; une ligne décochée se replie.
+        if not selected:
+            self._advanced = False
+        show_toggle = bool(selected and self._has_model)
+        self._reglages_toggle.setVisible(show_toggle)
+        self._rendre_toggle()
+        self._options.setVisible(show_toggle or show_cluster or show_badge)
 
-        # Seuils et réglages : visibles si la case de la page est cochée ; en lecture
+        # Seuils et réglages : visibles quand « Réglages » est déplié ; en lecture
         # seule pour une structure incluse (ses seuils sont ceux de la dérivée).
         show_adv = bool(selected and self._has_model and self._advanced)
         self._adv_row.setVisible(show_adv)
@@ -636,10 +633,22 @@ class EntityRow(QFrame):
         self._reinit_btn.setEnabled(bool(on) and not self._readonly)
 
     def set_advanced(self, on: bool) -> None:
-        """Affiche/masque les seuils et réglages de la ligne."""
+        """Déplie ou replie les seuils et réglages de la ligne (« ▸ Réglages »)."""
         self._advanced = bool(on)
         self._adv_row.setVisible(self._advanced and self._selected and self._has_model)
+        self._rendre_toggle()
         self._maj_visibilite_profils()
+
+    def est_deplie(self) -> bool:
+        """Vrai quand « Réglages » est déplié : la page ne charge les profils que là."""
+        return self._advanced
+
+    def _rendre_toggle(self) -> None:
+        self._reglages_toggle.setText(f"{'▾' if self._advanced else '▸'} Réglages")
+
+    def _basculer_reglages(self) -> None:
+        self.set_advanced(not self._advanced)
+        self.reglages_toggled.emit(self._id, self._advanced)
 
     def set_readonly(self, ro: bool) -> None:
         """Lecture seule pendant un traitement : plus rien ne se règle ni ne se coche,
@@ -730,10 +739,6 @@ class EntityRow(QFrame):
             params[key] = int(round(val)) if key in self._cluster_int_keys else float(val)
         self.cluster_params_changed.emit(self._id, params)
 
-    def _demander_modele(self) -> None:
-        if self._current_models:
-            self.modele_requested.emit(str(self._current_models[0]))
-
     # ------------------------------------------------------------------
     def _on_change_clicked(self) -> None:
         # Cases NON exclusives : cocher un 2ᵉ modèle = mode comparaison A/B
@@ -795,7 +800,7 @@ class EntityRow(QFrame):
 
     def mousePressEvent(self, event):  # noqa: N802 (signature Qt)
         # Bascule la sélection si la structure a un modèle ET que le clic tombe hors
-        # de la bande des réglages. Les widgets interactifs (« ⓘ », Changer ▾,
+        # de la bande des réglages. Les widgets interactifs (« ⓘ », Modèle ▾,
         # l'ajouter) consomment leurs propres clics.
         pos = event.position().toPoint() if hasattr(event, "position") else event.pos()
         haut, bas = self._bande_reglages()

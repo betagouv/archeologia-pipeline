@@ -1231,3 +1231,18 @@ class TestSahiDepuisArgsYaml:
         _write_model(tmp_path, "crateres", CRATERE, args_yaml="sahi:\n  slice_width: vite\n")
         m = discover_installed_models(tmp_path)[0]
         assert (m.sahi_slice_px, m.sahi_overlap) == (0, 0.0)
+
+
+def test_descriptions_du_catalogue_tiennent_sur_la_ligne():
+    """Demande de l'utilisateur (2026-10-25) : la description d'une structure tient sur sa ligne
+    à l'étape 3 sans aller au bout (élision) : une phrase courte ; le détail (corpus, modèle,
+    résolution) est dans la fiche, pas dans le catalogue."""
+    import json
+    from pathlib import Path
+
+    catalogue = json.loads((Path(__file__).resolve().parents[2] / "data" / "entities_catalog.json").read_text(encoding="utf-8"))
+    entites = catalogue["entities"] if isinstance(catalogue, dict) else catalogue
+    longues = {e["label"]: len(e.get("description") or "") for e in entites if len(e.get("description") or "") > 72}
+    assert longues == {}, f"descriptions trop longues (> 72 caractères) : {longues}"
+    for e in entites:
+        assert e.get("description"), e["label"]

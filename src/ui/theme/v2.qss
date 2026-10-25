@@ -192,6 +192,7 @@ QPushButton:disabled { color: #707070; border: 1px dashed #b0b0b0; background: #
 #CardToggle:hover { color: #143f6b; text-decoration: underline; }
 #CardToggle:focus { background: #d6e6f4; }
 #IndexCard[checked="true"] #CardToggle:focus { background: #ffffff; }
+#EntityLine[state="on"] #CardToggle:focus { background: #ffffff; }
 #CardReglages { background: transparent; }
 /* Le seul bouton de fiche : « ⓘ » rond de 24 px (interface rationalisée). */
 #InfoButton {
@@ -325,7 +326,6 @@ QPushButton:disabled { color: #707070; border: 1px dashed #b0b0b0; background: #
 #EntityRvtWarn { color: #8a5e18; font-size: 11px; }
 #EntityActivateBtn { padding: 1px 8px; min-height: 20px; font-size: 10px; }
 #EntityModelLabel { color: #4f5a66; font-size: 10px; }
-#EntityModelName { color: #2c2c2c; font-size: 10px; }
 #EntityChangeBtn {
     background: transparent; border: none; color: #1d5a96;
     font-size: 10px; padding: 2px 2px; min-height: 20px;

@@ -42,6 +42,12 @@ ENVIRONNEMENT: Dict[str, str] = {
     "CRS des rasters": "Système de coordonnées des rasters",
     "Dalles dégénérées": "Dalles trop petites",
     "Dossier de sortie": "Dossier de sortie",
+    # Les entrées de l'étape 1, nommées par ``_check_input_path`` (recette 65.5).
+    "Zone d'étude (vecteur)": "Zone d'étude (fichier vecteur)",
+    "Fichier liste URLs IGN": "Liste des dalles IGN (fichier texte)",
+    "Dossier LAZ locaux": "Dossier des nuages de points (LAZ)",
+    "Dossier MNT existants": "Dossier des MNT existants",
+    "Dossier RVT existants": "Dossier des indices existants",
 }
 
 

@@ -22,6 +22,8 @@ Le panneau vérifie en tâche de fond ce dont le traitement a besoin, chaque con
 - si la détection est activée, le moteur de détection et ses bibliothèques ;
 - le dossier de sortie, avec les Go libres du disque, l'entrée du point de départ (liste de dalles, dossier des nuages, des MNT ou des indices) et le système de coordonnées des rasters en MNT ou Indices de visualisation existants.
 
+Un raster sans système de coordonnées dans ses métadonnées est traité en Lambert-93 (EPSG:2154) : la ligne passe en avertissement pour le dire, le lancement reste possible.
+
 Chaque ligne porte son état et un mot : **trouvé**, **manquant**, **non requis**, une version. Le chemin trouvé ou le message d'erreur complet est en infobulle, sur ce mot ; le nom technique du contrôle est en infobulle sur son libellé. Le bouton **Revérifier** relance les contrôles, après avoir installé un outil par exemple.
 
 ## Récapitulatif

@@ -67,6 +67,11 @@ def noms_preflight() -> set:
             for kw in node.keywords:
                 if kw.arg == "name" and isinstance(kw.value, ast.Constant) and isinstance(kw.value.value, str):
                     noms.add(kw.value.value)
+        # Les entrées (zone, liste de dalles, dossiers) passent par ``_check_input_path(cfg, clé, label)`` :
+        # leur ``label`` devient le ``name`` du CheckResult (recette 65.5, défaut vu le 2026-10-26).
+        if isinstance(node, ast.Call) and getattr(node.func, "id", "") == "_check_input_path":
+            if len(node.args) >= 3 and isinstance(node.args[2], ast.Constant) and isinstance(node.args[2].value, str):
+                noms.add(node.args[2].value)
     assert noms, "aucun CheckResult(name=...) littéral trouvé : le test ne vérifie rien"
     return noms
 

@@ -117,7 +117,7 @@ class TestBuildSections:
         sections = build_sections(card, args=None)
         titles = [s.title for s in sections]
         assert "ARCHITECTURE" in titles
-        assert any(t.startswith("INDICE RVT D'ENTRAÎNEMENT") and "(LD)" in t for t in titles)
+        assert any(t.startswith("INDICE D'ENTRAÎNEMENT") and "(LD)" in t for t in titles)
         assert "MNT D'ENTRAÎNEMENT" in titles
 
     def test_architecture_section_humanizes_task_and_counts_unique_classes(self):
@@ -162,7 +162,7 @@ class TestBuildSections:
             },
         }
         sections = build_sections(card, args=None)
-        rvt = next(s for s in sections if s.title.startswith("INDICE RVT"))
+        rvt = next(s for s in sections if s.title.startswith("INDICE D'ENTRAÎNEMENT"))
         labels = [r.label for r in rvt.rows]
         assert "Nombre de directions" in labels
         assert "Rayon" in labels
@@ -183,7 +183,7 @@ class TestBuildSections:
             },
         }
         sections = build_sections(card, args=None)
-        rvt = next(s for s in sections if s.title.startswith("INDICE RVT"))
+        rvt = next(s for s in sections if s.title.startswith("INDICE D'ENTRAÎNEMENT"))
         labels = [r.label for r in rvt.rows]
         assert "svf_n_dir" not in labels
         assert "svf_r_max" not in labels
@@ -201,14 +201,14 @@ class TestBuildSections:
             },
         }
         sections = build_sections(card, args=None)
-        rvt = next(s for s in sections if s.title.startswith("INDICE RVT"))
+        rvt = next(s for s in sections if s.title.startswith("INDICE D'ENTRAÎNEMENT"))
         labels = [r.label for r in rvt.rows]
         assert "magic_param" in labels
 
     def test_no_rvt_section_when_preferred_rvt_missing(self):
         card = {"architecture": "X", "task": "object_detection"}
         sections = build_sections(card, args=None)
-        rvt_titles = [s.title for s in sections if s.title.startswith("INDICE RVT")]
+        rvt_titles = [s.title for s in sections if s.title.startswith("INDICE D'ENTRAÎNEMENT")]
         assert rvt_titles == []
 
     def test_mnt_section_has_resolution_and_filter(self):

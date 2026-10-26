@@ -14,10 +14,12 @@ carte repasse en « idle » (signal ``layersRemoved``).
 """
 from __future__ import annotations
 
+import re
+import time
 from pathlib import Path
 from typing import Dict, Optional
 
-from qgis.PyQt.QtCore import QEvent, Qt, pyqtSignal
+from qgis.PyQt.QtCore import QEvent, Qt, QTimer, pyqtSignal
 from qgis.PyQt.QtGui import QPixmap
 from qgis.PyQt.QtWidgets import (
     QAbstractItemView,
@@ -37,6 +39,7 @@ from qgis.PyQt.QtWidgets import (
     QWidget,
 )
 
+from ..app.services.aide import AIDE_DIRNAME, resoudre_cible
 from ..app.services.visu_catalogue import (
     FAMILY_ORDER,
     Catalogue,
@@ -44,6 +47,7 @@ from ..app.services.visu_catalogue import (
     Department,
     filter_departments,
     load_catalogue,
+    merge_catalogues,
 )
 from .widgets.indice_card import (
     CARD_W,
@@ -59,6 +63,17 @@ GRID_VSPACING = 16
 
 #: Emplacement du catalogue livré avec le plugin.
 DEFAULT_CATALOGUE = Path("data") / "demo_catalogue" / "catalogue.json"
+#: Catalogue local optionnel, gitignoré et exclu du ZIP : les flux privés de
+#: test (descripteurs GDAL_WMS portant la clé d'accès + vignettes), écrits à
+#: côté par l'outillage OVH (``publish_gpf.py catalogue --catalogue-rel
+#: data/local_catalogue/catalogue.json``) et fusionnés par code de département.
+LOCAL_CATALOGUE = Path("data") / "local_catalogue" / "catalogue.json"
+#: Plugin livré sans catalogue (demo_ et local_catalogue ne sont pas dans le ZIP) : ce n'est
+#: pas une panne, la page le dit et renvoie au manuel (N-04, 2026-10-25).
+SANS_CATALOGUE = (
+    "Aucun catalogue n'est installé sur ce poste : cette page sert aux flux publiés par votre organisation.<br>"
+    "<a href='manuel:consulter-les-flux'>Aide › Consulter les flux</a>"
+)
 
 
 class _DeptItem(QWidget):
@@ -82,7 +97,7 @@ class _DeptItem(QWidget):
         texts.setSpacing(1)
         name = QLabel(dept.name)
         name.setObjectName("VisuRailName")
-        sub = QLabel(f"{dept.count} indices · maj {dept.updated or '—'}")
+        sub = QLabel(f"{dept.count} produits · maj {dept.updated or '—'}")
         sub.setObjectName("VisuRailSub")
         texts.addWidget(name)
         texts.addWidget(sub)
@@ -119,6 +134,10 @@ class VisualisationTab(QWidget):
         # les couches ajoutées par cet onglet : « Tout retirer » ne doit jamais
         # toucher aux autres couches du projet de l'utilisateur.
         self._layers: Dict[str, tuple] = {}
+        # Réparation automatique des tuiles manquées (cf. _on_message_log) :
+        # id de couche -> minuterie de relance, et horodatages des relances.
+        self._repaint_timers: Dict[str, QTimer] = {}
+        self._repaint_log: Dict[str, list] = {}
 
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
@@ -143,9 +162,9 @@ class VisualisationTab(QWidget):
         texts = QVBoxLayout()
         texts.setContentsMargins(0, 0, 0, 0)
         texts.setSpacing(1)
-        title = QLabel("Visualisation des indices")
+        title = QLabel("Consulter les flux")
         title.setObjectName("VisuTitle")
-        sub = QLabel("Catalogue France entière · MNT & indices RVT prêts à consulter")
+        sub = QLabel("Produits déjà publiés, à afficher dans QGIS sans traitement")
         sub.setObjectName("VisuSubtitle")
         texts.addWidget(title)
         texts.addWidget(sub)
@@ -254,6 +273,8 @@ class VisualisationTab(QWidget):
         self._empty.setObjectName("VisuEmpty")
         self._empty.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._empty.setVisible(False)
+        self._empty.setWordWrap(True)
+        self._empty.linkActivated.connect(self._sur_lien)
         lay.addWidget(self._empty)
         return wall
 
@@ -289,9 +310,23 @@ class VisualisationTab(QWidget):
         self._refresh_btn.setText("Actualisation…")
         QApplication.processEvents()
         path = self._plugin_root / DEFAULT_CATALOGUE
+        if not path.is_file() and not (self._plugin_root / LOCAL_CATALOGUE).is_file():
+            self._catalogue = Catalogue()
+            self._erreur_catalogue = SANS_CATALOGUE
+            self._cat_stamp.setText("aucun catalogue")
+            self._refresh_btn.setEnabled(True)
+            self._refresh_btn.setText("Actualiser le catalogue")
+            self._refresh_rail()
+            return
         try:
-            self._catalogue = load_catalogue(path)
+            # Un poste peut n'avoir que le catalogue local de son organisation.
+            self._catalogue = load_catalogue(path) if path.is_file() else Catalogue()
             self._catalogue_dir = path.parent
+            local = self._plugin_root / LOCAL_CATALOGUE
+            if local.is_file():
+                path = local              # un local cassé s'annonce sous SON chemin
+                self._catalogue = merge_catalogues(
+                    self._catalogue, load_catalogue(local), local.parent)
             self._erreur_catalogue = None
             self._cat_stamp.setText(f"catalogue {self._catalogue.updated or '—'}")
         except Exception as exc:                       # noqa: BLE001 — jamais de grille muette
@@ -400,7 +435,7 @@ class VisualisationTab(QWidget):
         res = f" · dalle {dept.resolution:g} m".replace(".", ",") if dept.resolution else ""
         self._wall_title.setText(dept.name)
         self._wall_meta.setText(
-            f"{dept.count} indices · publiés {dept.updated or '—'}{res}")
+            f"{dept.count} produits · publiés {dept.updated or '—'}{res}")
 
         present = dept.families
         for fam, btn in self._family_btns.items():
@@ -413,7 +448,7 @@ class VisualisationTab(QWidget):
 
         items = dept.items_in_family(self._family)
         if not items:
-            self._show_empty("Aucun indice dans cette famille.")
+            self._show_empty("Aucun produit dans cette famille.")
             return
         self._empty.setVisible(False)
         self._scroll.setVisible(True)
@@ -437,7 +472,7 @@ class VisualisationTab(QWidget):
         diffusion distante qui n'existe pas encore. On le dit, et on dit ce que
         le même geste fera en production.
         """
-        geste = ("Utilisez « Afficher dans QGIS » pour ouvrir un indice, "
+        geste = ("Utilisez « Afficher dans QGIS » pour ouvrir un produit, "
                  "derrière cette fenêtre.")
         if any(item.streamed for item in dept.items):
             return (f"<b>Lecture en flux</b> · {geste} Le raster est lu à la demande "
@@ -489,6 +524,15 @@ class VisualisationTab(QWidget):
                 self._relayout_grid()
         return super().eventFilter(obj, event)
 
+    def _sur_lien(self, lien: str) -> None:
+        """Lien « manuel:… » du message sans catalogue → le chapitre du manuel."""
+        if not lien.startswith("manuel:"):
+            return
+        from .dialogs.aide_dialog import ouvrir_aide  # différé
+
+        cle, ancre = resoudre_cible(lien[len("manuel:"):])
+        ouvrir_aide(self._plugin_root / AIDE_DIRNAME, parent=self.window(), cle=cle, ancre=ancre)
+
     def _show_empty(self, message: str) -> None:
         self._empty.setText(message)
         self._empty.setVisible(True)
@@ -534,10 +578,21 @@ class VisualisationTab(QWidget):
             # QgsTask qui fabrique la couche, mais un QgsTask qui ne fait que
             # valider l'URL, la couche restant construite ici.
             name = f"{item.info.sigle} — {dept.name}" if dept else item.info.sigle
-            layer = QgsRasterLayer(item.source, name, "gdal")
+            erreur = self._sonder_flux(item) if item.streamed else None
+            layer = None if erreur else QgsRasterLayer(item.source, name, "gdal")
         finally:
             QApplication.restoreOverrideCursor()
             self._liseret.setVisible(False)
+
+        if erreur:
+            if card is not None:
+                card.set_state(STATE_IDLE)
+            # Dans l'onglet ET dans QGIS : la barre de messages est derrière
+            # cette fenêtre, une carte qui retombe en « idle » sans un mot
+            # ressemble à un clic perdu.
+            self._banner.setText(f"<b>Flux indisponible</b> · {erreur}")
+            self._warn(f"{item.info.sigle} — {dept.name if dept else ''} : {erreur}")
+            return
 
         if not layer.isValid():
             if card is not None:
@@ -546,6 +601,17 @@ class VisualisationTab(QWidget):
                        "La source est peut-être indisponible.")
             return
 
+        if item.streamed:
+            self._sans_etirement(layer)
+            if item.extent:
+                # Le descripteur GDAL_WMS déclare la fenêtre entière du
+                # TileMatrixSet (33 000 km) : « zoomer sur la couche » ou toute
+                # vue lointaine demandait des tuiles hors de la France, que le
+                # serveur refuse (HTTP 500/401/403 dans le journal, constat
+                # utilisateur 2026-09-23). Bornée à l'emprise du catalogue, la
+                # couche ne réclame plus que ses propres tuiles à toute échelle.
+                from qgis.core import QgsRectangle
+                layer.setExtent(QgsRectangle(*[float(v) for v in item.extent]))
         first = not self._layers
         QgsProject.instance().addMapLayer(layer)
         self._layers[layer.id()] = (dept.code if dept else "", key)
@@ -557,6 +623,94 @@ class VisualisationTab(QWidget):
         if self._iface is not None:
             self._iface.mapCanvas().refresh()
         self._sync_footer()
+
+    def _sonder_flux(self, item: CatalogItem) -> Optional[str]:
+        """Lit UN pixel du flux avant d'ajouter la couche ; ``None`` = flux OK.
+
+        Un descripteur GDAL_WMS s'ouvre sans aucune requête : la couche est
+        « valide » même avec une clé fausse, et le 401 n'arrive qu'à la
+        première tuile — QGIS afficherait une couche vide sans un mot (mesuré
+        2026-09-23, QGIS 4.0.3 / GDAL 3.13). Le pixel lu est le centre de
+        l'emprise du catalogue : une tuile que l'affichage réclamera de toute
+        façon, et que GDAL garde en cache.
+
+        ponytail: lecture synchrone sous le curseur occupé. Un hôte injoignable
+        ou hors ligne échoue tout de suite ; un serveur muet attend le délai de
+        connexion (10 s). Passer par un QgsTask le jour où ça traîne.
+        """
+        from osgeo import gdal
+
+        ancien = gdal.GetConfigOption("GDAL_HTTP_CONNECTTIMEOUT")
+        gdal.SetConfigOption("GDAL_HTTP_CONNECTTIMEOUT", "10")
+        gdal.ErrorReset()
+        gdal.PushErrorHandler("CPLQuietErrorHandler")
+        try:
+            ds = gdal.Open(item.source)
+            if ds is None:
+                return None                # QgsRasterLayer dira « impossible d'ouvrir »
+            if item.extent:
+                xmin, ymin, xmax, ymax = (float(v) for v in item.extent)
+                px, py = gdal.ApplyGeoTransform(
+                    gdal.InvGeoTransform(ds.GetGeoTransform()),
+                    (xmin + xmax) / 2, (ymin + ymax) / 2)
+            else:
+                px, py = ds.RasterXSize / 2, ds.RasterYSize / 2
+            px = min(max(int(px), 0), ds.RasterXSize - 1)
+            py = min(max(int(py), 0), ds.RasterYSize - 1)
+            if ds.GetRasterBand(1).ReadRaster(px, py, 1, 1) is not None:
+                return None
+            message = gdal.GetLastErrorMsg()
+        except Exception as exc:               # noqa: BLE001 — GDAL en mode exceptions
+            message = str(exc)
+        finally:
+            gdal.PopErrorHandler()
+            gdal.SetConfigOption("GDAL_HTTP_CONNECTTIMEOUT", ancien)
+
+        trouve = re.search(r"HTTP status code: (\d+)", message or "")
+        code = int(trouve.group(1)) if trouve else 0
+        if code in (401, 403):
+            return (f"accès refusé (HTTP {code}) : clé d'accès absente ou expirée — "
+                    "régénérez le catalogue local.")
+        if code:
+            return f"le serveur répond HTTP {code} — réessayez plus tard."
+        return "le flux ne répond pas — hôte injoignable ou poste hors ligne."
+
+    def _sans_etirement(self, layer) -> None:
+        """Couche 8 bits en flux : affichée telle quelle, sans étirement min/max.
+
+        QGIS estime le min/max par défaut en échantillonnant l'emprise ENTIÈRE
+        du raster ; pour un GDAL_WMS c'est la fenêtre de 33 000 km du
+        descripteur, lue aux niveaux grossiers où tout est nodata (255) :
+        min = max = 255, et toute donnée réelle sort en **noir** (constat
+        utilisateur 2026-09-23 sur SVF 21A, reproduit par rendu hors interface,
+        QGIS 4.0.3). Les produits 8 bits de RVT sont déjà étirés 0–255 à
+        l'export, il n'y a rien à estimer. Un flottant (futur COG) garde le
+        comportement de QGIS.
+        """
+        from qgis.core import (
+            Qgis,
+            QgsContrastEnhancement,
+            QgsMultiBandColorRenderer,
+            QgsSingleBandGrayRenderer,
+        )
+
+        prov = layer.dataProvider()
+        if prov is None or prov.dataType(1) != Qgis.DataType.Byte:
+            return
+
+        def plein() -> QgsContrastEnhancement:
+            ce = QgsContrastEnhancement(Qgis.DataType.Byte)
+            ce.setContrastEnhancementAlgorithm(
+                QgsContrastEnhancement.ContrastEnhancementAlgorithm.NoEnhancement)
+            return ce
+
+        r = layer.renderer()
+        if isinstance(r, QgsSingleBandGrayRenderer):
+            r.setContrastEnhancement(plein())
+        elif isinstance(r, QgsMultiBandColorRenderer):
+            r.setRedContrastEnhancement(plein())
+            r.setGreenContrastEnhancement(plein())
+            r.setBlueContrastEnhancement(plein())
 
     def _zoom_to(self, item: CatalogItem, layer) -> None:
         """Recadre sur la PREMIÈRE couche seulement, jamais ensuite.
@@ -618,8 +772,79 @@ class VisualisationTab(QWidget):
         try:
             from qgis.core import QgsProject
             QgsProject.instance().layersRemoved.connect(self._on_layers_removed)
+            for signal in self._signaux_journal():
+                signal.connect(self._on_message_log)
         except Exception:                        # noqa: BLE001 — hors QGIS (aperçu isolé)
             pass
+
+    @staticmethod
+    def _signaux_journal() -> list:
+        """QGIS 3.x émet ``messageReceived``, QGIS 4 n'émet plus que
+        ``messageReceivedWithFormat`` (mesuré 4.0.3) : on écoute les deux, la
+        minuterie de relance absorbe un éventuel doublon."""
+        from qgis.core import QgsApplication
+        log = QgsApplication.messageLog()
+        return [s for s in (getattr(log, "messageReceived", None),
+                            getattr(log, "messageReceivedWithFormat", None)) if s is not None]
+
+    # ------------------------------------------ réparation des tuiles manquées
+
+    #: Relances automatiques au plus par couche dans la fenêtre glissante.
+    REPARATION_MAX = 3
+    REPARATION_FENETRE_S = 120.0
+
+    def _on_message_log(self, message: str, *_) -> None:
+        """Une tuile refusée par le serveur ne doit pas rester un trou.
+
+        Le point d'accès privé de la Géoplateforme refuse parfois une tuile
+        valide avec une clé valide (HTTP 401/403 « Unauthorized access to the
+        offering », ou requête sans réponse — constat utilisateur 2026-09-23,
+        non reproductible à la demande). Le pilote GDAL_WMS n'a aucune
+        nouvelle tentative et ignore les options de retry de GDAL (mesuré).
+        QGIS de bureau route l'erreur GDAL vers son journal : on la reconnaît,
+        on relance le rendu de la couche concernée 1,5 s après la dernière
+        erreur — bon marché, GDAL garde sur disque les tuiles réussies, seules
+        les manquées sont redemandées. Borné (REPARATION_MAX par fenêtre) : une
+        clé expirée ou un serveur à terre ne doivent pas boucler.
+        """
+        if "Unable to download block" not in (message or ""):
+            return
+        cibles = [lid for lid in self._layers if self._nom_offre(lid) in message]
+        if not cibles:
+            # Délai dépassé ou hôte muet : le message n'a pas le nom de l'offre.
+            cibles = list(self._layers)
+        for lid in cibles:
+            timer = self._repaint_timers.get(lid)
+            if timer is None:
+                timer = QTimer(self)
+                timer.setSingleShot(True)
+                timer.timeout.connect(lambda lid=lid: self._relancer_rendu(lid))
+                self._repaint_timers[lid] = timer
+            timer.start(1500)                    # redémarre : 1,5 s après la DERNIÈRE erreur
+
+    def _nom_offre(self, layer_id: str) -> str:
+        """Nom de l'offre WMTS = nom du descripteur (« ARCHEO_LIDAR_D21C_M_HS »)."""
+        code, key = self._layers.get(layer_id, ("", ""))
+        dept = self._catalogue.by_code(code)
+        for item in (dept.items if dept else []):
+            if item.key == key and item.streamed:
+                return Path(item.source).stem
+        return "\0"                              # ne matche jamais
+
+    def _relancer_rendu(self, layer_id: str) -> None:
+        from qgis.core import QgsProject
+
+        layer = QgsProject.instance().mapLayer(layer_id)
+        if layer is None or layer_id not in self._layers:
+            return
+        maintenant = time.monotonic()
+        recents = [t for t in self._repaint_log.get(layer_id, [])
+                   if maintenant - t < self.REPARATION_FENETRE_S]
+        if len(recents) >= self.REPARATION_MAX:
+            self._repaint_log[layer_id] = recents
+            return
+        self._repaint_log[layer_id] = recents + [maintenant]
+        layer.triggerRepaint()
 
     def _on_layers_removed(self, layer_ids) -> None:
         """Une couche retirée depuis le panneau Couches doit rendre la carte cliquable."""
@@ -665,8 +890,13 @@ class VisualisationTab(QWidget):
     def cleanup(self) -> None:
         """Le plugin est déchargé : on oublie les couches, on n'y touche pas."""
         self._layers.clear()
+        for timer in self._repaint_timers.values():
+            timer.stop()
+        self._repaint_timers.clear()
         try:
             from qgis.core import QgsProject
             QgsProject.instance().layersRemoved.disconnect(self._on_layers_removed)
+            for signal in self._signaux_journal():
+                signal.disconnect(self._on_message_log)
         except Exception:                        # noqa: BLE001
             pass

@@ -235,3 +235,14 @@ def test_rechercher_dans_tout_le_manuel():
     assert rechercher([a, b], "  ") == [] and rechercher([a, b], "absent") == []
     assert texte_brut("- **Seuil** : voir [la fiche](x.md#y) et `code` | a | b |") == "Seuil : voir la fiche et code · a · b"
     assert texte_brut("### Titre ![img](img/x.png)") == "Titre"
+
+
+def test_chapitre_consulter_les_flux_present_et_glossaire_dernier(chapitres):
+    """N-04 (2026-10-25) : l'onglet « Consulter les flux » est livré avec son chapitre, rangé
+    avant le glossaire ; le glossaire reste le dernier chapitre écrit (Nouveautés est généré)."""
+    cles = [c.cle for c in chapitres]
+    assert "consulter-les-flux" in cles
+    ecrits = [c for c in cles if c != "nouveautes"]
+    assert ecrits[-1] == "glossaire" and cles.index("consulter-les-flux") < cles.index("glossaire")
+    onglet = (RACINE / "src" / "ui" / "visualisation_tab.py").read_text(encoding="utf-8")
+    assert "manuel:consulter-les-flux" in onglet and "Aucun catalogue n'est installé sur ce poste" in onglet

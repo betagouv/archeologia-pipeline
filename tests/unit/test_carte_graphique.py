@@ -1,7 +1,9 @@
 """Carte graphique (0.15.0, vague 3), côté plugin : adaptateurs du poste, décision mémorisée dans
-le profil (clé = cartes + pilotes + binaire + modèle), bloc transmis au moteur, trace du journal.
-Décochée par défaut ; un refus est réessayé après sept jours ; une carte retenue l'est jusqu'à ce
-que la clé change (pilote, binaire, modèle)."""
+le profil (clé = cartes + pilotes + version d'onnxruntime, depuis le 2026-10-26 : ni le binaire ni le
+modèle, « à partir du moment où elle est détectée et cochée, on doit l'utiliser »), bloc transmis au
+moteur, trace du journal. Cochée par défaut (2026-10-26) ; un refus est réessayé après sept jours ;
+une carte retenue l'est pour tous les modèles et toutes les livraisons, jusqu'à ce que la clé change
+(carte, pilote, version du moteur ONNX)."""
 from __future__ import annotations
 
 import datetime as dt
@@ -17,12 +19,26 @@ REFUSEE = {"appareil": "processeur", "motif": "Radeon : pas plus rapide que le p
 
 
 class TestCle:
-    def test_stable_et_sensible_a_chaque_partie(self):
-        a = cg.cle(ADS, BIN, "m1-123")
-        assert a == cg.cle(list(reversed(ADS)), BIN, "m1-123")   # ordre des cartes sans effet
-        assert a != cg.cle(ADS, {**BIN, "sources_sha256": "def"}, "m1-123")
-        assert a != cg.cle(ADS, BIN, "m1-124")
-        assert a != cg.cle([{**ADS[1], "pilote": "33"}], BIN, "m1-123")
+    def test_stable_et_sensible_aux_cartes_pilotes_et_moteur_seulement(self):
+        """2026-10-26 : la clé ne porte plus ni le sha du binaire ni l'empreinte du modèle — chaque
+        modèle et chaque livraison re-sondaient la carte (sept sondes sur un traitement à sept
+        modèles, une de plus après chaque recompilation), ce que l'utilisateur a refusé."""
+        a = cg.cle(ADS, BIN)
+        assert a == cg.cle(list(reversed(ADS)), BIN)                                   # ordre des cartes sans effet
+        assert a == cg.cle(ADS, {**BIN, "sources_sha256": "def"})                      # binaire recompilé : même clé
+        assert a != cg.cle([{**ADS[1], "pilote": "33"}], BIN)                          # pilote changé
+        assert a != cg.cle(ADS, {**BIN, "onnxruntime": {"paquet": "onnxruntime-directml", "version": "1.25"}})
+        assert "abc" not in a and "onnx" not in a                                      # ni sha, ni modèle
+
+    def test_une_carte_retenue_sert_a_tous_les_modeles_et_apres_recompilation(self, tmp_path):
+        p = tmp_path / cg.NOM_REGISTRE
+        cg.memoriser(p, cg.cle(ADS, BIN), RETENUE, T0)
+        autre_binaire = {**BIN, "sources_sha256": "recompile"}
+        for run_cfg in ({"selected_model": "crateres"}, {"selected_model": "lineaires"}):
+            cfg2, ctx = cg.preparer(run_cfg, True, adaptateurs=ADS, binaire=autre_binaire, registre=p,
+                                    maintenant=T0 + dt.timedelta(days=30))
+            assert cfg2["carte_graphique"] == {"demande": True, "device_id": 1, "carte": "RTX"}
+            assert ctx["decision"] is not None and ctx["message"] is None
 
 
 class TestDecisionMemorisee:
@@ -119,33 +135,23 @@ class TestPreparer:
     def test_bloc_pose_dans_la_config_du_run(self, tmp_path):
         p = tmp_path / cg.NOM_REGISTRE
         run_cfg = {"selected_model": "m"}
-        cfg2, ctx = cg.preparer(run_cfg, True, adaptateurs=ADS, binaire=BIN, empreinte_modele="m-1",
-                                registre=p, maintenant=T0)
+        cfg2, ctx = cg.preparer(run_cfg, True, adaptateurs=ADS, binaire=BIN, registre=p, maintenant=T0)
         assert run_cfg == {"selected_model": "m"}               # jamais modifiée en place
-        assert cfg2["carte_graphique"]["demande"] is True and ctx["cle"] == cg.cle(ADS, BIN, "m-1")
+        assert cfg2["carte_graphique"]["demande"] is True and ctx["cle"] == cg.cle(ADS, BIN)
         assert ctx["message"] is None
 
     def test_refus_memorise_narre_sans_sonder(self, tmp_path):
         p = tmp_path / cg.NOM_REGISTRE
-        cle = cg.cle(ADS, BIN, "m-1")
+        cle = cg.cle(ADS, BIN)
         cg.memoriser(p, cle, REFUSEE, T0)
         cfg2, ctx = cg.preparer({"selected_model": "m"}, True, adaptateurs=ADS, binaire=BIN,
-                                empreinte_modele="m-1", registre=p, maintenant=T0 + dt.timedelta(days=1))
+                                registre=p, maintenant=T0 + dt.timedelta(days=1))
         assert cfg2["carte_graphique"]["demande"] is False and "écartée" in ctx["message"]
 
     def test_option_decochee(self, tmp_path):
         cfg2, ctx = cg.preparer({"selected_model": "m"}, False, adaptateurs=ADS, binaire=BIN,
-                                empreinte_modele="m-1", registre=tmp_path / "r.json", maintenant=T0)
+                                registre=tmp_path / "r.json", maintenant=T0)
         assert "carte_graphique" not in cfg2 and ctx["cle"] is None
-
-
-def test_empreinte_modele(tmp_path):
-    poids = tmp_path / "best.onnx"
-    poids.write_bytes(b"x" * 10)
-    e = cg.empreinte_modele(poids)
-    assert e.startswith("best.onnx:10:")
-    assert cg.empreinte_modele(tmp_path / "absent.onnx") == "absent.onnx"
-    assert cg.empreinte_modele(None) == "?"
 
 
 def test_adaptateurs_hors_windows_vide(monkeypatch):
@@ -165,14 +171,19 @@ def test_adaptateurs_viennent_du_module_du_moteur(monkeypatch):
     assert "ctypes" not in (Path(cg.__file__).read_text(encoding="utf-8"))
 
 
-def test_defaut_decoche_et_persistance_ui():
+def test_defaut_coche_et_persistance_ui():
+    """Cochée par défaut depuis le 2026-10-26 (« et par défaut on la coche ») : la configuration par
+    défaut, la case de l'étape 4 et le repli du chargement d'une ancienne configuration sans la clé."""
     racine = Path(__file__).resolve().parents[2]
     from config.config_manager import ConfigManager
-    assert ConfigManager(racine).default_config()["computer_vision"]["carte_graphique"] is False
+    assert ConfigManager(racine).default_config()["computer_vision"]["carte_graphique"] is True
     etape4 = (racine / "src/ui/steps/step_4_launch.py").read_text(encoding="utf-8")
-    assert "carte_graphique_changed" in etape4 and "setChecked(False)" in etape4
+    assert "carte_graphique_changed" in etape4 and "self._carte_check.setChecked(True)" in etape4
+    assert "self._carte = True" in etape4
     wizard = (racine / "src/ui/wizard_dialog.py").read_text(encoding="utf-8")
-    assert '["carte_graphique"] = ' in wizard and "set_carte_graphique(" in wizard
+    assert '["carte_graphique"] = ' in wizard and 'set_carte_graphique(bool(cv.get("carte_graphique", True)))' in wizard
+    import json
+    assert json.loads((racine / "config.example.json").read_text(encoding="utf-8"))["computer_vision"]["carte_graphique"] is True
 
 
 def test_le_journal_renvoie_au_depannage():
@@ -181,3 +192,28 @@ def test_le_journal_renvoie_au_depannage():
         "La carte graphique n'est pas utilisée"
     assert rubrique_depannage("⚠️ « Cratères » : carte graphique : erreur à l'image 3 ; suite sur le processeur") == \
         "La carte graphique n'est pas utilisée"
+
+
+def test_decision_memorisee_la_plus_recente():
+    reg = {
+        "k1": {**REFUSEE, "date": T0.isoformat()},
+        "k2": {**RETENUE, "date": (T0 + dt.timedelta(days=2)).isoformat()},
+        "k3": "n'importe quoi",
+        "k4": {**RETENUE, "date": "hier"},
+    }
+    d = cg.decision_memorisee(reg)
+    assert d is not None and d["carte"] == "RTX" and d["date_fr"] == "20/10/2026"
+    assert cg.decision_memorisee({}) is None
+    assert cg.decision_memorisee({"k": "x"}) is None
+    assert "RTX" in cg.phrase_decision(d) and "20/10/2026" in cg.phrase_decision(d)
+    refus = cg.decision_memorisee({"k1": reg["k1"]})
+    assert "processeur" in cg.phrase_decision(refus) and "18/10/2026" in cg.phrase_decision(refus)
+
+
+def test_oublier_supprime_le_registre(tmp_path):
+    p = tmp_path / "profil" / cg.NOM_REGISTRE
+    cg.memoriser(p, "k", RETENUE, T0)
+    assert p.is_file()
+    assert cg.oublier(p) is True
+    assert not p.exists()
+    assert cg.oublier(p) is False          # rien à oublier : rien, sans erreur

@@ -175,7 +175,7 @@ def tiled_context_warnings(
             f"n'en fournit que {margin} px — au-delà, RVT reconstruit le voisinage "
             f"par symétrie et les dalles ne se raccordent plus (coutures visibles). "
             f"Réduisez « {param.ui_label} (px) » à ≤ {margin} px, ou augmentez la "
-            f"marge tuiles."
+            f"marge entre dalles."
         )
     return messages
 
@@ -340,12 +340,12 @@ def bornes_errors(products: Optional[Mapping], rvt_params: Optional[Mapping],
         if v is None or (cle == "observer_h" and v <= 0):   # 0 : remplacé par 1,7 au calcul, avec une ligne de journal
             continue
         if not lo <= v <= hi:
-            messages.append(f"Indice {produit.replace('_', '-')} / « {libelle} » : {v:g} hors des bornes du calcul "
+            messages.append(f"Image {produit.replace('_', '-')} / « {libelle} » : {v:g} hors des bornes du calcul "
                             f"({lo:g} à {hi:g}) — la dalle échouerait.")
     if _requested(products, "LD"):
         ld = _section(rvt_params, "ldo")
         rmin, rmax = _nombre(ld.get("min_radius", 10), False), _nombre(ld.get("max_radius", 20), False)
         if rmin is not None and rmax is not None and not 1 <= rmin <= rmax:
-            messages.append(f"Indice LD / « Rayon min » : {rmin} px — il doit valoir au moins 1 et au plus le rayon max "
+            messages.append(f"Image LD / « Rayon min » : {rmin} px — il doit valoir au moins 1 et au plus le rayon max "
                             f"({rmax} px) ; sinon l'image ne porte aucune valeur.")
     return messages

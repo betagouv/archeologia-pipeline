@@ -276,7 +276,7 @@ class TestValidateRunContext:
     def test_no_mode_returns_error(self):
         ctx = self._ctx(files={"data_mode": ""})
         errors, _ = validate_run_context(ctx)
-        assert any("mode" in e.lower() for e in errors)
+        assert any("point de départ" in e.lower() for e in errors)
 
     def test_missing_output_dir(self):
         ctx = self._ctx(files={"data_mode": "ign_laz", "output_dir": None})
@@ -286,7 +286,7 @@ class TestValidateRunContext:
     def test_ign_laz_missing_input_file(self):
         ctx = self._ctx(files={"data_mode": "ign_laz", "input_file": None})
         errors, _ = validate_run_context(ctx)
-        assert any("zone/liste" in e for e in errors)
+        assert any("zone d'étude" in e for e in errors)
 
     def test_ign_laz_input_file_not_found(self, tmp_path: Path):
         ghost = tmp_path / "doesnotexist.txt"
@@ -319,7 +319,7 @@ class TestValidateRunContext:
     def test_local_laz_missing_dir(self):
         ctx = self._ctx(files={"data_mode": "local_laz", "local_laz_dir": None})
         errors, _ = validate_run_context(ctx)
-        assert any("local" in e.lower() for e in errors)
+        assert any("fichiers LAZ" in e for e in errors)
 
     def test_local_laz_dir_not_found(self, tmp_path: Path):
         ghost = tmp_path / "ghost"
@@ -342,7 +342,7 @@ class TestValidateRunContext:
     def test_existing_rvt_missing_dir(self):
         ctx = self._ctx(files={"data_mode": "existing_rvt", "existing_rvt_dir": None})
         errors, _ = validate_run_context(ctx)
-        assert any("RVT" in e for e in errors)
+        assert any("indices de visualisation" in e for e in errors)
 
     def test_unknown_mode(self):
         ctx = self._ctx(files={"data_mode": "drone_lidar"})
@@ -388,7 +388,7 @@ class TestValidateProductsRule:
     def test_ign_laz_no_product_active_errors(self, tmp_path: Path):
         ctx = self._ctx("ign_laz", ProductsConfig(MNT=False), tmp_path)
         errors, _ = validate_run_context(ctx)
-        assert any("produit" in e.lower() for e in errors)
+        assert any("produit à calculer" in e for e in errors)
 
     def test_ign_laz_mnt_only_ok(self, tmp_path: Path):
         ctx = self._ctx("ign_laz", ProductsConfig(MNT=True), tmp_path)
@@ -398,7 +398,7 @@ class TestValidateProductsRule:
         # En existing_mnt, MNT seul ne suffit pas (pas de calcul à faire)
         ctx = self._ctx("existing_mnt", ProductsConfig(MNT=True), tmp_path)
         errors, _ = validate_run_context(ctx)
-        assert any("indice" in e.lower() for e in errors)
+        assert any("indice de visualisation" in e for e in errors)
 
     def test_existing_mnt_svf_ok(self, tmp_path: Path):
         ctx = self._ctx("existing_mnt", ProductsConfig(SVF=True), tmp_path)
@@ -647,7 +647,7 @@ class TestValidateWarnings:
         ctx = self._ctx_for("ign_laz", tmp_path, processing=proc)
         errors, warnings = validate_run_context(ctx)
         assert errors == []
-        assert any("Tile overlap" in w for w in warnings)
+        assert any("Marge entre dalles à 0" in w for w in warnings)
 
     def test_tile_overlap_zero_no_warn_for_existing_mnt(self, tmp_path: Path):
         # Pas de fusion de dalles en existing_mnt → pas d'avertissement.
@@ -657,7 +657,7 @@ class TestValidateWarnings:
         )
         ctx = self._ctx_for("existing_mnt", tmp_path, processing=proc)
         _errors, warnings = validate_run_context(ctx)
-        assert not any("Tile overlap" in w for w in warnings)
+        assert not any("Marge entre dalles à 0" in w for w in warnings)
 
     def test_cv_run_with_empty_selected_classes_warns(self, tmp_path: Path):
         cv = CvConfig(
@@ -667,7 +667,7 @@ class TestValidateWarnings:
         )
         ctx = self._ctx_for("ign_laz", tmp_path, cv=cv)
         _errors, warnings = validate_run_context(ctx)
-        assert any("court-circuité" in w and "model_X" in w for w in warnings)
+        assert any("sera ignorée" in w and "model_X" in w for w in warnings)
 
     def test_cv_run_with_none_selected_classes_no_warn(self, tmp_path: Path):
         # None = toutes les classes → pas de court-circuit.
@@ -678,7 +678,7 @@ class TestValidateWarnings:
         )
         ctx = self._ctx_for("ign_laz", tmp_path, cv=cv)
         _errors, warnings = validate_run_context(ctx)
-        assert not any("court-circuité" in w for w in warnings)
+        assert not any("sera ignorée" in w for w in warnings)
 
     def test_warnings_dont_block_execution(self, tmp_path: Path):
         # Combinaison de warnings : la liste errors reste vide.

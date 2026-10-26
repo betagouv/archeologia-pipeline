@@ -37,6 +37,23 @@ def _nb(n: int) -> str:
     return f"{n:,}".replace(",", " ")
 
 
+def texte_niveaux_effectifs(effectifs: Mapping[str, int]) -> str:
+    """« très probable 120 · probable 80 · possible 40 · douteux 12 » : les effectifs par
+    niveau en toutes lettres, du plus sûr au plus douteux, au masculin singulier de la
+    légende — le bilan se lit sans la couleur, à l'écran comme dans le rapport (lot 6)."""
+    from .vocabulaire import niveau, nombre   # différé : vocabulaire lit le catalogue des images
+
+    return " · ".join(
+        f"{niveau(c)} {nombre(int(effectifs.get(c, 0)), 0)}"
+        for c in NIVEAUX_DU_PLUS_SUR if int(effectifs.get(c, 0) or 0) > 0
+    )
+
+
+def texte_niveaux(ligne: "LigneBilan") -> str:
+    """Le texte sous la barre d'une ligne du bilan (cf. ``texte_niveaux_effectifs``)."""
+    return texte_niveaux_effectifs(ligne.effectifs)
+
+
 @dataclass(frozen=True)
 class LigneBilan:
     slug: str                              # dossier detections/<slug>/

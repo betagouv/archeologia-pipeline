@@ -9,7 +9,7 @@ from qgis.PyQt.QtWidgets import QLabel
 
 
 class Toast(QLabel):
-    def __init__(self, parent, message: str, duration: int = 2800):
+    def __init__(self, parent, message: str, duration: int = 4000):
         super().__init__(message, parent)
         self.setObjectName("Toast")
         self.setWordWrap(True)
@@ -31,5 +31,5 @@ class Toast(QLabel):
         self.move(max(8, x), max(8, y))
 
 
-def show_toast(parent, message: str, duration: int = 2800) -> Toast:
+def show_toast(parent, message: str, duration: int = 4000) -> Toast:
     return Toast(parent, message, duration)

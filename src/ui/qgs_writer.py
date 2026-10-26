@@ -16,6 +16,8 @@ import logging
 from pathlib import Path
 from typing import List, Optional
 
+from ..app.services.finalize_service import GROUPE_STRUCTURES
+from ..app.services.vocabulaire import titre_dossier_image
 from ..pipeline.cv.class_color_registry import color_for_class
 from .layer_loader import (
     _ensure_layer_crs,
@@ -62,7 +64,7 @@ def _add_rasters(
     items.sort(key=lambda v: _rvt_type_of(v).upper() == "MNT")  # tri stable : MNT en dernier
     for vrt in items:
         rvt_type = _rvt_type_of(vrt)
-        name = f"Dalles RVT {rvt_type} (index)" if rvt_type else "Dalles RVT (index)"
+        name = titre_dossier_image(rvt_type)   # le nom de l'image (N-03), comme au chargement en direct
         layer = QgsRasterLayer(str(vrt), name, "gdal")
         if not layer.isValid():
             logger.warning(f"VRT invalide, ignoré: {vrt}")
@@ -181,7 +183,7 @@ def write_validation_project(
     """Écrit ``qgs_path`` (le projet de validation consolidé) via ``QgsProject.write()``.
 
     Construit un ``QgsProject`` dédié (pas le singleton), y ajoute les vecteurs de détection
-    (groupés par entité dérivée) puis les rasters VRT, fixe le CRS projet (EPSG:2154 → WKT
+    (sous le groupe « Structures », sous-groupe par entité dérivée ou comparée) puis les rasters VRT, fixe le CRS projet (EPSG:2154 → WKT
     complet écrit, fin du « sans projection ») et l'étendue initiale, puis sérialise.
     Retourne le chemin si écrit, sinon ``None``. À appeler **sur le thread principal**.
     """
@@ -211,7 +213,7 @@ def write_validation_project(
         extent = QgsRectangle()
         extent.setMinimal()
 
-        # 1) Vecteurs de détection (au-dessus des rasters) — groupés par entité dérivée.
+        # 1) Vecteurs de détection (au-dessus des rasters) — sous « Structures ».
         for shp in shapefile_paths or []:
             if not shp:
                 continue
@@ -230,14 +232,13 @@ def write_validation_project(
                 logger.warning(f"Couche détection invalide, ignorée: {shp_str}")
                 continue
             _apply_validation_form(layer, all_classes or [], logger)
+            proj.addMapLayer(layer, False)
+            structures = root.findGroup(GROUPE_STRUCTURES) or root.insertGroup(0, GROUPE_STRUCTURES)
+            parent = structures
             if slug in derived_slugs:
                 label = entity_labels.get(slug, slug)
-                proj.addMapLayer(layer, False)
-                grp = root.findGroup(label) or root.insertGroup(0, label)
-                grp.addLayer(layer)
-            else:
-                proj.addMapLayer(layer, False)
-                root.addLayer(layer)
+                parent = structures.findGroup(label) or structures.insertGroup(0, label)
+            parent.addLayer(layer)
             ext = layer.extent()
             if ext is not None and not ext.isEmpty():
                 extent.combineExtentWith(ext)

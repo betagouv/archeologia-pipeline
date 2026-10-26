@@ -168,7 +168,7 @@ class AideDialog(QDialog):
         self._mode_resultats = False
         self.setObjectName("AideDialog")
         version = get_plugin_version() or ""
-        self.setWindowTitle(f"Manuel d'Archéolog'IA{' — v' + version if version else ''}")
+        self.setWindowTitle(f"Aide — Archéolog'IA{' — v' + version if version else ''}")
         self.setMinimumSize(760, 520)
         self.resize(1000, 680)
         # Fenêtre à part entière (barre de titre, réduction) et non modale : le
@@ -252,7 +252,7 @@ class AideDialog(QDialog):
         self._btn_suivant.setEnabled(False)
         lay.addWidget(self._btn_precedent)
         lay.addWidget(self._btn_suivant)
-        titre = QLabel("Manuel")
+        titre = QLabel("Aide")
         titre.setObjectName("WizardTitle")
         lay.addWidget(titre)
         lay.addStretch(1)

@@ -103,11 +103,17 @@ class ClassColorRegistry:
 
     def alias(self, nouveau: str, ancien: str) -> bool:
         """``nouveau`` (une couche renommée) prend le rang d'``ancien`` (sa classe) ; vrai si
-        l'alias est posé. Rien si ``nouveau`` a déjà un rang ou un alias, si les deux
-        noms se confondent une fois normalisés, ou si ``ancien`` est inconnu."""
+        l'alias est posé. Rien si ``nouveau`` a déjà un alias, si les deux noms se confondent une
+        fois normalisés, si ``ancien`` est inconnu, ou si ``nouveau`` a un rang plus ancien que
+        ``ancien`` : quand les deux ont un rang, le plus ancien porte la couleur que l'utilisateur
+        connaît (recette 68.2, 2026-10-26 : « cratères » rangé par une vieille sous-couche de
+        regroupement laissait « Cratères » orange au lieu du rouge de « cratere »). Le rang le
+        plus jeune reste dans le registre, mort : append-only."""
         n, a = _normalize(nouveau), _normalize(ancien)
         with self._lock:
-            if not n or not a or n == a or n in self._ranks or n in self._alias or a not in self._ranks:
+            if not n or not a or n == a or n in self._alias or a not in self._ranks:
+                return False
+            if n in self._ranks and self._ranks[n] < self._ranks[a]:
                 return False
             self._alias[n] = a
             self._persist()

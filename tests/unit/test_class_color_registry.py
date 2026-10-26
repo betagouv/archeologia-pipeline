@@ -133,6 +133,28 @@ class TestRobustesse:
 
 # ---------------------------------------------------------------- alias (N-01, 2026-10-25)
 
+def test_alias_le_rang_le_plus_ancien_gagne(tmp_path):
+    """Recette 68.2 (2026-10-26) : sur un poste où « cratères » avait déjà un rang (sous-couche d'un
+    ancien regroupement), « Cratères » ressortait orange au lieu du rouge historique de « cratere ».
+    Quand le nom de couche et sa classe ont tous deux un rang, le plus ancien porte la couleur que
+    l'utilisateur connaît ; le rang le plus jeune reste dans le registre, mort (append-only)."""
+    reg = _reg(tmp_path)
+    reg.rank_for("cratere")          # rang 0, la classe, rouge depuis toujours
+    reg.rank_for("cratères")         # rang 1, posé plus tard par une sous-couche nommée ainsi
+    assert reg.alias("Cratères", "cratere") is True
+    assert reg.rank_for("Cratères") == reg.rank_for("cratere") == 0
+    assert reg.color_for("Cratères") == reg.color_for("cratere")
+    # Dans l'autre sens, le nom de couche est le plus ancien : il garde son rang.
+    reg.rank_for("Enclos")           # rang 2
+    reg.rank_for("enclos_cl")        # rang 3
+    assert reg.alias("Enclos", "enclos_cl") is False
+    assert reg.rank_for("Enclos") == 2
+    # Un alias posé ne bouge plus, même vers une classe plus ancienne.
+    assert reg.alias("Cratères", "cratere") is False
+    d = json.loads(reg.path.read_text(encoding="utf-8"))
+    assert d["classes"] == ["cratere", "cratères", "enclos", "enclos_cl"] and d["alias"] == {"cratères": "cratere"}
+
+
 def test_alias_conserve_la_couleur_de_l_ancien_nom(tmp_path):
     """Une couche renommée par la structure (« Parcellaire ») garde la couleur que « parcellaire »
     avait : l'alias pointe sur l'ancien rang, le registre reste append-only."""
@@ -144,7 +166,7 @@ def test_alias_conserve_la_couleur_de_l_ancien_nom(tmp_path):
     assert reg.color_for("Cratères") == reg.color_for("cratere")
     assert reg.alias("Cratères", "talus") is False               # déjà résolu : on ne bouge plus
     assert reg.alias("Inconnue", "jamais_vue") is False          # l'ancien nom est inconnu : rien
-    assert reg.alias("talus", "cratere") is False                # un nom qui a son rang le garde
+    assert reg.alias("cratere", "talus") is False                # plus ancien que la classe visée : garde son rang
     assert reg.alias("Parcellaire", "parcellaire") is False      # même clé normalisée : rien à faire
     assert reg.rank_for("talus") == 1 and len(json.loads(reg.path.read_text(encoding="utf-8"))["classes"]) == 2
     # Persistance : relu depuis le JSON, l'alias tient ; les classes n'ont pas bougé.

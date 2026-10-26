@@ -261,9 +261,9 @@ def test_la_ligne_ne_porte_plus_le_nom_du_modele():
     assert src.count("InfoButton(") == 1 and 'QPushButton("Modèle ▾")' in src
     page = STEP3.read_text(encoding="utf-8")
     assert "self.modele_requested.emit(m)" in page
-    # La vignette de la ligne ouvre la fiche du modèle (demande du 2026-10-25) : la page
-    # relaie le signal de la ligne ; aucun « ⓘ » de modèle sur la ligne pour autant.
-    assert "row.modele_requested.connect(" in page
+    # La vignette de la ligne ouvre la fiche de la STRUCTURE (demande du 2026-10-26, qui
+    # remplace la fiche du modèle du 2026-10-25) : plus aucun chemin ligne → modèle.
+    assert "row.modele_requested.connect(" not in page and "modele_requested" not in src
     assert "class _Vignette(QLabel)" in src and "WA_TransparentForMouseEvents" not in src
 
 

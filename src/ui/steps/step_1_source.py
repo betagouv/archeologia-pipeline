@@ -73,12 +73,12 @@ class SourcePage(QWidget):
         root.setContentsMargins(16, 16, 16, 16)
         root.setSpacing(12)
 
-        heading = QLabel("Qu'avez-vous déjà ?")
+        heading = QLabel("Choisissez le point de départ de votre traitement")
         heading.setObjectName("WizardPageHeading")
         root.addWidget(heading)
         sub = QLabel(
             "Cliquez sur ce que vous possédez : le traitement part de là, "
-            "les étapes précédentes sont barrées."
+            "les étapes précédentes sont ignorées."
         )
         sub.setObjectName("WizardPageSub")
         sub.setWordWrap(True)

@@ -1,5 +1,5 @@
 """La frise de l'étape 1 reste le sélecteur du point de départ (choix de l'utilisateur,
-2026-10-24) : les étapes qui précèdent le point de départ sont barrées, chaque stade
+2026-10-24) : les étapes qui précèdent le point de départ sont ignorées, chaque stade
 cliquable prend le focus clavier et se choisit à la touche Espace. Vérifié par AST
 (``src/ui`` n'est pas importable hors QGIS)."""
 import ast

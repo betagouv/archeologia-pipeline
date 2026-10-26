@@ -1101,7 +1101,7 @@ Lot 3 du chantier d'accélération (2026-10-15) : une dalle lue en entier reçoi
 ## 62. Interface rationalisée — lot 2, l'étape 1 ⭐ P1
 
 > **Contexte** (2026-10-24, proposition A, choix de l'utilisateur) : la frise reste le sélecteur du point de départ,
-> les étapes qui le précèdent sont barrées ; chaque champ porte son message ; les erreurs sont rangées sur
+> les étapes qui le précèdent sont ignorées ; chaque champ porte son message ; les erreurs sont rangées sur
 > l'étape et le champ qui les corrigent ; un seul menu « Configuration ▾ ».
 
 - [ ] **62.1 Frise** : cliquer « MNT existant » → les deux premiers stades sont barrés et disent « sautée », le badge « POINT DE DÉPART » se pose sur MNT existant, l'indicateur ◉ le marque et ○ les autres stades cliquables ; Tab puis Espace choisit un stade au clavier, l'anneau de focus bleu se voit.
@@ -1117,7 +1117,7 @@ Lot 3 du chantier d'accélération (2026-10-15) : une dalle lue en entier reçoi
 > dalles dans la page, « Comparer les produits » depuis la page.
 
 - [ ] **63.1 Première ouverture** : profil QGIS neuf (ou dernière configuration supprimée) → MNT, SVF et LD cochés, aucune pastille rouge sur le rail ; une configuration enregistrée sans produit coché reste décochée.
-- [ ] **63.2 Sections** : « Recommandé pour commencer » (MNT, SVF, LD), « Autres indices de visualisation » (douze cartes), « Qualité de la donnée » (Densité, Couverture, masquée depuis un MNT existant) ; depuis des indices de visualisation existants, seule la phrase « cette étape est sans objet » reste.
+- [ ] **63.2 Sections** : « Recommandé pour commencer » (MNT, SVF, LD), « Autres indices de visualisation » (dix cartes : les douze indices moins SVF et LD, recommandés), « Qualité de la donnée » (Densité, Couverture, masquée depuis un MNT existant) ; depuis des indices de visualisation existants, seule la phrase « cette étape est sans objet » reste.
 - [ ] **63.3 Cocher et fiche** : un clic sur la vignette coche la carte (il n'ouvre plus la fiche) ; seul « ⓘ » ouvre la fiche ; Tab puis Espace coche au clavier.
 - [ ] **63.4 Verrou du MNT** : avec SVF cochée, cliquer MNT ne fait rien : la carte porte un cadenas dans sa coche et l'infobulle « Nécessaire aux produits cochés : SVF… » ; aucun toast.
 - [ ] **63.5 Réglages en accordéon** : sur une carte cochée, « ▸ Réglages (n) » déplie ses champs dans la carte (n = nombre de champs) ; un clic dans les champs ne décoche pas ; « ↺ » de la carte a pour infobulle « Revenir aux valeurs par défaut de « … » » et ne touche que ce produit ; décocher la carte replie ses réglages ; le rayon min de LD pousse toujours le rayon max.
@@ -1139,7 +1139,7 @@ Lot 3 du chantier d'accélération (2026-10-15) : une dalle lue en entier reçoi
 - [ ] **64.6 Une clé à la fois** : régler la Confiance puis changer de modèle (« Modèle ▾ ») : l'aire minimale suit le nouveau modèle (elle n'a pas été figée) ; régler l'aire ne fige pas le seuil ; `last_ui_config.json` ne porte que la clé réglée.
 - [ ] **64.7 Décocher conserve** : régler un seuil, décocher la structure, enregistrer la configuration, la recharger, recocher : le seuil est encore là ; l'étape 4 ne récapitule que les structures cochées.
 - [ ] **64.8 Regroupement** : « Regrouper en zones » apparaît dès que la ligne est cochée (sans la case des réglages) ; « Regroupement de cratères » coche Cratères d'office avec le badge « inclus dans », seuils grisés sur Cratères.
-- [ ] **64.9 Ce qui sera analysé** : une phrase par analyse « Modèle X lit l'image LD : Cratères, Parcellaire » avec son « ⓘ » ; compteur « N analyses · un modèle lit une image ».
+- [ ] **64.9 Ce qui sera analysé** : une phrase par analyse « Modèle X lit l'image LD : Cratères, Parcellaire » avec son « ⓘ » ; compteur « N analyses » (sans « un modèle lit une image » depuis le 2026-10-26).
 - [ ] **64.10 Lecture seule** : pendant un traitement, l'étape 3 est grisée (interrupteur, coches, réglages) mais les « ⓘ » restent cliquables et le panneau s'ouvre.
 - [ ] **64.11 Manuel** : F1 sur l'étape 3 → lignes, panneau ⓘ, deux décimales, réglages conservés décrits ; les captures montrent les lignes, le panneau ouvert sur Cratères et une ligne dépliée ; l'étape 2 montre le panneau sur SVF.
 
@@ -1212,7 +1212,7 @@ Lot 3 du chantier d'accélération (2026-10-15) : une dalle lue en entier reçoi
 - [ ] **69.3 Comparaison** : « Modèle ▾ » coche deux modèles → « Ce qui sera analysé » montre deux analyses ; la ligne ne change pas d'aspect.
 - [ ] **69.4 ▸ Réglages** : cocher une ligne → sous elle, « ▸ Réglages » (et « Regrouper en zones » sur la même rangée quand la structure le propose) ; un clic déplie Confiance, Aire min, « ↺ », « ▸ Profil des scores » et les paramètres du regroupement de cette seule ligne (« ▾ Réglages ») ; un second clic replie ; décocher la ligne replie ; plus de case « Seuils et réglages par structure » en haut de la liste ; Tab atteint le lien, Espace ou Entrée le bascule (anneau de focus visible sur une ligne cochée).
 - [ ] **69.5 Descriptions** : à 980 px de large, aucune description de structure ne finit par « … » (Cratères, Dépressions circulaires grandes, Regroupement de cratères, Enclos, Enclos circulaires raccourcies) ; le détail (corpus, résolution) est dans la fiche.
-- [ ] **69.6 Vignette** : un clic sur la vignette d'une ligne (cochée ou non) ouvre la fiche du modèle dans le panneau, onglet Modèle, sans cocher ni décocher la ligne ; curseur main et infobulle « Fiche du modèle… » au survol ; en comparaison, la fiche du premier modèle.
+- [ ] **69.6 Vignette** (révisé 2026-10-26) : un clic sur la vignette d'une ligne (cochée ou non) ouvre la fiche de la structure, comme le « i », sans cocher ni décocher la ligne ; curseur main et infobulle « Fiche de la structure » au survol.
 - [ ] **69.7 Bouton de fiche** : tous les « ⓘ » (étapes 2 et 3, « Ce qui sera analysé ») sont un « i » gras dans un rond bleu de 24 px, sans second cercle à l'intérieur ; survol bleu clair, anneau de focus au clavier.
 
 ## 70. Vocabulaire de l'étape 2 : Visualisation du relief, produits, indices de visualisation ⭐ P1

@@ -27,7 +27,7 @@
 | Morphologie | Famille de formes qui groupe les structures : circulaires, linéaires, zones |
 | Mosaïque | Fichier `index_<PRODUIT>.vrt` qui assemble toutes les dalles d'un produit en une seule couche QGIS, nommée comme le produit à l'étape 2 |
 | PDAL | Bibliothèque de traitement des nuages de points, fournie avec QGIS par OSGeo4W |
-| Point de départ | Ce que vous possédez déjà, choisi sur la frise de l'étape 1 : des dalles IGN à télécharger, des nuages LiDAR, un MNT existant ou des indices de visualisation existants ; le traitement part de là et les étapes précédentes sont barrées |
+| Point de départ | Ce que vous possédez déjà, choisi sur la frise de l'étape 1 : des dalles IGN à télécharger, des nuages LiDAR, un MNT existant ou des indices de visualisation existants ; le traitement part de là et les étapes précédentes sont ignorées |
 | Produit | Ce qui se coche à l'étape 2, Visualisation du relief : le relief nu (MNT), les cartes de qualité de la donnée (densité, couverture) et les indices de visualisation (SVF, LD…) ; chaque produit a sa fiche, ses réglages et sa mosaïque |
 | Regroupement | Agrégation de détections proches en zones, par densité |
 | Relief Visualization Toolbox | Bibliothèque de calcul des indices de visualisation, du ZRC SAZU et de l'Université de Ljubljana (UL FGG) ; le plugin en intègre une copie, sous licence Apache 2.0 |

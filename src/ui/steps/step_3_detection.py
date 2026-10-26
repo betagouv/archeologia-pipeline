@@ -252,7 +252,6 @@ class DetectionPage(QWidget):
         row.set_fiche(vignette, disponible=bool(cand_names), cadrage=cadrage)
         row.fiche_requested.connect(self.fiche_requested)
         row.reglages_toggled.connect(self._on_reglages_toggled)
-        row.modele_requested.connect(self._on_modele_demande)
         row.reset_requested.connect(self._on_reset_entity)
         row.toggled.connect(self._on_entity_toggled)
         row.models_changed.connect(self._on_models_changed)
@@ -330,12 +329,6 @@ class DetectionPage(QWidget):
     def _on_changed(self, *_args) -> None:
         if not self._loading:
             self.changed.emit()
-
-    def _on_modele_demande(self, model_name: str) -> None:
-        """Vignette d'une ligne : la fiche du modèle, dans le panneau (onglet Modèle)."""
-        model = self._models.get(model_name)
-        if model is not None:
-            self.modele_requested.emit(model)
 
     def _on_reglages_toggled(self, _entity_id: str, _on: bool) -> None:
         # Les profils d'une ligne ne sont chargés que dépliée : rafraîchir pour les poser.
@@ -562,7 +555,7 @@ class DetectionPage(QWidget):
             entity_thresholds=self._entity_thresholds,
             entity_cluster_params=self._entity_cluster_params,
         )
-        self._runs_count.setText(f"{pluriel(len(runs), 'analyse')} · un modèle lit une image")
+        self._runs_count.setText(pluriel(len(runs), "analyse"))
         if not runs:
             row = QLabel("Rien à analyser : cochez une structure.")
             row.setObjectName("EntityDesc")

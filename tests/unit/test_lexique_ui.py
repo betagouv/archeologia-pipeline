@@ -33,6 +33,8 @@ INTERDITS = [
     (r"\bentités?\b", "structure"),
     (r"\bIA\b", "détection automatique"),
     (r"\bPATH\b", "libellé français (vocabulaire.ENVIRONNEMENT)"),
+    # 2026-10-26 : la carte d'un résultat (étape 6) disait encore « images : MNT, SVF, LD ».
+    (r'"images : "', "produits : (lexique de l'étape 2)"),
 ]
 
 #: Textes légitimes qui contiennent un motif interdit (regex sur la chaîne entière).

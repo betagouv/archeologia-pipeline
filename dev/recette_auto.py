@@ -1007,10 +1007,10 @@ def vue_fin(app):
 @point("66.1")
 def p66_1(app, v, captures):
     b = boutons(v)
-    deux = ("Ajouter au projet QGIS courant" in b, "Ouvrir livrable/projet.qgs" in b)
+    un = ("Ajouter au projet QGIS courant" in b, "Ouvrir livrable/projet.qgs" not in b, "Ouvrir le dossier" in b, "Rapport" in b)
     actif = v._open_project_btn.isEnabled()
     v.grab().save(str(captures / "66-1_fin_simulee.png"))
-    verdict("66.1", all(deux) and actif and v._bilan_box.isVisible(), f"cadre « Par où commencer » visible {v._bilan_box.isVisible()} ; boutons {deux} ; « Ajouter » actif {actif} (chargement réel et grisage : au traitement réel)")
+    verdict("66.1", all(un) and actif and v._bilan_box.isVisible(), f"cadre « Par où commencer » visible {v._bilan_box.isVisible()} ; boutons (Ajouter présent, Ouvrir livrable absent, dossier, rapport) {un} ; « Ajouter » actif {actif} (chargement réel et grisage : au traitement réel)")
 
 
 @point("66.2")
@@ -1115,7 +1115,7 @@ def p67_3(app, w, r2):
     pump(app, 8)
     etape = w._current_step
     structures = [e for e, on in w._detection_page._selected.items() if on]
-    ok = etats.get("Ouvrir livrable/projet.qgs") is False and etats.get("Rapport") is False and etats.get("Relancer avec un seuil changé") is True and etape == 3 and "cratere" in structures
+    ok = "Ouvrir livrable/projet.qgs" not in etats and etats.get("Rapport") is False and etats.get("Relancer avec un seuil changé") is True and etape == 3 and "cratere" in structures
     verdict("67.3", ok, f"boutons (projet et rapport absents sur disque) {etats} ; Relancer → étape {etape}, structures {structures} (Ajouter / Ouvrir / Rapport réels : au traitement)")
 
 
@@ -1265,7 +1265,7 @@ def main(argv=None) -> int:
     p66_5(app)
     p66_6(app)
     verdict("66.3", None, "journal de fichier : au traitement réel (marge à 0)")
-    p_manuel("66.7", "etape-5-traitement", ["Ajouter au projet QGIS courant", "Ouvrir livrable/projet.qgs", "Relancer maintenant", "très probable 120", "pipeline_log"])
+    p_manuel("66.7", "etape-5-traitement", ["Ajouter au projet QGIS courant", "Relancer maintenant", "très probable 120", "pipeline_log"])
     v.close()
     p67_1(app, w)
     r2 = p67_2(app, w, args.recette)

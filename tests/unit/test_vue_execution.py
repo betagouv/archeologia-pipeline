@@ -81,16 +81,20 @@ def test_l_annulation_demande_de_patienter():
 
 # ---------------------------------------------------------------- lot 6 (2026-10-24)
 
-def test_deux_boutons_de_fin_explicites():
-    """« Ouvrir le projet QGIS » disait deux choses à la fois : ajouter les couches au projet
-    courant, ou ouvrir le projet du livrable. Deux boutons, deux verbes."""
+def test_un_seul_bouton_de_fin():
+    """Le lot 6 (2026-10-24) avait scindé « Ouvrir le projet QGIS » en deux boutons ; le 2026-10-26
+    l'utilisateur ne garde que « Ajouter au projet QGIS courant » (« mets juste le premier »),
+    à la fin du traitement comme à l'étape 6. livrable/projet.qgs reste écrit."""
     vue = _vue()
     assert 'QPushButton("Ajouter au projet QGIS courant")' in vue
-    assert 'QPushButton("Ouvrir livrable/projet.qgs")' in vue
     assert 'QPushButton("Ouvrir le projet QGIS")' not in vue
-    ouvrir = vue[vue.index("def _ouvrir_livrable("):vue.index("def _write_validation_project(")]
-    assert ".addProject(" in ouvrir and "QgsProject.instance().read(" in ouvrir   # QGIS, ou hors QGIS
-    assert "actions_fin.addWidget(self._open_livrable_btn)" in vue
+    for mot in ("Ouvrir livrable/projet.qgs", "_open_livrable_btn", "def _ouvrir_livrable("):
+        assert mot not in vue, mot
+    etape6 = (RACINE / "src/ui/steps/step_6_resultats.py").read_text(encoding="utf-8")
+    assert 'QPushButton("Ajouter au projet QGIS courant")' in etape6
+    for mot in ("Ouvrir livrable/projet.qgs", "ouvrir_projet", "addProject("):
+        assert mot not in etape6, mot
+    assert "def _write_validation_project(" in vue   # le projet du livrable est toujours écrit
 
 
 def test_relancer_maintenant_aux_etapes_1_a_3():

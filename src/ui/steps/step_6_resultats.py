@@ -1,9 +1,9 @@
 """Étape 6 — Résultats : revoir un traitement de ce poste (lot 9, 2026-10-24).
 
 Une ligne par traitement connu (registre du profil) : date, point de départ,
-dossier, images, structures, détections ; et quatre gestes : ajouter ses couches
+dossier, images, structures, détections ; et trois gestes : ajouter ses couches
 au projet QGIS courant (le même chargement qu'à la fin d'un traitement), ouvrir son
-``livrable/projet.qgs`` à la place du projet courant, ouvrir son rapport, relancer
+rapport, relancer
 avec un seuil changé (la configuration de la trace complète est rechargée dans
 l'assistant, qui s'ouvre à l'étape 3). Les données viennent du module pur
 :mod:`app.services.resultats_connus`.
@@ -48,10 +48,9 @@ def _date_fr(iso: str) -> str:
 
 
 class _Ligne(QFrame):
-    """Un traitement connu : ses faits, puis ses quatre gestes."""
+    """Un traitement connu : ses faits, puis ses trois gestes."""
 
     ajouter = pyqtSignal(object)
-    ouvrir_projet = pyqtSignal(object)
     ouvrir_rapport = pyqtSignal(object)
     relancer = pyqtSignal(object)
 
@@ -73,7 +72,7 @@ class _Ligne(QFrame):
         lay.addWidget(dossier)
         faits = []
         if r.images:
-            faits.append("images : " + ", ".join(r.images))
+            faits.append("produits : " + ", ".join(r.images))
         if r.structures:
             faits.append("structures : " + ", ".join(r.structures))
         faits.append(f"{nombre(r.n_detections, 0)} détection{'s' if r.n_detections > 1 else ''}"
@@ -89,11 +88,6 @@ class _Ligne(QFrame):
         ajouter.setObjectName("GhostButton")
         ajouter.setToolTip("Charge les mosaïques et les couches de détections de ce traitement, stylées, dans le projet ouvert")
         ajouter.clicked.connect(lambda: self.ajouter.emit(self._r))
-        projet = QPushButton("Ouvrir livrable/projet.qgs")
-        projet.setObjectName("GhostButton")
-        projet.setToolTip("Ouvre le projet de ce traitement à la place du projet courant")
-        projet.setEnabled(r.projet.is_file())
-        projet.clicked.connect(lambda: self.ouvrir_projet.emit(self._r))
         rapport = QPushButton("Rapport")
         rapport.setObjectName("GhostButton")
         rapport.setEnabled(r.rapport.is_file())
@@ -103,7 +97,7 @@ class _Ligne(QFrame):
         relancer.setToolTip("Recharge les réglages de ce traitement dans l'assistant, à l'étape 3, pour les modifier et relancer")
         relancer.setEnabled(r.metadata is not None)
         relancer.clicked.connect(lambda: self.relancer.emit(self._r))
-        for b in (ajouter, projet, rapport, relancer):
+        for b in (ajouter, rapport, relancer):
             b.setCursor(Qt.CursorShape.PointingHandCursor)
             boutons.addWidget(b)
         boutons.addStretch(1)
@@ -125,8 +119,8 @@ class ResultatsPage(QWidget):
         titre.setObjectName("WizardPageHeading")
         root.addWidget(titre)
         sous = QLabel(
-            "Pour chacun : ajouter ses couches au projet QGIS ouvert, ouvrir son projet ou son "
-            "rapport, ou le relancer avec d'autres réglages."
+            "Pour chacun : ajouter ses couches au projet QGIS ouvert, ouvrir son rapport, "
+            "ou le relancer avec d'autres réglages."
         )
         sous.setObjectName("WizardPageSub")
         sous.setWordWrap(True)
@@ -164,7 +158,6 @@ class ResultatsPage(QWidget):
         for r in self._resultats:
             ligne = _Ligne(r)
             ligne.ajouter.connect(self._ajouter)
-            ligne.ouvrir_projet.connect(self._ouvrir_projet)
             ligne.ouvrir_rapport.connect(self._ouvrir_rapport)
             ligne.relancer.connect(self._relancer)
             self._liste.addWidget(ligne)
@@ -210,17 +203,6 @@ class ResultatsPage(QWidget):
             )
         finally:
             QApplication.restoreOverrideCursor()
-
-    def _ouvrir_projet(self, r: Resultat) -> None:
-        if not r.projet.is_file():
-            show_toast(self, "Le projet de ce traitement n'existe plus.")
-            return
-        if self._iface is not None:
-            self._iface.addProject(str(r.projet))
-            return
-        from qgis.core import QgsProject   # hors QGIS de bureau
-
-        QgsProject.instance().read(str(r.projet))
 
     @staticmethod
     def _ouvrir_rapport(r: Resultat) -> None:

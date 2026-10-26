@@ -292,7 +292,7 @@ class RunView(QWidget):
     def __init__(self, config_ref: Optional[dict] = None, parent=None, iface=None):
         super().__init__(parent)
         self._config = config_ref or {}
-        self._iface = iface   # pour « Ouvrir livrable/projet.qgs » ; None hors QGIS de bureau
+        self._iface = iface   # None hors QGIS de bureau (rendu hors écran)
         self._cancel_event = threading.Event()
         self._bucket = -1
         self._running = False
@@ -441,8 +441,8 @@ class RunView(QWidget):
         dpr = self.devicePixelRatioF()
         actions_fin = QHBoxLayout()
         actions_fin.setSpacing(6)
-        # Deux gestes, deux verbes (2026-10-24) : ajouter les couches au projet ouvert, ou
-        # ouvrir le projet écrit dans le livrable à la place du projet courant.
+        # Un seul geste (2026-10-26, demande de l'utilisateur) : ajouter les couches au projet
+        # ouvert. livrable/projet.qgs reste écrit, pour plus tard ou pour un autre poste.
         self._open_project_btn = QPushButton("Ajouter au projet QGIS courant")
         self._open_project_btn.setObjectName("WizardPrimaryButton")
         self._open_project_btn.setToolTip(
@@ -450,14 +450,6 @@ class RunView(QWidget):
         )
         self._open_project_btn.setEnabled(False)
         self._open_project_btn.clicked.connect(self._ouvrir_projet_qgis)
-        self._open_livrable_btn = QPushButton("Ouvrir livrable/projet.qgs")
-        self._open_livrable_btn.setObjectName("GhostButton")
-        self._open_livrable_btn.setToolTip(
-            "Ouvre le projet du dossier de sortie à la place du projet courant ; "
-            "QGIS propose d'enregistrer celui-ci s'il a changé"
-        )
-        self._open_livrable_btn.setEnabled(False)
-        self._open_livrable_btn.clicked.connect(self._ouvrir_livrable)
         # Le dossier de sortie, à côté du projet (demande utilisateur 2026-10-08).
         # Icônes SVG du thème (teintées, nettes) plutôt que des émojis couleur au
         # rendu hétérogène ; iconSize = taille de rendu (14 px), sinon upscale
@@ -486,7 +478,6 @@ class RunView(QWidget):
         self._bilan_legende.setObjectName("RunHeaderSub")
         self._bilan_legende.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         actions_fin.addWidget(self._open_project_btn)
-        actions_fin.addWidget(self._open_livrable_btn)
         actions_fin.addWidget(self._open_dir_btn)
         actions_fin.addWidget(self._open_report_btn)
         actions_fin.addWidget(self._revoir_btn)
@@ -1071,7 +1062,6 @@ class RunView(QWidget):
         out_dir = self._output_dir()
         self._open_report_btn.setEnabled(bool(out_dir and (livrable_dir(out_dir) / NOM_RAPPORT).is_file()))
         self._open_project_btn.setEnabled(bool(self._couches_a_charger))
-        self._open_livrable_btn.setEnabled(bool(out_dir))   # le fichier est vérifié au clic
         self._afficher_bilan()
         self._bilan_box.setVisible(True)
         self.run_finished.emit()
@@ -1152,21 +1142,6 @@ class RunView(QWidget):
         self._couches_a_charger = None
         self._open_project_btn.setEnabled(False)
         self._open_project_btn.setToolTip("Les couches de ce traitement sont déjà dans le projet QGIS")
-
-    def _ouvrir_livrable(self) -> None:
-        """Ouvre livrable/projet.qgs à la place du projet courant. QGIS propose lui-même
-        d'enregistrer le projet courant s'il a changé : pas de boîte de plus."""
-        d = self._output_dir()
-        p = projet_qgs_path(d) if d else None
-        if p is None or not p.is_file():
-            self._logger.log(USER_INFO, "Le projet livrable/projet.qgs n'a pas été écrit pour ce traitement.")
-            return
-        if self._iface is not None:
-            self._iface.addProject(str(p))
-            return
-        from qgis.core import QgsProject   # hors QGIS de bureau (rendu hors écran)
-
-        QgsProject.instance().read(str(p))
 
     def _write_validation_project(
         self, vrt_paths, shapefile_paths, class_colors, qa_paths, conf,

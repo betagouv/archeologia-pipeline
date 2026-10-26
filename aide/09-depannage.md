@@ -106,7 +106,7 @@ Relancez ensuite dans le même dossier : les produits déjà calculés sont cons
 
 ## Les couches ne se chargent pas dans QGIS
 
-Les couches ne se chargent plus d'elles-mêmes : à la fin du traitement, cliquez **Ajouter au projet QGIS courant** dans le cadre « Par où commencer » (ou **Ouvrir livrable/projet.qgs** pour ouvrir le projet écrit à la place du vôtre) ; le premier n'agit qu'une fois. S'il est grisé, le traitement n'a pas abouti ou le bouton a déjà servi : tout est dans le dossier de sortie, ouvrez `livrable/projet.qgs`, ou ajoutez les mosaïques `index_<PRODUIT>.vrt` et les GeoPackages à la main.
+Les couches ne se chargent plus d'elles-mêmes : à la fin du traitement, cliquez **Ajouter au projet QGIS courant** dans le cadre « Par où commencer » ; il n'agit qu'une fois. S'il est grisé, le traitement n'a pas abouti ou le bouton a déjà servi : tout est dans le dossier de sortie, ouvrez `livrable/projet.qgs`, ou ajoutez les mosaïques `index_<PRODUIT>.vrt` et les GeoPackages à la main.
 
 ## Le traitement s'est interrompu
 

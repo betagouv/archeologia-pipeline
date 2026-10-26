@@ -61,7 +61,7 @@ Détail dans [Étape 5 · Traitement](etape-5-traitement.md).
 
 ## À la fin
 
-Le cadre **Par où commencer** apparaît sous la frise. **Ajouter au projet QGIS courant** y charge les mosaïques des produits et, par structure, un GeoPackage de détections avec sa légende de fiabilité ; **Ouvrir livrable/projet.qgs** ouvre le projet du dossier de sortie à la place du projet courant. Le projet `livrable/projet.qgs` dans le dossier de sortie regroupe tout, déjà stylé : c'est le point d'entrée pour valider les détections.
+Le cadre **Par où commencer** apparaît sous la frise. **Ajouter au projet QGIS courant** y charge les mosaïques des produits et, par structure, un GeoPackage de détections avec sa légende de fiabilité. Le projet `livrable/projet.qgs` dans le dossier de sortie regroupe tout, déjà stylé : c'est le point d'entrée pour valider les détections, à ouvrir depuis QGIS ou l'explorateur de fichiers, plus tard ou sur un autre poste.
 
 Ce qu'il y a dans le dossier de sortie et comment le lire : [Vos résultats dans QGIS](resultats.md).
 

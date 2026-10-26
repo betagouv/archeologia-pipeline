@@ -1275,7 +1275,6 @@ def main(argv=None) -> int:
     verdict("67.5", None, "canevas QGIS : à jouer en séance")
     p_manuel("67.6", "resultats", ["Revoir un résultat"])
     p68_6(app, w, args.recette)
-    verdict("68.7", None, "")
     p_manuel("68.7", "consulter-les-flux", ["catalogue", "Afficher dans QGIS", "Tout retirer", "Voir dans QGIS"])
     for n in ("68.1", "68.2", "68.3", "68.4", "68.5"):
         verdict(n, None, "traitement réel ou catalogue : à jouer en séance")

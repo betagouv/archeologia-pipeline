@@ -166,13 +166,19 @@ def test_load_catalogue_illisible(tmp_path):
 # ------------------------------------------------- catalogue livré
 
 def test_catalogue_livre_est_coherent():
-    """Le catalogue de démonstration doit rester chargeable et pointer ses vignettes."""
+    """Le catalogue de démonstration doit rester chargeable et pointer ses vignettes.
+
+    ``data/demo_catalogue/`` n'est ni versionné ni livré dans le ZIP : c'est un état du
+    poste. Sans catalogue, ou sans son dossier de vignettes (catalogue copié sans elles,
+    vécu 2026-10-25), le contrôle saute au lieu de rougir la suite."""
     from pathlib import Path
 
     root = Path(__file__).resolve().parents[2]
     path = root / "data" / "demo_catalogue" / "catalogue.json"
     if not path.is_file():
         pytest.skip("catalogue de démonstration non généré")
+    if not (path.parent / "thumbs").is_dir():
+        pytest.skip("catalogue de démonstration sans ses vignettes sur ce poste")
 
     cat = load_catalogue(path)
     assert cat.covered, "aucun département consultable"

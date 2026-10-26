@@ -549,6 +549,24 @@ def _reuse_existing(project, layer_name, source, loaded_layers, combined_extent)
     return False
 
 
+def _retirer_groupes_vides(project) -> None:
+    """Les groupes que la purge vient de vider — « Structures » et ses sous-groupes, jamais un
+    groupe de l'utilisateur, jamais un groupe encore peuplé — ne restent pas vides dans l'arbre
+    (constat de recette 68.4, 2026-10-26 : « Structures » et « Regroupement de cratères » vides
+    après le lancement d'un re-run). « Ajouter » les recrée au besoin (findGroup ou insertGroup)."""
+    from qgis.core import QgsLayerTree
+
+    root = project.layerTreeRoot()
+    structures = root.findGroup(GROUPE_STRUCTURES)
+    if structures is None:
+        return
+    for sous in list(structures.children()):
+        if QgsLayerTree.isGroup(sous) and not sous.children():
+            structures.removeChildNode(sous)
+    if not structures.children():
+        root.removeChildNode(structures)
+
+
 def purge_output_dir_layers(output_dir, logger: logging.Logger) -> int:
     """Retire du projet QGIS les couches périmées d'un ``output_dir`` avant un re-run.
 
@@ -575,6 +593,7 @@ def purge_output_dir_layers(output_dir, logger: logging.Logger) -> int:
         to_remove = select_layers_to_purge(sources, str(output_dir))
         if to_remove:
             project.removeMapLayers(to_remove)  # libère chaque dataProvider/dataset
+            _retirer_groupes_vides(project)
             logger.info(
                 f"{len(to_remove)} couche(s) du traitement précédent retirée(s) "
                 "avant régénération (même dossier de sortie)."

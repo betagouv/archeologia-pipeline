@@ -93,6 +93,9 @@ def test_vignette_et_formats(tmp_path):
     vrt = str(tmp_path / "indices" / "SVF_R10" / "tif" / "index_SVF.vrt")
     mnt = str(tmp_path / "indices" / "MNT" / "tif" / "index_MNT.vrt")
     assert choisir_vrt_vignette([mnt, vrt]) == vrt                 # SVF plus parlant que MNT
+    ld = str(tmp_path / "indices" / "LD_A15_Rmin10_Rmax20_H1p7_V1" / "tif" / "index_LD_A15.vrt")
+    vat = str(tmp_path / "indices" / "VAT_T0_B0" / "tif" / "index_VAT.vrt")
+    assert choisir_vrt_vignette([mnt, vrt, vat, ld]) == ld       # LD devant tout (demande du 2026-10-26 : le produit que lisent les modèles)
     assert choisir_vrt_vignette([mnt]) == mnt and choisir_vrt_vignette([]) is None
     assert vignette_depuis_vrt(str(tmp_path / "absent.vrt"), tmp_path / "v.png") is None   # sans GDAL / absent : None
     assert format_duree(7) == "7s" and format_duree(247) == "4min 07s" and format_duree(3725) == "1h 02min"

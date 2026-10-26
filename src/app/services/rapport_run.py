@@ -37,7 +37,9 @@ NOM_RAPPORT = "rapport.html"
 NOM_VIGNETTE = "rapport_vignette.png"
 
 #: Produits préférés pour la vignette, du plus lisible au moins parlant.
-_ORDRE_VIGNETTE = ("VAT", "CVAT", "PRISM", "CRIM", "M_HS", "HS", "SVF", "LD", "OPNS",
+# LD en tête (demande de l'utilisateur, 2026-10-26 : c'est le produit que lisent les modèles et que
+# l'archéologue regarde), puis les compositions, les ombrages, SVF, et le MNT nu en dernier recours.
+_ORDRE_VIGNETTE = ("LD", "VAT", "CVAT", "PRISM", "CRIM", "M_HS", "HS", "SVF", "OPNS",
                    "SLRM", "MSTP", "SLO", "MNT", "COUVERTURE", "DENSITE")
 
 _LIGNE_LOG = re.compile(r"^.*? - (WARNING|ERROR) - (.*)$")

@@ -549,7 +549,7 @@ class WizardDialog(QDialog):
         self._launch_page.set_workers(workers)
         self._config.setdefault("processing", {})["max_workers"] = self._launch_page.workers_value()
         # Carte graphique (étape 4, décochée par défaut) : même aller-retour que les workers.
-        self._launch_page.set_carte_graphique(bool(cv.get("carte_graphique", False)))
+        self._launch_page.set_carte_graphique(bool(cv.get("carte_graphique", True)))
         self._config.setdefault("computer_vision", {})["carte_graphique"] = self._launch_page.carte_graphique_value()
 
         sections = [RecapSection("Données", badges=[mode_info(mode).banner_label], step=1)]

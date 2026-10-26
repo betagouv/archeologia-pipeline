@@ -106,7 +106,7 @@ class ConfigManager:
                 "export_runner_config": False,
                 # Détection sur la carte graphique (DirectML, Windows) : option de
                 # l'étape 4, décochée par défaut (0.15.0) — sonde par poste, repli visible.
-                "carte_graphique": False,
+                "carte_graphique": True,   # cochée par défaut depuis le 2026-10-26 (décision de l'utilisateur)
             },
             "rvt_params": {
                 "hs": {

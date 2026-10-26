@@ -72,7 +72,7 @@
     "generate_annotated_images": false,
     "models_dir": "data/models",
     "export_runner_config": false,
-    "carte_graphique": false
+    "carte_graphique": true
   },
   "rvt_params": {
     "hs": {

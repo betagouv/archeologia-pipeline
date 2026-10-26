@@ -129,7 +129,7 @@ class LaunchPage(QWidget):
         super().__init__(parent)
         self._recap_rows: List[QWidget] = []
         self._workers = 3   # = ConfigManager (processing.max_workers)
-        self._carte = False   # = ConfigManager (computer_vision.carte_graphique), décochée par défaut
+        self._carte = True   # = ConfigManager (computer_vision.carte_graphique), cochée par défaut (2026-10-26)
         self._preflight_gen = 0
         self._validation_errors: List[str] = []
         # État des vérifications pour le bandeau : pending | ok | warn | err, avec les
@@ -285,7 +285,7 @@ class LaunchPage(QWidget):
         ligne.setSpacing(8)
         self._carte_check = QCheckBox("Détection sur la carte graphique")
         self._carte_check.setObjectName("CarteGraphiqueCheck")
-        self._carte_check.setChecked(False)
+        self._carte_check.setChecked(True)
         self._carte_check.toggled.connect(self._on_carte_toggled)
         ligne.addWidget(self._carte_check)
         note_carte = QLabel(

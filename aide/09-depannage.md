@@ -75,7 +75,7 @@ Le journal dit « Filtre des points non reconnu … : fusion sans filtre » ou �
 
 ## La carte graphique n'est pas utilisée
 
-L'option **Détection sur la carte graphique** de l'étape 4 n'impose rien : au premier usage de chaque modèle sur votre poste, le moteur compare la carte au processeur sur la première image et ne la garde que si elle est plus rapide et donne les mêmes détections. Le journal dit pourquoi elle a été écartée :
+L'option **Détection sur la carte graphique** de l'étape 4 n'impose rien : au premier usage sur votre poste, le moteur compare la carte au processeur sur la première image et ne la garde que si elle est plus rapide et donne les mêmes détections. La décision vaut ensuite pour tous les modèles et toutes les versions du plugin, tant que la carte, son pilote et la version du moteur ne changent pas ; « Oublier » à l'étape 4 la remet en jeu. Le journal dit pourquoi elle a été écartée :
 
 - « pas plus rapide que le processeur » : c'est le cas d'une carte intégrée au processeur, d'une session de bureau à distance ou d'une carte déjà occupée par un autre programme. Rien à corriger ; la détection se fait sur le processeur, comme sans l'option.
 - « résultats différents du processeur » : le pilote de la carte calcule autrement. Mettez-le à jour, puis relancez ; la décision est réessayée d'elle-même après sept jours, ou tout de suite si le pilote, le modèle ou le moteur de détection ont changé.

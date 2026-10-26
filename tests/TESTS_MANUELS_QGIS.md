@@ -1031,7 +1031,7 @@ Lot 3 du chantier d'accélération (2026-10-15) : une dalle lue en entier reçoi
 > détections ; décision mémorisée dans `archeologia/carte_graphique.json` du profil ; repli processeur annoncé.
 > Banc 2026-10-15 : ×7,5 sur l'IA, 13 546/13 546 objets finaux retrouvés, écart de confiance ≤ 0,009.
 
-- [ ] **56.1 Décochée par défaut** : profil neuf, étape 4 › Paramètres avancés → « Détection sur la carte graphique » décochée, aperçu replié « workers : 3 · carte graphique : non » ; un run sans l'option ne porte aucune ligne « carte graphique » dans le journal, `traitement.json` n'a pas de clé `appareil`.
+- [ ] **56.1 Cochée par défaut** (révisé le 2026-10-26) : profil neuf, étape 4 › Réglages du poste → « Détection sur la carte graphique » cochée, aperçu replié « … · carte graphique : oui » ; décochée, un run ne porte aucune ligne « carte graphique » dans le journal et `traitement.json` n'a pas de clé `appareil`.
 - [ ] **56.2 Première sonde** : cocher l'option, indices existants (LD) avec un modèle, dossier neuf → au premier modèle, après la première image, le journal porte une ligne 🎮 « « Modèle » : détection sur la carte graphique « <nom de la carte> » : première image en X s contre Y s sur le processeur, N détection(s) retrouvée(s), écart de confiance max 0,0xx » (X nettement < Y) ; la fin du modèle dit « … images analysées en … sur la carte graphique » ; `rapport.html` colonne Analyse « sur la carte graphique « <nom> » » ; `traitement.json` › `cv_runs[].appareil = "carte_graphique"` et `carte` ; `archeologia/carte_graphique.json` du profil porte une entrée datée.
 - [ ] **56.3 Mêmes détections** : comparer le GeoPackage du modèle avec celui d'un run identique sans l'option (dossier à part) : mêmes objets, écarts de confiance ≤ 0,01 sauf bascules au seuil.
 - [ ] **56.4 Décision mémorisée** : relancer le même modèle dans un nouveau dossier → pas de sonde, ligne « détection sur la carte graphique « <nom> » (vérifiée sur ce poste) » dès la première image ; durée par image divisée d'autant que 56.2.
@@ -1160,6 +1160,7 @@ Lot 3 du chantier d'accélération (2026-10-15) : une dalle lue en entier reçoi
 - [ ] **65.8 Réglages du poste** : après un traitement avec la carte graphique cochée, l'étape 4 montre « Décision mémorisée pour ce poste : carte graphique « … », retenue le jj/mm/aaaa » (ou « processeur (motif), décidé le … ») et « Oublier » ; cliquer efface `archeologia/carte_graphique.json` du profil et masque la ligne ; sans décision, ni ligne ni bouton.
 - [ ] **65.9 Lecture seule** : pendant un traitement, les réglages du poste sont grisés, « Revérifier » et « modifier » restent actifs.
 - [ ] **65.10 Manuel** : F1 sur l'étape 4 → quatre états, Environnement, Revérifier, Réglages du poste, Oublier, Ce qui sera produit, modifier décrits ; deux captures (à corriger, prête).
+- [ ] **65.11 Une seule sonde** (2026-10-26) : après une première sonde qui retient la carte, les traitements suivants disent « 🎮 « Modèle » : détection sur la carte graphique « … » (vérifiée sur ce poste) » dès la première image, pour un autre modèle comme après une mise à jour du plugin, sans comparer au processeur ; « Oublier » remet la sonde en jeu une fois.
 
 ## 66. Interface rationalisée — lot 6, la fin de traitement ⭐ P1
 

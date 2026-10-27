@@ -4,7 +4,7 @@ fileignoreconfig:
 - filename: tests/unit/test_opns.py
   checksum: 0506c8a17e9157f23cf0cbcd449ce4703241b1ed07c051270b39ed4484dfcf4a
 - filename: metadata.txt
-  checksum: 4349fcddb3ea1d40a15f123c81a202f2e5153fc0a03490b05398c6d57e3556ed
+  checksum: 1aa1ea57d362e5b3ed8c82bef8eb02ec2348cf2905000a57f8024bdfa19ec08f
 - filename: tests/unit/test_mnt_chien_de_garde.py
   checksum: 3a88266951015a42c91f1253d9cb20087afaa1d83caa9f916ca56ff20e436258
 - filename: src/pipeline/ign/products/mnt.py
@@ -22,9 +22,9 @@ fileignoreconfig:
 - filename: .githooks/pre-push
   checksum: c3ba1eb42246b032f6a556dd8813efdeab7151044c6e9942a252822ca56905da
 - filename: CLAUDE.md
-  checksum: 1408af13036bf9ca592ea9619244629161a397a8c511fce5cfff19943205a9c8
+  checksum: 62a6ffa12c61cd1305c2cb2ebcd34e298c48c4a224ad1b8731decd8bf3b64778
 - filename: README.md
-  checksum: 08ba7dd4aaaaddcf1fa89f448a1dba47175b93cb05c06396b54d99d7d8e6a288
+  checksum: 97fe7280690c0fd2c783171ca9ce270be94bca326b87d7760ec5d6ccf07128dc
 - filename: dev/docs/documentation_utilisateur_v1.docx
   checksum: 9984314b88553c8aa0de31f28403d664eba5a2426681c22a6b1c29e5c787cc5e
 - filename: dev/docs/specs/2026-06-11-produit-couverture-design.md
@@ -122,9 +122,9 @@ fileignoreconfig:
 - filename: src/ui/widgets/entity_card.py
   checksum: e4cfcd4527dd4fa24c315215fb5391cfdd96a3f29893ab5edb4050c4b767bac3
 - filename: src/ui/wizard_dialog.py
-  checksum: 52bc988b2149edf771033c3ea0d9f48da970f63245057fa5d893faa80ca08563
+  checksum: 8c2febade6f4bf1519f6012b043dddf983311080bc48ed53001e5ff5f5501b2a
 - filename: tests/TESTS_MANUELS_QGIS.md
-  checksum: a146c0650a5146acaea31016b0f412c5d472d1858f4d55e19c38ff38e14c1568
+  checksum: ff041c9da7d19c84b37400b52b99589564de4062eb213cdb3225476b824e0f42
 - filename: tests/integration/test_existing_mnt_runner_finalize.py
   checksum: e67c2e4c83cea0937bdfb39e8eec7aa7476f30648d4d858589e2308ad0565d63
 - filename: tests/integration/test_existing_rvt_runner_isolation.py
@@ -196,7 +196,7 @@ fileignoreconfig:
 - filename: src/ui/visualisation_tab.py
   checksum: 7e89a8540ed55495e9212c22117b6d9b6739bce41d424f5ed5c18ddb06735ea8
 - filename: src/app/services/visu_catalogue.py
-  checksum: b18d6592adbba246bcf0992d091302e8504077a20e8bf63a2da0ec94d1d47de2
+  checksum: a6e92afe3b4c854bd930d228a42082b288406cb20e6c0a9cdb0ddb7b57e0dca0
 - filename: src/ui/widgets/indice_card.py
   checksum: 06132cfabbad865873948a477ad1bf331a7460290d819a73134e7ecacd37d3c6
 - filename: data/demo_catalogue/thumbs/CVAT.png
@@ -244,7 +244,7 @@ fileignoreconfig:
 - filename: aide/01-installer.md
   checksum: 3fb722fa7b9051fbdaffdd01c12e8f1afa2abb724836bb3a521086837842d699
 - filename: .claude/commands/livraison.md
-  checksum: 9cc8d1836b6c82337029fd3b3ab6858d7fe34fdf0891d1b77d9b1e49ae5a0fdb
+  checksum: 498e642842583cf7d377223b7bfe16da0f82042b4a442d88e05ae3542ecf1d65
 - filename: aide/08-resultats.md
   checksum: 8a0ca8902321cb6b0be75ed6ab172e94607b4e5d9d3bbf702b84160ffcb7f6ad
 - filename: aide/04-etape-2-produits.md
@@ -254,15 +254,15 @@ fileignoreconfig:
 - filename: src/ui/widgets/carte_zones.py
   checksum: acb325e398a8bb1c2e2480257b1bc967a563693f9c8c2f0a02f6204b5209f874
 - filename: tests/unit/test_aide.py
-  checksum: b105571a665c637d8126bc9992728acb29701858ece980eeac5306d5c8b4d5f0
+  checksum: d2d660a9261f2e078df08f6136653fefa05686d7020eced17e8eda82d4a44e26
 - filename: aide/img/resultats-legende-fiabilite.jpg
   checksum: d27f3aeebfb1b815ba64ddd4ef2cfe5ffe845108f263e1310760f6d8c0d1246a
 - filename: aide/img/etape3-detection.png
-  checksum: 49a81e3d06078cab25f3b673d6f008083e4d3521d4183efc4ca9dbc876a8914e
+  checksum: a734047e51230ecea071199bc7d5facc44e1e744603bd4b2ca06154685d1217c
 - filename: aide/img/etape2-fiche-produit.png
   checksum: 30dbde61217e93f3543990c53a9398cef12f4458cbf12e6512ff6912e75b4004
 - filename: aide/02-premier-traitement.md
-  checksum: 17b023f8a3c423178cb1f6108bbcde06c9e48c0ff78c4e3b7326224d310fa089
+  checksum: f769d06311dac09622508c97b2dd6cba8ea0ffd749b89c20c403859dc50fa52e
 - filename: src/ui/dialogs/aide_dialog.py
   checksum: cf3961f1ed97e4798dfd37a910ba03359f0d8423588776b9b09dca94e92037ac
 - filename: dev/build_quadrillage_from_wfs.py
@@ -286,7 +286,7 @@ fileignoreconfig:
 - filename: data/third_party/cv_runner_onnx/windows/build_info.json
   checksum: 0dd652aec98ee97576bea664484ab240aec3b8cea45b2dd032bf63e60006dada
 - filename: dev/rendu_hors_ecran.py
-  checksum: db6e7c60f132e4e833cae37fe42d014bfc6e3a8213886e3fa2fb94ff7e4edb06
+  checksum: c17413a7757f3736db6d02453061771d1bca2461e149a9c27577695972d357a2
 - filename: aide/img/etape2-produits.png
   checksum: 33dd6625c569d5ba7342b0c042468adf2fb5e91c133c9ce823ae7f40b87e5bfc
 - filename: aide/img/etape4-verifications.png
@@ -402,9 +402,9 @@ fileignoreconfig:
 - filename: tests/unit/test_lexique_ui.py
   checksum: 3b73c95fb67d91b39ddbce3e9b2c1430911a976a081fe124539d0232d6d7baf0
 - filename: aide/10-glossaire.md
-  checksum: 247e14d72101f79a6ff752155eea79be19339973f1efd0afb2c24ea8e2600986
+  checksum: 849e792d6842e9313fa37d390f28f95ae013e9a06f24af0f301f3735ce687a6e
 - filename: dev/recette_auto.py
-  checksum: f2cff451264b390279cd7ab9345b588d0b5a0377dceb794b89da5269ec21058d
+  checksum: 40f004cbfe1f10191e259b66f5c01790284e3e949a69dba4c30abe4c64abe8da
 - filename: aide/img/etape6-resultats.png
   checksum: 5afe2a1b6f337b2c410e24f55a19f2a6c76b6d7d14b3568bee5aa6a3712f8032
 - filename: src/ui/widgets/entity_row.py

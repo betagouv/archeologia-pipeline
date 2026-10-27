@@ -407,4 +407,6 @@ fileignoreconfig:
   checksum: f2cff451264b390279cd7ab9345b588d0b5a0377dceb794b89da5269ec21058d
 - filename: aide/img/etape6-resultats.png
   checksum: 5afe2a1b6f337b2c410e24f55a19f2a6c76b6d7d14b3568bee5aa6a3712f8032
+- filename: src/ui/widgets/entity_row.py
+  checksum: cdb77e6e1d5f72e6063359ff158de017796217a27a6a40b2bcf784f22faeb765
 version: '1.0'

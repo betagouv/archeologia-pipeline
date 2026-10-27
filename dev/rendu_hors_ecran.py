@@ -10,8 +10,9 @@
 
 Monte un ``QgsApplication`` en ``QT_QPA_PLATFORM=offscreen`` avec le thème QSS du plugin, puis :
 
-- ``captures`` : l'assistant aux étapes 1 à 4, la carte d'une entité en réglages avancés, la fiche d'une
-  classe et la vue d'exécution (en cours, puis à la fin avec « Par où commencer »), avec des
+- ``captures`` : l'assistant aux étapes 1 à 4 (la 4 à corriger, puis prête), la ligne d'une structure en réglages, les fiches en fenêtre
+  ouvert sur une image puis sur une structure, et la vue d'exécution (en cours, puis à la fin avec
+  « Par où commencer »), avec des
   chemins neutres dans les champs et quelques produits cochés, en **double résolution**
   (``QT_SCALE_FACTOR=2``, posé avant la création de l'application) → ``aide/img/``. L'étape 4 est
   au vert : Processing et le fournisseur de rvt-qgis sont chargés hors écran, les contrôles du
@@ -23,7 +24,7 @@ Monte un ``QgsApplication`` en ``QT_QPA_PLATFORM=offscreen`` avec le thème QSS 
 - ``journal`` : la vue d'exécution hors run, avec une ligne ⚠ dont le renvoi au manuel est un lien ; puis les
   étapes 4 et 5 de l'assistant : bouton principal, « Suivant » vers le suivi pendant un run, journal gardé.
 - ``profil`` : la fiche de classe et la fiche ⓘ d'un modèle, avec la figure du profil des scores,
-  puis l'étape 3 en réglages avancés (mini-profil et bilan sur les cartes des entités du modèle).
+  puis l'étape 3 en réglages (mini-profil déplié sur les lignes des structures du modèle).
 
 Ce qu'il faut savoir (appris le 2026-10-07) : l'écran virtuel fait 800×600, d'où ``resize()`` après
 ``show()`` ; le ``.bat`` avale stdout, les contrôles sont écrits dans ``<sortie>/controles.txt`` ;
@@ -139,7 +140,7 @@ def _journal_fin(app, img: Path, log) -> bool:
                {"selected_model": "ponctuelles_2cl_det_ld_v1", "target_rvt": "LD"}]}}
     v = RunView(cfg)
     v.show()
-    v.resize(880, 580)                               # tout tient sans défilement
+    v.resize(880, 620)                               # tout tient sans défilement (rangées du bilan à 34 px)
     v._apply_stage_sequence()
     v._running = True
     durees = (61, 1202, 590, 82)                     # 32min 15s au total
@@ -192,28 +193,58 @@ def _journal_fin(app, img: Path, log) -> bool:
     return v._bilan_box.isVisible() and not defile
 
 
-def _carte_avancee(app, w, img: Path, log, entite: str = "parcellaire") -> bool:
-    """aide/img/etape3-carte-avancee.png : la carte d'une entité en réglages avancés — confiance,
-    aire minimale, mini-profil des scores avec le seuil en orange."""
+def _ligne_reglages(app, w, img: Path, log, entite: str = "parcellaire") -> bool:
+    """aide/img/etape3-ligne-reglages.png : la ligne d'une structure, seuils et réglages dépliés —
+    confiance à deux décimales, aire minimale, « ↺ », profil des scores déplié, seuil en orange."""
     from qgis.PyQt.QtWidgets import QScrollArea
 
     page = w._detection_page
     page._on_entity_toggled(entite, True)
-    page._adv_check.setChecked(True)
     app.processEvents()
-    carte = page._cards.get(entite)
-    if carte is None:
-        log("carte avancée : entité absente :", entite)
+    ligne = page._rows.get(entite)
+    if ligne is None:
+        log("ligne réglages : structure absente :", entite)
         return False
+    ligne._basculer_reglages()   # « ▸ Réglages » de la ligne, comme un clic
+    ligne.deplier_profil(True)
+    app.processEvents()
     zone = page.findChild(QScrollArea)
     if zone is not None:
-        zone.ensureWidgetVisible(carte, 0, 20)
+        zone.ensureWidgetVisible(ligne, 0, 20)
     app.processEvents()
-    carte.grab().save(str(img / "etape3-carte-avancee.png"))
-    page._adv_check.setChecked(False)
+    ligne.grab().save(str(img / "etape3-ligne-reglages.png"))
+    log("ligne réglages :", entite, ligne.width(), "x", ligne.height(), "| décimales :",
+        ligne._conf_spin.decimals(), "| infobulle :", ligne._conf_spin.toolTip().split("\n")[0])
+    ligne.deplier_profil(False)
+    ligne._basculer_reglages()
     app.processEvents()
-    log("carte avancée :", entite, carte.width(), "x", carte.height())
-    return True
+    return ligne._conf_spin.decimals() == 2
+
+
+def _fiches_fenetres(app, w, img: Path, log) -> bool:
+    """aide/img/etape2-fiche-produit.png et etape3-fiche-classe.png : la fiche d'une image (étape 2)
+    puis d'une structure (étape 3), chacune dans sa fenêtre à part (2026-10-25)."""
+    def _fiche(sorte: str, nom_png: str) -> bool:
+        for _ in range(3):
+            app.processEvents()
+        dlg = w._fiches.get(sorte)
+        ok = dlg is not None and dlg.isVisible()
+        if dlg is not None:
+            dlg.grab().save(str(img / nom_png))
+            log(f"fiche {sorte} :", dlg.windowTitle(), "| visible :", dlg.isVisible(),
+                "| fenêtre :", dlg.width(), "x", dlg.height())
+            dlg.close()
+        app.processEvents()
+        return ok
+
+    w._goto_step(2)
+    w._indices_page.fiche_requested.emit("SVF")
+    ok_image = _fiche("Produit", "etape2-fiche-produit.png")
+    w._goto_step(3)
+    w._detection_page.fiche_requested.emit("cratere")
+    ok_structure = _fiche("Structure", "etape3-fiche-classe.png")
+    log("assistant après les fiches : fenêtre", w.width(), "x", w.height(), "(attendu 980)")
+    return ok_image and ok_structure and w.width() == 980
 
 
 def _processing_hors_ecran(log) -> bool:
@@ -242,27 +273,84 @@ def _processing_hors_ecran(log) -> bool:
         return False
 
 
-def _fiche_classe(app, img: Path, log, modele: str = "crateres_seg_ld_v1") -> bool:
-    """aide/img/etape3-fiche-classe.png : la fiche d'une classe en haut, vérité terrain affichée."""
-    from archeo.src.app.services.class_fiche import build_all_fiches
-    from archeo.src.app.services.model_orchestrator import discover_installed_models, load_model_card
-    from archeo.src.ui.dialogs.class_info_dialog import ClassInfoDialog
-
-    modeles = {m.name: m for m in discover_installed_models(RACINE / "data" / "models")}
-    if modele not in modeles:
-        log("fiche de classe : modèle absent :", modele)
-        return False
-    m = modeles[modele]
-    card = load_model_card(m.model_dir)
-    card = card[0] if isinstance(card, tuple) else card
-    fiches = build_all_fiches(card)
-    dlg = ClassInfoDialog(fiches, model_dirs={f.modele_id: m.model_dir for f in fiches}, titre=modele)
-    dlg.show()
-    dlg.resize(900, 640)
+def _etape4_a_corriger(app, w, img: Path, log, fichiers) -> bool:
+    """aide/img/etape4-a-corriger.png : le bandeau rouge rangé par étape et le bouton gris qui
+    dit pourquoi, avec un dossier de sortie effacé."""
+    del fichiers   # le champ de la page est la source de vérité : on passe par lui
+    champ = w._source_page._output_edit
+    sauve = champ.text()
+    champ.setText("")
+    w._refresh_validation()
+    w._goto_step(4)
     app.processEvents()
-    dlg.grab().save(str(img / "etape3-fiche-classe.png"))
-    log("fiche de classe :", modele, dlg.width(), "x", dlg.height())
-    return True
+    etat = w._launch_page._banner.property("state")
+    log("étape 4 à corriger : bandeau =", etat, "| bouton actif :", w._next_btn.isEnabled(),
+        "| indication :", w._next_hint.text())
+    w.grab().save(str(img / "etape4-a-corriger.png"))
+    ok = etat == "incomplete" and not w._next_btn.isEnabled() and bool(w._next_hint.text())
+    champ.setText(sauve)
+    w._refresh_validation()
+    app.processEvents()
+    return ok
+
+
+def _etape6(app, w, img: Path, log) -> bool:
+    """aide/img/etape6-resultats.png : deux traitements fictifs de ce poste, avec leurs gestes."""
+    from archeo.src.app.services.resultats_connus import Resultat
+
+    base = Path("C:/Temp/archeologia_demo")
+    fictifs = [
+        Resultat(base / "foret_de_parroy", "2026-10-24T09:30:00", "Téléchargement IGN", ("MNT", "SVF", "LD"),
+                 ("Cratères", "Parcellaire", "Talus et fossés"), 952, base / "foret_de_parroy/livrable/projet.qgs",
+                 base / "foret_de_parroy/livrable/rapport.html", base / "foret_de_parroy/technique/journaux/metadata_20261024_093000.json"),
+        Resultat(base / "verdun_nord", "2026-10-18T14:05:00", "Nuages LiDAR locaux", ("MNT", "LD"),
+                 ("Cratères",), 4120, base / "verdun_nord/livrable/projet.qgs",
+                 base / "verdun_nord/livrable/rapport.html", None),
+    ]
+    w._goto_step(6)
+    w._resultats_page.set_resultats(fictifs)
+    w._refresh_rail_subs()
+    app.processEvents()
+    w.grab().save(str(img / "etape6-resultats.png"))
+    log("étape 6 :", w._resultats_page.summary(), "| bouton :", w._next_btn.text(), "| actif :", w._next_btn.isEnabled())
+    return len(w._resultats_page.resultats()) == 2 and not w._next_btn.isEnabled()
+
+
+def _consulter_flux(app, w, img: Path, log) -> bool:
+    """aide/img/consulter-les-flux.png : l'onglet sur un catalogue fictif (départements neutres,
+    vignettes du poste si présentes) — jamais le catalogue local, qui porte des zones de test."""
+    from archeo.src.app.services.visu_catalogue import CatalogItem, Catalogue, Department
+
+    tabs = getattr(w, "_tabs", None)
+    visu = w._visu_tab
+    if tabs is None or visu is None:
+        log("onglet Consulter les flux absent")
+        return False
+    vignettes = RACINE / "data" / "local_catalogue" / "thumbs"
+
+    def dept(code, nom, date, images, featured=False):
+        items = [CatalogItem(k, f"https://exemple.org/flux/{code}/{k}", f"21_{k}.png", go) for k, go in images]
+        return Department(code, nom, items, date, 0.5, featured)
+
+    visu._catalogue = Catalogue([
+        dept("21", "Côte-d'Or", "2026-09", [("M_HS", 2.4), ("SVF", 1.1), ("LD", 1.3)], featured=True),
+        dept("30", "Gard", "2026-08", [("M_HS", 3.0), ("SVF", 1.4), ("LD", 1.6)]),
+        dept("35", "Ille-et-Vilaine", "2026-06", [("M_HS", 2.1), ("LD", 1.2)]),
+        dept("55", "Meuse", "2026-10", [("M_HS", 2.8), ("SVF", 1.3), ("LD", 1.5)]),
+    ], "2026-10")
+    visu._catalogue_dir = vignettes
+    visu._erreur_catalogue = None
+    visu._cat_stamp.setText("catalogue 2026-10")
+    visu._refresh_rail()
+    tabs.setCurrentIndex(1)
+    for _ in range(6):
+        app.processEvents()
+    w.grab().save(str(img / "consulter-les-flux.png"))
+    log("consulter les flux : départements", len(visu._catalogue.covered), "| vignettes :", vignettes.is_dir(),
+        "| mur :", visu._wall_title.text())
+    tabs.setCurrentIndex(0)
+    app.processEvents()
+    return len(visu._catalogue.covered) == 4 and visu._wall_title.text() == "Côte-d'Or"
 
 
 def _etape4(app, w, img: Path, log) -> bool:
@@ -289,7 +377,11 @@ def _etape4(app, w, img: Path, log) -> bool:
             time.sleep(0.05)
     finally:
         pf.collect_preflight_results = brut
-    app.processEvents()
+    # Les résultats viennent d'arriver : chaque niveau de mise en page poste sa demande au
+    # suivant (grille → carte → page → zone défilante). Plusieurs passes, sinon la capture
+    # montre la page tassée dans l'ancienne hauteur (descendantes rognées, liste écrasée).
+    for _ in range(8):
+        app.processEvents()
     w.grab().save(str(img / "etape4-verifications.png"))
     statut = w._launch_page._preflight_status
     log("étape 4 : préflight =", statut, "| bouton :", w._next_btn.text(), "| actif :", w._next_btn.isEnabled())
@@ -297,14 +389,9 @@ def _etape4(app, w, img: Path, log) -> bool:
 
 
 def captures(app, sortie: Path, log) -> int:
-    """Étapes 1 à 4 de l'assistant, la fiche d'une classe et la vue d'exécution en cours →
-    aide/img/, chemins neutres, SVF + LD cochés, détection activée."""
-    import archeo.src.ui.wizard_dialog as wizard
+    """Étapes 1 à 4 et 6 de l'assistant, la fiche d'une classe, la vue d'exécution et l'onglet
+    « Consulter les flux » → aide/img/, chemins neutres, SVF + LD cochés, détection activée."""
     from archeo.src.ui.wizard_dialog import WizardDialog
-
-    # ponytail: l'onglet Visualisation n'a pas de chapitre et reste masqué sur dev et main ; les
-    # captures montrent l'assistant livré, quelle que soit la branche. Retirer le jour où il est livré.
-    wizard.VISUALISATION_TAB_ENABLED = False
 
     img = RACINE / "aide" / "img"
     img.mkdir(exist_ok=True)
@@ -342,14 +429,21 @@ def captures(app, sortie: Path, log) -> int:
     w._detection_page._enable_check.setChecked(True)
     w._goto_step(3)
     app.processEvents()
-    n = len(getattr(w._detection_page, "_cards", {}) or [])
-    log("entités affichées à l'étape 3 :", n, "(0 = aucun modèle sous data/models)")
+    n = len(getattr(w._detection_page, "_rows", {}) or [])
+    log("structures affichées à l'étape 3 :", n, "(0 = aucun modèle sous data/models)")
     w.grab().save(str(img / "etape3-detection.png"))
-    carte_ok = _carte_avancee(app, w, img, log)
-    fiche_ok = _fiche_classe(app, img, log)
+    ligne_ok = _ligne_reglages(app, w, img, log)
+    fiche_ok = _fiches_fenetres(app, w, img, log)
     etape4_ok = _etape4(app, w, img, log)
+    etape6_ok = _etape6(app, w, img, log)
+    flux_ok = _consulter_flux(app, w, img, log)
+    # Après l'étape 4 prête : un second passage lance une vérification de fond pendant que
+    # Processing s'initialise, et la première finissait en « QGIS processing » manquant.
+    corriger_ok = _etape4_a_corriger(app, w, img, log, fichiers) if fichiers is not None else False
     log("captures écrites dans", img, "— taille de l'assistant :", w.width(), "x", w.height())
-    return 0 if n and fin_ok and carte_ok and fiche_ok and etape4_ok else 1
+    log("contrôles : structures", bool(n), "| fin", fin_ok, "| ligne", ligne_ok, "| fiches", fiche_ok,
+        "| à corriger", corriger_ok, "| étape 4", etape4_ok, "| étape 6", etape6_ok, "| flux", flux_ok)
+    return 0 if n and fin_ok and ligne_ok and fiche_ok and corriger_ok and etape4_ok and etape6_ok and flux_ok else 1
 
 
 def manuel(app, sortie: Path, log, chapitre: str, ancre: str, recherche: str = "", tous: bool = False) -> int:
@@ -467,7 +561,11 @@ def profil(app, sortie: Path, log, modele: str) -> int:
     page._enable_check.setChecked(True)
     for eid in m.coverage:
         page._on_entity_toggled(eid, True)
-    page._adv_check.setChecked(True)
+    for ligne in page._rows.values():
+        ligne.set_advanced(True)
+    page._refresh()
+    for ligne in page._rows.values():
+        ligne.deplier_profil(True)
     w._goto_step(3)
     app.processEvents()
     minis = [f for f in page.findChildren(ProfilScoresWidget) if f.objectName() == "ProfilScoresMini" and f.isVisible()]
@@ -478,7 +576,7 @@ def profil(app, sortie: Path, log, modele: str) -> int:
             zone.ensureWidgetVisible(minis[0], 0, 120)
         app.processEvents()
         log("  bilan :", minis[0].phrase_bilan())
-    w.grab().save(str(sortie / f"carte_{modele}.png"))
+    w.grab().save(str(sortie / f"lignes_{modele}.png"))
     return 0 if figures and not debord else 1
 
 
@@ -545,11 +643,11 @@ def journal(app, sortie: Path, log) -> int:
     w._goto_step(5)
     app.processEvents()
     garde = "Terminé" in w._run_view._journal.toPlainText()
-    etapes_ok = (etape4 == (3, "Lancer le pipeline") and pendant == ("Suivant  →", True, False)
-                 and suivi == (5, "Lancer le pipeline", False) and garde)
+    etapes_ok = (etape4 == (3, "Lancer le traitement") and pendant == ("Suivant  →", True, False)
+                 and suivi == (5, "Lancer le traitement", False) and garde)
     log("étape 4 (page, bouton) =", etape4, "| pendant un run (bouton, pastille, workers actifs) =", pendant,
         "| Suivant → (étape, bouton, actif) =", suivi, "| journal gardé après navigation =", garde,
-        "| attendu (3, 'Lancer le pipeline'), ('Suivant  →', True, False), (5, 'Lancer le pipeline', False), True")
+        "| attendu (3, 'Lancer le traitement'), ('Suivant  →', True, False), (5, 'Lancer le traitement', False), True")
     return 0 if n_liens == 2 and v._bilan_box.isVisible() and etapes_ok else 1
 
 

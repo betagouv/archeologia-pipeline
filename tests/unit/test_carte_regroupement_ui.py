@@ -1,7 +1,7 @@
 """Carte d'entité (étape 3) — paramètres du regroupement émis à l'écran.
 
 Le code UI exige QGIS : on évalue par AST l'expression réelle qui fixe
-``_active_cluster_keys`` dans ``EntityCard.update_state``, avec les défauts que
+``_active_cluster_keys`` dans ``EntityRow.update_state``, avec les défauts que
 l'orchestrateur peut produire. Toute clé active doit avoir un champ, sinon
 ``_on_cluster_params_changed`` lève ``KeyError`` au premier changement et
 n'émet plus rien (régression de 8d334dc : ``min_confidence_extend``, lu
@@ -13,7 +13,7 @@ from types import SimpleNamespace
 
 from src.app.services import model_orchestrator as mo
 
-CARD = os.path.join(os.path.dirname(__file__), "..", "..", "src", "ui", "widgets", "entity_card.py")
+CARD = os.path.join(os.path.dirname(__file__), "..", "..", "src", "ui", "widgets", "entity_row.py")
 
 
 def _arbre():

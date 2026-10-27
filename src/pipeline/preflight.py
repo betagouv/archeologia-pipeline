@@ -134,7 +134,17 @@ def _check_raster_crs(dir_path, exts, results: List["CheckResult"], declared_crs
         # « declared_crs » (configuration seule, pour un raster sans CRS dans ses métadonnées, un .asc) : lu par
         # build_run_context mais jamais transmis jusqu'ici avant la 0.15.0 ; EPSG:2154 reste le défaut.
         plan = plan_raster_inputs(paths, declared_crs=declared_crs or "EPSG:2154", expected_crs="EPSG:2154")
-        if plan.crs_verified:
+        # Raster sans CRS dans ses métadonnées et rien de déclaré : le défaut EPSG:2154 s'applique en
+        # silence — on le dit (⚠ non bloquant) plutôt qu'un vert trompeur (recette 65.4, 2026-10-26).
+        sans_crs = [t.source_path.name for t in plan.tiles if getattr(t, "crs", "") is None]
+        if plan.crs_verified and sans_crs and not declared_crs:
+            shown = ", ".join(sans_crs[:3]) + (" …" if len(sans_crs) > 3 else "")
+            results.append(CheckResult(
+                name="CRS des rasters", ok=False, critical=False,
+                details=f"EPSG:2154 supposé · {len(sans_crs)} raster(s) sans système de coordonnées "
+                        f"dans leurs métadonnées ({shown})",
+            ))
+        elif plan.crs_verified:
             results.append(CheckResult(
                 name="CRS des rasters", ok=True,
                 details=f"{_short_crs(plan.crs)} · {len(plan.tiles)} dalle(s)", critical=True,

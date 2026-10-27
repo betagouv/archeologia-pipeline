@@ -93,6 +93,9 @@ def test_vignette_et_formats(tmp_path):
     vrt = str(tmp_path / "indices" / "SVF_R10" / "tif" / "index_SVF.vrt")
     mnt = str(tmp_path / "indices" / "MNT" / "tif" / "index_MNT.vrt")
     assert choisir_vrt_vignette([mnt, vrt]) == vrt                 # SVF plus parlant que MNT
+    ld = str(tmp_path / "indices" / "LD_A15_Rmin10_Rmax20_H1p7_V1" / "tif" / "index_LD_A15.vrt")
+    vat = str(tmp_path / "indices" / "VAT_T0_B0" / "tif" / "index_VAT.vrt")
+    assert choisir_vrt_vignette([mnt, vrt, vat, ld]) == ld       # LD devant tout (demande du 2026-10-26 : le produit que lisent les modèles)
     assert choisir_vrt_vignette([mnt]) == mnt and choisir_vrt_vignette([]) is None
     assert vignette_depuis_vrt(str(tmp_path / "absent.vrt"), tmp_path / "v.png") is None   # sans GDAL / absent : None
     assert format_duree(7) == "7s" and format_duree(247) == "4min 07s" and format_duree(3725) == "1h 02min"
@@ -140,7 +143,7 @@ def test_construire_html_ne_situe_pas_et_couvre_les_sections():
         "hypothèses", "Zone traitée", "9 km² couverts, en 9 dalles.", "ni nom de dalle ni coordonnée",
         "<h2>Produits</h2>", "rayon 10 px, 16 directions, sans suppression du bruit", "résolution 0,5 m",
         "Détection automatique", "<th>Seuil</th>", "0,26", ", sur LD", "12 images en 4min 07s (≈ 21s par image)", "reprise du run précédent",
-        "Bilan de fiabilité", "Par km²", "11,4", "12 très probables, 30 probables, 41 possibles, 20 douteuses",
+        "Bilan de fiabilité", "Par km²", "11,4", "très probable 12 · probable 30 · possible 41 · douteux 20",
         "très probable : au moins 85 % de vrais objets", "douteux : moins de 35 %",
         "Durées par étape", "Téléchargement", "9 dalles", "1h 02min", "(×3)", "Le noyau atteint N pixels",
         "<h2>Sources</h2>", "Licence Ouverte 2.0", "Relief Visualization Toolbox", "intégrée au plugin",
@@ -200,3 +203,28 @@ def test_la_vue_ouvre_le_rapport():
     racine = Path(__file__).resolve().parents[2]
     vue = (racine / "src/ui/run_view.py").read_text(encoding="utf-8")
     assert "NOM_RAPPORT" in vue and "_open_report" in vue
+
+
+def _bilan_parcellaire():
+    return ({"label": "Parcellaire", "couche": "parcellaire", "total": 103,
+             "effectifs": {"quasi_certain": 12, "probable": 30, "possible": 41, "douteux": 20}},)
+
+
+def test_niveaux_masculin_singulier():
+    """Le rapport dit les niveaux comme l'écran : « très probable 12 · probable 30 · … »,
+    jamais « très probables » (lot 6, 2026-10-24)."""
+    h = construire_html(DonneesRapport(version="x", date="d", mode="m", bilan=_bilan_parcellaire()))
+    assert "très probable 12 · probable 30 · possible 41 · douteux 20" in h
+    assert "très probables" not in h and "douteuses" not in h
+    assert "très probable : au moins 85 % de vrais objets" in h
+
+
+def test_couleurs_de_couche_dans_le_rapport():
+    """Les barres du rapport prennent la couleur de la couche, déclinée par niveau comme dans
+    QGIS ; sans couleur connue, les bleus de la feuille de style restent."""
+    couleurs = {"parcellaire": {"quasi_certain": "#112233", "probable": "#445566", "possible": "#778899", "douteux": "#aabbcc"}}
+    h = construire_html(DonneesRapport(version="x", date="d", mode="m", bilan=_bilan_parcellaire(), couleurs=couleurs))
+    for hexa in couleurs["parcellaire"].values():
+        assert f"background:{hexa}" in h, hexa
+    sans = construire_html(DonneesRapport(version="x", date="d", mode="m", bilan=_bilan_parcellaire()))
+    assert "background:#" not in sans.split("<table>", 1)[1].split("</table>", 1)[0]

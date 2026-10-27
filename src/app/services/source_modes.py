@@ -15,6 +15,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
+from .vocabulaire import pluriel
+
 
 @dataclass(frozen=True)
 class ModeInfo:
@@ -48,12 +50,12 @@ DATA_MODES: Dict[str, ModeInfo] = {
         entry_stage=1,
         config_key="input_file",
         is_file=True,
-        source_label="Zone d'étude (polygone ou points)",
+        source_label="Zone d'étude, liste de dalles ou dalles choisies sur la carte",
         placeholder="fichier.shp/.gpkg (polygone ou points) ou liste de dalles .txt",
         banner_label="Téléchargement IGN",
         banner_sub="à partir d'un polygone ou de points",
-        description="Le plugin télécharge les dalles LiDAR HD de l'IGN puis exécute "
-        "le pipeline complet.",
+        description="Le plugin télécharge les dalles LiDAR HD de l'IGN, puis calcule tout : "
+        "le MNT, les indices de visualisation et, si vous le demandez, les structures.",
         valid_exts=(".shp", ".dbf", ".geojson", ".json", ".gpkg", ".txt"),
     ),
     "local_laz": ModeInfo(
@@ -66,8 +68,8 @@ DATA_MODES: Dict[str, ModeInfo] = {
         placeholder="C:/data/laz/",
         banner_label="Nuages locaux",
         banner_sub="LAZ / LAS sur disque",
-        description="Vous avez déjà les nuages de points. Le pipeline calcule MNT, "
-        "indices RVT et IA.",
+        description="Vous avez déjà les nuages de points : le traitement calcule le MNT, "
+        "les indices de visualisation et cherche les structures.",
     ),
     "existing_mnt": ModeInfo(
         mode="existing_mnt",
@@ -79,8 +81,8 @@ DATA_MODES: Dict[str, ModeInfo] = {
         placeholder="C:/data/mnt/",
         banner_label="MNT existant",
         banner_sub="TIF / ASC",
-        description="Vous fournissez un MNT déjà calculé. Le pipeline calcule les "
-        "indices puis l'IA.",
+        description="Vous fournissez un MNT déjà calculé : le traitement calcule les "
+        "indices de visualisation puis cherche les structures.",
     ),
     "existing_rvt": ModeInfo(
         mode="existing_rvt",
@@ -88,21 +90,21 @@ DATA_MODES: Dict[str, ModeInfo] = {
         entry_stage=4,
         config_key="existing_rvt_dir",
         is_file=False,
-        source_label="Dossier des indices RVT",
+        source_label="Dossier des indices de visualisation",
         placeholder="C:/data/indices/",
-        banner_label="Indices RVT existants",
+        banner_label="Indices de visualisation existants",
         banner_sub="TIF (SVF, LD, M-HS…)",
-        description="Vous avez les indices déjà calculés. Ce mode n'a de sens "
-        "qu'avec la détection IA.",
+        description="Vous avez déjà les indices de visualisation (SVF, LD…) : ce point de départ n'a de sens "
+        "que pour y chercher des structures.",
     ),
 }
 
 PIPELINE_STAGES: List[StageInfo] = [
-    StageInfo(1, "download", "Téléchargement", "LAZ depuis IGN", "ign_laz"),
-    StageInfo(2, "pointcloud", "Nuages LiDAR", "LAZ / LAS", "local_laz"),
-    StageInfo(3, "raster", "MNT", "raster altitude", "existing_mnt"),
-    StageInfo(4, "indices", "Indices RVT", "M-HS · SVF · LD…", "existing_rvt"),
-    StageInfo(5, "detection", "Détection IA", "modèles ONNX", None, optional=True),
+    StageInfo(1, "download", "Dalles IGN à télécharger", "connexion Internet", "ign_laz"),
+    StageInfo(2, "pointcloud", "Nuages LiDAR", "fichiers LAZ ou LAS", "local_laz"),
+    StageInfo(3, "raster", "MNT existant", "TIF en Lambert-93", "existing_mnt"),
+    StageInfo(4, "indices", "Indices de visualisation existants", "TIF en Lambert-93", "existing_rvt"),
+    StageInfo(5, "detection", "Structures à chercher", "facultatif", None, optional=True),
 ]
 
 _ORDER = ["ign_laz", "local_laz", "existing_mnt", "existing_rvt"]
@@ -169,3 +171,55 @@ def normalize_vector_input(path: Path) -> Path:
 def path_is_valid(text: str, *, expect_dir: bool, allow_create: bool = False) -> bool:
     """Compat : ``True`` si le chemin n'est pas en erreur (ok ou warn)."""
     return path_state(text, expect_dir=expect_dir, allow_create=allow_create) != "error"
+
+
+_GESTE_VIDE = {
+    "ign_laz": "Indiquez la zone d'étude (.shp, .gpkg, .geojson), une liste de dalles (.txt), "
+               "ou choisissez les dalles sur la carte.",
+    "local_laz": "Indiquez le dossier des fichiers LAZ ou LAS.",
+    "existing_mnt": "Indiquez le dossier des MNT (TIF en Lambert-93).",
+    "existing_rvt": "Indiquez le dossier des indices de visualisation (TIF en Lambert-93).",
+}
+_NOM_LISTE_CARTE = "dalles_selection.txt"
+
+
+def _dans(enfant: Path, parent: Path) -> bool:
+    try:
+        return enfant.resolve().is_relative_to(parent.resolve())
+    except (OSError, ValueError):
+        return False
+
+
+def message_champ(mode: str, texte: str, state: str, *, sortie: bool = False, source: str = "") -> str:
+    """Le message sous un champ de l'étape 1 : ce qui manque et le geste à faire,
+    ou rien quand tout va bien (lot 2 de l'interface rationalisée).
+
+    ``state`` vient de :func:`path_state`. Pour le dossier de sortie (``sortie``),
+    ``source`` est le chemin de vos données : un dossier de sortie à l'intérieur est
+    refusé, comme au lancement.
+    """
+    texte = (texte or "").strip()
+    if sortie:
+        if not texte:
+            return "Indiquez le dossier qui recevra livrable/ et technique/ ; il peut ne pas exister encore."
+        if state == "error":
+            return "Ce chemin n'est pas un dossier : indiquez un dossier, existant ou à créer."
+        if source and _dans(Path(texte), Path(source)):
+            return "Ce dossier est dans le dossier de vos données : choisissez un dossier de sortie à part."
+        return ""
+    info = mode_info(mode)
+    if not texte:
+        return _GESTE_VIDE.get(mode, _GESTE_VIDE["ign_laz"])
+    if state == "error":
+        return ("Ce fichier est introuvable : vérifiez le chemin, ou choisissez les dalles sur la carte."
+                if info.is_file else "Ce dossier est introuvable : vérifiez le chemin.")
+    if state == "warn":
+        return "Extension inattendue : attendu .shp, .gpkg, .geojson ou une liste .txt."
+    if mode == "ign_laz" and Path(texte).name == _NOM_LISTE_CARTE:
+        try:
+            n = sum(1 for ligne in Path(texte).read_text(encoding="utf-8").splitlines() if ligne.strip())
+        except OSError:
+            return ""
+        return f"{pluriel(n, 'dalle')} choisie{'s' if n > 1 else ''} sur la carte"
+    return ""
+

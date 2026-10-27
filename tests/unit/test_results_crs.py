@@ -118,6 +118,9 @@ class TestCopyFinalProducts:
 # --------------------------------------------------------------------------- #
 
 class TestBuildVrtIndex:
+    @pytest.mark.skipif(
+        shutil.which("gdalbuildvrt") is None, reason="gdalbuildvrt absent du PATH (l'étiquetage précède le VRT)"
+    )
     def test_stamps_source_tifs_when_missing(self, tmp_path):
         folder = tmp_path / "tif"
         folder.mkdir()
@@ -154,6 +157,9 @@ class TestBuildVrtIndex:
 
         assert TileSpec.from_raster(a).crs == "EPSG:32631"
 
+    @pytest.mark.skipif(
+        shutil.which("gdalbuildvrt") is None, reason="gdalbuildvrt absent du PATH (l'étiquetage précède le VRT)"
+    )
     def test_skips_unreadable_source_gracefully(self, tmp_path):
         folder = tmp_path / "tif"
         folder.mkdir()

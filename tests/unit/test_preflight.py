@@ -340,6 +340,31 @@ class TestCheckRasterCrs:
         assert deg[0].critical is False  # ⚠ n'empêche pas le lancement
         assert "2" in deg[0].details
 
+    def test_raster_sans_crs_ni_declaration_avertit_sans_bloquer(self, monkeypatch, tmp_path):
+        """Recette 65.4 : un raster sans CRS dans ses métadonnées est traité en EPSG:2154 supposé —
+        on le dit (⚠ non bloquant) au lieu d'un vert silencieux (défaut vu le 2026-10-26)."""
+        from types import SimpleNamespace
+        (tmp_path / "mnt.tif").write_bytes(b"x")
+        import pipeline.ingest_plan as ip
+        plan = self._fake_plan(tiles=[SimpleNamespace(crs=None, source_path=Path("mnt.tif"))])
+        monkeypatch.setattr(ip, "plan_raster_inputs", lambda *a, **k: plan)
+        results = []
+        _check_raster_crs(str(tmp_path), ("tif",), results)
+        assert [r.name for r in results] == ["CRS des rasters"]
+        assert results[0].ok is False
+        assert results[0].critical is False
+        assert "mnt.tif" in results[0].details and "EPSG:2154" in results[0].details
+
+    def test_raster_sans_crs_mais_declare_reste_vert(self, monkeypatch, tmp_path):
+        from types import SimpleNamespace
+        (tmp_path / "mnt.tif").write_bytes(b"x")
+        import pipeline.ingest_plan as ip
+        plan = self._fake_plan(tiles=[SimpleNamespace(crs=None, source_path=Path("mnt.tif"))])
+        monkeypatch.setattr(ip, "plan_raster_inputs", lambda *a, **k: plan)
+        results = []
+        _check_raster_crs(str(tmp_path), ("tif",), results, declared_crs="EPSG:2154")
+        assert results[0].ok is True and results[0].critical is True
+
     def test_no_degenerate_result_when_none(self, monkeypatch, tmp_path):
         (tmp_path / "mnt.tif").write_bytes(b"x")
         import pipeline.ingest_plan as ip

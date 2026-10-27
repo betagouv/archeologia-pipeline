@@ -34,7 +34,7 @@ from src.app.services.reglages_defaut import (
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 STEP3 = os.path.join(ROOT, "src", "ui", "steps", "step_3_detection.py")
 STEP2 = os.path.join(ROOT, "src", "ui", "steps", "step_2_indices.py")
-CARD = os.path.join(ROOT, "src", "ui", "widgets", "entity_card.py")
+CARD = os.path.join(ROOT, "src", "ui", "widgets", "entity_row.py")
 
 DEFAUT_CONF, DEFAUT_AIRE = 0.25, 200.0
 
@@ -141,8 +141,8 @@ def test_etape3_reinitialise_par_entite_et_non_en_bloc():
         "l'étape 3 n'utilise pas l'effacement ciblé du module pur"
     )
     assert "a_des_surcharges(" in src, "l'état du bouton n'est plus calculé par entité"
-    assert "card.reset_requested.connect(self._on_reset_entity)" in src, (
-        "le signal de la carte n'est pas branché"
+    assert "row.reset_requested.connect(self._on_reset_entity)" in src, (
+        "le signal de la ligne n'est pas branché"
     )
     for interdit in (
         "_on_reset_defaults",
@@ -170,7 +170,7 @@ def test_le_garde_loading_de_la_carte_survit():
     """Sans lui, chaque ``setValue`` du rafraîchissement recréerait la surcharge
     qu'on vient d'effacer."""
     assert re.search(r"if show_adv:\s*\n\s*self\._loading = True", _lire(CARD)), (
-        "entity_card.py : le garde _loading autour des setValue a disparu"
+        "entity_row.py : le garde _loading autour des setValue a disparu"
     )
 
 

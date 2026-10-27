@@ -31,6 +31,8 @@ def _laz(path: Path, content: bytes = b"LASF-ok") -> Path:
 @pytest.fixture
 def pdal_dit_oui(monkeypatch):
     """Toute validation PDAL répond OK (on teste l'écriture, pas PDAL)."""
+    # Sans pdal dans le PATH (CI GitHub), merge_tiles échouait avant d'atteindre le faux pdal.
+    monkeypatch.setattr(preprocess, "_pdal_exe", lambda: "pdal")
     monkeypatch.setattr(
         preprocess, "validate_las_or_laz_with_pdal", lambda *a, **k: (True, "ok")
     )

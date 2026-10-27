@@ -56,6 +56,7 @@ def session_sur_carte(session: Any) -> bool:
 # Cartes du poste (DXGI) — énumérées DANS le processus qui ouvre DirectML
 # ---------------------------------------------------------------------------
 DXGI_ADAPTER_FLAG_SOFTWARE = 2
+VENDOR_MICROSOFT = 0x1414   # WARP / Basic Render Driver : pas une carte (CI GitHub, 2026-10-27)
 
 
 def adaptateurs_dxgi() -> List[Dict[str, Any]]:
@@ -110,7 +111,7 @@ def _adaptateurs_dxgi() -> List[Dict[str, Any]]:
                 desc = DESC1()
                 if methode(adapter, 10, ctypes.c_long, ctypes.POINTER(DESC1))(adapter, ctypes.byref(desc)) != 0:
                     continue
-                if not desc.Flags & DXGI_ADAPTER_FLAG_SOFTWARE:
+                if not desc.Flags & DXGI_ADAPTER_FLAG_SOFTWARE and desc.VendorId != VENDOR_MICROSOFT:
                     umd = ctypes.c_longlong(0)   # version du pilote en mode utilisateur (IDXGIAdapter::CheckInterfaceSupport)
                     if methode(adapter, 9, ctypes.c_long, ctypes.POINTER(GUID), ctypes.POINTER(ctypes.c_longlong))(
                             adapter, ctypes.byref(iid_device), ctypes.byref(umd)) != 0:

@@ -1,9 +1,9 @@
 # Archéolog'IA — plugin QGIS
 
-Archéolog'IA transforme des nuages de points LiDAR HD de l'IGN en images du relief lisibles par un archéologue (modèle numérique de terrain, ombrages, facteur de vue du ciel, dominance locale…), puis y cherche des structures archéologiques avec des modèles de détection, et livre un projet QGIS prêt à valider. Il s'adresse aux services d'archéologie et aux prospecteurs qui travaillent sous QGIS, sans compétence en traitement de données.
+Archéolog'IA transforme des nuages de points LiDAR HD de l'IGN en produits de visualisation du relief lisibles par un archéologue (modèle numérique de terrain, ombrages, facteur de vue du ciel, dominance locale…), puis y cherche des structures archéologiques avec des modèles de détection, et livre un projet QGIS prêt à valider. Il s'adresse aux services d'archéologie et aux prospecteurs qui travaillent sous QGIS, sans compétence en traitement de données.
 
 - Nom du plugin : **Archéolog'IA**
-- Version : **0.17.0**
+- Version : **0.18.0**
 - QGIS : **3.34 ou plus récent, QGIS 4 compris** (Qt5 et Qt6, un seul code), Windows
 - Documentation utilisateur : le **manuel intégré** (menu Extensions → Archéolog'IA → Manuel, bouton « Aide » ou F1 dans l'assistant), dont la source est le dossier [`aide/`](aide/), livré avec le plugin
 - Journal des versions : le champ `changelog` de [`metadata.txt`](metadata.txt), rendu dans le chapitre « Nouveautés » du manuel

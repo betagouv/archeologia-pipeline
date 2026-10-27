@@ -32,11 +32,22 @@ class TestCatalog:
         assert p.description
         assert p.is_rvt is True
 
-    def test_default_products_none_selected(self):
-        # Plus de sélection recommandée : aucun produit n'est pré-coché.
+    def test_defauts_coches(self):
+        # Trois images cochées d'avance (lot 3, 2026-10-24) : plus de pastille rouge à
+        # la première ouverture, et un premier regard utile (relief nu, creux, reliefs).
         d = default_products()
         assert set(d.keys()) == {p.key for p in all_products()}
-        assert all(v is False for v in d.values())
+        assert {k for k, v in d.items() if v} == {"MNT", "SVF", "LD"}
+
+    def test_sections_partitionnent_les_produits(self):
+        from app.services.indices_model import other_rvt_keys, quality_keys, recommended_keys
+        assert recommended_keys() == ["MNT", "SVF", "LD"]
+        assert quality_keys() == ["DENSITE", "COUVERTURE"]
+        autres = other_rvt_keys()
+        assert "SVF" not in autres and "LD" not in autres and "MNT" not in autres
+        tout = recommended_keys() + autres + quality_keys()
+        assert sorted(tout) == sorted(p.key for p in all_products())
+        assert len(tout) == len(set(tout))
 
 
 class TestRequiresMnt:
@@ -95,7 +106,8 @@ class TestCouvertureEntry:
         assert default_products()["COUVERTURE"] is False
 
     def test_toggle_ne_force_pas_mnt(self):
-        new, toast = toggle(default_products(), "COUVERTURE")
+        rien = {k: False for k in default_products()}
+        new, toast = toggle(rien, "COUVERTURE")
         assert new["COUVERTURE"] is True
         assert new["MNT"] is False
         assert toast is None

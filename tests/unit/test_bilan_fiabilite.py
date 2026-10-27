@@ -13,6 +13,8 @@ from app.services.bilan_fiabilite import (
     LigneBilan,
     collecter,
     effectifs_par_categorie,
+    texte_niveaux,
+    texte_niveaux_effectifs,
 )
 from app.services.fiabilite import Categorie
 
@@ -122,3 +124,16 @@ def test_la_vue_et_le_widget_sont_branches():
     assert "collecter_bilan(" in vue and "BilanFiabiliteWidget(" in vue and "_afficher_bilan" in vue
     widget = (racine / "src/ui/widgets/bilan_fiabilite.py").read_text(encoding="utf-8")
     assert "teinte_niveau" in widget and "couleur_de_classe" in widget   # mêmes teintes que la légende
+
+
+def test_texte_sous_barre():
+    """Sous chaque barre, les effectifs par niveau en toutes lettres : le bilan se lit sans la
+    couleur (2026-10-24), du plus sûr au plus douteux, au masculin singulier de la légende."""
+    cats = tuple(Categorie(**c) for c in CATS)
+    ligne = LigneBilan("p", "Parcellaire", "parcellaire", "parcellaire", "m", cats,
+                       {"quasi_certain": 1200, "probable": 80, "douteux": 12})
+    assert texte_niveaux(ligne) == "très probable 1\u202f200 · probable 80 · douteux 12"
+    assert texte_niveaux_effectifs({"douteux": 3, "quasi_certain": 0, "possible": 5}) == "possible 5 · douteux 3"
+    assert texte_niveaux_effectifs({}) == ""
+    widget = (Path(__file__).resolve().parents[2] / "src/ui/widgets/bilan_fiabilite.py").read_text(encoding="utf-8")
+    assert "texte_niveaux(" in widget and "_RANGEE = 34" in widget

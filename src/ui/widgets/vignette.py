@@ -1,7 +1,7 @@
 """Vignette d'accès à une fiche — le carré cliquable de 44 px, partagé.
 
 Deux endroits montrent la même chose au même format : la carte d'une entité à
-détecter (étape 3, :mod:`entity_card`) et la carte d'un produit à calculer
+détecter (étape 3, :mod:`entity_row`) et la carte d'un produit à calculer
 (étape 2, :mod:`steps.step_2_indices`). Un seul widget, donc un seul visuel —
 c'est la demande : la fiche d'un indice s'ouvre comme celle d'un modèle.
 
@@ -196,18 +196,3 @@ class FicheThumb(QPushButton):
         # Repolish : la propriété dynamique pilote le style du cadre.
         self.style().unpolish(self)
         self.style().polish(self)
-
-
-class FicheButton(QPushButton):
-    """Le lien texte « Fiche » de l'en-tête d'une carte."""
-
-    def __init__(self, tooltip: str = "", parent=None):
-        super().__init__("Fiche", parent)
-        self.setObjectName("FicheBtn")
-        self.setFlat(True)
-        self.setCursor(Qt.CursorShape.PointingHandCursor)
-        if tooltip:
-            self.setToolTip(tooltip)
-
-
-__all__ = ["FicheButton", "FicheThumb", "TAILLE", "decouper_cadrage", "pixmap_ajuste"]

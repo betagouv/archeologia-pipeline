@@ -1,10 +1,14 @@
 """Carte graphique pour la détection (option de l'étape 4, 0.15.0) : côté plugin.
 
 Le moteur (binaire) fait la sonde (``pipeline.cv.appareil``) ; ici on décide seulement s'il faut
-sonder, ou appliquer une décision déjà prise sur ce poste pour ces cartes, ces pilotes, ce
-binaire et ce modèle : le registre ``carte_graphique.json`` du profil QGIS (dossier
+sonder, ou appliquer une décision déjà prise sur ce poste pour ces cartes, ces pilotes et cette
+version du moteur ONNX : le registre ``carte_graphique.json`` du profil QGIS (dossier
 ``archeologia``, comme les couleurs de classes). Une carte retenue le reste tant que la clé ne
-change pas ; un refus (plus lente, résultats différents, pilote) est réessayé après sept jours.
+change pas — pour tous les modèles et toutes les livraisons du plugin : jusqu'au 2026-10-26 la
+clé portait aussi le sha du binaire et l'empreinte du ``.onnx``, et chaque modèle comme chaque
+recompilation re-sondait (sept sondes sur un traitement à sept modèles), ce que l'utilisateur a
+refusé (« à partir du moment où elle est détectée et cochée, on doit l'utiliser »). Un refus
+(plus lente, résultats différents, pilote) est réessayé après sept jours.
 Les cartes du poste viennent de DXGI (``pipeline.cv.appareil.adaptateurs_dxgi``, Windows) et ne
 servent ici qu'à la clé : l'ordre DXGI dépend du processus (QGIS voit NVIDIA puis AMD là où le
 binaire voit AMD puis NVIDIA, vécu le 18/10), donc le moteur énumère lui-même pour les
@@ -61,23 +65,12 @@ def registre_path() -> Path:
     return base / NOM_REGISTRE
 
 
-def empreinte_modele(poids: Optional[Path]) -> str:
-    """Nom, taille et date du ``.onnx`` : change avec le modèle, sans le relire (100 Mo)."""
-    if poids is None:
-        return "?"
-    p = Path(poids)
-    try:
-        st = p.stat()
-    except OSError:
-        return p.name
-    return f"{p.name}:{st.st_size}:{int(st.st_mtime)}"
-
-
-def cle(adaptateurs_: Sequence[Dict[str, Any]], binaire: Dict[str, Any], empreinte: str) -> str:
+def cle(adaptateurs_: Sequence[Dict[str, Any]], binaire: Dict[str, Any]) -> str:
+    """Cartes et pilotes du poste, version d'onnxruntime : ce qui fait le comportement de DirectML.
+    Ni le sha du binaire ni le modèle (2026-10-26) : une carte retenue l'est une fois pour toutes."""
     cartes = sorted(f"{a.get('nom')}|{a.get('pilote')}" for a in adaptateurs_)
     ort = binaire.get("onnxruntime") if isinstance(binaire.get("onnxruntime"), dict) else {}
-    return " ; ".join(["+".join(cartes), str(binaire.get("sources_sha256") or "?"),
-                       str(ort.get("version") or "?"), empreinte])
+    return " ; ".join(["+".join(cartes), "ort " + str(ort.get("version") or "?")])
 
 
 def lire(path: Path) -> Dict[str, Any]:
@@ -119,6 +112,46 @@ def _date_fr(iso: Any) -> str:
         return "?"
 
 
+def decision_memorisee(registre: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """La décision la plus récente du registre (toutes clés confondues), avec sa date
+    française sous ``date_fr`` ; ``None`` si rien de lisible. Sert à l'étape 4 : dire ce
+    que ce poste a mémorisé, et le laisser oublier."""
+    meilleure, quand = None, None
+    for d in (registre or {}).values():
+        if not isinstance(d, dict) or d.get("appareil") not in (CARTE, PROCESSEUR):
+            continue
+        try:
+            date = dt.datetime.fromisoformat(str(d.get("date")))
+        except (TypeError, ValueError):
+            continue
+        if quand is None or date > quand:
+            meilleure, quand = d, date
+    if meilleure is None:
+        return None
+    return {**meilleure, "date_fr": _date_fr(meilleure.get("date"))}
+
+
+def phrase_decision(decision: Dict[str, Any]) -> str:
+    """« carte graphique « RTX », retenue le 20/10/2026 » ou « processeur (motif), décidé le … »."""
+    date = decision.get("date_fr") or _date_fr(decision.get("date"))
+    if decision.get("appareil") == CARTE:
+        return f"carte graphique « {decision.get('carte') or '?'} », retenue le {date}"
+    motif = decision.get("motif")
+    return f"processeur ({motif}), décidé le {date}" if motif else f"processeur, décidé le {date}"
+
+
+def oublier(path: Path) -> bool:
+    """Supprime le registre des décisions de ce poste. Vrai s'il y en avait un."""
+    p = Path(path)
+    try:
+        p.unlink()
+    except FileNotFoundError:
+        return False
+    except OSError:
+        return False
+    return True
+
+
 def binaire_directml(binaire: Dict[str, Any]) -> bool:
     ort = binaire.get("onnxruntime") if isinstance(binaire.get("onnxruntime"), dict) else {}
     return "directml" in str(ort.get("paquet") or "").lower()
@@ -154,7 +187,7 @@ def bloc_run(demande: bool, adaptateurs_: Sequence[Dict[str, Any]], decision: Op
 
 
 def preparer(run_cfg: Dict[str, Any], demande: bool, *, adaptateurs: Sequence[Dict[str, Any]],
-             binaire: Dict[str, Any], empreinte_modele: str, registre: Path,
+             binaire: Dict[str, Any], registre: Path,
              maintenant: Optional[dt.datetime] = None) -> Tuple[Dict[str, Any], Dict[str, Any]]:
     """Copie de ``run_cfg`` avec son bloc ``carte_graphique``, et le contexte ``{cle, decision,
     message}`` : ``message`` est à narrer tout de suite (rien à sonder), ``cle`` sert à
@@ -163,7 +196,7 @@ def preparer(run_cfg: Dict[str, Any], demande: bool, *, adaptateurs: Sequence[Di
     maintenant = maintenant or dt.datetime.now()
     if not demande:
         return dict(run_cfg), {"cle": None, "decision": None, "message": None}
-    cle_ = cle(ads, binaire, empreinte_modele)
+    cle_ = cle(ads, binaire)
     decision = decision_valide(lire(registre), cle_, maintenant)
     bloc = bloc_run(True, ads, decision, binaire)
     cfg = dict(run_cfg)
@@ -213,16 +246,7 @@ def infos_binaire() -> Dict[str, Any]:
 
 
 def preparer_run(run_cfg: Dict[str, Any], demande: bool) -> Tuple[Dict[str, Any], Dict[str, Any]]:
-    """``preparer`` avec les cartes du poste, le binaire livré et l'empreinte du modèle du run."""
+    """``preparer`` avec les cartes du poste et le binaire livré."""
     if not demande:
         return dict(run_cfg), {"cle": None, "decision": None, "message": None}
-    try:
-        try:
-            from ...pipeline.cv.model_config import resolve_model_weights_path
-        except ImportError:  # pragma: no cover
-            from pipeline.cv.model_config import resolve_model_weights_path
-        poids = resolve_model_weights_path(run_cfg)
-    except Exception:  # noqa: BLE001
-        poids = None
-    return preparer(run_cfg, True, adaptateurs=adaptateurs(), binaire=infos_binaire(),
-                    empreinte_modele=empreinte_modele(poids), registre=registre_path())
+    return preparer(run_cfg, True, adaptateurs=adaptateurs(), binaire=infos_binaire(), registre=registre_path())

@@ -11,7 +11,7 @@ Le plugin se distribue par un dépôt d'extensions QGIS privé. Vous l'ajoutez u
 | Carte graphique | facultative, Windows | Accélère la détection une fois vérifiée contre le processeur, à l'étape 4 |
 | Disque | de la place dans le dossier de sortie | L'étape 4 affiche les Go libres du disque de sortie |
 
-Une bonne connexion est utile : le plugin est volumineux, car il embarque les modèles d'IA et la grille des dalles LiDAR HD de l'IGN.
+Une bonne connexion est utile : le plugin est volumineux, car il embarque les modèles de détection et la grille des dalles LiDAR HD de l'IGN.
 
 ## Ajouter le dépôt
 
@@ -34,7 +34,7 @@ Si le dépôt refuse les identifiants ou reste muet, voir [Dépannage](depannage
 2. **Archéolog'IA** → **Installer le plugin**. Le téléchargement est long ; la barre peut sembler figée, c'est normal.
 3. Aucune autre extension n'est nécessaire : les indices de visualisation sont calculés par le plugin avec la bibliothèque Relief Visualization Toolbox, intégrée (ZRC SAZU et Université de Ljubljana, licence Apache 2.0).
 
-Le plugin apparaît dans le menu **Extensions → Archéolog'IA** et dans la barre d'outils. Le même menu contient **Manuel**, qui ouvre cette aide.
+Le plugin apparaît dans le menu **Extensions → Archéolog'IA** et dans la barre d'outils. Le même menu contient **Aide**, qui ouvre cette aide.
 
 ### Repli : installation depuis un fichier ZIP
 
@@ -66,7 +66,7 @@ Le plugin lit cette configuration pour télécharger les dalles. À défaut, il 
 
 ## Vérifier l'installation
 
-Rien à faire de particulier : à l'étape 4 de l'assistant, le panneau **État du système** vérifie en tâche de fond les outils (PDAL, GDAL), QGIS Processing et le moteur d'indices intégré, le moteur de détection, et vos dossiers d'entrée et de sortie. Un élément manquant est nommé en rouge ; lancé quand même, le traitement s'arrête aussitôt sur ses vérifications préalables. Voir [Étape 4 · Vérifications](etape-4-verifications.md#etat-du-systeme).
+Rien à faire de particulier : à l'étape 4 de l'assistant, le panneau **Environnement** vérifie en tâche de fond les outils (PDAL, GDAL), QGIS Processing et le moteur intégré de calcul des indices, le moteur de détection, et vos dossiers d'entrée et de sortie. Un élément manquant est nommé en rouge ; lancé quand même, le traitement s'arrête aussitôt sur ses vérifications préalables. Voir [Étape 4 · Vérifications](etape-4-verifications.md#environnement).
 
 ## Mettre à jour
 

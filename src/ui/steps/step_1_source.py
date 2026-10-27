@@ -25,6 +25,7 @@ from qgis.PyQt.QtWidgets import (
 )
 
 from ...app.services.source_modes import (
+    message_champ,
     mode_info,
     normalize_vector_input,
     ordered_modes,
@@ -56,6 +57,7 @@ class SourcePage(QWidget):
         self._tile_tool = None
         self._grid_layer = None
         self._prev_map_tool = None
+        self._geometrie_avant_carte = None   # géométrie de l'assistant avant le choix sur la carte (H-02)
         self._msg_item = None
         self._validate_btn = None
         # Bandeau persistant « zoomez pour voir les dalles » + canevas connecté à
@@ -71,12 +73,12 @@ class SourcePage(QWidget):
         root.setContentsMargins(16, 16, 16, 16)
         root.setSpacing(12)
 
-        heading = QLabel("Où voulez-vous démarrer le pipeline ?")
+        heading = QLabel("Choisissez le point de départ de votre traitement")
         heading.setObjectName("WizardPageHeading")
         root.addWidget(heading)
         sub = QLabel(
-            "Cliquez sur l'étape où vous voulez injecter vos données. "
-            "Les étapes amont sont sautées."
+            "Cliquez sur ce que vous possédez : le traitement part de là, "
+            "les étapes précédentes sont ignorées."
         )
         sub.setObjectName("WizardPageSub")
         sub.setWordWrap(True)
@@ -85,7 +87,7 @@ class SourcePage(QWidget):
         # ── Carte frise + bandeau ──
         # Numérotée « 1 » : la carte « Entrée & sortie » porte le « 2 », la
         # séquence visuelle doit être complète sur la page.
-        self._frise_card, fv = build_card("Point d'entrée du pipeline", "1")
+        self._frise_card, fv = build_card("Point de départ", "1")
         frise_row = QHBoxLayout()
         frise_row.setContentsMargins(0, 12, 0, 0)  # place en haut pour le badge ENTRÉE
         frise_row.setSpacing(0)
@@ -107,14 +109,14 @@ class SourcePage(QWidget):
         fv.addWidget(self._build_banner())
         root.addWidget(self._frise_card)
 
-        # Badge « ENTRÉE » flottant — overlay sur la bordure haute du stade d'entrée.
-        self._entry_badge = QLabel("ENTRÉE", self._frise_card)
+        # Badge « POINT DE DÉPART » flottant — overlay sur la bordure haute du stade d'entrée.
+        self._entry_badge = QLabel("POINT DE DÉPART", self._frise_card)
         self._entry_badge.setObjectName("StageBadge")
         self._entry_badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._entry_badge.hide()
 
         # ── Carte entrée & sortie ──
-        io_card, iv = build_card("Entrée & sortie", "2")
+        io_card, iv = build_card("Vos fichiers", "2")
         self._source_label = QLabel("")
         self._source_label.setObjectName("FieldLabel")
         row1 = QHBoxLayout()
@@ -130,9 +132,9 @@ class SourcePage(QWidget):
             "(points, lignes ou polygones)"
         )
         self._qgis_btn.clicked.connect(self._pick_qgis_layer)
-        self._dalles_btn = QPushButton("Sélectionner les dalles")
+        self._dalles_btn = QPushButton("Choisir sur la carte")
         self._dalles_btn.setObjectName("GhostButton")
-        self._dalles_btn.setToolTip("Choisir les dalles IGN directement sur la carte")
+        self._dalles_btn.setToolTip("Choisir les dalles IGN en cliquant sur la carte de QGIS")
         self._dalles_btn.clicked.connect(self._pick_dalles_on_canvas)
         row1.addWidget(self._source_edit, 1)
         row1.addWidget(self._browse_btn)
@@ -140,6 +142,12 @@ class SourcePage(QWidget):
         row1.addWidget(self._dalles_btn)
         iv.addWidget(self._source_label)
         iv.addLayout(row1)
+        # Le message sous le champ dit ce qui manque et le geste (lot 2, 2026-10-24) :
+        # la bordure rouge seule ne disait rien.
+        self._source_msg = QLabel("")
+        self._source_msg.setObjectName("FieldMessage")
+        self._source_msg.setWordWrap(True)
+        iv.addWidget(self._source_msg)
 
         out_label = QLabel("Dossier de sortie")
         out_label.setObjectName("FieldLabel")
@@ -154,6 +162,10 @@ class SourcePage(QWidget):
         row2.addWidget(self._out_browse_btn)
         iv.addWidget(out_label)
         iv.addLayout(row2)
+        self._output_msg = QLabel("")
+        self._output_msg.setObjectName("FieldMessage")
+        self._output_msg.setWordWrap(True)
+        iv.addWidget(self._output_msg)
 
         root.addWidget(io_card)
         root.addStretch(1)
@@ -253,7 +265,7 @@ class SourcePage(QWidget):
         QTimer.singleShot(0, self._reposition_entry_badge)
 
     def _reposition_entry_badge(self) -> None:
-        """Place le badge « ENTRÉE » à cheval sur la bordure haute du stade d'entrée."""
+        """Place le badge « POINT DE DÉPART » à cheval sur la bordure haute du stade d'entrée."""
         badge = getattr(self, "_entry_badge", None)
         if badge is None:
             return
@@ -485,13 +497,19 @@ class SourcePage(QWidget):
         self._refresh_scale_notice()
 
         self._dalles_btn.setEnabled(False)
-        # Minimiser le dialogue du plugin pour dégager le canevas. NE PAS utiliser
-        # lower() : sur Windows, abaisser une fenêtre possédée par la fenêtre QGIS
-        # minimise QGIS lui-même. showMinimized() ne réduit que le dialogue.
+        # Dégager le canevas SANS réduire l'assistant (H-02, 2026-10-24) : la fenêtre
+        # garde sa géométrie, se resserre à sa largeur minimale et se range contre le
+        # bord droit de l'écran ; elle reprend sa place à la fin. NE PAS utiliser
+        # lower() : sur Windows, abaisser une fenêtre possédée par QGIS minimise QGIS.
         try:
-            self.window().showMinimized()
+            win = self.window()
+            self._geometrie_avant_carte = win.geometry()
+            ecran = win.screen().availableGeometry()
+            largeur = max(win.minimumWidth(), win.minimumSizeHint().width())
+            win.setGeometry(ecran.right() - largeur - 8, win.y(), largeur, win.height())
+            win.raise_()
         except Exception:
-            pass
+            self._geometrie_avant_carte = None
 
     def _on_tiles_selection_changed(self, n: int) -> None:
         if self._validate_btn is not None:
@@ -584,13 +602,15 @@ class SourcePage(QWidget):
 
         n = len(ids)
         if n > _LARGE_SELECTION_THRESHOLD:
-            resp = QMessageBox.question(
-                self,
-                "Téléchargement volumineux",
-                f"{n} dalles sélectionnées ({estimate_download_size(n)}). "
-                "Lancer un tel téléchargement ?",
-            )
-            if resp != QMessageBox.StandardButton.Yes:
+            box = QMessageBox(self)
+            box.setWindowTitle("Téléchargement volumineux")
+            box.setIcon(QMessageBox.Icon.Question)
+            box.setText(f"{n} dalles choisies ({estimate_download_size(n)}).")
+            telecharger = box.addButton(f"Télécharger {n} dalles", QMessageBox.ButtonRole.AcceptRole)
+            box.addButton("Revenir à la sélection", QMessageBox.ButtonRole.RejectRole)
+            box.setDefaultButton(telecharger)
+            box.exec()
+            if box.clickedButton() is not telecharger:
                 return  # rester en mode sélection
 
         # Lecture des entités + écriture du fichier : si ça échoue (champ illisible,
@@ -705,10 +725,12 @@ class SourcePage(QWidget):
         # Ne ré-activer le bouton que hors lecture seule (run en cours).
         if not self._source_edit.isReadOnly():
             self._dalles_btn.setEnabled(True)
-        # Restaurer le dialogue minimisé (showNormal dé-minimise ; raise le ramène).
+        # Rendre à l'assistant sa place et sa largeur d'avant le choix sur la carte.
         try:
             win = self.window()
-            win.showNormal()
+            if getattr(self, "_geometrie_avant_carte", None) is not None:
+                win.setGeometry(self._geometrie_avant_carte)
+                self._geometrie_avant_carte = None
             win.raise_()
             win.activateWindow()
         except Exception:
@@ -719,6 +741,7 @@ class SourcePage(QWidget):
     # ------------------------------------------------------------------
     def _on_source_text_changed(self) -> None:
         self._refresh_source_validation()
+        self._refresh_output_validation()   # « dossier de sortie dans vos données » dépend des deux
         if not self._loading:
             self._stash_current_source()
             self.changed.emit()
@@ -738,10 +761,34 @@ class SourcePage(QWidget):
             self._source_edit.text(), expect_dir=not info.is_file, valid_exts=info.valid_exts
         )
         self._set_state(self._source_edit, state)
+        self._poser_message(self._source_msg, message_champ(self._mode, self._source_edit.text(), state), state)
 
     def _refresh_output_validation(self) -> None:
         state = path_state(self._output_edit.text(), expect_dir=True, allow_create=True)
         self._set_state(self._output_edit, state)
+        self._poser_message(
+            self._output_msg,
+            message_champ(self._mode, self._output_edit.text(), state, sortie=True, source=self._source_edit.text()),
+            state,
+        )
+
+    @staticmethod
+    def _poser_message(label: QLabel, texte: str, state: str) -> None:
+        """Affiche (ou retire) le message sous un champ, teinté comme l'état :
+        erreur, avertissement, confirmation (« 3 dalles choisies ») ou simple geste."""
+        label.setText(texte)
+        label.setVisible(bool(texte))
+        if not texte:
+            kind = ""
+        elif state in ("error", "warn") or texte.startswith("Ce dossier est dans"):
+            kind = "error" if state == "error" or texte.startswith("Ce dossier est dans") else "warn"
+        elif texte[:1].isdigit():
+            kind = "ok"
+        else:
+            kind = "hint"
+        label.setProperty("kind", kind)
+        label.style().unpolish(label)
+        label.style().polish(label)
 
     @staticmethod
     def _set_state(edit: QLineEdit, state: str) -> None:

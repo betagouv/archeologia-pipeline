@@ -573,17 +573,22 @@ def _categorie_de(cats: Sequence[Categorie], score: float) -> Optional[Categorie
     return courante
 
 
-def couleur_de_classe(classe: str) -> Optional[RGB]:
+def couleur_de_classe(classe: str, ancien: str = "") -> Optional[RGB]:
     """Couleur de base de la classe (registre partagé) ; ``None`` hors QGIS.
 
     ``classe`` est la **clé du registre**, c'est-à-dire le nom de la couche de
-    détections : le nom de classe en temps normal, « classe — Modèle » en
-    comparaison A/B (cf. ``model_orchestrator.layer_name_for_class``) — la même
-    clé que ``layer_loader``, sinon la figure et la légende divergent.
+    détections : le libellé de la structure (« Cratères », N-01 2026-10-25),
+    « Structure — Modèle » en comparaison A/B (cf.
+    ``model_orchestrator.layer_name_for_class``) — la même clé que ``layer_loader``,
+    sinon la figure et la légende divergent. ``ancien`` = la classe dont la couche
+    renommée garde la couleur (alias du registre, posé ici comme à la finalisation
+    du traitement) ; vide en comparaison A/B, dont les variantes ont leur couleur.
     """
     try:
-        from ...pipeline.cv.class_color_registry import color_for_class
+        from ...pipeline.cv.class_color_registry import color_for_class, default_registry
 
+        if ancien:
+            default_registry().alias(classe, ancien)
         r, g, b = color_for_class(classe)
         return int(r), int(g), int(b)
     except Exception:  # noqa: BLE001

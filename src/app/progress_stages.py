@@ -31,8 +31,8 @@ class Stage:
 
 STAGE_LABELS = {
     Stage.DOWNLOAD: "Téléchargement",
-    Stage.PRODUCTS: "Produits",
-    Stage.DETECTION: "Détection",
+    Stage.PRODUCTS: "Visualisation du relief",
+    Stage.DETECTION: "Structures",
     Stage.FINALIZE: "Finalisation",
 }
 

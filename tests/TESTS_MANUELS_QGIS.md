@@ -412,7 +412,7 @@ Cette grille indique, pour chaque vague livrée, **quelles sections de tests son
 
 - [ ] **21.1 Visibilité du bouton** : « Sélectionner les dalles » visible **uniquement** en mode `ign_laz` (masqué dans les autres modes).
 - [ ] **21.1 bis Fraîcheur de la grille** (2026-10-08) : en mode `ign_laz`, le bandeau du mode se termine par « Grille IGN du <jour> <mois> <année>, <N> dalles. Les dalles publiées depuis n'y sont pas encore. » — la date est celle de l'en-tête du `.dbf` livré (régénération par `build_quadrillage_from_wfs.py`), l'effectif celui du fichier (524 687 au 7 octobre 2026) ; rien de tel dans les trois autres modes.
-- [ ] **21.2 Activation** : clic → la couche « Quadrillage IGN LiDAR HD » apparaît (contour seul, intérieur transparent) dans un groupe « Quadrillage IGN » ; **seul le dialogue du plugin se minimise** (la fenêtre QGIS reste affichée, le canevas visible) ; une barre de message QGIS « Valider (0 dalle) / Tout effacer / Annuler » s'affiche.
+- [ ] **21.2 Activation** (à rejouer, lot 9 du 2026-10-24) : clic → la couche « Quadrillage IGN LiDAR HD » apparaît (contour seul, intérieur transparent) dans un groupe « Quadrillage IGN » ; **l'assistant ne se réduit plus** : il se range contre le bord droit de l'écran, à sa largeur minimale, et reprend sa place à Valider ou Annuler ; une barre de message QGIS « Valider (0 dalle) / Tout effacer / Annuler » s'affiche.
 - [ ] **21.3 Orientation + garde (U1)** : depuis une vue monde/ailleurs, le clic sur le bouton **zoome automatiquement à une échelle où la grille rend**, centré sur la zone visée (bornée à la France) ; tant que la vue est trop dézoomée (grille masquée), un clic/encadré **ne sélectionne rien** et affiche « Zoomez davantage… » ; après zoom, la sélection fonctionne. Dézoomé sur toute la France, la grille n'est pas dessinée (pas de figeage) ; en zoomant elle apparaît et reste fluide (index `.qix`).
 - [ ] **21.4 Clic toggle + estimation (U2)** : cliquer une dalle → surlignée ; recliquer → désélectionnée ; le bouton affiche « Valider (N dalles ≈ X–Y Go/Mo) ».
 - [ ] **21.5 Glisser-boîte (ajout)** : tracer un rectangle → toutes les dalles intersectées s'ajoutent ; rectangle **orange** ; compteur à jour.
@@ -1031,7 +1031,7 @@ Lot 3 du chantier d'accélération (2026-10-15) : une dalle lue en entier reçoi
 > détections ; décision mémorisée dans `archeologia/carte_graphique.json` du profil ; repli processeur annoncé.
 > Banc 2026-10-15 : ×7,5 sur l'IA, 13 546/13 546 objets finaux retrouvés, écart de confiance ≤ 0,009.
 
-- [ ] **56.1 Décochée par défaut** : profil neuf, étape 4 › Paramètres avancés → « Détection sur la carte graphique » décochée, aperçu replié « workers : 3 · carte graphique : non » ; un run sans l'option ne porte aucune ligne « carte graphique » dans le journal, `traitement.json` n'a pas de clé `appareil`.
+- [ ] **56.1 Cochée par défaut** (révisé le 2026-10-26) : profil neuf, étape 4 › Réglages du poste → « Détection sur la carte graphique » cochée, aperçu replié « … · carte graphique : oui » ; décochée, un run ne porte aucune ligne « carte graphique » dans le journal et `traitement.json` n'a pas de clé `appareil`.
 - [ ] **56.2 Première sonde** : cocher l'option, indices existants (LD) avec un modèle, dossier neuf → au premier modèle, après la première image, le journal porte une ligne 🎮 « « Modèle » : détection sur la carte graphique « <nom de la carte> » : première image en X s contre Y s sur le processeur, N détection(s) retrouvée(s), écart de confiance max 0,0xx » (X nettement < Y) ; la fin du modèle dit « … images analysées en … sur la carte graphique » ; `rapport.html` colonne Analyse « sur la carte graphique « <nom> » » ; `traitement.json` › `cv_runs[].appareil = "carte_graphique"` et `carte` ; `archeologia/carte_graphique.json` du profil porte une entrée datée.
 - [ ] **56.3 Mêmes détections** : comparer le GeoPackage du modèle avec celui d'un run identique sans l'option (dossier à part) : mêmes objets, écarts de confiance ≤ 0,01 sauf bascules au seuil.
 - [ ] **56.4 Décision mémorisée** : relancer le même modèle dans un nouveau dossier → pas de sonde, ligne « détection sur la carte graphique « <nom> » (vérifiée sur ce poste) » dès la première image ; durée par image divisée d'autant que 56.2.
@@ -1059,7 +1059,7 @@ Lot 3 du chantier d'accélération (2026-10-15) : une dalle lue en entier reçoi
 - [ ] **58.1 Schéma** : Manuel › Premier traitement → le schéma suit la liste des cinq phases, texte net à 100 % et à 150 % d'échelle d'écran ; un clic l'ouvre en grand.
 - [ ] **58.2 Qt6** : sous QGIS 4, Manuel › Vos résultats dans QGIS → aucune barre de défilement horizontale ; la capture de la légende montre « possible » et « douteux » décochés.
 - [ ] **58.3 Renvoi du cache** : relancer dans un dossier calculé par une version précédente → la ligne « ⚠️ Méthode de calcul mise à jour » finit par « voir Manuel › Dépannage › Méthode de calcul mise à jour » ; le clic ouvre la rubrique.
-- [ ] **58.4 Libellés** : les noms cités au manuel existent à l'écran : « ↺ Défauts » (étape 2), « Regrouper en clusters » (étape 3), les lignes du panneau « État du système » (étape 4), les modes du bandeau (étape 1).
+- [ ] **58.4 Libellés** : les noms cités au manuel existent à l'écran : « ↺ Défauts » (étape 2), « Regrouper en zones » (étape 3), les lignes du panneau « État du système » (étape 4), les modes du bandeau (étape 1).
 
 ## 59. Correctifs de la recette du 2026-10-21 (séance B) ⭐ P0
 
@@ -1083,3 +1083,144 @@ Lot 3 du chantier d'accélération (2026-10-15) : une dalle lue en entier reçoi
 - [ ] **60.4 Fiches** : fiche du modèle linéaires → section « MÉTRIQUES D'ÉVALUATION — CRITÈRE AXE », ligne « Critère : axe de la détection à 5 m au plus de l'axe annoté, comptée par polygone fusionné … » ; fiche de classe parcellaire : niveaux conformes au `model_card`, « Tester un seuil » sous 0,26 montre « douteux » sous le seuil du modèle.
 - [ ] **60.5 Modèle au critère objet** : cratères à 0,2 (seuil 0,29) → « Douteux » s'étend à 0,2 comme avant, sans mention « sous le seuil du modèle ».
 
+## 61. Interface rationalisée — lot 1, le lexique ⭐ P1
+
+> **Contexte** (2026-10-24, audit UI/UX, proposition A) : un seul mot par objet dans toute l'interface, le journal
+> et le rapport : traitement (plus « pipeline », « run »), produits et indices de visualisation (décision du 2026-10-25 ; plus « images du relief »),
+> structures (plus « entités »), dalles (plus « tuiles »), Aide (plus « Manuel » à l'écran), dalles en parallèle
+> (plus « workers »). Les produits sont nommés sigle + ce qu'ils montrent (« LD · Structures en relief »).
+
+- [ ] **61.1 Rail et titres** : le rail dit « Vos données · Visualisation du relief · Structures à chercher · Prêt à lancer · Traitement » ; chaque titre d'étape suit (« Vos données », « Quels produits voulez-vous ? »…) ; rien ne déborde du rail de 210 px sous QGIS 3 et 4.
+- [ ] **61.2 Frise de l'étape 1** : les quatre points de départ s'appellent « Dalles IGN à télécharger », « Nuages LiDAR », « MNT existant », « Indices de visualisation existants », avec leur exigence en sous-libellé ; le bouton « Choisir sur la carte » remplace « Sélectionner les dalles ».
+- [ ] **61.3 Boutons** : « Lancer le traitement » (étape 4), « Journal complet (fichier) » (étape 5), « Charger une configuration » / « Enregistrer la configuration » (en-tête), « Aide » (en-tête, F1, menu Extensions › Archéolog'IA).
+- [ ] **61.4 Confirmations** : « Tout remettre aux valeurs par défaut… » → boîte à deux boutons « Tout remettre par défaut » / « Garder mes réglages » ; dossier de sortie v2 au lancement → « Réorganiser et lancer » / « Annuler » ; plus de 50 dalles sur la carte → « Télécharger N dalles » / « Revenir à la sélection ». Aucun Oui/Non, aucun Yes/Cancel.
+- [ ] **61.5 Journal et rapport** : la ligne de fin dit « produits : MNT · Relief nu, SVF · Creux & dépressions… » ; la frise de l'étape 5 nomme « Visualisation du relief » et « Structures » ; le rapport écrit les niveaux « très probable / probable / possible / douteux » au masculin singulier.
+- [ ] **61.6 Messages de l'étape 4** : avec un champ vide, le bandeau liste « Indiquez le dossier de sortie », « Indiquez la zone d'étude ou choisissez des dalles sur la carte », « Cochez au moins un produit à calculer à l'étape 2 » (plus de « sélectionné mais… n'est configuré »).
+- [ ] **61.7 Manuel** : F1 ouvre « Aide — Archéolog'IA » ; les chapitres s'intitulent « Étape 1 · Vos données », « Étape 2 · Visualisation du relief », « Étape 3 · Structures à chercher », « Étape 4 · Prêt à lancer » ; le glossaire porte « Produit », « Indice de visualisation », « Structure », « Point de départ », « Traitement », « Dalles en parallèle ».
+
+## 62. Interface rationalisée — lot 2, l'étape 1 ⭐ P1
+
+> **Contexte** (2026-10-24, proposition A, choix de l'utilisateur) : la frise reste le sélecteur du point de départ,
+> les étapes qui le précèdent sont ignorées ; chaque champ porte son message ; les erreurs sont rangées sur
+> l'étape et le champ qui les corrigent ; un seul menu « Configuration ▾ ».
+
+- [ ] **62.1 Frise** : cliquer « MNT existant » → les deux premiers stades sont barrés et disent « sautée », le badge « POINT DE DÉPART » se pose sur MNT existant, l'indicateur ◉ le marque et ○ les autres stades cliquables ; Tab puis Espace choisit un stade au clavier, l'anneau de focus bleu se voit.
+- [ ] **62.2 Messages sous les champs** : vider la source → « Indiquez la zone d'étude (.shp, .gpkg, .geojson), une liste de dalles (.txt), ou choisissez les dalles sur la carte. » ; un chemin inexistant → « Ce fichier est introuvable : … » en rouge ; un dossier de sortie dans le dossier source → « Ce dossier est dans le dossier de vos données : … » ; après « Choisir sur la carte » et Valider → « N dalles choisies sur la carte » en vert.
+- [ ] **62.3 Rail à états** : sur une configuration sans produit coché, l'étape 2 porte la pastille rouge et le texte « à corriger » (infobulle : le message), même depuis l'étape 1 ; un rayon MSTP incohérent (configuration chargée) marque l'étape 2, pas l'étape 1 ; les étapes parcourues sans erreur portent « ✓ ».
+- [ ] **62.4 Menu Configuration ▾** : un seul bouton dans l'en-tête ; entrées « Enregistrer sous… », « Charger : <nom> » par configuration, « Gérer les configurations… », « Importer un fichier… », « Tout remettre aux valeurs par défaut… » ; pendant un traitement, charger, importer et tout remettre sont grisés (infobulle « Indisponible pendant un traitement »), enregistrer reste actif.
+- [ ] **62.5 Manuel** : F1 sur l'étape 1 → le chapitre décrit la frise barrée, les messages sous les champs et le menu Configuration.
+
+## 63. Interface rationalisée — lot 3, l'étape 2 ⭐ P1
+
+> **Contexte** (2026-10-24, proposition A) : trois sections, trois produits cochés d'avance à une ouverture vierge,
+> un seul bouton de fiche « ⓘ », verrou du MNT en infobulle, réglages en accordéon dans la carte, marge entre
+> dalles dans la page, « Comparer les produits » depuis la page.
+
+- [ ] **63.1 Première ouverture** : profil QGIS neuf (ou dernière configuration supprimée) → MNT, SVF et LD cochés, aucune pastille rouge sur le rail ; une configuration enregistrée sans produit coché reste décochée.
+- [ ] **63.2 Sections** : « Recommandé pour commencer » (MNT, SVF, LD), « Autres indices de visualisation » (dix cartes : les douze indices moins SVF et LD, recommandés), « Qualité de la donnée » (Densité, Couverture, masquée depuis un MNT existant) ; depuis des indices de visualisation existants, seule la phrase « cette étape est sans objet » reste.
+- [ ] **63.3 Cocher et fiche** : un clic sur la vignette coche la carte (il n'ouvre plus la fiche) ; seul « ⓘ » ouvre la fiche ; Tab puis Espace coche au clavier.
+- [ ] **63.4 Verrou du MNT** : avec SVF cochée, cliquer MNT ne fait rien : la carte porte un cadenas dans sa coche et l'infobulle « Nécessaire aux produits cochés : SVF… » ; aucun toast.
+- [ ] **63.5 Réglages en accordéon** : sur une carte cochée, « ▸ Réglages (n) » déplie ses champs dans la carte (n = nombre de champs) ; un clic dans les champs ne décoche pas ; « ↺ » de la carte a pour infobulle « Revenir aux valeurs par défaut de « … » » et ne touche que ce produit ; décocher la carte replie ses réglages ; le rayon min de LD pousse toujours le rayon max.
+- [ ] **63.6 Marge entre dalles** : la carte est en bas de la page avec son « ↺ » et le diagnostic « ✓ Contexte fourni… » / « ⚠ … » ; masquée depuis des indices de visualisation existants ; champ masqué (diagnostic gardé) depuis un MNT existant.
+- [ ] **63.7 Comparer** : le lien « Comparer les produits ▸ » en haut de la page ouvre la fiche, dans sa fenêtre, directement sur les deux tableaux comparatifs.
+- [ ] **63.8 Manuel** : F1 sur l'étape 2 → sections, « ⓘ », accordéon, marge et comparaison décrits.
+
+## 64. Interface rationalisée — lot 4, l'étape 3 et les fiches ⭐ P1
+
+> **Contexte** (2026-10-24, proposition A) : une ligne par structure sous sa morphologie (plus de filtres), fiches
+> dans un panneau latéral non modal à trois onglets, seuil à deux décimales (seuil du modèle conservé à trois),
+> une clé réglée à la fois, réglages d'une structure décochée conservés, « Ce qui sera analysé » en phrases.
+
+- [ ] **64.1 Lignes** : étape 3, détection activée → une ligne par structure sous chaque morphologie, sans pastille de filtre ; les onze lignes tiennent sans défiler à 700 px de haut ; une description longue est coupée par « … », texte complet en infobulle ; aucune barre horizontale, même fenêtre étroite.
+- [ ] **64.2 Cocher** : un clic sur la ligne (hors « ⓘ », « Modèle ▾ », « l'ajouter ») coche ; Tab puis Espace coche au clavier ; un clic sur le bandeau de l'interrupteur (titre ou phrase) active ou désactive la détection.
+- [ ] **64.3 Fiches en fenêtre** (depuis le 2026-10-25, plus de panneau) : « ⓘ » d'une structure → une fenêtre à part « Structure · Cratères », non modale : la page reste utilisable (cocher une autre ligne, changer d'étape), l'assistant garde sa largeur ; « ⓘ » d'une image à l'étape 2 → fenêtre de l'image ; vignette d'une ligne, « ⓘ » de « Ce qui sera analysé » et lien « Fiche du modèle » → fenêtre du modèle, à côté ; ouvrir une autre structure remplace la fiche à la même place ; Fermer ou Échap ferme la fenêtre ; Échap dans l'assistant le ferme comme avant.
+- [ ] **64.4 Fiche dans sa fenêtre** (640 × 720 à l'ouverture, redimensionnable) : vignette au-dessus du texte ; liste déroulante en tête quand plusieurs classes portent la structure, ou pour passer d'une image à l'autre (« Comparer les images » en première entrée) ; aucune barre horizontale ; profil des scores et petits multiples par zone sur une colonne ; « Ouvrir le dossier » en bas de la fiche du modèle.
+- [ ] **64.5 Seuils et réglages** : « ▸ Réglages » déplie sous la ligne cochée (depuis le 2026-10-25, plus de case globale) : Confiance à deux décimales, Aire min, « ↺ » dont l'infobulle dit « Revenir au seuil du modèle (0,29)… » ; l'infobulle de la case Confiance montre le seuil appliqué à trois décimales (chemins creux : 0,245 affiché arrondi, « Seuil appliqué : 0,245 (seuil du modèle) » tant qu'on ne touche pas) ; « ▸ Profil des scores » se déplie à la demande et la ligne orange suit la case.
+- [ ] **64.6 Une clé à la fois** : régler la Confiance puis changer de modèle (« Modèle ▾ ») : l'aire minimale suit le nouveau modèle (elle n'a pas été figée) ; régler l'aire ne fige pas le seuil ; `last_ui_config.json` ne porte que la clé réglée.
+- [ ] **64.7 Décocher conserve** : régler un seuil, décocher la structure, enregistrer la configuration, la recharger, recocher : le seuil est encore là ; l'étape 4 ne récapitule que les structures cochées.
+- [ ] **64.8 Regroupement** : « Regrouper en zones » apparaît dès que la ligne est cochée (sans la case des réglages) ; « Regroupement de cratères » coche Cratères d'office avec le badge « inclus dans », seuils grisés sur Cratères.
+- [ ] **64.9 Ce qui sera analysé** : une phrase par analyse « Modèle X lit l'image LD : Cratères, Parcellaire » avec son « ⓘ » ; compteur « N analyses » (sans « un modèle lit une image » depuis le 2026-10-26).
+- [ ] **64.10 Lecture seule** : pendant un traitement, l'étape 3 est grisée (interrupteur, coches, réglages) mais les « ⓘ » restent cliquables et le panneau s'ouvre.
+- [ ] **64.11 Manuel** : F1 sur l'étape 3 → lignes, panneau ⓘ, deux décimales, réglages conservés décrits ; les captures montrent les lignes, le panneau ouvert sur Cratères et une ligne dépliée ; l'étape 2 montre le panneau sur SVF.
+
+## 65. Interface rationalisée — lot 5, l'étape 4 ⭐ P1
+
+> **Contexte** (2026-10-24, proposition A) : bandeau à quatre états, contrôles de l'environnement en
+> français (détail en infobulle), « Revérifier », récapitulatif avec « modifier » et « Ce qui sera
+> produit », réglages du poste avec la décision mémorisée de la carte graphique et « Oublier », bouton
+> gris qui dit pourquoi.
+
+- [ ] **65.1 À corriger** : effacer le dossier de sortie à l'étape 1, aller à l'étape 4 → bandeau rouge « Lancement impossible : • Étape 1 : Indiquez le dossier de sortie » ; à gauche du bouton gris : « Lancement impossible : 1 point à corriger (étape 1) » ; deux points sur deux étapes → « 2 points à corriger (étapes 1, 2) ».
+- [ ] **65.2 Vérification puis prêt** : dossier rempli → bandeau gris « Vérification de l'environnement… » puis vert « Prêt à lancer. » ; la pastille de l'Environnement donne N/N.
+- [ ] **65.3 Outil manquant** : renommer temporairement `pdal.exe` (ou vider le PATH) → bandeau rouge « Un outil manque : Lecteur de nuages de points (pdal). Voir l'aide › Dépannage » ; le lien ouvre le manuel sur la rubrique ; le bouton reste actif (le traitement s'arrête sur ses vérifications).
+- [ ] **65.4 Avertissement** : en MNT existant avec un raster sans CRS lisible → bandeau orange « Prêt à lancer, avec un avertissement : Système de coordonnées des rasters. ».
+- [ ] **65.5 Environnement en français** : chaque ligne porte le libellé français (« Reprojection des rasters (gdalwarp) ») et un mot dans la colonne (« trouvé », « manquant », « non requis », « trouvé · 120 Go libres », une version) ; le chemin ou l'erreur n'apparaît qu'en infobulle, sur la colonne et sur le nom (nom technique).
+- [ ] **65.6 Revérifier** : le bouton relance les vérifications (pastille « … » puis N/N), grisé pendant qu'elles tournent.
+- [ ] **65.7 Récapitulatif** : chaque section porte « modifier » à droite → ramène à l'étape 1 (Données, Dossier de sortie), 2 (Images), 3 (Structures) ; « Ce qui sera produit » liste `livrable/projet.qgs`, `rapport.html`, `traitement.json`, un `indices/<nom>/tif/` par image cochée (nom avec les réglages : `SVF_R10_D16_V1_N0`), un `detections/<slug>/` par structure cochée ; depuis des images existantes, aucun `indices/`.
+- [ ] **65.8 Réglages du poste** : après un traitement avec la carte graphique cochée, l'étape 4 montre « Décision mémorisée pour ce poste : carte graphique « … », retenue le jj/mm/aaaa » (ou « processeur (motif), décidé le … ») et « Oublier » ; cliquer efface `archeologia/carte_graphique.json` du profil et masque la ligne ; sans décision, ni ligne ni bouton.
+- [ ] **65.9 Lecture seule** : pendant un traitement, les réglages du poste sont grisés, « Revérifier » et « modifier » restent actifs.
+- [ ] **65.10 Manuel** : F1 sur l'étape 4 → quatre états, Environnement, Revérifier, Réglages du poste, Oublier, Ce qui sera produit, modifier décrits ; deux captures (à corriger, prête).
+- [ ] **65.11 Une seule sonde** (2026-10-26) : après une première sonde qui retient la carte, les traitements suivants disent « 🎮 « Modèle » : détection sur la carte graphique « … » (vérifiée sur ce poste) » dès la première image, pour un autre modèle comme après une mise à jour du plugin, sans comparer au processeur ; « Oublier » remet la sonde en jeu une fois.
+
+## 66. Interface rationalisée — lot 6, la fin de traitement ⭐ P1
+
+> **Contexte** (2026-10-24, proposition A) : deux boutons de fin explicites, « Relancer maintenant » aux
+> étapes 1 à 3, les messages d'avant le journal de fichier rejoués dedans, le bilan lisible sans la couleur,
+> le rapport dans les couleurs des couches avec les libellés de l'écran, le chemin réel du journal cité.
+
+- [ ] **66.1 Un seul bouton de chargement** (révisé le 2026-10-26) : à la fin d'un traitement avec détection, le cadre « Par où commencer » porte « Ajouter au projet QGIS courant » (bleu), « Ouvrir le dossier », « Rapport » et « Revoir les résultats », sans « Ouvrir livrable/projet.qgs » ; « Ajouter » charge les couches dans le projet ouvert une seule fois puis se grise ; `livrable/projet.qgs` est écrit quand même et s'ouvre depuis QGIS (menu Projet) ou l'explorateur.
+- [ ] **66.2 Relancer maintenant** : après un premier traitement, revenir à l'étape 2 → « Relancer maintenant » dans la barre du bas ; cliquer relance (étape 5) ; avec un point à corriger (dossier de sortie effacé), il ramène à l'étape 4 ; invisible avant tout traitement, pendant un traitement et aux étapes 4 et 5.
+- [ ] **66.3 Journal de fichier** : lancer avec un avertissement de configuration (marge à 0) → `technique/journaux/pipeline_log_<date>.txt` commence par cet avertissement et « Lancement du traitement… », comme l'écran.
+- [ ] **66.4 Bilan lisible** : sous chaque barre du cadre de fin, « très probable 120 · probable 80 · possible 40 · douteux 12 » ; la rangée fait 34 px ; l'infobulle garde la phrase.
+- [ ] **66.5 Rapport** : les barres du bilan sont dans la couleur de chaque couche déclinée par niveau (comme la légende QGIS) ; la colonne « Par niveau » dit « très probable 12 · probable 30 · … » ; une couche inconnue du registre garde les bleus.
+- [ ] **66.6 Échec** : un traitement qui s'interrompt cite « Voir le journal technique/journaux/pipeline_log_<date>.txt ».
+- [ ] **66.7 Manuel** : F1 sur l'étape 5 → deux boutons, Relancer maintenant, bilan lisible, journal nommé ; Vos résultats → rapport en couleurs de couche.
+
+## 67. Interface rationalisée — lot 9, revoir un résultat et choisir les dalles sans réduire ⭐ P1
+
+> **Contexte** (2026-10-24, proposition A) : sixième écran « Résultats » du rail (traitements connus de ce poste),
+> « Revoir les résultats » à la fin d'un traitement, l'assistant rangé contre le bord de l'écran pendant le choix des dalles.
+
+- [ ] **67.1 Rail** : six étapes ; « Résultats » porte « N traitements connus » ; à l'étape 6, « Suivant » est grisé (dernier écran) ; F1 ouvre « Vos résultats dans QGIS ».
+- [ ] **67.2 Liste** : chaque traitement lancé depuis ce poste, du plus récent au plus ancien : date, point de départ, dossier, images, structures, détections ; un dossier supprimé disparaît de la liste ; sans traitement : « Aucun traitement connu sur ce poste. ».
+- [ ] **67.3 Gestes** : « Ajouter au projet QGIS courant » charge les couches stylées (seuils et groupes de la trace) ; pas de bouton « Ouvrir livrable/projet.qgs » (retiré le 2026-10-26) ; « Rapport » ouvre le rapport ; « Relancer avec un seuil changé » recharge la configuration de la trace et ouvre l'étape 3 (grisé sans trace complète) ; pendant un traitement, relancer ramène à l'étape 5.
+- [ ] **67.4 Fin de traitement** : « Revoir les résultats » dans le cadre « Par où commencer » mène à l'étape 6, où le traitement qui vient de finir est en tête.
+- [ ] **67.5 Choisir sur la carte** : « Choisir sur la carte » range l'assistant contre le bord droit de l'écran, réduit à sa largeur minimale, sans le minimiser ; Valider ou Annuler lui rend sa taille et sa place ; QGIS n'est jamais minimisé.
+- [ ] **67.6 Manuel** : Vos résultats → « Revoir un résultat » ; Premier traitement → six étapes ; Étape 1 → l'assistant rangé contre le bord.
+
+## 68. Interface rationalisée — lot 8, couches nommées, groupe Structures, Consulter les flux ⭐ P1
+
+> **Contexte** (2026-10-25, proposition A, choix N-01 / N-02 « un groupe Structures » / N-04) : les couches de détections portent
+> le nom de leur structure, toutes sous un groupe « Structures » ; les mosaïques portent le nom de l'image ; l'onglet « Consulter
+> les flux » est livré avec son chapitre.
+
+- [ ] **68.1 Noms des couches** : après un traitement avec Cratères et Parcellaire, les couches s'appellent « Cratères » et « Parcellaire » (plus « cratere », « parcellaire ») dans `livrable/projet.qgs` comme après « Ajouter au projet QGIS courant » ; une structure à plusieurs classes donne « <Structure> · <classe> » ; en comparaison A/B, « Parcellaire — <modèle> » pour chaque variante.
+- [ ] **68.2 Couleurs conservées** : la couleur de « Cratères » est celle que « cratere » avait dans un traitement antérieur (registre du profil : `class_color_registry.json` porte un bloc `alias`) ; la même couleur à l'étape 3 (mini-profil, fiche), dans la légende et dans les barres du rapport ; en A/B, chaque variante garde une couleur propre.
+- [ ] **68.3 Groupe Structures** : toutes les couches de détections sont dans un groupe « Structures » en tête de l'arbre, au-dessus des mosaïques ; un regroupement (zones + détections) et une comparaison (« … (comparaison) ») sont des sous-groupes de ce groupe ; la couche « zones mal couvertes » reste au-dessus de tout. Même arbre dans le `.qgs` et au chargement en direct.
+- [ ] **68.4 Mosaïques nommées** : les mosaïques s'appellent « MNT · Relief nu », « SVF · Creux & dépressions · R10_D16_V1_N0 », « LD · Structures en relief · A15_Rmin10_Rmax20_H1p7_V1 » ; en point de départ Images existantes, « RVT » ; les fichiers restent `index_<PRODUIT>.vrt`. Un re-run dans le même dossier retire bien les anciennes mosaïques (purge par chemin, pas par nom) et, avec elles, les groupes « Structures » et ses sous-groupes qu'elle a vidés : aucun groupe vide ne reste dans l'arbre pendant le traitement (constat du 2026-10-26) ; après « Ajouter au projet QGIS courant », rien n'est en double.
+- [ ] **68.5 Consulter les flux, avec catalogue** : l'onglet liste les départements couverts, le mur d'un département avec ses familles, « Afficher dans QGIS » ouvre la couche « <sigle> — <département> » derrière l'assistant, la carte passe en « ouverte », la croix ou un clic sur la carte la retire ; « Tout retirer » ne retire que les couches de l'onglet ; « Voir dans QGIS → » réduit l'assistant ; le compteur de l'onglet suit.
+- [ ] **68.6 Consulter les flux, sans catalogue** : sur un poste sans `data/demo_catalogue/` ni `data/local_catalogue/` (installation depuis le ZIP), l'onglet affiche « Aucun catalogue n'est installé sur ce poste… » avec un lien « Aide › Consulter les flux » qui ouvre le chapitre ; « Actualiser le catalogue » reste actif ; aucun message d'erreur.
+- [ ] **68.7 Manuel** : chapitre « Consulter les flux » dans le sommaire avant le Glossaire, avec sa capture ; Vos résultats → « Le projet de validation » et « Le nom d'un dossier d'image » décrivent les nouveaux noms et le groupe Structures ; Premier traitement mentionne l'onglet ; glossaire : « Flux », « Mosaïque ».
+
+## 69. Étape 3 — ligne sans nom de modèle, « ▸ Réglages » par ligne, descriptions courtes ⭐ P1
+
+> **Contexte** (2026-10-25, trois demandes de l'utilisateur) : la ligne d'une structure ne porte plus le nom du modèle ni son « ⓘ »
+> (un seul « ⓘ », la structure) ; la case « Seuils et réglages par structure » disparaît au profit d'un « ▸ Réglages » sous
+> chaque ligne cochée, comme pour une image à l'étape 2 ; les descriptions du catalogue tiennent sur la ligne.
+
+- [ ] **69.1 Ligne** : cocher Cratères → à droite : le sigle de l'image, puis le seul « ⓘ » (fiche de la structure) ; ni nom de modèle ni second « ⓘ ». Sur une structure couverte par plusieurs modèles (Parcellaire), « Modèle ▾ » apparaît à gauche du « ⓘ » ; son infobulle nomme le ou les modèles retenus avec leur nombre de fenêtres.
+- [ ] **69.2 Modèle lisible ailleurs** : « Ce qui sera analysé » donne « Modèle X lit l'image LD : … » avec son « ⓘ » (fiche du modèle, onglet Modèle du panneau) ; la fiche de la structure garde le lien « Fiche du modèle ».
+- [ ] **69.3 Comparaison** : « Modèle ▾ » coche deux modèles → « Ce qui sera analysé » montre deux analyses ; la ligne ne change pas d'aspect.
+- [ ] **69.4 ▸ Réglages** : cocher une ligne → sous elle, « ▸ Réglages » (et « Regrouper en zones » sur la même rangée quand la structure le propose) ; un clic déplie Confiance, Aire min, « ↺ », « ▸ Profil des scores » et les paramètres du regroupement de cette seule ligne (« ▾ Réglages ») ; un second clic replie ; décocher la ligne replie ; plus de case « Seuils et réglages par structure » en haut de la liste ; Tab atteint le lien, Espace ou Entrée le bascule (anneau de focus visible sur une ligne cochée).
+- [ ] **69.5 Descriptions** : à 980 px de large, aucune description de structure ne finit par « … » (Cratères, Dépressions circulaires grandes, Regroupement de cratères, Enclos, Enclos circulaires raccourcies) ; le détail (corpus, résolution) est dans la fiche.
+- [ ] **69.6 Vignette** (révisé 2026-10-26) : un clic sur la vignette d'une ligne (cochée ou non) ouvre la fiche de la structure, comme le « i », sans cocher ni décocher la ligne ; curseur main et infobulle « Fiche de la structure » au survol.
+- [ ] **69.7 Bouton de fiche** : tous les « ⓘ » (étapes 2 et 3, « Ce qui sera analysé ») sont un « i » gras dans un rond bleu de 24 px, sans second cercle à l'intérieur ; survol bleu clair, anneau de focus au clavier.
+
+## 70. Vocabulaire de l'étape 2 : Visualisation du relief, produits, indices de visualisation ⭐ P1
+
+> **Contexte** (2026-10-25, décision de l'utilisateur) : l'étape 2 s'appelle « Visualisation du relief » ; elle calcule des
+> **produits** : le MNT, les produits de qualité de la donnée (densité, couverture) et les **indices de visualisation**
+> (SVF, LD, M-HS…). Plus d'« image du relief » nulle part.
+
+- [ ] **70.1 Écrans** : rail et titre de l'étape 2 « Visualisation du relief » ; en-tête « Quels produits voulez-vous ? », sections « Recommandé pour commencer », « Autres indices de visualisation », « Qualité de la donnée » ; compteur « N produits cochés » ; lien « Comparer les produits ▸ » ; étape 1 : point de départ « Indices de visualisation existants » ; étape 3 : infobulle du sigle « Indice de visualisation lu par le modèle : LD », « Ce qui sera analysé » dit « lit l'indice LD » ; étape 4 : section « Visualisation du relief », contrôle « Calcul des indices de visualisation (moteur intégré) », message « Cochez au moins un produit à calculer à l'étape 2 » ; étape 5 : phase « Visualisation du relief », journal « Calcul des indices de visualisation sur N dalles », ligne de fin « produits : … » ; onglet Consulter les flux : « N produits · publiés … ».
+- [ ] **70.2 Manuel et glossaire** : chapitre « Étape 2 · Visualisation du relief », section « Les produits » dont les familles Indice et Composition sont les indices de visualisation ; glossaire « Produit » et « Indice de visualisation » (plus d'« Image du relief ») ; arborescence du dossier de sortie avec `livrable/indices/` (le manuel disait `images/`).

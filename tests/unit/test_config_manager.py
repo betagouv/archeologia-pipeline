@@ -40,6 +40,22 @@ class TestDefaultConfig:
         cfg = cm.default_config()
         assert cfg["app"]["files"]["data_mode"] == "ign_laz"
 
+    def test_default_products_recommandes(self, cm: ConfigManager):
+        # Même défaut que indices_model.default_products (lot 3, 2026-10-24).
+        prods = cm.default_config()["processing"]["products"]
+        assert {k for k, v in prods.items() if v} == {"MNT", "SVF", "LD"}
+
+    def test_defaut_vierge_seulement(self, tmp_path: Path):
+        # Une configuration déjà enregistrée sans image cochée reste telle quelle :
+        # les trois images cochées d'avance ne valent que pour une ouverture vierge.
+        cm = ConfigManager(tmp_path)
+        cfg = cm.default_config()
+        for k in cfg["processing"]["products"]:
+            cfg["processing"]["products"][k] = False
+        cm.save_last_ui_config(cfg)
+        relu = cm.load_last_ui_config()
+        assert not any(relu["processing"]["products"].values())
+
     def test_default_products_contains_slrm(self, cm: ConfigManager):
         cfg = cm.default_config()
         assert "SLRM" in cfg["processing"]["products"]

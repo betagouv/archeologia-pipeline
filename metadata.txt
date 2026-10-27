@@ -9,7 +9,7 @@ name=Archéolog'IA
 qgisMinimumVersion=3.34
 qgisMaximumVersion=4.99
 description=Détection de sites archéologiques par réseaux de neurones
-version=0.17.0
+version=0.18.0
 author=Valentin VIEUX
 email=valentin.vieux.pro@outlook.com
 about=Plugin pour automatiser la production d'indices de visualisation (avec la bibliothèque Relief Visualization Toolbox du ZRC SAZU et de l'Université de Ljubljana, intégrée sous licence Apache 2.0) à partir de données LiDAR ou de MNT et pour détecter des sites archéologiques à l'aide de réseaux de neurones (YOLO, RF-DETR détection ou segmentation)
@@ -21,7 +21,20 @@ repository=https://github.com/betagouv/archeologia-pipeline
 #
 
 hasProcessingProvider=no
-changelog=0.17.0 (2026-10-22)
+changelog=0.18.0 (2026-10-26)
+    * Interface rationalisée, du premier écran au dernier : un seul vocabulaire (traitement, produits, structures, dalles) ; à l'étape 1, la frise « Choisissez le point de départ de votre traitement » se clique, les étapes ignorées sont barrées, les erreurs s'affichent sous le champ concerné ; un menu Configuration enregistre, charge, importe et remet à zéro les réglages.
+    * Étape 2 « Visualisation du relief » : trois sections (recommandé pour commencer, autres indices de visualisation, qualité de la donnée), MNT, SVF et LD cochés d'avance, les réglages de chaque produit dépliés dans sa carte, la marge entre dalles à côté des produits, une fiche par produit dans une fenêtre à part.
+    * Étape 3 « Structures à chercher » : une ligne par structure avec sa vignette, sa fiche (bouton « i » ou clic sur la vignette) et « ▸ Réglages » sous la ligne ; le modèle se lit dans « Ce qui sera analysé » ; seuils à deux décimales ; les surcharges d'un traitement sont conservées à la relance ; descriptions courtes.
+    * Étape 4 « Prêt à lancer » : un bandeau à quatre états (vérification, prêt, avertissement, lancement impossible avec le point à corriger), l'environnement en français avec un mot par ligne et le détail en infobulle, le récapitulatif modifiable, les réglages du poste (dalles en parallèle, carte graphique) ; un raster sans système de coordonnées est signalé au lieu d'être accepté en silence.
+    * Fin de traitement : un seul geste, « Ajouter au projet QGIS courant » ; « Relancer maintenant » depuis l'étape 2 après un premier traitement ; bilan de fiabilité lisible sans la couleur ; sixième écran « Résultats » pour revoir, recharger ou relancer un traitement de ce poste.
+    * Projet QGIS : les couches de détections portent le nom de la structure (« Cratères », « Parcellaire ») dans un groupe « Structures », un regroupement ou une comparaison y a son sous-groupe, les mosaïques portent le nom du produit et ses réglages ; la couleur d'une structure ne change pas d'un traitement à l'autre, même renommée ; un re-run dans le même dossier ne laisse ni doublon ni groupe vide.
+    * Onglet « Consulter les flux » : les produits déjà publiés par département, à afficher dans QGIS sans traitement ; sans catalogue installé, l'onglet le dit et renvoie au manuel.
+    * Carte graphique : cochée par défaut ; une fois retenue sur le poste, elle sert à tous les modèles et après chaque mise à jour du plugin, sans nouvelle comparaison au processeur ; « Oublier » remet la comparaison en jeu.
+    * Choisir les dalles sur la carte range l'assistant contre le bord de l'écran sans le réduire ; contrastes, focus clavier et taille des cibles relus pour l'accessibilité.
+    * Rapport de traitement : la vignette de la zone est rendue depuis LD en priorité.
+    * Manuel : chapitres refaits pour chaque écran, nouveau chapitre « Consulter les flux », lexique et glossaire alignés, captures refaites ; recette automatique hors écran pour l'interface.
+    * Grille IGN LiDAR HD du 26 octobre 2026 (524 687 dalles).
+ 0.17.0 (2026-10-22)
     * Fiabilité des linéaires (parcellaire, talus et fossés, chemins creux, tranchées) : les niveaux sont désormais mesurés par la distance de l'axe de chaque détection aux tracés annotés (5 m), par polygone fusionné, tel que la couche le montre, et non plus par recouvrement des masques annotés, qui dépendait de leur largeur. Les coupures changent : « probable » dès 0,35 pour le parcellaire, les talus et fossés et les tranchées (0,30 avant), « très probable » dès 0,55 pour le parcellaire (0,50 avant) ; les chemins creux n'ont plus qu'un niveau « possible ». La fiche de modèle dit le critère et sa tolérance.
     * Seuil abaissé sous celui du modèle (réglages avancés de l'étape 3) : les détections ajoutées forment un niveau « douteux · sous le seuil du modèle », avec la part de vrais mesurée pour cet intervalle quand le modèle la fournit, au lieu d'étendre « possible » à des polygones vrais une fois sur sept ; elles sont fusionnées entre elles, jamais avec celles qui passaient déjà le seuil, pour ne pas tirer un bon polygone vers le bas.
     * Attributs des détections : n_membres (fragments fusionnés), conf_max (le plus sûr d'entre eux) et longueur_m ; l'infobulle d'un polygone fusionné dit de combien de fragments il est fait et le score du plus sûr.

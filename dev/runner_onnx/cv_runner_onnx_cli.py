@@ -181,7 +181,7 @@ def main() -> int:
     _print(f"dep:onnxruntime={_try_import_version('onnxruntime')}")
     _print(f"dep:numpy={_try_import_version('numpy')}")
     _print(f"dep:pillow={_try_import_version('PIL')}")
-    _print(f"dep:sahi_lite=internal")
+    _print("dep:sahi_lite=internal")
 
     generate_annotated_images = bool(cv_config.get("generate_annotated_images", False))
     generate_shapefiles = bool(cv_config.get("generate_shapefiles", False))
@@ -228,7 +228,7 @@ def main() -> int:
         _print(f"ERROR: {e}")
         return 1
 
-    _print(f"model_type=onnx")
+    _print("model_type=onnx")
     _print(f"model_path={model_path}")
     
     # Charger les noms de classes depuis le dossier du modèle

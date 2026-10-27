@@ -28,7 +28,7 @@ le dépôt est déposé par l'utilisateur (FTP), le runbook s'arrête au ZIP et 
 
 1. **État des branches.** `git fetch`, `git log --oneline origin/main..dev`, `git log --oneline dev..$2`.
    Lister ce qui part dans la version ; signaler ce qui doit rester caché (ex. l'onglet Visualisation :
-   `VISUALISATION_TAB_ENABLED` reste False sur dev).
+   `VISUALISATION_TAB_ENABLED`, dans `src/app/services/visu_catalogue.py`, reste False tant que le catalogue public n'existe pas — décision du 2026-10-27 ; la 0.18.0 l'avait livré à tort, la 0.18.1 l'a masqué).
 2. **Fusionner `$2` dans dev** avec commit de fusion (`git merge --no-ff`), jamais de squash. Résoudre,
    `python run_tests.py unit`, `ruff check src/`.
 3. **Grille IGN à jour** : `python dev/build_quadrillage_from_wfs.py` depuis le dossier principal

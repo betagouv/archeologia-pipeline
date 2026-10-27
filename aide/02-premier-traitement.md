@@ -24,7 +24,7 @@ Dans la fenêtre : le sommaire à gauche, le texte à droite. **Ctrl+F** cherche
 
 ## L'assistant en six étapes
 
-Le plugin s'ouvre sur un assistant : un rail à gauche indique l'étape courante, **Précédent** et **Suivant** en bas. Les quatre premières étapes préparent le traitement, la cinquième le suit, la sixième, **Résultats**, retrouve les traitements lancés depuis ce poste. Le rail signale par une pastille toute erreur qui empêcherait de lancer. Vos choix sont sauvegardés en continu : à la réouverture, vous retrouvez vos derniers réglages. Le bouton **Aide** en haut à droite, ou la touche **F1**, ouvre le chapitre de cette aide qui correspond à l'étape affichée. Un second onglet, **Consulter les flux**, affiche des produits déjà publiés par votre organisation, sans traitement : voir [Consulter les flux](consulter-les-flux.md).
+Le plugin s'ouvre sur un assistant : un rail à gauche indique l'étape courante, **Précédent** et **Suivant** en bas. Les quatre premières étapes préparent le traitement, la cinquième le suit, la sixième, **Résultats**, retrouve les traitements lancés depuis ce poste. Le rail signale par une pastille toute erreur qui empêcherait de lancer. Vos choix sont sauvegardés en continu : à la réouverture, vous retrouvez vos derniers réglages. Le bouton **Aide** en haut à droite, ou la touche **F1**, ouvre le chapitre de cette aide qui correspond à l'étape affichée.
 
 ## Étape 1 · Vos données
 

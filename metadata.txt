@@ -9,7 +9,7 @@ name=Archéolog'IA
 qgisMinimumVersion=3.34
 qgisMaximumVersion=4.99
 description=Détection de sites archéologiques par réseaux de neurones
-version=0.18.0
+version=0.18.1
 author=Valentin VIEUX
 email=valentin.vieux.pro@outlook.com
 about=Plugin pour automatiser la production d'indices de visualisation (avec la bibliothèque Relief Visualization Toolbox du ZRC SAZU et de l'Université de Ljubljana, intégrée sous licence Apache 2.0) à partir de données LiDAR ou de MNT et pour détecter des sites archéologiques à l'aide de réseaux de neurones (YOLO, RF-DETR détection ou segmentation)
@@ -21,7 +21,9 @@ repository=https://github.com/betagouv/archeologia-pipeline
 #
 
 hasProcessingProvider=no
-changelog=0.18.0 (2026-10-26)
+changelog=0.18.1 (2026-10-27)
+    * L'onglet « Consulter les flux » n'est pas encore proposé : il est masqué dans cette version, avec son chapitre du manuel, et reviendra avec le catalogue public. Rien d'autre ne change par rapport à la 0.18.0.
+ 0.18.0 (2026-10-26)
     * Interface rationalisée, du premier écran au dernier : un seul vocabulaire (traitement, produits, structures, dalles) ; à l'étape 1, la frise « Choisissez le point de départ de votre traitement » se clique, les étapes ignorées sont barrées, les erreurs s'affichent sous le champ concerné ; un menu Configuration enregistre, charge, importe et remet à zéro les réglages.
     * Étape 2 « Visualisation du relief » : trois sections (recommandé pour commencer, autres indices de visualisation, qualité de la donnée), MNT, SVF et LD cochés d'avance, les réglages de chaque produit dépliés dans sa carte, la marge entre dalles à côté des produits, une fiche par produit dans une fenêtre à part.
     * Étape 3 « Structures à chercher » : une ligne par structure avec sa vignette, sa fiche (bouton « i » ou clic sur la vignette) et « ▸ Réglages » sous la ligne ; le modèle se lit dans « Ce qui sera analysé » ; seuils à deux décimales ; les surcharges d'un traitement sont conservées à la relance ; descriptions courtes.

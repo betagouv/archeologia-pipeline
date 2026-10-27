@@ -105,10 +105,14 @@ def charger_chapitres(dossier: Path, metadata_path: Optional[Path] = None) -> Li
     simplement qu'il n'a rien à montrer). ``metadata_path`` absent ou illisible →
     pas de chapitre Nouveautés, jamais d'exception.
     """
+    from .visu_catalogue import CHAPITRE_ONGLET, VISUALISATION_TAB_ENABLED
+
     dossier = Path(dossier)
     chapitres: List[Chapitre] = []
     if dossier.is_dir():
         for f in sorted(dossier.glob("*.md")):
+            if not VISUALISATION_TAB_ENABLED and cle_du_fichier(f) == CHAPITRE_ONGLET:
+                continue   # l'onglet est masqué (0.18.1) : son chapitre aussi, le fichier reste
             texte = f.read_text(encoding="utf-8")
             titre = next((t for n, t, _s in sections(texte) if n == 1), f.stem)
             chapitres.append(Chapitre(cle_du_fichier(f), titre, texte))

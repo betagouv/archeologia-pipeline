@@ -1274,8 +1274,13 @@ def main(argv=None) -> int:
     p67_4(app, w)
     verdict("67.5", None, "canevas QGIS : à jouer en séance")
     p_manuel("67.6", "resultats", ["Revoir un résultat"])
-    p68_6(app, w, args.recette)
-    p_manuel("68.7", "consulter-les-flux", ["catalogue", "Afficher dans QGIS", "Tout retirer", "Voir dans QGIS"])
+    from archeo.src.app.services.visu_catalogue import VISUALISATION_TAB_ENABLED
+    if VISUALISATION_TAB_ENABLED:
+        p68_6(app, w, args.recette)
+        p_manuel("68.7", "consulter-les-flux", ["catalogue", "Afficher dans QGIS", "Tout retirer", "Voir dans QGIS"])
+    else:
+        for n in ("68.6", "68.7"):
+            verdict(n, None, "onglet « Consulter les flux » masqué (VISUALISATION_TAB_ENABLED faux depuis la 0.18.1)")
     for n in ("68.1", "68.2", "68.3", "68.4", "68.5"):
         verdict(n, None, "traitement réel ou catalogue : à jouer en séance")
     p70_1(app, w)

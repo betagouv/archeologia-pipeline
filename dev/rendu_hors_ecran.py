@@ -324,8 +324,8 @@ def _consulter_flux(app, w, img: Path, log) -> bool:
     tabs = getattr(w, "_tabs", None)
     visu = w._visu_tab
     if tabs is None or visu is None:
-        log("onglet Consulter les flux absent")
-        return False
+        log("onglet Consulter les flux masqué (VISUALISATION_TAB_ENABLED faux, 0.18.1) : capture conservée, non refaite")
+        return True
     vignettes = RACINE / "data" / "local_catalogue" / "thumbs"
 
     def dept(code, nom, date, images, featured=False):

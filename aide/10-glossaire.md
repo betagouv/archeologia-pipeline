@@ -14,7 +14,6 @@
 | Fenêtre d'analyse | Portion d'image sur laquelle un modèle travaille ; une dalle est découpée en fenêtres qui se recouvrent |
 | Fiabilité | Niveau affiché dans la légende, douteux à très probable, défini par la part de vrais objets mesurée à l'évaluation du modèle dans la bande de scores |
 | Fiche | Page d'explication d'un produit, d'une structure détectable ou d'un modèle, ouverte par le bouton ⓘ dans une fenêtre à part, une par sorte de fiche |
-| Flux | Produit déjà publié par votre organisation, lue à la demande dans QGIS depuis l'onglet Consulter les flux, sans rien télécharger ni calculer |
 | GeoPackage | Format vectoriel des couches de détections, un fichier par structure |
 | Indice de visualisation | Produit calculé depuis le MNT par la Relief Visualization Toolbox, qui rend lisible une propriété du relief (ombrage, pente, facteur de vue du ciel…) : SVF, LD, M-HS, VAT… ; nommé par son sigle et ce qu'il montre (« LD · Structures en relief ») ; c'est l'un d'eux qu'un modèle lit |
 | Lambert-93 | La projection de référence de la France métropolitaine (EPSG:2154), exigée pour les rasters fournis en entrée |

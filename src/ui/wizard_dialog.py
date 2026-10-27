@@ -43,6 +43,7 @@ from ..app.services.source_modes import mode_info
 from ..app.services.config_store import ConfigStore
 from ..config.config_manager import ConfigManager
 from ..app.services.aide import AIDE_DIRNAME, CHAPITRE_PAR_ETAPE
+from ..app.services.visu_catalogue import VISUALISATION_TAB_ENABLED
 from ..app.services.carte_graphique import decision_memorisee, lire as lire_registre_carte, registre_path
 from ..app.services.sorties_prevues import sorties_prevues
 from ..app.services.validation_ui import classer_erreurs, etat_rail
@@ -61,10 +62,8 @@ from .widgets.card import build_card
 from .widgets.stepper_rail import StepperRail
 from .widgets.toast import show_toast
 
-# Onglet « Visualisation » (flux Géoplateforme) : rebranché le 2026-09-23 sur
-# les flux WMTS privés de test (catalogue local, cf. visualisation_tab). Le
-# drapeau reste pour pouvoir le masquer d'un mot si le flux tombe.
-VISUALISATION_TAB_ENABLED = True
+# Onglet « Consulter les flux » : montré seulement si VISUALISATION_TAB_ENABLED (importé de
+# app/services/visu_catalogue, faux depuis la 0.18.1) ; dev/demo_comite/smoke_dialog le force à vrai.
 
 try:
     from ..app.plugin_metadata import get_plugin_version
@@ -127,7 +126,7 @@ class WizardDialog(QDialog):
         self.setWindowFlags(self.windowFlags() | Qt.WindowType.WindowMinimizeButtonHint)
         # Plus large que le wizard seul : le mur visuel de l'onglet Visualisation
         # tient 4 cartes de 200 px à côté du rail de 252 px.
-        largeur, hauteur = (1120, 700) if VISUALISATION_TAB_ENABLED else (980, 660)
+        largeur, hauteur = 1120, 700   # la taille de la recette 0.18.0, onglet montré ou non
         # Jamais plus grand que l'écran : le dialogue s'ouvrait à sa taille
         # MINIMALE (1327 × 711, imposée par les pages qui ne défilaient pas) et
         # débordait sous le bord bas des portables (2026-09-17). Les pages

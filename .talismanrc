@@ -196,7 +196,7 @@ fileignoreconfig:
 - filename: src/ui/visualisation_tab.py
   checksum: 7e89a8540ed55495e9212c22117b6d9b6739bce41d424f5ed5c18ddb06735ea8
 - filename: src/app/services/visu_catalogue.py
-  checksum: a6e92afe3b4c854bd930d228a42082b288406cb20e6c0a9cdb0ddb7b57e0dca0
+  checksum: d836cf58018a95fdeeefcefc35181bca26f67c917471d5b2359dfe4429bf9979
 - filename: src/ui/widgets/indice_card.py
   checksum: 06132cfabbad865873948a477ad1bf331a7460290d819a73134e7ecacd37d3c6
 - filename: data/demo_catalogue/thumbs/CVAT.png
@@ -254,7 +254,7 @@ fileignoreconfig:
 - filename: src/ui/widgets/carte_zones.py
   checksum: acb325e398a8bb1c2e2480257b1bc967a563693f9c8c2f0a02f6204b5209f874
 - filename: tests/unit/test_aide.py
-  checksum: d2d660a9261f2e078df08f6136653fefa05686d7020eced17e8eda82d4a44e26
+  checksum: a018c055d4f6c0deb1e757cd49d123583079d0d32d64d94a6ee2444bced95dba
 - filename: aide/img/resultats-legende-fiabilite.jpg
   checksum: d27f3aeebfb1b815ba64ddd4ef2cfe5ffe845108f263e1310760f6d8c0d1246a
 - filename: aide/img/etape3-detection.png

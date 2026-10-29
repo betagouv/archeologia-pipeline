@@ -649,8 +649,9 @@ def _load_rfdetr_model(checkpoint_path: str, patch_size_override: int = None, po
     Basé sur https://github.com/PierreMarieCurie/rf-detr-onnx
     """
     import torch
+    from rfdetr import detr as rfdetr_detr
     from rfdetr.detr import RFDETRBase
-    
+
     # Importer les variantes disponibles
     model_classes = {'RFDETRBase': RFDETRBase}
     for _cls_name in ['RFDETRMedium', 'RFDETRSmall', 'RFDETRNano', 'RFDETRLarge',
@@ -672,19 +673,29 @@ def _load_rfdetr_model(checkpoint_path: str, patch_size_override: int = None, po
     # L'heuristique ci-dessous lirait alors la largeur du backbone DINOv2 (384 pour RF-DETR Base) comme
     # hidden_dim et la résolution de pré-entraînement des position_embeddings (518) : un RF-DETR Base
     # serait chargé comme RFDETRLarge à 518 px et l'export échouerait.
+    # La classe est cherchée dans rfdetr.detr et non dans model_classes, qui ignore RFDETRSegPreview,
+    # RFDETRLargeDeprecated… Sans model_config (tranchees_seg_ld_v1), on garde l'heuristique : les valeurs par
+    # défaut de la classe seraient fausses (RFDETRSegLarge : 504 px, nos modèles seg sont à 648).
     model_name = obj.get("model_name")
     model_config = obj.get("model_config")
-    if model_name in model_classes and model_config is not None:
-        def _cfg(key):
-            return model_config.get(key) if isinstance(model_config, dict) else getattr(model_config, key, None)
-        kwargs = {key: _cfg(key) for key in ("resolution", "patch_size", "positional_encoding_size")
-                  if _cfg(key) is not None}
+    model_cls = getattr(rfdetr_detr, model_name, None) if str(model_name).startswith("RFDETR") else None
+    champs = getattr(getattr(model_cls, "_model_config_class", None), "model_fields", None) or {}
+    if champs and model_config is not None:
+        if not isinstance(model_config, dict):
+            model_config = model_config.model_dump() if hasattr(model_config, "model_dump") else vars(model_config)
+        # Toute l'architecture enregistrée (num_queries, dec_layers… et pas seulement la résolution), comme
+        # RFDETR.from_checkpoint de rfdetr 1.11 : les seuls champs de la classe (sa configuration refuse les autres),
+        # sans les poids d'origine (le checkpoint les fournit) ni le périphérique d'entraînement (l'export est sur
+        # CPU). Pas from_checkpoint lui-même : sans model_config il prend les valeurs par défaut, et en 1.8.3 il
+        # restaure le périphérique.
+        kwargs = {k: v for k, v in model_config.items() if k in champs and k not in ("pretrain_weights", "device")}
         if patch_size_override is not None:
             kwargs["patch_size"] = patch_size_override
         if positional_encoding_size_override is not None:
             kwargs["positional_encoding_size"] = positional_encoding_size_override
-        print(f"[INFO] Modèle lu dans le checkpoint: {model_name} {kwargs}")
-        return model_classes[model_name](pretrain_weights=checkpoint_path, **kwargs)
+        print(f"[INFO] Modèle lu dans le checkpoint: {model_name} resolution={kwargs.get('resolution')}, "
+              f"patch_size={kwargs.get('patch_size')}, positional_encoding_size={kwargs.get('positional_encoding_size')}")
+        return model_cls(pretrain_weights=checkpoint_path, **kwargs)
 
     # Extraire resolution et patch_size depuis args (peut être un objet ou un dict)
     resolution = None
@@ -826,13 +837,15 @@ def export_rfdetr_to_onnx(
         rfdetr_model = _load_rfdetr_model(str(model_path), patch_size_override=patch_size, positional_encoding_size_override=positional_encoding_size)
         
         # Accéder au modèle PyTorch interne
-        model = rfdetr_model.model.model
+        # Export sur CPU, quel que soit le poste : sur un poste avec CUDA, config.device vaut "cuda" alors que
+        # rfdetr (constaté en 1.8.3, et en 1.11 qui diffère le déplacement) laisse les poids sur le CPU, et
+        # l'entrée factice créée sur config.device faisait échouer l'export. Le CPU est aussi la référence de
+        # la porte de parité, et le même .onnx sort d'un poste avec ou sans carte graphique.
+        model = rfdetr_model.model.model.cpu()
         config = rfdetr_model.model_config
-        
+
         resolution = config.resolution
-        # Le périphérique réel des poids : config.device peut valoir "cuda" alors que rfdetr a laissé
-        # les poids chargés sur le CPU, et l'entrée factice doit être au même endroit que le modèle.
-        device = next(model.parameters()).device
+        device = torch.device("cpu")
 
         print(f"[INFO] Résolution: {resolution}, Device: {device}")
         

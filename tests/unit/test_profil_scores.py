@@ -48,6 +48,19 @@ def _modele(tmp_path: Path, nom="m1", cle_modeles=None, fiabilite=None, bloc=Non
     return d
 
 
+def test_sous_seuil_lu_dans_le_model_card(tmp_path):
+    """« Tester un seuil » sous celui du modèle (2026-10-22) : le profil porte les bandes
+    ``thresholds.fiabilite.sous_seuil`` de la classe, pour mesurer le « douteux » ajouté."""
+    bloc = {"global": {"etude_seuil": {"bandes": _bandes([(0.29, 4, 4), (0.30, 5, 1)])}}}
+    d = _modele(tmp_path, bloc=bloc, fiabilite={
+        "provenance": "x",
+        "sous_seuil": {"cratere": [{"lo": 0.20, "tp": 3, "fp": 30}, {"lo": 0.25, "tp": 6, "fp": 30}]},
+    })
+    p = profil_pour_classe(d, "cratere", CATS)
+    assert [b["lo"] for b in p.sous_seuil] == [0.20, 0.25]
+    assert profil_pour_classe(_modele(tmp_path, nom="m2", bloc=bloc), "cratere", CATS).sous_seuil == ()
+
+
 def test_bandes_globales_et_agregation(tmp_path):
     bloc = {"global": {"etude_seuil": {"bandes": _bandes([(0.05, 1, 10), (0.06, 2, 10), (0.10, 3, 5), (0.29, 4, 4), (0.30, 5, 1)])}}}
     d = _modele(tmp_path, bloc=bloc)
@@ -383,7 +396,7 @@ def test_couleur_de_la_couche_qualifiee_en_comparaison():
     racine = Path(__file__).resolve().parents[2]
     etape3 = (racine / "src/ui/steps/step_3_detection.py").read_text(encoding="utf-8")
     assert etape3.count("layer_name_for_class(") >= 2      # carte (mini-profil) ET fiche
-    assert "card.set_profils(" in etape3
+    assert "row.set_profils(" in etape3
 
 
 def test_le_widget_suit_le_seuil_et_les_fiches_posent_les_zones():
@@ -394,7 +407,7 @@ def test_le_widget_suit_le_seuil_et_les_fiches_posent_les_zones():
                   "QToolTip.showText", "def contextMenuEvent", "def figures_par_zone",
                   "disposer_etiquettes(", "def resizeEvent", "placer_libelles_lignes("):
         assert motif in widget, motif
-    carte = (racine / "src/ui/widgets/entity_card.py").read_text(encoding="utf-8")
+    carte = (racine / "src/ui/widgets/entity_row.py").read_text(encoding="utf-8")
     assert "fig.set_seuil(seuil)" in carte and "phrase_bilan" not in carte      # bilan dans l'infobulle seulement
     assert "self.phrase_bilan()" in widget
     fiche = (racine / "src/ui/dialogs/class_info_dialog.py").read_text(encoding="utf-8")
@@ -405,12 +418,14 @@ def test_le_widget_suit_le_seuil_et_les_fiches_posent_les_zones():
     assert "def phrase_precision_rappel" in widget and "def ligne_essai_seuil" in widget
 
 
-def test_carte_entite_selection_par_le_haut_et_vignette_inerte():
-    """Garde-fou sans QGIS : la vignette n'ouvre plus la fiche ; le clic coche partout
-    dans la carte sauf dans la bande des réglages (2026-10-08)."""
-    carte = (Path(__file__).resolve().parents[2] / "src/ui/widgets/entity_card.py").read_text(encoding="utf-8")
-    assert "self._thumb.clicked.connect" not in carte
-    assert "WA_TransparentForMouseEvents" in carte
+def test_ligne_entite_selection_par_le_haut_et_vignette_vers_la_structure():
+    """Garde-fou sans QGIS : la vignette ouvre la fiche de la STRUCTURE, comme le « i », et
+    consomme son clic (demande du 2026-10-26, qui remplace la fiche du modèle du 2026-10-25) ;
+    le clic coche partout ailleurs dans la ligne sauf dans la bande des réglages."""
+    carte = (Path(__file__).resolve().parents[2] / "src/ui/widgets/entity_row.py").read_text(encoding="utf-8")
+    assert "self._thumb.clicked.connect(lambda: self.fiche_requested.emit(self._id))" in carte
+    assert "_demander_modele" not in carte
+    assert "WA_TransparentForMouseEvents" not in carte
     assert "_bande_reglages()" in carte and "_bas_zone_selection" not in carte
 
 

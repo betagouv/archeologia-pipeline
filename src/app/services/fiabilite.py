@@ -44,6 +44,7 @@ LABELS_FR: Dict[str, str] = {
     "quasi_certain": "Très probable",
 }
 N_MIN_MESURE = 30
+PAS_SOUS_SEUIL = 0.05           # pas des bandes ``thresholds.fiabilite.sous_seuil``
 SIDECAR_NAME = "fiabilite.json"
 # Champs écrits dans le GeoPackage à la conversion.
 CHAMP_LABEL = "fiabilite"        # libellé FR de la catégorie (clé de la symbologie)
@@ -63,6 +64,16 @@ STYLE_SPEC: Dict[str, Dict[str, Any]] = {
     "douteux":       {"repr": 0.3, "outline_width": 0.6},   # base éclaircie de 35 %
 }
 
+# Niveaux présents dans la légende mais décochés à l'ouverture (décision utilisateur
+# 2026-10-19) : on commence par le sûr, les autres se cochent d'un clic. Les détections
+# restent toutes dans le GeoPackage, le bilan et le rapport.
+NIVEAUX_DECOCHES_PAR_DEFAUT: Tuple[str, ...] = ("possible", "douteux")
+
+
+def visible_par_defaut(categorie: str) -> bool:
+    """Vrai si la catégorie de fiabilité est cochée à l'ouverture de la couche."""
+    return str(categorie) not in NIVEAUX_DECOCHES_PAR_DEFAUT
+
 
 @dataclass(frozen=True)
 class Categorie:
@@ -71,13 +82,20 @@ class Categorie:
     garanti: float
     mesure: Optional[float]
     n: int
+    # Vrai pour la catégorie « douteux » posée SOUS le seuil du modèle quand l'utilisateur
+    # l'abaisse (2026-10-22) : ses détections sont les polygones ajoutés, mesurés par
+    # ``thresholds.fiabilite.sous_seuil`` ou non mesurés (n = 0).
+    sous_seuil: bool = False
 
     @property
     def label(self) -> str:
         return LABELS_FR.get(self.categorie, self.categorie)
 
     def to_dict(self) -> Dict[str, Any]:
-        return asdict(self)
+        d = asdict(self)
+        if not self.sous_seuil:  # clé absente = contrat historique inchangé (config, sidecar)
+            d.pop("sous_seuil")
+        return d
 
 
 # ----------------------------------------------------------------------
@@ -101,7 +119,7 @@ def _parse_categorie(raw: Any) -> Optional[Categorie]:
         return None
     if mesure is not None and not (0.0 <= mesure <= 1.0):
         return None
-    return Categorie(cat, seuil, garanti, mesure, n)
+    return Categorie(cat, seuil, garanti, mesure, n, bool(raw.get("sous_seuil", False)))
 
 
 def parse_fiabilite(thresholds: Any) -> Tuple[Dict[str, Tuple[Categorie, ...]], str]:
@@ -134,16 +152,74 @@ def parse_fiabilite(thresholds: Any) -> Tuple[Dict[str, Tuple[Categorie, ...]], 
     return out, str(bloc.get("provenance") or "")
 
 
+def _parse_bande(raw: Any) -> Optional[Dict[str, Any]]:
+    if not isinstance(raw, Mapping):
+        return None
+    try:
+        lo, tp, fp = float(raw.get("lo")), int(raw.get("tp", 0) or 0), int(raw.get("fp", 0) or 0)
+    except (TypeError, ValueError):
+        return None
+    if not (0.0 <= lo <= 1.0) or tp < 0 or fp < 0:
+        return None
+    return {"lo": lo, "tp": tp, "fp": fp}
+
+
+def parse_sous_seuil(thresholds: Any) -> Dict[str, Tuple[Dict[str, Any], ...]]:
+    """``{classe: bandes}`` de ``thresholds.fiabilite.sous_seuil`` : part de vrais des
+    polygones formés ENTRE EUX sous le seuil du modèle (2e passe de la fusion), par
+    bande de ``PAS_SOUS_SEUIL`` ``{lo, tp, fp}``, ``lo`` croissants. Tolérant comme
+    ``parse_fiabilite`` : classe invalide ignorée, jamais fatal."""
+    if not isinstance(thresholds, Mapping):
+        return {}
+    bloc = thresholds.get("fiabilite")
+    if not isinstance(bloc, Mapping):
+        return {}
+    out: Dict[str, Tuple[Dict[str, Any], ...]] = {}
+    for classe, liste in (bloc.get("sous_seuil") or {}).items():
+        if not isinstance(liste, list):
+            continue
+        bandes = [b for b in (_parse_bande(x) for x in liste) if b is not None]
+        if len(bandes) != len(liste) or not bandes:
+            continue
+        los = [b["lo"] for b in bandes]
+        if any(b <= a for a, b in zip(los, los[1:])):
+            continue
+        out[str(classe)] = tuple(bandes)
+    return out
+
+
+def _douteux_sous_seuil(
+    s: float, seuil_modele: float, bandes: Optional[Sequence[Mapping[str, Any]]]
+) -> Categorie:
+    """« Douteux » sur [s ; seuil du modèle[ : somme des bandes ``sous_seuil`` de la
+    fenêtre, la bande de 0,05 qui contient ``s`` comptée entière ; n = 0 sans bandes."""
+    tp = fp = 0
+    for b in bandes or ():
+        lo = float(b["lo"])
+        if lo + PAS_SOUS_SEUIL > s + 1e-9 and lo < seuil_modele - 1e-9:
+            tp += int(b["tp"])
+            fp += int(b["fp"])
+    n = tp + fp
+    return Categorie("douteux", s, 0.0, round(tp / n, 3) if n >= N_MIN_MESURE else None, n, True)
+
+
 def categories_effectives(
-    cats: Sequence[Categorie], seuil_effectif: float
+    cats: Sequence[Categorie],
+    seuil_effectif: float,
+    sous_seuil: Optional[Sequence[Mapping[str, Any]]] = None,
 ) -> Tuple[Categorie, ...]:
     """Catégories d'une classe pour le seuil EFFECTIF du run (surcharge UI comprise).
 
     Invariant seuil = symbologie = filtrage : la catégorie la plus basse commence
     exactement au seuil effectif. Seuil relevé par l'utilisateur → les catégories
-    entièrement sous le seuil disparaissent, la première restante démarre au seuil ;
-    seuil abaissé → la catégorie basse s'étend jusqu'au seuil (sa ``mesure`` reste
-    celle du banc au seuil du modèle, la partie ajoutée n'étant pas mesurée).
+    entièrement sous le seuil disparaissent, la première restante démarre au seuil.
+    Seuil abaissé → si la catégorie basse n'est pas garantie (« douteux », critère
+    objet), elle s'étend jusqu'au seuil : rien n'est promis. Si elle est GARANTIE
+    (linéaires : « possible ≥ 35 % »), elle reste AU seuil du modèle et une catégorie
+    « douteux » couvre [seuil effectif ; seuil du modèle[, mesurée sur ``sous_seuil``
+    (bandes des polygones formés entre eux sous le seuil, 2e passe de la fusion) ou
+    non mesurée (n = 0) : les polygones formés entièrement sous 0,26 étaient vrais à
+    13 %, prolonger « possible » promettait 35 % (rapport linéaires du 2026-10-22).
     """
     ordonnees = sorted(cats, key=lambda c: c.seuil)
     if not ordonnees:
@@ -158,6 +234,8 @@ def categories_effectives(
     if not gardees:
         return ()
     premiere = gardees[0]
+    if s < premiere.seuil - 1e-9 and premiere.garanti > 0:
+        return (_douteux_sous_seuil(s, premiere.seuil, sous_seuil),) + tuple(gardees)
     if abs(premiere.seuil - s) > 1e-9:
         gardees[0] = Categorie(premiere.categorie, s, premiere.garanti, premiere.mesure, premiere.n)
     return tuple(gardees)
@@ -194,7 +272,9 @@ def labels_legende(cats: Sequence[Categorie]) -> Dict[str, str]:
     ordonnees = sorted(cats, key=lambda c: c.seuil)
     out: Dict[str, str] = {}
     for i, c in enumerate(ordonnees):
-        if c.garanti > 0:
+        if c.sous_seuil:
+            out[c.categorie] = f"{c.label} · sous le seuil du modèle"
+        elif c.garanti > 0:
             out[c.categorie] = f"{c.label} · ≥ {pct(c.garanti)} % de vrais"
         elif i + 1 < len(ordonnees):
             out[c.categorie] = f"{c.label} · < {pct(ordonnees[i + 1].garanti)} % de vrais"
@@ -207,6 +287,10 @@ def phrase_mesure(cat: Categorie) -> str:
     """« ≥ 85 % de vrais objets sur le banc (mesuré : 95 % sur 1 013 détections) »."""
     garantie = (f"≥ {pct(cat.garanti)} % de vrais objets sur le banc" if cat.garanti > 0
                 else "part de vrais objets non garantie")
+    if cat.sous_seuil:
+        return f"{garantie} (sous le seuil du modèle" + (
+            ", non mesurée)" if cat.mesure is None
+            else f" : {pct(cat.mesure)} % sur {cat.n:,} polygones ajoutés)".replace(",", chr(32)))
     if cat.mesure is None:
         return f"{garantie} (effectif insuffisant : {cat.n} détection{'s' if cat.n > 1 else ''})"
     return f"{garantie} (mesuré : {pct(cat.mesure)} % sur {cat.n:,} détections)".replace(",", chr(32))  # séparateur de milliers = espace simple
@@ -236,7 +320,11 @@ def maptip_html(cats: Sequence[Categorie], modele: str) -> str:
     LA détection survolée, score brut et modèle. Expressions QGIS entre ``[% %]``."""
     branches = []
     for c in cats:
-        if c.mesure is None:
+        if c.sous_seuil:
+            texte = ("Sous le seuil du modèle : part de vrais objets non mesurée." if c.mesure is None
+                     else f"Sous le seuil du modèle : sur le banc, {pct(c.mesure)} % des polygones ajoutés "
+                          "dans cette tranche étaient de vrais objets.")
+        elif c.mesure is None:
             texte = (f"Part de vrais objets non mesurée pour cette tranche (effectif insuffisant "
                      f"sur le banc : {c.n})" + (f" ; garantie ≥ {pct(c.garanti)} %." if c.garanti > 0 else "."))
         else:
@@ -245,10 +333,17 @@ def maptip_html(cats: Sequence[Categorie], modele: str) -> str:
                                         else " (tranche la plus basse, non garantie)."))
         branches.append(f'WHEN "{CHAMP_LABEL}" = {_sql_str(c.label)} THEN {_sql_str(texte)}')
     cas = "CASE " + " ".join(branches) + " ELSE 'Fiabilité non renseignée.' END"
+    # Polygone fusionné (2026-10-22) : nombre de fragments et le plus sûr d'entre eux —
+    # la moyenne pondérée par l'aire peut rétrograder un groupe dont un membre est fort.
+    # ``attribute()`` rend NULL si le champ manque (couche sans post-traitement).
+    fusion = ("if(coalesce(attribute($currentfeature, 'n_membres'), 1) > 1, "
+              "concat('Polygone fusionné de ', attribute($currentfeature, 'n_membres'), "
+              "' fragments, le plus sûr à ', round(attribute($currentfeature, 'conf_max'), 2), '<br>'), NULL)")
     return (
         "<div style=\"font-family:sans-serif;font-size:12px;max-width:340px\">"
         f"<b>[% \"model_pred\" %]</b> — fiabilité <b>[% \"{CHAMP_LABEL}\" %]</b><br>"
         f"[% {cas} %]<br>"
+        f"[% {fusion} %]"
         f"<span style=\"color:#666\">Score brut [% round(\"confidence\", 2) %] · {modele}</span>"
         "</div>"
     )
@@ -277,15 +372,18 @@ def run_block(
     *,
     modele: str,
     provenance: str = "",
+    sous_seuil: Optional[Mapping[str, Sequence[Mapping[str, Any]]]] = None,
 ) -> Optional[Dict[str, Any]]:
     """Bloc JSON-sérialisable du run : catégories EFFECTIVES (au seuil de la classe
-    dans ce run) pour les classes du run qui en ont. ``None`` si aucune."""
+    dans ce run) pour les classes du run qui en ont. ``None`` si aucune.
+    ``sous_seuil`` (``parse_sous_seuil``) mesure la catégorie ajoutée sous le seuil."""
     out: Dict[str, List[Dict[str, Any]]] = {}
     for classe in classes:
         cats = par_classe_modele.get(classe)
         if not cats or classe not in seuils_par_classe:
             continue
-        eff = categories_effectives(cats, float(seuils_par_classe[classe]))
+        eff = categories_effectives(cats, float(seuils_par_classe[classe]),
+                                    sous_seuil=(sous_seuil or {}).get(classe))
         if eff:
             out[classe] = [c.to_dict() for c in eff]
     if not out:

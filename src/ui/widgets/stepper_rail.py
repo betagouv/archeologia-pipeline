@@ -11,7 +11,7 @@ from typing import List, Sequence
 
 from qgis.PyQt.QtCore import Qt, pyqtSignal
 from qgis.PyQt.QtGui import QColor, QPainter, QPen
-from qgis.PyQt.QtWidgets import QFrame, QHBoxLayout, QLabel, QVBoxLayout
+from qgis.PyQt.QtWidgets import QFrame, QHBoxLayout, QLabel, QSizePolicy, QVBoxLayout
 
 
 class _RailItem(QFrame):
@@ -22,10 +22,13 @@ class _RailItem(QFrame):
         self._index = index
         self._is_first = False
         self._is_last = False
+        self._sub_text = sub        # le résumé de l'étape, rendu quand rien n'est à corriger
+        self._a_corriger = False
         self.setObjectName("RailItem")
         self.setProperty("state", "todo")
         self.setProperty("error", "false")
         self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)   # Tab atteint l'étape, Entrée ou Espace l'ouvre
 
         layout = QHBoxLayout(self)
         layout.setContentsMargins(14, 10, 14, 10)
@@ -42,12 +45,18 @@ class _RailItem(QFrame):
         label_row.setSpacing(5)
         self._label = QLabel(label)
         self._label.setObjectName("RailLabel")
-        label_row.addWidget(self._label)
+        # « Structures à chercher » tient sur deux lignes dans le rail de 210 px, à côté de la puce « OPT. ».
+        self._label.setWordWrap(True)
+        # Un QLabel qui replie se contente de sa largeur minimale : lui donner toute la
+        # largeur disponible, sinon « Visualisation du relief » se coupe sans raison.
+        self._label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        label_row.addWidget(self._label, 1)
         if optional:
             chip = QLabel("OPT.")
             chip.setObjectName("RailOpt")
-            label_row.addWidget(chip)
-        label_row.addStretch(1)
+            label_row.addWidget(chip, 0, Qt.AlignmentFlag.AlignTop)
+        # Pas d'étirement en fin de ligne : il partageait la largeur avec le libellé replié,
+        # qui se coupait en deux (« Images du / relief ») ; la puce « OPT. » reste à droite.
         self._sub = QLabel(sub)
         self._sub.setObjectName("RailSub")
         self._sub.setWordWrap(True)
@@ -70,16 +79,27 @@ class _RailItem(QFrame):
         self.update()  # redessine le fil
 
     def set_sub(self, text: str) -> None:
-        self._sub.setText(text)
+        self._sub_text = text
+        self._rendre_sub()
+
+    def _rendre_sub(self) -> None:
+        """« à corriger » remplace le résumé tant que l'étape porte une erreur (le
+        résumé reste en infobulle avec les messages) ; sinon le résumé revient."""
+        self._sub.setText("à corriger" if self._a_corriger else self._sub_text)
+        self._sub.setProperty("error", "true" if self._a_corriger else "false")
+        self._sub.style().unpolish(self._sub)
+        self._sub.style().polish(self._sub)
 
     def set_error(self, on: bool, tooltip: str = "") -> None:
         """Marqueur d'erreur indépendant de l'état (active/done/todo) : pastille
         rouge + infobulle listant les problèmes bloquants de cette étape."""
         flag = "true" if on else "false"
+        self._a_corriger = bool(on)
         self.setProperty("error", flag)
         self._idx.setProperty("error", flag)
         self._label.setProperty("error", flag)
         self.setToolTip(tooltip if on else "")
+        self._rendre_sub()
         for w in (self, self._idx, self._label):
             try:
                 w.style().unpolish(w)
@@ -105,6 +125,13 @@ class _RailItem(QFrame):
     def mousePressEvent(self, event):  # noqa: N802 (signature Qt)
         self.clicked.emit(self._index)
         super().mousePressEvent(event)
+
+    def keyPressEvent(self, event):  # noqa: N802 (signature Qt)
+        if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter, Qt.Key.Key_Space):
+            self.clicked.emit(self._index)
+            event.accept()
+            return
+        super().keyPressEvent(event)
 
 
 class StepperRail(QFrame):
@@ -135,17 +162,17 @@ class StepperRail(QFrame):
     def _relay_click(self, n: int) -> None:
         self.step_clicked.emit(n)
 
-    def set_current(self, step: int) -> None:
-        """Items avant ``step`` = faits, ``step`` = actif, après = à faire."""
+    def set_states(self, etats: dict, messages: dict) -> None:
+        """``etats`` = {n: 'active' | 'ok' | 'a_corriger' | 'a_venir'} (cf.
+        ``app.services.validation_ui.etat_rail``), ``messages`` = {n: [erreurs…]}.
+        Une étape « à corriger » garde son aspect (faite ou à venir) et prend la
+        pastille rouge, le texte « à corriger » et les messages en infobulle."""
         for idx, item in enumerate(self._items, start=1):
-            item.set_state("done" if idx < step else ("active" if idx == step else "todo"))
+            etat = etats.get(idx, "a_venir")
+            item.set_state("active" if etat == "active" else ("done" if etat == "ok" else "todo"))
+            msgs = messages.get(idx) or []
+            item.set_error(etat == "a_corriger", "\n".join(msgs))
 
     def set_sub(self, step: int, text: str) -> None:
         if 1 <= step <= len(self._items):
             self._items[step - 1].set_sub(text)
-
-    def set_errors(self, errors_by_step: dict) -> None:
-        """``errors_by_step`` = {n: [messages…]} ; marque les étapes fautives."""
-        for idx, item in enumerate(self._items, start=1):
-            msgs = errors_by_step.get(idx)
-            item.set_error(bool(msgs), "\n".join(msgs) if msgs else "")

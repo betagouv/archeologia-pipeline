@@ -46,6 +46,9 @@ EXCLUDE_DIRS = {
     # Flux Géoplateforme privés de l'onglet Visualisation : les descripteurs
     # GDAL_WMS portent la clé d'accès (gitignoré, cf. .gitignore).
     "local_catalogue",
+    # Catalogue de démo de l'onglet Visualisation (désactivé) : sorti du dépôt le 2026-10-20
+    # (642 chemins de poste) ; ses restes gitignorés sur un poste (wms/, thumbs/) ne partent pas.
+    "demo_catalogue",
 }
 
 EXCLUDE_FILES = {
@@ -97,7 +100,9 @@ def should_exclude(path: Path, relative_path: str) -> bool:
     # aucun dossier en "." n'est requis au runtime QGIS, et elle attrape les
     # variantes que l'ancien match par nom EXACT laissait passer — .venv_dev
     # (≠ .venv), .ruff_cache, .superpowers, .mypy_cache… (cf. AUDIT PKG-01/03/05).
-    if path.is_dir() and (name.startswith(".") or name in EXCLUDE_DIRS):
+    # Dossier OU fichier caché : dans un worktree git, `.git` est un FICHIER (qui porte un chemin
+    # personnel) — le ZIP construit depuis un worktree l'embarquait (test_zip_reel, 2026-10-20).
+    if name.startswith(".") or (path.is_dir() and name in EXCLUDE_DIRS):
         return True
 
     # Traçabilité d'entraînement des modèles (metrics.csv, tfevents, comparaison_*/,
@@ -262,8 +267,11 @@ def write_plugins_xml(base_url: str, output_dir: Path = None) -> Path:
     return xml_path
 
 
-def create_plugin_zip(output_dir: Path = None) -> Path:
-    """Crée le ZIP du plugin."""
+def create_plugin_zip(output_dir: Path = None, compression: int = zipfile.ZIP_DEFLATED) -> Path:
+    """Crée le ZIP du plugin.
+
+    ``compression`` : ``ZIP_STORED`` pour le test du ZIP réel (tests/unit/test_zip_reel.py) —
+    même parcours, mêmes exclusions, mêmes chemins d'archive, sans compresser ~1 Go de modèles."""
     if output_dir is None:
         output_dir = PLUGIN_ROOT.parent
 
@@ -276,7 +284,7 @@ def create_plugin_zip(output_dir: Path = None) -> Path:
     files_added = 0
     files_excluded = 0
     
-    with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zf:
+    with zipfile.ZipFile(zip_path, 'w', compression) as zf:
         for root, dirs, files in os.walk(PLUGIN_ROOT):
             root_path = Path(root)
             relative_root = root_path.relative_to(PLUGIN_ROOT)

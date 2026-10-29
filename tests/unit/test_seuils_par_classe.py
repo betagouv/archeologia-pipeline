@@ -104,3 +104,19 @@ def test_extract_thresholds_absent():
     conf, pc, area, iou = _extract_thresholds({})
     # 0.3 = défaut UNIFIÉ de la chaîne CV (audit 2026-08-31, ex-0.2)
     assert pc == {} and abs(conf - 0.3) < 1e-9
+
+
+def test_boite_de_seuil_garde_le_seuil_du_modele():
+    """Un seuil de modèle à trois décimales (chemins creux : 0,245) ne doit jamais être
+    réécrit par la case « Confiance » : arrondi à 0,24 et réémis, il passait SOUS le seuil du
+    modèle et faisait naître un « douteux » fantôme sur [0,24 ; 0,245[ (2026-10-22). Depuis le
+    2026-10-24 (D-07) la case affiche deux décimales mais ne réémet rien au chargement (garde
+    ``_loading``) : la valeur du modèle reste celle du modèle, l'infobulle la montre à trois
+    décimales. Garde-fou par lecture du source : src/ui/ n'est pas importable sans QGIS."""
+    import re
+    from pathlib import Path
+
+    src = (Path(__file__).resolve().parents[2] / "src" / "ui" / "widgets" / "entity_row.py").read_text(encoding="utf-8")
+    assert "self._conf_spin.setDecimals(2)" in src
+    assert re.search(r"if show_adv:\s*\n\s*self\._loading = True", src), "les setValue du rafraîchissement n'émettent pas"
+    assert "nombre(" in src and ", 3)" in src

@@ -22,29 +22,16 @@ from __future__ import annotations
 import time
 from typing import Any, Dict, Optional, TYPE_CHECKING
 
+from .services.indices_model import all_products
+from .services.vocabulaire import titre_image
+
 if TYPE_CHECKING:
     from .progress_reporter import ProgressReporter
 
 
-# Libellés métier des produits RVT — évite "M_HS", "SVF" pour
-# l'utilisateur non technique. Le code interne garde les codes courts.
-PRODUCT_LABELS = {
-    "MNT": "modèle de terrain (MNT)",
-    "DENSITE": "carte de densité",
-    "COUVERTURE": "carte de couverture (QA points sol)",
-    "HS": "ombrage simple",
-    "M_HS": "ombrage multi-directionnel",
-    "SVF": "facteur de vue du ciel (SVF)",
-    "OPNS": "ouverture du relief (openness)",
-    "SLO": "carte des pentes",
-    "LD": "détection des dépressions locales",
-    "SLRM": "résidu local (SLRM)",
-    "VAT": "visualisation pour l'archéologie (VAT)",
-    "MSTP": "position topographique multi-échelle (MSTP)",
-    "CVAT": "visualisation archéo combinée (CVAT)",
-    "PRISM": "ouverture prismatique (PRISM)",
-    "CRIM": "relief coloré par la pente (CRIM)",
-}
+# Libellés des produits — ceux du lexique de l'interface (« LD · Structures
+# en relief »), pour que le journal et le rapport disent le même mot que l'écran.
+PRODUCT_LABELS = {p.key: titre_image(p.key) for p in all_products()}
 
 
 def _human_count(n: int, singular: str, plural: Optional[str] = None) -> str:
@@ -146,11 +133,11 @@ class UserNarrator:
         if tiles_processed > 0:
             parts.append(_human_count(tiles_processed, "dalle traitée", "dalles traitées"))
         if products:
-            labels = [PRODUCT_LABELS.get(p, p) for p in products]
+            labels = [titre_image(p) for p in products]
             parts.append("produits : " + ", ".join(labels))
         self._r.user_success(" — ".join(parts))
 
-    def pipeline_failed(self, message: str, start_time: Optional[float] = None) -> None:
+    def pipeline_failed(self, message: str, start_time: Optional[float] = None, journal: str = "") -> None:
         # Même logique que pipeline_complete : ``start_time`` explicite quand le
         # narrateur n'est pas celui qui a vu ``pipeline_starting`` (cas typique :
         # narrateur instancié dans finalize_service — sinon durée « 0s »).
@@ -158,10 +145,10 @@ class UserNarrator:
             duration = _format_duration(time.time() - start_time)
         else:
             duration = self._elapsed_str()
-        self._r.user_warning(
-            f"⚠ Le traitement s'est interrompu après {duration} : {message}. "
-            f"Voir le journal détaillé dans le dossier de sortie pour plus d'informations."
-        )
+        # Le chemin réel du journal (arborescence v3), jamais « le dossier de sortie » tout court.
+        ou = (f"Voir le journal {journal}" if journal
+              else "Voir le journal complet dans technique/journaux/ du dossier de sortie")
+        self._r.user_warning(f"⚠ Le traitement s'est interrompu après {duration} : {message}. {ou}.")
 
     def pipeline_cancelled(self) -> None:
         self._r.user_info("⏹ Traitement annulé par l'utilisateur")
@@ -251,7 +238,7 @@ class UserNarrator:
         else:
             details = " (MNT seul)"
         self._r.user_info(
-            f"🛠 Calcul des produits sur "
+            f"🛠 Calcul des indices de visualisation sur "
             f"{_human_count(total_tiles, 'dalle', 'dalles')}{details}…"
         )
         self._metric(0, total_tiles, "dalles")  # initialise le total de la phase
@@ -380,7 +367,7 @@ class UserNarrator:
         else:
             self._r.user_info(
                 f"🤖 Détection terminée : "
-                f"{_human_count(n_detections, 'zone détectée', 'zones détectées')}"
+                f"{_human_count(n_detections, 'détection dans les couches', 'détections dans les couches')}"
             )
 
     def rapport_ecrit(self, nom: str) -> None:

@@ -25,7 +25,7 @@ def test_le_projet_qgis_ne_s_ouvre_qu_au_clic():
     assert "load_result_layers(" not in on_load and "_couches_a_charger = (" in on_load
     ouvrir = vue[vue.index("def _ouvrir_projet_qgis("):vue.index("def _write_validation_project(")]
     assert "load_result_layers(" in ouvrir and "_open_project_btn.setEnabled(False)" in ouvrir
-    assert 'QPushButton("Ouvrir le projet QGIS")' in vue
+    assert 'QPushButton("Ajouter au projet QGIS courant")' in vue
     assert vue.count("load_result_layers(") == 1     # un seul appel, celui du clic
     # « Ouvrir le dossier » est dans le cadre de fin, à côté du projet (2026-10-08).
     assert "actions_fin.addWidget(self._open_dir_btn)" in vue
@@ -38,13 +38,13 @@ def test_verifications_et_traitement_sont_deux_etapes():
     from src.app.services.aide import CHAPITRE_PAR_ETAPE
 
     wizard = (RACINE / "src/ui/wizard_dialog.py").read_text(encoding="utf-8")
-    assert '{"label": "Vérifications"' in wizard and '{"label": "Traitement"' in wizard
+    assert '{"label": "Prêt à lancer"' in wizard and '{"label": "Traitement"' in wizard
     assert "self._stack.addWidget(self._build_run_page())" in wizard
     lancer = wizard[wizard.index("def _on_launch("):wizard.index("def _update_launch_recap(")]
     assert lancer.index("self._goto_step(self.STEP_TRAITEMENT)") < lancer.index(".start_run(")
     page = (RACINE / "src/ui/steps/step_4_launch.py").read_text(encoding="utf-8")
     assert "import RunView" not in page and "QStackedWidget" not in page and "_vers_journal_btn" not in page
-    assert sorted(CHAPITRE_PAR_ETAPE) == [1, 2, 3, 4, 5]
+    assert sorted(CHAPITRE_PAR_ETAPE) == [1, 2, 3, 4, 5, 6]
 
 
 def test_le_journal_reste_accessible_apres_le_run():
@@ -66,7 +66,55 @@ def test_un_seul_format_de_duree_et_la_synthese_dans_le_fil():
 
 def test_le_manuel_et_la_recette_suivent():
     manuel = (RACINE / "aide/07-etape-5-traitement.md").read_text(encoding="utf-8")
-    assert "Ouvrir le projet QGIS" in manuel and "barre de progression" not in manuel
+    assert "Ajouter au projet QGIS courant" in manuel and "barre de progression" not in manuel
     recette = (RACINE / "tests/TESTS_MANUELS_QGIS.md").read_text(encoding="utf-8")
     assert "## 44." in recette and "Ouvrir le projet QGIS" in recette
     assert "## 45." in recette and "Vérifications" in recette
+
+
+def test_l_annulation_demande_de_patienter():
+    """2026-10-21 : au clic sur « Annuler », le journal dit d'attendre que l'étape en cours s'arrête."""
+    vue = _vue()
+    annuler = vue[vue.index("def request_cancel("):vue.index("def _worker(")]
+    assert "Annulation demandée" in annuler and "patientez quelques secondes" in annuler
+
+
+# ---------------------------------------------------------------- lot 6 (2026-10-24)
+
+def test_un_seul_bouton_de_fin():
+    """Le lot 6 (2026-10-24) avait scindé « Ouvrir le projet QGIS » en deux boutons ; le 2026-10-26
+    l'utilisateur ne garde que « Ajouter au projet QGIS courant » (« mets juste le premier »),
+    à la fin du traitement comme à l'étape 6. livrable/projet.qgs reste écrit."""
+    vue = _vue()
+    assert 'QPushButton("Ajouter au projet QGIS courant")' in vue
+    assert 'QPushButton("Ouvrir le projet QGIS")' not in vue
+    for mot in ("Ouvrir livrable/projet.qgs", "_open_livrable_btn", "def _ouvrir_livrable("):
+        assert mot not in vue, mot
+    etape6 = (RACINE / "src/ui/steps/step_6_resultats.py").read_text(encoding="utf-8")
+    assert 'QPushButton("Ajouter au projet QGIS courant")' in etape6
+    for mot in ("Ouvrir livrable/projet.qgs", "ouvrir_projet", "addProject("):
+        assert mot not in etape6, mot
+    assert "def _write_validation_project(" in vue   # le projet du livrable est toujours écrit
+
+
+def test_relancer_maintenant_aux_etapes_1_a_3():
+    wizard = (RACINE / "src/ui/wizard_dialog.py").read_text(encoding="utf-8")
+    assert 'QPushButton("Relancer maintenant")' in wizard
+    bouton = wizard[wizard.index("def _update_launch_button("):wizard.index("def _refresh_rail_subs(")]
+    assert "_relancer_btn.setVisible(" in bouton and "a_deja_tourne()" in bouton
+    assert "self._current_step < self.STEP_VERIFS" in bouton
+    relancer = wizard[wizard.index("def _relancer("):wizard.index("def _on_mode_changed(")]
+    assert "_refresh_validation()" in relancer and "_on_launch()" in relancer
+    assert "def a_deja_tourne(" in _vue()
+
+
+def test_messages_rejoues_apres_reset():
+    """C-03 : les messages émis avant l'ouverture du journal de fichier (avertissements de la
+    configuration, lancement, purge des couches) lui sont rejoués ; à l'écran, le journal est
+    vidé avant qu'ils s'écrivent."""
+    vue = _vue()
+    lancer = vue[vue.index("def start_run("):vue.index("def request_cancel(")]
+    assert lancer.index("self._reset_view()") < min(lancer.index(".warning("), lancer.index(".log("))
+    assert "class _TamponAvertJournal" not in vue and "class _TamponAvantJournal" in vue
+    worker = vue[vue.index("def _worker("):vue.index("def _reset_view(")]
+    assert worker.index("with file_logging(") < worker.index("self._rejouer_avant_journal()")

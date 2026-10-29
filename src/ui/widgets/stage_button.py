@@ -14,7 +14,7 @@ la page (pour pouvoir chevaucher la bordure supérieure, ce que Qt ne permet pas
 from __future__ import annotations
 
 from qgis.PyQt.QtCore import QEvent, QPointF, Qt, pyqtSignal
-from qgis.PyQt.QtGui import QBrush, QColor, QPainter, QPen, QPolygonF
+from qgis.PyQt.QtGui import QBrush, QColor, QFont, QPainter, QPen, QPolygonF
 from qgis.PyQt.QtWidgets import QFrame, QLabel, QVBoxLayout, QWidget
 
 from ..icons import colored_pixmap
@@ -77,6 +77,10 @@ class StageButton(QFrame):
         # style distinct pour le stade non interactif (Détection IA).
         self.setProperty("clickable", bool(clickable))
         self.setCursor(Qt.CursorShape.PointingHandCursor if clickable else Qt.CursorShape.ArrowCursor)
+        # Un stade cliquable se choisit aussi au clavier : focus, puis Espace ou Entrée.
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus if clickable else Qt.FocusPolicy.NoFocus)
+        self._label_text = label
+        self._sub_text = sub
         self.setMinimumHeight(78)
 
         layout = QVBoxLayout(self)
@@ -105,9 +109,22 @@ class StageButton(QFrame):
         self.set_role("executed")
 
     def set_role(self, role: str) -> None:
-        """role ∈ {'entry', 'executed', 'skipped'}."""
+        """role ∈ {'entry', 'executed', 'skipped'}.
+
+        Un stade sauté (avant le point de départ) est **barré** et dit « sautée » :
+        le traitement ne passe pas par là (choix de l'utilisateur, 2026-10-24). Le
+        stade d'entrée porte un indicateur de bouton radio plein, les autres stades
+        cliquables un indicateur vide — la frise est un sélecteur, elle le montre.
+        """
         self._role = role
         self.setProperty("role", role)
+        police = QFont(self._name.font())
+        police.setStrikeOut(role == "skipped")
+        self._name.setFont(police)
+        if self._clickable:
+            puce = "◉ " if role == "entry" else "○ "
+            self._name.setText(puce + self._label_text)
+        self._sub.setText("sautée" if role == "skipped" else self._sub_text)
         self._apply_glyph()
         for w in (self, self._name, self._sub):
             try:
@@ -133,3 +150,9 @@ class StageButton(QFrame):
         if self._clickable:
             self.clicked.emit()
         super().mousePressEvent(event)
+
+    def keyPressEvent(self, event):  # noqa: N802 (signature Qt)
+        if self._clickable and event.key() in (Qt.Key.Key_Space, Qt.Key.Key_Return, Qt.Key.Key_Enter):
+            self.clicked.emit()
+            return
+        super().keyPressEvent(event)

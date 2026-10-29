@@ -1,6 +1,5 @@
 """Réglage hors bornes dans une configuration chargée : l'étape 2 l'écrête (setValue), désormais en le disant ;
 et une erreur de bornes_errors se range sur l'étape 2 (pastille du rail), pas sur l'étape 1."""
-import ast
 import os
 
 import pytest
@@ -34,11 +33,10 @@ def test_choix_inconnu_nomme_le_reglage_la_valeur_lue_et_la_valeur_retenue():
 
 
 def _classify_error_step():
-    arbre = ast.parse(open(WIZARD, encoding="utf-8").read())
-    fn = next(n for n in arbre.body if isinstance(n, ast.FunctionDef) and n.name == "_classify_error_step")
-    ns: dict = {}
-    exec(compile(ast.Module(body=[fn], type_ignores=[]), WIZARD, "exec"), ns)  # noqa: S102
-    return ns["_classify_error_step"]
+    """Le rangement vit dans le module pur ``validation_ui`` (lot 2, 2026-10-24)."""
+    from app.services.validation_ui import classer_erreurs
+
+    return lambda message: next(iter(classer_erreurs([message])))
 
 
 @pytest.mark.parametrize("produit,section,valeurs", [

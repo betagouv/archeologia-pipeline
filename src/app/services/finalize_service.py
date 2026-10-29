@@ -9,14 +9,20 @@ if TYPE_CHECKING:
 
 LogFn = Callable[[str], None]
 
+#: Groupe QGIS qui reçoit toutes les couches de détections (N-02, choix du 2026-10-25), dans
+#: le ``.qgs`` (``ui/qgs_writer``) comme au chargement en direct (``ui/layer_loader``) ; un
+#: regroupement ou une comparaison A/B y a son sous-groupe (``build_entity_grouping``).
+GROUPE_STRUCTURES = "Structures"
+
 
 def build_entity_grouping(
     runs: Optional[List[Dict[str, Any]]],
 ) -> "tuple[Dict[str, str], set]":
     """Depuis les runs, renvoie ``(entity_labels: slug→libellé, grouped_slugs)``.
 
-    ``grouped_slugs`` = slugs dont les couches forment un groupe QGIS — dans le
-    ``.qgs`` (``ui/qgs_writer``) **et** au chargement live
+    ``grouped_slugs`` = slugs dont les couches forment un sous-groupe du groupe
+    « Structures » (``GROUPE_STRUCTURES``, qui reçoit toutes les couches de
+    détections) — dans le ``.qgs`` (``ui/qgs_writer``) **et** au chargement live
     (``layer_loader.load_result_layers``). Helper partagé par les deux chemins
     pour garantir le **même** regroupement. Deux cas :
 
@@ -365,6 +371,19 @@ def echec_detection(output_dir: Path, lance_le: float) -> str:
     return str(trace.get("cv_motif") or "moteur de détection indisponible")
 
 
+def _journal_relatif(output_dir: Path) -> str:
+    """``technique/journaux/pipeline_log_<ts>.txt`` du dernier lancement, ``""`` sans journal."""
+    try:
+        from ...pipeline.output_paths import DIR_JOURNAUX, DIR_TECHNIQUE, journaux_dir
+    except ImportError:  # standalone (tests)
+        from pipeline.output_paths import DIR_JOURNAUX, DIR_TECHNIQUE, journaux_dir  # type: ignore[no-redef]
+    try:
+        logs = sorted(journaux_dir(Path(output_dir)).glob("pipeline_log_*.txt"))
+    except OSError:
+        return ""
+    return f"{DIR_TECHNIQUE}/{DIR_JOURNAUX}/{logs[-1].name}" if logs else ""
+
+
 def _ecrire_rapport_run(
     *, output_dir: Path, vrt_paths: List[str], cv_runs: Any, cv_cfg: Any, cv_stats: List[Dict[str, Any]],
     bilan: Any, rvt_params: Dict[str, Any], active_products: List[str], ui_config: Dict[str, Any],
@@ -449,6 +468,17 @@ def _ecrire_rapport_run(
         date = _dt.datetime.fromisoformat(meta_date).strftime("%d/%m/%Y à %H:%M")
     except ValueError:
         date = meta_date
+    # Couleurs des couches (registre du profil, lu en JSON pur) déclinées par niveau : les
+    # barres du rapport ont les teintes de la légende QGIS. Jamais bloquant.
+    try:
+        from .couleurs_couches import couleurs_du_bilan, lire_registre
+        try:
+            from ...pipeline.cv.class_color_registry import default_registry
+        except ImportError:
+            from pipeline.cv.class_color_registry import default_registry  # type: ignore[no-redef]
+        couleurs = couleurs_du_bilan(lire_registre(default_registry().path), [ligne.couche for ligne in bilan])
+    except Exception:  # noqa: BLE001
+        couleurs = {}
     donnees = DonneesRapport(
         version=get_plugin_version(), date=date,
         mode=mode_info(mode).banner_label if mode else "", data_mode=mode,
@@ -460,6 +490,7 @@ def _ecrire_rapport_run(
         cv_runs=tuple(runs_rapport),
         bilan=tuple(ligne.to_dict() for ligne in bilan), etapes=tuple(etapes),
         avertissements=tuple(avertissements), vignette=vignette, motif_detection=motif_detection,
+        couleurs=couleurs,
     )
     ecrire_rapport(livrable_dir(Path(output_dir)), donnees)
     return f"{DIR_LIVRABLE}/{NOM_RAPPORT}"
@@ -545,6 +576,16 @@ def finalize_pipeline(
     except ImportError:  # pragma: no cover
         from pipeline.cv.class_utils import resolve_cv_runs
     cv_runs = resolve_cv_runs(cv_cfg or {})
+    # N-01 (2026-10-25) : une couche nommée par sa structure garde la couleur de sa classe
+    # (alias du registre partagé), avant le .qgs, le chargement en direct et le rapport.
+    try:
+        try:
+            from ...pipeline.cv.class_color_registry import aliaser_depuis_runs
+        except ImportError:  # pragma: no cover
+            from pipeline.cv.class_color_registry import aliaser_depuis_runs  # type: ignore[no-redef]
+        aliaser_depuis_runs(cv_runs)
+    except Exception as _e:  # noqa: BLE001 — jamais bloquant
+        log(f"Alias de couleurs ignorés ({_e})")
     # Purge des variantes d'entité PÉRIMÉES (bascule mono ↔ comparaison A/B
     # dans le même output_dir) AVANT la collecte : sinon leurs GPKG seraient
     # re-collectés (couches dupliquées, seuil de symbologie de repli faux).
@@ -731,7 +772,8 @@ def finalize_pipeline(
     # « ⏹ Traitement annulé » est émis par le runner après la finalisation —
     # rien à annoncer ici dans le cas cancelled.
     if outcome == "failed":
-        narrator.pipeline_failed("erreur inattendue pendant le traitement", start_time=start_time)
+        narrator.pipeline_failed("erreur inattendue pendant le traitement", start_time=start_time,
+                                 journal=_journal_relatif(output_dir))
     elif outcome == "success" and detection_impossible:
         from .rapport_run import suite_detection_impossible
         reporter.error(
@@ -739,7 +781,8 @@ def finalize_pipeline(
             f"Les produits sont calculés ; {suite_detection_impossible(cv_stats or [])}"
         )
     elif outcome == "success" and all_tiles_failed:
-        narrator.pipeline_failed("aucune dalle n'a produit de sortie", start_time=start_time)
+        narrator.pipeline_failed("aucune dalle n'a produit de sortie", start_time=start_time,
+                                 journal=_journal_relatif(output_dir))
     elif success:
         narrator.pipeline_complete(
             tiles_processed=tiles_processed,

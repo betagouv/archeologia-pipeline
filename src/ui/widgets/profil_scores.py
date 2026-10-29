@@ -188,7 +188,7 @@ class ProfilScoresWidget(QWidget):
         self._seuil = None if seuil is None else float(seuil)
         self._cats = (
             self._p.categories if self._seuil is None
-            else categories_effectives(self._p.categories, self._seuil)
+            else categories_effectives(self._p.categories, self._seuil, sous_seuil=self._p.sous_seuil)
         )
         self._maj_infobulle()
         self._ajuster_rangees()
@@ -223,6 +223,8 @@ class ProfilScoresWidget(QWidget):
                            "équilibre (F1) de la zone recalculé sur ses bandes")
             elif p.critere == "couverture":
                 origine = "pas de rappel par zone au critère de couverture : les vraies sont des fragments, pas des objets"
+            elif p.critere == "axe":
+                origine = "pas de rappel par zone au critère de l'axe : la vérité est une longueur de tracé, pas des objets"
             else:
                 origine = "rappel indisponible dans l'évaluation"
             lignes.insert(0, f"Au seuil {_v(round(self.seuil, 3))} : {pr} (précision comptée sur les bandes, {origine}).")
@@ -338,7 +340,8 @@ class ProfilScoresWidget(QWidget):
         candidats = [s for s in candidats if 0.0 < s < 1.0]
         rangees = 1
         for s in candidats:
-            cats = self._p.categories if abs(s - self._p.seuil) < 1e-9 else categories_effectives(self._p.categories, s)
+            cats = (self._p.categories if abs(s - self._p.seuil) < 1e-9
+                    else categories_effectives(self._p.categories, s, sous_seuil=self._p.sous_seuil))
             etiquettes = self._etiquettes(cats, s)
             rangees = max(rangees, max((e.rangee for e in etiquettes), default=0) + 1)
         if rangees != self._rangees:
@@ -570,17 +573,22 @@ def _categorie_de(cats: Sequence[Categorie], score: float) -> Optional[Categorie
     return courante
 
 
-def couleur_de_classe(classe: str) -> Optional[RGB]:
+def couleur_de_classe(classe: str, ancien: str = "") -> Optional[RGB]:
     """Couleur de base de la classe (registre partagé) ; ``None`` hors QGIS.
 
     ``classe`` est la **clé du registre**, c'est-à-dire le nom de la couche de
-    détections : le nom de classe en temps normal, « classe — Modèle » en
-    comparaison A/B (cf. ``model_orchestrator.layer_name_for_class``) — la même
-    clé que ``layer_loader``, sinon la figure et la légende divergent.
+    détections : le libellé de la structure (« Cratères », N-01 2026-10-25),
+    « Structure — Modèle » en comparaison A/B (cf.
+    ``model_orchestrator.layer_name_for_class``) — la même clé que ``layer_loader``,
+    sinon la figure et la légende divergent. ``ancien`` = la classe dont la couche
+    renommée garde la couleur (alias du registre, posé ici comme à la finalisation
+    du traitement) ; vide en comparaison A/B, dont les variantes ont leur couleur.
     """
     try:
-        from ...pipeline.cv.class_color_registry import color_for_class
+        from ...pipeline.cv.class_color_registry import color_for_class, default_registry
 
+        if ancien:
+            default_registry().alias(classe, ancien)
         r, g, b = color_for_class(classe)
         return int(r), int(g), int(b)
     except Exception:  # noqa: BLE001

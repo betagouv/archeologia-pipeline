@@ -17,11 +17,11 @@ from .progress_plan import build_progress_plan, cv_pct
 try:  # cross-package import : OK en QGIS, fallback en tests standalone (src/ sur le path)
     from ...pipeline.cancellation import PipelineCancelled
     from ...pipeline.batch import process_items_isolated
-    from ...pipeline.output_paths import intermediaires_dir
+    from ...pipeline.output_paths import detections_gardees, intermediaires_dir
 except ImportError:  # pragma: no cover
     from pipeline.cancellation import PipelineCancelled
     from pipeline.batch import process_items_isolated
-    from pipeline.output_paths import intermediaires_dir
+    from pipeline.output_paths import detections_gardees, intermediaires_dir
 
 if TYPE_CHECKING:
     from ..structured_logger import StructuredLogger
@@ -211,7 +211,10 @@ class ExistingRvtRunner:
                     f"⚠️ Computer Vision: {len(failed)} run(s) sur "
                     f"{len(run_configs)} en échec — voir le journal."
                 )
-            if detection_counts:
+            gardees = detections_gardees(ctx.output_dir, cv_runs) if cv_runs else None
+            if gardees is not None:
+                narrator.cv_complete(gardees)
+            elif detection_counts:
                 narrator.cv_complete(sum(detection_counts))
         except PipelineCancelled:
             cancelled = True

@@ -117,7 +117,7 @@ class TestBuildSections:
         sections = build_sections(card, args=None)
         titles = [s.title for s in sections]
         assert "ARCHITECTURE" in titles
-        assert any(t.startswith("INDICE RVT D'ENTRAÎNEMENT") and "(LD)" in t for t in titles)
+        assert any(t.startswith("INDICE D'ENTRAÎNEMENT") and "(LD)" in t for t in titles)
         assert "MNT D'ENTRAÎNEMENT" in titles
 
     def test_architecture_section_humanizes_task_and_counts_unique_classes(self):
@@ -162,7 +162,7 @@ class TestBuildSections:
             },
         }
         sections = build_sections(card, args=None)
-        rvt = next(s for s in sections if s.title.startswith("INDICE RVT"))
+        rvt = next(s for s in sections if s.title.startswith("INDICE D'ENTRAÎNEMENT"))
         labels = [r.label for r in rvt.rows]
         assert "Nombre de directions" in labels
         assert "Rayon" in labels
@@ -183,7 +183,7 @@ class TestBuildSections:
             },
         }
         sections = build_sections(card, args=None)
-        rvt = next(s for s in sections if s.title.startswith("INDICE RVT"))
+        rvt = next(s for s in sections if s.title.startswith("INDICE D'ENTRAÎNEMENT"))
         labels = [r.label for r in rvt.rows]
         assert "svf_n_dir" not in labels
         assert "svf_r_max" not in labels
@@ -201,14 +201,14 @@ class TestBuildSections:
             },
         }
         sections = build_sections(card, args=None)
-        rvt = next(s for s in sections if s.title.startswith("INDICE RVT"))
+        rvt = next(s for s in sections if s.title.startswith("INDICE D'ENTRAÎNEMENT"))
         labels = [r.label for r in rvt.rows]
         assert "magic_param" in labels
 
     def test_no_rvt_section_when_preferred_rvt_missing(self):
         card = {"architecture": "X", "task": "object_detection"}
         sections = build_sections(card, args=None)
-        rvt_titles = [s.title for s in sections if s.title.startswith("INDICE RVT")]
+        rvt_titles = [s.title for s in sections if s.title.startswith("INDICE D'ENTRAÎNEMENT")]
         assert rvt_titles == []
 
     def test_mnt_section_has_resolution_and_filter(self):
@@ -354,12 +354,13 @@ _G = {"seuil_f1max": 0.37, "P": 0.7379, "R": 0.6531, "F1": 0.6929, "AP50": 0.651
 
 
 def _eval(model_dir, dossier="evaluation", modeles=None, critere="iou",
-          images=("courbes_seuils_pr.png",)):
+          images=("courbes_seuils_pr.png",), **en_tete):
     import json
 
     d = model_dir / "entrainement" / dossier
     d.mkdir(parents=True)
     (d / "metriques_eval.json").write_text(json.dumps({
+        **en_tete,
         "critere": critere,
         "iou": {"type": "masque", "seuil": 0.5},
         "dataset": {"splits": ["valid", "test"], "n_images": 2187, "n_gt": 238394},
@@ -415,6 +416,18 @@ class TestMetriquesEvaluation:
         assert s1.title == "MÉTRIQUES D'ÉVALUATION"
         assert s2.title == "MÉTRIQUES D'ÉVALUATION — CRITÈRE COUVERTURE"
         assert "couverture" in " ".join(r.value for r in s2.rows)
+
+    def test_critere_axe_en_troisieme_section(self, tmp_path):
+        """Linéaires (2026-10-22) : évaluation par distance à l'axe, tolérance en mètres,
+        unité polygone — le critère est dit en mots, avec sa tolérance."""
+        _eval(tmp_path)
+        _eval(tmp_path, dossier="evaluation_couverture", critere="couverture")
+        _eval(tmp_path, dossier="evaluation_axe", critere="axe", tolerance_m=5.0, unite="polygone")
+        s1, s2, s3 = _metriques(build_sections({}, model_dir=tmp_path))
+        assert s3.title == "MÉTRIQUES D'ÉVALUATION — CRITÈRE AXE"
+        critere = next(r.value for r in s3.rows if r.label == "Critère")
+        assert critere == ("axe de la détection à 5 m au plus de l'axe annoté, comptée par polygone "
+                           "fusionné : ne dépend pas de la largeur des masques")
 
     def test_json_illisible_garde_les_courbes(self, tmp_path):
         d = _eval(tmp_path)

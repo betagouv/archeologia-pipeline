@@ -26,6 +26,14 @@ MNT_ALGO_TIMEOUT_S = 2 * 3600
 @dataclass(frozen=True)
 class TerrainModelResult:
     mnt_path: Path
+    #: MNT calculé par ``pdal:exportraster`` (sans interpolation) après deux échecs du calcul TIN : l'appelant le
+    #: dit à l'utilisateur ; une note à côté du MNT le fait recalculer à la relance suivante.
+    repli: bool = False
+
+
+def note_repli_path(mnt_path: Path) -> Path:
+    """Note posée à côté d'un MNT de repli : sa présence fait recalculer le MNT à la relance."""
+    return mnt_path.with_name(mnt_path.name + ".repli")
 
 
 #: Calage de la grille du MNT et de la densité, inscrit dans la signature du cache (cache_guard) : un dossier calculé
@@ -137,7 +145,8 @@ def create_terrain_model(
     # Fraîcheur vis-à-vis du LAZ fusionné (pas simple existence) : un
     # re-merge (jeu de voisins modifié, halo) re-matérialise le LAZ → le MNT
     # doit suivre, et la chaîne aval (RVT/PNG/cache CV) se ré-arme d'elle-même.
-    if not needs_refresh(input_laz_path, output_path):
+    note_repli = note_repli_path(output_path)
+    if not note_repli.exists() and not needs_refresh(input_laz_path, output_path):
         log(f"MNT réutilisé (cache intermédiaire) : {output_file}")
         return TerrainModelResult(mnt_path=output_path)
 
@@ -177,22 +186,30 @@ def create_terrain_model(
     watchdog = dict(
         feedback=feedback, context=context, timeout_s=algo_timeout_s, tile_name=current_tile_name
     )
-    try:
-        _run_under_watchdog("pdal:exportrastertin", parameters, **watchdog)
-    except TimeoutError as e:
-        # Pas de fallback : pdal:exportraster relirait le MÊME LAZ et
-        # rebouclerait le même temps. La dalle est perdue, le lot continue
-        # (isolation par dalle dans le runner).
-        log(f"⏱ {e}")
-        raise
-    except Exception as e:
-        log(f"Échec création MNT avec pdal:exportrastertin: {e}")
-        log("Tentative de fallback avec pdal:exportraster...")
+    # Deux tentatives TIN : un plantage de PDAL est souvent passager (mémoire prise par un autre programme,
+    # vu en recette le 2026-10-21) ; le repli sans interpolation laisse des pixels vides et change la méthode
+    # d'une seule dalle de la mosaïque, il ne vient qu'en dernier.
+    repli = False
+    for tentative in (1, 2):
+        try:
+            _run_under_watchdog("pdal:exportrastertin", parameters, **watchdog)
+            break
+        except TimeoutError as e:
+            # Pas de fallback : pdal:exportraster relirait le MÊME LAZ et
+            # rebouclerait le même temps. La dalle est perdue, le lot continue
+            # (isolation par dalle dans le runner).
+            log(f"⏱ {e}")
+            raise
+        except Exception as e:
+            log(f"Échec création MNT avec pdal:exportrastertin (tentative {tentative}/2) : {e}")
+    else:
+        log("Tentative de fallback avec pdal:exportraster (sans interpolation)...")
         try:
             _run_under_watchdog("pdal:exportraster", parameters, **watchdog)
         except TimeoutError as e2:
             log(f"⏱ {e2}")
             raise
+        repli = True
 
     if not output_path.exists():
         raise RuntimeError(f"Échec création MNT: fichier non créé: {output_path}")
@@ -205,4 +222,8 @@ def create_terrain_model(
     if assigned:
         log(f"CRS absent/local sur le MNT → affecté {assigned} (assignation, sans reprojection)")
 
-    return TerrainModelResult(mnt_path=output_path)
+    if repli:
+        note_repli.write_text("pdal:exportraster", encoding="utf-8")
+    elif note_repli.exists():
+        note_repli.unlink()
+    return TerrainModelResult(mnt_path=output_path, repli=repli)

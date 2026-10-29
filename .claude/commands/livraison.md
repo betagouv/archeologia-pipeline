@@ -28,7 +28,7 @@ le dépôt est déposé par l'utilisateur (FTP), le runbook s'arrête au ZIP et 
 
 1. **État des branches.** `git fetch`, `git log --oneline origin/main..dev`, `git log --oneline dev..$2`.
    Lister ce qui part dans la version ; signaler ce qui doit rester caché (ex. l'onglet Visualisation :
-   `VISUALISATION_TAB_ENABLED` reste False sur dev).
+   `VISUALISATION_TAB_ENABLED`, dans `src/app/services/visu_catalogue.py`, reste False tant que le catalogue public n'existe pas — décision du 2026-10-27 ; la 0.18.0 l'avait livré à tort, la 0.18.1 l'a masqué).
 2. **Fusionner `$2` dans dev** avec commit de fusion (`git merge --no-ff`), jamais de squash. Résoudre,
    `python run_tests.py unit`, `ruff check src/`.
 3. **Grille IGN à jour** : `python dev/build_quadrillage_from_wfs.py` depuis le dossier principal
@@ -37,8 +37,11 @@ le dépôt est déposé par l'utilisateur (FTP), le runbook s'arrête au ZIP et 
    versionne le dépôt GitHub (le plugin la décompresse au premier besoin) : **la commiter sur dev** avec
    la version, sinon une copie venue de GitHub télécharge sur une grille périmée.
 4. **Manuel** : `python run_tests.py -k test_aide` vert ; chaque fonctionnalité de la version a son
-   chapitre à jour (skill `manuel-integre`). Puis, **à chaque livraison**, les deux rendus hors écran
-   (Python de QGIS, `C:/OSGeo4W/bin/python-qgis.bat`) :
+   chapitre à jour (skill `manuel-integre`). Puis, **à chaque livraison**, les rendus hors écran, **sous
+   chacun des deux QGIS installés** : `C:/OSGeo4W/bin/python-qgis.bat` (QGIS 3.44, Qt5) et
+   `"C:/Program Files/QGIS 4.0.3/bin/python-qgis.bat"` (QGIS 4, Qt6) — les largeurs de texte diffèrent
+   entre Qt5 et Qt6, et un débord de 169 px du chapitre Résultats sous QGIS 4 a été livré trois fois
+   (0.15.0 à 0.16.1) sans être vu sous Qt5 :
    `dev/rendu_hors_ecran.py captures` refait les captures de l'assistant dans `aide/img/` (étapes 1 à 3
    et la vue d'exécution en cours de run ; à commiter si l'interface a changé, à vérifier d'un coup
    d'œil sinon), `dev/rendu_hors_ecran.py manuel --tous` rend chaque chapitre et doit finir sur

@@ -64,7 +64,9 @@ class TestShouldExcludeDirs:
 
 class TestShouldExcludeFiles:
     @pytest.mark.parametrize("name", ["config.json", "last_ui_config.json", "class_color_registry.json", "pytest.ini", ".gitignore",
-                                      "quadrillage_france.zip"])
+                                      "quadrillage_france.zip",
+                                      # .git est un FICHIER dans un worktree (gitdir: <chemin personnel>).
+                                      ".git"])
     def test_excludes_dev_files(self, pkg, tmp_path, name):
         f = tmp_path / name
         f.write_text("{}")
@@ -258,6 +260,14 @@ def test_les_sauvegardes_horodatees_ne_partent_pas(pkg, tmp_path):
     f = tmp_path / "catalogue.json.bak-2026-09-23"
     f.write_text("{}")
     assert pkg.should_exclude(f, "data/demo_catalogue/catalogue.json.bak-2026-09-23") is True
+
+
+def test_le_catalogue_de_demo_ne_part_pas(pkg, tmp_path):
+    """2026-10-20 : le catalogue de démo (chemins de poste, onglet désactivé) est sorti du dépôt ;
+    ses restes gitignorés sur le poste (wms/, thumbs/) ne doivent pas repartir dans le ZIP."""
+    d = tmp_path / "data" / "demo_catalogue"
+    d.mkdir(parents=True)
+    assert pkg.should_exclude(d, "data/demo_catalogue") is True
 
 
 def test_le_rvt_embarque_et_sa_licence_partent_dans_le_zip(pkg):

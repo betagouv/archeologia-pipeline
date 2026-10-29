@@ -35,7 +35,8 @@ from qgis.PyQt.QtWidgets import (
 )
 
 from ..app.progress_reporter import USER_INFO
-from ..app.user_narrator import PRODUCT_LABELS, _format_duration
+from ..app.user_narrator import _format_duration
+from ..app.services.vocabulaire import pluriel, titre_image
 from ..app.progress_stages import STAGE_LABELS, build_stage_sequence
 from ..app.services.aide import AIDE_DIRNAME, CLE_DEPANNAGE, resoudre_cible, rubrique_depannage, slug
 from ..app.services.bilan_fiabilite import collecter as collecter_bilan
@@ -266,15 +267,32 @@ def profil_archeologia() -> Path:
         return Path(__file__).resolve().parents[2] / "data" / "temp_zones"   # gitignoré
 
 
+class _TamponAvantJournal(logging.Handler):
+    """Garde ce qui est émis entre la remise à zéro de la vue et le départ du thread :
+    avertissements de la configuration, « Lancement… », purge des couches. Le journal
+    de fichier n'existe pas encore à ce moment-là ; ces lignes lui manquaient (C-03)."""
+
+    def __init__(self, cible: list):
+        super().__init__(logging.INFO)
+        self._cible = cible
+        self.actif = False
+
+    def emit(self, record: logging.LogRecord) -> None:
+        if self.actif:
+            self._cible.append(record)
+
+
 class RunView(QWidget):
-    """Vue d'exécution : en-tête + timeline + barre de progression + journal."""
+    """Vue d'exécution : fil d'état, frise, cadre de fin et journal."""
 
     run_started = pyqtSignal()
     run_finished = pyqtSignal()
+    revoir_resultats = pyqtSignal()   # « Revoir les résultats » → l'étape 6 de l'assistant
 
-    def __init__(self, config_ref: Optional[dict] = None, parent=None):
+    def __init__(self, config_ref: Optional[dict] = None, parent=None, iface=None):
         super().__init__(parent)
         self._config = config_ref or {}
+        self._iface = iface   # None hors QGIS de bureau (rendu hors écran)
         self._cancel_event = threading.Event()
         self._bucket = -1
         self._running = False
@@ -311,6 +329,10 @@ class RunView(QWidget):
         # Couches du run, à charger dans le projet QGIS courant SEULEMENT au clic sur
         # « Ouvrir le projet QGIS » (V2, 2026-10-08 : plus de chargement automatique).
         self._couches_a_charger: Optional[tuple] = None
+        # Messages émis avant l'ouverture du journal de fichier (avertissements de la
+        # configuration, lancement, purge des couches) : gardés pour y être rejoués (C-03).
+        self._avant_journal: List[logging.LogRecord] = []
+        self._tampon = _TamponAvantJournal(self._avant_journal)
 
         # ── Logger + pont Qt ──
         self._logger = logging.getLogger("archeologia_pipeline")
@@ -334,9 +356,10 @@ class RunView(QWidget):
         # sinon les logs partiraient vers un émetteur mort et le journal resterait
         # muet. On garantit qu'un seul QtLogHandler — celui-ci — est attaché.
         for h in list(self._logger.handlers):
-            if isinstance(h, QtLogHandler):
+            if isinstance(h, (QtLogHandler, _TamponAvantJournal)):
                 self._logger.removeHandler(h)
         self._logger.addHandler(self._log_handler)
+        self._logger.addHandler(self._tampon)
 
         self._build()
         # Timeline initiale (au cas où la vue est affichée avant le 1er run) :
@@ -418,10 +441,12 @@ class RunView(QWidget):
         dpr = self.devicePixelRatioF()
         actions_fin = QHBoxLayout()
         actions_fin.setSpacing(6)
-        self._open_project_btn = QPushButton("Ouvrir le projet QGIS")
+        # Un seul geste (2026-10-26, demande de l'utilisateur) : ajouter les couches au projet
+        # ouvert. livrable/projet.qgs reste écrit, pour plus tard ou pour un autre poste.
+        self._open_project_btn = QPushButton("Ajouter au projet QGIS courant")
         self._open_project_btn.setObjectName("WizardPrimaryButton")
         self._open_project_btn.setToolTip(
-            "Charge les mosaïques et les couches de détections dans le projet QGIS courant"
+            "Charge les mosaïques et les couches de détections, stylées, dans le projet QGIS ouvert (une fois)"
         )
         self._open_project_btn.setEnabled(False)
         self._open_project_btn.clicked.connect(self._ouvrir_projet_qgis)
@@ -445,12 +470,17 @@ class RunView(QWidget):
         self._open_report_btn.setToolTip("Le rapport du traitement, dans le navigateur (livrable/rapport.html)")
         self._open_report_btn.setEnabled(False)
         self._open_report_btn.clicked.connect(self._open_report)
+        self._revoir_btn = QPushButton("Revoir les résultats")
+        self._revoir_btn.setObjectName("GhostButton")
+        self._revoir_btn.setToolTip("Tous les traitements lancés depuis ce poste, pour y revenir")
+        self._revoir_btn.clicked.connect(self.revoir_resultats)
         self._bilan_legende = QLabel("")
         self._bilan_legende.setObjectName("RunHeaderSub")
         self._bilan_legende.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         actions_fin.addWidget(self._open_project_btn)
         actions_fin.addWidget(self._open_dir_btn)
         actions_fin.addWidget(self._open_report_btn)
+        actions_fin.addWidget(self._revoir_btn)
         actions_fin.addWidget(self._bilan_legende, 1)
         bl.addLayout(actions_fin)
         self._bilan_box.setVisible(False)
@@ -458,7 +488,7 @@ class RunView(QWidget):
 
         jhead = QHBoxLayout()
         jhead.setSpacing(8)
-        jtitle = QLabel("Journal d'exécution")
+        jtitle = QLabel("Journal")
         jtitle.setObjectName("RunJournalTitle")
         # Compteurs ⚠/✗ cliquables : cochés, ils filtrent le journal sur leur
         # niveau (première UI du mécanisme _log_show, déjà présent côté modèle).
@@ -507,7 +537,7 @@ class RunView(QWidget):
         zone.setMinimumWidth(contenu.minimumSizeHint().width() + zone.verticalScrollBar().sizeHint().width())
 
         actions = QHBoxLayout()
-        self._open_log_btn = QPushButton("Log complet")
+        self._open_log_btn = QPushButton("Journal complet (fichier)")
         self._open_log_btn.setObjectName("GhostButton")
         self._open_log_btn.setIcon(colored_icon("file-text", "#2c2c2c", 14, dpr=dpr))
         self._open_log_btn.setIconSize(QSize(14, 14))
@@ -527,6 +557,10 @@ class RunView(QWidget):
     # ------------------------------------------------------------------
     def is_running(self) -> bool:
         return self._running
+
+    def a_deja_tourne(self) -> bool:
+        """Un traitement a déjà été lancé dans cette fenêtre (« Relancer maintenant »)."""
+        return self._run_started_at is not None
 
     def preview(self, config: dict) -> None:
         """Avant le premier run, la frise et la ligne d'état suivent la config courante
@@ -594,9 +628,11 @@ class RunView(QWidget):
             return
 
         self._reset_view()
+        self._avant_journal.clear()
+        self._tampon.actif = True   # jusqu'au départ du thread : rejoué dans le fichier
         for w in warnings:
             self._logger.warning(w)
-        self._logger.log(USER_INFO, "Lancement du pipeline…")
+        self._logger.log(USER_INFO, "Lancement du traitement…")
 
         # Re-run dans le même dossier : retirer les couches VRT/GPKG périmées encore
         # chargées (run précédent) AVANT que le worker régénère les VRT. Sinon QGIS,
@@ -607,12 +643,16 @@ class RunView(QWidget):
         plan = plan_migration(ctx.output_dir)
         if plan:
             texte = decrire(plan, ctx.output_dir, non_reconnus(ctx.output_dir, plan))
-            rep = QMessageBox.question(
-                self, "Réorganiser le dossier de sortie ?", texte,
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel,
-                QMessageBox.StandardButton.Yes,
-            )
-            if rep != QMessageBox.StandardButton.Yes:
+            box = QMessageBox(self)
+            box.setWindowTitle("Réorganiser le dossier de sortie ?")
+            box.setIcon(QMessageBox.Icon.Question)
+            box.setText(texte)
+            reorganiser = box.addButton("Réorganiser et lancer", QMessageBox.ButtonRole.AcceptRole)
+            box.addButton("Annuler", QMessageBox.ButtonRole.RejectRole)
+            box.setDefaultButton(reorganiser)
+            box.exec()
+            if box.clickedButton() is not reorganiser:
+                self._tampon.actif = False
                 self._reset_view()
                 self._append_log("INFO", "Lancement annulé : le dossier de sortie garde son ancienne organisation. "
                                          "Choisissez un autre dossier de sortie, ou acceptez la réorganisation.")
@@ -620,6 +660,7 @@ class RunView(QWidget):
             purge_output_dir_layers(ctx.output_dir, self._logger)   # couches sur les anciens chemins
             erreurs = appliquer(plan, log=lambda m: self._logger.log(USER_INFO, m))
             if erreurs:
+                self._tampon.actif = False
                 self._reset_view()
                 self._append_log("ERROR", "❌ Réorganisation incomplète — fermez les couches QGIS chargées depuis ce dossier, puis relancez :")
                 for e in erreurs:
@@ -648,13 +689,17 @@ class RunView(QWidget):
         self._fil_droite.setText("en cours · 0s")
         self._update_header()
         self.run_started.emit()
+        self._tampon.actif = False
         threading.Thread(target=self._worker, args=(ctx,), daemon=True).start()
 
     def request_cancel(self) -> None:
         if self._running and not self._cancel_event.is_set():
             self._cancel_event.set()
             self._cancel_btn.setEnabled(False)
-            self._logger.log(USER_INFO, "Annulation demandée…")
+            self._logger.log(
+                USER_INFO,
+                "Annulation demandée… patientez quelques secondes, le temps que l'étape en cours s'arrête.",
+            )
 
     # ------------------------------------------------------------------
     def _worker(self, ctx) -> None:
@@ -668,6 +713,7 @@ class RunView(QWidget):
 
             reporter = QtProgressReporter(self._logger, self._emitter)
             with file_logging(ctx.output_dir, reporter):
+                self._rejouer_avant_journal()
                 ok = PipelineController().run(
                     ctx=ctx, reporter=reporter, cancel=CancelToken(self._cancel_event)
                 )
@@ -675,15 +721,24 @@ class RunView(QWidget):
         except PipelineCancelled:
             # Annulation propre (filet de sécurité) : jamais journalisée comme erreur.
             self._run_outcome = "cancel"
-            self._logger.log(USER_INFO, "Pipeline annulé.")
+            self._logger.log(USER_INFO, "Traitement annulé.")
         except Exception:
-            self._logger.exception("Erreur pendant l'exécution du pipeline")
+            self._logger.exception("Erreur pendant le traitement")
         finally:
             self._emitter.run_enabled.emit(True)
 
     # ------------------------------------------------------------------
     # Slots (signaux émis depuis le worker → thread UI)
     # ------------------------------------------------------------------
+    def _rejouer_avant_journal(self) -> None:
+        """Rejoue dans le journal de fichier, tout juste ouvert, ce qui a été dit avant lui
+        (C-03) : il raconte le lancement depuis le début, comme l'écran."""
+        fichiers = [h for h in self._logger.handlers if isinstance(h, logging.FileHandler)]
+        for rec in list(self._avant_journal):
+            for h in fichiers:
+                h.handle(rec)
+        self._avant_journal.clear()
+
     def _reset_view(self) -> None:
         self._bucket = -1
         self._last_stage_text = ""
@@ -749,7 +804,7 @@ class RunView(QWidget):
             if rubrique:
                 body += (
                     f'&nbsp;&nbsp;<a href="manuel:{CLE_DEPANNAGE}#{slug(rubrique)}" '
-                    'style="color:#9c9686;">· voir Manuel › Dépannage › '
+                    'style="color:#9c9686;">· voir Aide › Dépannage › '
                     f"« {html.escape(rubrique)} »</a>"
                 )
         stamp = f'<span style="color:#7d786c;">{ts}</span>&nbsp;&nbsp;' if ts else ""
@@ -872,9 +927,9 @@ class RunView(QWidget):
         except Exception:  # noqa: BLE001 — mode inconnu : rien
             pass
         produits = ((self._config.get("processing") or {}).get("products") or {})
-        actifs = [PRODUCT_LABELS.get(code, code) for code, on in produits.items() if on] if isinstance(produits, dict) else []
+        actifs = [titre_image(code) for code, on in produits.items() if on] if isinstance(produits, dict) else []
         if actifs:
-            morceaux.append(", ".join(actifs) if len(actifs) <= 3 else f"{len(actifs)} produits")
+            morceaux.append(", ".join(actifs) if len(actifs) <= 3 else pluriel(len(actifs), "produit"))
         cv = self._config.get("computer_vision") or {}
         if cv.get("enabled"):
             n = len(cv.get("runs") or [])

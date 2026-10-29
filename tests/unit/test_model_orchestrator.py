@@ -368,8 +368,49 @@ CRATERE_FIAB = CRATERE + """thresholds:
     provenance: p
 """
 
+# Classe linéaire (2026-10-22) : catégorie basse GARANTIE (possible ≥ 35 %) et bandes
+# ``sous_seuil`` des polygones formés entre eux sous le seuil du modèle.
+LINEAIRE_FIAB = """
+display_name: "Linéaires"
+status: production
+preferred_rvt:
+  type: LD
+classes:
+  - {id: 0, name: parcellaire, label_fr: "Parcellaire"}
+thresholds:
+  confidence_default: 0.26
+  confidence_per_class: {parcellaire: 0.26}
+  fiabilite:
+    par_classe:
+      parcellaire:
+      - {categorie: possible, seuil: 0.26, garanti: 0.35, mesure: 0.53, n: 1837}
+      - {categorie: probable, seuil: 0.3, garanti: 0.6, mesure: 0.664, n: 2674}
+    sous_seuil:
+      parcellaire:
+      - {lo: 0.15, tp: 10, fp: 70}
+      - {lo: 0.20, tp: 30, fp: 80}
+    provenance: p
+"""
+
 
 class TestFiabiliteDansLesRuns:
+    def test_seuil_abaisse_sous_seuil_et_seuil_de_fusion(self, tmp_path):
+        _write_model(tmp_path, "lineaires", LINEAIRE_FIAB)
+        installed = discover_installed_models(tmp_path)
+        assert [b["lo"] for b in installed[0].fiabilite_sous_seuil["parcellaire"]] == [0.15, 0.20]
+        run = resolve_runs_from_entities(
+            ["parcellaire"], {}, installed, _catalog(),
+            entity_thresholds={"parcellaire": {"confidence_threshold": 0.16}},
+        )[0]
+        # seuil de fusion = seuil du MODÈLE par classe (fusion en deux passes), pas celui du run
+        assert run["seuil_fusion_par_classe"] == {"parcellaire": 0.26}
+        assert run["confidence_per_class"] == {"parcellaire": 0.16}
+        cats = run["fiabilite"]["par_classe"]["parcellaire"]
+        assert cats[0] == {"categorie": "douteux", "seuil": 0.16, "garanti": 0.0,
+                           "mesure": round(40 / 190, 3), "n": 190, "sous_seuil": True}
+        assert cats[1]["categorie"] == "possible" and cats[1]["seuil"] == 0.26
+        json.dumps(run)
+
     def test_discovery_et_bloc_effectif(self, tmp_path):
         _write_model(tmp_path, "cratere_circulaire_2", CRATERE_FIAB)
         installed = discover_installed_models(tmp_path)
@@ -530,8 +571,8 @@ class TestMultiModelComparison:
             assert ent["slug"] == f"parcellaire--{r['model']}"
             assert ent["group_label"] == "Parcellaire (comparaison)"
             assert ent["label"].startswith("Parcellaire — ")
-            # chaque classe reçoit un nom de couche qualifié par le modèle
-            assert ent["layer_names"]["parcellaire"].startswith("parcellaire — ")
+            # chaque classe reçoit un nom de couche = libellé de la structure, qualifié par le modèle
+            assert ent["layer_names"]["parcellaire"].startswith("Parcellaire — ")
         assert runs[0]["entities"][0]["label"] != runs[1]["entities"][0]["label"]
         assert (runs[0]["entities"][0]["layer_names"]["parcellaire"]
                 != runs[1]["entities"][0]["layer_names"]["parcellaire"])
@@ -546,7 +587,7 @@ class TestMultiModelComparison:
         assert ent["slug"] == "parcellaire"
         assert ent["label"] == "Parcellaire"
         assert "group_label" not in ent
-        assert ent["layer_names"] == {}
+        assert ent["layer_names"] == {"parcellaire": "Parcellaire"}   # N-01 : la couche porte le nom de la structure
 
     def test_legacy_str_override_unchanged(self, tmp_path):
         runs = resolve_runs_from_entities(
@@ -724,7 +765,7 @@ class TestRunEntities:
         run = resolve_runs_from_entities(["parcellaire"], {}, installed, _catalog())[0]
         assert run["entities"] == [
             {"id": "parcellaire", "label": "Parcellaire", "slug": "parcellaire",
-             "classes": ["parcellaire"], "is_derived": False, "layer_names": {},
+             "classes": ["parcellaire"], "is_derived": False, "layer_names": {"parcellaire": "Parcellaire"},
              "min_area_m2": 0.0, "classes_synthese": []},
         ]
 
@@ -790,12 +831,31 @@ class TestRunEntities:
         ent = run["entities"][0]
         assert ent["layer_names"] == {"cratere": "cratere_source"}
 
-    def test_non_derived_entity_no_layer_names(self, tmp_path):
+    def test_couche_nommee_par_la_structure(self, tmp_path):
+        """N-01 (2026-10-25) : une structure à une classe nomme sa couche comme elle."""
         _write_model(tmp_path, "formes", FORMES)
         installed = discover_installed_models(tmp_path)
         run = resolve_runs_from_entities(["parcellaire"], {}, installed, _catalog())[0]
         ent = run["entities"][0]
-        assert ent["layer_names"] == {}
+        assert ent["layer_names"] == {"parcellaire": "Parcellaire"}
+
+    def test_structure_multi_classes_qualifie_la_classe(self):
+        """Plusieurs classes pour une structure : « <Structure> · <classe> », sans collision."""
+        from app.services.model_orchestrator import InstalledModel, _compute_layer_names, layer_name_for_class
+        m = InstalledModel(name="lin", display_name="Modèle linéaires", weights_path=None, target_rvt="LD",
+                           status="production", coverage={"talus_fosse": ("talus", "fosse"), "parcellaire": ("parcellaire",)},
+                           class_names=("talus", "fosse", "parcellaire"))
+        assert _compute_layer_names(m, "talus_fosse", ["talus", "fosse"], label="Talus et fossés") == {
+            "talus": "Talus et fossés · talus", "fosse": "Talus et fossés · fosse"}
+        assert _compute_layer_names(m, "parcellaire", ["parcellaire"], label="Parcellaire") == {"parcellaire": "Parcellaire"}
+        assert _compute_layer_names(m, "parcellaire", ["parcellaire"]) == {}          # sans libellé : nom de classe
+        assert layer_name_for_class(m, "parcellaire", "parcellaire", label="Parcellaire") == "Parcellaire"
+
+    def test_comparaison_suffixe_conserve(self):
+        from app.services.model_orchestrator import InstalledModel, layer_name_for_class
+        m = InstalledModel(name="lin", display_name="Modèle linéaires", weights_path=None, target_rvt="LD",
+                           status="production", coverage={"parcellaire": ("parcellaire",)}, class_names=("parcellaire",))
+        assert layer_name_for_class(m, "parcellaire", "parcellaire", compared=True, label="Parcellaire") == "Parcellaire — Modèle linéaires"
 
 
 # ----------------------------------------------------------------------
@@ -1171,3 +1231,18 @@ class TestSahiDepuisArgsYaml:
         _write_model(tmp_path, "crateres", CRATERE, args_yaml="sahi:\n  slice_width: vite\n")
         m = discover_installed_models(tmp_path)[0]
         assert (m.sahi_slice_px, m.sahi_overlap) == (0, 0.0)
+
+
+def test_descriptions_du_catalogue_tiennent_sur_la_ligne():
+    """Demande de l'utilisateur (2026-10-25) : la description d'une structure tient sur sa ligne
+    à l'étape 3 sans aller au bout (élision) : une phrase courte ; le détail (corpus, modèle,
+    résolution) est dans la fiche, pas dans le catalogue."""
+    import json
+    from pathlib import Path
+
+    catalogue = json.loads((Path(__file__).resolve().parents[2] / "data" / "entities_catalog.json").read_text(encoding="utf-8"))
+    entites = catalogue["entities"] if isinstance(catalogue, dict) else catalogue
+    longues = {e["label"]: len(e.get("description") or "") for e in entites if len(e.get("description") or "") > 72}
+    assert longues == {}, f"descriptions trop longues (> 72 caractères) : {longues}"
+    for e in entites:
+        assert e.get("description"), e["label"]

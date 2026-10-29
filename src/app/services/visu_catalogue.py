@@ -18,11 +18,18 @@ from __future__ import annotations
 
 import json
 import unicodedata
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Dict, List, Optional, Sequence
 
 from .indices_model import ProductInfo, product
+
+#: L'onglet « Consulter les flux » et son chapitre du manuel : faux tant que le catalogue public
+#: n'existe pas (0.18.1, décision de l'utilisateur du 2026-10-27 : « il ne faut pas l'inclure pour le
+#: moment »). Lu par ui/wizard_dialog (l'onglet), app/services/aide (le chapitre), dev/rendu_hors_ecran
+#: et dev/recette_auto ; dev/demo_comite/smoke_dialog le force à vrai.
+VISUALISATION_TAB_ENABLED = False
+CHAPITRE_ONGLET = "consulter-les-flux"
 
 # Familles affichées comme filtres au-dessus du mur.
 FAMILY_BASE = "Base"
@@ -33,22 +40,17 @@ FAMILY_ORDER = (FAMILY_BASE, FAMILY_RVT, FAMILY_QUALITE)
 # Libellé métier + famille, par clé de produit du pipeline. L'ordre de ce
 # dictionnaire est l'ordre d'affichage des cartes sur le mur : le socle
 # (relief nu, ombrage, creux) d'abord, la qualité de la donnée en dernier.
+_FAMILLE: Dict[str, str] = {
+    "MNT": FAMILY_BASE,
+    "M_HS": FAMILY_RVT, "SVF": FAMILY_RVT, "OPNS": FAMILY_RVT, "LD": FAMILY_RVT, "SLRM": FAMILY_RVT,
+    "VAT": FAMILY_RVT, "CVAT": FAMILY_RVT, "CRIM": FAMILY_RVT, "PRISM": FAMILY_RVT, "MSTP": FAMILY_RVT,
+    "HS": FAMILY_RVT, "SLO": FAMILY_RVT,
+    "DENSITE": FAMILY_QUALITE, "COUVERTURE": FAMILY_QUALITE,
+}
+# Le libellé métier vient du catalogue des produits (indices_model.ProductInfo.metier) :
+# un seul endroit le porte, l'étape 2 et le mur affichent le même mot (lexique 2026-10-24).
 _METIER: Dict[str, tuple] = {
-    "MNT":        ("Le relief nu",            FAMILY_BASE),
-    "M_HS":       ("Ombrage du relief",       FAMILY_RVT),
-    "SVF":        ("Creux & dépressions",     FAMILY_RVT),
-    "OPNS":       ("Saillies ou creux",       FAMILY_RVT),
-    "LD":         ("Structures en relief",    FAMILY_RVT),
-    "SLRM":       ("Micro-reliefs",           FAMILY_RVT),
-    "VAT":        ("Vue archéo optimisée",    FAMILY_RVT),
-    "CVAT":       ("Vue archéo renforcée",    FAMILY_RVT),
-    "CRIM":       ("Relief coloré",           FAMILY_RVT),
-    "PRISM":      ("Ouverture prismatique",   FAMILY_RVT),
-    "MSTP":       ("Bosses & cuvettes",       FAMILY_RVT),
-    "HS":         ("Ombrage simple",          FAMILY_RVT),
-    "SLO":        ("Pente du terrain",        FAMILY_RVT),
-    "DENSITE":    ("Qualité de la donnée",    FAMILY_QUALITE),
-    "COUVERTURE": ("Fiabilité du sol mesuré", FAMILY_QUALITE),
+    key: (product(key).metier, famille) for key, famille in _FAMILLE.items()
 }
 
 #: Ordre d'affichage des indices sur le mur.
@@ -212,3 +214,27 @@ def load_catalogue(path: Path) -> Catalogue:
             featured=bool(d.get("featured", False)),
         ))
     return Catalogue(departments=departments, updated=raw.get("updated") or "")
+
+
+def merge_catalogues(base: Catalogue, local: Catalogue,
+                     local_dir: Optional[Path]) -> Catalogue:
+    """Fusionne un catalogue **local** (flux privés, gitignoré) dans le catalogue livré.
+
+    Par code de département : le local remplace, et passe **devant** — ses
+    entrées sont celles qu'on vient consulter, et son ``featured`` ouvre le
+    mur. Ses vignettes relatives sont rebasées sur ``local_dir`` : l'onglet ne
+    résout qu'un seul dossier (celui du catalogue livré), et les deux fichiers
+    ne vivent pas au même endroit. Une URL n'est jamais rebasée.
+    """
+    def _rebase(item: CatalogItem) -> CatalogItem:
+        t = item.thumbnail
+        if not t or local_dir is None or "://" in t or Path(t).is_absolute():
+            return item
+        return replace(item, thumbnail=str(Path(local_dir) / t))
+
+    locaux = [replace(d, items=[_rebase(it) for it in d.items]) for d in local.departments]
+    codes = {d.code for d in locaux}
+    return Catalogue(
+        departments=locaux + [d for d in base.departments if d.code not in codes],
+        updated=local.updated or base.updated,
+    )

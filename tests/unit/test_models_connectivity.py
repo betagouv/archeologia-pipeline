@@ -49,6 +49,12 @@ def model_dir(request: pytest.FixtureRequest) -> Path:
     return request.param
 
 
+def test_des_modeles_sont_installes(exiger_ou_sauter):
+    """Sans modèle, la fixture paramétrée est vide et les 8 tests sautent en silence."""
+    if not _model_dirs():
+        exiger_ou_sauter("aucun modèle avec weights/best.onnx sous data/models (poste principal seulement)")
+
+
 def test_model_profile_loads(model_dir: Path) -> None:
     weights = model_dir / "weights" / "best.onnx"
     profile = ModelProfile.load(weights)

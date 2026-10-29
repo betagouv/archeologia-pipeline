@@ -39,7 +39,7 @@ import json
 import logging
 import re
 
-from .fiabilite import parse_fiabilite, run_block
+from .fiabilite import parse_fiabilite, parse_sous_seuil, run_block
 import unicodedata
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -131,6 +131,10 @@ class InstalledModel:
     # conf_bin historiques.
     fiabilite_per_class: Dict[str, Tuple[Any, ...]] = field(default_factory=dict)
     fiabilite_provenance: str = ""
+    # Bandes ``thresholds.fiabilite.sous_seuil`` (2026-10-22) : part de vrais des polygones
+    # formés entre eux sous le seuil du modèle, pour mesurer « douteux » quand l'utilisateur
+    # abaisse le seuil (``fiabilite.parse_sous_seuil``). Vide = non mesuré.
+    fiabilite_sous_seuil: Dict[str, Tuple[Dict[str, Any], ...]] = field(default_factory=dict)
     # Dossier du modèle sur disque (``data/models/<name>/``). Utile côté UI pour
     # ouvrir le dossier dans l'explorateur ou (re)lire ``model_card.yaml`` /
     # ``args.yaml`` à la demande sans relancer ``discover_installed_models``.
@@ -254,6 +258,7 @@ def discover_installed_models(models_dir: Any) -> List[InstalledModel]:
             continue
         conf, conf_pc, area, iou = _extract_thresholds(card)
         fiab_pc, fiab_prov = parse_fiabilite(card.get("thresholds"))
+        fiab_sous = parse_sous_seuil(card.get("thresholds"))
         clustering_rules = _load_args_clustering(sub)
         # cluster_options construites AVANT le merge des cibles dérivées : sinon
         # une cible déjà agrégée se verrait proposer une case « cluster » redondante.
@@ -288,6 +293,7 @@ def discover_installed_models(models_dir: Any) -> List[InstalledModel]:
                 default_confidence_per_class=conf_pc,
                 fiabilite_per_class=fiab_pc,
                 fiabilite_provenance=fiab_prov,
+                fiabilite_sous_seuil=fiab_sous,
                 default_min_area=area,
                 default_iou=iou,
                 model_dir=sub,
@@ -724,12 +730,14 @@ def _pick_default_model(candidates: Sequence[InstalledModel]) -> Optional[str]:
 
 
 def _compute_layer_names(
-    model: InstalledModel, eid: str, ent_classes: Sequence[str]
+    model: InstalledModel, eid: str, ent_classes: Sequence[str], label: str = ""
 ) -> Dict[str, str]:
     """Renommage des couches d'une entité ``classe → nom_de_couche``.
 
-    Vide pour une entité non dérivée (chaque couche garde le nom de sa classe).
-    Pour une entité dérivée :
+    Entité non dérivée (N-01, 2026-10-25) : la couche porte le **libellé de la
+    structure** (« Cratères ») ; plusieurs classes → « <Structure> · <classe> »,
+    sans collision ; sans ``label`` (appel historique), vide : la couche garde le
+    nom de sa classe. Pour une entité dérivée :
 
     - classe **cluster** (sortie) : ``output_label`` si configuré, sinon le nom
       de classe est conservé (pas de renommage par défaut) ;
@@ -740,7 +748,9 @@ def _compute_layer_names(
     pour éviter une collision de noms de couche dans le même GeoPackage.
     """
     if eid not in model.derived_entities:
-        return {}
+        if not label:
+            return {}
+        return {c: (label if len(ent_classes) == 1 else f"{label} · {c}") for c in ent_classes}
     src = set(model.derived_source_classes.get(eid, ()))
     out_label = model.derived_output_labels.get(eid)
     src_label = model.derived_source_labels.get(eid)
@@ -759,14 +769,15 @@ def _compute_layer_names(
 
 
 def layer_name_for_class(
-    model: InstalledModel, eid: str, classe: str, compared: bool = False
+    model: InstalledModel, eid: str, classe: str, compared: bool = False, label: str = ""
 ) -> str:
     """Nom de la couche de détections de ``classe`` pour l'entité ``eid`` — la
     **clé du registre de couleurs** (``class_color_registry``, indexé par nom de
     couche). Même règle que ``_entity_block`` : nom de classe (ou libellé d'une
     dérivée), suffixé « — Modèle » en comparaison A/B. Sert à l'UI pour donner
-    à la figure du profil la couleur de la couche qu'elle décrit (A9, 2026-10-08)."""
-    noms = _compute_layer_names(model, eid, sorted(model.coverage.get(eid, ())))
+    à la figure du profil la couleur de la couche qu'elle décrit (A9, 2026-10-08).
+    ``label`` = libellé de la structure, celui que ``_entity_block`` donne à la couche (N-01)."""
+    noms = _compute_layer_names(model, eid, sorted(model.coverage.get(eid, ())), label=label)
     nom = noms.get(classe, classe)
     return f"{nom} — {model.display_name}" if compared else nom
 
@@ -808,7 +819,7 @@ def _entity_block(
     """
     base_label = label_by_id.get(eid, eid)
     base_slug = slugify(base_label) or eid
-    layer_names = _compute_layer_names(model, eid, classes_sorted)
+    layer_names = _compute_layer_names(model, eid, classes_sorted, label=base_label)
     block: Dict[str, Any] = {
         "id": eid,
         "label": base_label,
@@ -1038,6 +1049,7 @@ def resolve_runs_from_entities(
             sorted(group["classes"]),
             modele=model.display_name,
             provenance=model.fiabilite_provenance,
+            sous_seuil=model.fiabilite_sous_seuil,
         )
         runs.append(
             {
@@ -1060,6 +1072,12 @@ def resolve_runs_from_entities(
                 ],
                 "confidence_threshold": float(plancher_conf),
                 "confidence_per_class": {c: float(v) for c, v in sorted(conf_par_classe.items())},
+                # Seuil du MODÈLE par classe (2026-10-22) : la fusion intra-classe se fait en
+                # deux passes de part et d'autre (postprocess_geo_detections) quand le seuil
+                # du run est abaissé — les ajoutées fusionnent entre elles, jamais avec les bonnes.
+                "seuil_fusion_par_classe": {
+                    c: float(model.default_confidence_per_class.get(c, model.default_confidence))
+                    for c in sorted(group["classes"])},
                 "iou_threshold": float(model.default_iou),
                 "min_area_m2": float(min(aire_par_entite.values(), default=model.default_min_area)),
             }

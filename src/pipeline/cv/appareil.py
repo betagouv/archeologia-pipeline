@@ -14,6 +14,7 @@ sur une session processeur, annoncé. Aucun Qt, aucun QGIS : le binaire embarque
 from __future__ import annotations
 
 import json
+import sys
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 
 PROCESSEUR = "processeur"
@@ -25,8 +26,10 @@ PREFIXE_LIGNE = "appareil="
 #: Deux détections sont le même objet à partir de ce recouvrement (même classe).
 IOU_APPARIEMENT = 0.5
 #: Un objet absent d'un côté dont la confiance est à moins de cela au-dessus de son seuil est une
-#: bascule au seuil, attendue entre deux arithmétiques, pas un écart.
-TOLERANCE_SEUIL = 0.05
+#: bascule au seuil, attendue entre deux arithmétiques, pas un écart. Même borne que l'écart
+#: toléré sur une paire (le banc mesure jusqu'à 0,071 sur les linéaires ; à 0,05 le modèle
+#: linéaire était écarté pour une seule bascule, vécu le 18/10).
+TOLERANCE_SEUIL = 0.10
 #: Écart de confiance maximal toléré sur un objet apparié (le banc mesure 0,071 au pire).
 ECART_CONF_MAX = 0.10
 #: La carte doit faire la première image en moins de cette part du temps processeur.
@@ -47,6 +50,92 @@ def session_sur_carte(session: Any) -> bool:
         return FOURNISSEUR_DML in list(session.get_providers())
     except Exception:  # noqa: BLE001 — pas une session ORT
         return False
+
+
+# ---------------------------------------------------------------------------
+# Cartes du poste (DXGI) — énumérées DANS le processus qui ouvre DirectML
+# ---------------------------------------------------------------------------
+DXGI_ADAPTER_FLAG_SOFTWARE = 2
+VENDOR_MICROSOFT = 0x1414   # WARP / Basic Render Driver : pas une carte (CI GitHub, 2026-10-27)
+
+
+def adaptateurs_dxgi() -> List[Dict[str, Any]]:
+    """``[{"id", "nom", "pilote", "vram_go"}, …]`` dans l'ordre DXGI **du processus appelant**,
+    qui est l'ordre des ``device_id`` DirectML de ce même processus ; l'adaptateur logiciel
+    (WARP) est écarté. L'ordre change d'un processus à l'autre (QGIS : NVIDIA puis AMD ; le
+    binaire : AMD puis NVIDIA, vécu le 18/10) : le moteur énumère toujours lui-même.
+    ``[]`` hors Windows ou sans DXGI."""
+    if sys.platform != "win32":
+        return []
+    try:
+        return _adaptateurs_dxgi()
+    except Exception:  # noqa: BLE001 — poste sans DXGI (session distante, pilote absent)
+        return []
+
+def _adaptateurs_dxgi() -> List[Dict[str, Any]]:
+    import ctypes
+    import ctypes.wintypes as w
+
+    class GUID(ctypes.Structure):
+        _fields_ = [("a", w.DWORD), ("b", w.WORD), ("c", w.WORD), ("d", ctypes.c_ubyte * 8)]
+
+    class LUID(ctypes.Structure):
+        _fields_ = [("LowPart", w.DWORD), ("HighPart", w.LONG)]
+
+    class DESC1(ctypes.Structure):
+        _fields_ = [("Description", w.WCHAR * 128), ("VendorId", w.UINT), ("DeviceId", w.UINT),
+                    ("SubSysId", w.UINT), ("Revision", w.UINT), ("DedicatedVideoMemory", ctypes.c_size_t),
+                    ("DedicatedSystemMemory", ctypes.c_size_t), ("SharedSystemMemory", ctypes.c_size_t),
+                    ("AdapterLuid", LUID), ("Flags", w.UINT)]
+
+    def methode(obj, index, restype, *argtypes):
+        vtbl = ctypes.cast(obj, ctypes.POINTER(ctypes.c_void_p))[0]
+        fn = ctypes.cast(vtbl, ctypes.POINTER(ctypes.c_void_p))[index]
+        return ctypes.WINFUNCTYPE(restype, ctypes.c_void_p, *argtypes)(fn)
+
+    # IID_IDXGIFactory1 = 770aae78-f26f-4dba-a829-253c83d1b387
+    iid = GUID(0x770AAE78, 0xF26F, 0x4DBA, (ctypes.c_ubyte * 8)(0xA8, 0x29, 0x25, 0x3C, 0x83, 0xD1, 0xB3, 0x87))
+    factory = ctypes.c_void_p()
+    if ctypes.windll.dxgi.CreateDXGIFactory1(ctypes.byref(iid), ctypes.byref(factory)) != 0:
+        return []
+    iid_device = GUID(0x54EC77FA, 0x1377, 0x44E6, (ctypes.c_ubyte * 8)(0x8C, 0x32, 0x88, 0xFD, 0x5F, 0x44, 0xC8, 0x4C))
+    out: List[Dict[str, Any]] = []
+    try:
+        enum_adapters1 = methode(factory, 12, ctypes.c_long, w.UINT, ctypes.POINTER(ctypes.c_void_p))
+        i = 0
+        while True:
+            adapter = ctypes.c_void_p()
+            if enum_adapters1(factory, i, ctypes.byref(adapter)) != 0:
+                break
+            try:
+                desc = DESC1()
+                if methode(adapter, 10, ctypes.c_long, ctypes.POINTER(DESC1))(adapter, ctypes.byref(desc)) != 0:
+                    continue
+                if not desc.Flags & DXGI_ADAPTER_FLAG_SOFTWARE and desc.VendorId != VENDOR_MICROSOFT:
+                    umd = ctypes.c_longlong(0)   # version du pilote en mode utilisateur (IDXGIAdapter::CheckInterfaceSupport)
+                    if methode(adapter, 9, ctypes.c_long, ctypes.POINTER(GUID), ctypes.POINTER(ctypes.c_longlong))(
+                            adapter, ctypes.byref(iid_device), ctypes.byref(umd)) != 0:
+                        umd.value = 0
+                    v = umd.value
+                    pilote = ".".join(str((v >> s) & 0xFFFF) for s in (48, 32, 16, 0)) if v else "?"
+                    out.append({"id": i, "nom": desc.Description.strip() or f"carte {i}", "pilote": pilote,
+                                "vram_go": round(desc.DedicatedVideoMemory / 2 ** 30, 1)})
+            finally:
+                methode(adapter, 2, w.ULONG)(adapter)
+            i += 1
+    finally:
+        methode(factory, 2, w.ULONG)(factory)
+    return out
+
+
+def carte_au_bon_index(adaptateurs: Sequence[Dict[str, Any]], device_id: Any, carte: str) -> bool:
+    """Une carte mémorisée ne s'applique que si l'adaptateur à son ``device_id`` porte encore
+    son nom (écran basculé, carte externe, autre ordre) ; sinon on re-sonde."""
+    try:
+        did = int(device_id)
+    except (TypeError, ValueError):
+        return False
+    return 0 <= did < len(adaptateurs) and str(adaptateurs[did].get("nom")) == str(carte)
 
 
 # ---------------------------------------------------------------------------

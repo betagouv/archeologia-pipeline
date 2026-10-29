@@ -10,6 +10,8 @@ Helper PUR (aucun import QGIS) : décide *quelles* couches retirer à partir d'u
 """
 from __future__ import annotations
 
+from pathlib import Path
+
 from app.services.layer_purge import select_layers_to_purge
 
 _OUT = r"D:\pipeline_results\output_bretagne"
@@ -87,3 +89,27 @@ def test_posix_paths_under_output_dir_are_selected():
 def test_empty_output_dir_selects_nothing():
     sources = {"L1": r"D:\pipeline_results\output_bretagne\indices\CVAT\tif\index.vrt"}
     assert select_layers_to_purge(sources, "") == []
+
+
+def test_la_purge_retire_les_groupes_qu_elle_a_vides():
+    """Constat de recette 68.4 (2026-10-26) : après le lancement d'un re-run, « Structures » et
+    « Regroupement de cratères » restaient vides dans l'arbre de QGIS. La purge retire les groupes
+    du plugin qu'elle a vidés — jamais un groupe de l'utilisateur, jamais un groupe encore peuplé."""
+    src = (Path(__file__).resolve().parents[2] / "src" / "ui" / "layer_loader.py").read_text(encoding="utf-8")
+    helper = src[src.index("def _retirer_groupes_vides("):src.index("def purge_output_dir_layers(")]
+    assert "findGroup(GROUPE_STRUCTURES)" in helper and "removeChildNode(" in helper
+    assert "QgsLayerTree.isGroup(" in helper and "not sous.children()" in helper and "not structures.children()" in helper
+    purge = src[src.index("def purge_output_dir_layers("):src.index("def _deferred_zoom(")]
+    assert "_retirer_groupes_vides(project)" in purge
+
+
+def test_purge_par_chemin_pas_par_nom(tmp_path):
+    """Les couches sont purgées par leur source sous livrable/, jamais par leur nom : renommer
+    une couche (« Parcellaire », « LD · Structures en relief ») ne change rien à la purge."""
+    out = tmp_path / "sortie"
+    sources = {
+        "Parcellaire": str(out / "livrable" / "detections" / "parcellaire" / "parcellaire.gpkg") + "|layername=Parcellaire",
+        "LD · Structures en relief": str(out / "livrable" / "indices" / "LD_A15" / "tif" / "index_LD_A15.vrt"),
+        "index_LD": str(tmp_path / "ailleurs" / "index_LD.vrt"),
+    }
+    assert sorted(select_layers_to_purge(sources, out)) == ["LD · Structures en relief", "Parcellaire"]

@@ -28,6 +28,8 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 
+from .bilan_fiabilite import texte_niveaux_effectifs
+from .vocabulaire import niveau
 from .aide import rubrique_depannage
 from .reglages_defaut import SECTION_PRODUIT
 
@@ -35,7 +37,9 @@ NOM_RAPPORT = "rapport.html"
 NOM_VIGNETTE = "rapport_vignette.png"
 
 #: Produits préférés pour la vignette, du plus lisible au moins parlant.
-_ORDRE_VIGNETTE = ("VAT", "CVAT", "PRISM", "CRIM", "M_HS", "HS", "SVF", "LD", "OPNS",
+# LD en tête (demande de l'utilisateur, 2026-10-26 : c'est le produit que lisent les modèles et que
+# l'archéologue regarde), puis les compositions, les ombrages, SVF, et le MNT nu en dernier recours.
+_ORDRE_VIGNETTE = ("LD", "VAT", "CVAT", "PRISM", "CRIM", "M_HS", "HS", "SVF", "OPNS",
                    "SLRM", "MSTP", "SLO", "MNT", "COUVERTURE", "DENSITE")
 
 _LIGNE_LOG = re.compile(r"^.*? - (WARNING|ERROR) - (.*)$")
@@ -61,10 +65,14 @@ _PALETTES = {"OrRd": "orangé vers rouge", "Reds_r": "rouge inversé", "YlOrRd":
 
 #: Ce que garantit chaque niveau de fiabilité (part de vrais objets au banc) : le
 #: même contrat pour tous les modèles, cf. chapitre « Vos résultats » du manuel.
-_NIVEAUX = (("quasi_certain", "très probables", "très probable", "n4", "au moins 85 % de vrais objets"),
-            ("probable", "probables", "probable", "n3", "au moins 60 %"),
-            ("possible", "possibles", "possible", "n2", "au moins 35 %"),
-            ("douteux", "douteuses", "douteux", "n1", "moins de 35 %"))
+#: Le libellé est celui de l'écran (``vocabulaire.niveau``), au masculin singulier.
+_NIVEAUX = tuple(
+    (cat, niveau(cat), cls, garantie)
+    for cat, cls, garantie in (("quasi_certain", "n4", "au moins 85 % de vrais objets"),
+                               ("probable", "n3", "au moins 60 %"),
+                               ("possible", "n2", "au moins 35 %"),
+                               ("douteux", "n1", "moins de 35 %"))
+)
 
 _DONNEES_PAR_MODE = {
     "ign_laz": "LiDAR HD de l'IGN, Licence Ouverte 2.0.",
@@ -101,6 +109,7 @@ class DonneesRapport:
     etapes: Tuple[Tuple[str, str, float], ...] = ()     # (étape, détail, secondes mesurées)
     avertissements: Tuple[Avertissement, ...] = ()
     vignette: Optional[str] = None                      # chemin relatif au rapport
+    couleurs: Mapping[str, Mapping[str, str]] = field(default_factory=dict)   # couche → {niveau: #rrggbb}
     motif_detection: str = ""                           # « Détection impossible » : la cause (lot 0d)
 
 
@@ -384,7 +393,11 @@ def _produits(d: DonneesRapport) -> str:
     return tete + f"<table>{''.join(lignes)}</table>"
 
 
-def _bilan(bilan: Sequence[Mapping[str, Any]], surface_km2: Optional[float]) -> str:
+def _bilan(bilan: Sequence[Mapping[str, Any]], surface_km2: Optional[float],
+           couleurs: Optional[Mapping[str, Mapping[str, str]]] = None) -> str:
+    """Les barres du bilan : la couleur de la couche déclinée par niveau quand elle est
+    connue (comme dans QGIS), sinon les bleus de la feuille de style ; sous chaque barre,
+    le même texte que l'écran."""
     if not bilan:
         return "<p class=sous>Aucune détection avec fiabilité mesurée.</p>"
     maximum = max(int(ligne.get("total") or 0) for ligne in bilan) or 1
@@ -394,11 +407,13 @@ def _bilan(bilan: Sequence[Mapping[str, Any]], surface_km2: Optional[float]) -> 
         eff = ligne.get("effectifs") or {}
         total = int(ligne.get("total") or 0)
         longueur = 260 * total / maximum
+        teintes = (couleurs or {}).get(str(ligne.get("couche") or ""), {})
         segments = "".join(
-            f'<span class="barre {cls}" style="width:{longueur * int(eff.get(cat, 0)) / total:.0f}px"></span>'
-            for cat, _lab, _sing, cls, _g in _NIVEAUX if total and int(eff.get(cat, 0)) > 0
+            f'<span class="barre {cls}" style="width:{longueur * int(eff.get(cat, 0)) / total:.0f}px'
+            + (f";background:{teintes[cat]}" if teintes.get(cat) else "") + '"></span>'
+            for cat, _sing, cls, _g in _NIVEAUX if total and int(eff.get(cat, 0)) > 0
         )
-        detail = ", ".join(f"{_nb(eff[cat])} {lab}" for cat, lab, _sing, _cls, _g in _NIVEAUX if eff.get(cat))
+        detail = texte_niveaux_effectifs(eff)
         col_densite = f'<td class=num>{_dec(total / surface_km2, 1)}</td>' if densite else ""
         lignes.append(
             f"<tr><td>{_e(ligne.get('label') or ligne.get('slug') or '')}</td>"
@@ -406,7 +421,7 @@ def _bilan(bilan: Sequence[Mapping[str, Any]], surface_km2: Optional[float]) -> 
         )
     th_densite = "<th>Par km²</th>" if densite else ""
     legende = " · ".join(f'<span class="{cls}"></span>{sing} : {garantie}'
-                        for _cat, _lab, sing, cls, garantie in _NIVEAUX)
+                        for _cat, sing, cls, garantie in _NIVEAUX)
     return (
         f"<table><tr><th>Entité</th><th>Détections</th>{th_densite}<th>Du plus sûr au plus douteux</th><th>Par niveau</th></tr>"
         f"{''.join(lignes)}</table><p class=\"sous leg\">{legende}</p>"
@@ -522,7 +537,7 @@ def construire_html(d: DonneesRapport) -> str:
 <h2>Détection automatique</h2>
 {_cv_runs(d.cv_runs)}
 <h2>Bilan de fiabilité — par où commencer</h2>
-{_bilan(d.bilan, d.surface_km2)}
+{_bilan(d.bilan, d.surface_km2, d.couleurs)}
 {etapes}<h2>Avertissements du journal</h2>
 {_avertissements(d.avertissements)}
 <h2>Sources</h2>

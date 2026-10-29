@@ -57,15 +57,15 @@ class ConfigManager:
                 "filter_expression": "Classification = 2 OR Classification = 6 OR Classification = 66 OR Classification = 67 OR Classification = 9",
                 "max_workers": 3,
                 "products": {
-                    "MNT": False,
+                    "MNT": True,
                     "DENSITE": False,
                     "COUVERTURE": False,
                     "HS": False,
                     "M_HS": False,
-                    "SVF": False,
+                    "SVF": True,
                     "OPNS": False,
                     "SLO": False,
-                    "LD": False,
+                    "LD": True,
                     "SLRM": False,
                     "VAT": False,
                     "MSTP": False,
@@ -106,7 +106,7 @@ class ConfigManager:
                 "export_runner_config": False,
                 # Détection sur la carte graphique (DirectML, Windows) : option de
                 # l'étape 4, décochée par défaut (0.15.0) — sonde par poste, repli visible.
-                "carte_graphique": False,
+                "carte_graphique": True,   # cochée par défaut depuis le 2026-10-26 (décision de l'utilisateur)
             },
             "rvt_params": {
                 "hs": {

@@ -74,11 +74,10 @@ def test_la_taille_d_ouverture_est_bornee_a_l_ecran():
     ), "la taille d'ouverture doit être bornée à l'écran disponible"
 
 
-def test_les_libelles_de_carte_se_replient():
-    """Un libellé non repliable fait de sa largeur de texte une largeur mini."""
-    src = _source("src/ui/widgets/entity_card.py")
-    for attribut in ("self._label", "self._model_name"):
-        assert f"{attribut}.setWordWrap(True)" in src, (
-            f"{attribut} doit se replier, sinon deux colonnes de cartes ne "
-            "tiennent plus dans la page"
-        )
+def test_les_libelles_de_ligne_ne_forcent_pas_la_largeur():
+    """Un texte non élidé fait de sa largeur une largeur mini : la description de la ligne
+    est élidée à la largeur disponible (texte complet en infobulle). Le nom du modèle a
+    quitté la ligne le 2026-10-25 : plus rien d'autre à raccourcir."""
+    src = _source("src/ui/widgets/entity_row.py")
+    assert "elidedText(" in src and "def resizeEvent" in src
+    assert "_model_name" not in src

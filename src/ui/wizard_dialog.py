@@ -12,7 +12,7 @@ import copy
 import json
 from pathlib import Path
 
-from qgis.PyQt.QtCore import QSize, Qt, QTimer
+from qgis.PyQt.QtCore import QSize, QTimer, Qt
 from qgis.PyQt.QtGui import QIcon, QKeySequence
 
 # QShortcut a changé de module entre Qt5 (QtWidgets) et Qt6 (QtGui).
@@ -43,6 +43,11 @@ from ..app.services.source_modes import mode_info
 from ..app.services.config_store import ConfigStore
 from ..config.config_manager import ConfigManager
 from ..app.services.aide import AIDE_DIRNAME, CHAPITRE_PAR_ETAPE
+from ..app.services.visu_catalogue import VISUALISATION_TAB_ENABLED
+from ..app.services.carte_graphique import decision_memorisee, lire as lire_registre_carte, registre_path
+from ..app.services.sorties_prevues import sorties_prevues
+from ..app.services.validation_ui import classer_erreurs, etat_rail
+from ..app.services.vocabulaire import nombre, pluriel
 from .dialogs.aide_dialog import nouveautes_non_lues, ouvrir_aide
 from .dialogs.config_dialogs import ConfigsDialog, demander_nom
 from .icons import colored_icon, colored_pixmap
@@ -51,14 +56,14 @@ from .steps.step_1_source import SourcePage
 from .steps.step_2_indices import IndicesPage
 from .steps.step_3_detection import DetectionPage
 from .steps.step_4_launch import LaunchPage, RecapSection
+from .steps.step_6_resultats import ResultatsPage
 from .visualisation_tab import VisualisationTab
 from .widgets.card import build_card
 from .widgets.stepper_rail import StepperRail
 from .widgets.toast import show_toast
 
-# Onglet « Visualisation » (flux Géoplateforme) : chantier inachevé, masqué en
-# attendant sa reprise. Remettre à True pour retrouver l'onglet et sa largeur.
-VISUALISATION_TAB_ENABLED = False
+# Onglet « Consulter les flux » : montré seulement si VISUALISATION_TAB_ENABLED (importé de
+# app/services/visu_catalogue, faux depuis la 0.18.1) ; dev/demo_comite/smoke_dialog le force à vrai.
 
 try:
     from ..app.plugin_metadata import get_plugin_version
@@ -67,38 +72,28 @@ except Exception:  # pragma: no cover - défensif (hors QGIS)
         return ""
 
 
-def _classify_error_step(err: str) -> int:
-    """Range une erreur de validation sur l'étape qui la corrige (pastille rail).
-
-    Indices/produits → étape 2 ; tout le reste (mode, dossier de sortie, chemins
-    d'entrée) → étape 1. La détection (étape 3) est facultative : aucune erreur
-    bloquante n'en provient.
-    """
-    low = err.lower()
-    if "indice" in low or "produit" in low:
-        return 2
-    return 1
-
-
 class WizardDialog(QDialog):
     """Dialogue principal V2 en wizard 5 étapes."""
 
     RAIL_STEPS = [
-        {"label": "Source", "sub": "—"},
-        {"label": "Produits", "sub": "—"},
-        {"label": "Détection IA", "sub": "—", "optional": True},
-        {"label": "Vérifications", "sub": "État du système & récap"},
-        {"label": "Traitement", "sub": "Frise & journal"},
+        {"label": "Vos données", "sub": "—"},
+        {"label": "Visualisation du relief", "sub": "—"},
+        {"label": "Structures à chercher", "sub": "—", "optional": True},
+        {"label": "Prêt à lancer", "sub": "Environnement et récapitulatif"},
+        {"label": "Traitement", "sub": "Frise et journal"},
+        {"label": "Résultats", "sub": "revoir un traitement"},
     ]
     TITLES = {
-        1: ("Nouveau traitement LiDAR", "Points d'entrée du pipeline"),
-        2: ("Produits à calculer", "MNT, qualité de la donnée, indices de visualisation"),
-        3: ("Détection automatique", "Sélection par entités archéologiques"),
-        4: ("Vérifications avant lancement", "État du système & récapitulatif"),
-        5: ("Suivi du traitement", "Frise des phases & journal"),
+        1: ("Vos données", "Par où commence le traitement"),
+        2: ("Visualisation du relief", "Le relief nu, la qualité de la donnée, les indices qui révèlent les structures"),
+        3: ("Structures à chercher", "La détection automatique est facultative"),
+        4: ("Prêt à lancer", "Environnement et récapitulatif"),
+        5: ("Traitement", "Frise et journal"),
+        6: ("Résultats", "Revoir un traitement lancé depuis ce poste"),
     }
     STEP_VERIFS = 4      # le bouton principal y devient « Lancer le pipeline »
     STEP_TRAITEMENT = 5  # frise + journal ; le lancement y mène
+    STEP_RESULTATS = 6   # revoir un traitement de ce poste (dernier écran)
 
     def __init__(self, parent=None, iface=None):
         super().__init__(parent)
@@ -131,7 +126,7 @@ class WizardDialog(QDialog):
         self.setWindowFlags(self.windowFlags() | Qt.WindowType.WindowMinimizeButtonHint)
         # Plus large que le wizard seul : le mur visuel de l'onglet Visualisation
         # tient 4 cartes de 200 px à côté du rail de 252 px.
-        largeur, hauteur = (1120, 700) if VISUALISATION_TAB_ENABLED else (980, 660)
+        largeur, hauteur = 1120, 700   # la taille de la recette 0.18.0, onglet montré ou non
         # Jamais plus grand que l'écran : le dialogue s'ouvrait à sa taille
         # MINIMALE (1327 × 711, imposée par les pages qui ne défilaient pas) et
         # débordait sous le bord bas des portables (2026-09-17). Les pages
@@ -168,24 +163,30 @@ class WizardDialog(QDialog):
         self._indices_page = IndicesPage()
         self._detection_page = DetectionPage(self._plugin_root)
         self._launch_page = LaunchPage()
-        self._run_view = RunView(self._config)
+        self._run_view = RunView(self._config, iface=self._iface)
+        self._resultats_page = ResultatsPage(iface=self._iface)
         self._stack.addWidget(self._defilante(self._source_page))    # étape 1
         self._stack.addWidget(self._defilante(self._indices_page))   # étape 2
         self._stack.addWidget(self._detection_page)            # étape 3
         self._stack.addWidget(self._launch_page)               # étape 4
         self._stack.addWidget(self._build_run_page())          # étape 5
+        self._stack.addWidget(self._defilante(self._resultats_page))   # étape 6
         body.addWidget(self._rail)
         body.addWidget(self._stack, 1)
+        # Fiches (image, structure, modèle) : une fenêtre à part par sorte, non modale —
+        # on lit la fiche et on coche en même temps (demande de l'utilisateur 2026-10-25,
+        # qui remplace le panneau latéral du 2026-10-24).
+        self._fiches: dict = {}
         wizard_layout.addLayout(body, 1)
         wizard_layout.addWidget(self._build_action_bar())
 
         self._visu_tab = None
         if VISUALISATION_TAB_ENABLED:
             self._tabs = QTabWidget()
-            self._tabs.addTab(wizard_tab, "Nouveau traitement")
+            self._tabs.addTab(wizard_tab, "Traitement")
             self._visu_tab = VisualisationTab(self._plugin_root, iface=self._iface)
             self._visu_tab.layer_count_changed.connect(self._on_visu_layer_count)
-            self._tabs.addTab(self._visu_tab, "Visualisation")
+            self._tabs.addTab(self._visu_tab, "Consulter les flux")
             self._tabs.setCurrentIndex(0)      # le wizard reste l'entrée principale
             root.addWidget(self._tabs)
         else:
@@ -205,15 +206,92 @@ class WizardDialog(QDialog):
         self._detection_page.changed.connect(self._autosave)
         self._detection_page.changed.connect(self._refresh_rail_subs)
         self._detection_page.activate_rvt.connect(self._indices_page.activate_product)
+        self._indices_page.fiche_requested.connect(self.ouvrir_fiche_image)
+        self._detection_page.fiche_requested.connect(self.ouvrir_fiche_structure)
+        self._detection_page.modele_requested.connect(self.ouvrir_fiche_modele)
         self._source_page.mode_changed.connect(self._on_mode_changed)
         self._run_view.run_started.connect(self._on_run_started)
+        self._run_view.revoir_resultats.connect(lambda: self._goto_step(self.STEP_RESULTATS))
+        self._resultats_page.relancer.connect(self._relancer_depuis_resultat)
         self._run_view.run_finished.connect(self._on_run_finished)
         self._launch_page.workers_changed.connect(self._on_workers_changed)
         self._launch_page.carte_graphique_changed.connect(self._on_carte_graphique_changed)
+        self._launch_page.modifier_demande.connect(self._goto_step)
+        self._launch_page.reverifier_demande.connect(self._update_launch_recap)
         self._refresh_rail_subs()
 
         self._goto_step(1)
         self._refresh_validation()
+
+    # ------------------------------------------------------------------
+    # Fiches : une fenêtre à part par sorte, jamais modale
+    # ------------------------------------------------------------------
+    def ouvrir_fiche_image(self, key: str) -> None:
+        """La fiche d'un produit (ou les tableaux comparatifs) dans sa fenêtre."""
+        widget, titre = self._indices_page.corps_fiche(key)
+        self._poser_fiche("Produit", widget, titre)
+
+    def ouvrir_fiche_structure(self, entity_id: str) -> None:
+        """La fiche d'une structure dans sa fenêtre ; son lien « Fiche du modèle » ouvre
+        celle du modèle, à côté."""
+        res = self._detection_page.corps_fiche(entity_id)
+        if res is None:
+            return   # aucun modèle ne couvre la structure : rien à montrer
+        widget, titre = res
+        widget.modele_demande.connect(self.ouvrir_fiche_modele)
+        self._poser_fiche("Structure", widget, titre)
+
+    def ouvrir_fiche_modele(self, model) -> None:
+        if model is None:
+            return
+        from .dialogs.model_info_dialog import corps_fiche_modele, titre_fiche_modele  # différé
+
+        self._poser_fiche("Modèle", corps_fiche_modele(model), titre_fiche_modele(model))
+
+    _FENETRE_FICHE = {   # sorte → (objectName du thème, taille d'ouverture)
+        "Produit": ("IndiceInfoDialog", (640, 720)),
+        "Structure": ("ClassInfoDialog", (640, 720)),
+        "Modèle": ("ModelInfoDialog", (620, 720)),
+    }
+
+    def _poser_fiche(self, sorte: str, widget, titre: str) -> None:
+        """La fiche dans une fenêtre à part, non modale : une fenêtre par sorte, remplacée à
+        chaque ouverture en gardant sa place à l'écran ; Fermer ou Échap la ferme, l'assistant
+        reste utilisable derrière (on lit la fiche et on coche en même temps)."""
+        from .dialogs.class_info_dialog import FicheDialog  # différé
+
+        nom_objet, taille = self._FENETRE_FICHE.get(sorte, ("ClassInfoDialog", (640, 720)))
+        ancienne = self._fiches.pop(sorte, None)
+        geometrie = None
+        if ancienne is not None:
+            geometrie = ancienne.geometry() if ancienne.isVisible() else None
+            ancienne.close()
+            ancienne.deleteLater()
+        dlg = FicheDialog(widget, titre, nom_objet, parent=self, taille=taille)
+        if geometrie is not None:
+            dlg.setGeometry(geometrie)
+        self._fiches[sorte] = dlg
+        dlg.show()
+        dlg.raise_()
+        dlg.activateWindow()
+
+    def _relancer(self) -> None:
+        """Relance depuis les étapes 1 à 3 : la validation d'abord ; un point à corriger
+        ramène à l'étape 4, qui le dit."""
+        self._refresh_validation()
+        if self._validation_errors or self._run_view.is_running():
+            self._goto_step(self.STEP_VERIFS)
+            return
+        self._on_launch()
+
+    def _relancer_depuis_resultat(self, config: dict) -> None:
+        """« Relancer avec un seuil changé » (étape 6) : la configuration de la trace est
+        rechargée par le point de passage unique, et l'assistant s'ouvre à l'étape 3."""
+        if self._run_view.is_running():
+            self._goto_step(self.STEP_TRAITEMENT)
+            return
+        self._apply_config(config)
+        self._goto_step(3)
 
     def _on_mode_changed(self, mode: str) -> None:
         """Le mode (étape 1) pilote la neutralisation des sections de l'étape 2."""
@@ -240,24 +318,18 @@ class WizardDialog(QDialog):
         self._subtitle_label.setObjectName("WizardSubtitle")
         titles.addWidget(self._title_label)
         titles.addWidget(self._subtitle_label)
-        # Deux actions sœurs → même style (ghost) et même casse.
-        # Référence conservée : désactivé pendant un run (lecture seule
-        # étanche — AUDIT v2 UIX-02 : charger une config pendant un run
-        # remplaçait l'affichage ET last_ui_config.json).
-        load_btn = QPushButton("Charger une config")
-        load_btn.setObjectName("GhostButton")
-        # Bouton-MENU : le navigateur de fichiers obligeait à retrouver soi-même
-        # un .json rangé n'importe où. Le menu liste les configurations
-        # enregistrées et est reconstruit à chaque ouverture (aboutToShow) —
-        # une config enregistrée ou supprimée apparaît sans relancer le plugin.
-        self._load_menu = QMenu(load_btn)
-        self._load_menu.setToolTipsVisible(True)  # sinon l'infobulle de « Réinitialiser » ne s'affiche pas
-        self._load_menu.aboutToShow.connect(self._rebuild_load_menu)
-        load_btn.setMenu(self._load_menu)
-        self._load_btn = load_btn
-        save_btn = QPushButton("Enregistrer la config")
-        save_btn.setObjectName("GhostButton")
-        save_btn.clicked.connect(self._save_config_file)
+        # Un seul menu « Configuration ▾ » (lot 2, 2026-10-24) : enregistrer sous,
+        # charger une configuration enregistrée, gérer, importer, tout remettre
+        # par défaut. Reconstruit à chaque ouverture (aboutToShow) : une
+        # configuration enregistrée ou supprimée apparaît sans relancer le plugin,
+        # et pendant un traitement les entrées qui remplaceraient les réglages
+        # consultés sont grisées (lecture seule étanche — AUDIT v2 UIX-02).
+        config_btn = QPushButton("Configuration")   # Qt dessine lui-même la flèche du menu
+        config_btn.setObjectName("GhostButton")
+        self._config_menu = QMenu(config_btn)
+        self._config_menu.setToolTipsVisible(True)
+        self._config_menu.aboutToShow.connect(self._rebuild_config_menu)
+        config_btn.setMenu(self._config_menu)
         # Pastille « lecture seule » (pendant un run) : logée dans la barre de
         # titre — hauteur fixe — pour ne JAMAIS décaler le contenu en dessous
         # (l'ancien bandeau pleine largeur faisait sauter toute l'UI à son
@@ -271,7 +343,7 @@ class WizardDialog(QDialog):
         lock_icon.setPixmap(
             colored_pixmap("lock", "#8a5e18", 12, dpr=self.devicePixelRatioF())
         )
-        pill_text = QLabel("Lecture seule — run en cours")
+        pill_text = QLabel("Consultation seule pendant le traitement")
         pill_text.setObjectName("ReviewPillText")
         pl.addWidget(lock_icon)
         pl.addWidget(pill_text)
@@ -282,7 +354,7 @@ class WizardDialog(QDialog):
         # seul rendait mal et ne disait pas ce qu'il ouvrait.
         aide_btn = QPushButton("Aide")
         aide_btn.setObjectName("GhostButton")
-        aide_btn.setToolTip("Manuel : le chapitre de cette étape (F1)")
+        aide_btn.setToolTip("Aide : le chapitre de cette étape (F1)")
         aide_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         aide_btn.setIcon(colored_icon("info", "#2c2c2c", 14, dpr=self.devicePixelRatioF()))
         aide_btn.setIconSize(QSize(14, 14))
@@ -297,8 +369,7 @@ class WizardDialog(QDialog):
         layout.addStretch(1)
         layout.addWidget(self._review_pill)
         layout.addWidget(aide_btn)
-        layout.addWidget(load_btn)
-        layout.addWidget(save_btn)
+        layout.addWidget(config_btn)
         return bar
 
     def _ouvrir_aide(self) -> None:
@@ -321,7 +392,7 @@ class WizardDialog(QDialog):
         self._aide_btn.setProperty("nouveautes", "true" if non_lues else "false")
         self._aide_btn.setToolTip(
             "Nouveautés de cette version non lues — le manuel s'ouvrira dessus (F1)"
-            if non_lues else "Manuel : le chapitre de cette étape (F1)"
+            if non_lues else "Aide : le chapitre de cette étape (F1)"
         )
         self._aide_btn.style().unpolish(self._aide_btn)
         self._aide_btn.style().polish(self._aide_btn)
@@ -352,8 +423,22 @@ class WizardDialog(QDialog):
         dpr = self.devicePixelRatioF()
         self._play_icon = colored_icon("play", "#ffffff", 14, dpr=dpr)
         self._play_icon.addPixmap(colored_pixmap("play", "#707070", 14, dpr=dpr), QIcon.Mode.Disabled)
+        # À gauche du bouton principal : pourquoi il est gris (points à corriger, étapes).
+        self._next_hint = QLabel("")
+        self._next_hint.setObjectName("ActionHint")
+        self._next_hint.setWordWrap(True)
+        self._next_hint.setVisible(False)
+        # « Relancer maintenant » (étapes 1 à 3, après un premier traitement) : même chemin
+        # que « Lancer le traitement », validation comprise.
+        self._relancer_btn = QPushButton("Relancer maintenant")
+        self._relancer_btn.setObjectName("GhostButton")
+        self._relancer_btn.setToolTip("Relance le traitement avec les réglages en cours")
+        self._relancer_btn.setVisible(False)
+        self._relancer_btn.clicked.connect(self._relancer)
         layout.addWidget(self._prev_btn)
         layout.addStretch(1)
+        layout.addWidget(self._relancer_btn)
+        layout.addWidget(self._next_hint, 2)
         layout.addWidget(self._next_btn)
         return bar
 
@@ -407,15 +492,19 @@ class WizardDialog(QDialog):
         step = max(1, min(self._n_steps, int(step)))
         self._current_step = step
         self._stack.setCurrentIndex(step - 1)
-        self._rail.set_current(step)
+        self._sync_rail()
         self._progress.setValue(step)
         title, subtitle = self.TITLES[step]
         self._title_label.setText(title)
         self._subtitle_label.setText(f"Étape {step} sur {self._n_steps} · {subtitle}")
         self._prev_btn.setEnabled(step > 1)
-        if step >= self.STEP_VERIFS:
+        if step in (self.STEP_VERIFS, self.STEP_TRAITEMENT):
             self._update_launch_recap()
             self._apply_validation()  # met aussi à jour le bouton principal
+        elif step == self.STEP_RESULTATS:
+            self._resultats_page.rafraichir()
+            self._refresh_rail_subs()
+            self._update_launch_button()
         else:
             self._update_launch_button()
         self._update_review_banner()
@@ -426,7 +515,7 @@ class WizardDialog(QDialog):
     def _next_launches(self) -> bool:
         """Le bouton principal lance le traitement aux étapes 4 et 5 — sauf à
         l'étape 4 pendant un run : il y mène au suivi (étape 5)."""
-        if self._current_step < self.STEP_VERIFS:
+        if self._current_step < self.STEP_VERIFS or self._current_step >= self.STEP_RESULTATS:
             return False
         return not (self._current_step == self.STEP_VERIFS and self._run_view.is_running())
 
@@ -459,31 +548,41 @@ class WizardDialog(QDialog):
         self._launch_page.set_workers(workers)
         self._config.setdefault("processing", {})["max_workers"] = self._launch_page.workers_value()
         # Carte graphique (étape 4, décochée par défaut) : même aller-retour que les workers.
-        self._launch_page.set_carte_graphique(bool(cv.get("carte_graphique", False)))
+        self._launch_page.set_carte_graphique(bool(cv.get("carte_graphique", True)))
         self._config.setdefault("computer_vision", {})["carte_graphique"] = self._launch_page.carte_graphique_value()
 
-        sections = [RecapSection("Mode", badges=[mode_info(mode).banner_label])]
+        sections = [RecapSection("Données", badges=[mode_info(mode).banner_label], step=1)]
 
         prods = self._indices_page.recap_products()
         res = self._indices_page.resolution()
-        sections.append(RecapSection("Produits raster", badges=prods, value=f"{res:g} m/pixel"))
+        sections.append(RecapSection("Visualisation du relief", badges=prods, value=f"{nombre(res, 2)} m/pixel", step=2))
 
         if not cv.get("enabled"):
-            sections.append(RecapSection("Détection IA", value="désactivée"))
+            sections.append(RecapSection("Structures", value="détection désactivée", step=3))
         else:
             ents = self._detection_page.recap_entities()
             runs = self._detection_page.recap_runs()
             detail = (
-                f"→ {len(runs)} run{'s' if len(runs) > 1 else ''} · " + " · ".join(runs)
+                f"→ {pluriel(len(runs), 'analyse')} · " + " · ".join(runs)
                 if runs else ""
             )
-            val = "" if (ents or runs) else "aucune entité"
-            sections.append(RecapSection("Détection IA", badges=ents, value=val, detail=detail))
+            val = "" if (ents or runs) else "aucune structure"
+            sections.append(RecapSection("Structures", badges=ents, value=val, detail=detail, step=3))
 
-        sections.append(RecapSection("Sortie", value=files.get("output_dir") or "—"))
-        # (Plus de ligne « Performance » : les workers sont dans les paramètres avancés.)
+        sections.append(RecapSection("Dossier de sortie", value=files.get("output_dir") or "—", step=1))
+        # Ce que le traitement écrira dans le dossier de sortie (chemins relatifs du livrable).
+        try:
+            sorties = sorties_prevues(self._config)
+        except Exception:  # noqa: BLE001 — le nom d'un dossier d'image tire QGIS : sans lui, les codes
+            sorties = sorties_prevues(self._config, nom_dossier_indice=lambda k, _p: k)
+        sections.append(RecapSection("Ce qui sera produit", value=chr(10).join(sorties)))
 
         self._launch_page.update_recap(sections)
+        # La décision mémorisée pour la carte graphique de ce poste, et « Oublier ».
+        try:
+            self._launch_page.set_decision_carte(decision_memorisee(lire_registre_carte(registre_path())))
+        except Exception:  # noqa: BLE001 — jamais bloquant
+            self._launch_page.set_decision_carte(None)
         self._run_view.set_step_subtitles(self._step_subtitles())
         if self._current_step == self.STEP_VERIFS:
             # Le préflight lance des sous-processus : seulement là où il s'affiche.
@@ -503,7 +602,7 @@ class WizardDialog(QDialog):
         rvt_tags = [product(k).tag for k in rvt_keys() if k in active]
         # Pastille « Produits » = MNT + indices fusionnés : on combine la
         # résolution et les tags RVT en un seul sous-libellé.
-        products_sub = " · ".join([f"{res:g} m/pixel", *rvt_tags])
+        products_sub = " · ".join([f"{nombre(res, 2)} m/pixel", *rvt_tags])
         subs = {
             Stage.DOWNLOAD: "",  # téléchargement : comptage de dalles différé (préflight)
             Stage.PRODUCTS: products_sub,
@@ -550,10 +649,8 @@ class WizardDialog(QDialog):
         self._indices_page.set_readonly(True)
         self._detection_page.set_readonly(True)
         self._launch_page.set_readonly(True)
-        # Lecture seule étanche : charger une config pendant le run
-        # remplacerait les paramètres consultés (≠ ceux qui tournent).
-        self._load_btn.setEnabled(False)
-        self._load_btn.setToolTip("Indisponible pendant un traitement")
+        # Lecture seule étanche : le menu « Configuration ▾ » grise ce qui
+        # remplacerait les réglages consultés (cf. _rebuild_config_menu).
         self._rail.setEnabled(True)
         self._prev_btn.setEnabled(self._current_step > 1)
         self._update_launch_button()
@@ -566,8 +663,6 @@ class WizardDialog(QDialog):
         self._indices_page.set_readonly(False)
         self._detection_page.set_readonly(False)
         self._launch_page.set_readonly(False)
-        self._load_btn.setEnabled(True)
-        self._load_btn.setToolTip("")
         self._rail.setEnabled(True)
         self._prev_btn.setEnabled(self._current_step > 1)
         self._update_launch_button()
@@ -601,28 +696,39 @@ class WizardDialog(QDialog):
         collecté). Les erreurs sont réparties par étape pour les pastilles."""
         errors = self._compute_errors()
         self._validation_errors = errors
-        by_step: dict = {}
-        for err in errors:
-            by_step.setdefault(_classify_error_step(err), []).append(err)
-        self._rail.set_errors(by_step)
+        self._sync_rail()
         self._launch_page.set_validation(errors)
         self._update_launch_button()
 
+    def _sync_rail(self) -> None:
+        """Le rail porte l'état de chaque étape : active, faite, à corriger (avec ses
+        messages en infobulle) ou à venir — rangement pur de ``validation_ui``."""
+        by_step = classer_erreurs(self._validation_errors)
+        etats = {n: etat_rail(n, self._current_step, by_step) for n in range(1, self._n_steps + 1)}
+        self._rail.set_states(etats, by_step)
+
     def _update_launch_button(self) -> None:
+        self._next_hint.setText("")
+        self._next_hint.setVisible(False)
+        self._relancer_btn.setVisible(
+            self._current_step < self.STEP_VERIFS
+            and self._run_view.a_deja_tourne() and not self._run_view.is_running()
+        )
         if not self._next_launches():
-            # « Suivant » = navigation pure, autorisée même pendant un run
-            # (permet de remonter jusqu'à l'étape 5 = suivi du run).
+            # « Suivant » = navigation pure, autorisée même pendant un traitement
+            # (permet de remonter jusqu'à l'étape 5 = suivi du traitement).
             self._next_btn.setText("Suivant  →")
             self._next_btn.setIcon(QIcon())
-            self._next_btn.setEnabled(True)
-            self._next_btn.setToolTip("")
+            # Dernier écran (Résultats) : plus de suivant.
+            self._next_btn.setEnabled(self._current_step < self.STEP_RESULTATS)
+            self._next_btn.setToolTip("" if self._current_step < self.STEP_RESULTATS else "Dernier écran")
             return
-        self._next_btn.setText("Lancer le pipeline")
+        self._next_btn.setText("Lancer le traitement")
         self._next_btn.setIcon(self._play_icon)
         if self._run_view.is_running():
-            # Étape 5 pendant un run : jamais de relance possible.
+            # Étape 5 pendant un traitement : jamais de relance possible.
             self._next_btn.setEnabled(False)
-            self._next_btn.setToolTip("Run en cours — relance impossible")
+            self._next_btn.setToolTip("Traitement en cours")
             return
         ok = not self._validation_errors
         self._next_btn.setEnabled(ok)
@@ -630,11 +736,22 @@ class WizardDialog(QDialog):
             "" if ok
             else "Corrigez avant de lancer :\n• " + "\n• ".join(self._validation_errors)
         )
+        if not ok:
+            # Un bouton gris dit pourquoi, à côté de lui : combien de points, à quelles étapes.
+            par_etape = classer_erreurs(self._validation_errors)
+            etapes = sorted(n for n in par_etape if n)
+            ou = (f" (étape{'s' if len(etapes) > 1 else ''} {', '.join(str(n) for n in etapes)})"
+                  if etapes else "")
+            self._next_hint.setText(
+                f"Lancement impossible : {pluriel(len(self._validation_errors), 'point')} à corriger{ou}"
+            )
+            self._next_hint.setVisible(True)
 
     def _refresh_rail_subs(self) -> None:
         self._rail.set_sub(1, self._source_page.summary())
         self._rail.set_sub(2, self._indices_page.summary())
         self._rail.set_sub(3, self._detection_page.summary())
+        self._rail.set_sub(6, self._resultats_page.summary())
 
     # ------------------------------------------------------------------
     # Persistance (autosave de last_ui_config.json)
@@ -708,7 +825,7 @@ class WizardDialog(QDialog):
 
     def _on_visu_layer_count(self, count: int) -> None:
         """Compteur sur l'onglet : « Visualisation (3) » quand des couches sont ouvertes."""
-        self._tabs.setTabText(1, "Visualisation" + (f" ({count})" if count else ""))
+        self._tabs.setTabText(1, "Consulter les flux" + (f" ({count})" if count else ""))
 
     def request_cancel_if_running(self) -> None:
         """Annulation propre demandée par l'hôte (unload du plugin) —
@@ -776,32 +893,41 @@ class WizardDialog(QDialog):
         self._last_config_name = nom
 
     # ------------------------------------------------------------------
-    # Menu « Charger une config »
+    # Menu « Configuration ▾ »
     # ------------------------------------------------------------------
-    def _rebuild_load_menu(self) -> None:
-        menu = self._load_menu
+    def _rebuild_config_menu(self) -> None:
+        menu = self._config_menu
         menu.clear()
-        # En TÊTE et isolée par un séparateur : la réinitialisation n'est pas une
-        # configuration comme les autres, elle jette les réglages en cours.
-        reset = menu.addAction(
-            colored_icon("reset", "#5a6672", 14, dpr=self.devicePixelRatioF()),
-            "Réinitialiser — valeurs par défaut",
-        )
-        reset.setToolTip("Remet TOUS les réglages du plugin à leurs valeurs d'origine.")
-        reset.triggered.connect(self._reset_to_defaults)
+        indisponible = "Indisponible pendant un traitement"
+        menu.addAction("Enregistrer sous…").triggered.connect(self._save_config_file)
         menu.addSeparator()
-
         noms = self._store.list_names()
         if noms:
             for nom in noms:
-                act = menu.addAction(nom)
+                act = menu.addAction(f"Charger : {nom}")
                 act.triggered.connect(lambda _=False, n=nom: self._load_saved_config(n))
+                if self._review_mode:
+                    act.setEnabled(False)
+                    act.setToolTip(indisponible)
         else:
             vide = menu.addAction("Aucune configuration enregistrée")
             vide.setEnabled(False)
         menu.addSeparator()
         menu.addAction("Gérer les configurations…").triggered.connect(self._manage_configs)
-        menu.addAction("Importer un fichier…").triggered.connect(self._load_config_file)
+        importer = menu.addAction("Importer un fichier…")
+        importer.triggered.connect(self._load_config_file)
+        menu.addSeparator()
+        # En dernier et isolée : la réinitialisation jette les réglages en cours.
+        reset = menu.addAction(
+            colored_icon("reset", "#5a6672", 14, dpr=self.devicePixelRatioF()),
+            "Tout remettre aux valeurs par défaut…",
+        )
+        reset.setToolTip("Remet TOUS les réglages de l'assistant à leurs valeurs d'origine.")
+        reset.triggered.connect(self._reset_to_defaults)
+        for act in (importer, reset):
+            if self._review_mode:
+                act.setEnabled(False)
+                act.setToolTip(indisponible)
 
     def _load_saved_config(self, nom: str) -> None:
         try:
@@ -813,15 +939,15 @@ class WizardDialog(QDialog):
         self._last_config_name = nom
 
     def _reset_to_defaults(self) -> None:
-        rep = QMessageBox.question(
-            self, "Réinitialiser ?",
-            "Remettre tous les réglages à leurs valeurs par défaut ? "
-            "Les réglages en cours seront perdus (les configurations "
-            "enregistrées, elles, sont conservées).",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.No,
-        )
-        if rep != QMessageBox.StandardButton.Yes:
+        box = QMessageBox(self)
+        box.setWindowTitle("Tout remettre aux valeurs par défaut ?")
+        box.setIcon(QMessageBox.Icon.Question)
+        box.setText("Les réglages en cours seront perdus. Les configurations enregistrées sont conservées.")
+        tout = box.addButton("Tout remettre par défaut", QMessageBox.ButtonRole.DestructiveRole)
+        garder = box.addButton("Garder mes réglages", QMessageBox.ButtonRole.RejectRole)
+        box.setDefaultButton(garder)
+        box.exec()
+        if box.clickedButton() is not tout:
             return
         self._apply_config(self._cm.default_config())
         self._last_config_name = ""

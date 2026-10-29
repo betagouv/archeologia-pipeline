@@ -396,7 +396,7 @@ def postprocess_detection_files(
 
     # Réécrire le TXT YOLO
     txt_path = json_path.with_suffix(".txt")
-    with open(txt_path, "w") as f:
+    with open(txt_path, "w", encoding="utf-8") as f:
         for det in cleaned:
             class_id = det.get("class_id", 0)
             if "polygon" in det:
@@ -579,6 +579,26 @@ def _connected_components_via_strtree(
     return list(components.values())
 
 
+def _longueur_equivalente(geom) -> float:
+    """Longueur du rectangle de même aire et même périmètre que le polygone : la
+    longueur d'un ruban (parcellaire, talus, chemin) ; ≈ périmètre/4 pour une forme
+    trapue, où elle n'a pas de sens particulier."""
+    # ponytail: rectangle équivalent, pas de squelette ; squelette rasterisé si la précision compte
+    import math
+    demi = geom.length / 2.0
+    disc = demi * demi - 4.0 * geom.area
+    return (demi + math.sqrt(disc)) / 2.0 if disc > 0 else demi / 2.0
+
+
+def _avec_mesures(det: dict, geom, confs) -> dict:
+    """Champs du polygone livré (2026-10-22) : ``n_membres`` (fragments fusionnés),
+    ``conf_max`` (le plus sûr d'entre eux — la moyenne pondérée par l'aire peut
+    rétrograder un groupe dont un membre est fort) et ``longueur_m``."""
+    confs = [float(c) for c in confs if c is not None] or [float(det.get("confidence", 0.0) or 0.0)]
+    return dict(det, geometry=geom, n_membres=len(confs), conf_max=max(confs),
+                longueur_m=round(_longueur_equivalente(geom), 1))
+
+
 def _merge_intra_class_components(
     valid_dets: list,
     merge_buffer_m: float,
@@ -604,7 +624,8 @@ def _merge_intra_class_components(
     if n == 0:
         return []
     if n == 1:
-        return list(valid_dets)
+        d = valid_dets[0]
+        return [_avec_mesures(d, d["geometry"], [d.get("confidence")])]
 
     polys = [d["geometry"] for d in valid_dets]
 
@@ -624,7 +645,8 @@ def _merge_intra_class_components(
     for comp_indices in components:
         if len(comp_indices) == 1:
             # Fast-path : polygone isolé, aucune fusion à faire
-            result.append(valid_dets[comp_indices[0]])
+            d = valid_dets[comp_indices[0]]
+            result.append(_avec_mesures(d, d["geometry"], [d.get("confidence")]))
             continue
 
         # Fusion locale par composante
@@ -671,6 +693,7 @@ def _merge_intra_class_components(
             total_w = 0.0
             weighted_conf = 0.0
             template_det = None
+            confs = []
             for src_idx in comp_indices:
                 src_geom = polys[src_idx]
                 try:
@@ -679,6 +702,7 @@ def _merge_intra_class_components(
                         w = src_geom.area
                         total_w += w
                         weighted_conf += det.get("confidence", 0.5) * w
+                        confs.append(det.get("confidence", 0.5))
                         if (template_det is None
                                 or det.get("confidence", 0) > template_det.get("confidence", 0)):
                             template_det = det
@@ -688,7 +712,7 @@ def _merge_intra_class_components(
             conf = weighted_conf / total_w if total_w > 0 else 0.5
             if template_det is None:
                 template_det = valid_dets[comp_indices[0]]
-            result.append(dict(template_det, geometry=mp, confidence=conf))
+            result.append(dict(_avec_mesures(template_det, mp, confs), confidence=conf))
 
     return result
 
@@ -819,7 +843,13 @@ def _resolve_same_class_overlaps(
                 if g.geom_type == "Polygon" and not g.is_empty
             ]
             merged = max(polys, key=lambda g: g.area) if polys else geoms[best]
-        out.append(dict(items[best], geometry=merged))
+        membres = [items[k] for k in members]
+        out.append(dict(
+            items[best], geometry=merged,
+            n_membres=sum(int(d.get("n_membres", 1) or 1) for d in membres),
+            conf_max=max(float(d.get("conf_max", d.get("confidence", 0.0)) or 0.0) for d in membres),
+            longueur_m=round(_longueur_equivalente(merged), 1),
+        ))
     return out
 
 
@@ -889,10 +919,17 @@ def postprocess_geo_detections(
     overlap_ios_threshold: float = 0.5,
     overlap_min_area_ratio: float = 0.0,
     overlap_keep_best_geometry: bool = False,
+    seuil_fusion_par_classe: Optional[Dict[str, float]] = None,
 ) -> Dict[str, List[Dict]]:
     """
     Post-traitement global des détections en coordonnées géographiques,
     opérant sur l'ensemble des dalles à la fois.
+
+    ``seuil_fusion_par_classe`` (2026-10-22) : seuil du MODÈLE par classe. La fusion
+    intra-classe se fait alors en deux passes — les fragments ≥ seuil entre eux, les
+    fragments sous le seuil (ajoutés par un seuil de run abaissé) entre eux, jamais
+    ensemble — pour qu'un bon polygone ne soit pas rétrogradé par la moyenne. Chaque
+    polygone livré porte ``n_membres``, ``conf_max`` et ``longueur_m``.
 
     Étapes (toutes optionnelles via flags) :
       1. Validation et réparation des géométries invalides — toujours faite
@@ -976,20 +1013,28 @@ def postprocess_geo_detections(
         merged_by_class: Dict[str, List[Dict]] = {}
         t1 = _time.perf_counter()
         for class_name, valid_dets in validated_by_class.items():
-            if len(valid_dets) < 2:
-                merged_by_class[class_name] = valid_dets
-                continue
-            logger.info(
-                f"Fusion intra-classe '{class_name}': {len(valid_dets)} polygones"
-            )
-            merged_by_class[class_name] = _merge_intra_class_components(
-                valid_dets,
-                merge_buffer_m=merge_buffer_m,
-                unary_union_fn=unary_union,
-                make_valid_fn=make_valid,
-                STRtree=STRtree,
-                min_area_m2=min_area_m2,
-            )
+            seuil = (seuil_fusion_par_classe or {}).get(class_name)
+            if seuil is None:
+                lots = [valid_dets]
+            else:
+                s = float(seuil)
+                lots = [[d for d in valid_dets if float(d.get("confidence", 0.0) or 0.0) >= s - 1e-9],
+                        [d for d in valid_dets if float(d.get("confidence", 0.0) or 0.0) < s - 1e-9]]
+            if len(valid_dets) >= 2:
+                logger.info(
+                    f"Fusion intra-classe '{class_name}': {len(valid_dets)} polygones"
+                    + (f" (deux passes au seuil du modèle {seuil})" if seuil is not None else "")
+                )
+            merged_by_class[class_name] = [
+                d for lot in lots for d in _merge_intra_class_components(
+                    lot,
+                    merge_buffer_m=merge_buffer_m,
+                    unary_union_fn=unary_union,
+                    make_valid_fn=make_valid,
+                    STRtree=STRtree,
+                    min_area_m2=min_area_m2,
+                )
+            ]
         total_after_merge = sum(len(v) for v in merged_by_class.values())
         t2 = _time.perf_counter()
         logger.info(

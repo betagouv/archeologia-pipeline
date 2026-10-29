@@ -83,7 +83,7 @@ class IgnOrLocalRunner:
         if slog:
             slog.tile_start(tile_index, total_tiles, tile_name)
 
-        create_terrain_model(
+        mnt_res = create_terrain_model(
             input_laz_path=merged_path,
             temp_dir=temp_dir,
             current_tile_name=tile_name,
@@ -93,6 +93,12 @@ class IgnOrLocalRunner:
             log=lambda m: reporter.info(m),
             feedback=feedback,
         )
+        if getattr(mnt_res, "repli", False):
+            reporter.user_warning(
+                f"⚠️ MNT de la dalle {tile_name.replace('_merged', '')} : le calcul par interpolation a échoué deux "
+                "fois dans PDAL, calculé sans interpolation (quelques pixels vides possibles). Relancez dans le même "
+                "dossier pour le recalculer."
+            )
 
         if cancel.is_cancelled():
             return

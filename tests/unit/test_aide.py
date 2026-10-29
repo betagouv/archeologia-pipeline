@@ -198,6 +198,11 @@ def test_rubriques_de_depannage_existent(chapitres):
     assert rubrique_depannage("LD : le noyau atteint 20 px mais la marge…") == "Le noyau atteint N pixels"
     assert rubrique_depannage("Connection to data.geopf.fr timed out") == "Le téléchargement échoue"
     assert rubrique_depannage("Dalle 3/12 : OK") == ""
+    # Repli du MNT (2026-10-21) : l'avertissement renvoie à la rubrique de PDAL.
+    assert rubrique_depannage(
+        "⚠️ MNT de la dalle LHD_FXX_0727_6569 : le calcul par interpolation a échoué deux fois dans PDAL, "
+        "calculé sans interpolation (quelques pixels vides possibles)."
+    ) == "Erreur PDAL ou mémoire"
 
 
 def test_ui_branche_le_manuel():
@@ -230,3 +235,28 @@ def test_rechercher_dans_tout_le_manuel():
     assert rechercher([a, b], "  ") == [] and rechercher([a, b], "absent") == []
     assert texte_brut("- **Seuil** : voir [la fiche](x.md#y) et `code` | a | b |") == "Seuil : voir la fiche et code · a · b"
     assert texte_brut("### Titre ![img](img/x.png)") == "Titre"
+
+
+def test_chapitre_consulter_les_flux_suit_le_drapeau_de_l_onglet(monkeypatch):
+    """N-04 (2026-10-25) livrait l'onglet « Consulter les flux » avec son chapitre, rangé avant le
+    glossaire ; le 2026-10-27 l'utilisateur ne veut pas encore l'onglet (0.18.1) : VISUALISATION_TAB_ENABLED
+    (app/services/visu_catalogue) le masque, et son chapitre avec lui. Le fichier reste pour le jour où
+    il revient ; le glossaire reste le dernier chapitre écrit (Nouveautés est généré)."""
+    from src.app.services import visu_catalogue
+
+    assert (RACINE / "aide" / "10-consulter-les-flux.md").is_file()
+    assert visu_catalogue.VISUALISATION_TAB_ENABLED is False
+    masque = [c.cle for c in charger_chapitres(RACINE / "aide")]
+    assert "consulter-les-flux" not in masque and masque[-1] == "glossaire"
+    monkeypatch.setattr(visu_catalogue, "VISUALISATION_TAB_ENABLED", True)
+    montre = [c.cle for c in charger_chapitres(RACINE / "aide")]
+    assert "consulter-les-flux" in montre and montre.index("consulter-les-flux") < montre.index("glossaire")
+    onglet = (RACINE / "src" / "ui" / "visualisation_tab.py").read_text(encoding="utf-8")
+    assert "manuel:consulter-les-flux" in onglet and "Aucun catalogue n'est installé sur ce poste" in onglet
+    wizard = (RACINE / "src" / "ui" / "wizard_dialog.py").read_text(encoding="utf-8")
+    assert "from ..app.services.visu_catalogue import VISUALISATION_TAB_ENABLED" in wizard
+    assert "VISUALISATION_TAB_ENABLED = " not in wizard
+    # Tant qu'il est masqué, aucun chapitre visible n'y renvoie.
+    for f in sorted((RACINE / "aide").glob("*.md")):
+        if f.stem != "10-consulter-les-flux":
+            assert "consulter-les-flux" not in f.read_text(encoding="utf-8"), f.name

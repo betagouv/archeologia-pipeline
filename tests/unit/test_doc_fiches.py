@@ -18,7 +18,8 @@ README = os.path.join(FICHES, "README.md")
 def _outils():
     for nom in sorted(os.listdir(FICHES)):
         if nom.endswith(".py"):
-            src = open(os.path.join(FICHES, nom), encoding="utf-8").read()
+            with open(os.path.join(FICHES, nom), encoding="utf-8") as f:
+                src = f.read()
             if "ArgumentParser" in src or "sys.argv" in src:
                 yield nom, ast.parse(src)
 
@@ -35,7 +36,8 @@ def _options_argparse(arbre):
 
 @pytest.mark.parametrize("nom,arbre", list(_outils()))
 def test_outil_cite_et_options_reelles(nom, arbre):
-    readme = open(README, encoding="utf-8").read()
+    with open(README, encoding="utf-8") as f:
+        readme = f.read()
     assert nom in readme, f"{nom} absent de dev/fiches/README.md"
     reelles = _options_argparse(arbre)
     # options documentées dans les blocs de commande qui appellent cet outil

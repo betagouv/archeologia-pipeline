@@ -4,8 +4,9 @@ Une rangée par couche de détections : le libellé de l'entité, une barre dont
 longueur est proportionnelle au nombre de détections (la plus fournie prend
 toute la largeur) et dont les segments, du plus sûr au plus douteux, sont dans la
 couleur de la couche déclinée par niveau — exactement les teintes de la légende
-de QGIS (``profil_scores.teinte_niveau``) —, puis le total. Survoler une rangée
-donne la phrase du bilan. Données : module pur :mod:`app.services.bilan_fiabilite`.
+de QGIS (``profil_scores.teinte_niveau``) —, puis le total ; sous la barre, les
+effectifs par niveau en toutes lettres, pour lire le bilan sans la couleur (lot 6,
+2026-10-24). Survoler une rangée donne la phrase du bilan. Données : module pur :mod:`app.services.bilan_fiabilite`.
 Compatible Qt5/Qt6 : énumérés scopés.
 """
 from __future__ import annotations
@@ -16,10 +17,11 @@ from qgis.PyQt.QtCore import QEvent, QRectF, QSize, Qt
 from qgis.PyQt.QtGui import QColor, QFont, QFontMetrics, QPainter, QPen
 from qgis.PyQt.QtWidgets import QSizePolicy, QToolTip, QWidget
 
-from ...app.services.bilan_fiabilite import LigneBilan
+from ...app.services.bilan_fiabilite import LigneBilan, texte_niveaux
 from .profil_scores import RGB, couleur_de_classe, teinte_niveau
 
-_RANGEE = 22
+_RANGEE = 34
+_BARRE_H = 12            # la barre, en haut de la rangée ; le texte dessous
 _LARGEUR_LIBELLE = 190
 _LARGEUR_TOTAL = 56
 _BLEU_DEFAUT: RGB = (42, 120, 214)
@@ -68,6 +70,8 @@ class BilanFiabiliteWidget(QWidget):
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
         police = QFont(self.font())
         police.setPointSizeF(max(7.0, self.font().pointSizeF() - 1))
+        sous = QFont(self.font())
+        sous.setPointSizeF(max(8.0, self.font().pointSizeF()))
         p.setFont(police)
         fm = QFontMetrics(police)
         maximum = max(ligne.total for ligne in self._lignes) or 1
@@ -75,13 +79,15 @@ class BilanFiabiliteWidget(QWidget):
         largeur_barre = max(40, self.width() - x0 - _LARGEUR_TOTAL - 8)
         for i, (ligne, base) in enumerate(zip(self._lignes, self._bases)):
             y = 3 + i * _RANGEE
+            p.setFont(police)
             p.setPen(_ENCRE)
             libelle = fm.elidedText(ligne.label, Qt.TextElideMode.ElideRight, _LARGEUR_LIBELLE - 10)
-            p.drawText(QRectF(0, y, _LARGEUR_LIBELLE - 10, _RANGEE), Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter, libelle)
+            # Le libellé à la hauteur de la barre (pas de la rangée entière, plus haute depuis le texte).
+            p.drawText(QRectF(0, y, _LARGEUR_LIBELLE - 10, _BARRE_H + 6), Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter, libelle)
             # fond de barre : la place de la plus fournie
             p.setPen(Qt.PenStyle.NoPen)
             p.setBrush(_FOND_BARRE)
-            p.drawRoundedRect(QRectF(x0, y + 4, largeur_barre, _RANGEE - 8), 3, 3)
+            p.drawRoundedRect(QRectF(x0, y + 3, largeur_barre, _BARRE_H), 3, 3)
             longueur = largeur_barre * ligne.total / maximum
             x = x0
             for cat, n in ligne.par_niveau():
@@ -89,15 +95,19 @@ class BilanFiabiliteWidget(QWidget):
                     continue
                 seg = longueur * n / ligne.total
                 p.setBrush(teinte_niveau(base, cat))
-                p.drawRect(QRectF(x, y + 4, seg, _RANGEE - 8))
+                p.drawRect(QRectF(x, y + 3, seg, _BARRE_H))
                 x += seg
             p.setPen(QPen(QColor("#ffffff"), 1))
             x = x0
             for cat, n in ligne.par_niveau()[:-1]:
                 x += longueur * n / ligne.total if ligne.total else 0
-                p.drawLine(QRectF(x, y + 4, 0, _RANGEE - 8).topLeft(), QRectF(x, y + 4, 0, _RANGEE - 8).bottomLeft())
+                p.drawLine(QRectF(x, y + 3, 0, _BARRE_H).topLeft(), QRectF(x, y + 3, 0, _BARRE_H).bottomLeft())
             p.setPen(_ENCRE_DOUCE)
-            p.drawText(QRectF(x0 + largeur_barre + 6, y, _LARGEUR_TOTAL, _RANGEE), Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, _nb(ligne.total))
+            p.drawText(QRectF(x0 + largeur_barre + 6, y, _LARGEUR_TOTAL, _BARRE_H + 6), Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, _nb(ligne.total))
+            # Sous la barre : les effectifs par niveau en toutes lettres (lisible sans la couleur).
+            p.setFont(sous)
+            p.drawText(QRectF(x0, y + 3 + _BARRE_H + 1, largeur_barre + _LARGEUR_TOTAL, _RANGEE - _BARRE_H - 5),
+                       Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, texte_niveaux(ligne))
         p.end()
 
 

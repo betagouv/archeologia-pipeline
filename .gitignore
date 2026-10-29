@@ -83,8 +83,6 @@ htpasswd.txt
 # data/local_catalogue/ = catalogue local écrit par archeologia-ovh (publish_gpf.py
 # catalogue --catalogue-rel data/local_catalogue/catalogue.json), fusionné au runtime.
 data/local_catalogue/
-data/demo_catalogue/wms/
-data/demo_catalogue/thumbs/21*_*.png
-data/demo_catalogue/*.bak-*
+data/demo_catalogue/
 
 # (Portage de calcul OVH déplacé vers un dépôt privé séparé.)

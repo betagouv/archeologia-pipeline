@@ -137,7 +137,7 @@ def export_segformer_to_onnx(
     
     try:
         import torch
-        from transformers import SegformerForSemanticSegmentation, SegformerImageProcessor
+        from transformers import SegformerForSemanticSegmentation
     except ImportError as e:
         print(f"[ERROR] Dépendances manquantes: {e}")
         print("[ERROR] Installez avec: pip install transformers torch safetensors")
@@ -250,7 +250,7 @@ def export_segformer_to_onnx(
         
         # Vérifier que le fichier ONNX existe et est valide
         if output_path.exists():
-            print(f"[INFO] Vérification du fichier ONNX...")
+            print("[INFO] Vérification du fichier ONNX...")
             try:
                 import onnx
                 onnx_model = onnx.load(str(output_path))
@@ -307,7 +307,6 @@ def _detect_smp_architecture(state_dict: dict) -> dict:
         # ResNet family
         first_conv = state_dict.get("encoder.conv1.weight")
         if first_conv is not None:
-            out_ch = first_conv.shape[0]
             # Compter les couches dans layer4 pour distinguer resnet50/101/152
             layer4_keys = [k for k in state_dict if k.startswith("encoder.layer4.")]
             n_blocks = len(set(k.split(".")[2] for k in layer4_keys))
@@ -473,7 +472,7 @@ def export_smp_to_onnx(
             import onnx
             onnx_model = onnx.load(str(output_path))
             onnx.checker.check_model(onnx_model)
-            print(f"[SUCCESS] Fichier ONNX valide")
+            print("[SUCCESS] Fichier ONNX valide")
         except ImportError:
             print("[WARN] onnx non installé, vérification ignorée")
         except Exception as e:
@@ -1055,7 +1054,6 @@ def validate_onnx_export(
     Returns:
         True si la validation réussit pour toutes les images, False sinon.
     """
-    import numpy as np
     import onnxruntime as ort
 
     # Collecter toutes les images de test

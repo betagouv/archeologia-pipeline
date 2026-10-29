@@ -24,14 +24,14 @@ Certains antivirus signalent ou mettent en quarantaine `cv_runner_onnx.exe`, le 
 
 ## Les vérifications préalables ont échoué
 
-Le panneau **État du système** de l'étape 4 nomme ce qui manque :
+Le panneau **Environnement** de l'étape 4 nomme ce qui manque :
 
 - **PDAL** ou **GDAL** introuvables : installez QGIS par OSGeo4W, qui les fournit, ou ajoutez-les au chemin du système.
-- **Moteur d'indices intégré** indisponible : une bibliothèque livrée avec QGIS (numpy, scipy ou matplotlib) manque ou ne se charge pas ; le détail la nomme. Réinstallez QGIS par OSGeo4W.
+- **Calcul des indices de visualisation (moteur intégré)** indisponible : une bibliothèque livrée avec QGIS (numpy, scipy ou matplotlib) manque ou ne se charge pas ; le détail la nomme. Réinstallez QGIS par OSGeo4W.
 - **Algorithmes RVT** absents : n'apparaît que si l'ancien calcul par l'extension a été forcé pour un diagnostic (variable d'environnement `ARCHEO_INDICES_MOTEUR=processing`) ; installez alors Relief Visualization Toolbox, puis relancez QGIS. Ce mode de secours garde les comportements de l'extension : pente « Pourcentage » étirée de 0 à 51 % en 8 bits, nombre de directions du M-HS limité à 64 même en 8 bits ; ses images sont réutilisées d'une relance à l'autre tant qu'on y reste, et recalculées une fois au retour du calcul intégré.
-- **Moteur de détection** absent : voir l'alerte antivirus ci-dessus.
-- **Projection** refusée : un raster d'entrée n'est pas en Lambert-93 (EPSG:2154). Reprojetez-le avant.
-- **Dossier** introuvable ou vide : le chemin, ou l'extension des fichiers attendue par le mode.
+- « cv_runner_onnx (external) » en ✗, puis « python:onnxruntime » signalé : le moteur de détection manque, voir l'alerte antivirus ci-dessus.
+- « CRS des rasters » refusé : un raster d'entrée n'est pas en Lambert-93 (EPSG:2154). Reprojetez-le avant.
+- **Dossier** introuvable ou vide : le chemin, ou l'extension des fichiers attendue par le point de départ.
 
 ## Impossible de lancer, corrigez
 
@@ -41,14 +41,19 @@ Le bandeau de l'étape 4 liste les points bloquants et le rail pose une pastille
 
 - **Délai dépassé vers data.geopf.fr** : votre réseau impose un proxy que QGIS ne connaît pas. Voir [le proxy](installer.md#reseau-d-entreprise-le-proxy). Si le proxy exige une authentification Windows automatique, demandez une exception réseau.
 - Une dalle refusée ou absente du serveur est signalée dans le journal et le traitement continue avec les autres.
+- **Une dalle qui n'avance plus** : il arrive que le serveur de l'IGN garde une connexion ouverte sans plus rien envoyer, ou presque. Le plugin surveille chaque téléchargement : après deux minutes sans un seul bloc reçu, il coupe la connexion (« aucun octet reçu depuis 120 s, connexion coupée »), puis reprend là où il s'était arrêté, sans retélécharger ce qui est déjà sur le disque (« Reprise de … à l'octet … »), jusqu'à trois tentatives. Annuler pendant un tel blocage rend la main en une seconde ou deux. Si la reprise est refusée par le serveur, le téléchargement repart de zéro ; si les trois tentatives échouent, la dalle est abandonnée et le traitement continue avec les autres.
 
 ## Zoomez davantage pour afficher les dalles
 
 La grille des dalles ne se dessine qu'à une échelle assez fine, pour rester fluide. Zoomez sur votre secteur : la barre de messages indique l'échelle requise.
 
+## Méthode de calcul mise à jour
+
+Le journal dit « ⚠️ Méthode de calcul mise à jour » ou « ⚠️ Paramètres de traitement modifiés » au début du traitement. Ce n'est pas une erreur : le dossier de sortie a été calculé par une version précédente du plugin, ou les réglages de fusion ou de MNT ont changé depuis, et la fusion, le MNT et les images de chaque dalle sont refaits une fois, puis réutilisés aux lancements suivants. Rien n'est supprimé, les détections sont refaites sur les nouvelles images. Voir [Un MNT reproductible](resultats.md#un-mnt-reproductible).
+
 ## Le noyau atteint N pixels
 
-Le rayon d'un indice dépasse la marge entre dalles, ou la taille d'un raster en MNT existant. Au-delà, l'algorithme reconstruit le voisinage par symétrie : les dalles ne se raccordent plus, ou l'indice n'est pas fiable sur une partie de l'emprise. Réduisez le rayon nommé, ou augmentez la marge à l'étape 2. Sur un lot de rasters, ne réduisez le rayon que si la plupart ont cette taille : le réglage vaut pour tous. Voir [Tuilage et marge](etape-2-produits.md#tuilage-et-marge).
+Le rayon d'un indice dépasse la marge entre dalles, ou la taille d'un raster en MNT existant. Au-delà, l'algorithme reconstruit le voisinage par symétrie : les dalles ne se raccordent plus, ou l'indice n'est pas fiable sur une partie de l'emprise. Réduisez le rayon nommé, ou augmentez la marge à l'étape 2. Sur un lot de rasters, ne réduisez le rayon que si la plupart ont cette taille : le réglage vaut pour tous. Voir [Marge entre dalles](etape-2-produits.md#marge-entre-dalles).
 
 ## Une couture entre deux dalles
 
@@ -60,7 +65,9 @@ Si le calcul d'un modèle de terrain ne rend pas la main après deux heures, la 
 
 ## Erreur PDAL ou mémoire
 
-Une erreur de PDAL pendant la fusion d'une dalle avec ses voisines, ou le calcul du MNT, en particulier avec un code de violation d'accès, vient presque toujours d'un manque de mémoire : plusieurs dalles traitées en parallèle sur un poste qui ne peut pas les tenir. Réduisez les **workers** à 1 ou 2 à l'étape 4 et relancez dans le même dossier : les dalles déjà calculées sont conservées.
+Le journal dit « N dalle(s) non fusionnée(s) », « Dalle … en échec, ignorée », « N dalle(s) sur M en échec », « MNT … en échec, ignoré » ou « MNT de la dalle … calculé sans interpolation », et le journal complet donne l'erreur de PDAL. Une erreur de PDAL pendant la fusion d'une dalle avec ses voisines, ou le calcul du MNT, en particulier avec un code de violation d'accès, vient presque toujours d'un manque de mémoire : plusieurs dalles traitées en parallèle sur un poste qui ne peut pas les tenir. Réduisez les **dalles en parallèle** à 1 ou 2 à l'étape 4 et relancez dans le même dossier : les dalles déjà calculées sont conservées.
+
+Quand le calcul du MNT d'une dalle plante deux fois de suite, le plugin le calcule sans interpolation entre les points sol : la dalle peut garder quelques pixels vides là où le sol n'a pas été touché par le laser, et ses indices en héritent. Le journal le dit par « MNT de la dalle … calculé sans interpolation ». Relancez dans le même dossier, de préférence avec moins de programmes ouverts : ce MNT est recalculé, les autres sont réutilisés.
 
 ## Le filtre des points n'est pas reconnu
 
@@ -68,7 +75,7 @@ Le journal dit « Filtre des points non reconnu … : fusion sans filtre » ou �
 
 ## La carte graphique n'est pas utilisée
 
-L'option **Détection sur la carte graphique** de l'étape 4 n'impose rien : au premier usage de chaque modèle sur votre poste, le moteur compare la carte au processeur sur la première image et ne la garde que si elle est plus rapide et donne les mêmes détections. Le journal dit pourquoi elle a été écartée :
+L'option **Détection sur la carte graphique** de l'étape 4 n'impose rien : au premier usage sur votre poste, le moteur compare la carte au processeur sur la première image et ne la garde que si elle est plus rapide et donne les mêmes détections. La décision vaut ensuite pour tous les modèles et toutes les versions du plugin, tant que la carte, son pilote et la version du moteur ne changent pas ; « Oublier » à l'étape 4 la remet en jeu. Le journal dit pourquoi elle a été écartée :
 
 - « pas plus rapide que le processeur » : c'est le cas d'une carte intégrée au processeur, d'une session de bureau à distance ou d'une carte déjà occupée par un autre programme. Rien à corriger ; la détection se fait sur le processeur, comme sans l'option.
 - « résultats différents du processeur » : le pilote de la carte calcule autrement. Mettez-le à jour, puis relancez ; la décision est réessayée d'elle-même après sept jours, ou tout de suite si le pilote, le modèle ou le moteur de détection ont changé.
@@ -90,25 +97,25 @@ Le moteur de détection est un programme livré avec l'extension. S'il manque, l
 
 Relancez ensuite dans le même dossier : les produits déjà calculés sont conservés, seule la détection est refaite.
 
-## Aucun run, ou aucune détection
+## Rien à analyser, ou aucune détection
 
-- Au moins une entité est cochée et couverte par un modèle : la carte **Runs IA programmés** le dit.
-- L'indice requis par le modèle est coché à l'étape 2 : le sigle sur la carte d'entité est orange sinon.
-- Le seuil de confiance de l'entité n'est pas trop haut : baissez-le pour diagnostiquer.
-- Une entité dont toutes les détections sont écartées par le seuil ou l'aire minimale ne produit pas de couche : ce n'est pas une erreur.
+- Au moins une structure est cochée et couverte par un modèle : la carte **Ce qui sera analysé** le dit.
+- L'indice requis par le modèle est coché à l'étape 2 : le sigle sur la carte de structure est orange sinon.
+- Le seuil de confiance de la structure n'est pas trop haut : baissez-le pour diagnostiquer.
+- Une structure dont toutes les détections sont écartées par le seuil ou l'aire minimale ne produit pas de couche : ce n'est pas une erreur.
 
 ## Les couches ne se chargent pas dans QGIS
 
-Tout est dans le dossier de sortie : ouvrez `livrable/projet.qgs`, ou ajoutez les mosaïques `index_<PRODUIT>.vrt` et les GeoPackages à la main.
+Les couches ne se chargent plus d'elles-mêmes : à la fin du traitement, cliquez **Ajouter au projet QGIS courant** dans le cadre « Par où commencer » ; il n'agit qu'une fois. S'il est grisé, le traitement n'a pas abouti ou le bouton a déjà servi : tout est dans le dossier de sortie, ouvrez `livrable/projet.qgs`, ou ajoutez les mosaïques `index_<PRODUIT>.vrt` et les GeoPackages à la main.
 
 ## Le traitement s'est interrompu
 
-Le dernier message du journal donne la cause. **Log complet** ouvre le journal détaillé du dossier de sortie, dans lequel les erreurs sont préfixées. Relancer dans le même dossier reprend ce qui est déjà calculé.
+Le dernier message du journal donne la cause. **Journal complet (fichier)** ouvre le journal détaillé du dossier de sortie, dans lequel les erreurs sont préfixées. Relancer dans le même dossier reprend ce qui est déjà calculé.
 
 ## Le traitement est très long
 
-La durée dépend du nombre de dalles, des produits cochés, des modèles et de votre machine. Leviers, dans l'ordre : décocher les indices que vous ne regarderez pas ; baisser la résolution du MNT ; augmenter les workers si la mémoire le permet ; traiter une grande zone en plusieurs lots. Le nombre de fenêtres d'analyse affiché à l'étape 3 permet de comparer le coût de deux modèles avant de lancer.
+La durée dépend du nombre de dalles, des produits cochés, des modèles et de votre machine. Leviers, dans l'ordre : décocher les produits que vous ne regarderez pas ; baisser la résolution du MNT ; augmenter les dalles en parallèle si la mémoire le permet ; traiter une grande zone en plusieurs lots. Le nombre de fenêtres d'analyse affiché à l'étape 3 permet de comparer le coût de deux modèles avant de lancer.
 
 ## Signaler un problème
 
-Joignez le journal complet du dossier de sortie, le fichier `metadata.json`, la version du plugin (dans le titre de la fenêtre) et celle de QGIS. Les anomalies se signalent sur le suivi public du projet : https://github.com/betagouv/archeologia-pipeline/issues
+Joignez le journal complet du dossier de sortie et la trace `metadata_<date>.json` du même lancement, tous deux dans `technique/journaux/` (voir [Les traces d'un traitement](resultats.md#les-traces-d-un-traitement)), la version du plugin (dans le titre de la fenêtre) et celle de QGIS. Les anomalies se signalent sur le suivi public du projet : https://github.com/betagouv/archeologia-traitement/issues

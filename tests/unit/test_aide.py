@@ -245,7 +245,7 @@ def test_chapitre_consulter_les_flux_suit_le_drapeau_de_l_onglet(monkeypatch):
     from src.app.services import visu_catalogue
 
     assert (RACINE / "aide" / "10-consulter-les-flux.md").is_file()
-    assert visu_catalogue.VISUALISATION_TAB_ENABLED is False
+    monkeypatch.setattr(visu_catalogue, "VISUALISATION_TAB_ENABLED", False)
     masque = [c.cle for c in charger_chapitres(RACINE / "aide")]
     assert "consulter-les-flux" not in masque and masque[-1] == "glossaire"
     monkeypatch.setattr(visu_catalogue, "VISUALISATION_TAB_ENABLED", True)

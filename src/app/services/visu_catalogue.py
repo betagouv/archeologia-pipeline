@@ -28,7 +28,7 @@ from .indices_model import ProductInfo, product
 #: n'existe pas (0.18.1, décision de l'utilisateur du 2026-10-27 : « il ne faut pas l'inclure pour le
 #: moment »). Lu par ui/wizard_dialog (l'onglet), app/services/aide (le chapitre), dev/rendu_hors_ecran
 #: et dev/recette_auto ; dev/demo_comite/smoke_dialog le force à vrai.
-VISUALISATION_TAB_ENABLED = False
+VISUALISATION_TAB_ENABLED = True  # feat/visu-flux-gpf : onglet montré ; faux sur dev et main (0.18.1)
 CHAPITRE_ONGLET = "consulter-les-flux"
 
 # Familles affichées comme filtres au-dessus du mur.

@@ -32,7 +32,7 @@ fileignoreconfig:
 - filename: dev/make_htpasswd.py
   checksum: c0ff22f08b4066ace9c930bb79069b5263aec0bcf12aabb90b7f87f4475dbff3
 - filename: dev/runner_onnx/export_to_onnx.py
-  checksum: 5ca36703ef40c0e070479b897af8d3d07a9e6cb86e77ce86265abfe7dd147d35
+  checksum: 5c2870b1c88300bf1e0653a8103182fe7dd299b205e3a032587f756ac31a5388
 - filename: docs/reference-parametres-briques.html
   checksum: a5dc04309f54a2d4a818845ecfaa44800b945fe480e6c81e2fa3d78e3fef30e0
 - filename: scripts/_apply_notebook_standardization.py
@@ -409,4 +409,6 @@ fileignoreconfig:
   checksum: 5afe2a1b6f337b2c410e24f55a19f2a6c76b6d7d14b3568bee5aa6a3712f8032
 - filename: src/ui/widgets/entity_row.py
   checksum: cdb77e6e1d5f72e6063359ff158de017796217a27a6a40b2bcf784f22faeb765
+- filename: tests/unit/test_export_rfdetr_loader.py
+  checksum: dcabb1c509aaf66be572daadf2f6cd65ea2ae2c60a112a8743e655d09649d971
 version: '1.0'

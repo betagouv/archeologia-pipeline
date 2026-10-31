@@ -45,7 +45,10 @@ _ORDRE_VIGNETTE = ("LD", "VAT", "CVAT", "PRISM", "CRIM", "M_HS", "HS", "SVF", "O
 
 _LIGNE_LOG = re.compile(r"^.*? - (WARNING|ERROR) - (.*)$")
 #: Coordonnées d'une dalle IGN (``0988_6872`` ou ``0988-6872``) : situent au kilomètre.
-_DALLE = re.compile(r"(?<!\d)\d{4}[_-]\d{4}(?!\d)")   # pas dans un code EPSG : EPSG_25832_0455_6057
+#: Nom de dalle du plugin (``rvt_naming.prefixe_dalle``) : préfixe gardé, x et y effacés quels que soient le code EPSG
+#: et le nombre de chiffres (audit 2026-11-01 : ``EPSG_3006_0455_6057`` laissait fuir le y).
+_DALLE_NOMMEE = re.compile(r"(LHD_FXX|EPSG_\d+|CRS_PROJETE)_-?\d+_-?\d+")
+_DALLE = re.compile(r"(?<!\d)\d{4}[_-]\d{4}(?!\d)")
 #: Chemin absolu Windows (``D:\…``, ``\\serveur\…``) ou POSIX (``/…/…``), jusqu'au
 #: prochain blanc ou guillemet ; il faut au moins un second séparateur (« 1/4 » n'est
 #: pas un chemin).
@@ -123,7 +126,7 @@ def anonymiser(message: str) -> str:
     nom de fichier, et toute coordonnée de dalle devient « … »."""
     def _nom(m: "re.Match[str]") -> str:
         return re.split(r"[\\/]", m.group(0).rstrip("\\/"))[-1] or "…"
-    return _DALLE.sub("…", _CHEMIN.sub(_nom, message))
+    return _DALLE.sub("…", _DALLE_NOMMEE.sub(r"\1_…", _CHEMIN.sub(_nom, message)))
 
 
 def extraire_avertissements(texte_log: str, max_lignes: int = 60) -> List[Avertissement]:
@@ -531,7 +534,6 @@ def _cv_runs(runs: Sequence[Mapping[str, Any]]) -> str:
             cellule = _seuil(seuil) if seuil is not None else "—"
         lignes.append(f"<tr><td>{entites}</td><td>{modele}</td>"
                       f"<td class=num>{cellule}</td><td>{analyse}</td></tr>")
-
     return ("<table><tr><th>Entités</th><th>Modèle</th><th>Seuil</th><th>Analyse, durée mesurée</th></tr>"
             f"{''.join(lignes)}</table>")
 

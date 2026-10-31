@@ -89,57 +89,128 @@ def test_indice_fourni_1_km_renomme_selon_le_crs(tmp_path):
         "EPSG_25832_0455_6057_LD_A.tif"
 
 
-def test_republication_retire_le_nom_lambert93_d_un_run_precedent(tmp_path, monkeypatch):
-    """Relance dans le même dossier après la correction : l'ancien ``LHD_FXX_…_LAMB93`` (TIF, pyramides, PNG)
-    doit partir, sinon la mosaïque et la détection (qui lit tout le dossier) compteraient chaque dalle deux fois."""
-    import pipeline.ign.products.results as results_mod
-    from pipeline.output_paths import indice_png_dir, indice_tif_dir
-    from pipeline.ign.products.rvt_naming import get_rvt_folder_name
-    monkeypatch.setattr(results_mod, "build_raster_pyramids", lambda *a, **k: True)
+ANCIEN_LD = "LHD_FXX_0455_6057_LD_A15_Rmin5_Rmax10_H1p7_V1_A_LAMB93_u"
+NOUVEAU_LD = "EPSG_25832_0455_6057_LD_A15_Rmin5_Rmax10_H1p7_V1_A_u"
 
+
+def _publier(tmp_path, monkeypatch, produit, rvt, *, sources=(), prepare=lambda tif_dir, png_dir: None, **k):
+    """Publie une dalle EPSG:25832 (uid ``_u``) après ``prepare`` ; rend (dossier TIF, dossier PNG, dossier sortie)."""
+    import pipeline.ign.products.results as results_mod
+    from pipeline.ign.products.rvt_naming import get_rvt_folder_name
+    from pipeline.output_paths import indice_png_dir, indice_tif_dir
+    monkeypatch.setattr(results_mod, "build_raster_pyramids", lambda *a, **kw: True)
     temp, out = tmp_path / "temp", tmp_path / "out"
     temp.mkdir()
     tuile = "EPSG_25832_0455_6057_EXT_mnt_1066"
-    _src, dest = get_rvt_source_and_dest_filenames("LD", tuile, "0455", "6057", LD, name_suffix="_u", crs="EPSG:25832")
+    _src, dest = get_rvt_source_and_dest_filenames(produit, tuile, "0455", "6057", rvt, name_suffix="_u",
+                                                   crs="EPSG:25832", **k)
     _tif(temp / dest, (455000.0, 6057000.0), 300.0, "EPSG:25832")
-    tif_dir = indice_tif_dir(out, get_rvt_folder_name("LD", LD))
-    png_dir = indice_png_dir(out, get_rvt_folder_name("LD", LD))
+    tif_dir = indice_tif_dir(out, get_rvt_folder_name(produit, rvt))
+    png_dir = indice_png_dir(out, get_rvt_folder_name(produit, rvt))
     tif_dir.mkdir(parents=True)
     png_dir.mkdir(parents=True)
-    ancien = "LHD_FXX_0455_6057_LD_A15_Rmin5_Rmax10_H1p7_V1_A_LAMB93_u"
-    for f in (tif_dir / f"{ancien}.tif", tif_dir / f"{ancien}.tif.ovr", png_dir / f"{ancien}.png",
-              png_dir / f"{ancien}.pgw", tif_dir / "LHD_FXX_0455_6057_LD_A15_Rmin5_Rmax10_H1p7_V1_A_LAMB93_v.tif"):
-        f.write_bytes(b"x")
-
+    prepare(tif_dir, png_dir)
     results_mod.copy_final_products_to_results(
-        temp_dir=temp, output_dir=out, current_tile_name=tuile, products={"LD": True}, output_structure={},
-        output_formats={"tif": True}, rvt_params=LD, name_suffix="_u", crs="EPSG:25832")
+        temp_dir=temp, output_dir=out, current_tile_name=tuile, products={produit: True}, output_structure={},
+        output_formats={"tif": True}, rvt_params=rvt, name_suffix="_u", crs="EPSG:25832",
+        sources=tuple(s(tif_dir) for s in sources), **k)
+    return tif_dir, png_dir, out
 
+
+def test_republication_retire_le_nom_lambert93_d_un_run_precedent(tmp_path, monkeypatch):
+    """Relance dans le même dossier après la correction : l'ancien ``LHD_FXX_…_LAMB93`` (TIF, pyramides, PNG, world
+    file, détections en cache) doit partir, sinon mosaïque, détection et conversion compteraient la dalle deux fois."""
+    def prepare(tif_dir, png_dir):
+        _tif(tif_dir / f"{ANCIEN_LD}.tif", (455000.0, 6057000.0), 300.0, "EPSG:25832")
+        for f in (tif_dir / f"{ANCIEN_LD}.tif.ovr", png_dir / f"{ANCIEN_LD}.png", png_dir / f"{ANCIEN_LD}.pgw"):
+            f.write_bytes(b"x")
+        raw = tif_dir.parents[3] / "technique" / "detection" / "enclos_fr_seg_ld_v1" / "raw_detections"
+        raw.mkdir(parents=True)
+        for f in (f"{ANCIEN_LD}.txt", f"{ANCIEN_LD}.json", "autre_dalle.txt"):
+            (raw / f).write_bytes(b"x")
+        _tif(tif_dir / "LHD_FXX_0455_6057_LD_A15_Rmin5_Rmax10_H1p7_V1_A_LAMB93_v.tif",
+             (455000.0, 6057000.0), 300.0, "EPSG:25832")
+
+    tif_dir, png_dir, out = _publier(tmp_path, monkeypatch, "LD", LD, prepare=prepare)
     assert sorted(p.name for p in tif_dir.iterdir()) == [
-        "EPSG_25832_0455_6057_LD_A15_Rmin5_Rmax10_H1p7_V1_A_u.tif",
-        "LHD_FXX_0455_6057_LD_A15_Rmin5_Rmax10_H1p7_V1_A_LAMB93_v.tif",   # autre dalle : jamais touchée
-    ]
+        f"{NOUVEAU_LD}.tif", "LHD_FXX_0455_6057_LD_A15_Rmin5_Rmax10_H1p7_V1_A_LAMB93_v.tif"]   # autre dalle gardée
     assert list(png_dir.iterdir()) == []
+    raw = out / "technique" / "detection" / "enclos_fr_seg_ld_v1" / "raw_detections"
+    assert [p.name for p in raw.iterdir()] == ["autre_dalle.txt"]
+
+
+def test_jamais_un_fichier_du_dossier_source(tmp_path, monkeypatch):
+    """Audit 2026-11-01 (D2) : MNT source = ``livrable/indices/MNT/tif`` d'un run antérieur, publié dans ce même
+    dossier. Le préflight promet que la source n'est jamais supprimée : ni l'ancien nom, ni une autre résolution."""
+    anciens = ("LHD_FXX_0455_6057_MNT_A_1M00_LAMB93_IGN69_u.tif", "EPSG_25832_0455_6057_MNT_A_0M50_u.tif")
+
+    def prepare(tif_dir, png_dir):
+        for n in anciens:
+            _tif(tif_dir / n, (455000.0, 6057000.0), 300.0, "EPSG:25832")
+
+    tif_dir, _png, _out = _publier(tmp_path, monkeypatch, "MNT", {}, mnt_resolution=1.0, prepare=prepare,
+                                   sources=(lambda d: d,))
+    assert sorted(p.name for p in tif_dir.iterdir()) == sorted([*anciens, "EPSG_25832_0455_6057_MNT_A_1M00_u.tif"])
+
+
+def test_jamais_la_dalle_d_un_vrai_run_lambert93(tmp_path, monkeypatch):
+    """Audit 2026-11-01 (D2) : dossier de sortie partagé avec un vrai run français aux mêmes km : sa dalle est en
+    EPSG:2154, pas dans le CRS du run, elle reste (comme son PNG)."""
+    def prepare(tif_dir, png_dir):
+        _tif(tif_dir / f"{ANCIEN_LD}.tif", (455000.0, 6057000.0), 1000.0, "EPSG:2154")
+        (png_dir / f"{ANCIEN_LD}.png").write_bytes(b"x")
+
+    tif_dir, png_dir, _out = _publier(tmp_path, monkeypatch, "LD", LD, prepare=prepare)
+    assert sorted(p.name for p in tif_dir.iterdir()) == sorted([f"{ANCIEN_LD}.tif", f"{NOUVEAU_LD}.tif"])
+    assert [p.name for p in png_dir.iterdir()] == [f"{ANCIEN_LD}.png"]
 
 
 def test_mnt_autre_resolution_et_ancien_nom_retires(tmp_path, monkeypatch):
+    def prepare(tif_dir, png_dir):
+        for n in ("LHD_FXX_0455_6057_MNT_A_1M00_LAMB93_IGN69_u.tif", "EPSG_25832_0455_6057_MNT_A_0M50_u.tif"):
+            _tif(tif_dir / n, (455000.0, 6057000.0), 300.0, "EPSG:25832")
+        _tif(tif_dir / "EPSG_25832_0455_6057_MNT_A_0M50_x_u.tif", (455000.0, 6057000.0), 300.0, "EPSG:25832")
+
+    tif_dir, _png, _out = _publier(tmp_path, monkeypatch, "MNT", {}, mnt_resolution=1.0, prepare=prepare)
+    assert sorted(p.name for p in tif_dir.iterdir()) == [
+        "EPSG_25832_0455_6057_MNT_A_0M50_x_u.tif",          # autre dalle (uid « x_u ») : jamais touchée
+        "EPSG_25832_0455_6057_MNT_A_1M00_u.tif"]
+
+
+def test_lambert93_autre_resolution_toujours_retiree(tmp_path, monkeypatch):
+    """Non-régression : en EPSG:2154, le MNT de la même dalle à une autre résolution part comme avant."""
     import pipeline.ign.products.results as results_mod
     from pipeline.output_paths import indice_tif_dir
-    monkeypatch.setattr(results_mod, "build_raster_pyramids", lambda *a, **k: True)
+    monkeypatch.setattr(results_mod, "build_raster_pyramids", lambda *a, **kw: True)
     temp, out = tmp_path / "temp", tmp_path / "out"
     temp.mkdir()
-    tuile = "EPSG_25832_0455_6057_EXT_mnt_1066"
-    _src, dest = get_rvt_source_and_dest_filenames("MNT", tuile, "0455", "6057", {}, name_suffix="_u",
-                                                   mnt_resolution=1.0, crs="EPSG:25832")
-    _tif(temp / dest, (455000.0, 6057000.0), 300.0, "EPSG:25832")
+    _src, dest = get_rvt_source_and_dest_filenames("MNT", "LHD_FXX_0455_6057", "0455", "6057", {}, mnt_resolution=1.0)
+    _tif(temp / dest, (455000.0, 6057000.0), 1000.0, "EPSG:2154")
     d = indice_tif_dir(out, "MNT")
     d.mkdir(parents=True)
-    for n in ("LHD_FXX_0455_6057_MNT_A_1M00_LAMB93_IGN69_u.tif", "EPSG_25832_0455_6057_MNT_A_0M50_u.tif"):
-        (d / n).write_bytes(b"x")
+    _tif(d / "LHD_FXX_0455_6057_MNT_A_0M50_LAMB93_IGN69.tif", (455000.0, 6057000.0), 1000.0, "EPSG:2154")
     results_mod.copy_final_products_to_results(
-        temp_dir=temp, output_dir=out, current_tile_name=tuile, products={"MNT": True}, output_structure={},
-        output_formats={"tif": True}, rvt_params={}, name_suffix="_u", mnt_resolution=1.0, crs="EPSG:25832")
-    assert [p.name for p in d.iterdir()] == ["EPSG_25832_0455_6057_MNT_A_1M00_u.tif"]
+        temp_dir=temp, output_dir=out, current_tile_name="LHD_FXX_0455_6057", products={"MNT": True},
+        output_structure={}, output_formats={"tif": True}, rvt_params={}, mnt_resolution=1.0)
+    assert [p.name for p in d.iterdir()] == ["LHD_FXX_0455_6057_MNT_A_1M00_LAMB93_IGN69.tif"]
+
+
+def test_existing_rvt_retire_l_ancien_nom_et_garde_la_source(tmp_path):
+    """Audit 2026-11-01 (D4) : indice fourni de 1 km, renommé ``EPSG_25832_…`` ; l'ancien ``LHD_FXX_…_LAMB93`` du
+    même dossier de sortie part (sinon la détection, qui lit tout le dossier, le traiterait deux fois)."""
+    from pipeline.modes.existing_rvt import run_existing_rvt
+    from pipeline.output_paths import indice_tif_dir
+    src = tmp_path / "src"
+    src.mkdir()
+    _tif(src / "ld.tif", (455000.0, 6057000.0), 1000.0, "EPSG:25832")
+    out = tmp_path / "out"
+    d = indice_tif_dir(out, "RVT")
+    d.mkdir(parents=True)
+    _tif(d / "LHD_FXX_0455_6057_LD_A_LAMB93.tif", (455000.0, 6057000.0), 1000.0, "EPSG:25832")
+    run_existing_rvt(existing_rvt_dir=src, output_dir=out, cv_config={"enabled": False, "target_rvt": "LD"},
+                     output_structure={}, indices_folder_name="RVT", crs="EPSG:25832")
+    assert [p.name for p in d.iterdir()] == ["EPSG_25832_0455_6057_LD_A.tif"]
+    assert [p.name for p in src.iterdir()] == ["ld.tif"]
 
 
 def test_rapport_anonymise_les_noms_hors_lambert93():
@@ -147,3 +218,17 @@ def test_rapport_anonymise_les_noms_hors_lambert93():
     from app.services.rapport_run import anonymiser
     assert anonymiser("EPSG_25832_0455_6057_LD_A_mnt_1066.png : boom") == "EPSG_25832_…_LD_A_mnt_1066.png : boom"
     assert anonymiser("LHD_FXX_0455_6057_LD_A_LAMB93.tif") == "LHD_FXX_…_LD_A_LAMB93.tif"
+
+
+@pytest.mark.parametrize("message,attendu", [
+    ("EPSG_3006_0455_6057_LD_A_u.png : x", "EPSG_3006_…_LD_A_u.png : x"),       # code EPSG à 4 chiffres
+    ("EPSG_2157_0455_6057_LD_A.tif", "EPSG_2157_…_LD_A.tif"),
+    ("EPSG_4647_32500_5800_MNT_A_1M00.tif", "EPSG_4647_…_MNT_A_1M00.tif"),       # coordonnées à 5 chiffres
+    ("CRS_PROJETE_0455_6057_LD_A.tif", "CRS_PROJETE_…_LD_A.tif"),
+    ("EPSG_32631_-012_5400_LD_A.tif", "EPSG_32631_…_LD_A.tif"),
+    ("Dalle 0986-6859 abandonnée", "Dalle … abandonnée"),
+])
+def test_rapport_anonymise_tout_prefixe_de_dalle(message, attendu):
+    """Audit 2026-11-01 : le motif générique effaçait un code EPSG à 4 chiffres et laissait fuir le y."""
+    from app.services.rapport_run import anonymiser
+    assert anonymiser(message) == attendu

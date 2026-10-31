@@ -10,7 +10,8 @@ from ..geo_utils import extract_tif_transform_data
 from ..coords import extract_xy_from_filename, get_raster_bounds, infer_xy_from_file
 from ..constants import IGN_TILE_SIZE_M
 from ..cv.external_runner import ImageProgressFn, TileProgressFn
-from ..ign.products.results import needs_refresh
+from ..ign.products.results import needs_refresh, retirer_publication_remplacee
+from ..ign.products.rvt_naming import est_lambert93
 from ..output_paths import indice_base_dir, indice_tif_dir, indice_jpg_dir, intermediaires_dir
 from ..tilespec import assign_crs_if_missing
 from .neighbor_halo import DEFAULT_HALO_MARGIN_M, NeighborHalo
@@ -353,7 +354,12 @@ def run_existing_rvt(
         if tif_out_dir is not None and tif_out_dir.resolve() != existing_rvt_dir.resolve():
             try:
                 normalized_name = _normalized_rvt_name(tif_path=tif_path, target_rvt=target_rvt, crs=crs)
-
+                if crs and not est_lambert93(crs):   # nom Lambert-93 d'un run d'avant la correction (2026-10-31)
+                    ancien = _normalized_rvt_name(tif_path=tif_path, target_rvt=target_rvt)
+                    if ancien != normalized_name:
+                        retirer_publication_remplacee(
+                            Path(ancien).stem, tif_dir=tif_out_dir, png_dir=jpg_output_dir, output_dir=output_dir,
+                            crs=crs, sources=(existing_rvt_dir,), log=log)
                 dest = tif_out_dir / normalized_name
                 dest_refreshed = needs_refresh(tif_path, dest)
                 if dest_refreshed:

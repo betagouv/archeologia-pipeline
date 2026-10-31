@@ -66,7 +66,7 @@ Laissées telles quelles, et pourquoi :
 
 | Lieu | Pourquoi |
 |---|---|
-| `ign/products/mnt.py`, `density.py` (`FILTER_EXTENT … [EPSG:2154]`), `results.copy_mnt_to_results`, `results.copy_final_products_to_results` (`assign_crs_if_missing` sans CRS) | LiDAR HD seulement (`ign_laz`/`local_laz`) ; en `existing_mnt` le MNT a déjà son CRS quand ces appels passent, ils sont sans effet |
+| `ign/products/mnt.py`, `density.py` (`FILTER_EXTENT … [EPSG:2154]`), `results.copy_final_products_to_results` (`assign_crs_if_missing` sans CRS ; reçoit le CRS du run depuis le 2026-10-31) | LiDAR HD seulement (`ign_laz`/`local_laz`) ; en `existing_mnt` le MNT a déjà son CRS quand ces appels passent, ils sont sans effet |
 | `ign/tile_resolver.py`, `ui/map_tools/grid_layer.py`, `tile_picker_tool.py`, `app/services/grid_view.py` | grille IGN des dalles LiDAR HD (France) |
 | `coverage_polygons.write_low_coverage_gpkg(crs="EPSG:2154")` | produit Couverture : nuage de points requis, indisponible hors LiDAR |
 | `ui/visualisation_tab.py` | catalogue des flux Géoplateforme (France), onglet masqué |

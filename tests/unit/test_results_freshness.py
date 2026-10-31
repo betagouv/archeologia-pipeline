@@ -202,7 +202,13 @@ class TestMntAUneAutreResolution:
         temp_dir.mkdir(exist_ok=True)
         _src, dest = get_rvt_source_and_dest_filenames(
             "MNT", TILE, "0623", "6864", {}, mnt_resolution=res, name_suffix=name_suffix)
-        (temp_dir / dest).write_bytes(b"mnt")
+        # Un vrai raster EPSG:2154 : le retrait ne touche qu'une publication au CRS du run (audit 2026-11-01).
+        rasterio = pytest.importorskip("rasterio")
+        import numpy as np
+        from rasterio.transform import from_origin
+        with rasterio.open(str(temp_dir / dest), "w", driver="GTiff", width=2, height=2, count=1, dtype="uint8",
+                           crs="EPSG:2154", transform=from_origin(623000.0, 6864000.0, res, res)) as ds:
+            ds.write(np.zeros((1, 2, 2), dtype="uint8"))
         copy_final_products_to_results(
             temp_dir=temp_dir, output_dir=tmp_path / "out", current_tile_name=TILE,
             products={"MNT": True}, output_structure={}, output_formats={"tif": True},

@@ -18,7 +18,7 @@ fileignoreconfig:
 - filename: tests/unit/test_indices_freshness.py
   checksum: 5d6193f34ee53622336bf4dbac572ea706c2b64729aef8e5209854a99044ce4e
 - filename: tests/unit/test_results_freshness.py
-  checksum: d5caa3fc729100e364efb3da8c80646fc68d86594e9be207080dcb08de1398fe
+  checksum: e2e9b89dd08e5332ca0379af2dc2ae3ed33d2c5b8236389a40c6b400adda7fc9
 - filename: .githooks/pre-push
   checksum: c3ba1eb42246b032f6a556dd8813efdeab7151044c6e9942a252822ca56905da
 - filename: CLAUDE.md
@@ -90,7 +90,7 @@ fileignoreconfig:
 - filename: src/pipeline/ign/products/indices.py
   checksum: 4be4dd2b74270c2bbdb9a55af6abba598aa1ac90bcbef08a1677757b02e00b1b
 - filename: src/pipeline/ign/products/results.py
-  checksum: 12da4901b3e9db22149bdf4ab4fbd7af2e5d19dbd11f0aa53b557858f1be3b27
+  checksum: 376c23bf29e510152282564823559ed703b980f65a7508cbc7257308e28a956d
 - filename: src/pipeline/modes/local_laz.py
   checksum: aa12c4a804b54e7b3dfe451251813a3a731790033acc95a5ad3691cb4ff138fd
 - filename: src/pipeline/output_paths.py
@@ -176,7 +176,7 @@ fileignoreconfig:
 - filename: tests/unit/test_preprocess_proxy.py
   checksum: e9d9c3d11b6c2d1dd9b23c06a1c4cb232e8294ec4b25db2104958e0cc4d8aaee
 - filename: tests/unit/test_results_crs.py
-  checksum: 3bc0005a041a9b449f58cfbfa24459bce3db7c0b60759dc2a75117f52f19829e
+  checksum: 1306d4e5b57933d194cad4ebc5a6fa47e8e491525884c08e2f996c97f13562a7
 - filename: tests/unit/test_run_context.py
   checksum: 584ce33c853bb089f36b3564bb052e7099382ce23a4b21fe5e5c28e049db0549
 - filename: tests/unit/test_source_modes.py
@@ -416,7 +416,7 @@ fileignoreconfig:
 - filename: src/pipeline/tilespec.py
   checksum: 9a999f8a1a1b084f9dc21f7d66a2630b8b94867fa0c6cbc89fbf0cded3b6b596
 - filename: dev/docs/crs_projete.md
-  checksum: 03aa77614206c92a6c3927e7f18c73b8e1d433739e37ab1f90e679dd0334404b
+  checksum: e49ee1a636a8029dfdb90c6dad13984278d9ba6aaff5978b787276c27c3d468d
 - filename: dev/runner_onnx/cv_runner_onnx_cli.py
   checksum: 4ab62c6132fd04f8b0a83199ddd3c8e6fd7626dc226ff9b63482c9adc5c4b4ac
 - filename: tests/unit/test_echelle_metres.py
@@ -424,9 +424,9 @@ fileignoreconfig:
 - filename: src/pipeline/ingest_plan.py
   checksum: ef9de6dc687698be3cb273673dd69df41b9cccd28bfb349d8f41159f715d4a14
 - filename: tests/unit/test_nommage_crs.py
-  checksum: 0755ae832ff2b65f038cc1edf0f7a3ced7bb127e59c315ed14bf706e2368e522
+  checksum: 2fefb919b6e423e97379e7bb200e7e316cb9be0aa236939c5ba8a0af691a76ea
 - filename: src/app/services/cv_post_service.py
   checksum: e038d06dcf3b1a1b64477580cfe892cc5257ebdf0a0e57f79599103410b6dc57
 - filename: src/app/services/rapport_run.py
-  checksum: 1a2e1aeb5b60af67153c6a08acfefeefef12d7cc78a8fba00917fa19e9da43a0
+  checksum: bd77f5abd99a3ad309fbd68320d3e8e43dd705d9937067376717702da4805bda
 version: '1.0'

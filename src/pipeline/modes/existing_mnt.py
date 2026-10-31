@@ -207,6 +207,7 @@ def _process_single_mnt_tile(
     feedback: Optional[Any] = None,
     name_suffix: str = "",
     crs: str = "EPSG:2154",
+    sources: Tuple[Path, ...] = (),
 ) -> bool:
     """Exécute le flux RVT → crop (ou copie) → copie finale pour une dalle unique.
 
@@ -217,6 +218,7 @@ def _process_single_mnt_tile(
     ``name_suffix`` (ex. ``"_<uid>"``) garantit l'unicité des produits de sortie
     pour des dalles sub-km partageant la même cellule km (placement par métadonnées,
     nommage par uid) ; ``""`` conserve le nommage IGN standard.
+    ``sources`` : dossiers d'entrée de l'utilisateur, où la publication ne retire jamais rien.
     ``crs`` : CRS du run (``ingest_plan.crs_des_entrees``), étiqueté sur le MNT copié
     s'il n'en porte pas (assignation, jamais de reprojection) : indices, mosaïques et
     détections en héritent. Sans effet sur un MNT qui a déjà son CRS.
@@ -282,6 +284,7 @@ def _process_single_mnt_tile(
         name_suffix=name_suffix,
         mnt_resolution=mnt_resolution,
         crs=crs,
+        sources=sources,
     )
     return True
 
@@ -424,6 +427,7 @@ def run_existing_mnt(
                 feedback=feedback,
                 name_suffix=name_suffix,
                 crs=crs,
+                sources=(existing_mnt_dir,),
             )
             if ok:
                 processed += 1
@@ -439,7 +443,6 @@ def run_existing_mnt(
             current_tile_name = _large_tile_name_for(mnt_path, bounds, crs)
             name_suffix = "_" + disambiguate(make_uid(mnt_path), seen_uids)
             log(
-
                 f"MNT {mnt_path.name}: emprise < 1 km (ou non alignée IGN) → "
                 f"crop sauté, emprise native conservée (uid={name_suffix[1:]})."
             )
@@ -474,6 +477,7 @@ def run_existing_mnt(
             feedback=feedback,
             name_suffix=name_suffix,
             crs=crs,
+            sources=(existing_mnt_dir,),
         )
         if ok:
             processed += 1

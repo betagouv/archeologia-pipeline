@@ -334,6 +334,29 @@ def crs_des_entrees(dir_path, exts: Sequence[str], declared_crs: Optional[str] =
     return normaliser_crs(declared_crs)
 
 
+def resolution_des_entrees(dir_path, exts: Sequence[str], defaut: float = 0.5) -> float:
+    """Résolution (m/px) d'un run ``existing_mnt``/``existing_rvt`` : celle de la première dalle exploitable,
+    comme :func:`crs_des_entrees` (SOURCE UNIQUE, calculée une fois par le runner). Sert à convertir en pixels
+    les réglages des indices, réglés en mètres (``app.services.indices_metres``), et à mettre les fenêtres de
+    détection à l'échelle. Un lot de résolutions mêlées est signalé au préflight (:func:`plan_from_specs`) ;
+    les rayons y sont convertis à la résolution de la première dalle. Ne lève jamais : ``defaut`` sinon."""
+    try:
+        from .tilespec import is_degenerate_tile
+
+        d = Path(str(dir_path))
+        norm = {e.lower().lstrip(".") for e in exts}
+        for p in sorted(d.iterdir()):
+            if not (p.is_file() and p.suffix.lower().lstrip(".") in norm):
+                continue
+            spec = TileSpec.from_raster(p)
+            if spec is None or is_degenerate_tile(spec) or not spec.pixel_size_x:
+                continue
+            return round(abs(float(spec.pixel_size_x)), 6)
+    except Exception:
+        pass
+    return float(defaut)
+
+
 def alerte_relance_autre_crs(trace: Optional[dict], crs_run: str) -> Optional[str]:
     """Message ⚠ si le dossier de sortie porte un traitement calculé dans un autre CRS que les
     entrées (``trace`` = ``livrable/traitement.json`` lu, ``None`` sans trace). Une trace sans

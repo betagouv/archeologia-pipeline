@@ -25,6 +25,8 @@ class ConfigManager:
         # Même dossier que la session pour la même raison : une mise à jour du
         # plugin ne doit pas emporter les configs de l'utilisateur.
         self.configs_dir = base / "configs"
+        #: Messages de la dernière conversion pixels → mètres (vide si rien à convertir).
+        self.migrations: list = []
         if settings_dir is not None:
             self._migrate_legacy_last_ui()
 
@@ -121,20 +123,22 @@ class ConfigManager:
                     "ve_factor": 1,
                     "save_as_8bit": True,
                 },
+                # Rayons et échelles en MÈTRES (clés ``*_m``, règle 2026-10-31) : convertis en pixels à la
+                # résolution réelle du MNT par app.services.indices_metres.en_px. Défauts = anciens défauts
+                # en pixels × 0,5 m (calibrés sur l'IGN) : la France à 0,5 m reste au bit près.
                 "svf": {
                     "noise_remove": 0,
                     "num_directions": 16,
-                    "radius": 10,
+                    "radius_m": 5.0,
                     "ve_factor": 1,
                     "save_as_8bit": True,
                 },
                 "opns": {
-                    # Bornes DURES de rvt:rvt_opns : rayon 10-50 px,
-                    # directions 8-64. Voir rvt_naming.opns_settings.
+                    # Directions 8-64 (bornes de rvt:rvt_opns, rvt_naming.opns_settings) ; rayon en mètres.
                     "opns_type": 0,
                     "noise_remove": 0,
                     "num_directions": 16,
-                    "radius": 10,
+                    "radius_m": 5.0,
                     "ve_factor": 1,
                     "save_as_8bit": True,
                 },
@@ -145,14 +149,14 @@ class ConfigManager:
                 },
                 "ldo": {
                     "angular_res": 15,
-                    "min_radius": 10,
-                    "max_radius": 20,
+                    "min_radius_m": 5.0,
+                    "max_radius_m": 10.0,
                     "observer_h": 1.7,
                     "ve_factor": 1,
                     "save_as_8bit": True,
                 },
                 "slrm": {
-                    "radius": 20,
+                    "radius_m": 10.0,
                     "ve_factor": 1,
                     "save_as_8bit": True,
                 },
@@ -175,23 +179,23 @@ class ConfigManager:
                     "save_as_8bit": True,
                 },
                 "mstp": {
-                    "local_scale_min": 3,
-                    "local_scale_max": 21,
-                    "local_scale_step": 2,
-                    "meso_scale_min": 23,
-                    "meso_scale_max": 203,
-                    "meso_scale_step": 18,
+                    "local_scale_min_m": 1.5,
+                    "local_scale_max_m": 10.5,
+                    "local_scale_step_m": 1.0,
+                    "meso_scale_min_m": 11.5,
+                    "meso_scale_max_m": 101.5,
+                    "meso_scale_step_m": 9.0,
                     # Échelle large calibrée sur le tuilage du plugin, PAS sur le
-                    # défaut RVT (223/2023/180). Un rayon de 2023 px demande
+                    # défaut RVT (223/2023/180 px). Un rayon de 2023 px demande
                     # 2023 px de contexte de chaque côté ; la marge par défaut
                     # (tile_overlap 20 % à 0,5 m) n'en fournit que 400 → RVT
                     # fabriquerait le voisinage manquant par symétrie et les
                     # dalles ne se raccorderaient plus. Cf.
                     # app.services.rvt_kernel_context, qui vérifie la relation
                     # à chaque run et signale les autres géométries.
-                    "broad_scale_min": 100,
-                    "broad_scale_max": 400,
-                    "broad_scale_step": 60,
+                    "broad_scale_min_m": 50.0,
+                    "broad_scale_max_m": 200.0,
+                    "broad_scale_step_m": 30.0,
                     "lightness": 0.9,
                     "save_as_8bit": True,
                 },
@@ -215,6 +219,8 @@ class ConfigManager:
             data = {}
 
         cfg = self.default_config()
+        # AVANT la fusion : les défauts portent déjà les clés en mètres, qui masqueraient la valeur enregistrée.
+        self._migrate_rvt_metres(data)
         self._deep_update(cfg, data)
         self._migrate_entity_ids(cfg)
         self._migrate_cv_runs(cfg)
@@ -241,6 +247,8 @@ class ConfigManager:
             return self.default_config()
 
         cfg = self.default_config()
+        # AVANT la fusion : les défauts portent déjà les clés en mètres, qui masqueraient la valeur enregistrée.
+        self._migrate_rvt_metres(data)
         self._deep_update(cfg, data)
         self._migrate_entity_ids(cfg)
         self._migrate_cv_runs(cfg)
@@ -308,6 +316,16 @@ class ConfigManager:
                         ent["id"] = _remap(str(ent["id"]))
                     if isinstance(ent.get("classes"), list):
                         ent["classes"] = [_remap(str(c)) for c in ent["classes"]]
+
+    def _migrate_rvt_metres(self, cfg: Dict[str, Any]) -> None:
+        """Rayons des indices enregistrés en pixels → mètres (0,5 m/px supposé), une seule fois
+        (app.services.indices_metres.migrer_px_vers_m). Les messages restent dans ``self.migrations``
+        pour que l'interface les dise."""
+        try:
+            from ..app.services.indices_metres import migrer_px_vers_m
+        except ImportError:  # pragma: no cover - tests (src/ sur le chemin)
+            from app.services.indices_metres import migrer_px_vers_m
+        self.migrations = migrer_px_vers_m(cfg.get("rvt_params")) if isinstance(cfg, dict) else []
 
     @staticmethod
     def _migrate_cv_runs(cfg: Dict[str, Any]) -> None:

@@ -145,6 +145,10 @@ class InstalledModel:
     # affiché ; aucun défaut 640 dupliqué ici.
     sahi_slice_px: int = 0
     sahi_overlap: float = 0.0
+    # Échelle d'entraînement (2026-10-31) : résolution des images (m/px, training_params.json) et anneau du LD
+    # en mètres, quelle que soit l'écriture des paramètres (indices_metres.anneau_m). None = inconnu.
+    gsd_m: Optional[float] = None
+    anneau_m: Optional[Tuple[float, float]] = None
 
 
 @dataclass(frozen=True)
@@ -270,6 +274,7 @@ def discover_installed_models(models_dir: Any) -> List[InstalledModel]:
         # une case « regrouper en clusters » sur l'entité source (redondant).
         cluster_options = _strip_derived_outputs(cluster_options, derived_targets)
         sahi_slice_px, sahi_overlap = _load_args_sahi(sub)
+        gsd_m, anneau = _echelle_entrainement(card, sub)
         models.append(
             InstalledModel(
                 name=sub.name,
@@ -299,9 +304,70 @@ def discover_installed_models(models_dir: Any) -> List[InstalledModel]:
                 model_dir=sub,
                 sahi_slice_px=sahi_slice_px,
                 sahi_overlap=sahi_overlap,
+                gsd_m=gsd_m,
+                anneau_m=anneau,
             )
         )
     return models
+
+
+def _echelle_entrainement(card: Dict[str, Any], model_dir: Path) -> Tuple[Optional[float], Optional[Tuple[float, float]]]:
+    """(GSD d'entraînement en m/px, anneau du LD en mètres) d'un modèle, depuis ``preferred_rvt.params`` du
+    model_card et ``training_params.json`` (``mnt.resolution``, ``rvt.params``). Les fiches écrivent l'anneau
+    de trois façons (``min_radius``/``max_radius`` px, ``rmin_px``/``rmax_px`` + ``gsd_m``, ``rmin_m``/``rmax_m``) :
+    ``indices_metres.anneau_m`` les ramène toutes en mètres. Jamais d'exception."""
+    from .indices_metres import anneau_m, gsd_de_fiche
+    try:
+        tp = json.loads((model_dir / "training_params.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        tp = {}
+    pref = card.get("preferred_rvt") if isinstance(card.get("preferred_rvt"), dict) else {}
+    params = pref.get("params") if isinstance(pref.get("params"), dict) else {}
+    if not params and isinstance((tp.get("rvt") or {}).get("params"), dict):
+        params = tp["rvt"]["params"]
+    gsd = gsd_de_fiche(params, tp)
+    return gsd, anneau_m(params, gsd)
+
+
+def avertissements_echelle(models: Sequence["InstalledModel"], resolution_m: float,
+                           rvt_params_px: Optional[Dict[str, Any]], *, indices_calcules: bool = True) -> List[str]:
+    """Messages pour l'archéologue quand l'échelle d'un modèle ne correspond pas à ses données (règle
+    2026-10-31), une fois par modèle et par run :
+
+    - résolution des données ≠ résolution d'entraînement : les fenêtres de détection sont mises à l'échelle
+      (le modèle voit le terrain à sa taille habituelle), mais il n'a jamais vu de données à cette résolution ;
+    - LD calculé avec un autre anneau (en mètres) que celui de l'entraînement : détections dégradées ;
+    - indices fournis (``indices_calcules`` faux) : leurs réglages ne sont pas connus, à vérifier.
+    """
+    from .indices_metres import format_m, valeur_m
+    msgs: List[str] = []
+    for m in models:
+        nom = f"« {m.display_name or m.name} »"
+        if m.gsd_m and resolution_m and abs(m.gsd_m - resolution_m) > 1e-6:
+            fen = ""
+            if m.sahi_slice_px:
+                px = max(32, int(m.sahi_slice_px * m.gsd_m / resolution_m + 0.5))
+                fen = (f" : chaque fenêtre d'analyse fait {px} px au lieu de {m.sahi_slice_px}, soit "
+                       f"{format_m(px * resolution_m)} de terrain comme à l'entraînement")
+            msgs.append(f"Modèle {nom} : vos données sont à {format_m(resolution_m)[:-2]} m/pixel, il a appris à "
+                        f"{format_m(m.gsd_m)[:-2]} m/pixel{fen}. Les structures gardent leur taille au sol, mais "
+                        "le modèle n'a jamais vu cette résolution : relisez ses détections avec plus de prudence.")
+        if m.target_rvt != "LD" or m.anneau_m is None:
+            continue
+        attendu = f"{format_m(m.anneau_m[0])[:-2]} à {format_m(m.anneau_m[1])}"
+        if not indices_calcules:
+            msgs.append(f"Modèle {nom} : il a appris sur une dominance locale (LD) d'anneau {attendu}. Les "
+                        "indices fournis ont été calculés hors du plugin, leurs réglages ne sont pas connus : "
+                        "vérifiez qu'ils ont cet anneau, sinon ses détections seront dégradées.")
+            continue
+        lo = valeur_m(rvt_params_px, "ldo", "min_radius_m", 5.0)
+        hi = valeur_m(rvt_params_px, "ldo", "max_radius_m", 10.0)
+        if abs(lo - m.anneau_m[0]) > 0.01 or abs(hi - m.anneau_m[1]) > 0.01:
+            msgs.append(f"Modèle {nom} : il a appris sur un LD d'anneau {attendu} ; le LD de ce traitement a un "
+                        f"anneau de {format_m(lo)[:-2]} à {format_m(hi)} (étape 2, image LD) : ses détections "
+                        "seront dégradées. Remettez l'anneau à la valeur d'entraînement.")
+    return msgs
+
 
 
 def _load_model_card(model_dir: Path) -> Optional[Dict[str, Any]]:
@@ -966,22 +1032,23 @@ def resolve_runs_from_entities(
             group["entity_classes"][eid] = ec_classes
             models_per_eid.setdefault(eid, []).append(model.name)
 
-    # Garde conservatoire (audit 2026-08-31, §RVT) : deux modèles au même TYPE de
-    # RVT mais aux preferred_rvt.params divergents partagent aujourd'hui UN seul
-    # raster (déduplication par type en aval) — les params de l'un des deux
-    # s'imposent à l'autre. Tant que la déduplication par (type, params) n'est
-    # pas implémentée, on le SIGNALE au lieu de le taire.
-    _params_par_type: Dict[str, Dict[Tuple, str]] = {}
+    # Garde (audit 2026-08-31, §RVT ; refaite le 2026-10-31) : les runs d'un même TYPE d'indice partagent UN
+    # raster, calculé avec les réglages de l'étape 2 — jamais avec ceux d'un modèle. On compare donc ce qui
+    # compte physiquement, l'anneau du LD EN MÈTRES (les fiches l'écrivent en pixels à 0,5 m ou à 1 m, en clés
+    # différentes : la comparaison des clés brutes signalait à tort enclos 5/10 px à 1 m contre cratères 10/20 px
+    # à 0,5 m, le même anneau 5–10 m). L'écart avec le LD réellement calculé est dit au run
+    # (avertissements_echelle, à la résolution des données).
+    _anneaux: Dict[str, Dict[Tuple[float, float], List[str]]] = {}
     for model_name, rvt in groups:
         m = models_by_name[model_name]
-        _params_par_type.setdefault(rvt, {})[m.rvt_params] = model_name
-    for rvt, variantes in _params_par_type.items():
+        if rvt == "LD" and m.anneau_m is not None:
+            _anneaux.setdefault(rvt, {}).setdefault(m.anneau_m, []).append(model_name)
+    for rvt, variantes in _anneaux.items():
         if len(variantes) > 1:
             logger.warning(
-                "RVT %s partagé par des modèles aux paramètres DIVERGENTS (%s) : "
-                "un seul raster sera calculé, avec les paramètres d'un seul modèle "
-                "— vérifier preferred_rvt.params des model_cards",
-                rvt, ", ".join(sorted(variantes.values())),
+                "LD partagé par des modèles appris sur des anneaux DIFFÉRENTS (%s) : un seul LD est calculé, "
+                "avec l'anneau réglé à l'étape 2 — au moins un modèle le verra autrement qu'à l'entraînement",
+                " ; ".join(f"{', '.join(sorted(n))} : {a[0]:g}–{a[1]:g} m" for a, n in sorted(variantes.items())),
             )
 
     runs: List[Dict[str, Any]] = []

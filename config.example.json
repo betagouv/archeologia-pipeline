@@ -90,7 +90,7 @@
     "svf": {
       "noise_remove": 0,
       "num_directions": 16,
-      "radius": 10,
+      "radius_m": 5.0,
       "ve_factor": 1,
       "save_as_8bit": true
     },
@@ -98,7 +98,7 @@
       "opns_type": 0,
       "noise_remove": 0,
       "num_directions": 16,
-      "radius": 10,
+      "radius_m": 5.0,
       "ve_factor": 1,
       "save_as_8bit": true
     },
@@ -109,14 +109,14 @@
     },
     "ldo": {
       "angular_res": 15,
-      "min_radius": 10,
-      "max_radius": 20,
+      "min_radius_m": 5.0,
+      "max_radius_m": 10.0,
       "observer_h": 1.7,
       "ve_factor": 1,
       "save_as_8bit": true
     },
     "slrm": {
-      "radius": 20,
+      "radius_m": 10.0,
       "ve_factor": 1,
       "save_as_8bit": true
     },
@@ -125,15 +125,15 @@
       "save_as_8bit": true
     },
     "mstp": {
-      "local_scale_min": 3,
-      "local_scale_max": 21,
-      "local_scale_step": 2,
-      "meso_scale_min": 23,
-      "meso_scale_max": 203,
-      "meso_scale_step": 18,
-      "broad_scale_min": 100,
-      "broad_scale_max": 400,
-      "broad_scale_step": 60,
+      "local_scale_min_m": 1.5,
+      "local_scale_max_m": 10.5,
+      "local_scale_step_m": 1.0,
+      "meso_scale_min_m": 11.5,
+      "meso_scale_max_m": 101.5,
+      "meso_scale_step_m": 9.0,
+      "broad_scale_min_m": 50.0,
+      "broad_scale_max_m": 200.0,
+      "broad_scale_step_m": 30.0,
       "lightness": 0.9,
       "save_as_8bit": true
     },

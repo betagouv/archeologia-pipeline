@@ -40,4 +40,4 @@ class TestBuildRunContextIntegration:
         ctx = build_run_context(sample_config_dict)
         
         assert ctx.rvt_params["mdh"]["num_directions"] == 16
-        assert ctx.rvt_params["svf"]["radius"] == 10
+        assert ctx.rvt_params["svf"]["radius_m"] == 5.0   # fixture en pixels : migrée (0,5 m/px)

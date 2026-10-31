@@ -92,8 +92,14 @@ RVT_PARAM_LABELS: Dict[str, Dict[str, str]] = {
     },
     "LD": {
         "angular_res": "Résolution angulaire",
-        "min_radius": "Rayon min",
-        "max_radius": "Rayon max",
+        # Fiches des modèles (2026-10-31) : l'anneau d'entraînement en mètres, la forme pixel + GSD gardée.
+        "rmin_m": "Rayon min (m)",
+        "rmax_m": "Rayon max (m)",
+        "gsd_m": "Résolution d'entraînement (m/px)",
+        "rmin_px": "Rayon min (px)",
+        "rmax_px": "Rayon max (px)",
+        "min_radius": "Rayon min (px)",
+        "max_radius": "Rayon max (px)",
         "observer_h": "Hauteur observateur",
         "ve_factor": "Facteur VE",
         "save_as_8bit": "Export 8 bits",

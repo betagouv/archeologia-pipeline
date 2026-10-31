@@ -56,7 +56,11 @@ def _as_bool(value: Any, default: bool) -> bool:
 #: suivent par fraîcheur (results.needs_refresh).
 VERSION_CALCUL = {"MSTP": "luminosite-reelle-1", "M_HS": "elevation-reelle-1",
                   # openness NÉGATIVE : sans-donnée exclu avant la négation (rvt-qgis le comptait comme un relief)
-                  "OPNS": "negative-sans-donnee-exclu-1"}
+                  "OPNS": "negative-sans-donnee-exclu-1",
+                  # Mélanges : rayons internes de rvt remis en mètres (2026-10-31). Même image à 0,5 m ; une autre
+                  # au même nom de fichier ailleurs, d'où la note (un recalcul, une fois, partout).
+                  "VAT": "rayons-en-metres-1", "PRISM": "rayons-en-metres-1", "CVAT": "rayons-en-metres-1",
+                  "CRIM": "rayons-en-metres-1"}
 
 
 #: Note d'un intermédiaire calculé par le mode de secours Processing (rvt-qgis) : réutilisé tant qu'on reste en
@@ -88,6 +92,18 @@ def _noter_calcul(produit: str, out: Path, par_le_moteur: bool) -> None:
         note.write_text(VERSION_CALCUL[produit] if par_le_moteur else NOTE_PROCESSING, encoding="utf-8")
     elif note.exists():
         note.unlink()
+
+
+def _avertir_rayons_processing(rvt_params: Dict[str, Any], log: LogFn) -> None:
+    """Secours Processing : rvt-qgis garde les rayons internes du mélange en pixels (calibrés pour 0,5 m)."""
+    try:
+        from ....app.services.indices_metres import RESOLUTION_REFERENCE_M, resolution_de
+    except ImportError:  # pragma: no cover - tests (src/ sur le chemin)
+        from app.services.indices_metres import RESOLUTION_REFERENCE_M, resolution_de
+    res = resolution_de(rvt_params)
+    if abs(res - RESOLUTION_REFERENCE_M) > 1e-9:
+        log(f"Mode de secours Processing : rayons internes du mélange laissés aux pixels de rvt-qgis (calibrés pour "
+            f"0,5 m), ici à {res:g} m/px — l'image n'est pas à l'échelle du moteur intégré.")
 
 
 def create_visualization_products(
@@ -427,7 +443,7 @@ def create_visualization_products(
         # Le nom de base pour les outputs intermédiaires de rvt_blender
         vat_output_base = standard_vat_tif.with_suffix("").with_name(standard_vat_tif.stem + "_outputs")
 
-        if needs_refresh(input_path, standard_vat_tif):
+        if _a_recalculer("VAT", input_path, standard_vat_tif):
             moteur = moteur_indices.par_le_moteur("VAT")
             log(format_params_line("RVT/VAT", {
                 "tile": current_tile_name,
@@ -452,10 +468,12 @@ def create_visualization_products(
                     "OUTPUT": str(vat_output_base),
                 }
                 run_qgis_algorithm("rvt:rvt_blender", params, feedback=feedback, context=context)
+                _avertir_rayons_processing(rvt_params, log)
 
             rendu = moteur_indices.sortie_rendue(vat_output_base, save_as_8bit)
             if rendu is not None:
                 shutil.copy2(str(rendu), str(standard_vat_tif))
+            _noter_calcul("VAT", standard_vat_tif, moteur)
         else:
             log(f"VAT réutilisé (cache intermédiaire) : {standard_vat_tif.name}")
 
@@ -523,7 +541,7 @@ def create_visualization_products(
         cvat = (rvt_params or {}).get("cvat", {})
         save_as_8bit = _as_bool(cvat.get("save_as_8bit", True), True)
         out = temp_dir / get_rvt_temp_filename("CVAT", current_tile_name, rvt_params)
-        if needs_refresh(input_path, out):
+        if _a_recalculer("CVAT", input_path, out):
             log(format_params_line("RVT/CVAT", {
                 "tile": current_tile_name,
                 "save_as_8bit": save_as_8bit,
@@ -538,6 +556,7 @@ def create_visualization_products(
                 save_as_8bit=save_as_8bit,
                 log=log,
             )
+            _noter_calcul("CVAT", out, True)
         else:
             log(f"CVAT réutilisé (cache intermédiaire) : {out.name}")
         if out.exists():
@@ -559,7 +578,7 @@ def create_visualization_products(
         cible = temp_dir / get_rvt_temp_filename("PRISM", current_tile_name, rvt_params)
         base_sorties = cible.with_suffix("").with_name(cible.stem + "_outputs")
 
-        if needs_refresh(input_path, cible):
+        if _a_recalculer("PRISM", input_path, cible):
             moteur = moteur_indices.par_le_moteur("PRISM")
             log(format_params_line("RVT/PRISM", {
                 "tile": current_tile_name,
@@ -584,10 +603,12 @@ def create_visualization_products(
                     "OUTPUT": str(base_sorties),
                 }
                 run_qgis_algorithm("rvt:rvt_blender", params, feedback=feedback, context=context)
+                _avertir_rayons_processing(rvt_params, log)
 
             rendu = moteur_indices.sortie_rendue(base_sorties, save_as_8bit)
             if rendu is not None:
                 shutil.copy2(str(rendu), str(cible))
+            _noter_calcul("PRISM", cible, moteur)
         else:
             log(f"PRISM réutilisé (cache intermédiaire) : {cible.name}")
 
@@ -603,7 +624,7 @@ def create_visualization_products(
         cut_max = _as_float(crim.get("max_colormap_cut", 1.0), 1.0)
         save_as_8bit = _as_bool(crim.get("save_as_8bit", True), True)
         out = temp_dir / get_rvt_temp_filename("CRIM", current_tile_name, rvt_params)
-        if needs_refresh(input_path, out):
+        if _a_recalculer("CRIM", input_path, out):
             log(format_params_line("RVT/CRIM", {
                 "tile": current_tile_name,
                 "colormap": colormap,
@@ -622,6 +643,7 @@ def create_visualization_products(
                 save_as_8bit=save_as_8bit,
                 log=log,
             )
+            _noter_calcul("CRIM", out, True)
         else:
             log(f"CRIM réutilisé (cache intermédiaire) : {out.name}")
         if out.exists():

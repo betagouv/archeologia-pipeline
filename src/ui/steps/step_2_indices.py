@@ -16,6 +16,8 @@ par le pipeline).
 """
 from __future__ import annotations
 
+import copy
+
 import logging
 from pathlib import Path
 
@@ -35,6 +37,7 @@ from qgis.PyQt.QtWidgets import (
 )
 
 from ...pipeline.ign.products.rvt_naming import PENTE_POURCENT, slope_unit as unite_pente
+from ...app.services.indices_metres import en_px, format_m, migrer_px_vers_m
 from ...app.services.rvt_kernel_context import (
     message_choix_inconnu,
     message_ecretage,
@@ -445,45 +448,46 @@ class IndicesPage(QWidget):
         cellule_directions.setVisible(not mdh_8.isChecked())
 
         # — SVF (svf) —
-        # Bornes = bornes DURES de rvt:rvt_svf, comme pour OPNS : au-delà,
-        # Processing refuse le paramètre et la dalle échoue (corrigé 2026-09-21,
-        # les champs acceptaient jusqu'à 100 000 px).
+        # Bornes : directions et bruit = bornes DURES de rvt:rvt_svf, comme pour OPNS. Le rayon se règle en
+        # MÈTRES (2026-10-31, indices_metres.BORNES_M = anciennes bornes 10-50 px × 0,5 m), converti en pixels à la
+        # résolution du MNT ; hors des bornes du calcul à cette résolution, refusé avant le lancement.
         svf_noise = self._mk_spin(0, 3, 0)
         svf_dirs = self._mk_spin(8, 64, 16)
-        svf_radius = self._mk_spin(10, 50, 10)
+        svf_radius = self._mk_mspin(5.0, 25.0, 5.0)
         svf_ve = self._mk_spin(1, 100, 1)
         svf_8 = self._mk_check()
         self._reg(("rvt_params", "svf"), "noise_remove", svf_noise, "int", 0)
         self._reg(("rvt_params", "svf"), "num_directions", svf_dirs, "int", 16)
-        self._reg(("rvt_params", "svf"), "radius", svf_radius, "int", 10)
+        self._reg(("rvt_params", "svf"), "radius_m", svf_radius, "float", 5.0)
         self._reg(("rvt_params", "svf"), "ve_factor", svf_ve, "int", 1)
         self._reg(("rvt_params", "svf"), "save_as_8bit", svf_8, "bool", True)
         self._reglages["SVF"] = self._make_reglages("SVF", [
             ("Suppression du bruit", svf_noise, _HELP_BRUIT),
             ("Nombre de directions", svf_dirs,
              "Directions d'horizon échantillonnées autour de chaque pixel."),
-            ("Rayon (px)", svf_radius,
-             "Distance de recherche de l'horizon, en pixels."),
+            ("Rayon (m)", svf_radius,
+             "Distance de recherche de l'horizon, au sol. Convertie en pixels à la résolution du MNT "
+             "(5 m = 10 px à 0,5 m, 5 px à 1 m)."),
             ("Facteur VE", svf_ve, _HELP_VE),
             ("", svf_8, _HELP_8BIT),
         ])
 
         # — OPNS (opns) : openness, un seul réglage de type comme rvt-qgis —
-        # Bornes des spins = bornes DURES de rvt:rvt_opns (rayon 10-50,
-        # directions 8-64, bruit 0-3) : hors de là, Processing refuse.
+        # Bornes des spins = bornes DURES de rvt:rvt_opns (directions 8-64, bruit 0-3) ; rayon en mètres, comme
+        # le SVF.
         opns_type = QComboBox()
         opns_type.addItem("Positive — les saillies", 0)
         opns_type.addItem("Négative — les creux", 1)
         opns_type.currentIndexChanged.connect(self._on_changed)
         opns_noise = self._mk_spin(0, 3, 0)
         opns_dirs = self._mk_spin(8, 64, 16)
-        opns_radius = self._mk_spin(10, 50, 10)
+        opns_radius = self._mk_mspin(5.0, 25.0, 5.0)
         opns_ve = self._mk_spin(1, 100, 1)
         opns_8 = self._mk_check()
         self._reg(("rvt_params", "opns"), "opns_type", opns_type, "combo", 0)
         self._reg(("rvt_params", "opns"), "noise_remove", opns_noise, "int", 0)
         self._reg(("rvt_params", "opns"), "num_directions", opns_dirs, "int", 16)
-        self._reg(("rvt_params", "opns"), "radius", opns_radius, "int", 10)
+        self._reg(("rvt_params", "opns"), "radius_m", opns_radius, "float", 5.0)
         self._reg(("rvt_params", "opns"), "ve_factor", opns_ve, "int", 1)
         self._reg(("rvt_params", "opns"), "save_as_8bit", opns_8, "bool", True)
         self._reglages["OPNS"] = self._make_reglages("OPNS", [
@@ -495,9 +499,9 @@ class IndicesPage(QWidget):
             ("Suppression du bruit", opns_noise, _HELP_BRUIT),
             ("Nombre de directions", opns_dirs,
              "Directions d'horizon échantillonnées autour de chaque pixel."),
-            ("Rayon (px)", opns_radius,
-             "Distance de recherche de l'horizon, en pixels. Borne la taille "
-             "des formes vues : 10 px = 5 m au pas de 0,5 m."),
+            ("Rayon (m)", opns_radius,
+             "Distance de recherche de l'horizon, au sol. Borne la taille des formes vues ; "
+             "convertie en pixels à la résolution du MNT."),
             ("Facteur VE", opns_ve, _HELP_VE),
             ("", opns_8, _HELP_8BIT),
         ])
@@ -520,8 +524,10 @@ class IndicesPage(QWidget):
 
         # — LD (ldo) —
         ld_ang = self._mk_spin(4, 32, 15)
-        ld_rmin = self._mk_spin(1, 100, 10)   # 0 : division par une distance nulle
-        ld_rmax = self._mk_spin(1, 100, 20)
+        # Anneau en MÈTRES (2026-10-31) : 5–10 m, celui sur lequel tous les modèles ont appris, quelle que soit la
+        # résolution (10–20 px à 0,5 m, 5–10 px à 1 m). Bornes = anciennes bornes 1-100 px × 0,5 m.
+        ld_rmin = self._mk_mspin(0.5, 50.0, 5.0)   # 0 : division par une distance nulle
+        ld_rmax = self._mk_mspin(0.5, 50.0, 10.0)
         ld_obs = self._mk_dspin(0.5, 20.0, 1.7)
         # rayon min ≤ rayon max : sinon aucune distance, image sans valeur. Le champ modifié POUSSE l'autre (et non des
         # bornes croisées, qui ne se posaient qu'au premier changement du voisin et dépendaient de l'ordre de
@@ -531,18 +537,19 @@ class IndicesPage(QWidget):
         ld_ve = self._mk_spin(1, 100, 1)
         ld_8 = self._mk_check()
         self._reg(("rvt_params", "ldo"), "angular_res", ld_ang, "int", 15)
-        self._reg(("rvt_params", "ldo"), "min_radius", ld_rmin, "int", 10)
-        self._reg(("rvt_params", "ldo"), "max_radius", ld_rmax, "int", 20)
+        self._reg(("rvt_params", "ldo"), "min_radius_m", ld_rmin, "float", 5.0)
+        self._reg(("rvt_params", "ldo"), "max_radius_m", ld_rmax, "float", 10.0)
         self._reg(("rvt_params", "ldo"), "observer_h", ld_obs, "float", 1.7)
         self._reg(("rvt_params", "ldo"), "ve_factor", ld_ve, "int", 1)
         self._reg(("rvt_params", "ldo"), "save_as_8bit", ld_8, "bool", True)
         self._reglages["LD"] = self._make_reglages("LD", [
             ("Résolution angulaire (°)", ld_ang,
              "Pas angulaire du balayage. Plus petit = plus précis mais plus lent."),
-            ("Rayon min (px)", ld_rmin,
-             "Distance minimale prise en compte autour du pixel."),
-            ("Rayon max (px)", ld_rmax,
-             "Distance maximale prise en compte autour du pixel."),
+            ("Rayon min (m)", ld_rmin,
+             "Distance minimale prise en compte autour du pixel, au sol. Les modèles de détection "
+             "ont appris sur l'anneau 5–10 m."),
+            ("Rayon max (m)", ld_rmax,
+             "Distance maximale prise en compte autour du pixel, au sol."),
             ("Hauteur observateur (m)", ld_obs,
              "Hauteur de l'œil virtuel au-dessus du sol."),
             ("Facteur VE", ld_ve, _HELP_VE),
@@ -550,15 +557,15 @@ class IndicesPage(QWidget):
         ])
 
         # — SLRM (slrm) —
-        slrm_radius = self._mk_spin(10, 50, 20)
+        slrm_radius = self._mk_mspin(5.0, 25.0, 10.0)   # mètres (anciennes bornes 10-50 px × 0,5 m)
         slrm_ve = self._mk_spin(1, 100, 1)
         slrm_8 = self._mk_check()
-        self._reg(("rvt_params", "slrm"), "radius", slrm_radius, "int", 20)
+        self._reg(("rvt_params", "slrm"), "radius_m", slrm_radius, "float", 10.0)
         self._reg(("rvt_params", "slrm"), "ve_factor", slrm_ve, "int", 1)
         self._reg(("rvt_params", "slrm"), "save_as_8bit", slrm_8, "bool", True)
         self._reglages["SLRM"] = self._make_reglages("SLRM", [
-            ("Rayon (px)", slrm_radius,
-             "Rayon du lissage : sépare le micro-relief du relief général."),
+            ("Rayon (m)", slrm_radius,
+             "Rayon du lissage, au sol : sépare le micro-relief du relief général."),
             ("Facteur VE", slrm_ve, _HELP_VE),
             ("", slrm_8, _HELP_8BIT),
         ])
@@ -579,46 +586,47 @@ class IndicesPage(QWidget):
         ])
 
         # — MSTP (mstp) : position topographique multi-échelle —
-        mstp_lmin = self._mk_spin(1, 100000, 3)
-        mstp_lmax = self._mk_spin(1, 100000, 21)
-        mstp_lstep = self._mk_spin(1, 100000, 2)
-        mstp_mmin = self._mk_spin(1, 100000, 23)
-        mstp_mmax = self._mk_spin(1, 100000, 203)
-        mstp_mstep = self._mk_spin(1, 100000, 18)
+        # Échelles en MÈTRES (2026-10-31) : anciens défauts et bornes en pixels × 0,5 m.
+        mstp_lmin = self._mk_mspin(0.5, 50000.0, 1.5)
+        mstp_lmax = self._mk_mspin(0.5, 50000.0, 10.5)
+        mstp_lstep = self._mk_mspin(0.5, 50000.0, 1.0)
+        mstp_mmin = self._mk_mspin(0.5, 50000.0, 11.5)
+        mstp_mmax = self._mk_mspin(0.5, 50000.0, 101.5)
+        mstp_mstep = self._mk_mspin(0.5, 50000.0, 9.0)
         # Échelle large : défauts du plugin (100/400/60), pas ceux de RVT
         # (223/2023/180) — un rayon de 2023 px dépasse largement le contexte que
         # la marge de tuilage fournit. Cf. app.services.rvt_kernel_context.
-        mstp_bmin = self._mk_spin(1, 100000, 100)
-        mstp_bmax = self._mk_spin(1, 100000, 400)
-        mstp_bstep = self._mk_spin(1, 100000, 60)
+        mstp_bmin = self._mk_mspin(0.5, 50000.0, 50.0)
+        mstp_bmax = self._mk_mspin(0.5, 50000.0, 200.0)
+        mstp_bstep = self._mk_mspin(0.5, 50000.0, 30.0)
         mstp_light = self._mk_dspin(0.1, 5.0, 0.9)
         # Pas de « Facteur VE » : le MSTP divise l'écart par l'écart type local, l'exagération s'y annule (mesuré :
         # médiane de l'écart 5·10⁻⁶ ; tests/unit/test_effet_reglages.py). Le champ ne faisait rien.
         mstp_8 = self._mk_check()
-        self._reg(("rvt_params", "mstp"), "local_scale_min", mstp_lmin, "int", 3)
-        self._reg(("rvt_params", "mstp"), "local_scale_max", mstp_lmax, "int", 21)
-        self._reg(("rvt_params", "mstp"), "local_scale_step", mstp_lstep, "int", 2)
-        self._reg(("rvt_params", "mstp"), "meso_scale_min", mstp_mmin, "int", 23)
-        self._reg(("rvt_params", "mstp"), "meso_scale_max", mstp_mmax, "int", 203)
-        self._reg(("rvt_params", "mstp"), "meso_scale_step", mstp_mstep, "int", 18)
-        self._reg(("rvt_params", "mstp"), "broad_scale_min", mstp_bmin, "int", 100)
-        self._reg(("rvt_params", "mstp"), "broad_scale_max", mstp_bmax, "int", 400)
-        self._reg(("rvt_params", "mstp"), "broad_scale_step", mstp_bstep, "int", 60)
+        self._reg(("rvt_params", "mstp"), "local_scale_min_m", mstp_lmin, "float", 1.5)
+        self._reg(("rvt_params", "mstp"), "local_scale_max_m", mstp_lmax, "float", 10.5)
+        self._reg(("rvt_params", "mstp"), "local_scale_step_m", mstp_lstep, "float", 1.0)
+        self._reg(("rvt_params", "mstp"), "meso_scale_min_m", mstp_mmin, "float", 11.5)
+        self._reg(("rvt_params", "mstp"), "meso_scale_max_m", mstp_mmax, "float", 101.5)
+        self._reg(("rvt_params", "mstp"), "meso_scale_step_m", mstp_mstep, "float", 9.0)
+        self._reg(("rvt_params", "mstp"), "broad_scale_min_m", mstp_bmin, "float", 50.0)
+        self._reg(("rvt_params", "mstp"), "broad_scale_max_m", mstp_bmax, "float", 200.0)
+        self._reg(("rvt_params", "mstp"), "broad_scale_step_m", mstp_bstep, "float", 30.0)
         self._reg(("rvt_params", "mstp"), "lightness", mstp_light, "float", 0.9)
         self._reg(("rvt_params", "mstp"), "save_as_8bit", mstp_8, "bool", True)
         self._reglages["MSTP"] = self._make_reglages("MSTP", [
-            ("Échelle locale — rayon min (px)", mstp_lmin,
+            ("Échelle locale — rayon min (m)", mstp_lmin,
              "Détails fins (canal bleu de la composition RGB)."),
-            ("Échelle locale — rayon max (px)", mstp_lmax, "Borne haute de l'échelle locale."),
-            ("Échelle locale — pas (px)", mstp_lstep, "Pas d'échantillonnage de l'échelle locale."),
-            ("Échelle méso — rayon min (px)", mstp_mmin,
+            ("Échelle locale — rayon max (m)", mstp_lmax, "Borne haute de l'échelle locale."),
+            ("Échelle locale — pas (m)", mstp_lstep, "Pas d'échantillonnage de l'échelle locale."),
+            ("Échelle méso — rayon min (m)", mstp_mmin,
              "Structures intermédiaires (canal vert)."),
-            ("Échelle méso — rayon max (px)", mstp_mmax, "Borne haute de l'échelle méso."),
-            ("Échelle méso — pas (px)", mstp_mstep, "Pas d'échantillonnage de l'échelle méso."),
-            ("Échelle large — rayon min (px)", mstp_bmin,
+            ("Échelle méso — rayon max (m)", mstp_mmax, "Borne haute de l'échelle méso."),
+            ("Échelle méso — pas (m)", mstp_mstep, "Pas d'échantillonnage de l'échelle méso."),
+            ("Échelle large — rayon min (m)", mstp_bmin,
              "Grandes formes du paysage (canal rouge)."),
-            ("Échelle large — rayon max (px)", mstp_bmax, "Borne haute de l'échelle large."),
-            ("Échelle large — pas (px)", mstp_bstep, "Pas d'échantillonnage de l'échelle large."),
+            ("Échelle large — rayon max (m)", mstp_bmax, "Borne haute de l'échelle large."),
+            ("Échelle large — pas (m)", mstp_bstep, "Pas d'échantillonnage de l'échelle large."),
             ("Luminosité", mstp_light, "Clarté globale de l'image composite (0.1–5)."),
             ("", mstp_8, _HELP_8BIT),
         ])
@@ -743,6 +751,18 @@ class IndicesPage(QWidget):
         s.setDecimals(2)
         s.setRange(lo, hi)
         s.setSingleStep(0.1)
+        s.setValue(val)
+        s.valueChanged.connect(self._on_changed)
+        return s
+
+    def _mk_mspin(self, lo: float, hi: float, val: float) -> NoWheelDoubleSpinBox:
+        """Champ d'une distance au sol (m), au pas de 0,5 m — la résolution du LiDAR HD : à 0,5 m chaque
+        valeur proposée tombe sur un nombre entier de pixels (règle 2026-10-31, indices_metres)."""
+        s = NoWheelDoubleSpinBox()
+        s.setDecimals(1)
+        s.setRange(lo, hi)
+        s.setSingleStep(0.5)
+        s.setSuffix(" m")
         s.setValue(val)
         s.valueChanged.connect(self._on_changed)
         return s
@@ -953,6 +973,7 @@ class IndicesPage(QWidget):
 
         overlap = self._overlap_spin.value()
         resolution = self._res_spin.value()
+        rvt_params = en_px(rvt_params, resolution)   # rayons réglés en mètres, contrôlés en pixels
         messages = tiled_context_warnings(
             self._products, rvt_params,
             tile_overlap_percent=overlap, mnt_resolution=resolution,
@@ -960,8 +981,9 @@ class IndicesPage(QWidget):
         if messages:
             self._ctx_hint.setText("⚠  " + "\n⚠  ".join(messages))
         else:
+            marge = tile_margin_px(overlap, resolution)
             self._ctx_hint.setText(
-                f"✓  Contexte fourni aux noyaux RVT : {tile_margin_px(overlap, resolution)} px "
+                f"✓  Contexte fourni aux noyaux RVT : {format_m(marge * resolution)} ({marge} px) "
                 "de chaque côté de la dalle — suffisant pour les produits cochés."
             )
 
@@ -1106,6 +1128,13 @@ class IndicesPage(QWidget):
     def _load_advanced(self, config: dict) -> None:
         # Valeurs hors bornes écrêtées par le champ : dites (journal + toast de l'assistant), plus en silence.
         self.ecretages = []
+        # Rayons encore en pixels (configuration nommée d'avant le 2026-10-31) : convertis en mètres sur une
+        # copie (0,5 m/px supposé), et dits de même.
+        if isinstance(config.get("rvt_params"), dict):
+            config = {**config, "rvt_params": copy.deepcopy(config["rvt_params"])}
+            for msg in migrer_px_vers_m(config["rvt_params"]):
+                logger.warning(msg)
+                self.ecretages.append(msg)
         for produit, section, key, widget, kind, default in self._adv_fields:
             container = config
             for part in section:

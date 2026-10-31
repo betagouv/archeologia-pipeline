@@ -103,11 +103,11 @@ def test_vignette_et_formats(tmp_path):
 
 def test_decrire_reglages_en_mots():
     assert decrire_reglages("svf", {"radius": 10, "num_directions": 16, "noise_remove": 0, "ve_factor": 1, "save_as_8bit": True}) == \
-        "rayon 10 px, 16 directions, sans suppression du bruit"
+        "rayon 5 m (10 px), 16 directions, sans suppression du bruit, pixels de 0,5 m"   # ancienne clé en px : 0,5 m/px
     assert decrire_reglages("ldo", {"angular_res": 15, "min_radius": 10, "max_radius": 20, "observer_h": 1.7, "ve_factor": 2}) == \
-        "rayon de 10 à 20 px, résolution angulaire 15°, hauteur d'observateur 1,7 m, exagération verticale ×2"
+        "rayon de 5 à 10 m (10 à 20 px), résolution angulaire 15°, hauteur d'observateur 1,7 m, exagération verticale ×2, pixels de 0,5 m"
     assert decrire_reglages("opns", {"opns_type": 1, "radius": 12, "num_directions": 8, "noise_remove": 2}) == \
-        "ouverture négative, les creux, rayon 12 px, 8 directions, suppression du bruit 2"
+        "ouverture négative, les creux, rayon 6 m (12 px), 8 directions, suppression du bruit 2, pixels de 0,5 m"
     assert decrire_reglages("vat", {"terrain_type": 2}) == "terrain pentu"
     assert decrire_reglages("slope", {"unit": 1}) == "en pourcentage"
     assert decrire_reglages("hs", {"sun_azimuth": 315, "sun_elevation": 35}) == "azimut solaire 315°, élévation solaire 35°"
@@ -118,8 +118,17 @@ def test_decrire_reglages_en_mots():
                                      "meso_scale_min": 23, "meso_scale_max": 203, "meso_scale_step": 18,
                                      "broad_scale_min": 100, "broad_scale_max": 400, "broad_scale_step": 60,
                                      "lightness": 1.2, "ve_factor": 1, "save_as_8bit": True})
-    assert mstp.startswith("échelle locale de 3 à 21 px par pas de 2, échelle méso") and "luminosité 1,2" in mstp
+    assert mstp.startswith("échelle locale de 1,5 à 10,5 m par pas de 1 m (3 à 21 px, pas de 2), échelle méso")         and "luminosité 1,2" in mstp
     assert "save_as_8bit" not in mstp and "exagération" not in mstp
+
+
+def test_decrire_reglages_en_metres_a_la_resolution_du_run():
+    """Règle 2026-10-31 : la valeur réglée en mètres et les pixels que le calcul a reçus à la résolution du run."""
+    ld = {"angular_res": 15, "min_radius_m": 5.0, "max_radius_m": 10.0, "min_radius": 5, "max_radius": 10,
+          "observer_h": 1.7}
+    assert decrire_reglages("ldo", ld, 1.0) == ("rayon de 5 à 10 m (5 à 10 px), résolution angulaire 15°, "
+                                                "hauteur d'observateur 1,7 m, pixels de 1 m")
+    assert decrire_reglages("svf", {"radius_m": 5.0}, 0.25).startswith("rayon 5 m (20 px)")
 
 
 def test_construire_html_ne_situe_pas_et_couvre_les_sections():
@@ -141,7 +150,7 @@ def test_construire_html_ne_situe_pas_et_couvre_les_sections():
     assert "Modèle &lt;A&gt;" in h and "noyau &lt;40&gt;" in h and "<A>" not in h
     for morceau in (
         "hypothèses", "Zone traitée", "9 km² couverts, en 9 dalles.", "ni nom de dalle ni coordonnée",
-        "<h2>Produits</h2>", "rayon 10 px, 16 directions, sans suppression du bruit", "résolution 0,5 m",
+        "<h2>Produits</h2>", "rayon 5 m (10 px), 16 directions, sans suppression du bruit", "résolution 0,5 m",
         "Détection automatique", "<th>Seuil</th>", "0,26", ", sur LD", "12 images en 4min 07s (≈ 21s par image)", "reprise du run précédent",
         "Bilan de fiabilité", "Par km²", "11,4", "très probable 12 · probable 30 · possible 41 · douteux 20",
         "très probable : au moins 85 % de vrais objets", "douteux : moins de 35 %",
@@ -188,7 +197,7 @@ def test_finalize_ecrit_le_rapport_sans_rien_situer(tmp_path, monkeypatch):
     assert ok is True
     h = (tmp_path / "livrable" / NOM_RAPPORT).read_text(encoding="utf-8")
     assert "Nuages locaux" in h and "2 dalles traitées, sur 3 prévues." in h
-    assert "rayon de 10 à 20 px, résolution angulaire 15°, hauteur d'observateur 1,7 m" in h
+    assert "rayon de 5 à 10 m (10 à 20 px), résolution angulaire 15°, hauteur d'observateur 1,7 m" in h
     assert "Modèle test (LD), sur LD" in h and "0,29" in h and "4 images en 9s" in h and "Parcellaire" in h
     assert "Dalle 3 abandonnée" in h and "Une dalle est abandonnée" in h
     assert str(tmp_path) not in h and "0988" not in h and "LHD_FXX_…_LD.tif" in h

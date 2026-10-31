@@ -15,7 +15,7 @@ pipeline, et a donc une logique différente.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple
 
 from ..progress_reporter import report_busy, report_stage_id
 from ..progress_stages import Stage
@@ -129,6 +129,26 @@ def resolve_uncropped_tif(
     return None
 
 
+def annoncer_echelle(cv_cfg: Dict[str, Any], cv_runs: List[Dict[str, Any]], reporter: "ProgressReporter",
+                     rvt_params_px: Optional[Dict[str, Any]], *, indices_calcules: bool = True) -> None:
+    """Avertissements d'échelle du run (``model_orchestrator.avertissements_echelle``), une fois par modèle :
+    résolution des données ≠ résolution d'entraînement, anneau du LD différent, indices fournis aux réglages
+    inconnus. Best-effort : un modèle illisible ne bloque jamais la détection."""
+    from .indices_metres import resolution_de
+    from .model_orchestrator import avertissements_echelle, discover_installed_models
+    try:
+        racine = Path(str((cv_cfg or {}).get("models_dir") or "data/models"))
+        if not racine.is_absolute():
+            racine = Path(__file__).resolve().parents[3] / racine
+        noms = {Path(str(r.get("selected_model") or r.get("model") or "")).name for r in cv_runs}
+        modeles = [m for m in discover_installed_models(racine) if m.name in noms]
+        for msg in avertissements_echelle(modeles, resolution_de(rvt_params_px), rvt_params_px,
+                                          indices_calcules=indices_calcules):
+            reporter.user_warning(msg)
+    except Exception as e:  # noqa: BLE001
+        reporter.info(f"Avertissements d'échelle ignorés ({e})")
+
+
 def run_cv_post_loop(
     *,
     ctx: "RunContext",
@@ -199,6 +219,7 @@ def run_cv_post_loop(
 
     narrator = create_user_narrator(reporter)
     narrator.cv_start(len(cv_runs))
+    annoncer_echelle(cv_cfg, cv_runs, reporter, rvt_params)
 
     # total_detections par run (résumé du runner) — None exclus : si aucun
     # run n'a de résumé (fallback, vieux binaire), pas d'annonce de total.

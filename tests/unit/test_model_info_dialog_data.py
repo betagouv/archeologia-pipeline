@@ -69,8 +69,9 @@ class TestRvtParamLabels:
     def test_ld_canonical_keys(self):
         labels = RVT_PARAM_LABELS["LD"]
         assert labels["angular_res"] == "Résolution angulaire"
-        assert labels["min_radius"] == "Rayon min"
-        assert labels["max_radius"] == "Rayon max"
+        assert labels["min_radius"] == "Rayon min (px)"   # unité dite depuis le 2026-10-31 (fiches en m ou px)
+        assert labels["max_radius"] == "Rayon max (px)"
+        assert labels["rmin_m"] == "Rayon min (m)" and labels["gsd_m"].startswith("Résolution")
         assert labels["observer_h"] == "Hauteur observateur"
         assert labels["ve_factor"] == "Facteur VE"
         assert labels["save_as_8bit"] == "Export 8 bits"

@@ -4,6 +4,7 @@ import os
 
 import pytest
 
+from app.services.indices_metres import en_px
 from app.services.rvt_kernel_context import bornes_errors, message_choix_inconnu, message_ecretage
 
 WIZARD = os.path.join(os.path.dirname(__file__), "..", "..", "src", "ui", "wizard_dialog.py")
@@ -42,10 +43,10 @@ def _classify_error_step():
 @pytest.mark.parametrize("produit,section,valeurs", [
     ("LD", "ldo", {"min_radius": 30, "max_radius": 20}),
     ("LD", "ldo", {"angular_res": 2}),
-    ("SLRM", "slrm", {"radius": 80}),
+    ("SLRM", "slrm", {"radius_m": 40}),   # mètres (2026-10-31) : hors des bornes du réglage, 5 à 25 m
     ("MSTP", "mstp", {"lightness": 6.0}),
 ])
 def test_erreur_de_bornes_rangee_sur_l_etape_2(produit, section, valeurs):
     classer = _classify_error_step()
-    erreurs = bornes_errors({produit: True}, {section: valeurs})
+    erreurs = bornes_errors({produit: True}, en_px({section: valeurs}, 0.5))
     assert erreurs and all(classer(e) == 2 for e in erreurs)

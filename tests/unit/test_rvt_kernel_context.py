@@ -219,11 +219,11 @@ class TestRasterContextWarningsInABatch:
             {"LD": True}, {}, width_px=40, height_px=40, in_batch=True
         )
         assert "Rayon max" in msg
-        assert "≤ 5 px" in msg
+        assert "≤ 2,5 m" in msg   # 5 px à 0,5 m : le conseil parle en mètres (2026-10-31)
 
     def test_a_single_raster_keeps_the_direct_advice(self):
         (msg,) = raster_context_warnings({"LD": True}, {}, width_px=40, height_px=40)
-        assert "Réduisez « Rayon max (px) » à ≤ 5 px" in msg
+        assert "Réduisez « Rayon max (m) » à ≤ 2,5 m" in msg
 
 
 def test_defauts_mstp_miroir_de_rvt_naming():

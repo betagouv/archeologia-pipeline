@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import time
+from pathlib import Path
 from typing import TYPE_CHECKING, Optional
 
 from ..cancel_token import CancelToken
 from ..progress_reporter import ProgressReporter, report_busy, report_stage_id
 from ..progress_stages import Stage
-from ..run_context import RunContext
+from ..run_context import RunContext, rvt_params_du_run
 from ..services.cv_post_service import _model_display_name, noter_echec_detection, resolve_uncropped_tif
 from ..services.carte_graphique import enregistrer as enregistrer_appareil, preparer_run as preparer_appareil, registre_path
 from ..services.finalize_service import finalize_pipeline
@@ -36,10 +37,10 @@ class ExistingRvtRunner:
         slog: Optional["StructuredLogger"] = None,
     ) -> Optional[bool]:
         try:
-            from ...pipeline.ingest_plan import crs_des_entrees
+            from ...pipeline.ingest_plan import crs_des_entrees, resolution_des_entrees
             from ...pipeline.modes.existing_rvt import run_existing_rvt
         except ImportError:
-            from pipeline.ingest_plan import crs_des_entrees
+            from pipeline.ingest_plan import crs_des_entrees, resolution_des_entrees
             from pipeline.modes.existing_rvt import run_existing_rvt
 
         start_time = time.time()
@@ -54,6 +55,9 @@ class ExistingRvtRunner:
         # CRS du run (règle 2026-10-31) : celui des indices fournis, sans reprojection.
         crs = crs_des_entrees(existing_rvt_dir, ("tif", "tiff"), ctx.files.declared_crs)
         reporter.info(f"Système de coordonnées du run : {crs if crs.startswith('EPSG:') else 'CRS projeté (WKT)'}")
+        # Indices fournis : rien à recalculer, mais leur résolution fixe l'échelle des fenêtres de détection et
+        # les réglages pixel du nommage (règle 2026-10-31).
+        rvt_px = rvt_params_du_run(ctx, resolution_des_entrees(existing_rvt_dir, ("tif", "tiff")))
         target_rvt = str(cv_config.get("target_rvt", "LD"))
 
         # Collecter tous les RVT cibles uniques depuis les runs
@@ -91,6 +95,12 @@ class ExistingRvtRunner:
         narrator = create_user_narrator(reporter)
         if cv_runs:
             narrator.cv_start(len(cv_runs))
+            from ..services.cv_post_service import annoncer_echelle
+            # Indices produits par le plugin : l'anneau se lit dans leur nom (LD_A15_Rmin10_Rmax20_…).
+            from ..services.indices_metres import anneau_px_du_nom
+            noms = [str(existing_rvt_dir)] + sorted(p.name for p in Path(existing_rvt_dir).glob("*.tif*"))[:1]
+            anneau = next((a for a in map(anneau_px_du_nom, noms) if a), None)
+            annoncer_echelle(cv_config, cv_runs, reporter, rvt_px, indices_calcules=False, anneau_fourni_px=anneau)
             reporter.stage("Computer Vision")
             # La barre reste dans la bande « préparation » (0–10) pendant la
             # conversion TIF→PNG du 1er run (_on_prep_progress), puis passe
@@ -147,7 +157,7 @@ class ExistingRvtRunner:
                 def inference_tif_resolver(
                     cropped, _rvt=run_rvt, _src=halo_dir,
                 ):
-                    return resolve_uncropped_tif(cropped, _src, _rvt, ctx.rvt_params)
+                    return resolve_uncropped_tif(cropped, _src, _rvt, rvt_px)
 
             res = run_existing_rvt(
                 existing_rvt_dir=existing_rvt_dir,
@@ -156,7 +166,7 @@ class ExistingRvtRunner:
                 output_structure=processing.output_structure,
                 log=lambda m: reporter.info(m),
                 cancel_check=cancel.is_cancelled,
-                rvt_params=ctx.rvt_params,
+                rvt_params=rvt_px,
                 global_color_map=global_color_map,
                 indices_folder_name="RVT",
                 image_progress=_on_image_progress if cv_runs else None,
@@ -244,7 +254,7 @@ class ExistingRvtRunner:
                 output_dir=ctx.output_dir,
                 cv_cfg=cv_config,
                 cv_stats=cv_stats,
-                rvt_params=ctx.rvt_params,
+                rvt_params=rvt_px,
                 reporter=reporter,
                 slog=slog,
                 start_time=start_time,

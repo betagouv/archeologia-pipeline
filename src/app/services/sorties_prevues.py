@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from typing import Any, Callable, Dict, List, Optional
 
+from .indices_metres import RESOLUTION_REFERENCE_M, en_px
 from .indices_model import all_products
 from .rapport_run import NOM_RAPPORT
 
@@ -22,6 +23,24 @@ def _nom_dossier_indice(key: str, rvt_params: Dict[str, Any]) -> str:
     from ...pipeline.ign.products.rvt_naming import get_rvt_folder_name  # différé : QGIS
 
     return get_rvt_folder_name(key, rvt_params)
+
+
+def resolution_prevue(config: dict) -> Optional[float]:
+    """Résolution (m/px) des données du traitement configuré : réglée (modes LiDAR), ou lue sur le premier raster
+    fourni (MNT ou indices existants). ``None`` tant que le dossier n'est pas choisi."""
+    files = (config.get("app") or {}).get("files") or {}
+    mode = str(files.get("data_mode") or "ign_laz")
+    if mode in ("ign_laz", "local_laz"):
+        try:
+            return float((config.get("processing") or {}).get("mnt_resolution") or RESOLUTION_REFERENCE_M)
+        except (TypeError, ValueError):
+            return RESOLUTION_REFERENCE_M
+    cle = "existing_rvt_dir" if mode == "existing_rvt" else "existing_mnt_dir"
+    dossier = str(files.get(cle) or "").strip()
+    if not dossier:
+        return None
+    from ...pipeline.ingest_plan import resolution_des_entrees   # différé : rasterio
+    return resolution_des_entrees(dossier, ("tif", "tiff", "asc"), defaut=0.0) or None
 
 
 def sorties_prevues(
@@ -44,7 +63,8 @@ def sorties_prevues(
     ]
     if mode != "existing_rvt":
         produits = proc.get("products") or {}
-        params = config.get("rvt_params") or {}
+        # Rayons réglés en mètres : le nom du dossier porte les pixels reçus à la résolution du MNT.
+        params = en_px(config.get("rvt_params") or {}, resolution_prevue(config) or RESOLUTION_REFERENCE_M)
         for p in all_products():
             if produits.get(p.key):
                 out.append(f"{DIR_LIVRABLE}/indices/{nommer(p.key, params)}/tif/")

@@ -22,6 +22,10 @@ RVT lui-même à « combien de contexte faut-il par visualisation ». HS / M_HS 
 SLO / VAT / CVAT n'y figurent pas : leurs noyaux sont des 3×3 (ou des
 compositions de petits noyaux), jamais un problème aux échelles du plugin.
 
+**Unités (règle 2026-10-31).** Les rayons se règlent en mètres ; les fonctions ci-dessous reçoivent les
+réglages déjà convertis en pixels à la résolution du run (``indices_metres.en_px``, qui note
+``resolution_m``) : le calcul des noyaux reste en pixels, les messages parlent en mètres.
+
 Pur (aucun import QGIS) : testable en standalone, cf.
 ``tests/unit/test_rvt_kernel_context.py``.
 """
@@ -30,6 +34,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Dict, List, Mapping, Optional, Sequence, Tuple
+
+from .indices_metres import BORNES_M, REGLAGES_SPATIAUX, format_m, resolution_de
 
 # Marge maximale que ``preprocess.prepare_merged_tiles`` sait découper chez les
 # dalles voisines. Au-delà, le recouvrement demandé est silencieusement rogné.
@@ -87,6 +93,11 @@ def _as_int(value, default: int) -> int:
 def _section(rvt_params: Optional[Mapping], name: str) -> Mapping:
     section = (rvt_params or {}).get(name, {})
     return section if isinstance(section, Mapping) else {}
+
+
+def _px_en_m(px: int, rvt_params: Optional[Mapping]) -> str:
+    """« 10 m » pour ``px`` pixels à la résolution notée dans ``rvt_params``."""
+    return format_m(px * resolution_de(rvt_params))
 
 
 def kernel_radius_px(product: str, rvt_params: Optional[Mapping]) -> Optional[int]:
@@ -163,6 +174,7 @@ def tiled_context_warnings(
     est un défaut évitable, pas une fatalité de bordure.
     """
     margin = tile_margin_px(tile_overlap_percent, mnt_resolution)
+    marge_m = format_m(margin * float(mnt_resolution or 0.5))
     messages: List[str] = []
     for product, param in KERNEL_PARAMS.items():
         if not _requested(products, product):
@@ -171,10 +183,10 @@ def tiled_context_warnings(
         if radius is None or radius <= margin:
             continue
         messages.append(
-            f"{product} : le noyau atteint {radius} px mais la marge entre dalles "
-            f"n'en fournit que {margin} px — au-delà, RVT reconstruit le voisinage "
+            f"{product} : le noyau atteint {_px_en_m(radius, rvt_params)} ({radius} px) mais la marge entre "
+            f"dalles n'en fournit que {marge_m} ({margin} px) — au-delà, RVT reconstruit le voisinage "
             f"par symétrie et les dalles ne se raccordent plus (coutures visibles). "
-            f"Réduisez « {param.ui_label} (px) » à ≤ {margin} px, ou augmentez la "
+            f"Réduisez « {param.ui_label} (m) » à ≤ {marge_m}, ou augmentez la "
             f"marge entre dalles."
         )
     return messages
@@ -210,7 +222,7 @@ def raster_context_warnings(
         if ratio >= MIN_FULL_CONTEXT_RATIO:
             continue
         target = max_radius_for_ratio(width_px, height_px, MIN_FULL_CONTEXT_RATIO)
-        field = f"« {param.ui_label} (px) » à ≤ {target} px"
+        field = f"« {param.ui_label} (m) » à ≤ {_px_en_m(target, rvt_params)}"
         if in_batch:
             advice = (
                 f"Le {product} de ce raster n'est pas fiable. Le réglage vaut pour "
@@ -220,7 +232,7 @@ def raster_context_warnings(
         else:
             advice = f"Réduisez {field}."
         messages.append(
-            f"{product} : le noyau atteint {radius} px sur un raster de "
+            f"{product} : le noyau atteint {_px_en_m(radius, rvt_params)} ({radius} px) sur un raster de "
             f"{width_px}×{height_px} px — {round(ratio * 100)} % de l'emprise "
             f"seulement aura un voisinage complet, le reste est reconstruit par "
             f"symétrie. {advice}"
@@ -245,17 +257,19 @@ def mstp_scale_errors(
         lo = _as_int(section.get(f"{prefix}_min", d_min), d_min)
         hi = _as_int(section.get(f"{prefix}_max", d_max), d_max)
         step = _as_int(section.get(f"{prefix}_step", d_step), d_step)
+        def m(px: int) -> str:
+            return f"{_px_en_m(px, rvt_params)}, {px} px"
         if lo > hi:
             messages.append(
-                f"MSTP / « {label} » : rayon min ({lo} px) supérieur au rayon max "
-                f"({hi} px) — RVT refuse ce réglage."
+                f"MSTP / « {label} » : rayon min ({m(lo)}) supérieur au rayon max "
+                f"({m(hi)}) — RVT refuse ce réglage."
             )
             continue
         if hi - lo < step:
             messages.append(
-                f"MSTP / « {label} » : l'écart entre rayon min ({lo} px) et rayon max "
-                f"({hi} px) est plus petit que le pas ({step} px) — RVT refuse ce "
-                f"réglage. Réduisez le pas à ≤ {hi - lo} px."
+                f"MSTP / « {label} » : l'écart entre rayon min ({m(lo)}) et rayon max "
+                f"({m(hi)}) est plus petit que le pas ({m(step)}) à cette résolution — RVT refuse ce "
+                f"réglage. Réduisez le pas à ≤ {_px_en_m(hi - lo, rvt_params)}."
             )
     return messages
 
@@ -263,23 +277,19 @@ def mstp_scale_errors(
 #: Réglages contrôlés avant le lancement contre les bornes du moteur (moteur_indices.BORNES) :
 #: (produit, section, clé, libellé à l'étape 2, flottant ?). Hors bornes, le moteur refuse et la dalle ENTIÈRE échoue
 #: (aucun de ses produits n'est publié), après le téléchargement et le MNT. Les rayons du SVF et de l'OPNS n'y sont
-#: pas : ils sont ramenés dans leurs bornes, avec une ligne de journal (rvt_naming._horizon_settings).
+#: pas : ils sont ramenés dans leurs bornes, avec une ligne de journal (rvt_naming._horizon_settings). Les rayons
+#: (en mètres depuis le 2026-10-31) n'y sont plus : contrôlés en PIXELS convertis par ``bornes_errors``.
 _REGLAGES_BORNES = (
     ("HS", "hs", "sun_azimuth", "Azimut solaire", False),
     ("HS", "hs", "sun_elevation", "Élévation solaire", False),
     ("M_HS", "mdh", "sun_elevation", "Élévation solaire", False),
     ("LD", "ldo", "angular_res", "Résolution angulaire", False),
-    ("LD", "ldo", "min_radius", "Rayon min", False),
-    ("LD", "ldo", "max_radius", "Rayon max", False),
     ("LD", "ldo", "observer_h", "Hauteur observateur", True),
-    ("SLRM", "slrm", "radius", "Rayon", False),
     ("MSTP", "mstp", "lightness", "Luminosité", True),
     # SVF et OPNS étaient ramenés dans les bornes au calcul, avec une ligne de journal, quand LD et SLRM étaient
     # refusés avant le lancement : une seule politique (revue de l'audit, pt 21), le refus avant le lancement.
-    ("SVF", "svf", "radius", "Rayon", False),
     ("SVF", "svf", "num_directions", "Nombre de directions", False),
     ("SVF", "svf", "noise_remove", "Suppression du bruit", False),
-    ("OPNS", "opns", "radius", "Rayon", False),
     ("OPNS", "opns", "num_directions", "Nombre de directions", False),
     ("OPNS", "opns", "noise_remove", "Suppression du bruit", False),
 )
@@ -300,7 +310,9 @@ def message_ecretage(produit: str, cle: str, lue, mini: float, maxi: float, flot
     if v is None or mini <= v <= maxi:
         return None
     retenue = mini if v < mini else maxi
-    libelle = next((lib for p, _s, c, lib, _f in _REGLAGES_BORNES if p == produit and c == cle), cle)
+    libelle = next((lib for p, _s, c, lib, _f in _REGLAGES_BORNES if p == produit and c == cle),
+                   next((f"{lib} (m)" for p, _s, _c, cm, _d, lib in REGLAGES_SPATIAUX if p == produit and cm == cle),
+                        cle))
     return (f"{produit.replace('_', '-')} / « {libelle} » : {v:g} lu dans la configuration, hors des bornes du "
             f"réglage ({mini:g} à {maxi:g}) — {retenue:g} retenu.")
 
@@ -325,9 +337,9 @@ def bornes_errors(products: Optional[Mapping], rvt_params: Optional[Mapping],
     (``secours_processing``), où rvt-qgis le refuse aussi en 8 bits.
     """
     try:
-        from ...pipeline.ign.products.moteur_indices import BORNES
+        from ...pipeline.ign.products.moteur_indices import BORNES, bornes_du_calcul
     except ImportError:  # pragma: no cover - tests (src/ sur le chemin)
-        from pipeline.ign.products.moteur_indices import BORNES
+        from pipeline.ign.products.moteur_indices import BORNES, bornes_du_calcul
     messages: List[str] = []
     reglages = list(_REGLAGES_BORNES)
     if _requested(products, "M_HS") and (secours_processing or not _section(rvt_params, "mdh").get("save_as_8bit", True)):
@@ -342,10 +354,34 @@ def bornes_errors(products: Optional[Mapping], rvt_params: Optional[Mapping],
         if not lo <= v <= hi:
             messages.append(f"Image {produit.replace('_', '-')} / « {libelle} » : {v:g} hors des bornes du calcul "
                             f"({lo:g} à {hi:g}) — la dalle échouerait.")
+    # Rayons et échelles : réglés en mètres, contrôlés en pixels à la résolution du run. Le moteur intégré
+    # accepte tout rayon d'au moins 1 px ; le secours Processing garde les bornes de rvt-qgis, qu'une résolution
+    # plus grossière que 0,5 m peut faire franchir (SVF 5 m = 5 px à 1 m, sous le minimum de 10 px).
+    res = resolution_de(rvt_params)
+    for produit, section, cle, cle_m, _d, libelle in REGLAGES_SPATIAUX:
+        if not _requested(products, produit) or cle not in _section(rvt_params, section):
+            continue
+        vm = _nombre(_section(rvt_params, section).get(cle_m), True)
+        bm = BORNES_M.get((section, cle_m))
+        if vm is not None and bm and not bm[0] <= vm <= bm[1]:   # configuration écrite à la main, hors de l'écran
+            messages.append(f"Image {produit.replace('_', '-')} / « {libelle} (m) » : {format_m(vm)} hors des bornes "
+                            f"du réglage ({format_m(bm[0])[:-2]} à {format_m(bm[1])}).")
+            continue
+        v = _nombre(_section(rvt_params, section)[cle], False)
+        lo, hi = BORNES[produit][cle] if secours_processing else bornes_du_calcul(produit, cle)
+        if v is None or lo <= v <= hi:
+            continue
+        reglage = format_m(_nombre(_section(rvt_params, section).get(cle_m, v * res), True) or v * res)
+        qui = "de rvt-qgis (mode de secours Processing)" if secours_processing else "du calcul"
+        conseil = " Changez le réglage ou repassez au moteur intégré." if secours_processing else " Changez le réglage."
+        messages.append(f"Image {produit.replace('_', '-')} / « {libelle} » : {reglage} = {v} px à "
+                        f"{format_m(res)[:-2]} m/px, hors des bornes {qui} ({lo:g} à {hi:g} px) — la dalle "
+                        f"échouerait.{conseil}")
     if _requested(products, "LD"):
         ld = _section(rvt_params, "ldo")
         rmin, rmax = _nombre(ld.get("min_radius", 10), False), _nombre(ld.get("max_radius", 20), False)
         if rmin is not None and rmax is not None and not 1 <= rmin <= rmax:
-            messages.append(f"Image LD / « Rayon min » : {rmin} px — il doit valoir au moins 1 et au plus le rayon max "
-                            f"({rmax} px) ; sinon l'image ne porte aucune valeur.")
+            messages.append(f"Image LD / « Rayon min » : {_px_en_m(rmin, rvt_params)} ({rmin} px) — il doit valoir "
+                            f"au plus le rayon max ({_px_en_m(rmax, rvt_params)}, {rmax} px) ; sinon l'image ne "
+                            "porte aucune valeur.")
     return messages

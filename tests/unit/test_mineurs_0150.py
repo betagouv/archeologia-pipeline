@@ -12,6 +12,7 @@ from pathlib import Path
 
 import pytest
 
+from app.services.indices_metres import en_px
 from app.services.rvt_kernel_context import bornes_errors, message_ecretage
 from pipeline.ign import downloader as dl
 from pipeline.ign import preprocess as pp
@@ -105,14 +106,16 @@ def test_le_m_hs_8_bits_ne_porte_pas_ses_directions_dans_son_nom():
 
 # ── bornes : SVF et OPNS refusés avant le lancement comme LD et SLRM ; secours Processing réservé ───────────
 @pytest.mark.parametrize("produit,section,cle,valeur,ok,libelle", [
-    ("SVF", "svf", "radius", 60, 20, "Rayon"), ("SVF", "svf", "num_directions", 100, 32, "Nombre de directions"),
-    ("OPNS", "opns", "radius", 5, 20, "Rayon"), ("OPNS", "opns", "noise_remove", 5, 2, "Suppression du bruit"),
+    ("SVF", "svf", "radius_m", 30, 10, "Rayon"), ("SVF", "svf", "num_directions", 100, 32, "Nombre de directions"),
+    ("OPNS", "opns", "radius_m", 2.5, 10, "Rayon"), ("OPNS", "opns", "noise_remove", 5, 2, "Suppression du bruit"),
 ])
 def test_svf_et_opns_hors_bornes_refuses_avant_le_lancement(produit, section, cle, valeur, ok, libelle):
-    erreurs = bornes_errors({produit: True}, {section: {cle: valeur}})
+    """Rayon en mètres depuis le 2026-10-31 (5 à 25 m = les anciens 10 à 50 px à 0,5 m)."""
+    erreurs = bornes_errors({produit: True}, en_px({section: {cle: valeur}}, 0.5))
     assert len(erreurs) == 1 and produit in erreurs[0] and libelle in erreurs[0]
-    assert bornes_errors({produit: True}, {section: {cle: ok}}) == []
-    assert libelle in message_ecretage(produit, cle, valeur, 10, 50, False)
+    assert bornes_errors({produit: True}, en_px({section: {cle: ok}}, 0.5)) == []
+    bornes_champ = (5, 25, True) if cle.endswith("_m") else (10, 50, False)   # champ en mètres / en unités
+    assert libelle in message_ecretage(produit, cle, valeur, *bornes_champ)
 
 
 def test_en_secours_processing_les_directions_du_m_hs_8_bits_sont_bornees():

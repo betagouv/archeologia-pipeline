@@ -92,8 +92,14 @@ RVT_PARAM_LABELS: Dict[str, Dict[str, str]] = {
     },
     "LD": {
         "angular_res": "Résolution angulaire",
-        "min_radius": "Rayon min",
-        "max_radius": "Rayon max",
+        # Fiches des modèles (2026-10-31) : l'anneau d'entraînement en mètres, la forme pixel + GSD gardée.
+        "rmin_m": "Rayon min (m)",
+        "rmax_m": "Rayon max (m)",
+        "gsd_m": "Résolution d'entraînement (m/px)",
+        "rmin_px": "Rayon min (px)",
+        "rmax_px": "Rayon max (px)",
+        "min_radius": "Rayon min (px)",
+        "max_radius": "Rayon max (px)",
         "observer_h": "Hauteur observateur",
         "ve_factor": "Facteur VE",
         "save_as_8bit": "Export 8 bits",
@@ -223,9 +229,18 @@ def _build_architecture(
             from ...app.services.cout_modele import ligne_dialogue
         except ImportError:
             from app.services.cout_modele import ligne_dialogue  # type: ignore[no-redef]
+        try:
+            from ...app.services.indices_metres import gsd_de_fiche
+        except ImportError:
+            from app.services.indices_metres import gsd_de_fiche  # type: ignore[no-redef]
+        pref = card.get("preferred_rvt") if isinstance(card.get("preferred_rvt"), Mapping) else {}
+        # Fenêtre en mètres (2026-10-31) : comptée à la taille que le run découpera ; la résolution des données
+        # n'est pas connue ici, la ligne le dit.
         ligne = ligne_dialogue(
             sahi.get("slice_width", sahi.get("slice_height", 0)) or 0,
             sahi.get("overlap_ratio", 0.2) or 0.0,
+            gsd_m=gsd_de_fiche(pref.get("params") if isinstance(pref.get("params"), Mapping) else {},
+                               {"mnt": card.get("mnt") or {}}),
         )
         if ligne:
             rows.append(Row("Fenêtres d'analyse", ligne))

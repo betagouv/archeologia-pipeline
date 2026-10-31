@@ -31,6 +31,7 @@ from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 from .bilan_fiabilite import texte_niveaux_effectifs
 from .vocabulaire import niveau
 from .aide import rubrique_depannage
+from .indices_metres import RESOLUTION_REFERENCE_M, px_de_m, resolution_de
 from .reglages_defaut import SECTION_PRODUIT
 
 NOM_RAPPORT = "rapport.html"
@@ -297,16 +298,35 @@ def _bruit(n: Any) -> str:
     return "sans suppression du bruit" if n == 0 else f"suppression du bruit {n}"
 
 
-def decrire_reglages(section: str, valeurs: Optional[Mapping[str, Any]]) -> str:
+def decrire_reglages(section: str, valeurs: Optional[Mapping[str, Any]],
+                     resolution_m: Optional[float] = None) -> str:
     """Les réglages d'une section de ``rvt_params`` en mots et en unités, avec le
-    vocabulaire de l'étape 2 : « rayon 10 px, 16 directions, sans suppression du
-    bruit ». ``None`` → « réglages par défaut »."""
+    vocabulaire de l'étape 2 : « rayon 5 m (10 px), 16 directions, sans suppression du
+    bruit, pixels de 0,5 m ». Les distances sont réglées en mètres (2026-10-31) ; le
+    nombre de pixels est celui que le calcul a reçu à ``resolution_m`` (la résolution
+    du run ; 0,5 m faute de mieux). ``None`` → « réglages par défaut »."""
     if section == "cvat":
         return "composition fixe"
     if not valeurs:
         return "réglages par défaut"
     g = valeurs.get
     m: List[str] = []
+    res = float(resolution_m) if resolution_m else RESOLUTION_REFERENCE_M
+    spatial = False
+
+    def dist(cle: str, defaut_m: float) -> Tuple[str, int]:
+        """(« 5 m », pixels reçus) d'un réglage spatial : la clé métrique, sinon l'ancienne clé en pixels
+        (0,5 m/px, la résolution sur laquelle elle avait été réglée)."""
+        nonlocal spatial
+        spatial = True
+        if f"{cle}_m" in valeurs:
+            metres = float(g(f"{cle}_m"))
+        elif cle in valeurs:
+            metres = float(g(cle)) * RESOLUTION_REFERENCE_M
+        else:
+            metres = defaut_m
+        px = int(g(cle)) if cle in valeurs and f"{cle}_m" in valeurs else px_de_m(metres, res)
+        return _dec(metres), px
     if section == "hs":
         m += [f"azimut solaire {_dec(g('sun_azimuth', 315), 0)}°", f"élévation solaire {_dec(g('sun_elevation', 35), 0)}°"]
     elif section == "mdh":
@@ -316,16 +336,19 @@ def decrire_reglages(section: str, valeurs: Optional[Mapping[str, Any]]) -> str:
     elif section in ("svf", "opns"):
         if section == "opns":
             m.append("ouverture négative, les creux" if int(g("opns_type", 0) or 0) == 1 else "ouverture positive, les saillies")
-        m += [f"rayon {_dec(g('radius', 10), 0)} px", f"{_nb(int(g('num_directions', 16)))} directions", _bruit(g("noise_remove", 0))]
+        r, px = dist("radius", 5.0)
+        m += [f"rayon {r} m ({px} px)", f"{_nb(int(g('num_directions', 16)))} directions", _bruit(g("noise_remove", 0))]
     elif section == "slope":
         # 2 = pourcentage ; 1 est ce qu'envoyait « Pourcentage » avant la 0.15.0, relu comme tel (rvt_naming.slope_unit)
         m.append("en pourcentage" if int(g("unit", 0) or 0) in (1, 2) else "en degrés")
     elif section == "ldo":
-        m += [f"rayon de {_dec(g('min_radius', 10), 0)} à {_dec(g('max_radius', 20), 0)} px",
+        (lo, plo), (hi, phi) = dist("min_radius", 5.0), dist("max_radius", 10.0)
+        m += [f"rayon de {lo} à {hi} m ({plo} à {phi} px)",
               f"résolution angulaire {_dec(g('angular_res', 15), 0)}°",
               f"hauteur d'observateur {_dec(g('observer_h', 1.7))} m"]
     elif section == "slrm":
-        m.append(f"rayon {_dec(g('radius', 20), 0)} px")
+        r, px = dist("radius", 10.0)
+        m.append(f"rayon {r} m ({px} px)")
     elif section in ("vat", "prism"):
         m.append(_TERRAIN.get(int(g("terrain_type", 0) or 0), "terrain général"))
     elif section == "crim":
@@ -333,13 +356,16 @@ def decrire_reglages(section: str, valeurs: Optional[Mapping[str, Any]]) -> str:
         m += [f"palette {_PALETTES.get(palette, palette)}",
               f"coupes de la palette de {_dec(g('min_colormap_cut', 0.0), 2)} à {_dec(g('max_colormap_cut', 1.0), 2)}"]
     elif section == "mstp":
-        for nom, cle in (("locale", "local"), ("méso", "meso"), ("large", "broad")):
-            m.append(f"échelle {nom} de {_dec(g(f'{cle}_scale_min'), 0)} à {_dec(g(f'{cle}_scale_max'), 0)} px "
-                     f"par pas de {_dec(g(f'{cle}_scale_step'), 0)}")
+        for nom, cle, d in (("locale", "local", (1.5, 10.5, 1.0)), ("méso", "meso", (11.5, 101.5, 9.0)),
+                            ("large", "broad", (50.0, 200.0, 30.0))):
+            (lo, plo), (hi, phi), (pas, ppas) = (dist(f"{cle}_scale_{k}", v) for k, v in zip(("min", "max", "step"), d))
+            m.append(f"échelle {nom} de {lo} à {hi} m par pas de {pas} m ({plo} à {phi} px, pas de {ppas})")
         m.append(f"luminosité {_dec(g('lightness', 0.9))}")
     ve = None if section == "mstp" else g("ve_factor")   # MSTP : l'exagération s'annule, plus de champ
     if ve is not None and float(ve) != 1.0:
         m.append(f"exagération verticale ×{_dec(ve)}")
+    if spatial:
+        m.append(f"pixels de {_dec(res, 2)} m")
     return ", ".join(m) if m else "réglages par défaut"
 
 
@@ -390,7 +416,8 @@ def _produits(d: DonneesRapport) -> str:
             desc = _reglages_base(code, d.processing)
         else:
             section = _SECTION_PAR_PRODUIT.get(code, "")
-            desc = decrire_reglages(section, (d.rvt_params or {}).get(section)) if section else "réglages par défaut"
+            desc = (decrire_reglages(section, (d.rvt_params or {}).get(section), resolution_de(d.rvt_params))
+                    if section else "réglages par défaut")
         lignes.append(f"<tr><th>{_e(lab)} (<code>{_e(code)}</code>)</th><td>{_e(desc)}</td></tr>")
     tete = ("<p>Modèle de terrain fourni avec les données ; les indices ont été calculés par le plugin.</p>"
             if d.data_mode == "existing_mnt" else "")

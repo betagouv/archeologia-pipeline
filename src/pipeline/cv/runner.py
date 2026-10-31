@@ -101,6 +101,33 @@ def _gsd_des_images(tif_transform_data, jpg_dir: Optional[Path]) -> Optional[flo
     return None
 
 
+def remplissage_des_fenetres(pngs, sahi, gsd_m: Optional[float]) -> Optional[Dict[str, Any]]:
+    """Images de ``pngs`` qui occupent moins de la moitié d'une fenêtre d'analyse (``sahi`` mis à l'échelle) :
+    ``{n, total, part_moyenne (des seules images concernées), fenetre_px, fenetre_m}``, ``None`` s'il n'y en a pas.
+    Déterministe (tailles lues dans l'en-tête des PNG), calculé une fois par run et par modèle : la cause de
+    l'avertissement VISIBLE (``cv_post_service.avertissements_remplissage``) ; le détail par image reste au journal
+    technique (``computer_vision_onnx.message_fenetre_peu_remplie``)."""
+    from PIL import Image
+
+    from .sahi_lite import part_de_fenetre
+
+    sw, sh = int((sahi or {}).get("slice_width") or 0), int((sahi or {}).get("slice_height") or 0)
+    if sw <= 0 or sh <= 0 or not pngs:
+        return None
+    parts = []
+    for p in pngs:
+        try:
+            with Image.open(p) as im:
+                parts.append(part_de_fenetre(im.size[0], im.size[1], sw, sh))
+        except OSError:
+            continue
+    peu = [x for x in parts if x < 0.5]
+    if not peu:
+        return None
+    return {"n": len(peu), "total": len(parts), "part_moyenne": sum(peu) / len(peu), "fenetre_px": sw,
+            "fenetre_m": round(sw * gsd_m, 3) if gsd_m else None}
+
+
 def _sahi_a_la_resolution(cv_config, tif_transform_data, jpg_dir, log):
     """``cv_config["sahi"]`` remis en mètres de terrain (``model_config.sahi_a_l_echelle``) et journalisé."""
     try:
@@ -303,6 +330,12 @@ def run_cv_on_folder(
     candidate_pngs = list_candidate_pngs(
         jpg_dir=jpg_dir, cv_config=cv_config, single_jpg=single_jpg,
     )
+    if stats is not None:   # fenêtres surtout vides : remontées à l'écran par l'appelant, une fois par modèle
+        try:
+            stats["remplissage"] = remplissage_des_fenetres(
+                candidate_pngs, cv_config.get("sahi"), _gsd_des_images(tif_transform_data, jpg_dir))
+        except Exception as e:  # noqa: BLE001 — un avertissement ne bloque jamais la détection
+            log(f"Avertissement : part des fenêtres remplies non calculée ({e})")
     # Un cache plus ancien que son PNG a été calculé sur une autre géométrie
     # (ex. bascule rogné → à marge) : purgé pour forcer la ré-inférence — le
     # binaire externe saute par simple existence des fichiers, sans les dates.

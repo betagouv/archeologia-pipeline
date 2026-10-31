@@ -5,15 +5,15 @@ import subprocess
 import shutil
 import tempfile
 from pathlib import Path
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Sequence, Tuple
 
 from ...cancellation import PipelineCancelled, check_cancelled
 from ...coords import extract_xy_from_tile_name as _extract_xy_from_tile_name
 from ...coords import get_raster_bounds
 from ...geo_utils import extract_tif_transform_data
-from ...output_paths import indices_dir, indice_tif_dir, indice_base_dir, indice_png_dir
+from ...output_paths import DIR_DETECTION, indices_dir, indice_base_dir, indice_png_dir, technique_dir
 from ...subprocess_utils import run_subprocess_cancellable, subprocess_kwargs_no_window
-from ...tilespec import TileSpec, assign_crs_if_missing, is_degenerate_tile, tag_byte_nodata
+from ...tilespec import TileSpec, assign_crs_if_missing, is_degenerate_tile, meme_crs, tag_byte_nodata
 from .rvt_naming import PRODUCT_ORDER, get_rvt_source_and_dest_filenames, get_rvt_folder_name
 from ...types import CancelCheckFn, LogFn
 
@@ -246,52 +246,75 @@ def needs_refresh(source: Path, dest: Path) -> bool:
         return True
 
 
-def _retirer_mnt_autre_resolution(tif_path: Path, x: str, y: str, name_suffix: str, log: LogFn) -> None:
-    """Le nom du MNT porte sa résolution : une relance à 1 m après 0,5 m laisserait
-    ``…_0M50_…`` à côté de ``…_1M00_…``, et ``index_MNT.vrt`` superposerait les deux.
-    Retire le MNT de la même dalle à une autre résolution (et ses fichiers annexes)."""
-    for ancien in tif_path.parent.glob(f"LHD_FXX_{x}_{y}_MNT_A_*_LAMB93_IGN69{name_suffix}.tif"):
-        if ancien == tif_path:
-            continue
-        for f in tif_path.parent.glob(f"{ancien.name}*"):
-            try:
-                f.unlink()
-            except OSError as e:
-                log(f"⚠️ MNT d'une autre résolution non retiré ({f.name}) : {e}")
-        log(f"MNT d'une autre résolution retiré : {ancien.name}")
+def noms_remplaces(
+    tif_dir: Path, product_name: str, current_tile_name: str, x: str, y: str, rvt_params: Dict[str, Any],
+    name_suffix: str, crs: Any, garde: str,
+) -> List[str]:
+    """Noms (sans extension) des publications de la MÊME dalle que celle-ci remplace : le MNT à une autre
+    résolution (son nom la porte : ``index_MNT.vrt`` superposerait ``…_0M50_…`` et ``…_1M00_…``) et, hors
+    EPSG:2154, le nom Lambert-93 qu'un run d'avant la correction donnait à une donnée étrangère (mosaïque et
+    détection, qui lisent tout le dossier, compteraient la dalle deux fois). ``garde`` (le nom publié) est exclu.
+    Noms exacts sauf le MNT, cherché par préfixe (sa résolution n'est pas connue d'avance)."""
+    import re
+
+    from .rvt_naming import est_lambert93, jeton_crs, prefixe_dalle
+
+    noms: List[str] = []
+    for c in ([crs] if est_lambert93(crs) else [crs, "EPSG:2154"]):
+        if product_name == "MNT":
+            pre, fin = f"{prefixe_dalle(x, y, c)}_MNT_A_", f"{jeton_crs(c, mnt=True)}{name_suffix}"
+            motif = re.compile(re.escape(pre) + r"\d+M\d\d" + re.escape(fin))
+            # La dalle déjà publiée à cette résolution a fait ce ménage à sa première publication. Sinon une
+            # lecture du dossier par startswith (pas glob/fnmatch : ~40 fois plus lent sur 18 000 fichiers).
+            if (tif_dir / f"{garde}.tif").exists() or not tif_dir.is_dir():
+                continue
+            noms += [n[:-4] for n in os.listdir(tif_dir)
+                     if n.startswith(pre) and n.endswith(f"{fin}.tif") and motif.fullmatch(n[:-4])]
+        elif c != crs:
+            noms.append(get_rvt_source_and_dest_filenames(
+                product_name, current_tile_name, x, y, rvt_params, name_suffix=name_suffix, crs=c)[1][:-4])
+    return [n for n in noms if n != garde]
 
 
-def copy_mnt_to_results(
-    *,
-    temp_mnt_path: Path,
-    output_dir: Path,
-    current_tile_name: str,
+#: Fichiers d'une publication, par dossier : TIF publié et ses annexes, PNG d'inférence et son world file,
+#: détections en cache (``technique/detection/<modèle>/raw_detections/``, relues par la conversion).
+_ANNEXES_TIF = (".tif", ".tif.aux.xml", ".tif.ovr")
+_ANNEXES_PNG = (".png", ".pgw", ".png.aux.xml")
+_ANNEXES_CACHE = (".txt", ".json")
+
+
+def retirer_publication_remplacee(
+    nom: str, *, tif_dir: Path, png_dir: Path, output_dir: Path, crs: Any, sources: Sequence[Path] = (),
     log: LogFn = lambda _: None,
-    mnt_resolution: float = 0.5,
-) -> Path:
-    x, y = _extract_xy_from_tile_name(current_tile_name)
+) -> bool:
+    """Retire la publication ``nom`` (sans extension) que ce run remplace : TIF et annexes, PNG et world file,
+    détections en cache de tous les modèles. Deux gardes (audit 2026-11-01) : rien n'est retiré dans (ou sous) un
+    dossier SOURCE de l'utilisateur (préflight : « jamais déplacé ni supprimé ») ; et seulement si le TIF porte le
+    CRS du run, lu dans le fichier — un dossier de sortie partagé avec un vrai run français garde ses dalles
+    Lambert-93 aux mêmes km. TIF absent, illisible ou de CRS indécidable : rien n'est retiré. Vrai si retiré."""
+    try:  # fallback standalone (tests : src/ sur le path)
+        from ...app.run_context import chemin_dans
+    except ImportError:  # pragma: no cover
+        from app.run_context import chemin_dans
 
-    mnt_tif = indice_tif_dir(output_dir, "MNT")
-    mnt_tif.mkdir(parents=True, exist_ok=True)
-
-    from .rvt_naming import jeton_resolution
-    output_name = f"LHD_FXX_{x}_{y}_MNT_A_{jeton_resolution(mnt_resolution)}_LAMB93_IGN69.tif"
-    out_path = mnt_tif / output_name
-
-    if not temp_mnt_path.exists():
-        raise FileNotFoundError(f"MNT source introuvable: {temp_mnt_path}")
-
-    if needs_refresh(temp_mnt_path, out_path):
-        shutil.copy2(str(temp_mnt_path), str(out_path))
-        log(f"MNT copié: {out_path.relative_to(indices_dir(output_dir))}")
-
-    # Garantir un CRS exploitable (EPSG:2154, assignation sans reprojection) :
-    # pdal émet parfois le MNT sans CRS « unnamed ». Idempotent (no-op si déjà
-    # étiqueté) → robuste face aux runs partiels où le fichier préexiste.
-    if assign_crs_if_missing(out_path):
-        log("CRS absent sur le MNT copié → EPSG:2154 affecté (sans reprojection)")
-
-    return out_path
+    tif = tif_dir / f"{nom}.tif"
+    if not tif.is_file() or any(chemin_dans(tif, s) for s in sources):
+        return False
+    spec = TileSpec.from_raster(tif)
+    if spec is None or meme_crs(spec.effective_crs, crs) is not True:
+        return False
+    caches = sorted((technique_dir(output_dir) / DIR_DETECTION).glob("*/raw_detections"))
+    cibles = ([tif_dir / f"{nom}{e}" for e in _ANNEXES_TIF] + [png_dir / f"{nom}{e}" for e in _ANNEXES_PNG]
+              + [d / f"{nom}{e}" for d in caches for e in _ANNEXES_CACHE])
+    for f in cibles:
+        if not f.exists() or any(chemin_dans(f, s) for s in sources):
+            continue
+        try:
+            f.unlink()
+            log(f"Publication remplacée retirée : {f.name}")
+        except OSError as e:
+            log(f"⚠️ Publication remplacée non retirée ({f.name}) : {e}")
+    return True
 
 
 def copy_final_products_to_results(
@@ -307,7 +330,11 @@ def copy_final_products_to_results(
     cancel_check: CancelCheckFn | None = None,
     name_suffix: str = "",
     mnt_resolution: float = 0.5,
+    crs: str = "EPSG:2154",
+    sources: Sequence[Path] = (),
 ) -> Dict[str, Any]:
+    """``crs`` : CRS du run, qui choisit le nommage (``rvt_naming.prefixe_dalle`` ; EPSG:2154 = noms d'avant) et
+    étiquette les TIF publiés sans CRS. ``sources`` : dossiers d'entrée de l'utilisateur, où rien n'est retiré."""
     x, y = _extract_xy_from_tile_name(current_tile_name)
 
     idx_dir = indices_dir(output_dir)
@@ -319,7 +346,8 @@ def copy_final_products_to_results(
     source_files_uncropped: Dict[str, str] = {}
     for product in all_products:
         uncropped, cropped = get_rvt_source_and_dest_filenames(
-            product, current_tile_name, x, y, rvt_params, name_suffix=name_suffix, mnt_resolution=mnt_resolution
+            product, current_tile_name, x, y, rvt_params, name_suffix=name_suffix, mnt_resolution=mnt_resolution,
+            crs=crs,
         )
         source_files_uncropped[product] = uncropped
         source_files_cropped[product] = cropped
@@ -361,8 +389,11 @@ def copy_final_products_to_results(
             # Fraîcheur, pas simple existence : un TIF publié par un run
             # précédent (paramètres différents, noms identiques) est écrasé
             # dès que l'intermédiaire a été recalculé (cf. needs_refresh).
-            if product_name == "MNT" and input_path_cropped.exists():
-                _retirer_mnt_autre_resolution(tif_path, x, y, name_suffix, log)
+            if input_path_cropped.exists():
+                for ancien in noms_remplaces(tif_dir, product_name, current_tile_name, x, y, rvt_params,
+                                             name_suffix, crs, output_base):
+                    retirer_publication_remplacee(ancien, tif_dir=tif_dir, png_dir=indice_png_dir(output_dir, folder_name),
+                                                  output_dir=output_dir, crs=crs, sources=sources, log=log)
             if input_path_cropped.exists() and needs_refresh(input_path_cropped, tif_path):
                 shutil.copy2(str(input_path_cropped), str(tif_path))
                 log(f"TIF rogné copié: {tif_path.relative_to(idx_dir)}")
@@ -370,7 +401,7 @@ def copy_final_products_to_results(
                 # VRT, chargement QGIS) : rvt-qgis/pdal émettent parfois un TIF
                 # sans CRS « unnamed ». EPSG:2154, assignation sans reprojection ;
                 # no-op si un vrai CRS est déjà présent.
-                assign_crs_if_missing(tif_path)
+                assign_crs_if_missing(tif_path, crs)
                 if pyramids_enabled:
                     build_raster_pyramids(tif_path, levels=pyramids_levels, log=log, cancel_check=cancel_check)
                 # gdaladdo/assign_crs modifient le fichier publié en place →

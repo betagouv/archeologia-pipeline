@@ -2,7 +2,6 @@ import os
 import logging
 from pathlib import Path
 from typing import List, Tuple, Optional
-import re
 import json
 import tempfile
 import subprocess
@@ -154,37 +153,6 @@ def read_world_file(world_file_path: str) -> Tuple[Optional[float], Optional[flo
         logger.warning(f"Impossible de lire le fichier world {world_file_path}: {e}")
 
     return None, None, None, None
-
-
-def extract_coordinates_from_filename(filename: str) -> Tuple[Optional[float], Optional[float]]:
-    """
-    Extrait les coordonnées X et Y depuis le nom de fichier d'une image RVT (méthode de fallback)
-
-    Args:
-        filename (str): Nom du fichier (ex: "LHD_FXX_0929_6613_LDO_A_LAMB93.jpg")
-
-    Returns:
-        Tuple[Optional[float], Optional[float]]: (x_anchor, y_anchor) ou (None, None) si erreur
-    """
-    logger = logging.getLogger(__name__)
-
-    try:
-        pattern = r"LHD_FXX_(\d{4})_(\d{4})_"
-        match = re.search(pattern, filename)
-
-        if match:
-            x_km = int(match.group(1))
-            y_km = int(match.group(2))
-
-            x_anchor = x_km * 1000
-            y_anchor = y_km * 1000
-
-            return x_anchor, y_anchor
-
-    except (ValueError, AttributeError) as e:
-        logger.warning(f"Impossible d'extraire les coordonnées de {filename}: {e}")
-
-    return None, None
 
 
 def extract_tile_coordinates(filename: str) -> Optional[Tuple[str, str]]:

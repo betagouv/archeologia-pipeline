@@ -45,7 +45,10 @@ _ORDRE_VIGNETTE = ("LD", "VAT", "CVAT", "PRISM", "CRIM", "M_HS", "HS", "SVF", "O
 
 _LIGNE_LOG = re.compile(r"^.*? - (WARNING|ERROR) - (.*)$")
 #: Coordonnées d'une dalle IGN (``0988_6872`` ou ``0988-6872``) : situent au kilomètre.
-_DALLE = re.compile(r"\d{4}[_-]\d{4}")
+#: Nom de dalle du plugin (``rvt_naming.prefixe_dalle``) : préfixe gardé, x et y effacés quels que soient le code EPSG
+#: et le nombre de chiffres (audit 2026-11-01 : ``EPSG_3006_0455_6057`` laissait fuir le y).
+_DALLE_NOMMEE = re.compile(r"(LHD_FXX|EPSG_\d+|CRS_PROJETE)_-?\d+_-?\d+")
+_DALLE = re.compile(r"(?<!\d)\d{4}[_-]\d{4}(?!\d)")
 #: Chemin absolu Windows (``D:\…``, ``\\serveur\…``) ou POSIX (``/…/…``), jusqu'au
 #: prochain blanc ou guillemet ; il faut au moins un second séparateur (« 1/4 » n'est
 #: pas un chemin).
@@ -123,7 +126,7 @@ def anonymiser(message: str) -> str:
     nom de fichier, et toute coordonnée de dalle devient « … »."""
     def _nom(m: "re.Match[str]") -> str:
         return re.split(r"[\\/]", m.group(0).rstrip("\\/"))[-1] or "…"
-    return _DALLE.sub("…", _CHEMIN.sub(_nom, message))
+    return _DALLE.sub("…", _DALLE_NOMMEE.sub(r"\1_…", _CHEMIN.sub(_nom, message)))
 
 
 def extraire_avertissements(texte_log: str, max_lignes: int = 60) -> List[Avertissement]:
@@ -466,6 +469,38 @@ def suite_detection_impossible(runs: Sequence[Mapping[str, Any]]) -> str:
     return "aucune détection n'a été cherchée."
 
 
+def _seuil(v: Any) -> str:
+    """Seuil en écriture française, deux décimales au moins, trois si besoin : 0,30 · 0,245 (``:.2f`` affichait
+    0,24 pour le 0,245 réellement appliqué)."""
+    s = f"{float(v):.3f}".rstrip("0")
+    s += "0" * max(0, 2 - len(s.split(".")[1]))
+    return s.replace(".", ",")
+
+
+def seuils_par_classe(run: Mapping[str, Any]) -> List[Tuple[str, float]]:
+    """Seuils par classe d'un run (``confidence_per_class``, ceux que la détection applique), nommés comme les
+    couches, quand l'un d'eux diffère du seuil du run ; ``[]`` sinon (un seul seuil suffit)."""
+    pc = run.get("confidence_per_class")
+    if not isinstance(pc, Mapping) or not pc:
+        return []
+    try:
+        valeurs = {str(c): float(v) for c, v in pc.items()}
+        unique = float(run.get("confidence_threshold")) if run.get("confidence_threshold") is not None else None
+    except (TypeError, ValueError):
+        return []
+    if unique is not None and all(abs(v - unique) < 1e-9 for v in valeurs.values()):
+        return []
+    noms: dict = {}
+    for e in run.get("entities") or []:
+        if not isinstance(e, Mapping):
+            continue
+        classes = [str(c) for c in (e.get("classes") or [])]
+        couches = e.get("layer_names") if isinstance(e.get("layer_names"), Mapping) else {}
+        for c in classes:
+            noms.setdefault(c, couches.get(c) or (e.get("label") if len(classes) == 1 else None) or c)
+    return sorted(((str(noms.get(c, c)), v) for c, v in valeurs.items()), key=lambda t: t[0])
+
+
 def _cv_runs(runs: Sequence[Mapping[str, Any]]) -> str:
     if not runs:
         return "<p class=sous>Pas de détection automatique dans ce traitement.</p>"
@@ -492,9 +527,13 @@ def _cv_runs(runs: Sequence[Mapping[str, Any]]) -> str:
         modele = _e(r.get("modele") or r.get("model") or "")
         if r.get("target_rvt"):
             modele += f", sur {_e(r['target_rvt'])}"
-        seuil = r.get("seuil")
+        seuil, seuils = r.get("seuil"), r.get("seuils") or ()
+        if seuils:
+            cellule = " · ".join(f"{_e(nom)} {_seuil(v)}" for nom, v in seuils)
+        else:
+            cellule = _seuil(seuil) if seuil is not None else "—"
         lignes.append(f"<tr><td>{entites}</td><td>{modele}</td>"
-                      f"<td class=num>{f'{float(seuil):.2f}'.replace('.', ',') if seuil is not None else '—'}</td><td>{analyse}</td></tr>")
+                      f"<td class=num>{cellule}</td><td>{analyse}</td></tr>")
     return ("<table><tr><th>Entités</th><th>Modèle</th><th>Seuil</th><th>Analyse, durée mesurée</th></tr>"
             f"{''.join(lignes)}</table>")
 

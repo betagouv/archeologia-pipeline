@@ -168,9 +168,23 @@ def gsd_de_fiche(params: Optional[Mapping], training_params: Optional[Mapping] =
     return None
 
 
-def gsd_du_modele(chemin) -> Optional[float]:
-    """GSD d'entraînement d'un modèle installé, depuis son dossier ou ses poids (``<m>/weights/best.onnx``) :
-    :func:`gsd_de_fiche` sur son ``training_params.json``. ``None`` sans fiche lisible."""
+def gsd_d_entrainement(card: Optional[Mapping], training_params: Optional[Mapping]) -> Optional[float]:
+    """GSD d'entraînement (m/px) d'un modèle installé — SOURCE UNIQUE de la fenêtre appliquée, de l'orchestrateur
+    (étape 3, avertissements d'échelle) et de la fiche du modèle (audit 2026-11-01 : la fiche et l'orchestrateur
+    lisaient le model_card d'abord, la fenêtre ``training_params.json`` seul). Ordre : ``training_params.json``
+    (``rvt.params.gsd_m``, ``mnt.resolution``, ``resolution`` : la fiche du package, mesurée sur les tuiles),
+    puis le model_card (``preferred_rvt.params.gsd_m``, ``mnt.resolution``). ``None`` si inconnu."""
+    c = card if isinstance(card, Mapping) else {}
+    pref = c.get("preferred_rvt") if isinstance(c.get("preferred_rvt"), Mapping) else {}
+    params = pref.get("params") if isinstance(pref.get("params"), Mapping) else {}
+    mnt = c.get("mnt") if isinstance(c.get("mnt"), Mapping) else {}
+    return (gsd_de_fiche(None, training_params if isinstance(training_params, Mapping) else {})
+            or gsd_de_fiche(params, {"mnt": mnt}))
+
+
+def gsd_du_modele(chemin, card: Optional[Mapping] = None) -> Optional[float]:
+    """:func:`gsd_d_entrainement` d'un modèle installé, depuis son dossier ou ses poids (``<m>/weights/best.onnx``) :
+    son ``training_params.json`` et son ``model_card.yaml`` (``card`` s'il est déjà lu)."""
     import json
     from pathlib import Path
     p = Path(str(chemin))
@@ -178,8 +192,14 @@ def gsd_du_modele(chemin) -> Optional[float]:
     try:
         tp = json.loads((dossier / "training_params.json").read_text(encoding="utf-8"))
     except (OSError, ValueError):
-        return None
-    return gsd_de_fiche(None, tp if isinstance(tp, dict) else {})
+        tp = {}
+    if card is None:
+        try:
+            import yaml
+            card = yaml.safe_load((dossier / "model_card.yaml").read_text(encoding="utf-8"))
+        except Exception:  # noqa: BLE001 — absent, illisible ou PyYAML manquant : la fiche du package seule
+            card = {}
+    return gsd_d_entrainement(card, tp)
 
 
 def anneau_px_du_nom(texte: str) -> Optional[Tuple[int, int]]:

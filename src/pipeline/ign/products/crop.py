@@ -27,6 +27,7 @@ def crop_final_products(
     cancel_check: CancelCheckFn | None = None,
     name_suffix: str = "",
     mnt_resolution: float = 0.5,
+    crs: str = "EPSG:2154",
 ) -> Dict[str, Path]:
     temp_dir.mkdir(parents=True, exist_ok=True)
 
@@ -56,7 +57,7 @@ def crop_final_products(
 
         src_name, dst_name = get_rvt_source_and_dest_filenames(
             product_name, current_tile_name, x, y, rvt_params, name_suffix=name_suffix,
-            mnt_resolution=mnt_resolution
+            mnt_resolution=mnt_resolution, crs=crs,
         )
         src_path = temp_dir / src_name
         dst_path = temp_dir / dst_name
@@ -142,6 +143,7 @@ def copy_products_without_crop(
     cancel_check: CancelCheckFn | None = None,
     name_suffix: str = "",
     mnt_resolution: float = 0.5,
+    crs: str = "EPSG:2154",
 ) -> Dict[str, Path]:
     """Variante de ``crop_final_products`` qui préserve l'emprise native du MNT.
 
@@ -167,7 +169,7 @@ def copy_products_without_crop(
 
         src_name, dst_name = get_rvt_source_and_dest_filenames(
             product_name, current_tile_name, x, y, rvt_params, name_suffix=name_suffix,
-            mnt_resolution=mnt_resolution,
+            mnt_resolution=mnt_resolution, crs=crs,
         )
         src_path = temp_dir / src_name
         dst_path = temp_dir / dst_name

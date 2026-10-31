@@ -100,7 +100,6 @@ class ConfigManager:
                 "entity_cluster_enabled": [],
                 "entity_thresholds": {},
                 "entity_cluster_params": {},
-                "selected_model": "",
                 "target_rvt": "LD",
                 "confidence_threshold": 0.3,  # = pipeline.cv.model_config.DEFAULT_CONFIDENCE (unifié 2026-08-31)
                 "iou_threshold": 0.5,
@@ -233,6 +232,10 @@ class ConfigManager:
         self._deep_update(cfg, data)
         self._migrate_entity_ids(cfg)
         self._migrate_cv_runs(cfg)
+        # Clé mono-modèle d'avant runs[], migrée ci-dessus puis retirée : plus rien ne l'écrit, mais une vieille
+        # session la portait (…/run_rf_detr_1, modèle retiré) jusque dans la trace des runs (2026-10-31).
+        if isinstance(cfg.get("computer_vision"), dict):
+            cfg["computer_vision"].pop("selected_model", None)
         return cfg
 
     def save(self, config: Dict[str, Any]) -> None:
@@ -362,6 +365,7 @@ class ConfigManager:
         if isinstance(cv, dict):
             cv.pop("sahi", None)
             cv.pop("selected_classes", None)
+            cv.pop("selected_model", None)   # mono-modèle d'avant runs[] (cf. fusionner)
             # 0.15.0 : sans effet depuis l'assistant (le run analyse toujours toutes les images et convertit
             # lui-même ses détections) — constat 20 de l'audit des réglages.
             cv.pop("scan_all", None)

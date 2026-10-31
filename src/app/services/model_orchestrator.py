@@ -316,7 +316,7 @@ def _echelle_entrainement(card: Dict[str, Any], model_dir: Path) -> Tuple[Option
     model_card et ``training_params.json`` (``mnt.resolution``, ``rvt.params``). Les fiches écrivent l'anneau
     de trois façons (``min_radius``/``max_radius`` px, ``rmin_px``/``rmax_px`` + ``gsd_m``, ``rmin_m``/``rmax_m``) :
     ``indices_metres.anneau_m`` les ramène toutes en mètres. Jamais d'exception."""
-    from .indices_metres import anneau_m, gsd_de_fiche
+    from .indices_metres import anneau_m, gsd_d_entrainement
     try:
         tp = json.loads((model_dir / "training_params.json").read_text(encoding="utf-8"))
     except (OSError, ValueError):
@@ -325,7 +325,7 @@ def _echelle_entrainement(card: Dict[str, Any], model_dir: Path) -> Tuple[Option
     params = pref.get("params") if isinstance(pref.get("params"), dict) else {}
     if not params and isinstance((tp.get("rvt") or {}).get("params"), dict):
         params = tp["rvt"]["params"]
-    gsd = gsd_de_fiche(params, tp)
+    gsd = gsd_d_entrainement(card, tp)
     return gsd, anneau_m(params, gsd)
 
 
@@ -333,10 +333,12 @@ def avertissements_echelle(models: Sequence["InstalledModel"], resolution_m: flo
                            rvt_params_px: Optional[Dict[str, Any]], *, indices_calcules: bool = True,
                            anneau_fourni_px: Optional[Tuple[int, int]] = None) -> List[str]:
     """Messages pour l'archéologue quand l'échelle d'un modèle ne correspond pas à ses données (règle
-    2026-10-31), une fois par modèle et par run :
+    2026-10-31), UN par cause et par run, modèles concernés listés (retour utilisateur 2026-10-31 : un message
+    par modèle était trop long) :
 
-    - résolution des données ≠ résolution d'entraînement : les fenêtres de détection sont mises à l'échelle
-      (le modèle voit le terrain à sa taille habituelle), mais il n'a jamais vu de données à cette résolution ;
+    - résolution des données ≠ résolution d'entraînement (un message par résolution d'entraînement) : les
+      fenêtres de détection sont mises à l'échelle (le détail en pixels va au journal technique,
+      ``runner.run_cv_on_folder``), mais le modèle n'a jamais vu de données à cette résolution ;
     - LD calculé avec un autre anneau (en mètres) que celui de l'entraînement : détections dégradées ;
     - indices fournis (``indices_calcules`` faux) : anneau lu dans leur nom (``anneau_fourni_px``,
       ``LD_A15_Rmin10_Rmax20_…``) et comparé comme un LD calculé, sinon réglages inconnus, à vérifier.
@@ -346,25 +348,16 @@ def avertissements_echelle(models: Sequence["InstalledModel"], resolution_m: flo
     d'entraînement à cette résolution l'aurait subi aussi.
     """
     from .indices_metres import format_m
-    msgs: List[str] = []
+    groupes: Dict[Tuple[Any, ...], List[str]] = {}   # cause → modèles, dans l'ordre d'apparition
     for m in models:
-        nom = f"« {m.display_name or m.name} »"
+        nom = m.display_name or m.name
         if m.gsd_m and resolution_m and abs(m.gsd_m - resolution_m) > 1e-6:
-            fen = ""
-            if m.sahi_slice_px:
-                px = max(32, int(m.sahi_slice_px * m.gsd_m / resolution_m + 0.5))
-                fen = (f" : chaque fenêtre d'analyse fait {px} px au lieu de {m.sahi_slice_px}, soit "
-                       f"{format_m(px * resolution_m)} de terrain comme à l'entraînement")
-            msgs.append(f"Modèle {nom} : vos données sont à {format_m(resolution_m)[:-2]} m/pixel, il a appris à "
-                        f"{format_m(m.gsd_m)[:-2]} m/pixel{fen}. Les structures gardent leur taille au sol, mais "
-                        "le modèle n'a jamais vu cette résolution : relisez ses détections avec plus de prudence.")
+            groupes.setdefault(("resolution", format_m(m.gsd_m)[:-2]), []).append(nom)
         if m.target_rvt != "LD" or m.anneau_m is None:
             continue
         attendu = f"{format_m(m.anneau_m[0])[:-2]} à {format_m(m.anneau_m[1])}"
         if not indices_calcules and anneau_fourni_px is None:
-            msgs.append(f"Modèle {nom} : il a appris sur une dominance locale (LD) d'anneau {attendu}. Les "
-                        "indices fournis ont été calculés hors du plugin, leurs réglages ne sont pas connus : "
-                        "vérifiez qu'ils ont cet anneau, sinon ses détections seront dégradées.")
+            groupes.setdefault(("inconnu", attendu), []).append(nom)
             continue
         ld = (rvt_params_px or {}).get("ldo") or {}
         px = anneau_fourni_px if not indices_calcules else (ld.get("min_radius", 10), ld.get("max_radius", 20))
@@ -376,11 +369,31 @@ def avertissements_echelle(models: Sequence["InstalledModel"], resolution_m: flo
         if abs(lo - m.anneau_m[0]) > tolerance or abs(hi - m.anneau_m[1]) > tolerance:
             source = ("les indices fournis (d'après leur nom) ont" if not indices_calcules
                       else "le LD de ce traitement (étape 2, image LD) a")
-            msgs.append(f"Modèle {nom} : il a appris sur un LD d'anneau {attendu} ; {source} un anneau de "
-                        f"{format_m(lo)[:-2]} à {format_m(hi)} ({int(px[0])} à {int(px[1])} px à "
-                        f"{format_m(resolution_m)[:-2]} m/pixel) : ses détections seront dégradées. "
-                        "Remettez l'anneau à la valeur d'entraînement.")
-    return list(dict.fromkeys(msgs))
+            recu = (f"{source} un anneau de {format_m(lo)[:-2]} à {format_m(hi)} ({int(px[0])} à {int(px[1])} px "
+                    f"à {format_m(resolution_m)[:-2]} m/pixel)")
+            groupes.setdefault(("anneau", attendu, recu), []).append(nom)
+
+    msgs: List[str] = []
+    for (cause, *args), noms in groupes.items():
+        noms = list(dict.fromkeys(noms))
+        un = len(noms) == 1
+        qui = f"le modèle « {noms[0]} » a" if un else f"{len(noms)} modèles ont"
+        liste = "" if un else f" : {', '.join(noms)}"
+        Qui = qui[0].upper() + qui[1:]
+        ses, il_n_a = ("ses", "il n'a") if un else ("leurs", "ils n'ont")
+        if cause == "resolution":
+            fen = "Sa fenêtre d'analyse couvre" if un else "Leurs fenêtres d'analyse couvrent"
+            msgs.append(f"Vos données sont à {format_m(resolution_m)[:-2]} m/pixel ; {qui} appris à {args[0]} "
+                        f"m/pixel{liste}. {fen} la même surface au sol qu'à l'entraînement, mais {il_n_a} "
+                        f"jamais vu cette résolution : relisez {ses} détections avec prudence.")
+        elif cause == "inconnu":
+            msgs.append(f"{Qui} appris sur une dominance locale (LD) d'anneau {args[0]}{liste}. "
+                        "Les indices fournis ont été calculés hors du plugin, leurs réglages ne sont pas connus : "
+                        f"vérifiez qu'ils ont cet anneau, sinon {ses} détections seront dégradées.")
+        else:
+            msgs.append(f"{Qui} appris sur un LD d'anneau {args[0]}{liste} ; {args[1]} : "
+                        f"{ses} détections seront dégradées. Remettez l'anneau à la valeur d'entraînement.")
+    return msgs
 
 
 

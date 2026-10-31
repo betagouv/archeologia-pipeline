@@ -9,7 +9,7 @@ name=Archéolog'IA
 qgisMinimumVersion=3.34
 qgisMaximumVersion=4.99
 description=Détection de sites archéologiques par réseaux de neurones
-version=0.18.1
+version=0.19.0
 author=Valentin VIEUX
 email=valentin.vieux.pro@outlook.com
 about=Plugin pour automatiser la production d'indices de visualisation (avec la bibliothèque Relief Visualization Toolbox du ZRC SAZU et de l'Université de Ljubljana, intégrée sous licence Apache 2.0) à partir de données LiDAR ou de MNT et pour détecter des sites archéologiques à l'aide de réseaux de neurones (YOLO, RF-DETR détection ou segmentation)
@@ -21,7 +21,12 @@ repository=https://github.com/betagouv/archeologia-pipeline
 #
 
 hasProcessingProvider=no
-changelog=0.18.1 (2026-10-27)
+changelog=0.19.0 (2026-11-01)
+    * Données hors Lambert-93 : tout MNT ou indice en système de coordonnées projeté métrique est accepté tel quel (ex. EPSG:25832, 2157, 27700) ; les résultats restent dans le système des données, les fichiers sont nommés d'après lui (EPSG_<code>_…).
+    * Réglages en mètres : les rayons des indices de visualisation (SVF, openness, LD, SLRM, MSTP, mélanges) se règlent en mètres et sont convertis à la résolution réelle du MNT ; un MNT à 1 m donne le même relief qu'un MNT à 0,5 m. Les réglages enregistrés en pixels sont convertis une fois, et c'est dit. Sur le LiDAR HD IGN à 0,5 m, rien ne change.
+    * Chaque modèle analyse la même surface au sol qu'à son entraînement, quelle que soit la résolution des données ; une image plus petite que la fenêtre d'analyse est complétée au lieu d'être étirée.
+    * Avertissements plus clairs : un seul message par cause, modèles listés (résolution d'entraînement, anneau du LD, images trop petites pour la fenêtre d'analyse) ; le rapport affiche les seuils par classe.
+ 0.18.1 (2026-10-27)
     * L'onglet « Consulter les flux » n'est pas encore proposé : il est masqué dans cette version, avec son chapitre du manuel, et reviendra avec le catalogue public. Rien d'autre ne change par rapport à la 0.18.0.
  0.18.0 (2026-10-26)
     * Interface rationalisée, du premier écran au dernier : un seul vocabulaire (traitement, produits, structures, dalles) ; à l'étape 1, la frise « Choisissez le point de départ de votre traitement » se clique, les étapes ignorées sont barrées, les erreurs s'affichent sous le champ concerné ; un menu Configuration enregistre, charge, importe et remet à zéro les réglages.

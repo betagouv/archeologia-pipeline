@@ -45,8 +45,10 @@ def _as_float(value: Any, default: float) -> float:
 #: Bornes DURES des deux algorithmes RVT qui balayent l'horizon. ``rvt:rvt_svf``
 #: et ``rvt:rvt_opns`` déclarent exactement les mêmes ``QgsProcessingParameterNumber``
 #: (c'est le même noyau, ``rvt.vis.sky_view_factor``) : hors de ces intervalles,
-#: Processing refuse le paramètre et la dalle échoue.
-HORIZON_RADIUS_RANGE: Tuple[int, int] = (10, 50)
+#: Processing refuse le paramètre et la dalle échoue. Le RAYON n'est plus écrêté depuis qu'il se règle en
+#: mètres (2026-10-31) : 5 m font 5 px à 1 m, le moteur intégré les calcule ; seul le secours Processing est
+#: borné à 10-50 px, refusé avant le lancement (rvt_kernel_context.bornes_errors), jamais écrêté en silence.
+HORIZON_RADIUS_RANGE: Tuple[int, int] = (1, 10 ** 6)
 HORIZON_DIRECTIONS_RANGE: Tuple[int, int] = (8, 64)
 HORIZON_NOISE_RANGE: Tuple[int, int] = (0, 3)  # enum : aucune / faible / moyenne / forte
 

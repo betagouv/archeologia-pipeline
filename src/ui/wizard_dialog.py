@@ -501,6 +501,9 @@ class WizardDialog(QDialog):
         if step in (self.STEP_VERIFS, self.STEP_TRAITEMENT):
             self._update_launch_recap()
             self._apply_validation()  # met aussi à jour le bouton principal
+        elif step == 3:
+            self._maj_resolution_detection()
+            self._update_launch_button()
         elif step == self.STEP_RESULTATS:
             self._resultats_page.rafraichir()
             self._refresh_rail_subs()
@@ -508,6 +511,17 @@ class WizardDialog(QDialog):
         else:
             self._update_launch_button()
         self._update_review_banner()
+
+    def _maj_resolution_detection(self) -> None:
+        """Résolution des données (étapes 1 et 2) → fenêtres d'analyse annoncées à l'étape 3 (règle 2026-10-31)."""
+        try:
+            cfg = copy.deepcopy(self._config)
+            self._source_page.collect_into(cfg)
+            self._indices_page.collect_into(cfg)
+            from ..app.services.sorties_prevues import resolution_prevue
+            self._detection_page.set_resolution(resolution_prevue(cfg))
+        except Exception:  # noqa: BLE001 — une annonce, jamais bloquante
+            pass   # résolution des données non lue : l'étape 3 annonce alors les fenêtres à 0,5 m, et le dit
 
     def _on_prev(self) -> None:
         self._goto_step(self._current_step - 1)
@@ -974,22 +988,24 @@ class WizardDialog(QDialog):
         """Un réglage chargé hors des bornes de son champ y est ramené, un choix qu'il ne propose pas est
         remplacé par le défaut : le dire (le journal Python l'a déjà)."""
         msgs = getattr(self._indices_page, "ecretages", None) or []
-        if msgs:
-            show_toast(self, "\n".join(["Réglage ramené à ce que l'étape 2 propose :", *msgs]), duration=8000)
+        lignes = ["Réglage ramené à ce que l'étape 2 propose :", *msgs] if msgs else []
+        # Rayons enregistrés en pixels, convertis en mètres à la lecture (ConfigManager.fusionner) : dit une fois,
+        # dans le même toast (et au journal de l'étape 2, qui les a déjà écrits s'il les a convertis lui-même).
+        migrations = list(getattr(self._cm, "migrations", None) or [])
+        self._cm.migrations = []
+        if migrations:
+            lignes += ["Rayons enregistrés en pixels, convertis en mètres :", *migrations]
+        if lignes:
+            show_toast(self, "\n".join(lignes), duration=10000 if migrations else 8000)
 
     def _apply_config(self, loaded) -> None:
         """Point de passage UNIQUE d'un changement de config (menu, import,
         réinitialisation) : normalisation, rechargement des pages, persistance."""
         if isinstance(loaded, dict) and isinstance(loaded.get("ui_config"), dict):
             loaded = loaded["ui_config"]  # compat ancien wrapper
-        cfg = self._cm.default_config()
-        self._cm._deep_update(cfg, loaded if isinstance(loaded, dict) else {})
-        self._cm._migrate_cv_runs(cfg)
-        # Même normalisation que ConfigManager.load/load_last_ui_config : sans
-        # ce remap, une entité sauvegardée sous un ancien id (cratere_obus,
-        # zones_extraction_materiaux…) devient un fantôme silencieusement
-        # décoché (AUDIT v2 CFG-03).
-        self._cm._migrate_entity_ids(cfg)
+        # Même normalisation que ConfigManager.load/load_last_ui_config (ids d'entités renommés, AUDIT v2 CFG-03 ;
+        # rayons en pixels convertis en mètres AVANT la fusion avec les défauts, audit 2026-10-31).
+        cfg = self._cm.fusionner(loaded)
         self._config = cfg
         self._loading = True
         try:

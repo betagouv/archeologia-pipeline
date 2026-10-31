@@ -206,9 +206,15 @@ def plan_from_specs(
     uniform_res = len(resolutions) == 1
     if not uniform_res:
         listed = ", ".join(f"{rx}×{ry} m" for rx, ry in sorted(resolutions))
+        # Rayons (réglés en mètres) et fenêtres de détection sont convertis UNE fois par run, à la résolution
+        # de la première dalle par nom (resolution_des_entrees, runner._gsd_des_images) — audit 2026-10-31.
+        premiere = min(tiles, key=lambda t: t.source_path.name)
         warnings.append(
             f"Résolutions hétérogènes ({listed}) — RVT à la résolution native ; "
-            "pas de mosaïque inter-résolution."
+            "pas de mosaïque inter-résolution. Les rayons des indices et les fenêtres de détection sont "
+            f"convertis à la résolution de la première dalle ({premiere.source_path.name}, "
+            f"{f'{abs(premiere.pixel_size_x):g}'.replace('.', ',')} m) : séparez les dalles par résolution "
+            "pour que chacune ait les siens."
         )
     if model_resolution is not None:
         off = [
@@ -332,6 +338,34 @@ def crs_des_entrees(dir_path, exts: Sequence[str], declared_crs: Optional[str] =
     except Exception:
         pass
     return normaliser_crs(declared_crs)
+
+
+def resolution_des_entrees(dir_path, exts: Sequence[str], defaut: float = 0.5) -> float:
+    """Résolution (m/px) d'un run ``existing_mnt``/``existing_rvt`` : celle de la première dalle exploitable,
+    comme :func:`crs_des_entrees` (SOURCE UNIQUE, calculée une fois par le runner). Sert à convertir en pixels
+    les réglages des indices, réglés en mètres (``app.services.indices_metres``), et à mettre les fenêtres de
+    détection à l'échelle. Un lot de résolutions mêlées est signalé au préflight (:func:`plan_from_specs`) ;
+    les rayons y sont convertis à la résolution de la première dalle. Ne lève jamais : ``defaut`` sinon."""
+    try:
+        from .tilespec import is_degenerate_tile
+
+        d = Path(str(dir_path))
+        norm = {e.lower().lstrip(".") for e in exts}
+        for p in sorted(d.iterdir()):
+            if not (p.is_file() and p.suffix.lower().lstrip(".") in norm):
+                continue
+            spec = TileSpec.from_raster(p)
+            if spec is None or is_degenerate_tile(spec) or not spec.pixel_size_x:
+                continue
+            pas = abs(float(spec.pixel_size_x))
+            # Sans géotransformation (pixel de 1, axe montant) ou pas non métrique (degrés) : pas de résolution
+            # utilisable, les rayons restent à ``defaut`` (audit 2026-10-31).
+            if float(spec.pixel_size_y) > 0 or not 0.05 <= pas <= 50.0:
+                return float(defaut)
+            return round(pas, 6)
+    except Exception:
+        pass
+    return float(defaut)
 
 
 def alerte_relance_autre_crs(trace: Optional[dict], crs_run: str) -> Optional[str]:

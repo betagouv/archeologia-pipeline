@@ -53,7 +53,7 @@ Le journal dit « ⚠️ Méthode de calcul mise à jour » ou « ⚠️ Paramè
 
 ## Le noyau atteint N pixels
 
-Le rayon d'un indice dépasse la marge entre dalles, ou la taille d'un raster en MNT existant. Au-delà, l'algorithme reconstruit le voisinage par symétrie : les dalles ne se raccordent plus, ou l'indice n'est pas fiable sur une partie de l'emprise. Réduisez le rayon nommé, ou augmentez la marge à l'étape 2. Sur un lot de rasters, ne réduisez le rayon que si la plupart ont cette taille : le réglage vaut pour tous. Voir [Marge entre dalles](etape-2-produits.md#marge-entre-dalles).
+Le rayon d'un indice dépasse la marge entre dalles, ou la taille d'un raster en MNT existant ; le message donne le rayon en mètres et en pixels. Au-delà, l'algorithme reconstruit le voisinage par symétrie : les dalles ne se raccordent plus, ou l'indice n'est pas fiable sur une partie de l'emprise. Réduisez le rayon nommé, ou augmentez la marge à l'étape 2. Sur un lot de rasters, ne réduisez le rayon que si la plupart ont cette taille : le réglage vaut pour tous. Voir [Marge entre dalles](etape-2-produits.md#marge-entre-dalles).
 
 ## Une couture entre deux dalles
 

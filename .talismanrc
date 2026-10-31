@@ -284,7 +284,7 @@ fileignoreconfig:
 - filename: aide/img/etape3-fiche-classe.png
   checksum: 366d3e4d8f21219753142e13983ffb77d14f6c33ade117776e465ad6192af1b6
 - filename: data/third_party/cv_runner_onnx/windows/build_info.json
-  checksum: 0dd652aec98ee97576bea664484ab240aec3b8cea45b2dd032bf63e60006dada
+  checksum: b14ac91f27a89314570ca30adbb49d15a3d62e4531e4544a486a41eb5b22cd93
 - filename: dev/rendu_hors_ecran.py
   checksum: c17413a7757f3736db6d02453061771d1bca2461e149a9c27577695972d357a2
 - filename: aide/img/etape2-produits.png

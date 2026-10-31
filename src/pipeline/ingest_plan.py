@@ -206,9 +206,15 @@ def plan_from_specs(
     uniform_res = len(resolutions) == 1
     if not uniform_res:
         listed = ", ".join(f"{rx}×{ry} m" for rx, ry in sorted(resolutions))
+        # Rayons (réglés en mètres) et fenêtres de détection sont convertis UNE fois par run, à la résolution
+        # de la première dalle par nom (resolution_des_entrees, runner._gsd_des_images) — audit 2026-10-31.
+        premiere = min(tiles, key=lambda t: t.source_path.name)
         warnings.append(
             f"Résolutions hétérogènes ({listed}) — RVT à la résolution native ; "
-            "pas de mosaïque inter-résolution."
+            "pas de mosaïque inter-résolution. Les rayons des indices et les fenêtres de détection sont "
+            f"convertis à la résolution de la première dalle ({premiere.source_path.name}, "
+            f"{f'{abs(premiere.pixel_size_x):g}'.replace('.', ',')} m) : séparez les dalles par résolution "
+            "pour que chacune ait les siens."
         )
     if model_resolution is not None:
         off = [

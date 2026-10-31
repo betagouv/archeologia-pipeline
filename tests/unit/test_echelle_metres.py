@@ -246,3 +246,19 @@ def test_indices_fournis_reconnus_par_leur_nom():
     assert "indices fournis (d'après leur nom)" in msg and "10 à 20 m" in msg
     (msg,) = avertissements_echelle([m], 0.5, None, indices_calcules=False)
     assert "pas connus" in msg
+
+
+def test_preflight_lot_de_resolutions_melees_dit_la_resolution_retenue():
+    """Audit 4 : un lot mêlé est calculé avec les rayons et la fenêtre de détection de la PREMIÈRE dalle
+    (ingest_plan.resolution_des_entrees) ; le préflight le dit."""
+    from pathlib import Path
+    from pipeline.ingest_plan import plan_from_specs
+    from pipeline.tilespec import TileSpec
+
+    def t(nom, pas, x):
+        return TileSpec.from_values(source_path=Path(nom), bounds=(x, 0, x + 100, 100), pixel_size_x=pas,
+                                    pixel_size_y=-pas, width_px=int(100 / pas), height_px=int(100 / pas),
+                                    crs="EPSG:25832")
+    plan = plan_from_specs([t("b.tif", 0.5, 1000), t("a.tif", 1.0, 0)])
+    (msg,) = [w for w in plan.warnings if "hétérogènes" in w]
+    assert "a.tif" in msg and "1 m" in msg and "rayons" in msg and "fenêtres" in msg

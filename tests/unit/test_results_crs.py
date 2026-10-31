@@ -3,7 +3,7 @@
 Régression visée : un raster sans CRS exploitable (``ENGCRS["unnamed"]`` émis par
 pdal/rvt-qgis) atterrissait tel quel dans ``indices/**/tif/`` puis dans
 ``index.vrt`` — QGIS échouait alors à le charger (« Pas de transformation
-disponible … code 4096 »). On exige désormais que ``copy_mnt_to_results``,
+disponible … code 4096 »). On exige désormais que
 ``copy_final_products_to_results`` et ``build_vrt_index`` ré-étiquettent
 (EPSG:2154, *assignation* sans reprojection) tout TIF dépourvu de CRS, **sans
 jamais écraser** un vrai CRS projeté/géographique déjà présent.
@@ -18,7 +18,6 @@ from pipeline.tilespec import TileSpec
 from pipeline.ign.products.results import (
     build_vrt_index,
     copy_final_products_to_results,
-    copy_mnt_to_results,
 )
 from pipeline.ign.products.rvt_naming import get_rvt_source_and_dest_filenames
 
@@ -39,39 +38,6 @@ def _write_tif(path, *, crs, width=20, height=10, origin=(623000.0, 6864000.0), 
         profile["crs"] = crs
     with rasterio.open(str(path), "w", **profile) as ds:
         ds.write(np.zeros((1, height, width), dtype="float32"))
-
-
-# --------------------------------------------------------------------------- #
-#  copy_mnt_to_results                                                          #
-# --------------------------------------------------------------------------- #
-
-class TestCopyMntToResults:
-    def test_stamps_crs_when_missing(self, tmp_path):
-        _write_tif(tmp_path / "src.tif", crs=None)
-        out = copy_mnt_to_results(
-            temp_mnt_path=tmp_path / "src.tif",
-            output_dir=tmp_path / "out",
-            current_tile_name=TILE,
-        )
-        assert TileSpec.from_raster(out).crs == "EPSG:2154"
-
-    def test_preserves_epsg2154(self, tmp_path):
-        _write_tif(tmp_path / "src.tif", crs="EPSG:2154")
-        out = copy_mnt_to_results(
-            temp_mnt_path=tmp_path / "src.tif",
-            output_dir=tmp_path / "out",
-            current_tile_name=TILE,
-        )
-        assert TileSpec.from_raster(out).crs == "EPSG:2154"
-
-    def test_does_not_clobber_other_projected_crs(self, tmp_path):
-        _write_tif(tmp_path / "src.tif", crs="EPSG:32631", origin=(500000.0, 5400000.0))
-        out = copy_mnt_to_results(
-            temp_mnt_path=tmp_path / "src.tif",
-            output_dir=tmp_path / "out",
-            current_tile_name=TILE,
-        )
-        assert TileSpec.from_raster(out).crs == "EPSG:32631"
 
 
 # --------------------------------------------------------------------------- #

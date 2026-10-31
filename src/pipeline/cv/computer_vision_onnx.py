@@ -427,6 +427,19 @@ def _inst_merge(inst: dict, sy: int, sx: int, ey: int, ex: int,
     inst["conf"] = max(inst["conf"], conf)
 
 
+def boites_retenues_hors_fenetre(boxes_out, max_scores, seuil_min: float) -> Optional[float]:
+    """Plus grande coordonnée des boîtes des requêtes RETENUES (score ≥ ``seuil_min``, le plus bas des seuils) quand
+    elle dépasse 1,5 — un export qui ne sortirait plus du cxcywh normalisé —, ``None`` sinon. Les requêtes sous le
+    seuil ne comptent pas : RF-DETR en sort 300, non contraintes, et les vides (score ~0,01) débordent souvent
+    (rejeu de_sh 2026-11-01 : 152 alertes, toutes de requêtes vides, aucune détection publiée hors emprise)."""
+    if not getattr(boxes_out, "size", 0):
+        return None
+    retenues = boxes_out[np.asarray(max_scores) >= seuil_min]
+    if retenues.size and float(retenues.max()) > 1.5:
+        return float(retenues.max())
+    return None
+
+
 def _run_rfdetr_seg_with_sahi(
     pil_image,
     session,
@@ -497,6 +510,7 @@ def _run_rfdetr_seg_with_sahi(
 
     SNAP = 16  # tolérance de snap pour identifier la même instance entre tuiles
 
+    seuil_min = min([confidence_threshold, *(confidence_per_class or {}).values()])
     for slice_idx, sliced_img in enumerate(sliced_images):
         check_cancelled(cancel_check)
         slice_pil = _PILImage.fromarray(sliced_img.image)
@@ -545,10 +559,11 @@ def _run_rfdetr_seg_with_sahi(
         # Les instances n'étaient pas séparées, et la recherche de suffixe ci-dessous
         # devenait quadratique faute de clés distinctes.
         boxes_normalized = True
-        if boxes_out.size and boxes_out.max() > 1.5:
+        hors = boites_retenues_hors_fenetre(boxes_out, max_scores, seuil_min)
+        if hors is not None:
             logger.warning(
                 "RF-DETR Seg: boîtes hors [0,1] (max=%.3f) — export inattendu, "
-                "les boîtes sont pourtant lues comme normalisées", float(boxes_out.max()))
+                "les boîtes sont pourtant lues comme normalisées", hors)
 
         for i in range(len(max_scores)):
             # La classe d'abord : le seuil peut en dépendre. Réordonner les deux
@@ -1248,6 +1263,25 @@ def _merge_adjacent_polygons(
     return merged_detections
 
 
+def message_fenetre_peu_remplie(nom: str, img_w: int, img_h: int, slice_w: int, slice_h: int) -> Optional[str]:
+    """Avertissement quand l'image occupe moins de la moitié d'une fenêtre d'analyse (le reste est complété
+    par du blanc, ``sahi_lite.completer_fenetre``), ``None`` sinon. Part comptée PAR FENÊTRE : une bande plus
+    large que la fenêtre mais moins haute ne remplit que sa hauteur de chaque fenêtre."""
+    from .sahi_lite import part_de_fenetre
+
+    if slice_w <= 0 or slice_h <= 0:
+        return None
+    part = part_de_fenetre(img_w, img_h, slice_w, slice_h)
+
+    if part >= 0.5:
+        return None
+    image_pct = round(100 * part)
+    fenetre = f"{slice_w} px" if slice_w == slice_h else f"{slice_w}×{slice_h} px"
+    return (f"{nom} : fenêtre de {fenetre}, l'image ({img_w}×{img_h} px) n'en occupe que {image_pct} %, "
+            f"le reste ({100 - image_pct} %) est complété par du blanc — le modèle n'a pas vu ce cas à "
+            "l'entraînement, détections moins sûres")
+
+
 def run_onnx_inference(
     *,
     image_path: str,
@@ -1303,11 +1337,10 @@ def run_onnx_inference(
         
         # Fenêtre surtout faite de remplissage (image plus petite que la fenêtre : petit indice fourni pour un
         # modèle appris à 1 m, par exemple) : le modèle voit surtout du sans-donnée — le dire (audit 2026-10-31).
-        if img_width * img_height < 0.5 * slice_width * slice_height:
-            logger.warning(f"{Path(image_path).name} : image {img_width}×{img_height} px pour une fenêtre "
-                           f"{slice_width}×{slice_height} px — fenêtre remplie à "
-                           f"{100 - 100 * img_width * img_height // (slice_width * slice_height)} %, "
-                           "détections moins sûres")
+        msg_remplissage = message_fenetre_peu_remplie(Path(image_path).name, img_width, img_height,
+                                                      slice_width, slice_height)
+        if msg_remplissage:
+            logger.warning(msg_remplissage)
 
         # Charger le modèle ONNX (ou réutiliser la session fournie)
         if onnx_session is not None:

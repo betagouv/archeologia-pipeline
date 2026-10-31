@@ -591,3 +591,28 @@ def test_groupe_structures_dans_les_deux_chemins():
         src = (racine / rel).read_text(encoding="utf-8")
         assert "GROUPE_STRUCTURES" in src and "titre_dossier_image(" in src, rel
         assert 'f"index_{rvt_type}"' not in src and "Dalles RVT" not in src, rel
+
+
+class TestTraceResolutionReelle:
+    """Run réel 2026-10-31 (MNT à 1 m, existing_mnt) : la trace portait mnt_resolution 0,5 (réglage LiDAR de
+    l'étape 2, sans effet dans ce mode) et rien de la résolution réelle."""
+
+    def _metas(self, tmp_path):
+        import json
+        tr = json.loads((tmp_path / "livrable" / "traitement.json").read_text(encoding="utf-8"))
+        (md,) = (tmp_path / "technique" / "journaux").glob("metadata_*.json")
+        return tr, json.loads(md.read_text(encoding="utf-8"))
+
+    def test_resolution_du_run_ecrite_et_reglage_lidar_retire_hors_lidar(self, tmp_path, monkeypatch):
+        ui = {"app": {"files": {"data_mode": "existing_mnt"}}, "processing": {"mnt_resolution": 0.5, "x": 1}}
+        _finalize(tmp_path, monkeypatch, tiles_processed=1, rvt_params={"resolution_m": 1.0}, ui_config=ui)
+        tr, md = self._metas(tmp_path)
+        assert tr["resolution_m"] == 1.0 and md["resolution_m"] == 1.0
+        assert md["ui_config"]["processing"] == {"x": 1}
+        assert ui["processing"]["mnt_resolution"] == 0.5          # la configuration de l'appelant n'est pas touchée
+
+    def test_mode_lidar_garde_son_reglage(self, tmp_path, monkeypatch):
+        ui = {"app": {"files": {"data_mode": "ign_laz"}}, "processing": {"mnt_resolution": 0.5}}
+        _finalize(tmp_path, monkeypatch, tiles_processed=1, rvt_params={"resolution_m": 0.5}, ui_config=ui)
+        tr, md = self._metas(tmp_path)
+        assert tr["resolution_m"] == 0.5 and md["ui_config"]["processing"]["mnt_resolution"] == 0.5

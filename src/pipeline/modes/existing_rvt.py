@@ -10,7 +10,8 @@ from ..geo_utils import extract_tif_transform_data
 from ..coords import extract_xy_from_filename, get_raster_bounds, infer_xy_from_file
 from ..constants import IGN_TILE_SIZE_M
 from ..cv.external_runner import ImageProgressFn, TileProgressFn
-from ..ign.products.results import needs_refresh
+from ..ign.products.results import needs_refresh, retirer_publication_remplacee
+from ..ign.products.rvt_naming import est_lambert93
 from ..output_paths import indice_base_dir, indice_tif_dir, indice_jpg_dir, intermediaires_dir
 from ..tilespec import assign_crs_if_missing
 from .neighbor_halo import DEFAULT_HALO_MARGIN_M, NeighborHalo
@@ -139,7 +140,7 @@ def _convert_tif_to_png_with_world(input_tif: Path, output_png: Path) -> None:
         raise RuntimeError(f"Échec conversion TIF->PNG: {input_tif}")
 
 
-def _normalized_rvt_name(*, tif_path: Path, target_rvt: str) -> str:
+def _normalized_rvt_name(*, tif_path: Path, target_rvt: str, crs: Optional[str] = None) -> str:
     # Vérifier l'emprise réelle de la tuile pour éviter les collisions
     # de noms quand les tuiles font moins de ~1 km (ex: 350x350 à 0.5 m/px = 175 m)
     bounds = get_raster_bounds(tif_path)
@@ -157,7 +158,10 @@ def _normalized_rvt_name(*, tif_path: Path, target_rvt: str) -> str:
         xy = extract_xy_from_filename(tif_path.name)
     if xy is None:
         return tif_path.name
-    return f"LHD_FXX_{int(xy.x_km):04d}_{int(xy.y_km):04d}_{target_rvt}_A_LAMB93{tif_path.suffix}"
+    from ..ign.products.rvt_naming import jeton_crs, prefixe_dalle  # différé : évite QGIS au top-level
+
+    pre = prefixe_dalle(f"{int(xy.x_km):04d}", f"{int(xy.y_km):04d}", crs)
+    return f"{pre}_{target_rvt}_A{jeton_crs(crs)}{tif_path.suffix}"
 
 
 def _cleanup_orphans(directory: Path | None, glob_pattern: str, kept_names: set[str]) -> None:
@@ -349,7 +353,13 @@ def run_existing_rvt(
         dest_refreshed = False
         if tif_out_dir is not None and tif_out_dir.resolve() != existing_rvt_dir.resolve():
             try:
-                normalized_name = _normalized_rvt_name(tif_path=tif_path, target_rvt=target_rvt)
+                normalized_name = _normalized_rvt_name(tif_path=tif_path, target_rvt=target_rvt, crs=crs)
+                if crs and not est_lambert93(crs):   # nom Lambert-93 d'un run d'avant la correction (2026-10-31)
+                    ancien = _normalized_rvt_name(tif_path=tif_path, target_rvt=target_rvt)
+                    if ancien != normalized_name:
+                        retirer_publication_remplacee(
+                            Path(ancien).stem, tif_dir=tif_out_dir, png_dir=jpg_output_dir, output_dir=output_dir,
+                            crs=crs, sources=(existing_rvt_dir,), log=log)
                 dest = tif_out_dir / normalized_name
                 dest_refreshed = needs_refresh(tif_path, dest)
                 if dest_refreshed:

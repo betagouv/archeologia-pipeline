@@ -450,6 +450,7 @@ def _ecrire_rapport_run(
         choisir_vrt_vignette,
         ecrire_rapport,
         extraire_avertissements,
+        seuils_par_classe,
         surface_km2_depuis_vrt,
         vignette_depuis_vrt,
     )
@@ -471,6 +472,7 @@ def _ecrire_rapport_run(
             fiab = r.get("fiabilite") if isinstance(r.get("fiabilite"), dict) else {}
             infos.setdefault(slug, {
                 "modele": str(fiab.get("modele") or slug), "seuil": r.get("confidence_threshold"),
+                "seuils": seuils_par_classe(r),   # ceux que la détection applique, quand ils diffèrent
                 "entites": [e.get("label") or e.get("slug") or "" for e in (r.get("entities") or [])
                             if isinstance(e, dict)],
             })
@@ -479,11 +481,13 @@ def _ecrire_rapport_run(
         info = infos.get(str(x.get("model")), {})
         runs_rapport.append(dict(
             x, modele=info.get("modele") or x.get("modele") or x.get("model"), seuil=info.get("seuil"),
+            seuils=info.get("seuils") or [],
             entites=x.get("entites") or info.get("entites", []),
         ))
     if not runs_rapport:                      # runs résolus, sans durée
         for slug, info in infos.items():
             runs_rapport.append({"modele": info["modele"], "model": slug, "target_rvt": "", "seuil": info["seuil"],
+                                 "seuils": info["seuils"],
                                  "entites": info["entites"], "images": None, "secondes": None})
     journaux = sorted(journaux_dir(Path(output_dir)).glob("pipeline_log_*.txt"))
     avertissements: list = []
@@ -539,6 +543,20 @@ def _ecrire_rapport_run(
     )
     ecrire_rapport(livrable_dir(Path(output_dir)), donnees)
     return f"{DIR_LIVRABLE}/{NOM_RAPPORT}"
+
+def _ui_config_trace(ui_config: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    """Configuration de l'assistant telle que la trace complète l'enregistre. Hors modes LiDAR, la résolution du
+    MNT à calculer (étape 2) est sans effet : retirée de la copie pour ne pas contredire ``resolution_m`` (un MNT
+    à 1 m tracé « mnt_resolution 0.5 », run réel du 2026-10-31) ; une relance depuis ce résultat retombe sur le
+    défaut. La configuration de l'appelant n'est pas modifiée."""
+    import copy
+
+    cfg = copy.deepcopy(ui_config or {})
+    mode = str(((cfg.get("app") or {}).get("files") or {}).get("data_mode") or "")
+    if mode in ("existing_mnt", "existing_rvt") and isinstance(cfg.get("processing"), dict):
+        cfg["processing"].pop("mnt_resolution", None)
+    return cfg
+
 
 def finalize_pipeline(
     *,
@@ -706,6 +724,9 @@ def finalize_pipeline(
             "tiles_processed": tiles_processed,
             # Système de coordonnées de TOUTES les sorties (celui des entrées, jamais reprojeté).
             "crs": crs,
+            # Résolution RÉELLE du run (m/px) : celle du MNT calculé, ou des rasters fournis
+            # (ingest_plan.resolution_des_entrees) — jamais le réglage LiDAR de l'étape 2.
+            **({"resolution_m": rvt_params["resolution_m"]} if (rvt_params or {}).get("resolution_m") else {}),
             # LiDAR (lot 1) : le LAZ fusionné et le MNT ne sont reproductibles qu'à
             # version de PDAL et méthode de fusion égales.
             **({"pdal_version": pdal_version} if pdal_version else {}),
@@ -755,7 +776,7 @@ def finalize_pipeline(
                 # ne pas enregistrer de chemin fantôme quand la CV est inactive.
                 **({"detections": f"{DIR_LIVRABLE}/{DIR_DETECTIONS}"} if Path(det_dir).is_dir() else {}),
             },
-            "ui_config": ui_config or {},
+            "ui_config": _ui_config_trace(ui_config),
         }
         # 4b. Rapport de traitement (2026-10-08) : HTML à la racine du dossier de
         # sortie, ouvert d'un clic depuis la vue d'exécution — tout vient du run

@@ -132,7 +132,7 @@ def resolve_uncropped_tif(
 def annoncer_echelle(cv_cfg: Dict[str, Any], cv_runs: List[Dict[str, Any]], reporter: "ProgressReporter",
                      rvt_params_px: Optional[Dict[str, Any]], *, indices_calcules: bool = True,
                      anneau_fourni_px: Optional[Tuple[int, int]] = None) -> None:
-    """Avertissements d'échelle du run (``model_orchestrator.avertissements_echelle``), une fois par modèle :
+    """Avertissements d'échelle du run (``model_orchestrator.avertissements_echelle``), un par cause, modèles listés :
     résolution des données ≠ résolution d'entraînement, anneau du LD différent, indices fournis aux réglages
     inconnus. Best-effort : un modèle illisible ne bloque jamais la détection."""
     from .indices_metres import resolution_de
@@ -148,6 +148,36 @@ def annoncer_echelle(cv_cfg: Dict[str, Any], cv_runs: List[Dict[str, Any]], repo
             reporter.user_warning(msg)
     except Exception as e:  # noqa: BLE001
         reporter.info(f"Avertissements d'échelle ignorés ({e})")
+
+
+def avertissements_remplissage(stats: List[Dict[str, Any]]) -> List[str]:
+    """Avertissement VISIBLE (un message pour la cause, modèles listés, comme les avertissements d'échelle) quand
+    des images occupent moins de la moitié de la fenêtre d'analyse d'un modèle : le reste est complété par du vide,
+    un cas que le modèle n'a pas vu à l'entraînement. ``stats`` : entrées ``{modele, remplissage}`` des runs
+    (``remplissage`` = ``runner.remplissage_des_fenetres``) ; le détail par image reste au journal technique."""
+    from .indices_metres import format_m
+
+    def _cote(r: Dict[str, Any]) -> str:
+        return f"{format_m(r['fenetre_m'])} de côté" if r.get("fenetre_m") else f"{r['fenetre_px']} px de côté"
+
+    lus = [(str(s.get("modele") or s.get("model") or "?"), s["remplissage"]) for s in stats or []
+           if isinstance(s, dict) and isinstance(s.get("remplissage"), dict)]
+    if not lus:
+        return []
+    grand = max(lus, key=lambda t: (t[1].get("fenetre_m") or 0, t[1]["fenetre_px"]))[1]
+    conseil = (f"Fournissez des MNT d'au moins {format_m(grand['fenetre_m'])} de côté." if grand.get("fenetre_m")
+               else f"Fournissez des rasters d'au moins {grand['fenetre_px']} px de côté.")
+    if len(lus) == 1:
+        nom, r = lus[0]
+        return [f"{r['n']} images sur {r['total']} sont plus petites que la fenêtre d'analyse du modèle « {nom} » "
+                f"({_cote(r)}) : l'image n'en occupe en moyenne que {round(100 * r['part_moyenne'])} %, le reste est "
+                "complété par du vide, ce que le modèle n'a pas vu à l'entraînement : relisez ses détections avec "
+                f"prudence. {conseil}"]
+    detail = " ; ".join(f"« {nom} » ({_cote(r)}) : {r['n']} images sur {r['total']}, "
+                        f"{round(100 * r['part_moyenne'])} % en moyenne" for nom, r in lus)
+    return [f"Des images sont plus petites que la fenêtre d'analyse de {len(lus)} modèles — {detail}. L'image "
+            "n'occupe qu'une partie de la fenêtre, le reste est complété par du vide, ce que ces modèles n'ont pas vu "
+            f"à l'entraînement : relisez leurs détections avec prudence. {conseil}"]
 
 
 def run_cv_post_loop(
@@ -225,6 +255,7 @@ def run_cv_post_loop(
     # total_detections par run (résumé du runner) — None exclus : si aucun
     # run n'a de résumé (fallback, vieux binaire), pas d'annonce de total.
     detection_counts: list = []
+    remplissages: list = []   # fenêtres surtout vides, par modèle → un avertissement visible après les runs
 
     def _process_run(run_idx: int, run_cfg: Dict[str, Any]) -> None:
         run_model = run_cfg.get("selected_model", "?")
@@ -302,6 +333,7 @@ def run_cv_post_loop(
                 model_display, int(st["images_inferees"]), float(st.get("secondes", 0.0)),
                 appareil=appareil.get("appareil"),
             )
+        remplissages.append({"modele": model_display, "remplissage": st.get("remplissage")})
         if stats_out is not None:   # durée mesurée par modèle, pour le rapport de run
             stats_out.append({
                 "modele": model_display, "model": run_model, "target_rvt": run_rvt,
@@ -334,6 +366,8 @@ def run_cv_post_loop(
             f"⚠️ Computer Vision: {len(failed)} run(s) sur {len(cv_runs)} en échec "
             "— voir le journal."
         )
+    for msg in avertissements_remplissage(remplissages):
+        reporter.user_warning(msg)
     # Compte des couches (après dédoublonnage, seuil, aire minimale), pas les détections brutes du moteur.
     gardees = detections_gardees(ctx.output_dir, cv_runs)
     if gardees is not None:

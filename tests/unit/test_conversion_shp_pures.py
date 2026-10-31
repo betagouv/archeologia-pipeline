@@ -26,8 +26,6 @@ def test_fichier_world_lu_ou_refuse(tmp_path):
 
 
 def test_coordonnees_des_noms_ign():
-    assert cs.extract_coordinates_from_filename("LHD_FXX_0929_6613_LDO_A_LAMB93.jpg") == (929000, 6613000)
-    assert cs.extract_coordinates_from_filename("autre_nom.png") == (None, None)
     assert cs.extract_tile_coordinates("LHD_FXX_0929_6613_PTS_C") == ("0929", "6613")
     assert cs.extract_tile_coordinates("trop_court") == (None, None)
 

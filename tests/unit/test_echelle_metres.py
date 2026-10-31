@@ -112,8 +112,46 @@ def test_avertissement_de_resolution_a_1m():
     rvt = en_px({}, 1.0)
     msgs = avertissements_echelle([_modele("lineaires", 0.5, (5.0, 10.0)), _modele("enclos", 1.0, (5.0, 10.0))],
                                   1.0, rvt)
-    assert len(msgs) == 1 and "lineaires" in msgs[0]
-    assert "1 m/pixel" in msgs[0] and "0,5 m/pixel" in msgs[0] and "324 px au lieu de 648" in msgs[0]
+    assert len(msgs) == 1 and "lineaires" in msgs[0] and "enclos" not in msgs[0]
+    assert "1 m/pixel" in msgs[0] and "0,5 m/pixel" in msgs[0]
+    assert " px" not in msgs[0]          # le détail des fenêtres va au journal technique (runner.run_cv_on_folder)
+
+
+def test_resolution_trois_modeles_un_seul_message():
+    """Retour utilisateur 2026-10-31 (MNT allemand à 1 m) : un message par modèle, trop long → un seul, modèles listés."""
+    noms = ["Grandes dépressions circulaires (LD)", "Structures linéaires 3 classes (LD)",
+            "Structures ponctuelles 2 classes : charbonnières et fours (LD)"]
+    modeles = [_modele(n, 0.5, (5.0, 10.0), s) for n, s in zip(noms, (648, 648, 672))]
+    (msg,) = avertissements_echelle(modeles, 1.0, en_px({}, 1.0))
+    assert msg == ("Vos données sont à 1 m/pixel ; 3 modèles ont appris à 0,5 m/pixel : " + ", ".join(noms) + ". "
+                   "Leurs fenêtres d'analyse couvrent la même surface au sol qu'à l'entraînement, mais ils n'ont "
+                   "jamais vu cette résolution : relisez leurs détections avec prudence.")
+
+
+def test_resolution_un_message_par_resolution_d_entrainement():
+    modeles = [_modele("a", 0.5, (5.0, 10.0)), _modele("b", 1.0, (5.0, 10.0)), _modele("c", 0.5, (5.0, 10.0))]
+    msgs = avertissements_echelle(modeles, 2.0, en_px({}, 2.0))
+    assert len(msgs) == 2
+    assert "2 modèles ont appris à 0,5 m/pixel : a, c." in msgs[0]
+    assert "le modèle « b » a appris à 1 m/pixel." in msgs[1]
+
+
+def test_resolution_un_modele_au_singulier():
+    (msg,) = avertissements_echelle([_modele("lineaires", 0.5, (5.0, 10.0))], 1.0, en_px({}, 1.0))
+    assert msg == ("Vos données sont à 1 m/pixel ; le modèle « lineaires » a appris à 0,5 m/pixel. Sa fenêtre "
+                   "d'analyse couvre la même surface au sol qu'à l'entraînement, mais il n'a jamais vu cette "
+                   "résolution : relisez ses détections avec prudence.")
+
+
+def test_anneau_different_sur_deux_modeles_un_seul_message():
+    rvt = en_px({"ldo": {"min_radius_m": 10.0, "max_radius_m": 20.0}}, 0.5)
+    (msg,) = avertissements_echelle([_modele("a", 0.5, (5.0, 10.0)), _modele("b", 0.5, (5.0, 10.0))], 0.5, rvt)
+    assert msg.startswith("2 modèles ont appris sur un LD d'anneau 5 à 10 m : a, b ;")
+    assert "10 à 20 m" in msg and "leurs détections seront dégradées" in msg
+    (msg,) = avertissements_echelle([_modele("a", 0.5, (5.0, 10.0)), _modele("b", 0.5, (5.0, 10.0))], 0.5, rvt,
+                                    indices_calcules=False)
+    assert msg.startswith("2 modèles ont appris sur une dominance locale (LD) d'anneau 5 à 10 m : a, b.")
+    assert "pas connus" in msg and "leurs détections" in msg
 
 
 def test_avertissement_anneau_different_et_indices_fournis():
@@ -136,7 +174,8 @@ def test_les_7_modeles_installes_ont_le_meme_anneau_en_metres():
         assert m.gsd_m in (0.5, 1.0), (m.name, m.gsd_m)
     assert {m.anneau_m for m in modeles} == {(5.0, 10.0)}     # ce que compare la nouvelle : rien à signaler
     a_1m = avertissements_echelle(modeles, 1.0, en_px({}, 1.0))
-    assert len(a_1m) == sum(1 for m in modeles if m.gsd_m == 0.5)   # un message par modèle appris à 0,5 m
+    assert len(a_1m) == 1                                     # un seul message pour tous les modèles à 0,5 m
+    assert all(m.display_name in a_1m[0] for m in modeles if m.gsd_m == 0.5)
     assert avertissements_echelle([m for m in modeles if m.gsd_m == 0.5], 0.5, en_px({}, 0.5)) == []
 
 
@@ -262,3 +301,119 @@ def test_preflight_lot_de_resolutions_melees_dit_la_resolution_retenue():
     plan = plan_from_specs([t("b.tif", 0.5, 1000), t("a.tif", 1.0, 0)])
     (msg,) = [w for w in plan.warnings if "hétérogènes" in w]
     assert "a.tif" in msg and "1 m" in msg and "rayons" in msg and "fenêtres" in msg
+
+
+# ── run réel 2026-10-31 (MNT allemands à 1 m) : « fenêtre remplie à 71 % » disait le contraire du fait ───────
+def test_message_fenetre_peu_remplie_dit_la_part_d_image_et_celle_du_vide():
+    from pipeline.cv.computer_vision_onnx import message_fenetre_peu_remplie
+    msg = message_fenetre_peu_remplie("d.png", 351, 351, 648, 648)
+    assert "fenêtre de 648 px" in msg and "n'en occupe que 29 %" in msg and "(71 %)" in msg
+    assert "complété par du blanc" in msg and "pas vu ce cas à l'entraînement" in msg
+    assert "remplie à" not in msg
+    assert message_fenetre_peu_remplie("d.png", 460, 460, 648, 648) is None      # 50,4 % d'image : rien
+
+
+def test_message_fenetre_peu_remplie_compte_par_fenetre():
+    """Une bande de 2 000 × 200 px : chaque fenêtre de 648 px n'a que 31 % d'image, même si l'image entière
+    fait plus de la moitié d'une fenêtre en surface (l'ancien calcul sur l'image entière se taisait)."""
+    from pipeline.cv.computer_vision_onnx import message_fenetre_peu_remplie
+    msg = message_fenetre_peu_remplie("b.png", 2000, 200, 648, 648)
+    assert msg is not None and "n'en occupe que 31 %" in msg
+    assert message_fenetre_peu_remplie("b.png", 2000, 2000, 648, 648) is None
+
+
+
+# ── ajout 2026-10-31 : fenêtres surtout vides remontées à l'écran, une fois par run et par modèle ────────────
+def test_part_de_fenetre():
+    from pipeline.cv.sahi_lite import part_de_fenetre
+    assert round(part_de_fenetre(351, 351, 648, 648), 3) == 0.293
+    assert part_de_fenetre(2000, 2000, 648, 648) == 1.0 and round(part_de_fenetre(2000, 200, 648, 648), 3) == 0.309
+
+
+def test_remplissage_des_fenetres_compte_les_images(tmp_path):
+    from PIL import Image
+    from pipeline.cv.runner import remplissage_des_fenetres
+    pngs = []
+    for i, c in enumerate((351, 351, 400, 1000)):
+        Image.new("L", (c, c)).save(tmp_path / f"{i}.png")
+        pngs.append(tmp_path / f"{i}.png")
+    r = remplissage_des_fenetres(pngs, {"slice_width": 648, "slice_height": 648}, 1.0)
+    assert (r["n"], r["total"], r["fenetre_px"], r["fenetre_m"]) == (3, 4, 648, 648.0)
+    assert round(r["part_moyenne"], 3) == round((2 * 351 ** 2 + 400 ** 2) / 3 / 648 ** 2, 3)
+    assert remplissage_des_fenetres(pngs[3:], {"slice_width": 648, "slice_height": 648}, 1.0) is None
+    assert remplissage_des_fenetres(pngs, {"slice_width": 648, "slice_height": 648}, None)["fenetre_m"] is None
+
+
+def test_avertissement_remplissage_un_message_modeles_listes():
+    from app.services.cv_post_service import avertissements_remplissage
+    r_enclos = {"n": 159, "total": 205, "part_moyenne": 0.33, "fenetre_px": 648, "fenetre_m": 648.0}
+    (msg,) = avertissements_remplissage([{"modele": "Enclos (LD)", "remplissage": r_enclos},
+                                         {"modele": "Linéaires", "remplissage": None}])
+    assert msg.startswith("159 images sur 205 sont plus petites que la fenêtre d'analyse du modèle « Enclos (LD) » "
+                          "(648 m de côté) : l'image n'en occupe en moyenne que 33 %")
+    assert "complété par du vide" in msg and "relisez ses détections avec prudence" in msg
+    assert "Fournissez des MNT d'au moins 648 m de côté." in msg
+    r_b = {"n": 10, "total": 205, "part_moyenne": 0.4, "fenetre_px": 324, "fenetre_m": 324.0}
+    (msg,) = avertissements_remplissage([{"modele": "A", "remplissage": r_enclos}, {"modele": "B", "remplissage": r_b}])
+    assert "2 modèles" in msg and "« A » (648 m de côté) : 159 images sur 205, 33 % en moyenne" in msg
+    assert "« B » (324 m de côté) : 10 images sur 205, 40 % en moyenne" in msg and "leurs détections" in msg
+    assert "au moins 648 m de côté" in msg
+    (msg,) = avertissements_remplissage([{"modele": "A", "remplissage": {**r_enclos, "fenetre_m": None}}])
+    assert "(648 px de côté)" in msg and "Fournissez des rasters d'au moins 648 px de côté." in msg
+    assert avertissements_remplissage([]) == []
+
+
+
+# ── ajout 2026-11-01 : « boîtes hors [0,1] » seulement pour les requêtes retenues ──────────────────────────────
+def test_requete_vide_hors_fenetre_ne_previent_pas():
+    """Rejeu de_sh : les 152 alertes venaient de requêtes vides (score 0,004–0,013, cx 1,5–2,14), normales chez
+    RF-DETR (300 requêtes non contraintes) ; aucune requête retenue au-dessus de 1,5."""
+    from pipeline.cv.computer_vision_onnx import boites_retenues_hors_fenetre
+    boxes = np.array([[0.5, 0.5, 0.1, 0.1], [2.14, 0.3, 0.2, 0.2]])
+    assert boites_retenues_hors_fenetre(boxes, np.array([0.8, 0.013]), 0.25) is None
+
+
+def test_requete_retenue_hors_fenetre_previent():
+    from pipeline.cv.computer_vision_onnx import boites_retenues_hors_fenetre
+    boxes = np.array([[0.5, 0.5, 0.1, 0.1], [2.14, 0.3, 0.2, 0.2]])
+    assert boites_retenues_hors_fenetre(boxes, np.array([0.8, 0.30]), 0.25) == pytest.approx(2.14)
+    assert boites_retenues_hors_fenetre(np.zeros((0, 4)), np.zeros(0), 0.25) is None
+
+
+
+# ── ajout 2026-11-01 : une seule source du GSD d'entraînement (fenêtre appliquée, orchestrateur, fiche) ─────────
+@pytest.mark.parametrize("tp,card_pref,card_mnt,attendu", [
+    ({}, {"gsd_m": 1.0}, {}, 1.0),                                   # fiche du package sans résolution
+    ({"mnt": {"resolution": 0.5}}, {"gsd_m": 1.0}, {}, 0.5),         # la fiche du package prime
+    ({"rvt": {"params": {}}}, {}, {"resolution": 1.0}, 1.0),          # repli sur model_card.mnt
+    ({}, {}, {}, None),
+])
+def test_meme_gsd_partout_meme_fiche_incomplete(tmp_path, tp, card_pref, card_mnt, attendu):
+    import yaml
+    from app.services.indices_metres import gsd_du_modele
+    from pipeline.cv.runner import _sahi_a_la_resolution
+    from ui.dialogs._model_info_data import build_sections
+    m = tmp_path / "models" / "m"
+    (m / "weights").mkdir(parents=True)
+    (m / "weights" / "best.onnx").write_bytes(b"x")
+    (m / "training_params.json").write_text(json.dumps(tp), encoding="utf-8")
+    card = {"display_name": "M", "task": "instance_segmentation",
+            "preferred_rvt": {"type": "LD", "params": card_pref}, "mnt": card_mnt,
+            "classes": [{"name": "c", "entity": "c"}]}
+    (m / "model_card.yaml").write_text(yaml.safe_dump(card), encoding="utf-8")
+    (m / "args.yaml").write_text(yaml.safe_dump({"sahi": {"slice_width": 648, "slice_height": 648}}), encoding="utf-8")
+
+    assert gsd_du_modele(m / "weights" / "best.onnx") == attendu
+    (installe,) = discover_installed_models(tmp_path / "models")
+    assert installe.gsd_m == attendu
+    # fenêtre réellement appliquée : images à 1 m/px
+    cfg = {"selected_model": str(m / "weights" / "best.onnx"), "sahi": {"slice_width": 648, "slice_height": 648}}
+    s = _sahi_a_la_resolution(cfg, {"a": (1.0, -1.0, 500000.0, 6000000.0)}, None, lambda _m: None)["sahi"]
+    assert s["slice_width"] == (648 if attendu in (None, 1.0) else 324)
+    # fiche du modèle (dialogue) : la même échelle
+    arch = next(x for x in build_sections(card, args={"sahi": {"slice_width": 648, "overlap_ratio": 0.2}},
+                                          model_dir=m) if x.title == "ARCHITECTURE")
+    ligne = next(r.value for r in arch.rows if r.label == "Fenêtres d'analyse")
+    assert ("m de terrain" in ligne) == (attendu is not None)
+    if attendu:
+        assert f"{648 * attendu:g} m de terrain".replace(".", ",") in ligne

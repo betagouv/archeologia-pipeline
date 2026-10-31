@@ -352,3 +352,18 @@ class TestStripDeprecatedKeys:
         cm.save_last_ui_config(cfg)
         reloaded = json.loads((tmp_path / "last_ui_config.json").read_text(encoding="utf-8"))
         assert "display_mode" not in reloaded.get("ui", {})
+
+
+
+def test_selected_model_herite_ne_survit_pas(tmp_path):
+    """Run réel 2026-10-31 : la trace portait computer_vision.selected_model = …/run_rf_detr_1 (modèle retiré),
+    clé mono-modèle d'avant runs[] que plus rien n'écrit ; sans runs, get_cv_runs en refaisait un run fantôme."""
+    cm = ConfigManager(tmp_path)
+    assert "selected_model" not in cm.default_config()["computer_vision"]
+    runs = [{"model": "lineaires_seg_v3_1", "target_rvt": "LD"}]
+    cfg = cm.fusionner({"computer_vision": {"selected_model": "x/run_rf_detr_1/weights/best.onnx", "runs": runs}})
+    assert "selected_model" not in cfg["computer_vision"] and cfg["computer_vision"]["runs"] == runs
+    # l'ancien format mono-modèle reste migré avant d'être retiré
+    cfg = cm.fusionner({"computer_vision": {"selected_model": "m", "runs": []}})
+    assert cfg["computer_vision"]["runs"] == [{"model": "m", "target_rvt": "LD"}]
+    assert "selected_model" not in cfg["computer_vision"]

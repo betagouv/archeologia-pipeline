@@ -113,7 +113,7 @@ def build_min_confidence_by_slug(
     return result
 
 
-def _collect_vrt_paths_and_build(idx_dir: Path, det_dir: Path, log: LogFn) -> List[str]:
+def _collect_vrt_paths_and_build(idx_dir: Path, det_dir: Path, log: LogFn, crs: str = "EPSG:2154") -> List[str]:
     """Parcourt indices/ pour créer les ``index_<PRODUIT>.vrt`` et retourne leurs chemins.
 
     Le VRT porte le nom de couche QGIS distinctif (``index_<PRODUIT>.vrt``, cf.
@@ -137,7 +137,7 @@ def _collect_vrt_paths_and_build(idx_dir: Path, det_dir: Path, log: LogFn) -> Li
             vrt_name = index_vrt_filename(tif_dir.parent.name)
             vrt_path = tif_dir / vrt_name
             if list(tif_dir.glob("*.tif")):
-                build_vrt_index(tif_dir, pattern="*.tif", output_name=vrt_name, log=log)
+                build_vrt_index(tif_dir, pattern="*.tif", output_name=vrt_name, log=log, crs=crs)
                 if vrt_path.exists():
                     vrt_paths.append(str(vrt_path))
                     # Nettoyage best-effort d'un ``index.vrt`` hérité (runs antérieurs
@@ -371,6 +371,51 @@ def echec_detection(output_dir: Path, lance_le: float) -> str:
     return str(trace.get("cv_motif") or "moteur de détection indisponible")
 
 
+def crs_du_traitement(output_dir: Path) -> Optional[str]:
+    """CRS des sorties lu dans livrable/traitement.json (champ ``crs``, 2026-10-31) ; ``None``
+    sans trace ou pour une trace antérieure. Lu par l'écriture du projet .qgs (thread UI)."""
+    import json as _json
+
+    try:  # fallback standalone (tests : src/ sur le path)
+        from ...pipeline.output_paths import traitement_json_path
+    except ImportError:  # pragma: no cover
+        from pipeline.output_paths import traitement_json_path
+    try:
+        crs = _json.loads(traitement_json_path(Path(output_dir)).read_text(encoding="utf-8")).get("crs")
+    except (OSError, ValueError, AttributeError):
+        return None
+    return str(crs) if crs else None
+
+
+def crs_de_repli_pour(source: str) -> str:
+    """CRS à affecter à une couche du run qui n'en porte pas d'exploitable : celui de la trace
+    ``traitement.json`` du dossier ``livrable/`` qui la contient (source d'une couche : chemin,
+    éventuellement suivi de ``|layername=…``), à défaut EPSG:2154 (LiDAR HD, dossiers antérieurs)."""
+    import json as _json
+
+    try:  # fallback standalone (tests : src/ sur le path)
+        from ...pipeline.output_paths import NOM_TRAITEMENT
+    except ImportError:  # pragma: no cover
+        from pipeline.output_paths import NOM_TRAITEMENT
+    chemin = Path(str(source or "").split("|", 1)[0])
+    for d in chemin.parents:
+        trace = d / NOM_TRAITEMENT
+        if trace.is_file():
+            try:
+                crs = _json.loads(trace.read_text(encoding="utf-8")).get("crs")
+            except (OSError, ValueError, AttributeError):
+                crs = None
+            return str(crs) if crs else "EPSG:2154"
+    return "EPSG:2154"
+
+
+def crs_du_projet(authids_des_couches: List[str], crs_trace: Optional[str]) -> str:
+    """CRS du projet .qgs : celui des couches (toutes en portent un, le même par run), la trace
+    en repli seulement (elle peut dater d'un lancement précédent si l'écriture des métadonnées a
+    échoué), à défaut EPSG:2154."""
+    return next((a for a in authids_des_couches if a), None) or crs_trace or "EPSG:2154"
+
+
 def _journal_relatif(output_dir: Path) -> str:
     """``technique/journaux/pipeline_log_<ts>.txt`` du dernier lancement, ``""`` sans journal."""
     try:
@@ -388,7 +433,7 @@ def _ecrire_rapport_run(
     *, output_dir: Path, vrt_paths: List[str], cv_runs: Any, cv_cfg: Any, cv_stats: List[Dict[str, Any]],
     bilan: Any, rvt_params: Dict[str, Any], active_products: List[str], ui_config: Dict[str, Any],
     outcome: str, start_time: float, tiles_processed: int, tiles_total: Optional[int], meta_date: str,
-    reporter: Any = None, motif_detection: str = "",
+    reporter: Any = None, motif_detection: str = "", crs: str = "",
 ) -> str:
     """Assemble et écrit ``rapport.html`` ; renvoie son nom. Thread worker (GDAL pour
     la vignette et la surface, aucun Qt). Rien ne situe la zone : ni nom de dalle, ni
@@ -490,7 +535,7 @@ def _ecrire_rapport_run(
         cv_runs=tuple(runs_rapport),
         bilan=tuple(ligne.to_dict() for ligne in bilan), etapes=tuple(etapes),
         avertissements=tuple(avertissements), vignette=vignette, motif_detection=motif_detection,
-        couleurs=couleurs,
+        couleurs=couleurs, crs=crs,
     )
     ecrire_rapport(livrable_dir(Path(output_dir)), donnees)
     return f"{DIR_LIVRABLE}/{NOM_RAPPORT}"
@@ -513,6 +558,7 @@ def finalize_pipeline(
     cv_stats: Optional[List[Dict[str, Any]]] = None,
     pdal_version: str = "",
     fusion: str = "",
+    crs: str = "EPSG:2154",
 ) -> bool:
     """
     Finalisation commune à tous les runners :
@@ -530,6 +576,9 @@ def finalize_pipeline(
     éléments ont échoué ; défaut = ``tiles_processed``. ``cv_stats`` (2026-10-08) :
     une entrée par run CV (``modele``, ``target_rvt``, ``entites``, ``images``,
     ``secondes``, chronométrées), pour le rapport de traitement ``rapport.html``.
+    ``crs`` (2026-10-31) : CRS du run (``ingest_plan.crs_des_entrees`` pour les rasters
+    fournis, EPSG:2154 pour le LiDAR HD) — repli des mosaïques sans CRS, écrit dans la
+    trace (``crs``) et le rapport.
 
     Renvoie le verdict final (``True`` = succès annoncé ✅), remonté par les
     runners jusqu'au bandeau de fin de l'UI — sans quoi un run conclu « ❌ »
@@ -562,7 +611,7 @@ def finalize_pipeline(
     reporter.stage("Création des index VRT")
     reporter.info("Création des fichiers VRT d’indexation...")
     narrator.finalize_start()
-    vrt_paths = _collect_vrt_paths_and_build(idx_dir, det_dir, log)
+    vrt_paths = _collect_vrt_paths_and_build(idx_dir, det_dir, log, crs)
 
     # Polygones QA « zones mal couvertes » (si le produit COUVERTURE a tourné).
     qa_paths: List[str] = []
@@ -655,6 +704,8 @@ def finalize_pipeline(
             "arborescence": VERSION_ARBORESCENCE,
             "date": _dt.datetime.now().isoformat(timespec="seconds"),
             "tiles_processed": tiles_processed,
+            # Système de coordonnées de TOUTES les sorties (celui des entrées, jamais reprojeté).
+            "crs": crs,
             # LiDAR (lot 1) : le LAZ fusionné et le MNT ne sont reproductibles qu'à
             # version de PDAL et méthode de fusion égales.
             **({"pdal_version": pdal_version} if pdal_version else {}),
@@ -717,7 +768,7 @@ def finalize_pipeline(
                 outcome=("detection_impossible" if outcome == "success" and cv_engine == "none" else outcome),
                 motif_detection=cv_motif if cv_engine == "none" else "", start_time=start_time,
                 tiles_processed=tiles_processed,
-                tiles_total=tiles_total, meta_date=meta["date"], reporter=reporter,
+                tiles_total=tiles_total, meta_date=meta["date"], reporter=reporter, crs=crs,
             )
         except Exception as _rap_e:  # noqa: BLE001 — jamais bloquant
             reporter.info(f"Note: rapport non écrit ({_rap_e})")

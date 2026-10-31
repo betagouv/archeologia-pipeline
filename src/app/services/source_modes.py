@@ -102,8 +102,8 @@ DATA_MODES: Dict[str, ModeInfo] = {
 PIPELINE_STAGES: List[StageInfo] = [
     StageInfo(1, "download", "Dalles IGN à télécharger", "connexion Internet", "ign_laz"),
     StageInfo(2, "pointcloud", "Nuages LiDAR", "fichiers LAZ ou LAS", "local_laz"),
-    StageInfo(3, "raster", "MNT existant", "TIF en Lambert-93", "existing_mnt"),
-    StageInfo(4, "indices", "Indices de visualisation existants", "TIF en Lambert-93", "existing_rvt"),
+    StageInfo(3, "raster", "MNT existant", "TIF projeté en mètres", "existing_mnt"),
+    StageInfo(4, "indices", "Indices de visualisation existants", "TIF projeté en mètres", "existing_rvt"),
     StageInfo(5, "detection", "Structures à chercher", "facultatif", None, optional=True),
 ]
 
@@ -177,8 +177,8 @@ _GESTE_VIDE = {
     "ign_laz": "Indiquez la zone d'étude (.shp, .gpkg, .geojson), une liste de dalles (.txt), "
                "ou choisissez les dalles sur la carte.",
     "local_laz": "Indiquez le dossier des fichiers LAZ ou LAS.",
-    "existing_mnt": "Indiquez le dossier des MNT (TIF en Lambert-93).",
-    "existing_rvt": "Indiquez le dossier des indices de visualisation (TIF en Lambert-93).",
+    "existing_mnt": "Indiquez le dossier des MNT (TIF dans un système projeté en mètres).",
+    "existing_rvt": "Indiquez le dossier des indices de visualisation (TIF dans un système projeté en mètres).",
 }
 _NOM_LISTE_CARTE = "dalles_selection.txt"
 

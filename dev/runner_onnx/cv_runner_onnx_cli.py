@@ -517,6 +517,9 @@ def main() -> int:
                     labels_dir=str(jpg_dir),
                     output_shapefile=str(out_shp),
                     tif_transform_data=tif_transform_data,
+                    # ponytail: chemin CLI non emprunté (le plugin passe run_shapefile_dedup=False et
+                    # géoréférence lui-même dans le CRS du run, cv_config["crs"]) ; à brancher sur
+                    # cv_config.get("crs") si ce chemin reprend du service.
                     crs="EPSG:2154",
                     temp_dir=None,
                     class_names=class_names,
@@ -537,7 +540,7 @@ def main() -> int:
                         labels_dir=str(jpg_dir),
                         shapefile_paths=shp_paths,
                         iou_threshold=0.1,
-                        crs="EPSG:2154",
+                        crs="EPSG:2154",   # ponytail: même remarque, chemin CLI non emprunté
                         area_filter_enabled=min_area_m2 > 0,
                         area_filter_min_m2=min_area_m2,
                     )

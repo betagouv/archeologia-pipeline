@@ -40,6 +40,7 @@ ENVIRONNEMENT: Dict[str, str] = {
     "python:PIL": "Bibliothèque d'images (Pillow)",
     "python:geopandas": "Bibliothèque de géométries (geopandas)",
     "CRS des rasters": "Système de coordonnées des rasters",
+    "CRS du dossier de sortie": "Système de coordonnées du dossier de sortie",
     "Dalles dégénérées": "Dalles trop petites",
     "Dossier de sortie": "Dossier de sortie",
     # Les entrées de l'étape 1, nommées par ``_check_input_path`` (recette 65.5).

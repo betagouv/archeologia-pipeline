@@ -61,6 +61,7 @@ def build_vrt_index(
     output_name: str = "index.vrt",
     exclude_degenerate: bool = True,
     log: LogFn = lambda _: None,
+    crs: str = "EPSG:2154",
 ) -> bool:
     """
     Crée un fichier VRT (Virtual Raster) indexant tous les fichiers correspondant au pattern.
@@ -94,7 +95,8 @@ def build_vrt_index(
         # Garantir un CRS exploitable sur chaque source AVANT l'indexation :
         # gdalbuildvrt n'a pas d'option -a_srs et hérite du CRS des sources.
         # rvt-qgis/pdal émettent parfois un TIF sans CRS (ENGCRS « unnamed ») —
-        # on le ré-étiquette EPSG:2154 (assignation, sans reprojection). No-op si
+        # on le ré-étiquette dans le CRS du run, ``crs`` (EPSG:2154 pour le LiDAR HD ;
+        # celui des rasters fournis sinon — assignation, sans reprojection). No-op si
         # un vrai CRS est déjà présent ; le VRT hérite alors d'un CRS valide.
         # Idem pour le NoData des rendus 8 bits : rvt-qgis code le sans-donnée à
         # 255 mais étiquette la bande « nan » (invalide sur du Byte) → sans-donnée
@@ -102,7 +104,7 @@ def build_vrt_index(
         # l'étiquette AVANT gdalbuildvrt pour que le VRT l'hérite en VRTNODATA.
         for src in files:
             try:
-                assign_crs_if_missing(src)
+                assign_crs_if_missing(src, crs)
                 tag_byte_nodata(src)
             except Exception:
                 pass  # best-effort : un TIF illisible ne doit pas avorter le VRT

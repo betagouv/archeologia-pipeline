@@ -31,8 +31,10 @@ class ExistingMntRunner:
         slog: Optional["StructuredLogger"] = None,
     ) -> Optional[bool]:
         try:  # fallback standalone (tests : src/ sur le path)
+            from ...pipeline.ingest_plan import crs_des_entrees
             from ...pipeline.modes.existing_mnt import run_existing_mnt
         except ImportError:  # pragma: no cover
+            from pipeline.ingest_plan import crs_des_entrees
             from pipeline.modes.existing_mnt import run_existing_mnt
 
         start_time = time.time()
@@ -46,6 +48,10 @@ class ExistingMntRunner:
         products = processing.products
         rvt_params = ctx.rvt_params
         active_products = products.active()
+        # CRS du run (règle 2026-10-31) : celui des MNT fournis, sans reprojection ; toutes
+        # les sorties (indices, mosaïques, détections, trace) sont étiquetées dans ce CRS.
+        crs = crs_des_entrees(existing_mnt_dir, ("tif", "tiff", "asc"), ctx.files.declared_crs)
+        reporter.info(f"Système de coordonnées du run : {crs if crs.startswith('EPSG:') else 'CRS projeté (WKT)'}")
 
         # COUVERTURE a été neutralisée par build_run_context (pas de nuage de
         # points dans ce mode) : prévenir si la config brute la demandait.
@@ -96,6 +102,7 @@ class ExistingMntRunner:
                 cancel_check=cancel.is_cancelled,
                 feedback=feedback,
                 mnt_progress=_on_mnt_progress,
+                crs=crs,
             )
             tiles_processed = res.total
             tiles_total = res.candidates
@@ -114,6 +121,7 @@ class ExistingMntRunner:
                         slog=slog,
                         cv_band=plan.cv,
                         stats_out=cv_stats,
+                        crs=crs,
                     )
                 except PipelineCancelled:
                     raise
@@ -153,6 +161,7 @@ class ExistingMntRunner:
                 extra_label="MNT traités",
                 ui_config=ctx.ui_config,
                 outcome=outcome,
+                crs=crs,
             )
 
         if cancelled or cancel.is_cancelled():

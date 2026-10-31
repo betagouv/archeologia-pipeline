@@ -423,4 +423,10 @@ fileignoreconfig:
   checksum: f765903275bb2e266bc860237aaf49e341930b922eaa4e195fe7a0b0b1a353e2
 - filename: src/pipeline/ingest_plan.py
   checksum: ef9de6dc687698be3cb273673dd69df41b9cccd28bfb349d8f41159f715d4a14
+- filename: tests/unit/test_nommage_crs.py
+  checksum: 0755ae832ff2b65f038cc1edf0f7a3ced7bb127e59c315ed14bf706e2368e522
+- filename: src/app/services/cv_post_service.py
+  checksum: e038d06dcf3b1a1b64477580cfe892cc5257ebdf0a0e57f79599103410b6dc57
+- filename: src/app/services/rapport_run.py
+  checksum: 1a2e1aeb5b60af67153c6a08acfefeefef12d7cc78a8fba00917fa19e9da43a0
 version: '1.0'

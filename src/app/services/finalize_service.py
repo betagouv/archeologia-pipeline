@@ -451,7 +451,6 @@ def _ecrire_rapport_run(
         ecrire_rapport,
         extraire_avertissements,
         seuils_par_classe,
-
         surface_km2_depuis_vrt,
         vignette_depuis_vrt,
     )
@@ -560,7 +559,6 @@ def _ui_config_trace(ui_config: Optional[Dict[str, Any]]) -> Dict[str, Any]:
 
 
 def finalize_pipeline(
-
     *,
     output_dir: Path,
     cv_cfg: Dict[str, Any],

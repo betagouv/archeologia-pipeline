@@ -231,7 +231,6 @@ class ExistingRvtRunner:
             from ..services.cv_post_service import avertissements_remplissage
             for msg in avertissements_remplissage(cv_stats):
                 reporter.user_warning(msg)
-
             gardees = detections_gardees(ctx.output_dir, cv_runs) if cv_runs else None
             if gardees is not None:
                 narrator.cv_complete(gardees)

@@ -368,7 +368,6 @@ def run_cv_post_loop(
         )
     for msg in avertissements_remplissage(remplissages):
         reporter.user_warning(msg)
-
     # Compte des couches (après dédoublonnage, seuil, aire minimale), pas les détections brutes du moteur.
     gardees = detections_gardees(ctx.output_dir, cv_runs)
     if gardees is not None:

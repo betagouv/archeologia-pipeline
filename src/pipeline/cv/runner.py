@@ -336,7 +336,6 @@ def run_cv_on_folder(
                 candidate_pngs, cv_config.get("sahi"), _gsd_des_images(tif_transform_data, jpg_dir))
         except Exception as e:  # noqa: BLE001 — un avertissement ne bloque jamais la détection
             log(f"Avertissement : part des fenêtres remplies non calculée ({e})")
-
     # Un cache plus ancien que son PNG a été calculé sur une autre géométrie
     # (ex. bascule rogné → à marge) : purgé pour forcer la ré-inférence — le
     # binaire externe saute par simple existence des fichiers, sans les dates.

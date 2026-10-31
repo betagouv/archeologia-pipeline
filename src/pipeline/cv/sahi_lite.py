@@ -107,7 +107,6 @@ def part_de_fenetre(img_w: int, img_h: int, slice_w: int, slice_h: int) -> float
 
 
 def completer_fenetre(fenetre: np.ndarray, hauteur: int, largeur: int) -> np.ndarray:
-
     """``fenetre`` complétée en bas et à droite par :data:`REMPLISSAGE` jusqu'à ``hauteur`` × ``largeur`` : l'origine
     (``starting_pixel``) ne bouge pas, donc les coordonnées des détections non plus ; ce qui tombe dans la bande
     ajoutée est rogné par l'appelant (limites de l'image). Fenêtre déjà à la taille : rendue telle quelle."""

@@ -366,7 +366,6 @@ class ConfigManager:
             cv.pop("sahi", None)
             cv.pop("selected_classes", None)
             cv.pop("selected_model", None)   # mono-modèle d'avant runs[] (cf. fusionner)
-
             # 0.15.0 : sans effet depuis l'assistant (le run analyse toujours toutes les images et convertit
             # lui-même ses détections) — constat 20 de l'audit des réglages.
             cv.pop("scan_all", None)

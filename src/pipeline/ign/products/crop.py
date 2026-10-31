@@ -171,7 +171,6 @@ def copy_products_without_crop(
             product_name, current_tile_name, x, y, rvt_params, name_suffix=name_suffix,
             mnt_resolution=mnt_resolution, crs=crs,
         )
-
         src_path = temp_dir / src_name
         dst_path = temp_dir / dst_name
 

@@ -412,5 +412,7 @@ fileignoreconfig:
 - filename: tests/unit/test_export_rfdetr_loader.py
   checksum: dcabb1c509aaf66be572daadf2f6cd65ea2ae2c60a112a8743e655d09649d971
 - filename: tests/unit/test_crs_projete.py
-  checksum: f0f23dec72ceab4d7f7638121539b7c37886834ed67774b569cf13058404584e
+  checksum: 25fd70e92a0ce802119d8f12685fd00d0fd8f7cbdaeab1c7ba011af72f2de8ee
+- filename: src/pipeline/tilespec.py
+  checksum: 9a999f8a1a1b084f9dc21f7d66a2630b8b94867fa0c6cbc89fbf0cded3b6b596
 version: '1.0'

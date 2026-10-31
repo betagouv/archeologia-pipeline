@@ -144,6 +144,74 @@ def crs_unit_is_metre(crs: Optional[str]) -> Optional[bool]:
     return None
 
 
+def identifier_epsg(crs: Optional[str]) -> Optional[str]:
+    """``"EPSG:<code>"`` d'un CRS donné en authid ou en WKT, même sans nœud ``AUTHORITY``
+    (GDAL 3.11 de QGIS 3.44 laisse un WKT de 25832 non identifié : sans ça, le même CRS
+    lu sur deux dalles passait pour un mélange), ``None`` si non identifiable.
+    rasterio ``to_epsg()`` puis ``osr.AutoIdentifyEPSG``."""
+    if not crs:
+        return None
+    m = re.match(r"^\s*EPSG:(\d+)\s*$", str(crs), re.IGNORECASE)
+    if m:
+        return f"EPSG:{m.group(1)}"
+    try:
+        from rasterio.crs import CRS  # type: ignore
+
+        code = CRS.from_user_input(crs).to_epsg()
+        if code:
+            return f"EPSG:{code}"
+    except Exception:
+        pass
+    try:
+        from osgeo import osr
+
+        srs = osr.SpatialReference()
+        if srs.SetFromUserInput(str(crs)) == 0:
+            if not srs.GetAuthorityCode(None):
+                try:   # UTM WGS84, quelques cas ; lève sous UseExceptions si rien (ETRS89 / UTM)
+                    srs.AutoIdentifyEPSG()
+                except Exception:
+                    pass
+            name, code = srs.GetAuthorityName(None), srs.GetAuthorityCode(None)
+            if name == "EPSG" and code:
+                return f"EPSG:{code}"
+            # FindMatches (catalogue PROJ) : seuil 70 = celui de rasterio ``to_epsg()``.
+            for cand, confiance in (srs.FindMatches() or []):
+                if confiance >= 70 and cand.GetAuthorityName(None) == "EPSG" and cand.GetAuthorityCode(None):
+                    return f"EPSG:{cand.GetAuthorityCode(None)}"
+    except Exception:
+        pass
+    return None
+
+
+def meme_crs(a: Optional[str], b: Optional[str]) -> Optional[bool]:
+    """Deux CRS (authid ou WKT) sont-ils le même ? Par code EPSG identifié, sinon par
+    équivalence (``osr.IsSame``, égalité rasterio), sinon par placement
+    (:func:`same_crs_geometry`) ; ``None`` si indécidable."""
+    if not a or not b:
+        return None
+    if a == b:
+        return True
+    ca, cb = identifier_epsg(a), identifier_epsg(b)
+    if ca and cb:
+        return ca == cb
+    try:
+        from osgeo import osr
+
+        sa, sb = osr.SpatialReference(), osr.SpatialReference()
+        if sa.SetFromUserInput(str(a)) == 0 and sb.SetFromUserInput(str(b)) == 0:
+            return bool(sa.IsSame(sb))
+    except Exception:
+        pass
+    try:
+        from rasterio.crs import CRS  # type: ignore
+
+        return CRS.from_user_input(a) == CRS.from_user_input(b)
+    except Exception:
+        pass
+    return same_crs_geometry(a, b)
+
+
 def same_crs_geometry(
     a: Optional[str],
     b: Optional[str],
@@ -358,6 +426,12 @@ def _crs_from_rasterio(crs_obj) -> Optional[str]:
     except Exception:
         pass
     try:
+        code = crs_obj.to_epsg()  # identifie aussi un WKT sans nœud AUTHORITY
+        if code:
+            return f"EPSG:{code}"
+    except Exception:
+        pass
+    try:
         auth = crs_obj.to_authority()  # ('EPSG', '2154') ou None
         if auth:
             return f"{auth[0]}:{auth[1]}"
@@ -385,6 +459,10 @@ def _crs_from_gdal(ds) -> Optional[str]:
     try:
         name = srs.GetAuthorityName(None)
         code = srs.GetAuthorityCode(None)
+        if not code:   # WKT sans AUTHORITY (GDAL 3.11) : identifier le code EPSG
+            ident = identifier_epsg(srs.ExportToWkt())
+            if ident:
+                return ident
         if name and code:
             return f"{name}:{code}"
         return srs.ExportToWkt() or None

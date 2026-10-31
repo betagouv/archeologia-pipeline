@@ -22,6 +22,8 @@ from .tilespec import (
     TileSpec,
     crs_is_projected,
     crs_unit_is_metre,
+    identifier_epsg,
+    meme_crs,
     partition_degenerate,
     same_crs_geometry,
 )
@@ -131,12 +133,19 @@ def plan_from_specs(
             "Déclarez un CRS projeté en mètres (ex. EPSG:2154) pour ces entrées."
         )
     distinct = sorted(set(effective))
-    if len(distinct) > 1:
+    # Un même CRS écrit autrement (code EPSG sur une dalle, WKT équivalent sans AUTHORITY
+    # sur une autre) n'est pas un mélange : on regroupe par équivalence avant de refuser.
+    groupes: List[str] = []
+    for c in distinct:
+        if not any(meme_crs(c, g) is True for g in groupes):
+            groupes.append(c)
+    if len(groupes) > 1:
+        distinct = groupes
         raise IngestValidationError(
             "Mélange de CRS détecté (" + ", ".join(_short_crs(c) for c in distinct[:4]) + ") — un seul CRS par run. "
             "Reprojetez vos entrées dans un CRS commun avant traitement."
         )
-    run_crs = distinct[0]
+    run_crs = next((c for c in distinct if _epsg_code(c)), None) or identifier_epsg(distinct[0]) or distinct[0]
     crs_verified = True
 
     # CRS attendu (GEO-02) : refuser un CRS projeté mais ≠ celui du pipeline (ex. Lambert-II
@@ -293,9 +302,9 @@ def normaliser_crs(crs: Optional[str]) -> str:
     ramené à ``EPSG:2154`` — une entrée française garde exactement l'étiquette d'avant."""
     if not crs:
         return CRS_PAR_DEFAUT
-    code = _epsg_code(crs)
-    if code:
-        return f"EPSG:{code}"
+    ident = identifier_epsg(crs)
+    if ident:
+        return ident
     if same_crs_geometry(crs, CRS_PAR_DEFAUT) is True:
         return CRS_PAR_DEFAUT
     return str(crs)

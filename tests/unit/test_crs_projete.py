@@ -324,3 +324,61 @@ def test_runners_lidar_restent_en_2154():
     for nom in ("existing_mnt_runner.py", "existing_rvt_runner.py"):
         t = (SRC / "app" / "runners" / nom).read_text(encoding="utf-8")
         assert "crs_des_entrees(" in t and t.count("crs=crs") >= 2, nom
+
+
+# --- R1 (audit 2026-10-31) : même CRS écrit en code EPSG et en WKT sans AUTHORITY ---------
+
+def _wkt_sans_authority(code: int) -> str:
+    from rasterio.crs import CRS
+
+    wkt = CRS.from_epsg(code).to_wkt(version="WKT1_GDAL")
+    sans = re.sub(r',AUTHORITY\["[A-Z]+","\d+"\]', "", wkt)
+    assert "AUTHORITY" not in sans
+    return sans
+
+
+def _spec(nom, crs):
+    from pipeline.tilespec import TileSpec
+
+    ox, oy = _ORIGINES["EPSG:25832"]
+    return TileSpec.from_values(source_path=Path(nom), bounds=(ox, oy - 100.0, ox + 100.0, oy),
+                                pixel_size_x=0.5, pixel_size_y=-0.5, width_px=200, height_px=200, crs=crs)
+
+
+def test_authid_et_wkt_equivalent_sans_authority_ne_sont_pas_un_melange():
+    """GDAL 3.11 (QGIS 3.44) laisse un WKT de 25832 sans AUTHORITY tel quel : avec une dalle
+    « EPSG:25832 » à côté, le préflight refusait un « mélange » qui n'en est pas un."""
+    from pipeline.ingest_plan import plan_from_specs
+
+    plan = plan_from_specs([_spec("a.tif", "EPSG:25832"), _spec("b.tif", _wkt_sans_authority(25832))])
+    assert plan.crs == "EPSG:25832"
+
+
+def test_wkt_seul_sans_authority_etiquete_en_code_epsg():
+    """Un raster seul en WKT sans AUTHORITY : l'étiquette du run (trace, rapport, cv_config)
+    est le code EPSG, jamais le WKT entier."""
+    from pipeline.ingest_plan import plan_from_specs
+
+    wkt = _wkt_sans_authority(25832)
+    assert plan_from_specs([_spec("b.tif", wkt)]).crs == "EPSG:25832"
+    assert normaliser_crs(wkt) == "EPSG:25832"
+
+
+def test_vrai_melange_toujours_refuse_avec_wkt():
+    from pipeline.ingest_plan import plan_from_specs
+
+    with pytest.raises(IngestValidationError, match="Mélange"):
+        plan_from_specs([_spec("a.tif", "EPSG:25832"), _spec("b.tif", _wkt_sans_authority(27700))])
+
+
+def test_lecture_gdal_identifie_le_code_epsg(tmp_path):
+    """Lecture par osgeo (le backend de QGIS) d'un GeoTIFF dont le WKT n'a pas d'AUTHORITY."""
+    gdal = pytest.importorskip("osgeo.gdal")
+    from pipeline.tilespec import _crs_from_gdal
+
+    p = tmp_path / "a.tif"
+    ds = gdal.GetDriverByName("GTiff").Create(str(p), 4, 4, 1, gdal.GDT_Float32)
+    ds.SetGeoTransform((560000, 1, 0, 6020000, 0, -1))
+    ds.SetProjection(_wkt_sans_authority(25832))
+    ds = None
+    assert _crs_from_gdal(gdal.Open(str(p))) == "EPSG:25832"

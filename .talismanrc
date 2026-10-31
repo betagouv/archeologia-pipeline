@@ -90,7 +90,7 @@ fileignoreconfig:
 - filename: src/pipeline/ign/products/indices.py
   checksum: 4be4dd2b74270c2bbdb9a55af6abba598aa1ac90bcbef08a1677757b02e00b1b
 - filename: src/pipeline/ign/products/results.py
-  checksum: c28d68a0c057b54bce9d66adcbf3126275527cf0cd826f32b975d6f9eb55f764
+  checksum: 12da4901b3e9db22149bdf4ab4fbd7af2e5d19dbd11f0aa53b557858f1be3b27
 - filename: src/pipeline/modes/local_laz.py
   checksum: aa12c4a804b54e7b3dfe451251813a3a731790033acc95a5ad3691cb4ff138fd
 - filename: src/pipeline/output_paths.py
@@ -268,7 +268,7 @@ fileignoreconfig:
 - filename: dev/build_quadrillage_from_wfs.py
   checksum: 5286a1495ce8a7a8bf350eb5bcff2c2827dca6e2c50454ef6b3210995610e3f6
 - filename: docs/contrats.md
-  checksum: 1c5560c8eba7fc8de92065c05f14f14c193b9af97c64916133e3a26c94e50cd0
+  checksum: 3c7270bd3bf0da4b2cd2f47799fad32061bb0b36dafa7c35ba6d4afb86f539f6
 - filename: src/app/services/arborescence.py
   checksum: c5e606980a36c45a1741ce2471bb8eae676f7dab2f222ab8cb75a360a074f91c
 - filename: src/app/services/carte_zones.py
@@ -332,7 +332,7 @@ fileignoreconfig:
 - filename: tests/unit/test_moteur_indices.py
   checksum: 7f28ff494ff5f664dff5659e37315be8ee6943e677fad0bde58f8de76b509eb2
 - filename: src/pipeline/ign/products/rvt_naming.py
-  checksum: fba147b59edd8719c4a8b13569ff8331af37ef54fca597eda74c82a8893e7133
+  checksum: da985279b4bc23fe606dbb223d1a98a5211fc7a4c3ee8320d6de7b58b0f8f844
 - filename: src/pipeline/ign/products/rvt_embarque/vis.py
   checksum: 21693f113e1be2a2230b7f5b88e245b4a8bab418148107e951ecf89a042be07b
 - filename: src/pipeline/ign/products/rvt_embarque/default.py
@@ -416,7 +416,7 @@ fileignoreconfig:
 - filename: src/pipeline/tilespec.py
   checksum: 9a999f8a1a1b084f9dc21f7d66a2630b8b94867fa0c6cbc89fbf0cded3b6b596
 - filename: dev/docs/crs_projete.md
-  checksum: 52ade4889f38b9fc30745ae819c930827058b6f48e9ed79fb170502aee9b70f1
+  checksum: 03aa77614206c92a6c3927e7f18c73b8e1d433739e37ab1f90e679dd0334404b
 - filename: dev/runner_onnx/cv_runner_onnx_cli.py
   checksum: 4ab62c6132fd04f8b0a83199ddd3c8e6fd7626dc226ff9b63482c9adc5c4b4ac
 - filename: tests/unit/test_echelle_metres.py

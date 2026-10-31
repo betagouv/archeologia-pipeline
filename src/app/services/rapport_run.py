@@ -45,7 +45,7 @@ _ORDRE_VIGNETTE = ("LD", "VAT", "CVAT", "PRISM", "CRIM", "M_HS", "HS", "SVF", "O
 
 _LIGNE_LOG = re.compile(r"^.*? - (WARNING|ERROR) - (.*)$")
 #: Coordonnées d'une dalle IGN (``0988_6872`` ou ``0988-6872``) : situent au kilomètre.
-_DALLE = re.compile(r"\d{4}[_-]\d{4}")
+_DALLE = re.compile(r"(?<!\d)\d{4}[_-]\d{4}(?!\d)")   # pas dans un code EPSG : EPSG_25832_0455_6057
 #: Chemin absolu Windows (``D:\…``, ``\\serveur\…``) ou POSIX (``/…/…``), jusqu'au
 #: prochain blanc ou guillemet ; il faut au moins un second séparateur (« 1/4 » n'est
 #: pas un chemin).

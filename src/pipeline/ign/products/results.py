@@ -246,19 +246,44 @@ def needs_refresh(source: Path, dest: Path) -> bool:
         return True
 
 
-def _retirer_mnt_autre_resolution(tif_path: Path, x: str, y: str, name_suffix: str, log: LogFn) -> None:
-    """Le nom du MNT porte sa résolution : une relance à 1 m après 0,5 m laisserait
-    ``…_0M50_…`` à côté de ``…_1M00_…``, et ``index_MNT.vrt`` superposerait les deux.
-    Retire le MNT de la même dalle à une autre résolution (et ses fichiers annexes)."""
-    for ancien in tif_path.parent.glob(f"LHD_FXX_{x}_{y}_MNT_A_*_LAMB93_IGN69{name_suffix}.tif"):
-        if ancien == tif_path:
+def _noms_remplaces(
+    product_name: str, current_tile_name: str, x: str, y: str, rvt_params: Dict[str, Any],
+    name_suffix: str, crs: Any,
+) -> List[Any]:
+    """Noms (sans extension) des publications de la MÊME dalle que celle-ci remplace : le MNT à une autre
+    résolution (son nom la porte : ``index_MNT.vrt`` superposerait ``…_0M50_…`` et ``…_1M00_…``) et, hors
+    EPSG:2154, le nom Lambert-93 qu'un run d'avant la correction donnait à une donnée étrangère (la mosaïque et
+    la détection, qui lisent tout le dossier, compteraient la dalle deux fois). Une chaîne = nom exact, un
+    motif compilé = MNT à n'importe quelle résolution."""
+    import re
+
+    from .rvt_naming import est_lambert93, jeton_crs, prefixe_dalle
+
+    noms: List[Any] = []
+    for c in ([crs] if est_lambert93(crs) else [crs, "EPSG:2154"]):
+        if product_name == "MNT":
+            noms.append(re.compile(re.escape(f"{prefixe_dalle(x, y, c)}_MNT_A_") + r"\d+M\d\d"
+                                   + re.escape(f"{jeton_crs(c, mnt=True)}{name_suffix}")))
+        elif c != crs:
+            noms.append(get_rvt_source_and_dest_filenames(
+                product_name, current_tile_name, x, y, rvt_params, name_suffix=name_suffix, crs=c)[1][:-4])
+    return noms
+
+
+def _retirer_noms_remplaces(dossier: Path, garde: str, noms: List[Any], log: LogFn) -> None:
+    """Retire de ``dossier`` les fichiers (et leurs annexes : pyramides, ``.aux.xml``, ``.pgw``) dont le nom
+    sans extension est dans ``noms`` (:func:`_noms_remplaces`), sauf ``garde`` (nom sans extension publié)."""
+    if not noms or not dossier.is_dir():   # EPSG:2154 hors MNT : rien à retirer, pas de lecture du dossier
+        return
+    for f in sorted(dossier.iterdir()):
+        base = f.name.split(".", 1)[0]
+        if base == garde or not any(base == n if isinstance(n, str) else n.fullmatch(base) for n in noms):
             continue
-        for f in tif_path.parent.glob(f"{ancien.name}*"):
-            try:
-                f.unlink()
-            except OSError as e:
-                log(f"⚠️ MNT d'une autre résolution non retiré ({f.name}) : {e}")
-        log(f"MNT d'une autre résolution retiré : {ancien.name}")
+        try:
+            f.unlink()
+            log(f"Publication remplacée retirée : {f.name}")
+        except OSError as e:
+            log(f"⚠️ Publication remplacée non retirée ({f.name}) : {e}")
 
 
 def copy_mnt_to_results(
@@ -307,7 +332,10 @@ def copy_final_products_to_results(
     cancel_check: CancelCheckFn | None = None,
     name_suffix: str = "",
     mnt_resolution: float = 0.5,
+    crs: str = "EPSG:2154",
 ) -> Dict[str, Any]:
+    """``crs`` : CRS du run, qui choisit le nommage (``rvt_naming.prefixe_dalle`` ; EPSG:2154 = noms d'avant) et
+    étiquette les TIF publiés sans CRS."""
     x, y = _extract_xy_from_tile_name(current_tile_name)
 
     idx_dir = indices_dir(output_dir)
@@ -319,7 +347,8 @@ def copy_final_products_to_results(
     source_files_uncropped: Dict[str, str] = {}
     for product in all_products:
         uncropped, cropped = get_rvt_source_and_dest_filenames(
-            product, current_tile_name, x, y, rvt_params, name_suffix=name_suffix, mnt_resolution=mnt_resolution
+            product, current_tile_name, x, y, rvt_params, name_suffix=name_suffix, mnt_resolution=mnt_resolution,
+            crs=crs,
         )
         source_files_uncropped[product] = uncropped
         source_files_cropped[product] = cropped
@@ -361,8 +390,10 @@ def copy_final_products_to_results(
             # Fraîcheur, pas simple existence : un TIF publié par un run
             # précédent (paramètres différents, noms identiques) est écrasé
             # dès que l'intermédiaire a été recalculé (cf. needs_refresh).
-            if product_name == "MNT" and input_path_cropped.exists():
-                _retirer_mnt_autre_resolution(tif_path, x, y, name_suffix, log)
+            if input_path_cropped.exists():
+                remplaces = _noms_remplaces(product_name, current_tile_name, x, y, rvt_params, name_suffix, crs)
+                _retirer_noms_remplaces(tif_dir, output_base, remplaces, log)
+                _retirer_noms_remplaces(indice_png_dir(output_dir, folder_name), output_base, remplaces, log)
             if input_path_cropped.exists() and needs_refresh(input_path_cropped, tif_path):
                 shutil.copy2(str(input_path_cropped), str(tif_path))
                 log(f"TIF rogné copié: {tif_path.relative_to(idx_dir)}")
@@ -370,7 +401,7 @@ def copy_final_products_to_results(
                 # VRT, chargement QGIS) : rvt-qgis/pdal émettent parfois un TIF
                 # sans CRS « unnamed ». EPSG:2154, assignation sans reprojection ;
                 # no-op si un vrai CRS est déjà présent.
-                assign_crs_if_missing(tif_path)
+                assign_crs_if_missing(tif_path, crs)
                 if pyramids_enabled:
                     build_raster_pyramids(tif_path, levels=pyramids_levels, log=log, cancel_check=cancel_check)
                 # gdaladdo/assign_crs modifient le fichier publié en place →

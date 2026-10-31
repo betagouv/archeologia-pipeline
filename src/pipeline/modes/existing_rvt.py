@@ -139,7 +139,7 @@ def _convert_tif_to_png_with_world(input_tif: Path, output_png: Path) -> None:
         raise RuntimeError(f"Échec conversion TIF->PNG: {input_tif}")
 
 
-def _normalized_rvt_name(*, tif_path: Path, target_rvt: str) -> str:
+def _normalized_rvt_name(*, tif_path: Path, target_rvt: str, crs: Optional[str] = None) -> str:
     # Vérifier l'emprise réelle de la tuile pour éviter les collisions
     # de noms quand les tuiles font moins de ~1 km (ex: 350x350 à 0.5 m/px = 175 m)
     bounds = get_raster_bounds(tif_path)
@@ -157,7 +157,10 @@ def _normalized_rvt_name(*, tif_path: Path, target_rvt: str) -> str:
         xy = extract_xy_from_filename(tif_path.name)
     if xy is None:
         return tif_path.name
-    return f"LHD_FXX_{int(xy.x_km):04d}_{int(xy.y_km):04d}_{target_rvt}_A_LAMB93{tif_path.suffix}"
+    from ..ign.products.rvt_naming import jeton_crs, prefixe_dalle  # différé : évite QGIS au top-level
+
+    pre = prefixe_dalle(f"{int(xy.x_km):04d}", f"{int(xy.y_km):04d}", crs)
+    return f"{pre}_{target_rvt}_A{jeton_crs(crs)}{tif_path.suffix}"
 
 
 def _cleanup_orphans(directory: Path | None, glob_pattern: str, kept_names: set[str]) -> None:
@@ -349,7 +352,8 @@ def run_existing_rvt(
         dest_refreshed = False
         if tif_out_dir is not None and tif_out_dir.resolve() != existing_rvt_dir.resolve():
             try:
-                normalized_name = _normalized_rvt_name(tif_path=tif_path, target_rvt=target_rvt)
+                normalized_name = _normalized_rvt_name(tif_path=tif_path, target_rvt=target_rvt, crs=crs)
+
                 dest = tif_out_dir / normalized_name
                 dest_refreshed = needs_refresh(tif_path, dest)
                 if dest_refreshed:

@@ -57,6 +57,7 @@ def _infer_tile_coords_from_mnt(mnt_path: Path, log: LogFn) -> Tuple[Optional[st
 def _large_tile_name_for(
     mnt_path: Path,
     bounds: Tuple[float, float, float, float],
+    crs: str = "EPSG:2154",
 ) -> str:
     """Produit un ``current_tile_name`` pour un MNT traité d'un seul bloc.
 
@@ -71,7 +72,8 @@ def _large_tile_name_for(
     garantir l'unicité du nom quand deux MNT différents partagent le même
     coin NW au kilomètre près.
 
-    - Format final : ``LHD_FXX_{xxxx}_{yyyy}_EXT_{safe_stem}``.
+    - Format final : ``LHD_FXX_{xxxx}_{yyyy}_EXT_{safe_stem}`` en EPSG:2154,
+      ``EPSG_<code>_{xxxx}_{yyyy}_EXT_{safe_stem}`` dans un autre CRS (``rvt_naming.prefixe_dalle``).
     - Les caractères non alphanumériques du stem sont remplacés par ``_``
       pour rester compatible avec GDAL / QGIS et éviter les collisions
       entre tokens.
@@ -98,7 +100,9 @@ def _large_tile_name_for(
     safe_stem = re.sub(r"[^0-9A-Za-z]+", "_", stem).strip("_")
     safe_stem = safe_stem or "EXT"
 
-    return f"LHD_FXX_{x_km:04d}_{y_km:04d}_EXT_{safe_stem}"
+    from ..ign.products.rvt_naming import prefixe_dalle
+
+    return f"{prefixe_dalle(f'{x_km:04d}', f'{y_km:04d}', crs)}_EXT_{safe_stem}"
 
 
 def _classify_mnt_layout(
@@ -246,6 +250,7 @@ def _process_single_mnt_tile(
             cancel_check=cancel_check,
             name_suffix=name_suffix,
             mnt_resolution=mnt_resolution,
+            crs=crs,
         )
     else:
         crop_final_products(
@@ -257,6 +262,7 @@ def _process_single_mnt_tile(
             cancel_check=cancel_check,
             name_suffix=name_suffix,
             mnt_resolution=mnt_resolution,
+            crs=crs,
         )
 
     if cancel_check is not None and cancel_check():
@@ -275,6 +281,7 @@ def _process_single_mnt_tile(
         cancel_check=cancel_check,
         name_suffix=name_suffix,
         mnt_resolution=mnt_resolution,
+        crs=crs,
     )
     return True
 
@@ -385,7 +392,7 @@ def run_existing_mnt(
         #    en tuiles 640×640. Cela évite les sous-dalles NoData en bord de
         #    couverture et préserve la cohérence des indices sur toute la scène.
         if layout == "large" and bounds is not None:
-            current_tile_name = _large_tile_name_for(mnt_path, bounds)
+            current_tile_name = _large_tile_name_for(mnt_path, bounds, crs)
             # Suffixe d'unicité : le nom de destination RVT est bâti depuis x/y
             # (cosmétiques) seuls ; sans uid, deux grands rasters partageant le
             # même coin NW au km près s'écraseraient.
@@ -429,9 +436,10 @@ def run_existing_mnt(
             # car le fichier temp ET les produits de sortie sont dérivés de ce nom ; sans
             # unicité, les sous-dalles d'une même cellule km écraseraient leurs fichiers
             # temp (réutilisation des mauvaises données) et leurs sorties (« trous noirs »).
-            current_tile_name = _large_tile_name_for(mnt_path, bounds)
+            current_tile_name = _large_tile_name_for(mnt_path, bounds, crs)
             name_suffix = "_" + disambiguate(make_uid(mnt_path), seen_uids)
             log(
+
                 f"MNT {mnt_path.name}: emprise < 1 km (ou non alignée IGN) → "
                 f"crop sauté, emprise native conservée (uid={name_suffix[1:]})."
             )

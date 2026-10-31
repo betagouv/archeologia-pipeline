@@ -368,6 +368,30 @@ def jeton_resolution(resolution_m: float) -> str:
     return f"{cm // 100}M{cm % 100:02d}"
 
 
+def est_lambert93(crs: Any) -> bool:
+    """Vrai pour EPSG:2154 et pour un CRS non dit (modes LiDAR : Lambert-93 par construction)."""
+    return not crs or str(crs).strip().upper() == "EPSG:2154"
+
+
+def prefixe_dalle(x: str, y: str, crs: Any = "EPSG:2154") -> str:
+    """Préfixe des noms de dalle : ``LHD_FXX_{x}_{y}`` (nommage du LiDAR HD IGN) en EPSG:2154, nom d'avant à
+    l'octet près ; sinon ``EPSG_<code>_{x}_{y}`` (``CRS_PROJETE_{x}_{y}`` sans code EPSG). Toujours DEUX jetons :
+    x et y restent ``parts[2]``/``parts[3]`` pour tous les lecteurs (``coords.extract_xy_*``, halo, conversion)."""
+    if est_lambert93(crs):
+        return f"LHD_FXX_{x}_{y}"
+    code = str(crs).strip().upper()
+    if code.startswith("EPSG:") and code[5:].isdigit():
+        return f"EPSG_{code[5:]}_{x}_{y}"
+    return f"CRS_PROJETE_{x}_{y}"
+
+
+def jeton_crs(crs: Any, *, mnt: bool = False) -> str:
+    """``_LAMB93`` (``_LAMB93_IGN69`` pour le MNT) en EPSG:2154 ; rien sinon : le CRS est déjà au préfixe."""
+    if not est_lambert93(crs):
+        return ""
+    return "_LAMB93_IGN69" if mnt else "_LAMB93"
+
+
 def get_rvt_source_and_dest_filenames(
     product_name: str,
     current_tile_name: str,
@@ -377,6 +401,7 @@ def get_rvt_source_and_dest_filenames(
     *,
     name_suffix: str = "",
     mnt_resolution: float = 0.5,
+    crs: Any = "EPSG:2154",
 ) -> Tuple[str, str]:
     """
     Génère les noms de fichiers source (temp) et destination (cropped) pour un produit.
@@ -393,6 +418,8 @@ def get_rvt_source_and_dest_filenames(
             sub-km partageant la même cellule km, ce suffixe évite l'écrasement des
             produits (le nom de destination est bâti depuis ``x``/``y`` seuls).
             ``""`` (défaut) → nom strictement identique au comportement historique.
+        crs: CRS du run. EPSG:2154 (défaut) → noms historiques ``LHD_FXX_…_LAMB93`` ; autre CRS →
+            ``EPSG_<code>_…`` sans Lambert-93 ni IGN69 (:func:`prefixe_dalle`, :func:`jeton_crs`).
 
     Returns:
         Tuple (source_filename, dest_filename)
@@ -403,16 +430,17 @@ def get_rvt_source_and_dest_filenames(
     param_suffix = get_rvt_param_suffix(product_name, rvt_params)
 
     # Noms de destination avec paramètres pour invalider le cache
+    pre, sc = prefixe_dalle(x, y, crs), jeton_crs(crs)
     if product_name == "MNT":
         # Résolution RÉELLE au nom (figée à 0M50 jusqu'ici, même pour un MNT à 1 m) ; à 0,5 m, le nom d'avant.
-        dest_filename = f"LHD_FXX_{x}_{y}_MNT_A_{jeton_resolution(mnt_resolution)}_LAMB93_IGN69{name_suffix}.tif"
+        dest_filename = f"{pre}_MNT_A_{jeton_resolution(mnt_resolution)}{jeton_crs(crs, mnt=True)}{name_suffix}.tif"
     elif product_name == "DENSITE":
-        dest_filename = f"LHD_FXX_{x}_{y}_densite_A_LAMB93{name_suffix}.tif"
+        dest_filename = f"{pre}_densite_A{sc}{name_suffix}.tif"
     elif product_name == "COUVERTURE":
-        dest_filename = f"LHD_FXX_{x}_{y}_couverture_A_LAMB93{name_suffix}.tif"
+        dest_filename = f"{pre}_couverture_A{sc}{name_suffix}.tif"
     elif product_name == "M_HS":
-        dest_filename = f"LHD_FXX_{x}_{y}_M-HS{param_suffix}_A_LAMB93{name_suffix}.tif"
+        dest_filename = f"{pre}_M-HS{param_suffix}_A{sc}{name_suffix}.tif"
     else:
-        dest_filename = f"LHD_FXX_{x}_{y}_{product_name}{param_suffix}_A_LAMB93{name_suffix}.tif"
+        dest_filename = f"{pre}_{product_name}{param_suffix}_A{sc}{name_suffix}.tif"
 
     return source_filename, dest_filename

@@ -9,8 +9,8 @@ def test_champ_vide_dit_le_geste_par_point_de_depart():
         "ou choisissez les dalles sur la carte."
     )
     assert message_champ("local_laz", "", "ok") == "Indiquez le dossier des fichiers LAZ ou LAS."
-    assert message_champ("existing_mnt", "", "ok") == "Indiquez le dossier des MNT (TIF en Lambert-93)."
-    assert message_champ("existing_rvt", "", "ok") == "Indiquez le dossier des indices de visualisation (TIF en Lambert-93)."
+    assert message_champ("existing_mnt", "", "ok") == "Indiquez le dossier des MNT (TIF dans un système projeté en mètres)."
+    assert message_champ("existing_rvt", "", "ok") == "Indiquez le dossier des indices de visualisation (TIF dans un système projeté en mètres)."
 
 
 def test_fichier_ou_dossier_introuvable():

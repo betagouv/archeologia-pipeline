@@ -16,7 +16,7 @@ from ..ign.products.crop import copy_products_without_crop, crop_final_products
 from ..ign.products.indices import create_visualization_products
 from ..ign.products.results import copy_final_products_to_results
 from ..constants import IGN_TILE_SIZE_M
-from ..tilespec import TileSpec, disambiguate, is_degenerate_tile, make_uid
+from ..tilespec import TileSpec, assign_crs_if_missing, disambiguate, is_degenerate_tile, make_uid
 from ..types import CancelCheckFn, LogFn
 
 
@@ -66,7 +66,7 @@ def _large_tile_name_for(
     conversion shapefile) appellent :func:`extract_xy_from_tile_name` qui
     prend ``parts[2]`` / ``parts[3]``. Pour un MNT de grande emprise qui
     n'est pas une dalle IGN 1 km, on dérive donc x/y depuis le coin
-    nord-ouest des bornes Lambert-93 (pareil que pour les tuiles IGN
+    nord-ouest des bornes (dans le CRS du MNT, pareil que pour les tuiles IGN
     classiques), et on préserve le stem d'origine après coup pour
     garantir l'unicité du nom quand deux MNT différents partagent le même
     coin NW au kilomètre près.
@@ -202,6 +202,7 @@ def _process_single_mnt_tile(
     cancel_check: CancelCheckFn | None,
     feedback: Optional[Any] = None,
     name_suffix: str = "",
+    crs: str = "EPSG:2154",
 ) -> bool:
     """Exécute le flux RVT → crop (ou copie) → copie finale pour une dalle unique.
 
@@ -212,7 +213,11 @@ def _process_single_mnt_tile(
     ``name_suffix`` (ex. ``"_<uid>"``) garantit l'unicité des produits de sortie
     pour des dalles sub-km partageant la même cellule km (placement par métadonnées,
     nommage par uid) ; ``""`` conserve le nommage IGN standard.
+    ``crs`` : CRS du run (``ingest_plan.crs_des_entrees``), étiqueté sur le MNT copié
+    s'il n'en porte pas (assignation, jamais de reprojection) : indices, mosaïques et
+    détections en héritent. Sans effet sur un MNT qui a déjà son CRS.
     """
+    assign_crs_if_missing(temp_dir / f"{current_tile_name}_MNT.tif", crs)
     # Résolution réelle du MNT fourni, écrite dans le nom du MNT publié (0M50 jusqu'ici quelle qu'elle soit).
     from ..geo_utils import extract_tif_transform_data
     pas = extract_tif_transform_data(temp_dir / f"{current_tile_name}_MNT.tif")[0]
@@ -288,6 +293,7 @@ def run_existing_mnt(
     cancel_check: CancelCheckFn | None = None,
     feedback: Optional[Any] = None,
     mnt_progress: Callable[[int, int, str], None] | None = None,
+    crs: str = "EPSG:2154",
 ) -> ExistingMntResult:
     # Canal d'erreur VISIBLE dans l'UI (reporter.error côté runner) : ``log``
     # émet à INFO=20, filtré par la fenêtre (seuil USER_INFO=25) — un échec
@@ -410,6 +416,7 @@ def run_existing_mnt(
                 cancel_check=cancel_check,
                 feedback=feedback,
                 name_suffix=name_suffix,
+                crs=crs,
             )
             if ok:
                 processed += 1
@@ -458,6 +465,7 @@ def run_existing_mnt(
             cancel_check=cancel_check,
             feedback=feedback,
             name_suffix=name_suffix,
+            crs=crs,
         )
         if ok:
             processed += 1

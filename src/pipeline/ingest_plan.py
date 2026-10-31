@@ -21,6 +21,7 @@ from typing import List, Optional, Sequence, Tuple
 from .tilespec import (
     TileSpec,
     crs_is_projected,
+    crs_unit_is_metre,
     partition_degenerate,
     same_crs_geometry,
 )
@@ -127,12 +128,12 @@ def plan_from_specs(
         shown = ", ".join(missing[:5]) + (" …" if len(missing) > 5 else "")
         raise IngestValidationError(
             f"CRS introuvable et non déclaré pour : {shown}. "
-            "Déclarez un CRS projeté (ex. EPSG:2154) pour ces entrées."
+            "Déclarez un CRS projeté en mètres (ex. EPSG:2154) pour ces entrées."
         )
     distinct = sorted(set(effective))
     if len(distinct) > 1:
         raise IngestValidationError(
-            "Mélange de CRS détecté (" + ", ".join(distinct[:4]) + ") — un seul CRS par run. "
+            "Mélange de CRS détecté (" + ", ".join(_short_crs(c) for c in distinct[:4]) + ") — un seul CRS par run. "
             "Reprojetez vos entrées dans un CRS commun avant traitement."
         )
     run_crs = distinct[0]
@@ -142,9 +143,9 @@ def plan_from_specs(
     # EPSG:27572). Comparaison purement textuelle (codes EPSG) → indépendante de tout backend.
     if expected_crs is not None and same_epsg(run_crs, expected_crs) is False:
         raise IngestValidationError(
-            f"CRS « {run_crs} » différent du CRS attendu « {expected_crs} » (Lambert-93). "
-            "Le pipeline étiquette toutes les sorties en EPSG:2154 : un autre CRS placerait "
-            "les détections au mauvais endroit. Reprojetez vos entrées en EPSG:2154."
+            f"CRS « {run_crs} » différent du CRS attendu « {expected_crs} ». "
+            "Un autre CRS placerait les détections au mauvais endroit. "
+            f"Reprojetez vos entrées en {expected_crs}."
         )
 
     # Garde-fou : si le code EPSG est celui attendu (CRS projeté connu), c'est valide par
@@ -156,16 +157,24 @@ def plan_from_specs(
         projected = crs_is_projected(run_crs)
         if projected is False:
             raise IngestValidationError(
-                f"CRS géographique (degrés) « {run_crs} » non supporté : les indices RVT exigent "
-                "un CRS projeté en mètres. Reprojetez vos entrées (ex. EPSG:2154)."
+                f"CRS géographique (degrés) « {_short_crs(run_crs)} » non supporté : les indices "
+                "et les détections exigent un CRS projeté en mètres (ex. EPSG:2154, EPSG:25832). "
+                "Reprojetez vos entrées."
+            )
+        if projected is True and crs_unit_is_metre(run_crs) is False:
+            raise IngestValidationError(
+                f"CRS « {_short_crs(run_crs)} » projeté mais pas en mètres (pieds…) : les rayons "
+                "des indices et les aires des détections seraient faux. Reprojetez vos entrées "
+                "dans un CRS projeté en mètres."
             )
         if projected is None:
             # Ni interprétable par un backend, ni confirmé par correspondance EPSG : on n'est
-            # pas SÛR que ce soit faux → avertir au lieu de bloquer (le pipeline ré-affecte 2154).
+            # pas SÛR que ce soit faux → avertir au lieu de bloquer.
             crs_verified = False
             warnings.append(
-                f"CRS « {run_crs} » non vérifiable (aucun backend de lecture raster disponible) — "
-                "vérifiez que vos entrées sont en EPSG:2154, sinon les détections seront mal placées."
+                f"CRS « {_short_crs(run_crs)} » non vérifiable (aucun backend de lecture raster "
+                "disponible) — vérifiez qu'il est projeté en mètres, sinon les indices et les "
+                "détections seront faux."
             )
         elif expected_crs is not None:
             # Garde-fou (utilisateur : « avertir, ne pas forcer ») : CRS projeté SANS code
@@ -177,9 +186,8 @@ def plan_from_specs(
                 crs_verified = False
                 warnings.append(
                     f"CRS projeté « {_short_crs(run_crs)} » différent géométriquement du CRS "
-                    f"attendu « {expected_crs} » (Lambert-93) — le pipeline étiquette les sorties "
-                    "en EPSG:2154 : vos indices/détections seront mal placés. "
-                    "Reprojetez vos entrées en EPSG:2154."
+                    f"attendu « {expected_crs} » — vos indices/détections seront mal placés. "
+                    f"Reprojetez vos entrées en {expected_crs}."
                 )
 
     # --- Résolution : avertir seulement (décision 4) ---
@@ -272,3 +280,46 @@ def _raster_has_valid_data(path, nodata, *, sample: int = 64) -> bool:
             return bool(valid.any())
     except Exception:
         return True
+
+
+#: CRS d'un run sans autre indication : Lambert-93, celui du LiDAR HD de l'IGN (modes
+#: ign_laz/local_laz, toujours) et le défaut supposé d'un raster sans CRS (⚠ au préflight).
+CRS_PAR_DEFAUT = "EPSG:2154"
+
+
+def normaliser_crs(crs: Optional[str]) -> str:
+    """Forme retenue pour étiqueter les sorties : ``EPSG:<code>`` si le CRS en a un, le
+    WKT sinon ; un WKT qui place les points comme Lambert-93 (datum « unnamed ») est
+    ramené à ``EPSG:2154`` — une entrée française garde exactement l'étiquette d'avant."""
+    if not crs:
+        return CRS_PAR_DEFAUT
+    code = _epsg_code(crs)
+    if code:
+        return f"EPSG:{code}"
+    if same_crs_geometry(crs, CRS_PAR_DEFAUT) is True:
+        return CRS_PAR_DEFAUT
+    return str(crs)
+
+
+def crs_des_entrees(dir_path, exts: Sequence[str], declared_crs: Optional[str] = None) -> str:
+    """CRS d'un run ``existing_mnt``/``existing_rvt`` : SOURCE UNIQUE, calculée une fois par
+    le runner et transmise à tout ce qui étiquette une sortie (MNT et indices, mosaïques,
+    détections, trace, rapport). C'est celui des rasters d'entrée (un seul par run : le
+    préflight refuse le mélange, le géographique et le non métrique), sinon le CRS déclaré,
+    sinon :data:`CRS_PAR_DEFAUT`. Ne lève jamais : lecture best-effort de la première dalle
+    exploitable (les autres ont le même CRS, vérifié au préflight)."""
+    try:
+        from .tilespec import is_degenerate_tile
+
+        d = Path(str(dir_path))
+        norm = {e.lower().lstrip(".") for e in exts}
+        for p in sorted(d.iterdir()):
+            if not (p.is_file() and p.suffix.lower().lstrip(".") in norm):
+                continue
+            spec = TileSpec.from_raster(p, declared_crs=declared_crs)
+            if spec is None or is_degenerate_tile(spec):
+                continue
+            return normaliser_crs(spec.effective_crs or declared_crs)
+    except Exception:
+        pass
+    return normaliser_crs(declared_crs)

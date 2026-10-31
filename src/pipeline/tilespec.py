@@ -115,6 +115,35 @@ def crs_is_projected(crs: Optional[str]) -> Optional[bool]:
     return None
 
 
+def crs_unit_is_metre(crs: Optional[str]) -> Optional[bool]:
+    """``True`` si l'unité linéaire d'un CRS projeté est le mètre, ``False`` sinon (pied…),
+    ``None`` si indéterminable (CRS absent, illisible, non projeté, aucun backend).
+
+    Les noyaux RVT (rayons, distances) et les seuils d'aire des détections sont en
+    mètres : un CRS en pieds (ex. EPSG:2263) donnerait des indices et des aires faux
+    sans erreur. Même double backend que :func:`crs_is_projected`.
+    """
+    if not crs:
+        return None
+    try:
+        from rasterio.crs import CRS  # type: ignore
+
+        c = CRS.from_user_input(crs)
+        if c.is_projected:
+            return abs(float(c.linear_units_factor[1]) - 1.0) < 1e-9
+    except Exception:
+        pass
+    try:
+        from osgeo import osr
+
+        srs = osr.SpatialReference()
+        if srs.SetFromUserInput(str(crs)) == 0 and srs.IsProjected():
+            return abs(float(srs.GetLinearUnits()) - 1.0) < 1e-9
+    except Exception:
+        pass
+    return None
+
+
 def same_crs_geometry(
     a: Optional[str],
     b: Optional[str],

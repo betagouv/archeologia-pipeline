@@ -30,7 +30,7 @@ Le panneau **Environnement** de l'étape 4 nomme ce qui manque :
 - **Calcul des indices de visualisation (moteur intégré)** indisponible : une bibliothèque livrée avec QGIS (numpy, scipy ou matplotlib) manque ou ne se charge pas ; le détail la nomme. Réinstallez QGIS par OSGeo4W.
 - **Algorithmes RVT** absents : n'apparaît que si l'ancien calcul par l'extension a été forcé pour un diagnostic (variable d'environnement `ARCHEO_INDICES_MOTEUR=processing`) ; installez alors Relief Visualization Toolbox, puis relancez QGIS. Ce mode de secours garde les comportements de l'extension : pente « Pourcentage » étirée de 0 à 51 % en 8 bits, nombre de directions du M-HS limité à 64 même en 8 bits ; ses images sont réutilisées d'une relance à l'autre tant qu'on y reste, et recalculées une fois au retour du calcul intégré.
 - « cv_runner_onnx (external) » en ✗, puis « python:onnxruntime » signalé : le moteur de détection manque, voir l'alerte antivirus ci-dessus.
-- « CRS des rasters » refusé : un raster d'entrée n'est pas en Lambert-93 (EPSG:2154). Reprojetez-le avant.
+- « CRS des rasters » refusé : le message dit pourquoi — système géographique (en degrés), système projeté qui n'est pas en mètres, ou plusieurs systèmes différents dans le même dossier. Reprojetez les rasters dans un seul système projeté en mètres (Lambert-93 en France, UTM, British National Grid…) ; ils n'ont pas besoin d'être en Lambert-93.
 - **Dossier** introuvable ou vide : le chemin, ou l'extension des fichiers attendue par le point de départ.
 
 ## Impossible de lancer, corrigez

@@ -10,8 +10,8 @@ La frise du haut représente la chaîne de traitement (le [schéma complet](prem
 |---|---|---|
 | Dalles IGN à télécharger | une zone d'étude, une liste de dalles, ou des dalles choisies sur la carte | oui |
 | Nuages LiDAR | un dossier de fichiers `.laz` ou `.las` | non |
-| MNT existant | un dossier de modèles de terrain `.tif`, `.tiff` ou `.asc` en Lambert-93 | non |
-| Indices de visualisation existants | un dossier d'indices (SVF, LD…) `.tif` en Lambert-93 | non |
+| MNT existant | un dossier de modèles de terrain `.tif`, `.tiff` ou `.asc`, dans un système de coordonnées projeté en mètres | non |
+| Indices de visualisation existants | un dossier d'indices (SVF, LD…) `.tif`, dans un système de coordonnées projeté en mètres | non |
 
 Les deux premiers points de départ exécutent toute la chaîne. Depuis un MNT existant, le traitement commence aux indices de visualisation. Depuis des indices de visualisation existants, il ne calcule aucun produit : avec une structure cochée, il les analyse ; sans détection, il se contente de les publier en mosaïque dans `livrable/images/RVT/`.
 
@@ -39,13 +39,11 @@ Vous avez déjà les fichiers `.laz` ou `.las`. Le plugin lit le dossier, reconn
 
 ## MNT existant
 
-Vous fournissez un dossier de modèles de terrain. Le plugin calcule les produits cochés à l'étape 2 puis, si elle est activée, la détection. Le relief nu et la qualité de la donnée ne sont pas proposés à l'étape 2 : le MNT existe déjà.
-
-Les rasters doivent être en **Lambert-93 (EPSG:2154)**. Un raster dans une autre projection est refusé à la vérification de l'étape 4, avec un message qui le nomme : reprojetez-le avant.
+Vous fournissez un dossier de modèles de terrain. Le plugin calcule les produits cochés à l'étape 2 puis, si elle est activée, la détection. Le relief nu et la qualité de la donnée ne sont pas proposés à l'étape 2 : le MNT existe déjà. Pour le système de coordonnées accepté, voir [Système de coordonnées des rasters fournis](etape-1-source.md#systeme-de-coordonnees-des-rasters-fournis).
 
 Le plugin inspecte l'emprise de chaque raster :
 
-- **dalle IGN** d'un kilomètre, alignée sur la grille : traitement habituel ;
+- **dalle** d'un kilomètre, alignée sur le kilomètre (comme les dalles de l'IGN) : traitement habituel ;
 - **petit raster**, moins d'un kilomètre ou non aligné : l'emprise est conservée telle quelle ;
 - **grand raster**, plus d'un kilomètre dans une dimension : aucun pré-découpage, les produits sont calculés sur toute l'emprise et la détection découpe elle-même l'indice en fenêtres d'analyse.
 
@@ -53,9 +51,21 @@ Chaque raster est calculé seul, sans voisin : sur un lot de petites dalles, les
 
 ## Indices de visualisation existants
 
-Vous avez déjà les indices de visualisation (SVF, LD, M-HS…), par exemple produits par un traitement précédent ou par un autre outil. Le dossier est lu tel quel, les indices sont préparés pour les modèles et la détection s'exécute. Même exigence de projection : Lambert-93. Les résultats sont rangés sous `livrable/images/RVT/`, le plugin ne connaissant pas les réglages qui ont produit ces images.
+Vous avez déjà les indices de visualisation (SVF, LD, M-HS…), par exemple produits par un traitement précédent ou par un autre outil. Le dossier est lu tel quel, les indices sont préparés pour les modèles et la détection s'exécute. Même règle de système de coordonnées que pour un MNT, ci-dessous : projeté, en mètres, un seul pour le dossier. Les résultats sont rangés sous `livrable/images/RVT/`, le plugin ne connaissant pas les réglages qui ont produit ces images.
 
 Pour que les objets à cheval sur deux dalles soient vus entiers, le plugin fabrique une marge à partir des dalles voisines présentes dans le dossier. Une dalle isolée n'en a pas.
+
+## Système de coordonnées des rasters fournis
+
+Les rasters fournis (MNT ou indices) peuvent être dans **n'importe quel système de coordonnées projeté en mètres** : Lambert-93 (EPSG:2154) en France, UTM en Allemagne ou en Norvège (EPSG:25832, 25833), British National Grid au Royaume-Uni (EPSG:27700), Irish Transverse Mercator (EPSG:2157), RD New aux Pays-Bas (EPSG:28992)… Ils ne sont **pas reprojetés** : une reprojection vers Lambert-93 déformerait les distances hors de France. Toutes les sorties sont écrites dans le système des rasters fournis : images, mosaïques, détections, projet QGIS ; la trace du traitement et le rapport le nomment.
+
+La vérification de l'étape 4 affiche le système retenu, par exemple « EPSG:25832 · 205 dalle(s) », et refuse, avec un message qui le nomme :
+
+- un système **géographique**, en degrés (EPSG:4326 par exemple) : les rayons des indices et les surfaces n'y ont pas de sens ;
+- un système projeté qui n'est **pas en mètres** (en pieds par exemple) ;
+- un **mélange** de systèmes entre les rasters d'un même dossier.
+
+Dans ces trois cas, reprojetez les rasters dans un système projeté en mètres, le même pour tout le dossier, avant de relancer. Un raster **sans** système de coordonnées dans ses métadonnées est traité en Lambert-93 : la vérification le dit par un avertissement, le lancement reste possible.
 
 ## Enregistrer et recharger une configuration
 

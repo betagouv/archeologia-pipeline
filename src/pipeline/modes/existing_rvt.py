@@ -12,6 +12,7 @@ from ..constants import IGN_TILE_SIZE_M
 from ..cv.external_runner import ImageProgressFn, TileProgressFn
 from ..ign.products.results import needs_refresh
 from ..output_paths import indice_base_dir, indice_tif_dir, indice_jpg_dir, intermediaires_dir
+from ..tilespec import assign_crs_if_missing
 from .neighbor_halo import DEFAULT_HALO_MARGIN_M, NeighborHalo
 from ..types import LogFn, CancelCheckFn
 
@@ -225,7 +226,11 @@ def run_existing_rvt(
     prep_progress: Optional[Callable[[int, int, str], None]] = None,
     max_workers: int = 1,
     on_appareil: Optional[Callable[[Dict[str, Any]], None]] = None,
+    crs: Optional[str] = None,
 ) -> ExistingRvtResult:
+    """``crs`` : CRS du run (``ingest_plan.crs_des_entrees``), posé par les modes à rasters
+    fournis : étiqueté sur les TIF publiés qui n'en portent pas et transmis aux détections
+    (``cv_config["crs"]``). ``None`` (modes LiDAR) = EPSG:2154, comportement historique."""
     if not existing_rvt_dir.exists() or not existing_rvt_dir.is_dir():
         raise FileNotFoundError(f"Dossier RVT inexistant ou invalide: {existing_rvt_dir}")
 
@@ -349,6 +354,8 @@ def run_existing_rvt(
                     if dest.name != tif_path.name:
                         log(f"RVT: renommage (coords) {tif_path.name} -> {dest.name}")
                     shutil.copy2(str(tif_path), str(dest))
+                    if crs:
+                        assign_crs_if_missing(dest, crs)
                 effective_tif_path = dest
                 res["kept_tif"] = dest.name
             except Exception:
@@ -481,6 +488,8 @@ def run_existing_rvt(
 
         # cv_config est déjà un run_cfg unique (le caller boucle sur les runs)
         cv_config["scan_all"] = True
+        if crs:
+            cv_config["crs"] = crs   # étiquette des GeoPackages de détections
 
         # Régime large-raster : SAHI découpe une seule image géante en interne
         # → image_progress vaut 1/1, aucun signal fin. On bascule la barre en

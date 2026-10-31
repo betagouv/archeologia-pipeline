@@ -411,4 +411,6 @@ fileignoreconfig:
   checksum: cdb77e6e1d5f72e6063359ff158de017796217a27a6a40b2bcf784f22faeb765
 - filename: tests/unit/test_export_rfdetr_loader.py
   checksum: dcabb1c509aaf66be572daadf2f6cd65ea2ae2c60a112a8743e655d09649d971
+- filename: tests/unit/test_crs_projete.py
+  checksum: f0f23dec72ceab4d7f7638121539b7c37886834ed67774b569cf13058404584e
 version: '1.0'

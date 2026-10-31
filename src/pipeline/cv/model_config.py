@@ -173,15 +173,33 @@ def resolve_sahi_config(cv_config: Dict) -> Optional[Dict]:
 #: Facteur maximal de mise à l'échelle de la fenêtre de détection (dans un sens ou dans l'autre).
 FACTEUR_ECHELLE_MAX = 8
 
+#: Tolérance RELATIVE de comparaison de deux résolutions (m/px) — SOURCE UNIQUE (homogénéité d'un lot au préflight,
+#: résolution des données contre GSD d'entraînement, fenêtre de détection, note du secours Processing). Crash tests
+#: 2026-11-01 : les dalles GSI Irlande (0,999989 m) et Environment Agency (0,999993 m) sont à 1 m au bruit de
+#: géotransformation près (1e-5) ; 1e-3 l'absorbe largement et reste mille fois sous le plus petit écart réel entre
+#: deux résolutions de MNT (0,5 / 1 / 2 m). Sur une fenêtre de 648 px, 1e-3 vaut au plus 0,65 px.
+TOLERANCE_RESOLUTION = 1e-3
+
+
+def meme_resolution(a: Optional[float], b: Optional[float]) -> bool:
+    """Vrai si ``a`` et ``b`` (m/px) sont la même résolution à :data:`TOLERANCE_RESOLUTION` relative près ;
+    faux si l'une est inconnue (``None``/0)."""
+    if not a or not b:
+        return False
+    a, b = abs(float(a)), abs(float(b))
+    return abs(a - b) <= TOLERANCE_RESOLUTION * max(a, b)
+
 
 def sahi_a_l_echelle(sahi: Dict, gsd_modele: Optional[float], gsd_entree: Optional[float]) -> Dict:
     """Fenêtre de détection EN MÈTRES (règle 2026-10-31) : la fenêtre de ``args.yaml`` couvre ``slice × gsd_modele``
     mètres de terrain à l'entraînement ; à ``gsd_entree`` elle fait donc ``round(slice × gsd_modele / gsd_entree)``
-    pixels (≥ 32), remis à la taille du modèle par le prétraitement — chaque modèle retrouve son échelle (enclos,
+    pixels, remis à la taille du modèle par le prétraitement — chaque modèle retrouve son échelle (enclos,
     appris à 1 m : 648 m de terrain ; les modèles à 0,5 m : 324 m). Résolutions égales ou inconnues : ``sahi``
-    tel quel (France à 0,5 m inchangée). Le recouvrement reste un ratio de la fenêtre ; le géoréférencement
-    suit le pixel de l'image, jamais la fenêtre."""
-    if not gsd_modele or not gsd_entree or abs(float(gsd_modele) - float(gsd_entree)) < 1e-9:
+    tel quel (France à 0,5 m inchangée ; même résolution = :func:`meme_resolution`). Bornes : facteur dans
+    [1/8 ; 8] et fenêtre ≥ 32 px ; quand l'une s'applique, ``borne`` est vrai — la fenêtre ne couvre plus le
+    terrain d'entraînement (``slice × gsd_entree`` m au lieu de ``slice_modele_px × gsd_modele``). Le recouvrement
+    reste un ratio de la fenêtre ; le géoréférencement suit le pixel de l'image, jamais la fenêtre."""
+    if not gsd_modele or not gsd_entree or meme_resolution(gsd_modele, gsd_entree):
         return dict(sahi)
     f = float(gsd_modele) / float(gsd_entree)
     # Borne (audit 2026-10-31) : facteur ramené dans [1/8 ; 8]. Un raster en degrés pris pour des mètres demandait
@@ -192,7 +210,10 @@ def sahi_a_l_echelle(sahi: Dict, gsd_modele: Optional[float], gsd_entree: Option
         out["borne"] = True
     for k in ("slice_height", "slice_width"):
         px = int(sahi.get(k, DEFAULT_SAHI_SLICE))
-        out[k] = max(32, int(px * f + 0.5))
+        out[k] = int(px * f + 0.5)
+        if out[k] < 32:   # plancher : la fenêtre couvre alors plus de terrain qu'à l'entraînement (borne aussi)
+            out[k] = 32
+            out["borne"] = True
     out["slice_modele_px"] = int(sahi.get("slice_width", DEFAULT_SAHI_SLICE))
     out["gsd_modele_m"] = float(gsd_modele)
     out["gsd_entree_m"] = float(gsd_entree)

@@ -146,9 +146,15 @@ def _sahi_a_la_resolution(cv_config, tif_transform_data, jpg_dir, log):
                 "géoréférencement, ou en degrés) — fenêtre de détection laissée à la taille d'entraînement.")
         echelle = sahi_a_l_echelle(sahi, gsd_m, gsd_in)
         if echelle.get("borne"):
-            log(f"⚠ Computer Vision : images à {gsd_in:g} m/px, modèle appris à {gsd_m:g} m/px — écart de plus de 8 "
-                "fois, fenêtre de détection bornée : vérifiez la résolution et le système de coordonnées des images.")
-        if echelle != sahi:
+            # Fenêtre bornée (facteur 8 ou plancher de 32 px) : elle ne couvre PAS le terrain d'entraînement.
+            ecart = max(gsd_in / gsd_m, gsd_m / gsd_in)
+            log(f"⚠ Computer Vision : images à {gsd_in:g} m/px, modèle appris à {gsd_m:g} m/px → fenêtre de "
+                f"détection bornée à {echelle['slice_width']} px ({echelle['slice_width'] * gsd_in:g} m de terrain "
+                f"au lieu de {echelle['slice_modele_px'] * gsd_m:g} m) au lieu de {sahi.get('slice_width')} px : "
+                "l'échelle d'entraînement n'est pas respectée"
+                + (" — écart de plus de 8 fois : vérifiez la résolution et le système de coordonnées des images."
+                   if ecart > 8 else "."))
+        elif echelle != sahi:
             log(f"Computer Vision : images à {gsd_in:g} m/px, modèle appris à {gsd_m:g} m/px → fenêtre de "
                 f"{echelle['slice_width']} px ({echelle['slice_width'] * gsd_in:g} m de terrain, comme à "
                 f"l'entraînement) au lieu de {sahi.get('slice_width')} px, remise à la taille du modèle.")

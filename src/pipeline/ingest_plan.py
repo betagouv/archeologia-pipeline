@@ -88,7 +88,6 @@ def plan_from_specs(
     *,
     skipped: Optional[Sequence[Tuple[Path, str]]] = None,
     model_resolution: Optional[float] = None,
-    resolution_tol: float = 1e-6,
     expected_crs: Optional[str] = None,
 ) -> IngestPlan:
     """Validation pure (sans I/O) à partir de ``TileSpec`` déjà construits.
@@ -200,11 +199,18 @@ def plan_from_specs(
                 )
 
     # --- Résolution : avertir seulement (décision 4) ---
-    resolutions = {
-        (round(abs(t.pixel_size_x), 6), round(abs(t.pixel_size_y), 6)) for t in tiles
-    }
-    uniform_res = len(resolutions) == 1
+    # Même résolution à la tolérance relative partagée près (model_config.meme_resolution) : 0,999989 m (GSI) = 1 m.
+    from .cv.model_config import meme_resolution
+
+    t0 = tiles[0]
+    uniform_res = all(
+        meme_resolution(t.pixel_size_x, t0.pixel_size_x) and meme_resolution(t.pixel_size_y, t0.pixel_size_y)
+        for t in tiles
+    )
     if not uniform_res:
+        resolutions = {
+            (round(abs(t.pixel_size_x), 6), round(abs(t.pixel_size_y), 6)) for t in tiles
+        }
         listed = ", ".join(f"{rx}×{ry} m" for rx, ry in sorted(resolutions))
         # Rayons (réglés en mètres) et fenêtres de détection sont convertis UNE fois par run, à la résolution
         # de la première dalle par nom (resolution_des_entrees, runner._gsd_des_images) — audit 2026-10-31.
@@ -219,7 +225,7 @@ def plan_from_specs(
     if model_resolution is not None:
         off = [
             t for t in tiles
-            if abs(abs(t.pixel_size_x) - model_resolution) > resolution_tol
+            if not meme_resolution(t.pixel_size_x, model_resolution)
         ]
         if off:
             warnings.append(

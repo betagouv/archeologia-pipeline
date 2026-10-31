@@ -338,7 +338,10 @@ def avertissements_echelle(models: Sequence["InstalledModel"], resolution_m: flo
 
     - résolution des données ≠ résolution d'entraînement (un message par résolution d'entraînement) : les
       fenêtres de détection sont mises à l'échelle (le détail en pixels va au journal technique,
-      ``runner.run_cv_on_folder``), mais le modèle n'a jamais vu de données à cette résolution ;
+      ``runner.run_cv_on_folder``), mais le modèle n'a jamais vu de données à cette résolution ; même
+      résolution = ``model_config.meme_resolution`` (tolérance relative partagée : 0,999989 m = 1 m) ;
+    - fenêtre BORNÉE (``sahi_a_l_echelle`` : facteur 8 ou plancher de 32 px, ex. cratères à 5 m/px) : message à
+      part qui donne le terrain réellement couvert, l'échelle d'entraînement n'étant pas respectée ;
     - LD calculé avec un autre anneau (en mètres) que celui de l'entraînement : détections dégradées ;
     - indices fournis (``indices_calcules`` faux) : anneau lu dans leur nom (``anneau_fourni_px``,
       ``LD_A15_Rmin10_Rmax20_…``) et comparé comme un LD calculé, sinon réglages inconnus, à vérifier.
@@ -348,11 +351,22 @@ def avertissements_echelle(models: Sequence["InstalledModel"], resolution_m: flo
     d'entraînement à cette résolution l'aurait subi aussi.
     """
     from .indices_metres import format_m
+    try:
+        from ...pipeline.cv.model_config import meme_resolution, sahi_a_l_echelle
+    except ImportError:  # pragma: no cover - tests (src/ sur le chemin)
+        from pipeline.cv.model_config import meme_resolution, sahi_a_l_echelle  # type: ignore[no-redef]
     groupes: Dict[Tuple[Any, ...], List[str]] = {}   # cause → modèles, dans l'ordre d'apparition
+    surfaces: Dict[str, Tuple[str, str]] = {}         # modèle à fenêtre bornée → (terrain couvert, d'entraînement)
     for m in models:
         nom = m.display_name or m.name
-        if m.gsd_m and resolution_m and abs(m.gsd_m - resolution_m) > 1e-6:
-            groupes.setdefault(("resolution", format_m(m.gsd_m)[:-2]), []).append(nom)
+        if m.gsd_m and resolution_m and not meme_resolution(m.gsd_m, resolution_m):
+            fen = (sahi_a_l_echelle({"slice_width": m.sahi_slice_px, "slice_height": m.sahi_slice_px},
+                                    m.gsd_m, resolution_m) if m.sahi_slice_px else {})
+            if fen.get("borne"):   # fenêtre bornée (facteur 8 ou plancher 32 px) : pas le terrain d'entraînement
+                surfaces[nom] = (format_m(fen["slice_width"] * resolution_m),
+                                 format_m(m.sahi_slice_px * m.gsd_m))
+            cause = "borne" if fen.get("borne") else "resolution"
+            groupes.setdefault((cause, format_m(m.gsd_m)[:-2]), []).append(nom)
         if m.target_rvt != "LD" or m.anneau_m is None:
             continue
         attendu = f"{format_m(m.anneau_m[0])[:-2]} à {format_m(m.anneau_m[1])}"
@@ -386,6 +400,19 @@ def avertissements_echelle(models: Sequence["InstalledModel"], resolution_m: flo
             msgs.append(f"Vos données sont à {format_m(resolution_m)[:-2]} m/pixel ; {qui} appris à {args[0]} "
                         f"m/pixel{liste}. {fen} la même surface au sol qu'à l'entraînement, mais {il_n_a} "
                         f"jamais vu cette résolution : relisez {ses} détections avec prudence.")
+        elif cause == "borne":
+            if un:
+                reel, attendu = surfaces[noms[0]]
+                msgs.append(f"Vos données sont à {format_m(resolution_m)[:-2]} m/pixel ; {qui} appris à {args[0]} "
+                            "m/pixel. Sa fenêtre d'analyse ne peut pas être ramenée à la surface d'entraînement : "
+                            f"elle couvre {reel} de terrain au lieu de {attendu}. L'échelle d'entraînement "
+                            "n'est pas respectée : ses détections seront dégradées.")
+            else:
+                detail = ", ".join(f"{n} ({surfaces[n][0]} de terrain au lieu de {surfaces[n][1]})" for n in noms)
+                msgs.append(f"Vos données sont à {format_m(resolution_m)[:-2]} m/pixel ; {qui} appris à {args[0]} "
+                            f"m/pixel : {detail}. Leurs fenêtres d'analyse ne peuvent pas être ramenées à la "
+                            "surface d'entraînement. L'échelle d'entraînement n'est pas respectée : leurs "
+                            "détections seront dégradées.")
         elif cause == "inconnu":
             msgs.append(f"{Qui} appris sur une dominance locale (LD) d'anneau {args[0]}{liste}. "
                         "Les indices fournis ont été calculés hors du plugin, leurs réglages ne sont pas connus : "

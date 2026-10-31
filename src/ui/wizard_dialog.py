@@ -974,22 +974,24 @@ class WizardDialog(QDialog):
         """Un réglage chargé hors des bornes de son champ y est ramené, un choix qu'il ne propose pas est
         remplacé par le défaut : le dire (le journal Python l'a déjà)."""
         msgs = getattr(self._indices_page, "ecretages", None) or []
-        if msgs:
-            show_toast(self, "\n".join(["Réglage ramené à ce que l'étape 2 propose :", *msgs]), duration=8000)
+        lignes = ["Réglage ramené à ce que l'étape 2 propose :", *msgs] if msgs else []
+        # Rayons enregistrés en pixels, convertis en mètres à la lecture (ConfigManager.fusionner) : dit une fois,
+        # dans le même toast (et au journal de l'étape 2, qui les a déjà écrits s'il les a convertis lui-même).
+        migrations = list(getattr(self._cm, "migrations", None) or [])
+        self._cm.migrations = []
+        if migrations:
+            lignes += ["Rayons enregistrés en pixels, convertis en mètres :", *migrations]
+        if lignes:
+            show_toast(self, "\n".join(lignes), duration=10000 if migrations else 8000)
 
     def _apply_config(self, loaded) -> None:
         """Point de passage UNIQUE d'un changement de config (menu, import,
         réinitialisation) : normalisation, rechargement des pages, persistance."""
         if isinstance(loaded, dict) and isinstance(loaded.get("ui_config"), dict):
             loaded = loaded["ui_config"]  # compat ancien wrapper
-        cfg = self._cm.default_config()
-        self._cm._deep_update(cfg, loaded if isinstance(loaded, dict) else {})
-        self._cm._migrate_cv_runs(cfg)
-        # Même normalisation que ConfigManager.load/load_last_ui_config : sans
-        # ce remap, une entité sauvegardée sous un ancien id (cratere_obus,
-        # zones_extraction_materiaux…) devient un fantôme silencieusement
-        # décoché (AUDIT v2 CFG-03).
-        self._cm._migrate_entity_ids(cfg)
+        # Même normalisation que ConfigManager.load/load_last_ui_config (ids d'entités renommés, AUDIT v2 CFG-03 ;
+        # rayons en pixels convertis en mètres AVANT la fusion avec les défauts, audit 2026-10-31).
+        cfg = self._cm.fusionner(loaded)
         self._config = cfg
         self._loading = True
         try:

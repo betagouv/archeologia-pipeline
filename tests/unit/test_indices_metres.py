@@ -134,3 +134,26 @@ def test_rvt_params_du_run_a_la_resolution_des_mnt_fournis(tmp_path):
     assert (px["ldo"]["min_radius"], px["ldo"]["max_radius"], px["resolution_m"]) == (5, 10, 1.0)
     ign = build_run_context({"processing": {"mnt_resolution": 0.5}, "rvt_params": _defauts()})
     assert rvt_params_du_run(ign)["ldo"]["max_radius"] == 20
+
+
+def test_fusion_defauts_puis_migration_ne_perd_pas_la_valeur_en_pixels(tmp_path):
+    """Audit 2026-10-31 (bloquant) : _apply_config de l'assistant fusionnait les défauts (déjà en mètres) AVANT la
+    migration, qui voyait la clé _m et jetait la valeur enregistrée. La fusion passe par ConfigManager.fusionner."""
+    cm = ConfigManager(tmp_path, settings_dir=tmp_path)
+    charge = {"rvt_params": {"svf": {"radius": 14}, "ldo": {"min_radius": 6, "max_radius": 30}}}
+    avant = copy.deepcopy(charge)
+    cfg = cm.fusionner(charge)
+    assert charge == avant                                    # le dict chargé n'est pas modifié
+    assert cfg["rvt_params"]["svf"]["radius_m"] == 7.0
+    assert (cfg["rvt_params"]["ldo"]["min_radius_m"], cfg["rvt_params"]["ldo"]["max_radius_m"]) == (3.0, 15.0)
+    assert "radius" not in cfg["rvt_params"]["svf"]
+    assert len(cm.migrations) == 3
+
+
+def test_l_assistant_fusionne_par_config_manager():
+    """Aucun autre point de fusion défauts + chargé que ConfigManager.fusionner dans src/ (lu en source)."""
+    from pathlib import Path
+    racine = Path(__file__).resolve().parents[2] / "src"
+    fautifs = [str(p.relative_to(racine)) for p in racine.rglob("*.py")
+               if "_deep_update(" in p.read_text(encoding="utf-8") and p.name != "config_manager.py"]
+    assert fautifs == []

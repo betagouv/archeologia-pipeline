@@ -1,3 +1,4 @@
+import copy
 import json
 import os
 import shutil
@@ -218,9 +219,17 @@ class ConfigManager:
         except Exception:
             data = {}
 
-        cfg = self.default_config()
-        # AVANT la fusion : les défauts portent déjà les clés en mètres, qui masqueraient la valeur enregistrée.
+        return self.fusionner(data)
+
+    def fusionner(self, charge: Any) -> Dict[str, Any]:
+        """Défauts + configuration chargée, normalisée : point de passage UNIQUE de toute fusion (session,
+        config.json, configuration nommée, import, relance depuis un résultat). Les rayons encore en pixels
+        sont convertis en mètres AVANT la fusion (les défauts portent déjà les clés en mètres, qui
+        masqueraient la valeur enregistrée — audit 2026-10-31) ; les messages restent dans
+        ``self.migrations``. ``charge`` n'est pas modifié."""
+        data = copy.deepcopy(charge) if isinstance(charge, dict) else {}
         self._migrate_rvt_metres(data)
+        cfg = self.default_config()
         self._deep_update(cfg, data)
         self._migrate_entity_ids(cfg)
         self._migrate_cv_runs(cfg)
@@ -246,13 +255,7 @@ class ConfigManager:
         except Exception:
             return self.default_config()
 
-        cfg = self.default_config()
-        # AVANT la fusion : les défauts portent déjà les clés en mètres, qui masqueraient la valeur enregistrée.
-        self._migrate_rvt_metres(data)
-        self._deep_update(cfg, data)
-        self._migrate_entity_ids(cfg)
-        self._migrate_cv_runs(cfg)
-        return cfg
+        return self.fusionner(data)
 
     def save_last_ui_config(self, config: Dict[str, Any]) -> None:
         """Sauvegarde la dernière config UI (last_ui_config.json).

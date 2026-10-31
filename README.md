@@ -33,8 +33,8 @@ Quatre **modes** entrent dans cette chaîne à des endroits différents :
 |---|---|---|
 | `ign_laz` · Téléchargement IGN | une zone d'étude, une liste de dalles ou une sélection sur la carte | tout |
 | `local_laz` · Nuages locaux | un dossier de `.laz` / `.las` | tout, sans téléchargement |
-| `existing_mnt` · MNT existant | un dossier de MNT (`.tif`, `.asc`), en Lambert-93 | indices et détection |
-| `existing_rvt` · Indices existants | un dossier d'indices `.tif`, en Lambert-93 | détection seule (ou publication des indices en mosaïque) |
+| `existing_mnt` · MNT existant | un dossier de MNT (`.tif`, `.asc`), dans un CRS projeté en mètres | indices et détection |
+| `existing_rvt` · Indices existants | un dossier d'indices `.tif`, dans un CRS projeté en mètres | détection seule (ou publication des indices en mosaïque) |
 
 Le détail de chaque écran, des réglages et des sorties est dans le manuel, pas ici.
 
@@ -190,7 +190,7 @@ L'**inférence** est faite par le programme externe `cv_runner_onnx` (source dan
 
 Les images analysées débordent de la dalle : en modes LiDAR, le PNG vient du TIF **non rogné** de `technique/intermediaires/` (dalle + marge) ; en modes `existing_mnt` et `existing_rvt`, un halo de 50 m est fabriqué depuis les dalles voisines du dossier (`src/pipeline/modes/neighbor_halo.py`). Un objet à cheval sur une frontière est vu entier par l'une des deux dalles, et chaque dalle ne rapporte que les détections dont le **centre est dans sa cellule** : ni doublon, ni fragment au bord. Les détections sont de plus découpées à l'union des emprises du run.
 
-Un MNT ou un indice de plus de 1,05 km dans une dimension est traité **d'un bloc** (pas de pré-découpage : SAHI découpe en mémoire à l'inférence), un raster de moins d'un kilomètre garde son emprise native. Les entrées doivent être en Lambert-93 (EPSG:2154).
+Un MNT ou un indice de plus de 1,05 km dans une dimension est traité **d'un bloc** (pas de pré-découpage : SAHI découpe en mémoire à l'inférence), un raster de moins d'un kilomètre garde son emprise native. Les entrées `existing_mnt`/`existing_rvt` peuvent être dans **tout CRS projeté en mètres** (Lambert-93, UTM, British National Grid…) : elles ne sont pas reprojetées et toutes les sorties sont écrites dans leur CRS ; un CRS géographique, non métrique ou un mélange de CRS est refusé à la vérification (`docs/contrats.md` § Système de coordonnées). Les modes LiDAR restent en Lambert-93 (EPSG:2154).
 
 ### Exporter un modèle vers ONNX
 

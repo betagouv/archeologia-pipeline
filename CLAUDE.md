@@ -39,7 +39,7 @@ Un défaut **vu dans le flux** (qualité des tuiles, grille, 401/403) se diagnos
 | Situer les zones d'une fiche nouvelle sur la carte « Appris sur » | `python-qgis.bat dev/fiches/zones_corpus.py` → `data/zones_corpus.json` (`test_carte_zones` rouge sinon) |
 | Grille IGN à jour (avant chaque livraison) | `python dev/build_quadrillage_from_wfs.py` |
 | Binaire CV périmé (`test_binaire_a_jour` rouge) | `python dev/runner_onnx/build.py` |
-| Règles stables de données et de rendu | `docs/contrats.md` (fiabilité, fiches, OPNS, manuel, profil des scores, lots 0.15) |
+| Règles stables de données et de rendu | `docs/contrats.md` (fiabilité, fiches, OPNS, manuel, profil des scores, lots 0.15, système de coordonnées) |
 
 ## Two execution contexts
 
@@ -176,9 +176,11 @@ The V2 UI (étape 3) doesn't pick models — the user checks **entities** (parce
 `_classify_mnt_layout` / `_classify_rvt_layout` (in `src/pipeline/modes/`) inspect raster bounds:
 - **standard** (~1×1 km, IGN-aligned): legacy crop + IGN naming
 - **small** (<1 km or unaligned): no crop, native extent preserved
-- **large** (>1.05 km in any dim): no pre-tile-splitting at all — RVT computed on the full raster, SAHI handles 640×640 slicing in memory at inference. `Image.MAX_IMAGE_PIXELS = None` is set in `convert_tif_to_png.py` and `computer_vision_onnx.py`. Input MUST be EPSG:2154 (Lambert-93).
+- **large** (>1.05 km in any dim): no pre-tile-splitting at all — RVT computed on the full raster, SAHI handles 640×640 slicing in memory at inference. `Image.MAX_IMAGE_PIXELS = None` is set in `convert_tif_to_png.py` and `computer_vision_onnx.py`. The km thresholds are in CRS units: valid in any metric CRS.
 
 Don't reintroduce pre-tile-splitting for the large regime — it was removed deliberately to avoid NoData artifacts on sub-tile borders.
+
+**Input CRS (rule 2026-10-31, `docs/contrats.md` § Système de coordonnées).** `existing_mnt`/`existing_rvt` accept **any projected CRS in metres** (EPSG:2154, 25832, 27700, 2157, 28992, 25833…) and label **every output in the input CRS, never reprojected**; the preflight refuses (blocking) a geographic CRS, a non-metric projected CRS, a mix of CRS between tiles, and shows the CRS kept (« EPSG:25832 · 205 dalle(s) »). A raster without CRS and nothing declared stays « EPSG:2154 supposé » ⚠. Single source: `ingest_plan.crs_des_entrees`, computed once by the two runners and passed as `crs=` (stamped on the copied MNT and published TIFs, `cv_config["crs"]` for the GeoPackages, `finalize_pipeline(crs=)` → `traitement.json["crs"]`, report, VRT fallback; `run_view` → `qgs_writer(crs_authid=)` from the trace). `ign_laz`/`local_laz` stay EPSG:2154 (every `crs` parameter defaults to it). Never hard-code `"EPSG:2154"` again on an output path that existing modes reach. Inventory of the Lambert-93 assumptions kept and why: `dev/docs/crs_projete.md`.
 
 ## Chantier d'accélération 0.15.0 (règles 2026-10-18, dossier d'étude `D:/brouillons/optim_pipeline/page/`)
 

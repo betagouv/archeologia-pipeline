@@ -178,13 +178,15 @@ def write_validation_project(
     qa_paths: Optional[list] = None,
     coverage_threshold_percent: float = 30.0,
     logger: logging.Logger,
-    crs_authid: str = "EPSG:2154",
+    crs_authid: Optional[str] = None,
 ) -> Optional[Path]:
     """Écrit ``qgs_path`` (le projet de validation consolidé) via ``QgsProject.write()``.
 
     Construit un ``QgsProject`` dédié (pas le singleton), y ajoute les vecteurs de détection
-    (sous le groupe « Structures », sous-groupe par entité dérivée ou comparée) puis les rasters VRT, fixe le CRS projet (EPSG:2154 → WKT
-    complet écrit, fin du « sans projection ») et l'étendue initiale, puis sérialise.
+    (sous le groupe « Structures », sous-groupe par entité dérivée ou comparée) puis les rasters VRT, fixe le CRS projet (WKT
+    complet écrit, fin du « sans projection ») et l'étendue initiale, puis sérialise. CRS projet = celui des couches
+    du run (2026-10-31 : un run sur des MNT étrangers est étiqueté dans leur CRS, un seul par run, garanti au
+    préflight), ``crs_authid`` (la trace) en repli, à défaut EPSG:2154 (``finalize_service.crs_du_projet``).
     Retourne le chemin si écrit, sinon ``None``. À appeler **sur le thread principal**.
     """
     try:
@@ -204,9 +206,6 @@ def write_validation_project(
 
         proj = QgsProject()
         proj.setFileName(str(qgs_path))  # ancre les chemins relatifs
-        crs = QgsCoordinateReferenceSystem(crs_authid)
-        if crs.isValid():
-            proj.setCrs(crs)
         proj.writeEntry("Paths", "/Absolute", False)  # datasources relatives au .qgs
         root = proj.layerTreeRoot()
 
@@ -260,6 +259,14 @@ def write_validation_project(
 
         # 2) Rasters VRT (en bas de l'arbre).
         _add_rasters(proj, root, vrt_paths, logger, coverage_threshold_percent)
+
+        # CRS du projet = celui des couches (toutes dans le CRS d'entrée du run), la trace
+        # (crs_authid) en repli seulement — règle pure crs_du_projet.
+        from ..app.services.finalize_service import crs_du_projet
+        crs = QgsCoordinateReferenceSystem(crs_du_projet(
+            [lay.crs().authid() for lay in proj.mapLayers().values() if lay.crs().isValid()], crs_authid))
+        if crs.isValid():
+            proj.setCrs(crs)
 
         # 3) Étendue initiale du projet (zoom sur les données à la réouverture).
         try:

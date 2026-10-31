@@ -100,7 +100,7 @@ class TestCollectVrtPathsAndBuild:
 
         built: list[Path] = []
 
-        def fake_build_vrt_index(folder, *, pattern="*.tif", output_name="index.vrt", log=lambda _m: None):
+        def fake_build_vrt_index(folder, *, pattern="*.tif", output_name="index.vrt", log=lambda _m: None, **_k):
             built.append(folder)
             (folder / output_name).write_text(pattern, encoding="utf-8")
             return True
@@ -129,7 +129,7 @@ class TestCollectVrtPathsAndBuild:
 
         built: list[Path] = []
 
-        def fake_build_vrt_index(folder, *, pattern="*.tif", output_name="index.vrt", log=lambda _m: None):
+        def fake_build_vrt_index(folder, *, pattern="*.tif", output_name="index.vrt", log=lambda _m: None, **_k):
             built.append(folder)
             (folder / output_name).write_text("fresh", encoding="utf-8")
             return True
@@ -155,7 +155,7 @@ class TestCollectVrtPathsAndBuild:
         (tif_dir / "tile.tif").write_bytes(b"tif")
         (tif_dir / "index.vrt").write_text("legacy", encoding="utf-8")  # ancien nom générique
 
-        def fake_build_vrt_index(folder, *, pattern="*.tif", output_name="index.vrt", log=lambda _m: None):
+        def fake_build_vrt_index(folder, *, pattern="*.tif", output_name="index.vrt", log=lambda _m: None, **_k):
             (folder / output_name).write_text("fresh", encoding="utf-8")
             return True
 

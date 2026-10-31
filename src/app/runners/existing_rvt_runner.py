@@ -36,8 +36,10 @@ class ExistingRvtRunner:
         slog: Optional["StructuredLogger"] = None,
     ) -> Optional[bool]:
         try:
+            from ...pipeline.ingest_plan import crs_des_entrees
             from ...pipeline.modes.existing_rvt import run_existing_rvt
         except ImportError:
+            from pipeline.ingest_plan import crs_des_entrees
             from pipeline.modes.existing_rvt import run_existing_rvt
 
         start_time = time.time()
@@ -49,6 +51,9 @@ class ExistingRvtRunner:
 
         processing = ctx.processing
         cv_config = ctx.cv.raw
+        # CRS du run (règle 2026-10-31) : celui des indices fournis, sans reprojection.
+        crs = crs_des_entrees(existing_rvt_dir, ("tif", "tiff"), ctx.files.declared_crs)
+        reporter.info(f"Système de coordonnées du run : {crs if crs.startswith('EPSG:') else 'CRS projeté (WKT)'}")
         target_rvt = str(cv_config.get("target_rvt", "LD"))
 
         # Collecter tous les RVT cibles uniques depuis les runs
@@ -161,6 +166,7 @@ class ExistingRvtRunner:
                 on_busy=lambda active: report_busy(reporter, active),
                 inference_tif_resolver=inference_tif_resolver,
                 on_appareil=lambda d, _m=model_display: narrator.cv_appareil(_m, d),
+                crs=crs,
             )
             total_images = max(total_images, res.total_images)
             if res.total_detections is not None:
@@ -264,6 +270,7 @@ class ExistingRvtRunner:
                 extra_label="Images traitées",
                 ui_config=ctx.ui_config,
                 outcome=outcome,
+                crs=crs,
             )
 
         if cancelled or cancel.is_cancelled():

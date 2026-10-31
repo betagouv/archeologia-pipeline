@@ -112,7 +112,7 @@ fileignoreconfig:
 - filename: src/ui/steps/step_1_source.py
   checksum: 2f30a52eebbbb6521c56d08cc0ac17db5b312687e5ba87e044de1437d7f54242
 - filename: src/ui/steps/step_2_indices.py
-  checksum: 05b821b3c35db9e8bd3041792f727ffe0ddb6677ba1919f95675113c907b41c2
+  checksum: 63fe585e6fddbf566678a8aebe584e69fa73c443e5fee88b116c1e202364aa49
 - filename: src/ui/steps/step_3_detection.py
   checksum: f5c0e7443346a0322761850044e315c9390102b96a5c8a827776a0a396773909
 - filename: src/ui/steps/step_4_launch.py

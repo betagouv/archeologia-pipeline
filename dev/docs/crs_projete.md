@@ -66,12 +66,12 @@ Laissées telles quelles, et pourquoi :
 
 | Lieu | Pourquoi |
 |---|---|
-| `ign/products/mnt.py`, `density.py` (`FILTER_EXTENT … [EPSG:2154]`), `results.copy_mnt_to_results`, `results.copy_final_products_to_results` (`assign_crs_if_missing` sans CRS) | LiDAR HD seulement (`ign_laz`/`local_laz`) ; en `existing_mnt` le MNT a déjà son CRS quand ces appels passent, ils sont sans effet |
+| `ign/products/mnt.py`, `density.py` (`FILTER_EXTENT … [EPSG:2154]`), `results.copy_final_products_to_results` (`assign_crs_if_missing` sans CRS ; reçoit le CRS du run depuis le 2026-10-31) | LiDAR HD seulement (`ign_laz`/`local_laz`) ; en `existing_mnt` le MNT a déjà son CRS quand ces appels passent, ils sont sans effet |
 | `ign/tile_resolver.py`, `ui/map_tools/grid_layer.py`, `tile_picker_tool.py`, `app/services/grid_view.py` | grille IGN des dalles LiDAR HD (France) |
 | `coverage_polygons.write_low_coverage_gpkg(crs="EPSG:2154")` | produit Couverture : nuage de points requis, indisponible hors LiDAR |
 | `ui/visualisation_tab.py` | catalogue des flux Géoplateforme (France), onglet masqué |
 | `modes/existing_mnt._classify_mnt_layout`, `existing_rvt._classify_rvt_layout`, `neighbor_halo`, `_large_tile_name_for` | heuristiques au kilomètre **en unités du CRS** : valables dans tout CRS métrique (une dalle alignée au km en UTM est « standard ») |
-| Noms des sorties `LHD_FXX_<x>_<y>_…_A_LAMB93_…` | cosmétiques, coordonnées au km dans le CRS d'entrée ; « LAMB93 » trompeur hors France mais lu par la résolution des TIF non rognés et le cache : à traiter à part (renommage = changement pour les utilisateurs français) |
+| Noms des sorties `LHD_FXX_<x>_<y>_…_A_LAMB93_…` | **traité le 2026-10-31** (`rvt_naming.prefixe_dalle`/`jeton_crs`) : EPSG:2154 garde les noms d'avant à l'octet près ; un autre CRS publie `EPSG_<code>_<x>_<y>_…_A_…` (MNT `…_MNT_A_1M00_…`, sans `LAMB93`/`IGN69`, `CRS_PROJETE_` sans code EPSG). Deux jetons de préfixe : x/y restent `parts[2]`/`parts[3]` pour `coords.extract_xy_*`, `resolve_uncropped_tif`, le halo et la conversion. Une relance retire l'ancien nom Lambert-93 de la même dalle (TIF, annexes, PNG : `results._noms_remplaces`), sans quoi mosaïque et détection la compteraient deux fois |
 | `cv/model_profile.py` (commentaire « Lambert-93 métrique ») | les aires minimales sont en m², vraies dans tout CRS métrique (garanti au préflight) |
 | `rapport_run` (« coordonnée Lambert-93 au kilomètre » dans l'anonymisation) | le motif anonymise les noms de dalles quel que soit le CRS |
 

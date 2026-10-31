@@ -237,3 +237,27 @@ def test_couleurs_de_couche_dans_le_rapport():
         assert f"background:{hexa}" in h, hexa
     sans = construire_html(DonneesRapport(version="x", date="d", mode="m", bilan=_bilan_parcellaire()))
     assert "background:#" not in sans.split("<table>", 1)[1].split("</table>", 1)[0]
+
+
+
+def test_seuils_par_classe_affiches_et_jamais_arrondis_a_tort():
+    """Run réel 2026-10-31 : linéaires affichés « 0,24 » (0.245 arrondi à 2 décimales) alors que le traitement
+    applique 0,26 / 0,25 / 0,245 par classe (model_card thresholds.confidence_per_class)."""
+    from app.services.rapport_run import seuils_par_classe
+    run = {"confidence_threshold": 0.245,
+           "confidence_per_class": {"chemin_creux": 0.245, "parcellaire": 0.26, "talus_fosse": 0.25},
+           "entities": [{"label": "Chemins creux", "classes": ["chemin_creux"],
+                         "layer_names": {"chemin_creux": "Chemins creux"}},
+                        {"label": "Parcellaire", "classes": ["parcellaire"]},
+                        {"label": "Talus et fossés", "classes": ["talus_fosse"]}]}
+    s = seuils_par_classe(run)
+    assert s == [("Chemins creux", 0.245), ("Parcellaire", 0.26), ("Talus et fossés", 0.25)]
+    assert seuils_par_classe({"confidence_threshold": 0.3}) == []
+    assert seuils_par_classe({"confidence_per_class": {"x": 0.3}, "confidence_threshold": 0.3}) == []  # = seuil
+    d = DonneesRapport(version="?", date="d", mode="m", data_mode="existing_mnt", issue="success", tiles_processed=1,
+                       cv_runs=({"modele": "L", "entites": ["Parcellaire"], "seuil": 0.245, "seuils": s,
+                                 "images": 1, "secondes": 1},
+                                {"modele": "E", "entites": [], "seuil": 0.245, "images": 1, "secondes": 1}))
+    h = construire_html(d)
+    assert "Chemins creux 0,245 · Parcellaire 0,26 · Talus et fossés 0,25" in h
+    assert "<td class=num>0,245</td>" in h and "0,24<" not in h

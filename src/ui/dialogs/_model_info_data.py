@@ -203,7 +203,7 @@ def _unique_class_names(classes: Any) -> List[str]:
 # Builders de sections
 # ----------------------------------------------------------------------
 def _build_architecture(
-    card: Mapping[str, Any], args: Optional[Mapping[str, Any]] = None
+    card: Mapping[str, Any], args: Optional[Mapping[str, Any]] = None, model_dir: Optional[Path] = None,
 ) -> Optional[Section]:
     rows: List[Row] = []
     arch = card.get("architecture")
@@ -230,17 +230,15 @@ def _build_architecture(
         except ImportError:
             from app.services.cout_modele import ligne_dialogue  # type: ignore[no-redef]
         try:
-            from ...app.services.indices_metres import gsd_de_fiche
+            from ...app.services.indices_metres import gsd_d_entrainement, gsd_du_modele
         except ImportError:
-            from app.services.indices_metres import gsd_de_fiche  # type: ignore[no-redef]
-        pref = card.get("preferred_rvt") if isinstance(card.get("preferred_rvt"), Mapping) else {}
+            from app.services.indices_metres import gsd_d_entrainement, gsd_du_modele  # type: ignore[no-redef]
         # Fenêtre en mètres (2026-10-31) : comptée à la taille que le run découpera ; la résolution des données
-        # n'est pas connue ici, la ligne le dit.
+        # n'est pas connue ici, la ligne le dit. GSD : la source unique, celle de la fenêtre appliquée.
         ligne = ligne_dialogue(
             sahi.get("slice_width", sahi.get("slice_height", 0)) or 0,
             sahi.get("overlap_ratio", 0.2) or 0.0,
-            gsd_m=gsd_de_fiche(pref.get("params") if isinstance(pref.get("params"), Mapping) else {},
-                               {"mnt": card.get("mnt") or {}}),
+            gsd_m=gsd_du_modele(model_dir, card) if model_dir is not None else gsd_d_entrainement(card, {}),
         )
         if ligne:
             rows.append(Row("Fenêtres d'analyse", ligne))
@@ -461,7 +459,7 @@ def build_sections(
         return []
     sections: List[Section] = []
     for s in (
-        _build_architecture(card, args),
+        _build_architecture(card, args, model_dir),
         _build_rvt(card),
         _build_mnt(card),
         _build_fiabilite(card),

@@ -330,16 +330,22 @@ def _echelle_entrainement(card: Dict[str, Any], model_dir: Path) -> Tuple[Option
 
 
 def avertissements_echelle(models: Sequence["InstalledModel"], resolution_m: float,
-                           rvt_params_px: Optional[Dict[str, Any]], *, indices_calcules: bool = True) -> List[str]:
+                           rvt_params_px: Optional[Dict[str, Any]], *, indices_calcules: bool = True,
+                           anneau_fourni_px: Optional[Tuple[int, int]] = None) -> List[str]:
     """Messages pour l'archéologue quand l'échelle d'un modèle ne correspond pas à ses données (règle
     2026-10-31), une fois par modèle et par run :
 
     - résolution des données ≠ résolution d'entraînement : les fenêtres de détection sont mises à l'échelle
       (le modèle voit le terrain à sa taille habituelle), mais il n'a jamais vu de données à cette résolution ;
     - LD calculé avec un autre anneau (en mètres) que celui de l'entraînement : détections dégradées ;
-    - indices fournis (``indices_calcules`` faux) : leurs réglages ne sont pas connus, à vérifier.
+    - indices fournis (``indices_calcules`` faux) : anneau lu dans leur nom (``anneau_fourni_px``,
+      ``LD_A15_Rmin10_Rmax20_…``) et comparé comme un LD calculé, sinon réglages inconnus, à vérifier.
+
+    L'anneau comparé est celui que le calcul a REÇU, en pixels × résolution (audit 2026-10-31 : à 2 m/px, 5–10 m
+    deviennent 3–5 px, soit 6–10 m), à une demi-résolution près : l'arrondi au pixel est inévitable, et le LD
+    d'entraînement à cette résolution l'aurait subi aussi.
     """
-    from .indices_metres import format_m, valeur_m
+    from .indices_metres import format_m
     msgs: List[str] = []
     for m in models:
         nom = f"« {m.display_name or m.name} »"
@@ -355,18 +361,26 @@ def avertissements_echelle(models: Sequence["InstalledModel"], resolution_m: flo
         if m.target_rvt != "LD" or m.anneau_m is None:
             continue
         attendu = f"{format_m(m.anneau_m[0])[:-2]} à {format_m(m.anneau_m[1])}"
-        if not indices_calcules:
+        if not indices_calcules and anneau_fourni_px is None:
             msgs.append(f"Modèle {nom} : il a appris sur une dominance locale (LD) d'anneau {attendu}. Les "
                         "indices fournis ont été calculés hors du plugin, leurs réglages ne sont pas connus : "
                         "vérifiez qu'ils ont cet anneau, sinon ses détections seront dégradées.")
             continue
-        lo = valeur_m(rvt_params_px, "ldo", "min_radius_m", 5.0)
-        hi = valeur_m(rvt_params_px, "ldo", "max_radius_m", 10.0)
-        if abs(lo - m.anneau_m[0]) > 0.01 or abs(hi - m.anneau_m[1]) > 0.01:
-            msgs.append(f"Modèle {nom} : il a appris sur un LD d'anneau {attendu} ; le LD de ce traitement a un "
-                        f"anneau de {format_m(lo)[:-2]} à {format_m(hi)} (étape 2, image LD) : ses détections "
-                        "seront dégradées. Remettez l'anneau à la valeur d'entraînement.")
-    return msgs
+        ld = (rvt_params_px or {}).get("ldo") or {}
+        px = anneau_fourni_px if not indices_calcules else (ld.get("min_radius", 10), ld.get("max_radius", 20))
+        try:
+            lo, hi = float(px[0]) * resolution_m, float(px[1]) * resolution_m
+        except (TypeError, ValueError, IndexError):
+            continue
+        tolerance = resolution_m / 2 + 1e-6
+        if abs(lo - m.anneau_m[0]) > tolerance or abs(hi - m.anneau_m[1]) > tolerance:
+            source = ("les indices fournis (d'après leur nom)" if not indices_calcules
+                      else "le LD de ce traitement (étape 2, image LD)")
+            msgs.append(f"Modèle {nom} : il a appris sur un LD d'anneau {attendu} ; {source} a un anneau de "
+                        f"{format_m(lo)[:-2]} à {format_m(hi)} ({int(px[0])} à {int(px[1])} px à "
+                        f"{format_m(resolution_m)[:-2]} m/pixel) : ses détections seront dégradées. "
+                        "Remettez l'anneau à la valeur d'entraînement.")
+    return list(dict.fromkeys(msgs))
 
 
 

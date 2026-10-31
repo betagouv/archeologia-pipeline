@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import time
+from pathlib import Path
 from typing import TYPE_CHECKING, Optional
 
 from ..cancel_token import CancelToken
@@ -95,7 +96,11 @@ class ExistingRvtRunner:
         if cv_runs:
             narrator.cv_start(len(cv_runs))
             from ..services.cv_post_service import annoncer_echelle
-            annoncer_echelle(cv_config, cv_runs, reporter, rvt_px, indices_calcules=False)
+            # Indices produits par le plugin : l'anneau se lit dans leur nom (LD_A15_Rmin10_Rmax20_…).
+            from ..services.indices_metres import anneau_px_du_nom
+            noms = [str(existing_rvt_dir)] + sorted(p.name for p in Path(existing_rvt_dir).glob("*.tif*"))[:1]
+            anneau = next((a for a in map(anneau_px_du_nom, noms) if a), None)
+            annoncer_echelle(cv_config, cv_runs, reporter, rvt_px, indices_calcules=False, anneau_fourni_px=anneau)
             reporter.stage("Computer Vision")
             # La barre reste dans la bande « préparation » (0–10) pendant la
             # conversion TIF→PNG du 1er run (_on_prep_progress), puis passe

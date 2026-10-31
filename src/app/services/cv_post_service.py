@@ -130,7 +130,8 @@ def resolve_uncropped_tif(
 
 
 def annoncer_echelle(cv_cfg: Dict[str, Any], cv_runs: List[Dict[str, Any]], reporter: "ProgressReporter",
-                     rvt_params_px: Optional[Dict[str, Any]], *, indices_calcules: bool = True) -> None:
+                     rvt_params_px: Optional[Dict[str, Any]], *, indices_calcules: bool = True,
+                     anneau_fourni_px: Optional[Tuple[int, int]] = None) -> None:
     """Avertissements d'échelle du run (``model_orchestrator.avertissements_echelle``), une fois par modèle :
     résolution des données ≠ résolution d'entraînement, anneau du LD différent, indices fournis aux réglages
     inconnus. Best-effort : un modèle illisible ne bloque jamais la détection."""
@@ -143,7 +144,7 @@ def annoncer_echelle(cv_cfg: Dict[str, Any], cv_runs: List[Dict[str, Any]], repo
         noms = {Path(str(r.get("selected_model") or r.get("model") or "")).name for r in cv_runs}
         modeles = [m for m in discover_installed_models(racine) if m.name in noms]
         for msg in avertissements_echelle(modeles, resolution_de(rvt_params_px), rvt_params_px,
-                                          indices_calcules=indices_calcules):
+                                          indices_calcules=indices_calcules, anneau_fourni_px=anneau_fourni_px):
             reporter.user_warning(msg)
     except Exception as e:  # noqa: BLE001
         reporter.info(f"Avertissements d'échelle ignorés ({e})")

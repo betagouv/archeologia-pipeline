@@ -182,6 +182,14 @@ def gsd_du_modele(chemin) -> Optional[float]:
     return gsd_de_fiche(None, tp if isinstance(tp, dict) else {})
 
 
+def anneau_px_du_nom(texte: str) -> Optional[Tuple[int, int]]:
+    """Anneau (pixels) d'un LD produit par le plugin, lu dans son nom de dossier ou de fichier
+    (``LD_A15_Rmin10_Rmax20_H1p7_V1``) ; ``None`` sans ce motif."""
+    import re
+    m = re.search(r"LD_A\d+_Rmin(\d+)_Rmax(\d+)", str(texte))
+    return (int(m.group(1)), int(m.group(2))) if m else None
+
+
 def anneau_m(params: Optional[Mapping], gsd_m: Optional[float]) -> Optional[Tuple[float, float]]:
     """Anneau (rayon min, rayon max) EN MÈTRES des paramètres d'un LD, quelle que soit leur écriture :
     ``rmin_m``/``rmax_m`` (forme harmonisée du 2026-10-31), ``rmin_px``/``rmax_px`` ou

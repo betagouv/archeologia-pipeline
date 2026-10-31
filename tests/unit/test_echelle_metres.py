@@ -218,3 +218,31 @@ def test_memoryerror_jamais_avalee(monkeypatch, tmp_path):
     monkeypatch.setattr(cvo, "_load_onnx_model", boum)
     with pytest.raises(MemoryError):
         cvo.run_onnx_inference(image_path=str(tmp_path / "i.png"), model_path="x.onnx", output_path=str(tmp_path / "o"))
+
+
+# ── audit 6 / 9 : anneau réellement calculé, indices fournis reconnus par leur nom ───────────────────────
+@pytest.mark.parametrize("res,attendu_msgs", [(0.5, 0), (1.0, 1), (0.8, 1), (2.0, 1)])
+def test_anneau_compare_apres_arrondi(res, attendu_msgs):
+    """2 m/px : 5–10 m → 3–5 px = 6–10 m, écart d'une demi-résolution, toléré ; seul l'avertissement de
+    résolution reste (un modèle appris à 0,5 m). 0,8 m/px : 6–13 px = 4,8–10,4 m, toléré aussi."""
+    msgs = avertissements_echelle([_modele("m", 0.5, (5.0, 10.0))], res, en_px({}, res))
+    assert len(msgs) == attendu_msgs and not any("anneau de" in m for m in msgs)
+
+
+def test_anneau_hors_tolerance_signale_en_pixels_recus():
+    rvt = en_px({"ldo": {"min_radius_m": 8.0, "max_radius_m": 16.0}}, 1.0)
+    msgs = avertissements_echelle([_modele("m", 1.0, (5.0, 10.0))], 1.0, rvt)
+    assert len(msgs) == 1 and "8 à 16 m (8 à 16 px à 1 m/pixel)" in msgs[0]
+
+
+def test_indices_fournis_reconnus_par_leur_nom():
+    from app.services.indices_metres import anneau_px_du_nom
+    assert anneau_px_du_nom("D:/x/livrable/indices/LD_A15_Rmin10_Rmax20_H1p7_V1/tif") == (10, 20)
+    assert anneau_px_du_nom("LHD_FXX_0498_6078_LD_A15_Rmin5_Rmax10_H1p7_V1_A_LAMB93.tif") == (5, 10)
+    assert anneau_px_du_nom("mon_ld.tif") is None
+    m = _modele("m", 0.5, (5.0, 10.0))
+    assert avertissements_echelle([m], 0.5, None, indices_calcules=False, anneau_fourni_px=(10, 20)) == []
+    (msg,) = avertissements_echelle([m], 1.0, None, indices_calcules=False, anneau_fourni_px=(10, 20))[1:]
+    assert "indices fournis (d'après leur nom)" in msg and "10 à 20 m" in msg
+    (msg,) = avertissements_echelle([m], 0.5, None, indices_calcules=False)
+    assert "pas connus" in msg

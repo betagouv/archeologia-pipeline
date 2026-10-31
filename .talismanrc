@@ -68,7 +68,7 @@ fileignoreconfig:
 - filename: src/pipeline/cv/clustering_bounds.py
   checksum: a53968cd2a888ddf1a432388d8fec82c1ec669c7e451499d43107ff0cdadb770
 - filename: src/pipeline/cv/computer_vision_onnx.py
-  checksum: 8ce68b753b122beb9348aa1e4c614744dad8a7c37bd65a13e64098eb516ebbe8
+  checksum: 319b0888956aa9aea5b47260d30169ab0280392ecf91409d1e0b4f04613a1abd
 - filename: src/pipeline/cv/computer_vision_rfdetr.py
   checksum: 3c3de1d9bab52f155e9cc9f5f54a60f43c2ea784d485f8959603bbdc5e07d768
 - filename: src/pipeline/cv/conversion_shp.py
@@ -420,7 +420,7 @@ fileignoreconfig:
 - filename: dev/runner_onnx/cv_runner_onnx_cli.py
   checksum: 4ab62c6132fd04f8b0a83199ddd3c8e6fd7626dc226ff9b63482c9adc5c4b4ac
 - filename: tests/unit/test_echelle_metres.py
-  checksum: f765903275bb2e266bc860237aaf49e341930b922eaa4e195fe7a0b0b1a353e2
+  checksum: b5b2f83b9fd8830c45c7f1e80eb51ac838ca756942ea942cbd6b61bd9b066a66
 - filename: src/pipeline/ingest_plan.py
   checksum: ef9de6dc687698be3cb273673dd69df41b9cccd28bfb349d8f41159f715d4a14
 - filename: tests/unit/test_nommage_crs.py

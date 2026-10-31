@@ -361,3 +361,20 @@ def test_avertissement_remplissage_un_message_modeles_listes():
     (msg,) = avertissements_remplissage([{"modele": "A", "remplissage": {**r_enclos, "fenetre_m": None}}])
     assert "(648 px de côté)" in msg and "Fournissez des rasters d'au moins 648 px de côté." in msg
     assert avertissements_remplissage([]) == []
+
+
+
+# ── ajout 2026-11-01 : « boîtes hors [0,1] » seulement pour les requêtes retenues ──────────────────────────────
+def test_requete_vide_hors_fenetre_ne_previent_pas():
+    """Rejeu de_sh : les 152 alertes venaient de requêtes vides (score 0,004–0,013, cx 1,5–2,14), normales chez
+    RF-DETR (300 requêtes non contraintes) ; aucune requête retenue au-dessus de 1,5."""
+    from pipeline.cv.computer_vision_onnx import boites_retenues_hors_fenetre
+    boxes = np.array([[0.5, 0.5, 0.1, 0.1], [2.14, 0.3, 0.2, 0.2]])
+    assert boites_retenues_hors_fenetre(boxes, np.array([0.8, 0.013]), 0.25) is None
+
+
+def test_requete_retenue_hors_fenetre_previent():
+    from pipeline.cv.computer_vision_onnx import boites_retenues_hors_fenetre
+    boxes = np.array([[0.5, 0.5, 0.1, 0.1], [2.14, 0.3, 0.2, 0.2]])
+    assert boites_retenues_hors_fenetre(boxes, np.array([0.8, 0.30]), 0.25) == pytest.approx(2.14)
+    assert boites_retenues_hors_fenetre(np.zeros((0, 4)), np.zeros(0), 0.25) is None

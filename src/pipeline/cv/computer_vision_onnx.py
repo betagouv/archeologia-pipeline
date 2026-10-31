@@ -427,6 +427,19 @@ def _inst_merge(inst: dict, sy: int, sx: int, ey: int, ex: int,
     inst["conf"] = max(inst["conf"], conf)
 
 
+def boites_retenues_hors_fenetre(boxes_out, max_scores, seuil_min: float) -> Optional[float]:
+    """Plus grande coordonnée des boîtes des requêtes RETENUES (score ≥ ``seuil_min``, le plus bas des seuils) quand
+    elle dépasse 1,5 — un export qui ne sortirait plus du cxcywh normalisé —, ``None`` sinon. Les requêtes sous le
+    seuil ne comptent pas : RF-DETR en sort 300, non contraintes, et les vides (score ~0,01) débordent souvent
+    (rejeu de_sh 2026-11-01 : 152 alertes, toutes de requêtes vides, aucune détection publiée hors emprise)."""
+    if not getattr(boxes_out, "size", 0):
+        return None
+    retenues = boxes_out[np.asarray(max_scores) >= seuil_min]
+    if retenues.size and float(retenues.max()) > 1.5:
+        return float(retenues.max())
+    return None
+
+
 def _run_rfdetr_seg_with_sahi(
     pil_image,
     session,
@@ -497,6 +510,7 @@ def _run_rfdetr_seg_with_sahi(
 
     SNAP = 16  # tolérance de snap pour identifier la même instance entre tuiles
 
+    seuil_min = min([confidence_threshold, *(confidence_per_class or {}).values()])
     for slice_idx, sliced_img in enumerate(sliced_images):
         check_cancelled(cancel_check)
         slice_pil = _PILImage.fromarray(sliced_img.image)
@@ -545,10 +559,11 @@ def _run_rfdetr_seg_with_sahi(
         # Les instances n'étaient pas séparées, et la recherche de suffixe ci-dessous
         # devenait quadratique faute de clés distinctes.
         boxes_normalized = True
-        if boxes_out.size and boxes_out.max() > 1.5:
+        hors = boites_retenues_hors_fenetre(boxes_out, max_scores, seuil_min)
+        if hors is not None:
             logger.warning(
                 "RF-DETR Seg: boîtes hors [0,1] (max=%.3f) — export inattendu, "
-                "les boîtes sont pourtant lues comme normalisées", float(boxes_out.max()))
+                "les boîtes sont pourtant lues comme normalisées", hors)
 
         for i in range(len(max_scores)):
             # La classe d'abord : le seuil peut en dépendre. Réordonner les deux

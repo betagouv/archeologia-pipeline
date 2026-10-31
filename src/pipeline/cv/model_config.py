@@ -170,6 +170,44 @@ def resolve_sahi_config(cv_config: Dict) -> Optional[Dict]:
     return load_sahi_config_from_model(wp)
 
 
+def gsd_entrainement(model_path: Union[str, Path]) -> Optional[float]:
+    """Résolution (m/px) des images d'entraînement du modèle : ``rvt.params.gsd_m`` de son
+    ``training_params.json``, sinon ``mnt.resolution`` ; ``None`` si inconnue (fenêtres laissées en pixels)."""
+    import json
+    f = _resolve_model_dir(model_path) / "training_params.json"
+    try:
+        tp = json.loads(f.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    for v in (((tp.get("rvt") or {}).get("params") or {}).get("gsd_m"), (tp.get("mnt") or {}).get("resolution")):
+        try:
+            if v is not None and float(v) > 0:
+                return float(v)
+        except (TypeError, ValueError):
+            continue
+    return None
+
+
+def sahi_a_l_echelle(sahi: Dict, gsd_modele: Optional[float], gsd_entree: Optional[float]) -> Dict:
+    """Fenêtre de détection EN MÈTRES (règle 2026-10-31) : la fenêtre de ``args.yaml`` couvre ``slice × gsd_modele``
+    mètres de terrain à l'entraînement ; à ``gsd_entree`` elle fait donc ``round(slice × gsd_modele / gsd_entree)``
+    pixels (≥ 32), remis à la taille du modèle par le prétraitement — chaque modèle retrouve son échelle (enclos,
+    appris à 1 m : 648 m de terrain ; les modèles à 0,5 m : 324 m). Résolutions égales ou inconnues : ``sahi``
+    tel quel (France à 0,5 m inchangée). Le recouvrement reste un ratio de la fenêtre ; le géoréférencement
+    suit le pixel de l'image, jamais la fenêtre."""
+    if not gsd_modele or not gsd_entree or abs(float(gsd_modele) - float(gsd_entree)) < 1e-9:
+        return dict(sahi)
+    f = float(gsd_modele) / float(gsd_entree)
+    out = dict(sahi)
+    for k in ("slice_height", "slice_width"):
+        px = int(sahi.get(k, DEFAULT_SAHI_SLICE))
+        out[k] = max(32, int(px * f + 0.5))
+    out["slice_modele_px"] = int(sahi.get("slice_width", DEFAULT_SAHI_SLICE))
+    out["gsd_modele_m"] = float(gsd_modele)
+    out["gsd_entree_m"] = float(gsd_entree)
+    return out
+
+
 def load_clustering_config_from_model(model_path: Union[str, Path]) -> Optional[List[Dict]]:
     """
     Charge la configuration de clustering depuis le args.yaml du modèle.

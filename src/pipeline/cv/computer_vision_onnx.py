@@ -160,10 +160,13 @@ def _preprocess_image(pil_image, target_size: Tuple[int, int], model_type: str =
     """
     import cv2
     
-    # Redimensionner avec cv2 (INTER_LINEAR) pour correspondre à Albumentations
-    # utilisé pendant l'entraînement (A.Resize utilise cv2.INTER_LINEAR par défaut)
+    # Redimensionner avec cv2 : INTER_LINEAR comme Albumentations à l'entraînement (A.Resize) quand on agrandit
+    # ou à taille égale (France à 0,5 m : identique) ; INTER_AREA quand on RÉDUIT (fenêtre en mètres sur un MNT
+    # plus fin que celui d'entraînement, 2026-10-31) — l'interpolation bilinéaire y crénelle les fines structures.
     img_array = np.array(pil_image)
-    img_array = cv2.resize(img_array, target_size, interpolation=cv2.INTER_LINEAR)
+    h, w = img_array.shape[:2]
+    reduction = target_size[0] < w or target_size[1] < h
+    img_array = cv2.resize(img_array, target_size, interpolation=cv2.INTER_AREA if reduction else cv2.INTER_LINEAR)
     
     # Convertir en float32
     img_array = img_array.astype(np.float32)

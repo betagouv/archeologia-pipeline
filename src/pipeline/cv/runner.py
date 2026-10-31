@@ -74,6 +74,43 @@ def _absolutize_models_dir(cv_config: Dict[str, Any]) -> Dict[str, Any]:
     return {**cv_config, "models_dir": str((plugin_root / raw).resolve())}
 
 
+def _gsd_des_images(tif_transform_data, jpg_dir: Optional[Path]) -> Optional[float]:
+    """Résolution (m/px) des images inférées : celle des TIF dont elles sont tirées (``tif_transform_data``, pixel
+    pour pixel), sinon le fichier world du premier PNG. ``None`` si inconnue."""
+    for t in (tif_transform_data or {}).values():
+        try:
+            if t and t[0]:
+                return round(abs(float(t[0])), 6)
+        except (TypeError, ValueError, IndexError):
+            continue
+    try:
+        for pgw in sorted(Path(jpg_dir).glob("*.pgw")):
+            return round(abs(float(pgw.read_text(encoding="utf-8").split()[0])), 6)
+    except (OSError, ValueError, IndexError, TypeError):
+        pass
+    return None
+
+
+def _sahi_a_la_resolution(cv_config, tif_transform_data, jpg_dir, log):
+    """``cv_config["sahi"]`` remis en mètres de terrain (``model_config.sahi_a_l_echelle``) et journalisé."""
+    try:
+        from .model_config import gsd_entrainement, resolve_model_weights_path, sahi_a_l_echelle
+        sahi = cv_config.get("sahi")
+        wp = resolve_model_weights_path(cv_config)
+        if not isinstance(sahi, dict) or wp is None:
+            return cv_config
+        gsd_m, gsd_in = gsd_entrainement(wp), _gsd_des_images(tif_transform_data, jpg_dir)
+        echelle = sahi_a_l_echelle(sahi, gsd_m, gsd_in)
+        if echelle != sahi:
+            log(f"Computer Vision : images à {gsd_in:g} m/px, modèle appris à {gsd_m:g} m/px → fenêtre de "
+                f"{echelle['slice_width']} px ({echelle['slice_width'] * gsd_in:g} m de terrain, comme à "
+                f"l'entraînement) au lieu de {sahi.get('slice_width')} px, remise à la taille du modèle.")
+        return {**cv_config, "sahi": echelle}
+    except Exception as e:  # noqa: BLE001 — jamais bloquer l'inférence sur la mise à l'échelle
+        log(f"Avertissement : mise à l'échelle de la fenêtre de détection ignorée ({e})")
+        return cv_config
+
+
 def run_cv_on_folder(
     *,
     jpg_dir: Path,
@@ -119,6 +156,8 @@ def run_cv_on_folder(
             cv_config = {**cv_config, "sahi": _sahi}
     except Exception as _e:  # ne jamais bloquer l'inférence sur ce filet
         log(f"Avertissement: résolution SAHI ignorée ({_e})")
+    # Fenêtre en mètres (2026-10-31) : remise à la résolution des images AVANT la clé du cache (qui la porte).
+    cv_config = _sahi_a_la_resolution(cv_config, tif_transform_data, jpg_dir, log)
 
     # ── Court-circuit si aucune classe sélectionnée ───────────────────
     _sel = (cv_config or {}).get("selected_classes")

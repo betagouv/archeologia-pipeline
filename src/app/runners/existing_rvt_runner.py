@@ -197,6 +197,7 @@ class ExistingRvtRunner:
                 "images": int(st.get("images_inferees") or 0), "secondes": float(st.get("secondes") or 0.0),
                 "moteur": st.get("moteur"), "appareil": appareil.get("appareil"), "carte": appareil.get("carte"),
                 "repli": bool(st.get("appareil_repli")),
+                "remplissage": st.get("remplissage"),   # fenêtres surtout vides (avertissement après les runs)
             })
 
         def _on_run_failure(run_idx: int, run_cfg: dict, exc: Exception) -> None:
@@ -227,6 +228,10 @@ class ExistingRvtRunner:
                     f"⚠️ Computer Vision: {len(failed)} run(s) sur "
                     f"{len(run_configs)} en échec — voir le journal."
                 )
+            from ..services.cv_post_service import avertissements_remplissage
+            for msg in avertissements_remplissage(cv_stats):
+                reporter.user_warning(msg)
+
             gardees = detections_gardees(ctx.output_dir, cv_runs) if cv_runs else None
             if gardees is not None:
                 narrator.cv_complete(gardees)

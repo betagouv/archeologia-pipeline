@@ -320,3 +320,44 @@ def test_message_fenetre_peu_remplie_compte_par_fenetre():
     msg = message_fenetre_peu_remplie("b.png", 2000, 200, 648, 648)
     assert msg is not None and "n'en occupe que 31 %" in msg
     assert message_fenetre_peu_remplie("b.png", 2000, 2000, 648, 648) is None
+
+
+
+# ── ajout 2026-10-31 : fenêtres surtout vides remontées à l'écran, une fois par run et par modèle ────────────
+def test_part_de_fenetre():
+    from pipeline.cv.sahi_lite import part_de_fenetre
+    assert round(part_de_fenetre(351, 351, 648, 648), 3) == 0.293
+    assert part_de_fenetre(2000, 2000, 648, 648) == 1.0 and round(part_de_fenetre(2000, 200, 648, 648), 3) == 0.309
+
+
+def test_remplissage_des_fenetres_compte_les_images(tmp_path):
+    from PIL import Image
+    from pipeline.cv.runner import remplissage_des_fenetres
+    pngs = []
+    for i, c in enumerate((351, 351, 400, 1000)):
+        Image.new("L", (c, c)).save(tmp_path / f"{i}.png")
+        pngs.append(tmp_path / f"{i}.png")
+    r = remplissage_des_fenetres(pngs, {"slice_width": 648, "slice_height": 648}, 1.0)
+    assert (r["n"], r["total"], r["fenetre_px"], r["fenetre_m"]) == (3, 4, 648, 648.0)
+    assert round(r["part_moyenne"], 3) == round((2 * 351 ** 2 + 400 ** 2) / 3 / 648 ** 2, 3)
+    assert remplissage_des_fenetres(pngs[3:], {"slice_width": 648, "slice_height": 648}, 1.0) is None
+    assert remplissage_des_fenetres(pngs, {"slice_width": 648, "slice_height": 648}, None)["fenetre_m"] is None
+
+
+def test_avertissement_remplissage_un_message_modeles_listes():
+    from app.services.cv_post_service import avertissements_remplissage
+    r_enclos = {"n": 159, "total": 205, "part_moyenne": 0.33, "fenetre_px": 648, "fenetre_m": 648.0}
+    (msg,) = avertissements_remplissage([{"modele": "Enclos (LD)", "remplissage": r_enclos},
+                                         {"modele": "Linéaires", "remplissage": None}])
+    assert msg.startswith("159 images sur 205 sont plus petites que la fenêtre d'analyse du modèle « Enclos (LD) » "
+                          "(648 m de côté) : l'image n'en occupe en moyenne que 33 %")
+    assert "complété par du vide" in msg and "relisez ses détections avec prudence" in msg
+    assert "Fournissez des MNT d'au moins 648 m de côté." in msg
+    r_b = {"n": 10, "total": 205, "part_moyenne": 0.4, "fenetre_px": 324, "fenetre_m": 324.0}
+    (msg,) = avertissements_remplissage([{"modele": "A", "remplissage": r_enclos}, {"modele": "B", "remplissage": r_b}])
+    assert "2 modèles" in msg and "« A » (648 m de côté) : 159 images sur 205, 33 % en moyenne" in msg
+    assert "« B » (324 m de côté) : 10 images sur 205, 40 % en moyenne" in msg and "leurs détections" in msg
+    assert "au moins 648 m de côté" in msg
+    (msg,) = avertissements_remplissage([{"modele": "A", "remplissage": {**r_enclos, "fenetre_m": None}}])
+    assert "(648 px de côté)" in msg and "Fournissez des rasters d'au moins 648 px de côté." in msg
+    assert avertissements_remplissage([]) == []

@@ -1252,9 +1252,12 @@ def message_fenetre_peu_remplie(nom: str, img_w: int, img_h: int, slice_w: int, 
     """Avertissement quand l'image occupe moins de la moitié d'une fenêtre d'analyse (le reste est complété
     par du blanc, ``sahi_lite.completer_fenetre``), ``None`` sinon. Part comptée PAR FENÊTRE : une bande plus
     large que la fenêtre mais moins haute ne remplit que sa hauteur de chaque fenêtre."""
+    from .sahi_lite import part_de_fenetre
+
     if slice_w <= 0 or slice_h <= 0:
         return None
-    part = min(img_w, slice_w) * min(img_h, slice_h) / (slice_w * slice_h)
+    part = part_de_fenetre(img_w, img_h, slice_w, slice_h)
+
     if part >= 0.5:
         return None
     image_pct = round(100 * part)

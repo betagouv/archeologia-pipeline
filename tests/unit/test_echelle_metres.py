@@ -11,7 +11,8 @@ import pytest
 from app.services.indices_metres import en_px
 from app.services.model_orchestrator import InstalledModel, avertissements_echelle, discover_installed_models
 from app.services.rvt_kernel_context import bornes_errors
-from pipeline.cv.model_config import gsd_entrainement, sahi_a_l_echelle
+from app.services.indices_metres import gsd_du_modele
+from pipeline.cv.model_config import sahi_a_l_echelle
 from pipeline.cv.sahi_lite import REMPLISSAGE, completer_fenetre, slice_image
 
 _MODELES = Path(__file__).resolve().parents[2] / "data" / "models"
@@ -41,16 +42,20 @@ def test_fenetre_inchangee_a_resolution_egale_ou_inconnue(gsd_modele, gsd_entree
     assert sahi_a_l_echelle(SAHI, gsd_modele, gsd_entree) == SAHI
 
 
-def test_gsd_entrainement_lu_dans_training_params(tmp_path):
+def test_gsd_du_modele_lu_dans_training_params(tmp_path):
+    """Audit 7 : UNE source du GSD d'entraînement (indices_metres.gsd_de_fiche), lue par la fenêtre de détection,
+    l'orchestrateur, le validateur et le script d'harmonisation."""
+    import pipeline.cv.model_config as mc
+    assert not hasattr(mc, "gsd_entrainement")
     (tmp_path / "weights").mkdir()
     (tmp_path / "weights" / "best.onnx").write_bytes(b"")
     (tmp_path / "training_params.json").write_text(json.dumps({"mnt": {"resolution": 1.0}}), encoding="utf-8")
-    assert gsd_entrainement(tmp_path / "weights" / "best.onnx") == 1.0
+    assert gsd_du_modele(tmp_path / "weights" / "best.onnx") == 1.0
     (tmp_path / "training_params.json").write_text(json.dumps(
         {"mnt": {"resolution": 1.0}, "rvt": {"params": {"gsd_m": 0.5}}}), encoding="utf-8")
-    assert gsd_entrainement(tmp_path) == 0.5
+    assert gsd_du_modele(tmp_path) == 0.5
     (tmp_path / "training_params.json").unlink()
-    assert gsd_entrainement(tmp_path) is None
+    assert gsd_du_modele(tmp_path) is None
 
 
 # ── C. remplir au lieu d'étirer ───────────────────────────────────────────────────────────────────────

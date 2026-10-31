@@ -94,7 +94,11 @@ def _gsd_des_images(tif_transform_data, jpg_dir: Optional[Path]) -> Optional[flo
 def _sahi_a_la_resolution(cv_config, tif_transform_data, jpg_dir, log):
     """``cv_config["sahi"]`` remis en mètres de terrain (``model_config.sahi_a_l_echelle``) et journalisé."""
     try:
-        from .model_config import gsd_entrainement, resolve_model_weights_path, sahi_a_l_echelle
+        from .model_config import resolve_model_weights_path, sahi_a_l_echelle
+        try:   # côté plugin seulement (le binaire n'appelle pas run_cv_on_folder) : source unique du GSD
+            from ...app.services.indices_metres import gsd_du_modele as gsd_entrainement
+        except ImportError:  # pragma: no cover - tests (src/ sur le chemin)
+            from app.services.indices_metres import gsd_du_modele as gsd_entrainement
         sahi = cv_config.get("sahi")
         wp = resolve_model_weights_path(cv_config)
         if not isinstance(sahi, dict) or wp is None:

@@ -153,16 +153,33 @@ def format_m_px(metres: float, resolution_m: float) -> str:
 # ---------------------------------------------------------------------------
 
 def gsd_de_fiche(params: Optional[Mapping], training_params: Optional[Mapping] = None) -> Optional[float]:
-    """GSD d'entraînement (m/px) d'un modèle : ``gsd_m`` des paramètres d'indice, sinon
-    ``mnt.resolution`` (ou ``resolution``) de ``training_params.json``. ``None`` si inconnu."""
-    for v in ((params or {}).get("gsd_m"),
-              ((training_params or {}).get("mnt") or {}).get("resolution")
-              if isinstance((training_params or {}).get("mnt"), Mapping) else None,
-              (training_params or {}).get("resolution")):
+    """GSD d'entraînement (m/px) d'un modèle — SOURCE UNIQUE (fenêtre de détection, orchestrateur, validateur,
+    harmonisation ; audit 2026-10-31) : ``gsd_m`` des paramètres d'indice donnés, sinon
+    ``training_params.rvt.params.gsd_m``, sinon ``mnt.resolution`` (ou ``resolution``) de ``training_params.json``.
+    ``None`` si inconnu. Le validateur refuse un ``gsd_m`` qui contredit ``mnt.resolution``."""
+    tp = training_params or {}
+    rvt = tp.get("rvt") if isinstance(tp.get("rvt"), Mapping) else {}
+    tp_params = rvt.get("params") if isinstance(rvt.get("params"), Mapping) else {}
+    mnt = tp.get("mnt") if isinstance(tp.get("mnt"), Mapping) else {}
+    for v in ((params or {}).get("gsd_m"), tp_params.get("gsd_m"), mnt.get("resolution"), tp.get("resolution")):
         n = _nombre(v)
         if n and n > 0:
             return n
     return None
+
+
+def gsd_du_modele(chemin) -> Optional[float]:
+    """GSD d'entraînement d'un modèle installé, depuis son dossier ou ses poids (``<m>/weights/best.onnx``) :
+    :func:`gsd_de_fiche` sur son ``training_params.json``. ``None`` sans fiche lisible."""
+    import json
+    from pathlib import Path
+    p = Path(str(chemin))
+    dossier = p.parent.parent if p.suffix and p.parent.name == "weights" else (p.parent if p.suffix else p)
+    try:
+        tp = json.loads((dossier / "training_params.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    return gsd_de_fiche(None, tp if isinstance(tp, dict) else {})
 
 
 def anneau_m(params: Optional[Mapping], gsd_m: Optional[float]) -> Optional[Tuple[float, float]]:

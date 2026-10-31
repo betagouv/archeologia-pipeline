@@ -170,24 +170,6 @@ def resolve_sahi_config(cv_config: Dict) -> Optional[Dict]:
     return load_sahi_config_from_model(wp)
 
 
-def gsd_entrainement(model_path: Union[str, Path]) -> Optional[float]:
-    """Résolution (m/px) des images d'entraînement du modèle : ``rvt.params.gsd_m`` de son
-    ``training_params.json``, sinon ``mnt.resolution`` ; ``None`` si inconnue (fenêtres laissées en pixels)."""
-    import json
-    f = _resolve_model_dir(model_path) / "training_params.json"
-    try:
-        tp = json.loads(f.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return None
-    for v in (((tp.get("rvt") or {}).get("params") or {}).get("gsd_m"), (tp.get("mnt") or {}).get("resolution")):
-        try:
-            if v is not None and float(v) > 0:
-                return float(v)
-        except (TypeError, ValueError):
-            continue
-    return None
-
-
 def sahi_a_l_echelle(sahi: Dict, gsd_modele: Optional[float], gsd_entree: Optional[float]) -> Dict:
     """Fenêtre de détection EN MÈTRES (règle 2026-10-31) : la fenêtre de ``args.yaml`` couvre ``slice × gsd_modele``
     mètres de terrain à l'entraînement ; à ``gsd_entree`` elle fait donc ``round(slice × gsd_modele / gsd_entree)``

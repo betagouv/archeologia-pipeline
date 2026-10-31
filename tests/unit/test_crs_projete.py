@@ -382,3 +382,107 @@ def test_lecture_gdal_identifie_le_code_epsg(tmp_path):
     ds.SetProjection(_wkt_sans_authority(25832))
     ds = None
     assert _crs_from_gdal(gdal.Open(str(p))) == "EPSG:25832"
+
+
+# --- R2 (audit 2026-10-31) : CRS du projet, relance dans un dossier d'un autre CRS ----------
+
+def test_crs_du_projet_couches_d_abord():
+    from app.services.finalize_service import crs_du_projet
+
+    assert crs_du_projet(["EPSG:25832", "EPSG:25832"], "EPSG:2154") == "EPSG:25832"   # trace périmée
+    assert crs_du_projet(["", ""], "EPSG:27700") == "EPSG:27700"
+    assert crs_du_projet([], None) == "EPSG:2154"
+
+
+def test_alerte_relance_autre_crs():
+    from pipeline.ingest_plan import alerte_relance_autre_crs
+
+    assert alerte_relance_autre_crs(None, "EPSG:25832") is None                       # dossier neuf
+    assert alerte_relance_autre_crs({"crs": "EPSG:25832"}, "EPSG:25832") is None
+    assert alerte_relance_autre_crs({}, "EPSG:2154") is None                           # trace d'avant = 2154
+    msg = alerte_relance_autre_crs({}, "EPSG:25832")
+    assert msg and "EPSG:2154" in msg and "nouveau dossier" in msg
+    assert "EPSG:27700" in alerte_relance_autre_crs({"crs": "EPSG:27700"}, "EPSG:25832")
+
+
+def test_preflight_avertit_d_une_relance_dans_un_dossier_d_un_autre_crs(tmp_path):
+    d = _dossier(tmp_path, "EPSG:25832")
+    sortie = tmp_path / "sortie"
+    (sortie / "livrable").mkdir(parents=True)
+    (sortie / "livrable" / "traitement.json").write_text(json.dumps({"crs": "EPSG:2154"}), encoding="utf-8")
+    results = []
+    _check_raster_crs(str(d), ("tif",), results, output_dir=sortie)
+    alerte = [r for r in results if r.name == "CRS du dossier de sortie"]
+    assert results[0].ok is True                                 # le CRS des rasters reste accepté
+    assert len(alerte) == 1 and alerte[0].ok is False and alerte[0].critical is False
+    assert "EPSG:2154" in alerte[0].details
+    (sortie / "livrable" / "traitement.json").write_text(json.dumps({"crs": "EPSG:25832"}), encoding="utf-8")
+    results = []
+    _check_raster_crs(str(d), ("tif",), results, output_dir=sortie)
+    assert not [r for r in results if r.name == "CRS du dossier de sortie"]
+
+
+def test_libelle_francais_du_controle():
+    from app.services.vocabulaire import ENVIRONNEMENT
+
+    assert ENVIRONNEMENT["CRS du dossier de sortie"] == "Système de coordonnées du dossier de sortie"
+
+
+def test_trace_ecrite_avant_le_chargement_des_couches(tmp_path, monkeypatch):
+    """Le .qgs (écrit au signal load_layers, sur le fil principal) relit la trace en repli : elle
+    doit déjà porter le CRS du run quand le signal part."""
+    import time as _time
+
+    from app.services import finalize_service
+
+    monkeypatch.setattr(finalize_service, "_collect_vrt_paths_and_build", lambda *a, **k: ["x.vrt"])
+    monkeypatch.setattr(finalize_service, "_build_coverage_polygons", lambda *a, **k: None)
+    vus = []
+
+    class _R:
+        def load_layers(self, *a, **k):
+            vus.append(finalize_service.crs_du_traitement(tmp_path))
+
+        def __getattr__(self, _n):
+            return lambda *a, **k: None
+
+    finalize_service.finalize_pipeline(output_dir=tmp_path, cv_cfg={}, rvt_params={}, reporter=_R(),
+                                       start_time=_time.time(), tiles_processed=1, active_products=["MNT"],
+                                       ui_config={}, crs="EPSG:25832")
+    assert vus == ["EPSG:25832"]
+
+
+# --- R3 (audit 2026-10-31) : aire minimale par entité et repli des couches sans CRS ---------
+
+def test_filtre_d_aire_par_entite_garde_le_crs_du_run(tmp_path, monkeypatch):
+    pytest.importorskip("shapely")
+    import pipeline.cv.conversion_shp as cs
+    import pipeline.modes.existing_rvt as er
+    import pipeline.output_paths as op
+
+    gp = tmp_path / "a.gpkg"
+    gp.write_bytes(b"")
+    vus = []
+    monkeypatch.setattr(op, "aires_par_entite", lambda out, run: [(gp, 10.0, frozenset())])
+    monkeypatch.setattr(cs, "_filter_gpkg_by_min_area", lambda **k: vus.append(k.get("crs")))
+    er._filtrer_aires_par_entite(tmp_path, {"crs": "EPSG:25832"}, lambda m: None)
+    er._filtrer_aires_par_entite(tmp_path, {}, lambda m: None)
+    assert vus == ["EPSG:25832", "EPSG:2154"]
+
+
+def test_repli_d_une_couche_sans_crs(tmp_path):
+    from app.services.finalize_service import crs_de_repli_pour
+
+    tif = tmp_path / "livrable" / "indices" / "LD" / "tif"
+    tif.mkdir(parents=True)
+    gpkg = tmp_path / "livrable" / "detections" / "enclos" / "enclos.gpkg"
+    assert crs_de_repli_pour(str(tif / "index_LD.vrt")) == "EPSG:2154"                 # pas de trace
+    (tmp_path / "livrable" / "traitement.json").write_text(json.dumps({"crs": "EPSG:25832"}), encoding="utf-8")
+    assert crs_de_repli_pour(str(tif / "index_LD.vrt")) == "EPSG:25832"
+    assert crs_de_repli_pour(f"{gpkg}|layername=Enclos") == "EPSG:25832"
+    assert crs_de_repli_pour("") == "EPSG:2154"
+
+
+def test_runner_rvt_journalise_le_crs_du_run():
+    t = (SRC / "app" / "runners" / "existing_rvt_runner.py").read_text(encoding="utf-8")
+    assert "Système de coordonnées du run" in t

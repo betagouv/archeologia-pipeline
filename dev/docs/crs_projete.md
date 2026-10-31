@@ -38,6 +38,14 @@ par `ExistingMntRunner` / `ExistingRvtRunner`, puis transmis :
 - projet `.qgs` : `run_view` lit `crs` dans la trace (`finalize_service.crs_du_traitement`) et le passe
   à `qgs_writer.write_validation_project(crs_authid=)` ; sans trace, CRS des couches, à défaut 2154.
 
+## Réserves de l'audit du 2026-10-31 (traitées)
+
+- **R1** : même CRS écrit en code EPSG et en WKT sans `AUTHORITY` (GDAL 3.11) → `identifier_epsg`, `meme_crs` ; plus de faux « mélange », étiquette toujours en code EPSG.
+- **R2** : CRS du `.qgs` = celui des couches, la trace en repli (`crs_du_projet`) ; ⚠ « CRS du dossier de sortie » au préflight pour une relance dans un dossier d'un autre CRS (`alerte_relance_autre_crs`).
+- **R3** : `existing_rvt._filtrer_aires_par_entite` passe `crs=` ; `layer_loader._ensure_layer_crs` se replie sur la trace du dossier de la couche (`crs_de_repli_pour`) ; `cv_runner_onnx_cli.py` garde EPSG:2154 sur son chemin de shapefiles, non emprunté (commentaire).
+- **R4** : documentation (recette, contrats, docstring du préflight, manuel `livrable/indices/RVT/`), journal « Système de coordonnées du run » en indices existants.
+- **R5** : le code EPSG reste dans le rapport (décision, cf. `docs/contrats.md`).
+
 ## Recensement des hypothèses Lambert-93 de `src/` (rg `2154|Lambert|L93|lambert`)
 
 Traitées (modes à rasters fournis) :
@@ -61,7 +69,6 @@ Laissées telles quelles, et pourquoi :
 | `ign/products/mnt.py`, `density.py` (`FILTER_EXTENT … [EPSG:2154]`), `results.copy_mnt_to_results`, `results.copy_final_products_to_results` (`assign_crs_if_missing` sans CRS) | LiDAR HD seulement (`ign_laz`/`local_laz`) ; en `existing_mnt` le MNT a déjà son CRS quand ces appels passent, ils sont sans effet |
 | `ign/tile_resolver.py`, `ui/map_tools/grid_layer.py`, `tile_picker_tool.py`, `app/services/grid_view.py` | grille IGN des dalles LiDAR HD (France) |
 | `coverage_polygons.write_low_coverage_gpkg(crs="EPSG:2154")` | produit Couverture : nuage de points requis, indisponible hors LiDAR |
-| `ui/layer_loader._ensure_layer_crs(fallback="EPSG:2154")` | ne s'applique qu'à une couche **sans** CRS ; toutes les sorties d'un run étranger en portent un désormais |
 | `ui/visualisation_tab.py` | catalogue des flux Géoplateforme (France), onglet masqué |
 | `modes/existing_mnt._classify_mnt_layout`, `existing_rvt._classify_rvt_layout`, `neighbor_halo`, `_large_tile_name_for` | heuristiques au kilomètre **en unités du CRS** : valables dans tout CRS métrique (une dalle alignée au km en UTM est « standard ») |
 | Noms des sorties `LHD_FXX_<x>_<y>_…_A_LAMB93_…` | cosmétiques, coordonnées au km dans le CRS d'entrée ; « LAMB93 » trompeur hors France mais lu par la résolution des TIF non rognés et le cache : à traiter à part (renommage = changement pour les utilisateurs français) |

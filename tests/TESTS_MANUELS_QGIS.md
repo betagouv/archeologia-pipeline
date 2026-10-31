@@ -1230,7 +1230,7 @@ Lot 3 du chantier d'accélération (2026-10-15) : une dalle lue en entier reçoi
 > **Contexte** (2026-10-31, décision de l'utilisateur) : en MNT existant et indices existants, le plugin n'exige plus
 > EPSG:2154 ; il accepte tout CRS projeté en mètres et écrit toutes ses sorties dans ce CRS, sans reprojeter. Refusés :
 > géographique, non métrique, mélange. Données d'essai : quelques fenêtres de
-> `D:rouillons\inventaires_etrangers_2026-10\_audit\de_sh\mnt\` (EPSG:25832, 1 m) ; référence
+> `D:\brouillons\inventaires_etrangers_2026-10\_audit\de_sh\mnt\` (EPSG:25832, 1 m) ; référence
 > `zones/allemagne/de_sh_denkmalliste/raw/de_sh_denkmalliste.gpkg` (EPSG:25832). Joué hors écran le 2026-10-31
 > (QGIS 4.0.3 et 3.44, banc run_e2e) : reste à voir dans QGIS de bureau.
 
@@ -1242,3 +1242,4 @@ Lot 3 du chantier d'accélération (2026-10-15) : une dalle lue en entier reçoi
 - [ ] **71.6 Indices existants** : relancer en Indices existants sur les LD produits en 71.4 → mêmes vérifications, détections en EPSG:25832.
 - [ ] **71.7 Non-régression France** : un MNT existant en EPSG:2154 et un traitement Téléchargement IGN donnent les mêmes couches qu'avant (SCR EPSG:2154, `"crs": "EPSG:2154"` dans la trace).
 - [ ] **71.8 Manuel** : F1 à l'étape 1 → section « Système de coordonnées des rasters fournis » (tout CRS projeté en mètres, pas de reprojection, trois refus) ; Dépannage « CRS des rasters » refusé décrit les trois causes.
+- [ ] **71.9 Relance dans un dossier d'un autre CRS** : relancer en MNT existant (fenêtres EPSG:25832) dans un dossier de sortie déjà calculé en EPSG:2154 → ligne « Système de coordonnées du dossier de sortie » en avertissement (« relance dans un dossier calculé en EPSG:2154 (entrées en EPSG:25832) : … choisissez un nouveau dossier de sortie ») ; le lancement reste possible ; même dossier, mêmes entrées : pas d'avertissement.

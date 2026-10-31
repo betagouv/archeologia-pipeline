@@ -53,6 +53,7 @@ class ExistingRvtRunner:
         cv_config = ctx.cv.raw
         # CRS du run (règle 2026-10-31) : celui des indices fournis, sans reprojection.
         crs = crs_des_entrees(existing_rvt_dir, ("tif", "tiff"), ctx.files.declared_crs)
+        reporter.info(f"Système de coordonnées du run : {crs if crs.startswith('EPSG:') else 'CRS projeté (WKT)'}")
         target_rvt = str(cv_config.get("target_rvt", "LD"))
 
         # Collecter tous les RVT cibles uniques depuis les runs

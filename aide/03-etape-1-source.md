@@ -13,7 +13,7 @@ La frise du haut représente la chaîne de traitement (le [schéma complet](prem
 | MNT existant | un dossier de modèles de terrain `.tif`, `.tiff` ou `.asc`, dans un système de coordonnées projeté en mètres | non |
 | Indices de visualisation existants | un dossier d'indices (SVF, LD…) `.tif`, dans un système de coordonnées projeté en mètres | non |
 
-Les deux premiers points de départ exécutent toute la chaîne. Depuis un MNT existant, le traitement commence aux indices de visualisation. Depuis des indices de visualisation existants, il ne calcule aucun produit : avec une structure cochée, il les analyse ; sans détection, il se contente de les publier en mosaïque dans `livrable/images/RVT/`.
+Les deux premiers points de départ exécutent toute la chaîne. Depuis un MNT existant, le traitement commence aux indices de visualisation. Depuis des indices de visualisation existants, il ne calcule aucun produit : avec une structure cochée, il les analyse ; sans détection, il se contente de les publier en mosaïque dans `livrable/indices/RVT/`.
 
 Dans tous les cas, indiquez un **dossier de sortie**, de préférence vide. Relancer dans le même dossier est possible : voir [Relancer dans le même dossier](etape-5-traitement.md#relancer-dans-le-meme-dossier).
 
@@ -51,7 +51,7 @@ Chaque raster est calculé seul, sans voisin : sur un lot de petites dalles, les
 
 ## Indices de visualisation existants
 
-Vous avez déjà les indices de visualisation (SVF, LD, M-HS…), par exemple produits par un traitement précédent ou par un autre outil. Le dossier est lu tel quel, les indices sont préparés pour les modèles et la détection s'exécute. Même règle de système de coordonnées que pour un MNT, ci-dessous : projeté, en mètres, un seul pour le dossier. Les résultats sont rangés sous `livrable/images/RVT/`, le plugin ne connaissant pas les réglages qui ont produit ces images.
+Vous avez déjà les indices de visualisation (SVF, LD, M-HS…), par exemple produits par un traitement précédent ou par un autre outil. Le dossier est lu tel quel, les indices sont préparés pour les modèles et la détection s'exécute. Même règle de système de coordonnées que pour un MNT, ci-dessous : projeté, en mètres, un seul pour le dossier. Les résultats sont rangés sous `livrable/indices/RVT/`, le plugin ne connaissant pas les réglages qui ont produit ces images.
 
 Pour que les objets à cheval sur deux dalles soient vus entiers, le plugin fabrique une marge à partir des dalles voisines présentes dans le dossier. Une dalle isolée n'en a pas.
 
@@ -66,6 +66,8 @@ La vérification de l'étape 4 affiche le système retenu, par exemple « EPSG:2
 - un **mélange** de systèmes entre les rasters d'un même dossier.
 
 Dans ces trois cas, reprojetez les rasters dans un système projeté en mètres, le même pour tout le dossier, avant de relancer. Un raster **sans** système de coordonnées dans ses métadonnées est traité en Lambert-93 : la vérification le dit par un avertissement, le lancement reste possible.
+
+Relancer dans un dossier de sortie déjà calculé dans un **autre** système (un premier traitement en Lambert-93, puis des MNT allemands) : la vérification l'avertit. Les indices du premier traitement restent dans le dossier et la mosaïque ne pourrait pas les assembler avec les nouveaux : choisissez un nouveau dossier de sortie.
 
 ## Enregistrer et recharger une configuration
 

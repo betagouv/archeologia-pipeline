@@ -268,7 +268,7 @@ fileignoreconfig:
 - filename: dev/build_quadrillage_from_wfs.py
   checksum: 5286a1495ce8a7a8bf350eb5bcff2c2827dca6e2c50454ef6b3210995610e3f6
 - filename: docs/contrats.md
-  checksum: dfd5af298a049cce0c9655008abbde3788978e1ee1305b7a49d90b6bb1ba91e2
+  checksum: e3819b6219eb9d4c0cc47af2e13f97c76b4d72eeafcc7e4139ffdf0928e9e811
 - filename: src/app/services/arborescence.py
   checksum: c5e606980a36c45a1741ce2471bb8eae676f7dab2f222ab8cb75a360a074f91c
 - filename: src/app/services/carte_zones.py
@@ -352,7 +352,7 @@ fileignoreconfig:
 - filename: aide/05-etape-3-detection.md
   checksum: 5bf721c495dd88dd47bab799a5731643acf0ffa0b73a7f036435b5b869aa7240
 - filename: aide/06-etape-4-verifications.md
-  checksum: e0f4a22073bff650a9a9ceecfb4f284de22e8c0ddf40fc1dc2436727d56287a8
+  checksum: a68649dc8736dbaffdd385da3d7ef83bcb69ed94fb9554b6f4410fc292b23930
 - filename: dev/hooks/stop_tests.py
   checksum: f22e43c204e6f391fb1353ab5103c3a14039639c92e7da73b0a9063e45b547aa
 - filename: docs/model_contract.md
@@ -412,7 +412,11 @@ fileignoreconfig:
 - filename: tests/unit/test_export_rfdetr_loader.py
   checksum: dcabb1c509aaf66be572daadf2f6cd65ea2ae2c60a112a8743e655d09649d971
 - filename: tests/unit/test_crs_projete.py
-  checksum: 25fd70e92a0ce802119d8f12685fd00d0fd8f7cbdaeab1c7ba011af72f2de8ee
+  checksum: 0c43622be7357d8081f21c4ad58aa75bf8d97bcc8661f3a45f1acbf984d8af39
 - filename: src/pipeline/tilespec.py
   checksum: 9a999f8a1a1b084f9dc21f7d66a2630b8b94867fa0c6cbc89fbf0cded3b6b596
+- filename: dev/docs/crs_projete.md
+  checksum: 52ade4889f38b9fc30745ae819c930827058b6f48e9ed79fb170502aee9b70f1
+- filename: dev/runner_onnx/cv_runner_onnx_cli.py
+  checksum: 4ab62c6132fd04f8b0a83199ddd3c8e6fd7626dc226ff9b63482c9adc5c4b4ac
 version: '1.0'

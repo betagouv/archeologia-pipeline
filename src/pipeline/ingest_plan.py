@@ -332,3 +332,20 @@ def crs_des_entrees(dir_path, exts: Sequence[str], declared_crs: Optional[str] =
     except Exception:
         pass
     return normaliser_crs(declared_crs)
+
+
+def alerte_relance_autre_crs(trace: Optional[dict], crs_run: str) -> Optional[str]:
+    """Message ⚠ si le dossier de sortie porte un traitement calculé dans un autre CRS que les
+    entrées (``trace`` = ``livrable/traitement.json`` lu, ``None`` sans trace). Une trace sans
+    champ ``crs`` date d'avant la règle du 2026-10-31 : elle était en EPSG:2154. Les indices de
+    l'ancien lancement restent dans le dossier et ``gdalbuildvrt`` écarte en silence les dalles
+    d'une autre projection : la mosaïque serait fausse sans erreur."""
+    if not isinstance(trace, dict):
+        return None
+    precedent = normaliser_crs(trace.get("crs") or CRS_PAR_DEFAUT)
+    if meme_crs(precedent, normaliser_crs(crs_run)) is True:
+        return None
+    return (f"relance dans un dossier calculé en {_short_crs(precedent)} (entrées en "
+            f"{_short_crs(normaliser_crs(crs_run))}) : les indices de l'ancien lancement restent et la "
+            "mosaïque les ignorerait — choisissez un nouveau dossier de sortie")
+

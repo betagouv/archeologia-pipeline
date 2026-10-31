@@ -387,6 +387,35 @@ def crs_du_traitement(output_dir: Path) -> Optional[str]:
     return str(crs) if crs else None
 
 
+def crs_de_repli_pour(source: str) -> str:
+    """CRS à affecter à une couche du run qui n'en porte pas d'exploitable : celui de la trace
+    ``traitement.json`` du dossier ``livrable/`` qui la contient (source d'une couche : chemin,
+    éventuellement suivi de ``|layername=…``), à défaut EPSG:2154 (LiDAR HD, dossiers antérieurs)."""
+    import json as _json
+
+    try:  # fallback standalone (tests : src/ sur le path)
+        from ...pipeline.output_paths import NOM_TRAITEMENT
+    except ImportError:  # pragma: no cover
+        from pipeline.output_paths import NOM_TRAITEMENT
+    chemin = Path(str(source or "").split("|", 1)[0])
+    for d in chemin.parents:
+        trace = d / NOM_TRAITEMENT
+        if trace.is_file():
+            try:
+                crs = _json.loads(trace.read_text(encoding="utf-8")).get("crs")
+            except (OSError, ValueError, AttributeError):
+                crs = None
+            return str(crs) if crs else "EPSG:2154"
+    return "EPSG:2154"
+
+
+def crs_du_projet(authids_des_couches: List[str], crs_trace: Optional[str]) -> str:
+    """CRS du projet .qgs : celui des couches (toutes en portent un, le même par run), la trace
+    en repli seulement (elle peut dater d'un lancement précédent si l'écriture des métadonnées a
+    échoué), à défaut EPSG:2154."""
+    return next((a for a in authids_des_couches if a), None) or crs_trace or "EPSG:2154"
+
+
 def _journal_relatif(output_dir: Path) -> str:
     """``technique/journaux/pipeline_log_<ts>.txt`` du dernier lancement, ``""`` sans journal."""
     try:

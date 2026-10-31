@@ -187,7 +187,9 @@ def _filtrer_aires_par_entite(output_dir: Path, run: Dict[str, Any], log) -> Non
     from ..cv.conversion_shp import _filter_gpkg_by_min_area
     for gp, aire, exemptes in a_filtrer:
         try:
-            _filter_gpkg_by_min_area(gpkg_paths=[str(gp)], min_area_m2=aire, exempt_layers=exemptes)
+            # crs du run (cv_config["crs"]) : le GeoPackage réécrit garde son étiquette.
+            _filter_gpkg_by_min_area(gpkg_paths=[str(gp)], min_area_m2=aire, exempt_layers=exemptes,
+                                     crs=run.get("crs") or "EPSG:2154")
             log(f"Computer Vision: aire minimale de l'entité {gp.stem} : {aire:g} m²")
         except Exception as e:  # noqa: BLE001 — même tolérance que le filtre du run (runner_shapefiles)
             log(f"Computer Vision: filtrage par aire de {gp.stem} ignoré (erreur): {e}")

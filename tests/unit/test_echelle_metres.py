@@ -378,3 +378,42 @@ def test_requete_retenue_hors_fenetre_previent():
     boxes = np.array([[0.5, 0.5, 0.1, 0.1], [2.14, 0.3, 0.2, 0.2]])
     assert boites_retenues_hors_fenetre(boxes, np.array([0.8, 0.30]), 0.25) == pytest.approx(2.14)
     assert boites_retenues_hors_fenetre(np.zeros((0, 4)), np.zeros(0), 0.25) is None
+
+
+
+# ── ajout 2026-11-01 : une seule source du GSD d'entraînement (fenêtre appliquée, orchestrateur, fiche) ─────────
+@pytest.mark.parametrize("tp,card_pref,card_mnt,attendu", [
+    ({}, {"gsd_m": 1.0}, {}, 1.0),                                   # fiche du package sans résolution
+    ({"mnt": {"resolution": 0.5}}, {"gsd_m": 1.0}, {}, 0.5),         # la fiche du package prime
+    ({"rvt": {"params": {}}}, {}, {"resolution": 1.0}, 1.0),          # repli sur model_card.mnt
+    ({}, {}, {}, None),
+])
+def test_meme_gsd_partout_meme_fiche_incomplete(tmp_path, tp, card_pref, card_mnt, attendu):
+    import yaml
+    from app.services.indices_metres import gsd_du_modele
+    from pipeline.cv.runner import _sahi_a_la_resolution
+    from ui.dialogs._model_info_data import build_sections
+    m = tmp_path / "models" / "m"
+    (m / "weights").mkdir(parents=True)
+    (m / "weights" / "best.onnx").write_bytes(b"x")
+    (m / "training_params.json").write_text(json.dumps(tp), encoding="utf-8")
+    card = {"display_name": "M", "task": "instance_segmentation",
+            "preferred_rvt": {"type": "LD", "params": card_pref}, "mnt": card_mnt,
+            "classes": [{"name": "c", "entity": "c"}]}
+    (m / "model_card.yaml").write_text(yaml.safe_dump(card), encoding="utf-8")
+    (m / "args.yaml").write_text(yaml.safe_dump({"sahi": {"slice_width": 648, "slice_height": 648}}), encoding="utf-8")
+
+    assert gsd_du_modele(m / "weights" / "best.onnx") == attendu
+    (installe,) = discover_installed_models(tmp_path / "models")
+    assert installe.gsd_m == attendu
+    # fenêtre réellement appliquée : images à 1 m/px
+    cfg = {"selected_model": str(m / "weights" / "best.onnx"), "sahi": {"slice_width": 648, "slice_height": 648}}
+    s = _sahi_a_la_resolution(cfg, {"a": (1.0, -1.0, 500000.0, 6000000.0)}, None, lambda _m: None)["sahi"]
+    assert s["slice_width"] == (648 if attendu in (None, 1.0) else 324)
+    # fiche du modèle (dialogue) : la même échelle
+    arch = next(x for x in build_sections(card, args={"sahi": {"slice_width": 648, "overlap_ratio": 0.2}},
+                                          model_dir=m) if x.title == "ARCHITECTURE")
+    ligne = next(r.value for r in arch.rows if r.label == "Fenêtres d'analyse")
+    assert ("m de terrain" in ligne) == (attendu is not None)
+    if attendu:
+        assert f"{648 * attendu:g} m de terrain".replace(".", ",") in ligne

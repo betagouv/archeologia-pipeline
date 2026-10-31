@@ -316,7 +316,7 @@ def _echelle_entrainement(card: Dict[str, Any], model_dir: Path) -> Tuple[Option
     model_card et ``training_params.json`` (``mnt.resolution``, ``rvt.params``). Les fiches écrivent l'anneau
     de trois façons (``min_radius``/``max_radius`` px, ``rmin_px``/``rmax_px`` + ``gsd_m``, ``rmin_m``/``rmax_m``) :
     ``indices_metres.anneau_m`` les ramène toutes en mètres. Jamais d'exception."""
-    from .indices_metres import anneau_m, gsd_de_fiche
+    from .indices_metres import anneau_m, gsd_d_entrainement
     try:
         tp = json.loads((model_dir / "training_params.json").read_text(encoding="utf-8"))
     except (OSError, ValueError):
@@ -325,7 +325,7 @@ def _echelle_entrainement(card: Dict[str, Any], model_dir: Path) -> Tuple[Option
     params = pref.get("params") if isinstance(pref.get("params"), dict) else {}
     if not params and isinstance((tp.get("rvt") or {}).get("params"), dict):
         params = tp["rvt"]["params"]
-    gsd = gsd_de_fiche(params, tp)
+    gsd = gsd_d_entrainement(card, tp)
     return gsd, anneau_m(params, gsd)
 
 

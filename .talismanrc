@@ -48,7 +48,7 @@ fileignoreconfig:
 - filename: src/app/services/indices_model.py
   checksum: f18a1a5ecd866ac7ef0c80f8b5cd8608685dd71201e15e57ca7f04c9ac5e0682
 - filename: src/app/services/model_orchestrator.py
-  checksum: f6600972153171d951918e8cd77e9ece90fcd398db204228bc2d9f3a575b5f88
+  checksum: ed966cd88753c4452dd1b37dc3f3894232dbe359b19a46da4594f3ce8dd806d4
 - filename: src/app/services/proxy_config.py
   checksum: cb7fe5903254aafead5171c65d9fcb148a9c5bd0ec4caeadc0a035ed83bc13fa
 - filename: src/app/services/rvt_kernel_context.py
@@ -100,7 +100,7 @@ fileignoreconfig:
 - filename: src/pipeline/types.py
   checksum: cc071751349938091505bf7c7cbe20240ae757e05677e4184c939ccc2edca6d9
 - filename: src/ui/dialogs/_model_info_data.py
-  checksum: 852a533196e0509bbe32388be267656dfc6532786b90c58a13777510fb01bd78
+  checksum: 8a618bb5b4599fd8cf86f04c9b774e1344ad25f35d9267f39bb97280191bc93f
 - filename: src/ui/icons.py
   checksum: df0d068fd896cf1361d0a6286e537fc015e473c5bc58924f9d79c3813df543b0
 - filename: src/ui/layer_loader.py
@@ -420,7 +420,7 @@ fileignoreconfig:
 - filename: dev/runner_onnx/cv_runner_onnx_cli.py
   checksum: 4ab62c6132fd04f8b0a83199ddd3c8e6fd7626dc226ff9b63482c9adc5c4b4ac
 - filename: tests/unit/test_echelle_metres.py
-  checksum: b5b2f83b9fd8830c45c7f1e80eb51ac838ca756942ea942cbd6b61bd9b066a66
+  checksum: e90804a35a6fa5234802597eb67ea82dd52a623db22468162ba9102ddce0cab5
 - filename: src/pipeline/ingest_plan.py
   checksum: ef9de6dc687698be3cb273673dd69df41b9cccd28bfb349d8f41159f715d4a14
 - filename: tests/unit/test_nommage_crs.py

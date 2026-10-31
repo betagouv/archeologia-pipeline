@@ -700,6 +700,54 @@ def _equal_lists(a: list[Any], b: list[Any]) -> bool:
     return list(a) == list(b)
 
 
+def _verifier_echelle(model_card: dict, training_params: dict, report: "ValidationReport") -> None:
+    """GSD d'entraînement et anneau du LD EN MÈTRES (règle 2026-10-31) : le plugin met la fenêtre de détection
+    et les rayons des indices à l'échelle de chaque modèle. Forme harmonisée attendue dans
+    ``training_params.json.rvt.params`` et ``model_card.preferred_rvt.params`` : ``gsd_m`` + ``rmin_m``/``rmax_m``
+    (les clés pixels ``rmin_px``/``rmax_px`` ou ``min_radius``/``max_radius`` restent acceptées). Erreur si les
+    écritures se contredisent ; avertissement si l'échelle est indécidable."""
+    from app.services.indices_metres import anneau_m, gsd_de_fiche
+
+    tp_rvt = training_params.get("rvt") if isinstance(training_params.get("rvt"), dict) else {}
+    tp_params = tp_rvt.get("params") if isinstance(tp_rvt.get("params"), dict) else {}
+    pref = model_card.get("preferred_rvt") if isinstance(model_card.get("preferred_rvt"), dict) else {}
+    mc_params = pref.get("params") if isinstance(pref.get("params"), dict) else {}
+    gsd = gsd_de_fiche(tp_params, training_params) or gsd_de_fiche(mc_params, training_params)
+    if not gsd:
+        report.warnings.append("échelle : résolution d'entraînement inconnue (training_params.json mnt.resolution / "
+                               "rvt.params.gsd_m) — la fenêtre de détection ne peut pas être mise en mètres")
+        return
+    tp_res = (training_params.get("mnt") or {}).get("resolution") if isinstance(training_params.get("mnt"), dict) else None
+    for nom, params in (("training_params.json.rvt.params", tp_params), ("model_card.preferred_rvt.params", mc_params)):
+        g = params.get("gsd_m")
+        if g is not None and tp_res is not None and abs(float(g) - float(tp_res)) > 1e-6:
+            report.errors.append(f"échelle : {nom}.gsd_m ({g}) != training_params.json.mnt.resolution ({tp_res})")
+    type_rvt = str(pref.get("type") or tp_rvt.get("type") or "").upper()
+    if type_rvt != "LD":
+        return
+    anneaux = {}
+    for nom, params in (("training_params.json.rvt.params", tp_params), ("model_card.preferred_rvt.params", mc_params)):
+        if not params:
+            continue
+        a = anneau_m(params, gsd_de_fiche(params, training_params))
+        if a is None:
+            report.warnings.append(f"échelle : {nom} sans anneau du LD lisible (rmin_m/rmax_m, ou pixels + gsd_m)")
+            continue
+        anneaux[nom] = a
+        px = anneau_m({k: params[k] for k in ("rmin_px", "rmax_px", "min_radius", "max_radius") if k in params}, gsd)
+        if "rmin_m" in params and px is not None and (abs(px[0] - a[0]) > 0.01 or abs(px[1] - a[1]) > 0.01):
+            report.errors.append(f"échelle : {nom} rmin_m/rmax_m ({a[0]:g}/{a[1]:g} m) contredit ses pixels "
+                                 f"({px[0]:g}/{px[1]:g} m à {gsd:g} m/px)")
+        if "rmin_m" not in params:
+            report.infos.append(f"échelle : {nom} sans rmin_m/rmax_m explicites (anneau déduit des pixels : "
+                                f"{a[0]:g}–{a[1]:g} m) — forme harmonisée recommandée")
+    if len(set(anneaux.values())) > 1:
+        report.errors.append(f"échelle : anneaux du LD contradictoires {anneaux}")
+    elif anneaux:
+        report.infos.append(f"échelle : appris à {gsd:g} m/px, anneau du LD "
+                            f"{next(iter(anneaux.values()))[0]:g}–{next(iter(anneaux.values()))[1]:g} m")
+
+
 def validate_model_dir(model_dir: Path, strict: bool = False) -> ValidationReport:
     """Valide un dossier modèle et retourne le rapport."""
     report = ValidationReport(model_dir=model_dir)
@@ -1079,6 +1127,9 @@ def validate_model_dir(model_dir: Path, strict: bool = False) -> ValidationRepor
                     f"model_card.derived_targets[{i}] : entité '{dt['entity']}' "
                     "absente du catalogue entities_catalog.json"
                 )
+
+    # ----- Échelle d'entraînement en mètres (règle 2026-10-31) -----
+    _verifier_echelle(model_card, training_params, report)
 
     # ----- derived_targets ↔ clustering -----
     cluster_outputs = {

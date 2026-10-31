@@ -501,6 +501,9 @@ class WizardDialog(QDialog):
         if step in (self.STEP_VERIFS, self.STEP_TRAITEMENT):
             self._update_launch_recap()
             self._apply_validation()  # met aussi à jour le bouton principal
+        elif step == 3:
+            self._maj_resolution_detection()
+            self._update_launch_button()
         elif step == self.STEP_RESULTATS:
             self._resultats_page.rafraichir()
             self._refresh_rail_subs()
@@ -508,6 +511,17 @@ class WizardDialog(QDialog):
         else:
             self._update_launch_button()
         self._update_review_banner()
+
+    def _maj_resolution_detection(self) -> None:
+        """Résolution des données (étapes 1 et 2) → fenêtres d'analyse annoncées à l'étape 3 (règle 2026-10-31)."""
+        try:
+            cfg = copy.deepcopy(self._config)
+            self._source_page.collect_into(cfg)
+            self._indices_page.collect_into(cfg)
+            from ..app.services.sorties_prevues import resolution_prevue
+            self._detection_page.set_resolution(resolution_prevue(cfg))
+        except Exception:  # noqa: BLE001 — une annonce, jamais bloquante
+            pass   # résolution des données non lue : l'étape 3 annonce alors les fenêtres à 0,5 m, et le dit
 
     def _on_prev(self) -> None:
         self._goto_step(self._current_step - 1)

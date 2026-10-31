@@ -75,3 +75,27 @@ class TestLibelles:
     def test_recouvrement_non_numerique_vaut_zero(self):
         # args.yaml lu tel quel par le dialogue : une faute de saisie ne lève pas.
         assert fenetres_par_dalle(648, "vingt") == 0
+
+
+class TestEchelle:
+    """Audit 5 (2026-10-31) : la fenêtre comptée est celle que le run découpera, mise à l'échelle du modèle."""
+
+    def test_enclos_en_france_4_et_9_fenetres(self):
+        # Appris à 1 m, fenêtre 648 m de terrain = 1 296 px à 0,5 m : 4 fenêtres sur 2 000 px, 9 sur 2 800.
+        assert libelle_menu("Enclos", 648, 0.2, gsd_m=1.0, resolution_m=0.5) == (
+            "Enclos — 4 fenêtres d'analyse par dalle")
+        assert ligne_dialogue(648, 0.2, gsd_m=1.0, resolution_m=0.5) == (
+            "1 296 px (648 m de terrain), recouvrement 20 % → 4 fenêtres par dalle de 1 km "
+            "(2 000 px à 0,5 m), 9 avec la marge inter-dalles")
+
+    def test_modele_a_05_m_sur_mnt_a_1_m(self):
+        # 324 px à 1 m ; dalle de 1 km = 1 000 px : 16 fenêtres, comme 648 px sur 2 000 px à 0,5 m.
+        assert "16 fenêtres par dalle de 1 km (1 000 px à 1 m)" in ligne_dialogue(648, 0.2, gsd_m=0.5,
+                                                                                 resolution_m=1.0)
+
+    def test_resolution_inconnue_dite(self):
+        t = ligne_dialogue(648, 0.2, gsd_m=1.0)
+        assert "4 fenêtres" in t and "résolution des données pas encore connue" in t
+
+    def test_sans_gsd_comme_avant(self):
+        assert ligne_dialogue(252, 0.2, resolution_m=1.0) == ligne_dialogue(252, 0.2)

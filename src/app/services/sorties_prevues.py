@@ -25,18 +25,22 @@ def _nom_dossier_indice(key: str, rvt_params: Dict[str, Any]) -> str:
     return get_rvt_folder_name(key, rvt_params)
 
 
-def _resolution(mode: str, proc: dict, files: dict) -> float:
-    """Résolution du MNT dont partiront les indices : réglée (modes LiDAR) ou lue sur le premier MNT fourni."""
+def resolution_prevue(config: dict) -> Optional[float]:
+    """Résolution (m/px) des données du traitement configuré : réglée (modes LiDAR), ou lue sur le premier raster
+    fourni (MNT ou indices existants). ``None`` tant que le dossier n'est pas choisi."""
+    files = (config.get("app") or {}).get("files") or {}
+    mode = str(files.get("data_mode") or "ign_laz")
     if mode in ("ign_laz", "local_laz"):
         try:
-            return float(proc.get("mnt_resolution") or RESOLUTION_REFERENCE_M)
+            return float((config.get("processing") or {}).get("mnt_resolution") or RESOLUTION_REFERENCE_M)
         except (TypeError, ValueError):
             return RESOLUTION_REFERENCE_M
-    dossier = str(files.get("existing_mnt_dir") or "").strip()
+    cle = "existing_rvt_dir" if mode == "existing_rvt" else "existing_mnt_dir"
+    dossier = str(files.get(cle) or "").strip()
     if not dossier:
-        return RESOLUTION_REFERENCE_M
+        return None
     from ...pipeline.ingest_plan import resolution_des_entrees   # différé : rasterio
-    return resolution_des_entrees(dossier, ("tif", "tiff", "asc"))
+    return resolution_des_entrees(dossier, ("tif", "tiff", "asc"), defaut=0.0) or None
 
 
 def sorties_prevues(
@@ -60,7 +64,7 @@ def sorties_prevues(
     if mode != "existing_rvt":
         produits = proc.get("products") or {}
         # Rayons réglés en mètres : le nom du dossier porte les pixels reçus à la résolution du MNT.
-        params = en_px(config.get("rvt_params") or {}, _resolution(mode, proc, files))
+        params = en_px(config.get("rvt_params") or {}, resolution_prevue(config) or RESOLUTION_REFERENCE_M)
         for p in all_products():
             if produits.get(p.key):
                 out.append(f"{DIR_LIVRABLE}/indices/{nommer(p.key, params)}/tif/")

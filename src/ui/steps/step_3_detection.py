@@ -239,15 +239,7 @@ class DetectionPage(QWidget):
         candidates = [(name, self._models[name].display_name) for name in cand_names]
         # Coût structurel (fenêtres d'analyse par dalle) : menu « Changer ▾ » et
         # infobulle du modèle — un fait calculé d'args.yaml, jamais une durée.
-        couts = {
-            name: (
-                libelle_menu(m.display_name, m.sahi_slice_px, m.sahi_overlap),
-                infobulle(m.display_name, m.sahi_slice_px, m.sahi_overlap),
-            )
-            for name in cand_names
-            for m in (self._models[name],)
-        }
-        row.set_candidates(candidates, couts=couts)
+        row.set_candidates(candidates, couts=self._couts(cand_names))
         vignette, cadrage = self._premiere_vignette(entity.id)
         row.set_fiche(vignette, disponible=bool(cand_names), cadrage=cadrage)
         row.fiche_requested.connect(self.fiche_requested)
@@ -728,6 +720,30 @@ class DetectionPage(QWidget):
     # ------------------------------------------------------------------
     # API page
     # ------------------------------------------------------------------
+    def _couts(self, cand_names) -> dict:
+        """Coût structurel de chaque modèle candidat : fenêtres d'analyse par dalle, mises à l'échelle des
+        données (règle 2026-10-31 : fenêtre en mètres ; résolution posée par set_resolution, 0,5 m dit sinon)."""
+        res = getattr(self, "_resolution", None)
+        return {
+            name: (
+                libelle_menu(m.display_name, m.sahi_slice_px, m.sahi_overlap, gsd_m=m.gsd_m, resolution_m=res),
+                infobulle(m.display_name, m.sahi_slice_px, m.sahi_overlap, gsd_m=m.gsd_m, resolution_m=res),
+            )
+            for name in cand_names
+            for m in (self._models[name],)
+        }
+
+    def set_resolution(self, resolution_m) -> None:
+        """Résolution des données du traitement (``sorties_prevues.resolution_prevue``) : recalcule les fenêtres
+        annoncées par chaque ligne. ``None`` : pas encore connue (dit dans l'infobulle)."""
+        if resolution_m == getattr(self, "_resolution", None):
+            return
+        self._resolution = resolution_m
+        for eid, row in self._rows.items():
+            ec = self._coverage.get(eid)
+            cand_names = list(ec.candidate_models if ec else ())
+            row.set_candidates([(n, self._models[n].display_name) for n in cand_names], couts=self._couts(cand_names))
+
     def set_active_rvts(self, rvt_keys) -> None:
         self._active_rvts = set(rvt_keys or [])
         self._refresh()

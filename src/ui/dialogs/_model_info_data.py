@@ -229,9 +229,18 @@ def _build_architecture(
             from ...app.services.cout_modele import ligne_dialogue
         except ImportError:
             from app.services.cout_modele import ligne_dialogue  # type: ignore[no-redef]
+        try:
+            from ...app.services.indices_metres import gsd_de_fiche
+        except ImportError:
+            from app.services.indices_metres import gsd_de_fiche  # type: ignore[no-redef]
+        pref = card.get("preferred_rvt") if isinstance(card.get("preferred_rvt"), Mapping) else {}
+        # Fenêtre en mètres (2026-10-31) : comptée à la taille que le run découpera ; la résolution des données
+        # n'est pas connue ici, la ligne le dit.
         ligne = ligne_dialogue(
             sahi.get("slice_width", sahi.get("slice_height", 0)) or 0,
             sahi.get("overlap_ratio", 0.2) or 0.0,
+            gsd_m=gsd_de_fiche(pref.get("params") if isinstance(pref.get("params"), Mapping) else {},
+                               {"mnt": card.get("mnt") or {}}),
         )
         if ligne:
             rows.append(Row("Fenêtres d'analyse", ligne))

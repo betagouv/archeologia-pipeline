@@ -44,7 +44,7 @@ fileignoreconfig:
 - filename: src/app/services/fiabilite.py
   checksum: fd1ebc36630598bddd6c24b2bdf2ff1c98380668984fe59862b581458bd4e4f3
 - filename: src/app/services/finalize_service.py
-  checksum: d07b9bd225d611737855a5f1a921f7234e96dec85beb95d2f10f654529edc2e0
+  checksum: a492a63e3cd8d6da609ae97056e7889f6206fdbea9f2134b5039a0bff4d756aa
 - filename: src/app/services/indices_model.py
   checksum: f18a1a5ecd866ac7ef0c80f8b5cd8608685dd71201e15e57ca7f04c9ac5e0682
 - filename: src/app/services/model_orchestrator.py
@@ -56,7 +56,7 @@ fileignoreconfig:
 - filename: src/app/services/source_modes.py
   checksum: a04dd6688b494330c624a0b4639cb08b4ee4d0f73713799aa2244ff9befd18d6
 - filename: src/config/config_manager.py
-  checksum: fd04631cb45dc7a727d47c573723c4add4c1e712ed50d8c42abca433dd8038d1
+  checksum: b1280c11af6ce2169eaaf004e0ffd8e86fd0f9b2040138c235496145eb69df90
 - filename: src/pipeline/coverage_polygons.py
   checksum: 8af2d1c7973b36884a4615f57e4c2abbbcd4bd3757ab48ed3a2bbe0840516e37
 - filename: src/pipeline/cv/alignment.py
@@ -136,7 +136,7 @@ fileignoreconfig:
 - filename: tests/unit/test_config_example_sync.py
   checksum: 78a091e0da89158fb0771fa935e94cd3aa2056cc35cfb067177202de40bfcd63
 - filename: tests/unit/test_config_manager.py
-  checksum: a3b4b8a9905e994fdd2f65eb42965877b930c6e768fb69181d10a3efa7801464
+  checksum: 0a08e1cd2fa3a2dc686a467964e408c5c7c18586846772a86df91ec7adeca489
 - filename: tests/unit/test_config_settings_dir.py
   checksum: 46dada346835b83644799296b22a2cfea633575217dfbd36d9eab18d34c5613b
 - filename: tests/unit/test_download_cancel.py
@@ -154,7 +154,7 @@ fileignoreconfig:
 - filename: tests/unit/test_existing_rvt_runner.py
   checksum: bc54f1b752d2d3d1c99ca7511607065283150683e94ce21418ebc32761542050
 - filename: tests/unit/test_finalize_service.py
-  checksum: 223b1d444075b8bd979ef4eaa8a64c91de6b8e6868fdab8ec21aba567ab25971
+  checksum: c8b4a5f475f88317f8b2ea541ca76f83d34f63826efd06d4d0265afff8a4f2be
 - filename: tests/unit/test_indices_model.py
   checksum: c73d398fdb224ce33d5472f87ea804b8abf2aa21a978991fb32e8c895c18624b
 - filename: tests/unit/test_ingest_plan.py

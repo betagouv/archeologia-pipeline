@@ -65,7 +65,6 @@
     "entity_cluster_enabled": [],
     "entity_thresholds": {},
     "entity_cluster_params": {},
-    "selected_model": "",
     "target_rvt": "LD",
     "confidence_threshold": 0.3,
     "iou_threshold": 0.5,

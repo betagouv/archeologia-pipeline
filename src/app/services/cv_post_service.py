@@ -132,7 +132,7 @@ def resolve_uncropped_tif(
 def annoncer_echelle(cv_cfg: Dict[str, Any], cv_runs: List[Dict[str, Any]], reporter: "ProgressReporter",
                      rvt_params_px: Optional[Dict[str, Any]], *, indices_calcules: bool = True,
                      anneau_fourni_px: Optional[Tuple[int, int]] = None) -> None:
-    """Avertissements d'échelle du run (``model_orchestrator.avertissements_echelle``), une fois par modèle :
+    """Avertissements d'échelle du run (``model_orchestrator.avertissements_echelle``), un par cause, modèles listés :
     résolution des données ≠ résolution d'entraînement, anneau du LD différent, indices fournis aux réglages
     inconnus. Best-effort : un modèle illisible ne bloque jamais la détection."""
     from .indices_metres import resolution_de

@@ -112,8 +112,46 @@ def test_avertissement_de_resolution_a_1m():
     rvt = en_px({}, 1.0)
     msgs = avertissements_echelle([_modele("lineaires", 0.5, (5.0, 10.0)), _modele("enclos", 1.0, (5.0, 10.0))],
                                   1.0, rvt)
-    assert len(msgs) == 1 and "lineaires" in msgs[0]
-    assert "1 m/pixel" in msgs[0] and "0,5 m/pixel" in msgs[0] and "324 px au lieu de 648" in msgs[0]
+    assert len(msgs) == 1 and "lineaires" in msgs[0] and "enclos" not in msgs[0]
+    assert "1 m/pixel" in msgs[0] and "0,5 m/pixel" in msgs[0]
+    assert " px" not in msgs[0]          # le détail des fenêtres va au journal technique (runner.run_cv_on_folder)
+
+
+def test_resolution_trois_modeles_un_seul_message():
+    """Retour utilisateur 2026-10-31 (MNT allemand à 1 m) : un message par modèle, trop long → un seul, modèles listés."""
+    noms = ["Grandes dépressions circulaires (LD)", "Structures linéaires 3 classes (LD)",
+            "Structures ponctuelles 2 classes : charbonnières et fours (LD)"]
+    modeles = [_modele(n, 0.5, (5.0, 10.0), s) for n, s in zip(noms, (648, 648, 672))]
+    (msg,) = avertissements_echelle(modeles, 1.0, en_px({}, 1.0))
+    assert msg == ("Vos données sont à 1 m/pixel ; 3 modèles ont appris à 0,5 m/pixel : " + ", ".join(noms) + ". "
+                   "Leurs fenêtres d'analyse couvrent la même surface au sol qu'à l'entraînement, mais ils n'ont "
+                   "jamais vu cette résolution : relisez leurs détections avec prudence.")
+
+
+def test_resolution_un_message_par_resolution_d_entrainement():
+    modeles = [_modele("a", 0.5, (5.0, 10.0)), _modele("b", 1.0, (5.0, 10.0)), _modele("c", 0.5, (5.0, 10.0))]
+    msgs = avertissements_echelle(modeles, 2.0, en_px({}, 2.0))
+    assert len(msgs) == 2
+    assert "2 modèles ont appris à 0,5 m/pixel : a, c." in msgs[0]
+    assert "le modèle « b » a appris à 1 m/pixel." in msgs[1]
+
+
+def test_resolution_un_modele_au_singulier():
+    (msg,) = avertissements_echelle([_modele("lineaires", 0.5, (5.0, 10.0))], 1.0, en_px({}, 1.0))
+    assert msg == ("Vos données sont à 1 m/pixel ; le modèle « lineaires » a appris à 0,5 m/pixel. Sa fenêtre "
+                   "d'analyse couvre la même surface au sol qu'à l'entraînement, mais il n'a jamais vu cette "
+                   "résolution : relisez ses détections avec prudence.")
+
+
+def test_anneau_different_sur_deux_modeles_un_seul_message():
+    rvt = en_px({"ldo": {"min_radius_m": 10.0, "max_radius_m": 20.0}}, 0.5)
+    (msg,) = avertissements_echelle([_modele("a", 0.5, (5.0, 10.0)), _modele("b", 0.5, (5.0, 10.0))], 0.5, rvt)
+    assert msg.startswith("2 modèles ont appris sur un LD d'anneau 5 à 10 m : a, b ;")
+    assert "10 à 20 m" in msg and "leurs détections seront dégradées" in msg
+    (msg,) = avertissements_echelle([_modele("a", 0.5, (5.0, 10.0)), _modele("b", 0.5, (5.0, 10.0))], 0.5, rvt,
+                                    indices_calcules=False)
+    assert msg.startswith("2 modèles ont appris sur une dominance locale (LD) d'anneau 5 à 10 m : a, b.")
+    assert "pas connus" in msg and "leurs détections" in msg
 
 
 def test_avertissement_anneau_different_et_indices_fournis():
@@ -136,7 +174,8 @@ def test_les_7_modeles_installes_ont_le_meme_anneau_en_metres():
         assert m.gsd_m in (0.5, 1.0), (m.name, m.gsd_m)
     assert {m.anneau_m for m in modeles} == {(5.0, 10.0)}     # ce que compare la nouvelle : rien à signaler
     a_1m = avertissements_echelle(modeles, 1.0, en_px({}, 1.0))
-    assert len(a_1m) == sum(1 for m in modeles if m.gsd_m == 0.5)   # un message par modèle appris à 0,5 m
+    assert len(a_1m) == 1                                     # un seul message pour tous les modèles à 0,5 m
+    assert all(m.display_name in a_1m[0] for m in modeles if m.gsd_m == 0.5)
     assert avertissements_echelle([m for m in modeles if m.gsd_m == 0.5], 0.5, en_px({}, 0.5)) == []
 
 

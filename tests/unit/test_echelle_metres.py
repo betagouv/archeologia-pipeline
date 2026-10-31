@@ -301,3 +301,22 @@ def test_preflight_lot_de_resolutions_melees_dit_la_resolution_retenue():
     plan = plan_from_specs([t("b.tif", 0.5, 1000), t("a.tif", 1.0, 0)])
     (msg,) = [w for w in plan.warnings if "hétérogènes" in w]
     assert "a.tif" in msg and "1 m" in msg and "rayons" in msg and "fenêtres" in msg
+
+
+# ── run réel 2026-10-31 (MNT allemands à 1 m) : « fenêtre remplie à 71 % » disait le contraire du fait ───────
+def test_message_fenetre_peu_remplie_dit_la_part_d_image_et_celle_du_vide():
+    from pipeline.cv.computer_vision_onnx import message_fenetre_peu_remplie
+    msg = message_fenetre_peu_remplie("d.png", 351, 351, 648, 648)
+    assert "fenêtre de 648 px" in msg and "n'en occupe que 29 %" in msg and "(71 %)" in msg
+    assert "complété par du blanc" in msg and "pas vu ce cas à l'entraînement" in msg
+    assert "remplie à" not in msg
+    assert message_fenetre_peu_remplie("d.png", 460, 460, 648, 648) is None      # 50,4 % d'image : rien
+
+
+def test_message_fenetre_peu_remplie_compte_par_fenetre():
+    """Une bande de 2 000 × 200 px : chaque fenêtre de 648 px n'a que 31 % d'image, même si l'image entière
+    fait plus de la moitié d'une fenêtre en surface (l'ancien calcul sur l'image entière se taisait)."""
+    from pipeline.cv.computer_vision_onnx import message_fenetre_peu_remplie
+    msg = message_fenetre_peu_remplie("b.png", 2000, 200, 648, 648)
+    assert msg is not None and "n'en occupe que 31 %" in msg
+    assert message_fenetre_peu_remplie("b.png", 2000, 2000, 648, 648) is None

@@ -1248,6 +1248,22 @@ def _merge_adjacent_polygons(
     return merged_detections
 
 
+def message_fenetre_peu_remplie(nom: str, img_w: int, img_h: int, slice_w: int, slice_h: int) -> Optional[str]:
+    """Avertissement quand l'image occupe moins de la moitié d'une fenêtre d'analyse (le reste est complété
+    par du blanc, ``sahi_lite.completer_fenetre``), ``None`` sinon. Part comptée PAR FENÊTRE : une bande plus
+    large que la fenêtre mais moins haute ne remplit que sa hauteur de chaque fenêtre."""
+    if slice_w <= 0 or slice_h <= 0:
+        return None
+    part = min(img_w, slice_w) * min(img_h, slice_h) / (slice_w * slice_h)
+    if part >= 0.5:
+        return None
+    image_pct = round(100 * part)
+    fenetre = f"{slice_w} px" if slice_w == slice_h else f"{slice_w}×{slice_h} px"
+    return (f"{nom} : fenêtre de {fenetre}, l'image ({img_w}×{img_h} px) n'en occupe que {image_pct} %, "
+            f"le reste ({100 - image_pct} %) est complété par du blanc — le modèle n'a pas vu ce cas à "
+            "l'entraînement, détections moins sûres")
+
+
 def run_onnx_inference(
     *,
     image_path: str,
@@ -1303,11 +1319,10 @@ def run_onnx_inference(
         
         # Fenêtre surtout faite de remplissage (image plus petite que la fenêtre : petit indice fourni pour un
         # modèle appris à 1 m, par exemple) : le modèle voit surtout du sans-donnée — le dire (audit 2026-10-31).
-        if img_width * img_height < 0.5 * slice_width * slice_height:
-            logger.warning(f"{Path(image_path).name} : image {img_width}×{img_height} px pour une fenêtre "
-                           f"{slice_width}×{slice_height} px — fenêtre remplie à "
-                           f"{100 - 100 * img_width * img_height // (slice_width * slice_height)} %, "
-                           "détections moins sûres")
+        msg_remplissage = message_fenetre_peu_remplie(Path(image_path).name, img_width, img_height,
+                                                      slice_width, slice_height)
+        if msg_remplissage:
+            logger.warning(msg_remplissage)
 
         # Charger le modèle ONNX (ou réutiliser la session fournie)
         if onnx_session is not None:

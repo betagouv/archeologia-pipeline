@@ -68,7 +68,7 @@ fileignoreconfig:
 - filename: src/pipeline/cv/clustering_bounds.py
   checksum: a53968cd2a888ddf1a432388d8fec82c1ec669c7e451499d43107ff0cdadb770
 - filename: src/pipeline/cv/computer_vision_onnx.py
-  checksum: 3f5a2fd16ba19f17d6fd3cc233030a185976e6ed57e93fe4492c48dcc27b68f7
+  checksum: f5600a4c027601a96f1ad0ded5085ab73a05420d4a0f072eec0b514ddd0c4bc0
 - filename: src/pipeline/cv/computer_vision_rfdetr.py
   checksum: 3c3de1d9bab52f155e9cc9f5f54a60f43c2ea784d485f8959603bbdc5e07d768
 - filename: src/pipeline/cv/conversion_shp.py
@@ -284,7 +284,7 @@ fileignoreconfig:
 - filename: aide/img/etape3-fiche-classe.png
   checksum: 366d3e4d8f21219753142e13983ffb77d14f6c33ade117776e465ad6192af1b6
 - filename: data/third_party/cv_runner_onnx/windows/build_info.json
-  checksum: eda95557c16a3299d6b77554e2ff8ff3d5275bcfec120ea8fadae2674851efbe
+  checksum: 428f9a683af64760eda436b3ef2ce1f19fbae4d11d4f59232206e8bad2568d13
 - filename: dev/rendu_hors_ecran.py
   checksum: c17413a7757f3736db6d02453061771d1bca2461e149a9c27577695972d357a2
 - filename: aide/img/etape2-produits.png
@@ -350,7 +350,7 @@ fileignoreconfig:
 - filename: tests/unit/test_telechargement_blocage.py
   checksum: 5d5072087c48a90c75202e4fc8d6aa917f79f4f48a0a267db657947e4775d6b5
 - filename: aide/05-etape-3-detection.md
-  checksum: fc80b753a94dc58b5230b1bc5ebd35f78c89178fc1e9a28a86740ba9ba10893c
+  checksum: 1632b5765952ed74cab3409655ff3351c205f142c1ee872ba6f8619dc034bdb1
 - filename: aide/06-etape-4-verifications.md
   checksum: a68649dc8736dbaffdd385da3d7ef83bcb69ed94fb9554b6f4410fc292b23930
 - filename: dev/hooks/stop_tests.py
@@ -420,7 +420,7 @@ fileignoreconfig:
 - filename: dev/runner_onnx/cv_runner_onnx_cli.py
   checksum: 4ab62c6132fd04f8b0a83199ddd3c8e6fd7626dc226ff9b63482c9adc5c4b4ac
 - filename: tests/unit/test_echelle_metres.py
-  checksum: d909f12c94ebad82d3dc9d599fb8672b7480adf4bec4e096b27ec273dcdcf717
+  checksum: 9c517792d91588a97b0366c4b5e0b0c745e0c793b32a55afbfb0f38a6e45e62b
 - filename: src/pipeline/ingest_plan.py
   checksum: ef9de6dc687698be3cb273673dd69df41b9cccd28bfb349d8f41159f715d4a14
 version: '1.0'

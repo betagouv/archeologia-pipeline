@@ -170,6 +170,10 @@ def resolve_sahi_config(cv_config: Dict) -> Optional[Dict]:
     return load_sahi_config_from_model(wp)
 
 
+#: Facteur maximal de mise à l'échelle de la fenêtre de détection (dans un sens ou dans l'autre).
+FACTEUR_ECHELLE_MAX = 8
+
+
 def sahi_a_l_echelle(sahi: Dict, gsd_modele: Optional[float], gsd_entree: Optional[float]) -> Dict:
     """Fenêtre de détection EN MÈTRES (règle 2026-10-31) : la fenêtre de ``args.yaml`` couvre ``slice × gsd_modele``
     mètres de terrain à l'entraînement ; à ``gsd_entree`` elle fait donc ``round(slice × gsd_modele / gsd_entree)``
@@ -180,7 +184,12 @@ def sahi_a_l_echelle(sahi: Dict, gsd_modele: Optional[float], gsd_entree: Option
     if not gsd_modele or not gsd_entree or abs(float(gsd_modele) - float(gsd_entree)) < 1e-9:
         return dict(sahi)
     f = float(gsd_modele) / float(gsd_entree)
+    # Borne (audit 2026-10-31) : facteur ramené dans [1/8 ; 8]. Un raster en degrés pris pour des mètres demandait
+    # une fenêtre de 32 M px (MemoryError) ; au-delà de 8×, le modèle ne verrait de toute façon plus rien d'utile.
     out = dict(sahi)
+    if not 1 / FACTEUR_ECHELLE_MAX <= f <= FACTEUR_ECHELLE_MAX:
+        f = min(max(f, 1 / FACTEUR_ECHELLE_MAX), FACTEUR_ECHELLE_MAX)
+        out["borne"] = True
     for k in ("slice_height", "slice_width"):
         px = int(sahi.get(k, DEFAULT_SAHI_SLICE))
         out[k] = max(32, int(px * f + 0.5))

@@ -188,3 +188,33 @@ def test_rayons_internes_des_melanges_tous_en_metres():
     assert (d.svf_r_max, d.slrm_rad_cell, d.ld_min_rad, d.ld_max_rad, d.sim_shadow_dist) == (5, 10, 5, 10, 50)
     assert d.ld_rad_inc == 1                                 # un pas d'un pixel reste un pixel
     assert d.mstp_meso_scale == (3, 25, 3) and d.mstp_broad_scale == (25, 250, 25)
+
+
+# ── audit 10/11 : bornes de la mise à l'échelle, MemoryError jamais avalée, fenêtre surtout remplie ────
+@pytest.mark.parametrize("gsd_entree,attendu", [(1e-5, 648 * 8), (100.0, 648 // 8)])
+def test_fenetre_bornee_a_8_fois(gsd_entree, attendu):
+    """Raster en degrés pris pour des mètres (1e-5) : 32 M px de fenêtre, MemoryError → 0 détection silencieuse."""
+    s = sahi_a_l_echelle(SAHI, 0.5, gsd_entree)
+    assert s["slice_width"] == attendu and s["borne"]
+
+
+@pytest.mark.parametrize("transform,attendu", [
+    ({"a": (1.0, -1.0, 500000.0, 6000000.0)}, 1.0),
+    ({"a": (1.0, 1.0, 0.0, 0.0)}, None),          # sans géotransformation : GDAL rend pixel 1, origine 0
+    ({"a": (1e-5, -1e-5, 9.5, 54.3)}, None),      # degrés : pas une résolution métrique plausible
+])
+def test_gsd_des_images_rejette_l_invraisemblable(transform, attendu):
+    from pipeline.cv.runner import _gsd_des_images
+    assert _gsd_des_images(transform, None) == attendu
+
+
+def test_memoryerror_jamais_avalee(monkeypatch, tmp_path):
+    from PIL import Image
+    import pipeline.cv.computer_vision_onnx as cvo
+    Image.new("RGB", (10, 10)).save(tmp_path / "i.png")
+
+    def boum(*a, **k):
+        raise MemoryError("fenêtre trop grande")
+    monkeypatch.setattr(cvo, "_load_onnx_model", boum)
+    with pytest.raises(MemoryError):
+        cvo.run_onnx_inference(image_path=str(tmp_path / "i.png"), model_path="x.onnx", output_path=str(tmp_path / "o"))

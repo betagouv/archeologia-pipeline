@@ -1301,6 +1301,14 @@ def run_onnx_inference(
             img_width, img_height = img.size
             pil_image = img.convert("RGB")
         
+        # Fenêtre surtout faite de remplissage (image plus petite que la fenêtre : petit indice fourni pour un
+        # modèle appris à 1 m, par exemple) : le modèle voit surtout du sans-donnée — le dire (audit 2026-10-31).
+        if img_width * img_height < 0.5 * slice_width * slice_height:
+            logger.warning(f"{Path(image_path).name} : image {img_width}×{img_height} px pour une fenêtre "
+                           f"{slice_width}×{slice_height} px — fenêtre remplie à "
+                           f"{100 - 100 * img_width * img_height // (slice_width * slice_height)} %, "
+                           "détections moins sûres")
+
         # Charger le modèle ONNX (ou réutiliser la session fournie)
         if onnx_session is not None:
             session, input_name, input_shape, model_meta = onnx_session
@@ -1620,6 +1628,11 @@ def run_onnx_inference(
         
         return (True, num_detections) if return_count else True
     
+    except MemoryError:
+        # Jamais avalée (audit 2026-10-31) : rendue « 0 détection », elle passait pour une image vide.
+        logger.error(f"Mémoire insuffisante pour l'inférence de {Path(image_path).name} "
+                     f"(fenêtre {slice_width}×{slice_height} px)")
+        raise
     except Exception as e:
         logger.error(f"Erreur lors de l'inférence ONNX: {e}")
         import traceback

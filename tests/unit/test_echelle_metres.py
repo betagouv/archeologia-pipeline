@@ -143,3 +143,25 @@ def test_secours_processing_refuse_un_rayon_converti_hors_bornes():
     (msg,) = bornes_errors({"SVF": True}, rvt, secours_processing=True)
     assert "5 m = 5 px à 1 m/px" in msg and "10 à 50 px" in msg and "rvt-qgis" in msg
     assert bornes_errors({"SVF": True}, en_px({}, 0.5), secours_processing=True) == []   # France : rien
+
+
+@pytest.mark.parametrize("gsd_modele,taille_modele", [(0.5, 648), (0.5, 672), (1.0, 648)])
+def test_un_objet_garde_sa_taille_d_entrainement_dans_la_fenetre(gsd_modele, taille_modele):
+    """Un disque de 10 m de rayon sur un MNT à 1 m : après fenêtre en mètres et remise à la taille du modèle, il
+    fait 10 / gsd_modele pixels de rayon — sa taille dans les tuiles d'entraînement (20 px à 0,5 m, 10 px à 1 m)."""
+    pytest.importorskip("cv2")
+    from PIL import Image
+    from pipeline.cv.computer_vision_onnx import _preprocess_image
+    gsd_entree = 1.0
+    yy, xx = np.mgrid[:1200, :1200]
+    img = np.where((yy - 600) ** 2 + (xx - 600) ** 2 <= 10 ** 2, 0, 200).astype(np.uint8)
+    img = np.repeat(img[:, :, None], 3, axis=2)
+    s = sahi_a_l_echelle({"slice_height": taille_modele, "slice_width": taille_modele, "overlap_ratio": 0.2},
+                         gsd_modele, gsd_entree)
+    fen = next(f for f in slice_image(img, s["slice_height"], s["slice_width"], 0.2, 0.2)[0]
+               if (f.image[:, :, 0] == 0).sum() == (img[:, :, 0] == 0).sum())   # fenêtre qui contient le disque
+    t = _preprocess_image(Image.fromarray(fen.image), (taille_modele, taille_modele), "rfdetr")
+    sombre = t[0, 0] < (100 / 255 - 0.485) / 0.229
+    rayon_px = np.sqrt(sombre.sum() / np.pi)
+    assert abs(rayon_px - 10 / gsd_modele) < 0.6, rayon_px
+    assert s["slice_width"] * gsd_entree == pytest.approx(taille_modele * gsd_modele, abs=1)   # même terrain

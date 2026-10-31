@@ -94,7 +94,7 @@ _HELP_VE = "Exagération verticale (1 = aucune)."
 #: Bruit : rvt ignore max(arrondi(rayon × 10 / 20 / 40 %), 1) px du rayon ; au niveau 1, sous 15 px de rayon, cela
 #: fait 1 px, comme sans suppression (mesuré identique au pixel à 10 px).
 _HELP_BRUIT = ("Ignore le début du rayon pour gommer le bruit du nuage (0 = aucun, 3 = fort). "
-               "« 1 » (faible) n'agit qu'à partir d'un rayon de 15 px.")
+               "« 1 » (faible) n'agit qu'à partir d'un rayon de 15 px (7,5 m à 0,5 m).")
 _HELP_8BIT = "Fichier plus léger, suffisant pour l'affichage."
 
 
@@ -762,7 +762,7 @@ class IndicesPage(QWidget):
         s.setDecimals(1)
         s.setRange(lo, hi)
         s.setSingleStep(0.5)
-        s.setSuffix(" m")
+        # unité dans le libellé (« Rayon (m) »), comme la hauteur d'observateur : pas de suffixe
         s.setValue(val)
         s.valueChanged.connect(self._on_changed)
         return s

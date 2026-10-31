@@ -157,3 +157,10 @@ def test_l_assistant_fusionne_par_config_manager():
     fautifs = [str(p.relative_to(racine)) for p in racine.rglob("*.py")
                if "_deep_update(" in p.read_text(encoding="utf-8") and p.name != "config_manager.py"]
     assert fautifs == []
+
+
+def test_resolution_des_entrees_ecarte_l_invraisemblable(tmp_path):
+    """Audit 10 : un raster en degrés (pas 1e-5) n'a pas de résolution métrique : défaut, pas 1e-5 m."""
+    from pipeline.ingest_plan import resolution_des_entrees
+    _raster(tmp_path / "deg.tif", 1e-5)
+    assert resolution_des_entrees(tmp_path, ("tif",)) == 0.5

@@ -357,7 +357,12 @@ def resolution_des_entrees(dir_path, exts: Sequence[str], defaut: float = 0.5) -
             spec = TileSpec.from_raster(p)
             if spec is None or is_degenerate_tile(spec) or not spec.pixel_size_x:
                 continue
-            return round(abs(float(spec.pixel_size_x)), 6)
+            pas = abs(float(spec.pixel_size_x))
+            # Sans géotransformation (pixel de 1, axe montant) ou pas non métrique (degrés) : pas de résolution
+            # utilisable, les rayons restent à ``defaut`` (audit 2026-10-31).
+            if float(spec.pixel_size_y) > 0 or not 0.05 <= pas <= 50.0:
+                return float(defaut)
+            return round(pas, 6)
     except Exception:
         pass
     return float(defaut)

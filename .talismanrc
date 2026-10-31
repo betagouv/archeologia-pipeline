@@ -44,7 +44,7 @@ fileignoreconfig:
 - filename: src/app/services/fiabilite.py
   checksum: fd1ebc36630598bddd6c24b2bdf2ff1c98380668984fe59862b581458bd4e4f3
 - filename: src/app/services/finalize_service.py
-  checksum: a492a63e3cd8d6da609ae97056e7889f6206fdbea9f2134b5039a0bff4d756aa
+  checksum: 9b9af761b9214490b2df7b20e985ac823bb7f8de6e992d63ea5f9fd1c3815e9a
 - filename: src/app/services/indices_model.py
   checksum: f18a1a5ecd866ac7ef0c80f8b5cd8608685dd71201e15e57ca7f04c9ac5e0682
 - filename: src/app/services/model_orchestrator.py
@@ -278,7 +278,7 @@ fileignoreconfig:
 - filename: tests/unit/test_fiabilite_observee.py
   checksum: 0b5cfd75eef0ccf415d46f9a2d0e59f09f1a0d94e4ed7ae884f2e90348810918
 - filename: tests/unit/test_rapport_run.py
-  checksum: 6bce1053901ded5fef457c47efadd594edbaf32552f451de43fd99cf08711c00
+  checksum: df5622d79f7f8c215b379386ca619971fd3bd6c230b4361703155eb4082e270b
 - filename: tests/unit/test_bilan_fiabilite.py
   checksum: d74fb9642159deb862872f3e6a102c95e33bb6c120a3fcfb1380f6e9d956742c
 - filename: aide/img/etape3-fiche-classe.png
@@ -384,7 +384,7 @@ fileignoreconfig:
 - filename: src/app/services/sorties_prevues.py
   checksum: 3ded5ec72803f9b6c4994357cecdd9cfbea602e9e0c84be63a23b85c0c58a219
 - filename: aide/07-etape-5-traitement.md
-  checksum: 6fffb7a4d292444dfb0924794ca54aa18570e6a4c20bc14c6c67c18a797128b9
+  checksum: 364617a1a203d4e9a6712fab25563452bb5163c6a6d1518e1a63eb77b98b5504
 - filename: tests/unit/test_sorties_prevues.py
   checksum: b25f3282553a6d5fe6ecfee0eec124a5a73dc44fff637e14c7883d972ab976df
 - filename: src/app/services/vocabulaire.py

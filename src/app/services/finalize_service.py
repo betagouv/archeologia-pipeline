@@ -450,6 +450,8 @@ def _ecrire_rapport_run(
         choisir_vrt_vignette,
         ecrire_rapport,
         extraire_avertissements,
+        seuils_par_classe,
+
         surface_km2_depuis_vrt,
         vignette_depuis_vrt,
     )
@@ -471,6 +473,7 @@ def _ecrire_rapport_run(
             fiab = r.get("fiabilite") if isinstance(r.get("fiabilite"), dict) else {}
             infos.setdefault(slug, {
                 "modele": str(fiab.get("modele") or slug), "seuil": r.get("confidence_threshold"),
+                "seuils": seuils_par_classe(r),   # ceux que la détection applique, quand ils diffèrent
                 "entites": [e.get("label") or e.get("slug") or "" for e in (r.get("entities") or [])
                             if isinstance(e, dict)],
             })
@@ -479,11 +482,13 @@ def _ecrire_rapport_run(
         info = infos.get(str(x.get("model")), {})
         runs_rapport.append(dict(
             x, modele=info.get("modele") or x.get("modele") or x.get("model"), seuil=info.get("seuil"),
+            seuils=info.get("seuils") or [],
             entites=x.get("entites") or info.get("entites", []),
         ))
     if not runs_rapport:                      # runs résolus, sans durée
         for slug, info in infos.items():
             runs_rapport.append({"modele": info["modele"], "model": slug, "target_rvt": "", "seuil": info["seuil"],
+                                 "seuils": info["seuils"],
                                  "entites": info["entites"], "images": None, "secondes": None})
     journaux = sorted(journaux_dir(Path(output_dir)).glob("pipeline_log_*.txt"))
     avertissements: list = []

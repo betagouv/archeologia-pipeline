@@ -261,12 +261,14 @@ def test_ld_rayon_min_hors_de_1_au_rayon_max_refuse(calcul, rmin, rmax):
 
 
 @pytest.mark.parametrize("section,cle,valeur,produit", [
-    ("ldo", "angular_res", 2, "LD"), ("ldo", "max_radius", 150, "LD"), ("ldo", "observer_h", 0.2, "LD"),
-    ("slrm", "radius", 80, "SLRM"), ("mstp", "lightness", 6.0, "MSTP")])
+    ("ldo", "angular_res", 2, "LD"), ("ldo", "max_radius_m", 75, "LD"), ("ldo", "observer_h", 0.2, "LD"),
+    ("slrm", "radius_m", 40, "SLRM"), ("mstp", "lightness", 6.0, "MSTP")])
 def test_reglage_hors_bornes_refuse_avant_le_lancement(section, cle, valeur, produit):
+    """Rayons en mètres depuis le 2026-10-31 (bornes du réglage = anciennes bornes en pixels × 0,5 m)."""
+    from app.services.indices_metres import en_px
     from app.services.rvt_kernel_context import bornes_errors
-    assert bornes_errors({produit: True}, {section: {cle: valeur}})
-    assert not bornes_errors({produit: False}, {section: {cle: valeur}})   # produit non coché : rien à dire
+    assert bornes_errors({produit: True}, en_px({section: {cle: valeur}}, 0.5))
+    assert not bornes_errors({produit: False}, en_px({section: {cle: valeur}}, 0.5))   # produit non coché
 
 
 def test_reglages_par_defaut_dans_les_bornes():
@@ -314,7 +316,7 @@ def _reg_ui():
     widgets, regs = {}, {}
     for n in ast.walk(arbre):
         if isinstance(n, ast.Assign) and isinstance(n.value, ast.Call) and isinstance(n.value.func, ast.Attribute) \
-                and n.value.func.attr in ("_mk_spin", "_mk_dspin"):
+                and n.value.func.attr in ("_mk_spin", "_mk_dspin", "_mk_mspin"):
             widgets[ast.unparse(n.targets[0])] = [ast.literal_eval(a) for a in n.value.args]
         if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute) and n.func.attr == "_reg":
             sec = ast.literal_eval(n.args[0])

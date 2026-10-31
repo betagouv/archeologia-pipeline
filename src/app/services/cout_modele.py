@@ -19,6 +19,8 @@ Module PUR (aucun import Qt ni QGIS) ; ``sahi_lite`` est importé en différé
 """
 from __future__ import annotations
 
+from typing import Optional
+
 # Dalle IGN de 1 km à 0,5 m/px, sans marge : la référence lisible par tous.
 COTE_DALLE_PX = 2000
 # La même dalle avec la marge inter-dalles par défaut (tile_overlap 20 %) des
@@ -58,36 +60,74 @@ def _pct(overlap: float) -> str:
     return f"{int(round(float(overlap) * 100))} %"
 
 
-def libelle_menu(display_name: str, slice_px: int, overlap: float) -> str:
-    """Entrée du menu « Changer ▾ » : le nom, puis le compte s'il est connu."""
-    n = fenetres_par_dalle(slice_px, overlap)
+#: Côté de la dalle IGN de 1 km et de la même dalle avec la marge inter-dalles par défaut (20 %), en mètres.
+COTE_DALLE_M = 1000
+COTE_DALLE_MARGE_M = 1400
+
+
+def _echelle(slice_px: int, gsd_m: Optional[float], resolution_m: Optional[float]):
+    """(fenêtre en px que le run découpera, côté de la dalle, côté avec marge, résolution, note) — règle du
+    2026-10-31 : la fenêtre d'args.yaml est mise à l'échelle des données (model_config.sahi_a_l_echelle, la
+    fonction même du run). Sans GSD d'entraînement connu, les références IGN à 0,5 m d'avant ; sans résolution
+    des données connue, 0,5 m, et la note le dit."""
+    if not gsd_m:
+        return int(slice_px), COTE_DALLE_PX, COTE_DALLE_MARGE_PX, 0.5, ""
+    note = "" if resolution_m else " — à 0,5 m/pixel, la résolution des données pas encore connue"
+    res = float(resolution_m or 0.5)
+    try:
+        from ...pipeline.cv.model_config import sahi_a_l_echelle
+    except ImportError:
+        from pipeline.cv.model_config import sahi_a_l_echelle  # type: ignore[no-redef]
+    fen = sahi_a_l_echelle({"slice_width": int(slice_px), "slice_height": int(slice_px)}, gsd_m, res)["slice_width"]
+    return fen, int(round(COTE_DALLE_M / res)), int(round(COTE_DALLE_MARGE_M / res)), res, note
+
+
+def _res(res: float) -> str:
+    return f"{res:g}".replace(".", ",") + " m"
+
+
+def libelle_menu(display_name: str, slice_px: int, overlap: float, *, gsd_m: Optional[float] = None,
+                 resolution_m: Optional[float] = None) -> str:
+    """Entrée du menu « Changer ▾ » : le nom, puis le compte s'il est connu (fenêtre mise à l'échelle des
+    données quand le GSD d'entraînement du modèle est connu)."""
+    fen, cote, _, _, _ = _echelle(slice_px, gsd_m, resolution_m)
+    n = fenetres_par_dalle(fen, overlap, cote) if int(slice_px or 0) > 0 else 0
     if n <= 0:
         return display_name
     return f"{display_name} — {n} fenêtres d'analyse par dalle"
 
 
-def ligne_dialogue(slice_px: int, overlap: float) -> str:
+def ligne_dialogue(slice_px: int, overlap: float, *, gsd_m: Optional[float] = None,
+                   resolution_m: Optional[float] = None) -> str:
     """Valeur de la Row « Fenêtres d'analyse » du dialogue du modèle."""
-    n = fenetres_par_dalle(slice_px, overlap)
+    if int(slice_px or 0) <= 0:
+        return ""
+    fen, cote, cote_marge, res, note = _echelle(slice_px, gsd_m, resolution_m)
+    n = fenetres_par_dalle(fen, overlap, cote)
     if n <= 0:
         return ""
-    n_marge = fenetres_par_dalle(slice_px, overlap, COTE_DALLE_MARGE_PX)
+    n_marge = fenetres_par_dalle(fen, overlap, cote_marge)
+    terrain = f" ({fen * res:g} m de terrain)".replace(".", ",") if gsd_m else ""
     return (
-        f"{int(slice_px)} px, recouvrement {_pct(overlap)} → {n} fenêtres par dalle de 1 km "
-        f"({_milliers(COTE_DALLE_PX)} px à 0,5 m), {n_marge} avec la marge inter-dalles"
+        f"{_milliers(fen)} px{terrain}, recouvrement {_pct(overlap)} → {n} fenêtres par dalle de 1 km "
+        f"({_milliers(cote)} px à {_res(res)}), {n_marge} avec la marge inter-dalles{note}"
     )
 
 
-def infobulle(display_name: str, slice_px: int, overlap: float) -> str:
+def infobulle(display_name: str, slice_px: int, overlap: float, *, gsd_m: Optional[float] = None,
+              resolution_m: Optional[float] = None) -> str:
     """Infobulle du nom de modèle (étape 3) : le fait, en phrase entière, et le
     refus explicite d'annoncer une durée. Vide si la fenêtre est inconnue."""
-    n = fenetres_par_dalle(slice_px, overlap)
+    if int(slice_px or 0) <= 0:
+        return ""
+    fen, cote, cote_marge, _, note = _echelle(slice_px, gsd_m, resolution_m)
+    n = fenetres_par_dalle(fen, overlap, cote)
     if n <= 0:
         return ""
-    n_marge = fenetres_par_dalle(slice_px, overlap, COTE_DALLE_MARGE_PX)
+    n_marge = fenetres_par_dalle(fen, overlap, cote_marge)
     return (
-        f"{display_name} : analyse une dalle de 1 km en {n} fenêtres de {int(slice_px)} px "
-        f"({n_marge} avec la marge inter-dalles de l'étape 2). À recouvrement égal, "
+        f"{display_name} : analyse une dalle de 1 km en {n} fenêtres de {_milliers(fen)} px "
+        f"({n_marge} avec la marge inter-dalles de l'étape 2){note}. À recouvrement égal, "
         "deux fois plus de fenêtres = deux fois plus de calcul. "
         "Aucune durée n'est annoncée : celle de chaque analyse est dans le journal."
     )

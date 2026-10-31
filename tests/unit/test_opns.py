@@ -42,7 +42,11 @@ BORNES_RVT = {
 
 
 def test_nos_bornes_sont_celles_de_rvt():
-    assert HORIZON_RADIUS_RANGE == BORNES_RVT["radius"]
+    """Le rayon n'est plus écrêté (réglé en mètres depuis le 2026-10-31 : 5 m = 5 px à 1 m, sous les 10 px de
+    rvt-qgis) ; ses bornes de rvt-qgis restent celles du secours Processing, refusé avant le lancement."""
+    from pipeline.ign.products.moteur_indices import BORNES
+    assert HORIZON_RADIUS_RANGE[0] == 1
+    assert BORNES["SVF"]["radius"] == BORNES["OPNS"]["radius"] == BORNES_RVT["radius"]
     assert HORIZON_DIRECTIONS_RANGE == BORNES_RVT["num_directions"]
     assert HORIZON_NOISE_RANGE == BORNES_RVT["noise_remove"]
 
@@ -61,7 +65,6 @@ def test_defauts_sans_config():
 
 
 @pytest.mark.parametrize("cle,trop_bas,trop_haut", [
-    ("radius", 2, 200),
     ("num_directions", 3, 400),
     ("noise_remove", -5, 9),
 ])
@@ -114,9 +117,9 @@ def test_le_nom_de_dossier_ne_ment_pas_sur_les_bornes():
     ``OPNS_Pos_R200_…`` contiendrait une image calculée à 50 px.
     """
     params = {"opns": {"radius": 200, "num_directions": 400}}
-    assert opns_settings(params)["radius"] == 50
-    assert get_rvt_folder_name("OPNS", params) == "OPNS_Pos_R50_D64_V1_N0"
-    assert "R200" not in get_rvt_temp_filename("OPNS", TILE, params)
+    assert opns_settings(params)["radius"] == 200   # plus écrêté : le nom dit le calcul
+    assert get_rvt_folder_name("OPNS", params) == "OPNS_Pos_R200_D64_V1_N0"
+    assert "D400" not in get_rvt_temp_filename("OPNS", TILE, params)
 
 
 def test_nom_de_fichier_temporaire():
@@ -180,7 +183,6 @@ def test_svf_a_les_memes_defauts():
 
 
 @pytest.mark.parametrize("cle,trop_bas,trop_haut", [
-    ("radius", 2, 200),
     ("num_directions", 3, 400),
     ("noise_remove", -5, 9),
 ])
@@ -198,7 +200,7 @@ def test_svf_hors_bornes_ramene(cle, trop_bas, trop_haut):
 
 def test_le_nom_de_dossier_svf_ne_ment_pas_sur_les_bornes():
     params = {"svf": {"radius": 200, "num_directions": 400}}
-    assert get_rvt_folder_name("SVF", params) == "SVF_R50_D64_V1_N0"
+    assert get_rvt_folder_name("SVF", params) == "SVF_R200_D64_V1_N0"
 
 
 def test_le_nom_de_dossier_svf_par_defaut_est_inchange():
@@ -215,8 +217,8 @@ def test_la_branche_svf_lit_les_reglages_par_la_source_unique():
 
 
 @pytest.mark.parametrize("section,produit,spins", [
-    ("svf", "SVF", [("svf_noise", 0, 3), ("svf_dirs", 8, 64), ("svf_radius", 10, 50)]),
-    ("opns", "OPNS", [("opns_noise", 0, 3), ("opns_dirs", 8, 64), ("opns_radius", 10, 50)]),
+    ("svf", "SVF", [("svf_noise", 0, 3), ("svf_dirs", 8, 64)]),
+    ("opns", "OPNS", [("opns_noise", 0, 3), ("opns_dirs", 8, 64)]),
 ])
 def test_les_champs_de_l_etape_2_sont_bornes_comme_rvt(section, produit, spins):
     """Un champ plus large que l'algorithme laisse saisir une valeur qui échouera.

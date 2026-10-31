@@ -140,7 +140,8 @@ resolution_train: 504           # == weights/best.json.resolution
 resolution_inference: 504       # == args.yaml.imgsz
 preferred_rvt:
   type: LD
-  params: { angular_res: 15, min_radius: 10, max_radius: 20, observer_h: 1.7, ve_factor: 1, save_as_8bit: true }
+  params: { angular_res: 15, min_radius: 10, max_radius: 20, observer_h: 1.7, ve_factor: 1, save_as_8bit: true,
+            gsd_m: 0.5, rmin_m: 5.0, rmax_m: 10.0 }   # anneau en mètres (2026-10-31, cf. training_params.json)
 mnt:
   resolution: 0.5
   filter_expression: "Classification = 2 OR Classification = 6 OR ..."
@@ -328,11 +329,23 @@ clustering:                     # optionnel
   },
   "rvt": {
     "type": "LD",
-    "params": { "angular_res": 15, "min_radius": 10, "max_radius": 20, "observer_h": 1.7, "ve_factor": 1, "save_as_8bit": true }
+    "params": { "angular_res": 15, "min_radius": 10, "max_radius": 20, "observer_h": 1.7, "ve_factor": 1, "save_as_8bit": true,
+                "gsd_m": 0.5, "rmin_m": 5.0, "rmax_m": 10.0 }
   },
   "detection": { "min_area_m2": 0 }
 }
 ```
+
+**Échelle d'entraînement (2026-10-31).** Le plugin met la fenêtre de détection et les rayons des indices à
+l'échelle de chaque modèle : il lui faut la résolution des images d'entraînement (`mnt.resolution`, ou
+`rvt.params.gsd_m`, m/px) et, pour un LD, l'anneau **en mètres**. Forme harmonisée, dans `rvt.params` et
+`model_card.preferred_rvt.params` : `gsd_m` + `rmin_m`/`rmax_m` (tous les modèles installés : 5–10 m).
+Rétrocompatible : `rmin_px`/`rmax_px` + `gsd_m`, ou `min_radius`/`max_radius` (pixels) + `mnt.resolution`,
+restent lus. Le validateur : erreur si les écritures se contredisent (`rmin_m` ≠ pixels × GSD,
+`gsd_m` ≠ `mnt.resolution`, anneaux différents entre les deux fichiers) ; avertissement si l'échelle est
+indécidable ; info si la forme harmonisée manque (`python dev/harmoniser_echelle_modeles.py --ecrire` la
+pose). La fenêtre SAHI d'`args.yaml` est celle de l'entraînement, en pixels **à `gsd_m`** : le plugin la
+convertit à la résolution des données (`round(slice × gsd_m / gsd_données)`).
 
 ### `config.json`
 

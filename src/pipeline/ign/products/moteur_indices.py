@@ -82,10 +82,30 @@ BORNES: Dict[str, Dict[str, Tuple[float, float]]] = {
 }
 
 
+#: Rayons et échelles (pixels) que le MOTEUR INTÉGRÉ accepte, au-delà des bornes de Processing : depuis que les
+#: réglages sont en mètres (2026-10-31), un rayon de 5 m fait 5 px à 1 m, sous le minimum de rvt:rvt_svf (10 px)
+#: que la bibliothèque rvt n'impose pas. Seul plancher : 1 px (rvt divise par la distance). Le secours Processing,
+#: lui, garde BORNES (refus avant le lancement, rvt_kernel_context.bornes_errors). À 0,5 m les réglages de
+#: l'interface restent dans BORNES : rien ne change en France.
+SPATIAL_MAX_PX = 10 ** 6
+BORNES_SPATIALES_MOTEUR: Dict[str, Dict[str, Tuple[float, float]]] = {
+    "SVF": {"radius": (1, SPATIAL_MAX_PX)},
+    "OPNS": {"radius": (1, SPATIAL_MAX_PX)},
+    "LD": {"min_radius": (1, SPATIAL_MAX_PX), "max_radius": (1, SPATIAL_MAX_PX)},
+    "SLRM": {"radius": (1, SPATIAL_MAX_PX)},
+}
+
+
+def bornes_du_calcul(produit: str, cle: str) -> Tuple[float, float]:
+    """Bornes d'un paramètre pour le moteur intégré : celles des rayons élargies, sinon celles de Processing."""
+    return BORNES_SPATIALES_MOTEUR.get(produit, {}).get(cle) or BORNES[produit][cle]
+
+
 def hors_bornes(produit: str, valeurs: Dict[str, float]) -> str:
-    """'' si chaque valeur est dans les bornes de Processing, sinon le message de refus."""
+    """'' si chaque valeur est dans les bornes du moteur intégré (:func:`bornes_du_calcul`), sinon le message
+    de refus."""
     for cle, v in valeurs.items():
-        b = BORNES.get(produit, {}).get(cle)
+        b = bornes_du_calcul(produit, cle) if cle in BORNES.get(produit, {}) else None
         if b is not None and not (b[0] <= v <= b[1]):
             return f"{produit} : {cle}={v} hors des bornes de RVT ({b[0]} à {b[1]})"
     return ""
@@ -383,7 +403,36 @@ def injecter_couches(c: Couches, comb, defaut) -> None:
                                                 int(defaut.svf_noise), ve, res, nan_avant=nan_avant)
 
 
-def combinaison(indice: int, terrain: int):
+#: Rayons internes des mélanges (VAT, PRISM, CVAT, CRIM) : les défauts de rvt sont des PIXELS choisis pour un MNT
+#: de l'ordre de 0,5 m (SVF 10 px = 5 m, SLRM 20 px, LD 10–20 px). Ils sont remis à la même distance au sol à la
+#: résolution du MNT (règle 2026-10-31) : à 0,5 m, les mêmes pixels, la même image.
+#: Tour exhaustif (audit 2026-10-31) des attributs EN PIXELS de DefaultValues : rayons, ombre portée de « Sky
+#: illumination » (sim_shadow_dist = max_fine_radius, combinaison City de rvt:rvt_blender), échelles du MSTP. Restent
+#: en pixels : ld_rad_inc (pas d'un pixel), msrm_feature_* (déjà en mètres chez rvt).
+_RAYONS_DEFAUT = ("svf_r_max", "slrm_rad_cell", "ld_min_rad", "ld_max_rad", "sim_shadow_dist")
+_ECHELLES_DEFAUT = ("mstp_local_scale", "mstp_meso_scale", "mstp_broad_scale")
+
+
+def rayon_px(rayon_px_05: int, res: float) -> int:
+    """Rayon de ``rayon_px_05`` pixels à 0,5 m, en pixels à la résolution ``res`` (même distance au sol)."""
+    try:
+        from ....app.services.indices_metres import RESOLUTION_REFERENCE_M, px_de_m
+    except ImportError:  # pragma: no cover - tests (src/ sur le chemin)
+        from app.services.indices_metres import RESOLUTION_REFERENCE_M, px_de_m
+    return px_de_m(rayon_px_05 * RESOLUTION_REFERENCE_M, abs(float(res)))
+
+
+def rayons_en_metres(defaut, res: float) -> None:
+    """Remet les rayons internes d'un DefaultValues (après ``apply_terrain``) à la résolution ``res``."""
+    for nom in _RAYONS_DEFAUT:
+        if hasattr(defaut, nom):
+            setattr(defaut, nom, rayon_px(int(getattr(defaut, nom)), res))
+    for nom in _ECHELLES_DEFAUT:
+        if hasattr(defaut, nom):
+            setattr(defaut, nom, tuple(rayon_px(int(v), res) for v in getattr(defaut, nom)))
+
+
+def combinaison(indice: int, terrain: int, res: float = 0.5):
     """(combinaison, DefaultValues) de rvt_blender.py : ``indice`` et ``terrain`` sont les indices de ses enums
     BLEND_COMBINATION et TERRAIN_TYPE (ordre des fichiers default_blender_combinations.json et
     default_terrains_settings.json). Copie neuve à chaque appel : rvt-qgis réutilisait un objet partagé entre les
@@ -397,6 +446,7 @@ def combinaison(indice: int, terrain: int):
     terrains.read_from_file(str(chemin_reglages("default_terrains_settings.json")))
     defaut = default.DefaultValues()
     terrains.terrains_settings[int(terrain)].apply_terrain(default=defaut, combination=comb)
+    rayons_en_metres(defaut, res)
     return comb, defaut
 
 
@@ -417,7 +467,7 @@ def rendre_melange(c: Couches, produit: str, indice: int, terrain: int, sortie_b
     flottant ``<sortie_base>`` sans extension, comme Processing (vérifié le 2026-10-15) ; ``sortie_rendue`` retrouve
     l'un ou l'autre."""
     _verifier(produit, terrain_type=terrain, blend_combination=indice)
-    comb, defaut = combinaison(indice, terrain)
+    comb, defaut = combinaison(indice, terrain, c.res_x)
     injecter_couches(c, comb, defaut)
     comb.add_dem_arr(dem_arr=c.brut(), dem_resolution=c.res_x)
     comb.add_dem_path(str(c.chemin))
@@ -434,6 +484,7 @@ def vat_cvat(c: Couches, terrain: str):
     terrains = blend.TerrainsSettings()
     terrains.read_from_file(str(chemin_reglages("default_terrains_settings.json")))
     terrains.select_terrain_settings_by_name(terrain).apply_terrain(default=defaut, combination=comb)
+    rayons_en_metres(defaut, c.res_x)
     injecter_couches(c, comb, defaut)
     comb.add_dem_arr(dem_arr=c.brut(), dem_resolution=c.res_x)
     return comb.render_all_images(default=defaut, no_data=c.no_data)
@@ -441,13 +492,15 @@ def vat_cvat(c: Couches, terrain: str):
 
 def crim(c: Couches, *, colormap: str, min_colormap_cut: float, max_colormap_cut: float):
     """rvt.blend.color_relief_image_map, mêmes couches et mêmes étirements, ses trois couches de calcul prises dans
-    ``Couches`` (rvt : MNT « NaN-isé », openness ± à rayon 10 et paramètres par défaut, pente en radians)."""
+    ``Couches`` (rvt : MNT « NaN-isé », openness ± à rayon 10 px — 5 m, remis à la résolution du MNT — et
+    paramètres par défaut, pente en radians)."""
     blend, _, default, _ = _rvt()
     d = default.DefaultValues()
     res = c.res_x
     ve = float(d.ve_factor)
-    pos = c.horizon(10, int(d.svf_n_dir), int(d.svf_noise), ve, res, svf=False, opns=True)["opns"]
-    neg = c.ouverture_negative(10, int(d.svf_n_dir), int(d.svf_noise), ve, res, nan_avant=True)
+    r = rayon_px(10, res)
+    pos = c.horizon(r, int(d.svf_n_dir), int(d.svf_noise), ve, res, svf=False, opns=True)["opns"]
+    neg = c.ouverture_negative(r, int(d.svf_n_dir), int(d.svf_noise), ve, res, nan_avant=True)
     pos_neg = pos - neg
     comb = blend.BlenderCombination()
     comb.create_layer(vis_method="Openness_Pos-Neg", normalization="value", minimum=-28, maximum=28,

@@ -74,6 +74,63 @@ def _absolutize_models_dir(cv_config: Dict[str, Any]) -> Dict[str, Any]:
     return {**cv_config, "models_dir": str((plugin_root / raw).resolve())}
 
 
+#: Pas de pixel (m) vraisemblable pour un MNT ou un indice ; hors de là, la fenêtre n'est pas mise à l'échelle.
+GSD_PLAUSIBLE = (0.05, 50.0)
+
+
+def _gsd_des_images(tif_transform_data, jpg_dir: Optional[Path]) -> Optional[float]:
+    """Résolution (m/px) des images inférées : celle des TIF dont elles sont tirées (``tif_transform_data``, pixel
+    pour pixel), sinon le fichier world du premier PNG. ``None`` si inconnue."""
+    for t in (tif_transform_data or {}).values():
+        try:
+            if not (t and t[0]):
+                continue
+            pw, ph, x0, y0 = (float(v) for v in t[:4])
+        except (TypeError, ValueError, IndexError):
+            continue
+        # Sans géotransformation, GDAL rend un pixel de 1 à l'origine (0, 0), axe vertical montant : pas une
+        # résolution (audit 2026-10-31). Un pas hors de [5 cm ; 50 m] n'est pas métrique (degrés…).
+        if ph > 0 or (x0, y0) == (0.0, 0.0) or not GSD_PLAUSIBLE[0] <= abs(pw) <= GSD_PLAUSIBLE[1]:
+            return None
+        return round(abs(pw), 6)
+    try:
+        for pgw in sorted(Path(jpg_dir).glob("*.pgw")):
+            return round(abs(float(pgw.read_text(encoding="utf-8").split()[0])), 6)
+    except (OSError, ValueError, IndexError, TypeError):
+        pass
+    return None
+
+
+def _sahi_a_la_resolution(cv_config, tif_transform_data, jpg_dir, log):
+    """``cv_config["sahi"]`` remis en mètres de terrain (``model_config.sahi_a_l_echelle``) et journalisé."""
+    try:
+        from .model_config import resolve_model_weights_path, sahi_a_l_echelle
+        try:   # côté plugin seulement (le binaire n'appelle pas run_cv_on_folder) : source unique du GSD
+            from ...app.services.indices_metres import gsd_du_modele as gsd_entrainement
+        except ImportError:  # pragma: no cover - tests (src/ sur le chemin)
+            from app.services.indices_metres import gsd_du_modele as gsd_entrainement
+        sahi = cv_config.get("sahi")
+        wp = resolve_model_weights_path(cv_config)
+        if not isinstance(sahi, dict) or wp is None:
+            return cv_config
+        gsd_m, gsd_in = gsd_entrainement(wp), _gsd_des_images(tif_transform_data, jpg_dir)
+        if gsd_m and gsd_in is None:
+            log("⚠ Computer Vision : résolution des images inconnue ou invraisemblable (raster sans "
+                "géoréférencement, ou en degrés) — fenêtre de détection laissée à la taille d'entraînement.")
+        echelle = sahi_a_l_echelle(sahi, gsd_m, gsd_in)
+        if echelle.get("borne"):
+            log(f"⚠ Computer Vision : images à {gsd_in:g} m/px, modèle appris à {gsd_m:g} m/px — écart de plus de 8 "
+                "fois, fenêtre de détection bornée : vérifiez la résolution et le système de coordonnées des images.")
+        if echelle != sahi:
+            log(f"Computer Vision : images à {gsd_in:g} m/px, modèle appris à {gsd_m:g} m/px → fenêtre de "
+                f"{echelle['slice_width']} px ({echelle['slice_width'] * gsd_in:g} m de terrain, comme à "
+                f"l'entraînement) au lieu de {sahi.get('slice_width')} px, remise à la taille du modèle.")
+        return {**cv_config, "sahi": echelle}
+    except Exception as e:  # noqa: BLE001 — jamais bloquer l'inférence sur la mise à l'échelle
+        log(f"Avertissement : mise à l'échelle de la fenêtre de détection ignorée ({e})")
+        return cv_config
+
+
 def run_cv_on_folder(
     *,
     jpg_dir: Path,
@@ -119,6 +176,8 @@ def run_cv_on_folder(
             cv_config = {**cv_config, "sahi": _sahi}
     except Exception as _e:  # ne jamais bloquer l'inférence sur ce filet
         log(f"Avertissement: résolution SAHI ignorée ({_e})")
+    # Fenêtre en mètres (2026-10-31) : remise à la résolution des images AVANT la clé du cache (qui la porte).
+    cv_config = _sahi_a_la_resolution(cv_config, tif_transform_data, jpg_dir, log)
 
     # ── Court-circuit si aucune classe sélectionnée ───────────────────
     _sel = (cv_config or {}).get("selected_classes")

@@ -170,6 +170,35 @@ def resolve_sahi_config(cv_config: Dict) -> Optional[Dict]:
     return load_sahi_config_from_model(wp)
 
 
+#: Facteur maximal de mise à l'échelle de la fenêtre de détection (dans un sens ou dans l'autre).
+FACTEUR_ECHELLE_MAX = 8
+
+
+def sahi_a_l_echelle(sahi: Dict, gsd_modele: Optional[float], gsd_entree: Optional[float]) -> Dict:
+    """Fenêtre de détection EN MÈTRES (règle 2026-10-31) : la fenêtre de ``args.yaml`` couvre ``slice × gsd_modele``
+    mètres de terrain à l'entraînement ; à ``gsd_entree`` elle fait donc ``round(slice × gsd_modele / gsd_entree)``
+    pixels (≥ 32), remis à la taille du modèle par le prétraitement — chaque modèle retrouve son échelle (enclos,
+    appris à 1 m : 648 m de terrain ; les modèles à 0,5 m : 324 m). Résolutions égales ou inconnues : ``sahi``
+    tel quel (France à 0,5 m inchangée). Le recouvrement reste un ratio de la fenêtre ; le géoréférencement
+    suit le pixel de l'image, jamais la fenêtre."""
+    if not gsd_modele or not gsd_entree or abs(float(gsd_modele) - float(gsd_entree)) < 1e-9:
+        return dict(sahi)
+    f = float(gsd_modele) / float(gsd_entree)
+    # Borne (audit 2026-10-31) : facteur ramené dans [1/8 ; 8]. Un raster en degrés pris pour des mètres demandait
+    # une fenêtre de 32 M px (MemoryError) ; au-delà de 8×, le modèle ne verrait de toute façon plus rien d'utile.
+    out = dict(sahi)
+    if not 1 / FACTEUR_ECHELLE_MAX <= f <= FACTEUR_ECHELLE_MAX:
+        f = min(max(f, 1 / FACTEUR_ECHELLE_MAX), FACTEUR_ECHELLE_MAX)
+        out["borne"] = True
+    for k in ("slice_height", "slice_width"):
+        px = int(sahi.get(k, DEFAULT_SAHI_SLICE))
+        out[k] = max(32, int(px * f + 0.5))
+    out["slice_modele_px"] = int(sahi.get("slice_width", DEFAULT_SAHI_SLICE))
+    out["gsd_modele_m"] = float(gsd_modele)
+    out["gsd_entree_m"] = float(gsd_entree)
+    return out
+
+
 def load_clustering_config_from_model(model_path: Union[str, Path]) -> Optional[List[Dict]]:
     """
     Charge la configuration de clustering depuis le args.yaml du modèle.

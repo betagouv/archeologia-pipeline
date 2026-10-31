@@ -66,9 +66,12 @@ def run_fallback_inference(
 
     profile = ModelProfile.load(weights_path)
 
-    slice_height = profile.sahi.slice_height
-    slice_width = profile.sahi.slice_width
-    overlap_ratio = profile.sahi.overlap_ratio
+    # cv_config["sahi"] d'abord : posé par run_cv_on_folder, fenêtre déjà remise à la résolution des images
+    # (règle 2026-10-31) ; profile.sahi (args.yaml brut) faute de mieux.
+    _sahi = cv_config.get("sahi") if isinstance(cv_config.get("sahi"), dict) else {}
+    slice_height = int(_sahi.get("slice_height", profile.sahi.slice_height))
+    slice_width = int(_sahi.get("slice_width", profile.sahi.slice_width))
+    overlap_ratio = float(_sahi.get("overlap_ratio", profile.sahi.overlap_ratio))
 
     class_names = list(profile.class_names) if profile.class_names else None
     class_colors = list(profile.class_colors) if profile.class_colors else None

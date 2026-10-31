@@ -7,7 +7,7 @@ from ..cancel_token import CancelToken
 from ..cancellable_feedback import create_cancellable_feedback
 from ..progress_reporter import ProgressReporter, report_stage_id
 from ..progress_stages import Stage
-from ..run_context import RunContext
+from ..run_context import RunContext, rvt_params_du_run
 from ..services.finalize_service import finalize_pipeline
 from ..structured_logger import log_section
 from ..user_narrator import create_user_narrator
@@ -31,10 +31,10 @@ class ExistingMntRunner:
         slog: Optional["StructuredLogger"] = None,
     ) -> Optional[bool]:
         try:  # fallback standalone (tests : src/ sur le path)
-            from ...pipeline.ingest_plan import crs_des_entrees
+            from ...pipeline.ingest_plan import crs_des_entrees, resolution_des_entrees
             from ...pipeline.modes.existing_mnt import run_existing_mnt
         except ImportError:  # pragma: no cover
-            from pipeline.ingest_plan import crs_des_entrees
+            from pipeline.ingest_plan import crs_des_entrees, resolution_des_entrees
             from pipeline.modes.existing_mnt import run_existing_mnt
 
         start_time = time.time()
@@ -46,12 +46,15 @@ class ExistingMntRunner:
 
         processing = ctx.processing
         products = processing.products
-        rvt_params = ctx.rvt_params
         active_products = products.active()
         # CRS du run (règle 2026-10-31) : celui des MNT fournis, sans reprojection ; toutes
         # les sorties (indices, mosaïques, détections, trace) sont étiquetées dans ce CRS.
         crs = crs_des_entrees(existing_mnt_dir, ("tif", "tiff", "asc"), ctx.files.declared_crs)
         reporter.info(f"Système de coordonnées du run : {crs if crs.startswith('EPSG:') else 'CRS projeté (WKT)'}")
+        # Rayons des indices réglés en mètres → pixels à la résolution des MNT fournis (règle 2026-10-31).
+        resolution = resolution_des_entrees(existing_mnt_dir, ("tif", "tiff", "asc"))
+        rvt_params = rvt_params_du_run(ctx, resolution)
+        reporter.info(f"Résolution du MNT : {resolution:g} m/pixel — rayons des indices convertis à cette résolution")
 
         # COUVERTURE a été neutralisée par build_run_context (pas de nuage de
         # points dans ce mode) : prévenir si la config brute la demandait.

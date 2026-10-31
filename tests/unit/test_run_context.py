@@ -75,7 +75,7 @@ class TestBuildRunContext:
     def test_extracts_rvt_params(self, sample_config: dict):
         ctx = build_run_context(sample_config)
         assert ctx.rvt_params["mdh"]["num_directions"] == 16
-        assert ctx.rvt_params["svf"]["radius"] == 10
+        assert ctx.rvt_params["svf"]["radius_m"] == 5.0   # fixture en pixels : migrée (0,5 m/px)
 
     def test_entity_keys_do_not_affect_runs(self):
         """V2 : selected_entities/overrides/cluster sont persistés (raw) mais

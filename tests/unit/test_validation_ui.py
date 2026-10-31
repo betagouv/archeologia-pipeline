@@ -4,6 +4,7 @@ l'étape 1. Chaque message de ``validate_run_context`` doit avoir sa place."""
 import ast
 from pathlib import Path
 
+from app.services.indices_metres import en_px
 from app.services.rvt_kernel_context import bornes_errors, mstp_scale_errors
 from app.services.validation_ui import champ_de_l_erreur, classer_erreurs, etat_rail
 
@@ -30,15 +31,16 @@ def test_chaque_message_de_validate_run_context_est_classe():
 
 
 def test_erreurs_de_bornes_et_mstp_vont_a_l_etape_2():
-    msgs = bornes_errors({"LD": True, "SLRM": True}, {"ldo": {"min_radius": 30, "max_radius": 20}, "slrm": {"radius": 80}})
-    msgs += mstp_scale_errors({"MSTP": True}, {"mstp": {"local_scale_min": 30, "local_scale_max": 21}})
+    msgs = bornes_errors({"LD": True, "SLRM": True},
+                         en_px({"ldo": {"min_radius_m": 15, "max_radius_m": 10}, "slrm": {"radius_m": 40}}, 0.5))
+    msgs += mstp_scale_errors({"MSTP": True}, en_px({"mstp": {"local_scale_min_m": 15}}, 0.5))
     assert len(msgs) == 3
     assert classer_erreurs(msgs) == {2: msgs}
     assert all(champ_de_l_erreur(m) == "images" for m in msgs)
 
 
 def test_messages_de_bornes_parlent_d_images():
-    msgs = bornes_errors({"SLRM": True}, {"slrm": {"radius": 80}})
+    msgs = bornes_errors({"SLRM": True}, en_px({"slrm": {"radius_m": 40}}, 0.5))
     assert msgs[0].startswith("Image SLRM / «"), msgs
 
 

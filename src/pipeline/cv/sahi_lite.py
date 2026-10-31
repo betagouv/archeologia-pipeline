@@ -94,6 +94,23 @@ def get_slice_bboxes(
     return uniques
 
 
+#: Valeur de remplissage d'une fenêtre plus petite que la taille demandée (image plus petite que la fenêtre) :
+#: 255 = le sans-donnée des indices 8 bits (``tilespec.reclass_rvt_nodata``), ce que le modèle voit déjà au bord
+#: de tout raster. Avant le 2026-10-31 la fenêtre était ÉTIRÉE à la taille du modèle, sans garder ses proportions.
+REMPLISSAGE = 255
+
+
+def completer_fenetre(fenetre: np.ndarray, hauteur: int, largeur: int) -> np.ndarray:
+    """``fenetre`` complétée en bas et à droite par :data:`REMPLISSAGE` jusqu'à ``hauteur`` × ``largeur`` : l'origine
+    (``starting_pixel``) ne bouge pas, donc les coordonnées des détections non plus ; ce qui tombe dans la bande
+    ajoutée est rogné par l'appelant (limites de l'image). Fenêtre déjà à la taille : rendue telle quelle."""
+    h, w = fenetre.shape[:2]
+    if h >= hauteur and w >= largeur:
+        return fenetre
+    pad = [(0, max(0, hauteur - h)), (0, max(0, largeur - w))] + [(0, 0)] * (fenetre.ndim - 2)
+    return np.pad(fenetre, pad, mode="constant", constant_values=REMPLISSAGE)
+
+
 @dataclass
 class SlicedImage:
     """Représente une slice d'image."""
@@ -135,7 +152,7 @@ def slice_image(
     sliced_images = []
     for bbox in slice_bboxes:
         x_min, y_min, x_max, y_max = bbox
-        slice_img = image[y_min:y_max, x_min:x_max]
+        slice_img = completer_fenetre(image[y_min:y_max, x_min:x_max], slice_height, slice_width)
         sliced_images.append(SlicedImage(
             image=slice_img,
             starting_pixel=[x_min, y_min]

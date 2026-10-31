@@ -8,7 +8,7 @@ from ..cancel_token import CancelToken
 from ..cancellable_feedback import create_cancellable_feedback
 from ..progress_reporter import ProgressReporter, report_stage_id
 from ..progress_stages import Stage
-from ..run_context import RunContext
+from ..run_context import RunContext, rvt_params_du_run
 from ..services.finalize_service import finalize_pipeline
 from ..structured_logger import log_section
 from ..user_narrator import create_user_narrator
@@ -192,6 +192,8 @@ class IgnOrLocalRunner:
         clear_validation_cache()
 
         start_time = time.time()
+        # Rayons des indices réglés en mètres → pixels à la résolution du MNT calculé (règle 2026-10-31).
+        rvt_px = rvt_params_du_run(ctx)
 
         # Validation centralisée dans PipelineController.run() — ici on
         # peut supposer que ctx.output_dir et les chemins requis pour
@@ -315,7 +317,7 @@ class IgnOrLocalRunner:
             tiles_total = tiles_ok + len(getattr(merged_result, "failed", []) or [])
 
             if products.needs_tile_processing() and merged_result.merged_files:
-                rvt_params = ctx.rvt_params
+                rvt_params = rvt_px
                 active_products = products.active()
 
                 log_section("TRAITEMENT DES DALLES", "process", slog=slog, reporter=reporter)
@@ -417,7 +419,7 @@ class IgnOrLocalRunner:
                 output_dir=ctx.output_dir,
                 cv_cfg=ctx.cv.raw,
                 cv_stats=cv_stats,
-                rvt_params=ctx.rvt_params,
+                rvt_params=rvt_px,
                 reporter=reporter,
                 slog=slog,
                 start_time=start_time,

@@ -13,8 +13,9 @@ Cette version expose des dataclasses gelées par catégorie
 
 Deux champs restent volontairement en ``Dict[str, Any]`` :
 
-- ``rvt_params`` — consommé tel quel par les générateurs RVT (qui
-  attendent un dict de paramètres SAGA bruts) ;
+- ``rvt_params`` — les réglages des indices, rayons en MÈTRES (règle 2026-10-31) ;
+  les générateurs RVT reçoivent :func:`rvt_params_du_run` (pixels à la résolution
+  réelle du run, ``app.services.indices_metres.en_px``) ;
 - ``ui_config`` — re-sérialisé tel quel dans ``metadata.json`` à la
   fin du pipeline.
 
@@ -36,7 +37,7 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-from .services import rvt_kernel_context
+from .services import indices_metres, rvt_kernel_context
 
 
 # ----------------------------------------------------------------------
@@ -563,11 +564,13 @@ def validate_run_context(ctx: RunContext) -> Tuple[List[str], List[str]]:
     # dalles sont concernés ici ; en existing_mnt l'emprise réelle n'est
     # connue qu'à l'ouverture du raster (contrôle dans run_existing_mnt).
     products_dict = ctx.processing.products.as_dict()
+    # Rayons réglés en mètres, contrôlés en pixels à la résolution réelle du run.
+    rvt_px = rvt_params_du_run(ctx)
     if ctx.mode in ("ign_laz", "local_laz"):
         warnings.extend(
             rvt_kernel_context.tiled_context_warnings(
                 products_dict,
-                ctx.rvt_params,
+                rvt_px,
                 tile_overlap_percent=ctx.processing.tile_overlap,
                 mnt_resolution=ctx.processing.mnt_resolution,
             )
@@ -575,11 +578,11 @@ def validate_run_context(ctx: RunContext) -> Tuple[List[str], List[str]]:
 
     # Réglages d'échelle que rvt.vis.mstp refuse : bloquant, sinon la faute
     # n'apparaît qu'au calcul de la première dalle — après le téléchargement.
-    errors.extend(rvt_kernel_context.mstp_scale_errors(products_dict, ctx.rvt_params))
+    errors.extend(rvt_kernel_context.mstp_scale_errors(products_dict, rvt_px))
     # Réglages hors des bornes du moteur : même raison (la dalle échouerait après le téléchargement et le MNT).
     # En secours Processing (ARCHEO_INDICES_MOTEUR=processing, diagnostic), rvt-qgis borne aussi le M-HS 8 bits.
     secours = os.environ.get("ARCHEO_INDICES_MOTEUR", "").strip().lower() == "processing"
-    errors.extend(rvt_kernel_context.bornes_errors(products_dict, ctx.rvt_params, secours_processing=secours))
+    errors.extend(rvt_kernel_context.bornes_errors(products_dict, rvt_px, secours_processing=secours))
 
     # Entrée et sortie imbriquées (arborescence v3, 2026-10-08) : un dossier de
     # sortie DANS le dossier source est refusé (la réorganisation déplacerait les
@@ -638,6 +641,30 @@ def _peek_clustering_min_confidence(run_dict: Dict[str, Any]) -> Optional[float]
         return None
 
 
+def resolution_du_run(ctx: RunContext) -> float:
+    """Résolution (m/px) du MNT dont le run tire ses indices : celle réglée pour les modes LiDAR, celle des
+    rasters fournis sinon (``ingest_plan.resolution_des_entrees``, première dalle exploitable). 0,5 m faute
+    de mieux (dossier absent : le préflight le refuse de toute façon)."""
+    if ctx.mode in ("ign_laz", "local_laz"):
+        return float(ctx.processing.mnt_resolution)
+    dossier = ctx.files.existing_mnt_dir if ctx.mode == "existing_mnt" else ctx.files.existing_rvt_dir
+    if dossier is None:
+        return indices_metres.RESOLUTION_REFERENCE_M
+    try:
+        from ..pipeline.ingest_plan import resolution_des_entrees
+    except ImportError:  # pragma: no cover - tests (src/ sur le chemin)
+        from pipeline.ingest_plan import resolution_des_entrees
+    return resolution_des_entrees(dossier, ("tif", "tiff", "asc"))
+
+
+def rvt_params_du_run(ctx: RunContext, resolution_m: Optional[float] = None) -> Dict[str, Any]:
+    """Les réglages des indices EN PIXELS à la résolution du run (``indices_metres.en_px``) : ce que reçoivent
+    le calcul, le nommage des dossiers et les contrôles de noyau. ``resolution_m`` évite de relire les
+    rasters quand le runner l'a déjà."""
+    res = resolution_du_run(ctx) if resolution_m is None else resolution_m
+    return indices_metres.en_px(ctx.rvt_params, res)
+
+
 def build_run_context(config: Dict[str, Any]) -> RunContext:
     """Construit un :class:`RunContext` typé à partir du ``config.json``.
 
@@ -660,6 +687,10 @@ def build_run_context(config: Dict[str, Any]) -> RunContext:
     rvt_params = cfg.get("rvt_params") or {}
     if not isinstance(rvt_params, dict):
         rvt_params = {}
+    # Une configuration encore en pixels (fichier écrit avant le 2026-10-31, lancement sans l'interface)
+    # est convertie en mètres ici aussi : idempotent, la copie seulement.
+    rvt_params = copy.deepcopy(rvt_params)
+    indices_metres.migrer_px_vers_m(rvt_params)
 
     files = _build_files_config(files_dict)
     processing = _build_processing_config(processing_dict)

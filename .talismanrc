@@ -419,4 +419,8 @@ fileignoreconfig:
   checksum: 52ade4889f38b9fc30745ae819c930827058b6f48e9ed79fb170502aee9b70f1
 - filename: dev/runner_onnx/cv_runner_onnx_cli.py
   checksum: 4ab62c6132fd04f8b0a83199ddd3c8e6fd7626dc226ff9b63482c9adc5c4b4ac
+- filename: tests/unit/test_echelle_metres.py
+  checksum: 43c6b7a7828a8b1fcf4b43a929b38680ed62979f74a5b8d88db370ee46c6321c
+- filename: src/pipeline/ingest_plan.py
+  checksum: ef9de6dc687698be3cb273673dd69df41b9cccd28bfb349d8f41159f715d4a14
 version: '1.0'

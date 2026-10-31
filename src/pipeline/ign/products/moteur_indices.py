@@ -406,7 +406,11 @@ def injecter_couches(c: Couches, comb, defaut) -> None:
 #: Rayons internes des mélanges (VAT, PRISM, CVAT, CRIM) : les défauts de rvt sont des PIXELS choisis pour un MNT
 #: de l'ordre de 0,5 m (SVF 10 px = 5 m, SLRM 20 px, LD 10–20 px). Ils sont remis à la même distance au sol à la
 #: résolution du MNT (règle 2026-10-31) : à 0,5 m, les mêmes pixels, la même image.
-_RAYONS_DEFAUT = ("svf_r_max", "slrm_rad_cell", "ld_min_rad", "ld_max_rad")
+#: Tour exhaustif (audit 2026-10-31) des attributs EN PIXELS de DefaultValues : rayons, ombre portée de « Sky
+#: illumination » (sim_shadow_dist = max_fine_radius, combinaison City de rvt:rvt_blender), échelles du MSTP. Restent
+#: en pixels : ld_rad_inc (pas d'un pixel), msrm_feature_* (déjà en mètres chez rvt).
+_RAYONS_DEFAUT = ("svf_r_max", "slrm_rad_cell", "ld_min_rad", "ld_max_rad", "sim_shadow_dist")
+_ECHELLES_DEFAUT = ("mstp_local_scale", "mstp_meso_scale", "mstp_broad_scale")
 
 
 def rayon_px(rayon_px_05: int, res: float) -> int:
@@ -421,7 +425,11 @@ def rayon_px(rayon_px_05: int, res: float) -> int:
 def rayons_en_metres(defaut, res: float) -> None:
     """Remet les rayons internes d'un DefaultValues (après ``apply_terrain``) à la résolution ``res``."""
     for nom in _RAYONS_DEFAUT:
-        setattr(defaut, nom, rayon_px(int(getattr(defaut, nom)), res))
+        if hasattr(defaut, nom):
+            setattr(defaut, nom, rayon_px(int(getattr(defaut, nom)), res))
+    for nom in _ECHELLES_DEFAUT:
+        if hasattr(defaut, nom):
+            setattr(defaut, nom, tuple(rayon_px(int(v), res) for v in getattr(defaut, nom)))
 
 
 def combinaison(indice: int, terrain: int, res: float = 0.5):

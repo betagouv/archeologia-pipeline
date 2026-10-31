@@ -165,3 +165,21 @@ def test_un_objet_garde_sa_taille_d_entrainement_dans_la_fenetre(gsd_modele, tai
     rayon_px = np.sqrt(sombre.sum() / np.pi)
     assert abs(rayon_px - 10 / gsd_modele) < 0.6, rayon_px
     assert s["slice_width"] * gsd_entree == pytest.approx(taille_modele * gsd_modele, abs=1)   # même terrain
+
+
+def test_rayons_internes_des_melanges_tous_en_metres():
+    """Audit 3 : tout attribut en PIXELS de rvt.default.DefaultValues lu par un mélange est remis à la même distance
+    au sol — sim_shadow_dist (ombre de « Sky illumination », combinaison City), échelles MSTP comprises ;
+    identité à 0,5 m."""
+    import types
+    from pipeline.ign.products.moteur_indices import rayons_en_metres
+    d = types.SimpleNamespace(svf_r_max=10, slrm_rad_cell=20, ld_min_rad=10, ld_max_rad=20, ld_rad_inc=1,
+                              sim_shadow_dist=100, mstp_local_scale=(1, 5, 1), mstp_meso_scale=(5, 50, 5),
+                              mstp_broad_scale=(50, 500, 50))
+    avant = dict(vars(d))
+    rayons_en_metres(d, 0.5)
+    assert vars(d) == avant
+    rayons_en_metres(d, 1.0)
+    assert (d.svf_r_max, d.slrm_rad_cell, d.ld_min_rad, d.ld_max_rad, d.sim_shadow_dist) == (5, 10, 5, 10, 50)
+    assert d.ld_rad_inc == 1                                 # un pas d'un pixel reste un pixel
+    assert d.mstp_meso_scale == (3, 25, 3) and d.mstp_broad_scale == (25, 250, 25)

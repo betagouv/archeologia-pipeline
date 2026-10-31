@@ -48,7 +48,7 @@ fileignoreconfig:
 - filename: src/app/services/indices_model.py
   checksum: f18a1a5ecd866ac7ef0c80f8b5cd8608685dd71201e15e57ca7f04c9ac5e0682
 - filename: src/app/services/model_orchestrator.py
-  checksum: ba017f1bfd7e8e26afe8e9b2c1ac987cd08c11475736d11c1a573f6d74cfce47
+  checksum: 59dde5969620f3470d26989664eb78515450a73e75bc689b890342954b13734e
 - filename: src/app/services/proxy_config.py
   checksum: cb7fe5903254aafead5171c65d9fcb148a9c5bd0ec4caeadc0a035ed83bc13fa
 - filename: src/app/services/rvt_kernel_context.py
@@ -114,7 +114,7 @@ fileignoreconfig:
 - filename: src/ui/steps/step_2_indices.py
   checksum: 63fe585e6fddbf566678a8aebe584e69fa73c443e5fee88b116c1e202364aa49
 - filename: src/ui/steps/step_3_detection.py
-  checksum: f6045d68d2faa17a275a826255e3bf55b4ec00436d50239673b4a68115b3a5df
+  checksum: 543e58036f3be5bc5e044cccd8f2e8dd7c6108a552c7c56005fc7fc2b669d1a8
 - filename: src/ui/steps/step_4_launch.py
   checksum: 55d5f698156e65dfd44c996deab3f2d86e8a5b6cde8c13d0788a81dc715e1e03
 - filename: src/ui/theme/v2.qss

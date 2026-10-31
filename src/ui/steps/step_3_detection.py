@@ -743,6 +743,7 @@ class DetectionPage(QWidget):
             ec = self._coverage.get(eid)
             cand_names = list(ec.candidate_models if ec else ())
             row.set_candidates([(n, self._models[n].display_name) for n in cand_names], couts=self._couts(cand_names))
+        self._refresh()  # l'infobulle « Modèle ▾ » n'est posée que par EntityRow.update_state
 
     def set_active_rvts(self, rvt_keys) -> None:
         self._active_rvts = set(rvt_keys or [])

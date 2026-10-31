@@ -374,9 +374,9 @@ def avertissements_echelle(models: Sequence["InstalledModel"], resolution_m: flo
             continue
         tolerance = resolution_m / 2 + 1e-6
         if abs(lo - m.anneau_m[0]) > tolerance or abs(hi - m.anneau_m[1]) > tolerance:
-            source = ("les indices fournis (d'après leur nom)" if not indices_calcules
-                      else "le LD de ce traitement (étape 2, image LD)")
-            msgs.append(f"Modèle {nom} : il a appris sur un LD d'anneau {attendu} ; {source} a un anneau de "
+            source = ("les indices fournis (d'après leur nom) ont" if not indices_calcules
+                      else "le LD de ce traitement (étape 2, image LD) a")
+            msgs.append(f"Modèle {nom} : il a appris sur un LD d'anneau {attendu} ; {source} un anneau de "
                         f"{format_m(lo)[:-2]} à {format_m(hi)} ({int(px[0])} à {int(px[1])} px à "
                         f"{format_m(resolution_m)[:-2]} m/pixel) : ses détections seront dégradées. "
                         "Remettez l'anneau à la valeur d'entraînement.")

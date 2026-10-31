@@ -140,6 +140,7 @@ def run_cv_post_loop(
     cv_band: Tuple[int, int] = (90, 95),
     halo_source_dir: Optional[Path] = None,
     stats_out: Optional[list] = None,
+    crs: Optional[str] = None,
 ) -> None:
     """Lance la Computer Vision sur les RVT générés par le pipeline.
 
@@ -162,6 +163,8 @@ def run_cv_post_loop(
             :func:`resolve_uncropped_tif` (option B — détections non coupées
             aux frontières de dalles). ``None`` (existing_mnt) = comportement
             historique sur TIF rognés.
+        crs: CRS du run (``ingest_plan.crs_des_entrees``) des modes à rasters fournis,
+            transmis à ``run_existing_rvt`` ; ``None`` (modes LiDAR) = EPSG:2154.
 
     Cette fonction n'attrape pas les exceptions : l'appelant décide de
     sa politique (le pattern actuel est de logger via ``reporter.error``
@@ -264,6 +267,7 @@ def run_cv_post_loop(
             inference_tif_resolver=inference_tif_resolver,
             max_workers=ctx.processing.max_workers,
             on_appareil=lambda d, _m=model_display: narrator.cv_appareil(_m, d),
+            crs=crs,
         )
         if res.total_detections is not None:
             detection_counts.append(res.total_detections)

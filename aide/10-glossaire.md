@@ -16,7 +16,7 @@
 | Fiche | Page d'explication d'un produit, d'une structure détectable ou d'un modèle, ouverte par le bouton ⓘ dans une fenêtre à part, une par sorte de fiche |
 | GeoPackage | Format vectoriel des couches de détections, un fichier par structure |
 | Indice de visualisation | Produit calculé depuis le MNT par la Relief Visualization Toolbox, qui rend lisible une propriété du relief (ombrage, pente, facteur de vue du ciel…) : SVF, LD, M-HS, VAT… ; nommé par son sigle et ce qu'il montre (« LD · Structures en relief ») ; c'est l'un d'eux qu'un modèle lit |
-| Lambert-93 | La projection de référence de la France métropolitaine (EPSG:2154), exigée pour les rasters fournis en entrée |
+| Lambert-93 | La projection de référence de la France métropolitaine (EPSG:2154), celle du LiDAR HD de l'IGN ; supposée pour un raster fourni sans système de coordonnées. Les MNT et indices fournis peuvent être dans tout autre système projeté en mètres |
 | LAZ, LAS | Formats de nuages de points LiDAR ; LAZ est la forme compressée |
 | LiDAR HD | Programme de l'IGN de couverture de la France par télémétrie laser aéroportée à haute densité |
 | Livrable, technique | Les deux racines du dossier de sortie : `livrable/` se garde et se transmet (projet, rapport, mosaïques, détections), `technique/` se supprime (sources, intermédiaires, images, journaux) |

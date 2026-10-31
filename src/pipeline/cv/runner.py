@@ -272,7 +272,7 @@ def run_cv_on_folder(
                     tif_transform_data=tif_transform_data,
                     valid_region_bounds=valid_region_bounds,
                     cell_bounds_by_stem=cell_bounds_by_stem,
-                    crs="EPSG:2154",
+                    crs=(cv_config or {}).get("crs") or "EPSG:2154",  # CRS du run (cf. existing_rvt)
                     global_color_map=global_color_map,
                     log=log,
                     cancel_check=cancel_check,
@@ -339,7 +339,7 @@ def run_cv_on_folder(
                     tif_transform_data=tif_transform_data,
                     valid_region_bounds=valid_region_bounds,
                     cell_bounds_by_stem=cell_bounds_by_stem,
-                    crs="EPSG:2154",
+                    crs=(cv_config or {}).get("crs") or "EPSG:2154",  # CRS du run (cf. existing_rvt)
                     global_color_map=global_color_map,
                     log=log,
                     cancel_check=cancel_check,

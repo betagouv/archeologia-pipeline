@@ -98,12 +98,18 @@ def _find_external_cv_runner() -> Optional[Path]:
     return _find()
 
 
-def _check_raster_crs(dir_path, exts, results: List["CheckResult"], declared_crs: Optional[str] = None) -> None:
+def _check_raster_crs(dir_path, exts, results: List["CheckResult"], declared_crs: Optional[str] = None,
+                      output_dir: Optional[Path] = None) -> None:
     """Valide le CRS des rasters fournis (AUDIT v2 GEO-02).
 
-    Le pipeline étiquette toutes ses sorties en EPSG:2154 ; un raster dans un
-    autre CRS (ex. Lambert-II EPSG:27572) produirait des détections mal placées
-    sans erreur. On lit le CRS et on refuse tout ce qui n'est pas du 2154.
+    Règle 2026-10-31 (MNT et indices étrangers) : tout CRS **projeté en mètres** est
+    accepté et les sorties sont étiquetées dans ce CRS (``ingest_plan.crs_des_entrees``,
+    sans reprojection). Refusés (bloquant) : CRS géographique, CRS non métrique,
+    mélange de CRS entre dalles. Un raster sans CRS n'est jamais refusé ici : le
+    déclaré (``declared_crs``) le remplace, sinon EPSG:2154 est supposé (⚠ non
+    bloquant) — le refus « CRS introuvable » de ``plan_from_specs`` ne vaut que pour
+    un appel sans défaut. ``output_dir`` : une relance dans un dossier calculé dans
+    un autre CRS est signalée (⚠ non bloquant, ``alerte_relance_autre_crs``).
 
     Best-effort : sans backend de lecture raster, on ne bloque pas (l'existence
     des fichiers est déjà vérifiée par ``_check_input_path``).
@@ -126,14 +132,17 @@ def _check_raster_crs(dir_path, exts, results: List["CheckResult"], declared_crs
         return
     try:
         from .ingest_plan import (
+            CRS_PAR_DEFAUT,
             DEGENERATE_SKIP_REASON,
+            alerte_relance_autre_crs,
+            normaliser_crs,
             IngestValidationError,
             _short_crs,
             plan_raster_inputs,
         )
         # « declared_crs » (configuration seule, pour un raster sans CRS dans ses métadonnées, un .asc) : lu par
         # build_run_context mais jamais transmis jusqu'ici avant la 0.15.0 ; EPSG:2154 reste le défaut.
-        plan = plan_raster_inputs(paths, declared_crs=declared_crs or "EPSG:2154", expected_crs="EPSG:2154")
+        plan = plan_raster_inputs(paths, declared_crs=declared_crs or CRS_PAR_DEFAUT)
         # Raster sans CRS dans ses métadonnées et rien de déclaré : le défaut EPSG:2154 s'applique en
         # silence — on le dit (⚠ non bloquant) plutôt qu'un vert trompeur (recette 65.4, 2026-10-26).
         sans_crs = [t.source_path.name for t in plan.tiles if getattr(t, "crs", "") is None]
@@ -155,6 +164,17 @@ def _check_raster_crs(dir_path, exts, results: List["CheckResult"], declared_crs
                 name="CRS des rasters", ok=False,
                 details="; ".join(plan.warnings) or "CRS non vérifiable", critical=False,
             ))
+        if plan.crs_verified and output_dir is not None:
+            import json as _json
+            from .output_paths import traitement_json_path
+            try:
+                trace = _json.loads(traitement_json_path(Path(output_dir)).read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                trace = None
+            alerte = alerte_relance_autre_crs(trace, normaliser_crs(plan.crs))
+            if alerte:
+                results.append(CheckResult(name="CRS du dossier de sortie", ok=False, critical=False,
+                                           details=alerte))
         # Dalles « placeholder » (1×1 px / origine 0) écartées : ⚠ non bloquant — sans
         # ce filtrage elles gonfleraient l'emprise du VRT jusqu'à (0,0) (couches vides).
         n_deg = sum(1 for _, reason in plan.skipped if reason == DEGENERATE_SKIP_REASON)
@@ -414,10 +434,12 @@ def collect_preflight_results(
         _check_input_path(files_cfg, "local_laz_dir", "Dossier LAZ locaux", extensions=["laz", "las", "LAZ", "LAS"], results=results)
     elif mode == "existing_mnt":
         _check_input_path(files_cfg, "existing_mnt_dir", "Dossier MNT existants", extensions=["tif", "tiff", "asc"], results=results)
-        _check_raster_crs(files_cfg.get("existing_mnt_dir"), ("tif", "tiff", "asc"), results, files_cfg.get("declared_crs"))
+        _check_raster_crs(files_cfg.get("existing_mnt_dir"), ("tif", "tiff", "asc"), results, files_cfg.get("declared_crs"),
+                          output_dir=output_dir)
     elif mode == "existing_rvt":
         _check_input_path(files_cfg, "existing_rvt_dir", "Dossier RVT existants", extensions=["tif", "tiff"], results=results)
-        _check_raster_crs(files_cfg.get("existing_rvt_dir"), ("tif", "tiff"), results, files_cfg.get("declared_crs"))
+        _check_raster_crs(files_cfg.get("existing_rvt_dir"), ("tif", "tiff"), results, files_cfg.get("declared_crs"),
+                          output_dir=output_dir)
 
     return results
 

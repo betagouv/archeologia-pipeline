@@ -503,15 +503,17 @@ def _combine(extent, new_extent):
     return extent
 
 
-def _ensure_layer_crs(layer, logger, fallback_authid: str = "EPSG:2154") -> None:
-    """Affecte le CRS canonique du pipeline si la couche n'en a pas d'exploitable.
+def _ensure_layer_crs(layer, logger, fallback_authid: Optional[str] = None) -> None:
+    """Affecte le CRS du run si la couche n'en a pas d'exploitable.
 
     Un CRS local « unnamed » (ex. MNT que PDAL a émis sans georéférencement
     reconnu) est invalide ou dépourvu de code d'autorité (``authid`` vide) côté
-    QGIS. Comme tout le pipeline est en Lambert-93, on lui **affecte** EPSG:2154
-    (sans reprojeter — les coordonnées sont déjà correctes), ce qui évite l'erreur
-    « Pas de transformation disponible entre unnamed et EPSG:2154 » au zoom final.
-    Garde-fou défensif : la correction de fond se fait à la source (``mnt.py``).
+    QGIS. On lui **affecte** le CRS du run (sans reprojeter — les coordonnées sont
+    déjà correctes) : celui de la trace ``traitement.json`` du dossier de la couche
+    (``finalize_service.crs_de_repli_pour``, règle 2026-10-31 : MNT étrangers), à
+    défaut EPSG:2154 ; ce qui évite l'erreur « Pas de transformation disponible
+    entre unnamed et … » au zoom final. Garde-fou défensif : la correction de fond
+    se fait à la source (``mnt.py``, CRS du run posé par les modes existing_*).
     """
     try:
         from qgis.core import QgsCoordinateReferenceSystem
@@ -519,6 +521,9 @@ def _ensure_layer_crs(layer, logger, fallback_authid: str = "EPSG:2154") -> None
         crs = layer.crs()
         if crs.isValid() and crs.authid():
             return  # CRS exploitable (code d'autorité présent) → ne pas toucher
+        if not fallback_authid:
+            from ..app.services.finalize_service import crs_de_repli_pour
+            fallback_authid = crs_de_repli_pour(layer.source())
         target = QgsCoordinateReferenceSystem(fallback_authid)
         if target.isValid():
             layer.setCrs(target)

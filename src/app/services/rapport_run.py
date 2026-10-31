@@ -111,6 +111,7 @@ class DonneesRapport:
     vignette: Optional[str] = None                      # chemin relatif au rapport
     couleurs: Mapping[str, Mapping[str, str]] = field(default_factory=dict)   # couche → {niveau: #rrggbb}
     motif_detection: str = ""                           # « Détection impossible » : la cause (lot 0d)
+    crs: str = ""                                       # système de coordonnées des couches (2026-10-31)
 
 
 # ----------------------------------------------------------------------
@@ -367,6 +368,9 @@ def _zone(d: DonneesRapport) -> str:
         texte = f"{_nb(n)} dalle{pluriel} traitée{pluriel}"
     if d.tiles_total is not None and d.tiles_total != n:
         texte += f", sur {_nb(d.tiles_total)} prévues"
+    if d.crs:   # un code EPSG seul (un WKT complet n'a rien à faire dans le texte)
+        code = d.crs if d.crs.upper().startswith("EPSG:") else "CRS projeté sans code EPSG"
+        texte += f". Système de coordonnées des couches : {_e(code)}, celui des données d'entrée"
     return f"<p>{texte}.</p>" + ("<p class=sous>Ce rapport ne porte ni nom de dalle ni coordonnée : "
                     "les couches du dossier de traitement les ont.</p>")
 

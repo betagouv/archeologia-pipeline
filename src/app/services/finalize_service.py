@@ -497,7 +497,8 @@ def _ecrire_rapport_run(
         except OSError:
             avertissements = []
     vrt = choisir_vrt_vignette(vrt_paths)
-    vignette = vignette_depuis_vrt(vrt, livrable_dir(Path(output_dir)) / NOM_VIGNETTE) if vrt else None
+    vignette = (vignette_depuis_vrt(vrt, livrable_dir(Path(output_dir)) / NOM_VIGNETTE, log=reporter.info)
+                if vrt else None)
     etapes: List[tuple] = []
     chrono = getattr(reporter, "chrono", None)
     if chrono is not None:

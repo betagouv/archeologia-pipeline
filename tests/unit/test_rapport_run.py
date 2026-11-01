@@ -101,6 +101,70 @@ def test_vignette_et_formats(tmp_path):
     assert format_duree(7) == "7s" and format_duree(247) == "4min 07s" and format_duree(3725) == "1h 02min"
 
 
+def _faux_gdal(monkeypatch, minmax):
+    """GDAL simulé : ``ComputeRasterMinMax(approx)`` délègue à ``minmax(approx)`` ; les appels sont notés."""
+    appels: list = []
+
+    class _Bande:
+        def ComputeRasterMinMax(self, approx):  # noqa: N802 (API GDAL)
+            appels.append(("minmax", approx))
+            return minmax(approx)
+
+        def GetNoDataValue(self):  # noqa: N802
+            return 255.0
+
+    class _Ds:
+        RasterXSize, RasterYSize = 202_000, 100_000
+
+        def GetRasterBand(self, i):  # noqa: N802
+            return _Bande()
+
+    def translate(dest, src, options=None):
+        appels.append(("translate", dest, options))
+        if options and options.get("format") == "PNG":
+            Path(dest).write_bytes(b"png")
+        return _Ds()
+
+    gdal = types.SimpleNamespace(
+        UseExceptions=lambda: None, Open=lambda p: _Ds(), Translate=translate, TranslateOptions=lambda **k: k,
+        GDT_Byte=1, GetConfigOption=lambda k: None, SetConfigOption=lambda k, v: None,
+    )
+    osgeo = types.ModuleType("osgeo")
+    osgeo.gdal = gdal
+    monkeypatch.setitem(sys.modules, "osgeo", osgeo)
+    monkeypatch.setitem(sys.modules, "osgeo.gdal", gdal)
+    return appels
+
+
+def test_vignette_de_fenetres_dispersees(tmp_path, monkeypatch):
+    """Run flamand du 2026-11-01 : mosaïque couverte à 0,34 %, l'échantillon approché de GDAL ne trouve aucun
+    pixel (« no valid pixels found in sampling ») et le rapport sortait sans vignette, sans rien dire. Le
+    min-max est désormais EXACT, mesuré sur la mosaïque déjà réduite à la taille de la vignette."""
+    def minmax(approx):
+        if approx:
+            raise RuntimeError("Failed to compute min/max, no valid pixels found in sampling.")
+        return (3.0, 200.0)
+
+    appels = _faux_gdal(monkeypatch, minmax)
+    journal: list = []
+    assert vignette_depuis_vrt("m.vrt", tmp_path / "v.png", log=journal.append) == "v.png"
+    assert ("minmax", True) not in appels and ("minmax", False) in appels
+    (reduite,) = [a for a in appels if a[0] == "translate" and a[2]["format"] == "MEM"]
+    assert reduite[2]["width"] == 720 and reduite[2]["height"] == 0       # réduite AVANT la mesure
+    (png,) = [a for a in appels if a[0] == "translate" and a[2]["format"] == "PNG"]
+    assert png[2]["scaleParams"] == [[3.0, 200.0, 1, 255]] and journal == []
+
+
+def test_vignette_impossible_est_journalisee(tmp_path, monkeypatch):
+    def minmax(approx):
+        raise RuntimeError("no valid pixels")
+
+    _faux_gdal(monkeypatch, minmax)
+    journal: list = []
+    assert vignette_depuis_vrt("m.vrt", tmp_path / "v.png", log=journal.append) is None
+    assert len(journal) == 1 and "Vignette du rapport non rendue" in journal[0] and "no valid pixels" in journal[0]
+
+
 def test_decrire_reglages_en_mots():
     assert decrire_reglages("svf", {"radius": 10, "num_directions": 16, "noise_remove": 0, "ve_factor": 1, "save_as_8bit": True}) == \
         "rayon 5 m (10 px), 16 directions, sans suppression du bruit, pixels de 0,5 m"   # ancienne clé en px : 0,5 m/px

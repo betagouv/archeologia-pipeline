@@ -26,7 +26,7 @@ import html
 import re
 from dataclasses import dataclass, field, replace
 from pathlib import Path
-from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
+from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence, Tuple
 
 from .bilan_fiabilite import texte_niveaux_effectifs
 from .vocabulaire import niveau
@@ -206,9 +206,12 @@ def choisir_vrt_vignette(vrt_paths: Sequence[str]) -> Optional[str]:
     return next(iter(par_produit.values()), None)
 
 
-def vignette_depuis_vrt(vrt: str, png: Path, cote: int = 720) -> Optional[str]:
-    """Rend la mosaïque en PNG 8 bits de ``cote`` px de plus grand côté (étirement
-    min-max approché), sans GDAL ou en cas d'échec → ``None``. Thread worker, aucun Qt."""
+def vignette_depuis_vrt(vrt: str, png: Path, cote: int = 720,
+                        log: Callable[[str], None] = lambda _: None) -> Optional[str]:
+    """Rend la mosaïque en PNG 8 bits de ``cote`` px de plus grand côté, sans GDAL ou en cas d'échec → ``None``
+    (la cause va à ``log``, le journal technique). Étirement min-max EXACT, mesuré sur la mosaïque d'abord
+    réduite à la taille de la vignette : l'échantillon approché de GDAL ne trouvait aucun pixel sur une mosaïque
+    de fenêtres dispersées (0,34 % couverts, run flamand du 2026-11-01). Thread worker, aucun Qt."""
     try:
         from osgeo import gdal
 
@@ -216,28 +219,31 @@ def vignette_depuis_vrt(vrt: str, png: Path, cote: int = 720) -> Optional[str]:
         src = gdal.Open(str(vrt))
         if src is None:
             return None
-        bande = src.GetRasterBand(1)
-        mn, mx = bande.ComputeRasterMinMax(True)      # approché : overviews / échantillon
+        portrait = src.RasterYSize > src.RasterXSize
+        reduite = gdal.Translate("", src, options=gdal.TranslateOptions(
+            format="MEM", width=0 if portrait else cote, height=cote if portrait else 0))
+        bande = reduite.GetRasterBand(1)
+        mn, mx = bande.ComputeRasterMinMax(False)
         if mx <= mn:
+            log(f"Vignette du rapport non rendue (mosaïque uniforme, valeur {mn})")
             return None
         nodata = bande.GetNoDataValue()
-        portrait = src.RasterYSize > src.RasterXSize
         options = gdal.TranslateOptions(
-            format="PNG", width=0 if portrait else cote, height=cote if portrait else 0,
-            outputType=gdal.GDT_Byte, scaleParams=[[mn, mx, 1, 255]],
+            format="PNG", outputType=gdal.GDT_Byte, scaleParams=[[mn, mx, 1, 255]],
             **({"noData": nodata} if nodata is not None else {}),
         )
         png.parent.mkdir(parents=True, exist_ok=True)
         pam = gdal.GetConfigOption("GDAL_PAM_ENABLED")
         gdal.SetConfigOption("GDAL_PAM_ENABLED", "NO")     # pas de .aux.xml à côté du PNG
         try:
-            if gdal.Translate(str(png), src, options=options) is None:
+            if gdal.Translate(str(png), reduite, options=options) is None:
                 return None
         finally:
             gdal.SetConfigOption("GDAL_PAM_ENABLED", pam)
-        src = None
+        src = reduite = None
         return png.name if png.is_file() else None
-    except Exception:  # noqa: BLE001 — la vignette est un confort
+    except Exception as e:  # noqa: BLE001 — la vignette est un confort, mais l'échec se dit
+        log(f"Vignette du rapport non rendue ({e})")
         return None
 
 

@@ -37,3 +37,20 @@ def test_fin_de_detection_compte_les_images_analysees():
     _parse_runner_stdout("summary: success=2 processed=2 skipped=5 total_detections=3", logs.append)
     assert logs == ["Computer Vision: Terminé - 2 images analysées, dont 2 avec détections, 5 reprises du cache, "
                     "3 détections au total"]
+
+
+def test_sigmoide_sans_debordement_et_identique_au_bit():
+    """``RuntimeWarning: overflow encountered in exp`` dans la sigmoïde des masques (logits très négatifs, float32)."""
+    import warnings
+
+    import numpy as np
+
+    from pipeline.cv.computer_vision_onnx import sigmoide
+    x = np.array([-200.0, -88.0, -3.5, 0.0, 2.25, 88.0, 200.0], dtype=np.float32)
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        y = sigmoide(x)
+    with np.errstate(over="ignore"):
+        attendu = 1.0 / (1.0 + np.exp(-x))
+    assert y.dtype == attendu.dtype and np.array_equal(y, attendu)      # au bit près, débordement compris (→ 0)
+    assert y[0] == 0.0 and y[-1] == 1.0

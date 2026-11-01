@@ -913,7 +913,7 @@ def finalize_pipeline(
     # 5. Chargement des couches dans QGIS
     if vrt_paths or shapefile_paths or qa_paths:
         reporter.stage("Chargement des couches")
-        reporter.info(f"Chargement de {len(vrt_paths)} VRT et {len(shapefile_paths)} shapefile(s) dans QGIS...")
+        reporter.info(f"Chargement de {len(vrt_paths)} VRT et {len(shapefile_paths)} GeoPackage de détections dans QGIS...")
         # ``colors_param`` conservé (signature de load_layers) mais désormais
         # ignoré côté UI : la couleur dérive du nom de classe via le registre.
         colors_param: list = []

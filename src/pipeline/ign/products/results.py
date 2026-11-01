@@ -466,7 +466,7 @@ def copy_final_products_to_results(
                                                   temp_dir=temp_dir)
             if input_path_cropped.exists() and needs_refresh(input_path_cropped, tif_path):
                 shutil.copy2(str(input_path_cropped), str(tif_path))
-                log(f"TIF rogné copié: {tif_path.relative_to(idx_dir)}")
+                log(f"TIF publié: {tif_path.relative_to(idx_dir)}")
                 # Garantir un CRS exploitable avant toute consommation aval (CV,
                 # VRT, chargement QGIS) : rvt-qgis/pdal émettent parfois un TIF
                 # sans CRS « unnamed ». EPSG:2154, assignation sans reprojection ;

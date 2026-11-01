@@ -24,6 +24,7 @@ from qgis.PyQt.QtWidgets import (
     QWidget,
 )
 
+from ...app.services.nom_analyse import est_automatique, nom_par_defaut
 from ...app.services.source_modes import (
     message_champ,
     mode_info,
@@ -166,6 +167,27 @@ class SourcePage(QWidget):
         self._output_msg.setObjectName("FieldMessage")
         self._output_msg.setWordWrap(True)
         iv.addWidget(self._output_msg)
+
+        # Nom de l'analyse (0.19.0) : proposé d'après le dossier de sortie et suivi tant que
+        # l'utilisateur ne l'a pas écrit lui-même (textEdited = saisie seule, pas setText).
+        nom_label = QLabel("Nom de l'analyse")
+        nom_label.setObjectName("FieldLabel")
+        self._nom_edit = QLineEdit()
+        self._nom_edit.setPlaceholderText("Proposé d'après le dossier de sortie")
+        self._nom_edit.setToolTip(
+            "Nom du groupe de couches dans QGIS (suivi de la date du traitement) et titre du rapport"
+        )
+        self._nom_edit.textEdited.connect(self._on_nom_edited)
+        self._nom_auto = True
+        iv.addWidget(nom_label)
+        iv.addWidget(self._nom_edit)
+        self._nom_msg = QLabel(
+            "Nomme le groupe de vos couches dans QGIS, suivi de la date du traitement, et titre le rapport."
+        )
+        self._nom_msg.setObjectName("FieldMessage")
+        self._nom_msg.setWordWrap(True)
+        self._poser_message(self._nom_msg, self._nom_msg.text(), "")
+        iv.addWidget(self._nom_msg)
 
         root.addWidget(io_card)
         root.addStretch(1)
@@ -748,6 +770,13 @@ class SourcePage(QWidget):
 
     def _on_output_changed(self) -> None:
         self._refresh_output_validation()
+        if self._nom_auto:
+            self._nom_edit.setText(nom_par_defaut(self._output_edit.text()))
+        if not self._loading:
+            self.changed.emit()
+
+    def _on_nom_edited(self, texte: str) -> None:
+        self._nom_auto = est_automatique(texte, self._output_edit.text())
         if not self._loading:
             self.changed.emit()
 
@@ -818,6 +847,7 @@ class SourcePage(QWidget):
             self.cancel_dalles_selection_if_active()
         self._source_edit.setReadOnly(ro)
         self._output_edit.setReadOnly(ro)
+        self._nom_edit.setReadOnly(ro)
         for btn in (self._browse_btn, self._qgis_btn, self._dalles_btn, self._out_browse_btn):
             btn.setEnabled(not ro)
         for btn in self._stage_buttons.values():
@@ -835,6 +865,10 @@ class SourcePage(QWidget):
             if self._mode not in [s.mode for s in pipeline_stages() if s.mode]:
                 self._mode = "ign_laz"
             self._output_edit.setText(str(files.get("output_dir") or ""))
+            # Config sans nom (antérieure à 0.19.0, ou nom vidé) : la proposition, suivie.
+            nom = str(files.get("nom_analyse") or "").strip()
+            self._nom_auto = est_automatique(nom, self._output_edit.text())
+            self._nom_edit.setText(nom or nom_par_defaut(self._output_edit.text()))
             self._apply_mode_ui()
         finally:
             self._loading = prev
@@ -847,3 +881,4 @@ class SourcePage(QWidget):
             key = mode_info(mode).config_key
             files[key] = self._source_values.get(key, "")
         files["output_dir"] = self._output_edit.text().strip()
+        files["nom_analyse"] = self._nom_edit.text().strip()

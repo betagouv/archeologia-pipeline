@@ -116,6 +116,7 @@ class DonneesRapport:
     couleurs: Mapping[str, Mapping[str, str]] = field(default_factory=dict)   # couche → {niveau: #rrggbb}
     motif_detection: str = ""                           # « Détection impossible » : la cause (lot 0d)
     crs: str = ""                                       # système de coordonnées des couches (2026-10-31)
+    nom_analyse: str = ""                               # titre choisi à l'étape 1 (0.19.0)
 
 
 # ----------------------------------------------------------------------
@@ -592,11 +593,14 @@ def construire_html(d: DonneesRapport) -> str:
                   f"Les produits sont calculés ; {_e(suite_detection_impossible(d.cv_runs))}</p>\n"
                   if d.motif_detection else "")
     etapes = f"<h2>Durées par étape</h2>\n{_etapes(d.etapes)}\n" if d.etapes else ""
+    # Le nom de l'analyse (étape 1) titre le rapport ; « Rapport de traitement » passe dessous.
+    titre = d.nom_analyse or "Rapport de traitement"
+    nature = "Rapport de traitement · " if d.nom_analyse else ""
     return f"""<!doctype html>
-<html lang="fr"><head><meta charset="utf-8"><title>Rapport de traitement — {_e(d.date)}</title>
+<html lang="fr"><head><meta charset="utf-8"><title>{_e(titre)} — {_e(d.date)}</title>
 <style>{_CSS}</style></head><body>
-<h1>Rapport de traitement</h1>
-<p class=sous>Archéolog'IA v{_e(d.version)} — {_e(d.date)} — {_e(d.mode)}</p>
+<h1>{_e(titre)}</h1>
+<p class=sous>{nature}Archéolog'IA v{_e(d.version)} — {_e(d.date)} — {_e(d.mode)}</p>
 <p class=garde>{garde}</p>
 <p>Traitement <b class="{classe_issue}">{_e(issue)}</b> en {_e(format_duree(d.duree_s))}.</p>
 {impossible}<h2>Zone traitée</h2>

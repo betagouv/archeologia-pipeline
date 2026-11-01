@@ -34,7 +34,8 @@ def test_reinitialisation_globale_dans_le_menu_seulement():
 def test_messages_sous_les_champs_de_l_etape_1():
     src = STEP1.read_text(encoding="utf-8")
     assert "message_champ(" in src
-    assert src.count('setObjectName("FieldMessage")') == 2, "un message sous la source, un sous le dossier de sortie"
+    assert src.count('setObjectName("FieldMessage")') == 3, \
+        "un message sous la source, un sous le dossier de sortie, un sous le nom de l'analyse"
 
 
 # ---------------------------------------------------------------- lot 9 (2026-10-24)

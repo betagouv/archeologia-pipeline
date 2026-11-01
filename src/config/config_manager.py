@@ -45,6 +45,7 @@ class ConfigManager:
             "app": {
                 "files": {
                     "output_dir": "",
+                    "nom_analyse": "",   # vide = proposé d'après le dossier de sortie (app.services.nom_analyse)
                     "data_mode": "ign_laz",
                     "input_file": "",
                     "local_laz_dir": "",

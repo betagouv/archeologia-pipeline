@@ -54,7 +54,15 @@ class TestVrtBoundsLookSuspect:
         assert _vrt_bounds_look_suspect((-0.5, -0.44, 681000.0, 6824248.0)) is True
 
     def test_implausible_span_is_suspect(self):
-        assert _vrt_bounds_look_suspect((654000.0, 6790000.0, 1_000_000.0, 6814500.0)) is True
+        # Une dalle posée à des milliers de km du lot (géoréférencement faux) : 2 500 km d'emprise.
+        assert _vrt_bounds_look_suspect((654000.0, 6790000.0, 3_154_000.0, 6814500.0)) is True
+
+    def test_lot_national_hors_france_pas_suspect(self):
+        # Run flamand du 2026-11-01 (EPSG:31370) : 202 km de fenêtres dispersées, alerte fausse au seuil de 200 km.
+        assert _vrt_bounds_look_suspect((21_000.0, 153_000.0, 223_054.0, 226_880.0)) is False
+        # La France entière en Lambert-93, la Suède en SWEREF99 TM (≈ 1 600 km nord-sud) : légitimes aussi.
+        assert _vrt_bounds_look_suspect((100_000.0, 6_040_000.0, 1_250_000.0, 7_120_000.0)) is False
+        assert _vrt_bounds_look_suspect((260_000.0, 6_130_000.0, 920_000.0, 7_680_000.0)) is False
 
     def test_none_is_not_suspect(self):
         assert _vrt_bounds_look_suspect(None) is False

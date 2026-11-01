@@ -34,13 +34,17 @@ def _select_vrt_inputs(files, *, read_spec):
 
 
 def _vrt_bounds_look_suspect(
-    bounds, *, origin_radius_m: float = 10.0, max_span_m: float = 200_000.0
+    bounds, *, origin_radius_m: float = 10.0, max_span_m: float = 2_000_000.0
 ) -> bool:
     """Vrai si l'emprise d'un VRT semble polluée par une dalle dégénérée résiduelle.
 
     Deux signaux : l'emprise **touche l'origine du CRS** (coin à < ``origin_radius_m``
-    de 0 — impossible pour des données françaises légitimes en Lambert-93), ou elle
+    de 0 — le signe d'une dalle placeholder, dans tout CRS projeté), ou elle
     s'étend de façon **implausible** (> ``max_span_m``). Contrôle best-effort.
+    ``max_span_m`` vaut 2 000 km pour tout CRS projeté (2026-11-01) : plus qu'un lot
+    national légitime (France en Lambert-93 ≈ 1 100 km, Suède en SWEREF99 TM ≈ 1 600 km),
+    moins qu'une dalle géoréférencée à des milliers de km ; l'ancien seuil de 200 km,
+    pensé pour une zone française, alertait à tort sur un lot flamand de 202 km.
     """
     if bounds is None:
         return False

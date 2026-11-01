@@ -545,16 +545,41 @@ def _ecrire_rapport_run(
     return f"{DIR_LIVRABLE}/{NOM_RAPPORT}"
 
 def _ui_config_trace(ui_config: Optional[Dict[str, Any]]) -> Dict[str, Any]:
-    """Configuration de l'assistant telle que la trace complète l'enregistre. Hors modes LiDAR, la résolution du
-    MNT à calculer (étape 2) est sans effet : retirée de la copie pour ne pas contredire ``resolution_m`` (un MNT
-    à 1 m tracé « mnt_resolution 0.5 », run réel du 2026-10-31) ; une relance depuis ce résultat retombe sur le
-    défaut. La configuration de l'appelant n'est pas modifiée."""
+    """Configuration de l'assistant telle que la trace complète l'enregistre : seulement ce qui s'applique au mode
+    (crash tests du 2026-11-01). Le dossier d'entrée des autres modes (un « MNT existants » traçait le dossier
+    d'indices d'un vieux run) ; hors modes LiDAR, la résolution du MNT à calculer, celle de la densité, le filtre
+    LAS et le seuil de couverture (un MNT à 1 m tracé « mnt_resolution 0.5 », run réel du 2026-10-31) ; en LiDAR,
+    la résolution de densité et le seuil de couverture quand ces produits ne sont pas calculés ; les réglages des
+    indices non calculés. « Relancer » reprend cette configuration, fusionnée avec les défauts : ce qui manque est
+    ce que le run n'a pas employé. La configuration de l'appelant n'est pas modifiée."""
     import copy
 
+    from .reglages_defaut import SECTION_PRODUIT
+
     cfg = copy.deepcopy(ui_config or {})
-    mode = str(((cfg.get("app") or {}).get("files") or {}).get("data_mode") or "")
-    if mode in ("existing_mnt", "existing_rvt") and isinstance(cfg.get("processing"), dict):
-        cfg["processing"].pop("mnt_resolution", None)
+    files = (cfg.get("app") or {}).get("files")
+    mode = str((files or {}).get("data_mode") or "")
+    entrees = {"ign_laz": "input_file", "local_laz": "local_laz_dir", "existing_mnt": "existing_mnt_dir",
+               "existing_rvt": "existing_rvt_dir"}
+    if mode not in entrees:
+        return cfg
+    for m, cle in entrees.items():
+        if m != mode and isinstance(files, dict):
+            files.pop(cle, None)
+    processing = cfg.get("processing") if isinstance(cfg.get("processing"), dict) else {}
+    produits = processing.get("products") if isinstance(processing.get("products"), dict) else {}
+    lidar = mode in ("ign_laz", "local_laz")
+    retires = [] if lidar else ["mnt_resolution", "filter_expression"]
+    if not (lidar and produits.get("DENSITE")):
+        retires.append("density_resolution")
+    if not (lidar and produits.get("COUVERTURE")):
+        retires.append("coverage_threshold_percent")
+    for cle in retires:
+        processing.pop(cle, None)
+    if isinstance(cfg.get("rvt_params"), dict) and produits:
+        sections = {**SECTION_PRODUIT, "city": "CITY"}
+        cfg["rvt_params"] = {k: v for k, v in cfg["rvt_params"].items()
+                             if k not in sections or produits.get(sections[k])}
     return cfg
 
 

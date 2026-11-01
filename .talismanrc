@@ -48,7 +48,7 @@ fileignoreconfig:
 - filename: src/app/services/indices_model.py
   checksum: f18a1a5ecd866ac7ef0c80f8b5cd8608685dd71201e15e57ca7f04c9ac5e0682
 - filename: src/app/services/model_orchestrator.py
-  checksum: ed966cd88753c4452dd1b37dc3f3894232dbe359b19a46da4594f3ce8dd806d4
+  checksum: 7a33a472967577987a00831a24b1a4fb4d21afaab33d7791489a0af5d7ba6a5a
 - filename: src/app/services/proxy_config.py
   checksum: cb7fe5903254aafead5171c65d9fcb148a9c5bd0ec4caeadc0a035ed83bc13fa
 - filename: src/app/services/rvt_kernel_context.py
@@ -74,7 +74,7 @@ fileignoreconfig:
 - filename: src/pipeline/cv/conversion_shp.py
   checksum: 238a99c9b55ede90606943b52258c13ada0e26a99c1fdb1a36431d0588302dc0
 - filename: src/pipeline/cv/model_config.py
-  checksum: 8a671a90d5c3d3cf730ddc3f9d50cee80efda6c18704e0bfed486c3596bf6348
+  checksum: d80802772f5312f8da933d43cb9b896c70ff1f2d08d40d681c027c1b6fe22a21
 - filename: src/pipeline/cv/model_profile.py
   checksum: 4ecddfb93286c9de8b5bf6201aa967d14f3211a155eda0c045a481ac5026a28f
 - filename: src/pipeline/cv/postprocessing.py
@@ -88,7 +88,7 @@ fileignoreconfig:
 - filename: src/pipeline/ign/preprocess.py
   checksum: 5a8c9aa6d3f37bc2e2b3de1d6b45f73b7a3510b248ec0690576ed3cd18a782aa
 - filename: src/pipeline/ign/products/indices.py
-  checksum: 4be4dd2b74270c2bbdb9a55af6abba598aa1ac90bcbef08a1677757b02e00b1b
+  checksum: 265a7e7e258d58a14c629e63fe3fb08314a9562edfdfc553b5b0a85246f32c1c
 - filename: src/pipeline/ign/products/results.py
   checksum: 44ae87d44c4951496daccc72fe78b3a945a4e8e06c3295af6ad9b22912598d0c
 - filename: src/pipeline/modes/local_laz.py
@@ -268,7 +268,7 @@ fileignoreconfig:
 - filename: dev/build_quadrillage_from_wfs.py
   checksum: 5286a1495ce8a7a8bf350eb5bcff2c2827dca6e2c50454ef6b3210995610e3f6
 - filename: docs/contrats.md
-  checksum: 3c7270bd3bf0da4b2cd2f47799fad32061bb0b36dafa7c35ba6d4afb86f539f6
+  checksum: f8a05a4e6c695172fa48e2ab7e59f9f5f880c9b032d745234ead8605520cda4b
 - filename: src/app/services/arborescence.py
   checksum: c5e606980a36c45a1741ce2471bb8eae676f7dab2f222ab8cb75a360a074f91c
 - filename: src/app/services/carte_zones.py
@@ -284,7 +284,7 @@ fileignoreconfig:
 - filename: aide/img/etape3-fiche-classe.png
   checksum: 366d3e4d8f21219753142e13983ffb77d14f6c33ade117776e465ad6192af1b6
 - filename: data/third_party/cv_runner_onnx/windows/build_info.json
-  checksum: 5c8dcb03c20ff274d444b619fb51f85606998c87a6d0e249de2e53902b0e620b
+  checksum: 23b2adc8e6ce78a92201c6cd4dd2cd37bb797f4b6d88eeee164df43bbfe5e72c
 - filename: dev/rendu_hors_ecran.py
   checksum: c17413a7757f3736db6d02453061771d1bca2461e149a9c27577695972d357a2
 - filename: aide/img/etape2-produits.png
@@ -420,9 +420,9 @@ fileignoreconfig:
 - filename: dev/runner_onnx/cv_runner_onnx_cli.py
   checksum: 4ab62c6132fd04f8b0a83199ddd3c8e6fd7626dc226ff9b63482c9adc5c4b4ac
 - filename: tests/unit/test_echelle_metres.py
-  checksum: e90804a35a6fa5234802597eb67ea82dd52a623db22468162ba9102ddce0cab5
+  checksum: b51c39a24a544329e2b7d7f66a1a78afad495909e97fe610b74657891b294b57
 - filename: src/pipeline/ingest_plan.py
-  checksum: ef9de6dc687698be3cb273673dd69df41b9cccd28bfb349d8f41159f715d4a14
+  checksum: ac6a6ae54d6b5b8980a888596fd0753fe31daf44dc814d271860a8dff0062290
 - filename: tests/unit/test_nommage_crs.py
   checksum: 2fefb919b6e423e97379e7bb200e7e316cb9be0aa236939c5ba8a0af691a76ea
 - filename: src/app/services/cv_post_service.py

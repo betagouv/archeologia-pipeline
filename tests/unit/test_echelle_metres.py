@@ -417,3 +417,98 @@ def test_meme_gsd_partout_meme_fiche_incomplete(tmp_path, tp, card_pref, card_mn
     assert ("m de terrain" in ligne) == (attendu is not None)
     if attendu:
         assert f"{648 * attendu:g} m de terrain".replace(".", ",") in ligne
+
+
+# ── crash tests 2026-11-01 (MNT étrangers) : tolérance de résolution, fenêtre bornée ───────────────────────────
+@pytest.mark.parametrize("a,b,meme", [(0.999989, 1.0, True), (0.999993, 1.0, True), (0.499996, 0.5, True),
+                                      (1.0, 1.002, False), (0.5, 1.0, False), (None, 1.0, False)])
+def test_tolerance_de_resolution_partagee(a, b, meme):
+    """GSI Irlande (0,999989 m), Environment Agency (0,999993 m) : du bruit de géotransformation, pas une autre
+    résolution. Une seule tolérance RELATIVE (model_config.TOLERANCE_RESOLUTION) pour tous les comparateurs."""
+    from pipeline.cv.model_config import TOLERANCE_RESOLUTION, meme_resolution
+    assert TOLERANCE_RESOLUTION == 1e-3
+    assert meme_resolution(a, b) is meme
+
+
+@pytest.mark.parametrize("gsd_entree", [0.999989, 0.999993])
+def test_bruit_de_resolution_memes_pixels_qu_a_1m(gsd_entree):
+    """Conversion m→px et fenêtre inchangées : 0,999989 m donne les mêmes pixels qu'à 1 m."""
+    for gsd_modele, slice_px in ((1.0, 648), (0.5, 648), (0.5, 252), (0.5, 672)):
+        sahi = {"slice_height": slice_px, "slice_width": slice_px, "overlap_ratio": 0.2}
+        assert (sahi_a_l_echelle(sahi, gsd_modele, gsd_entree)["slice_width"]
+                == sahi_a_l_echelle(sahi, gsd_modele, 1.0)["slice_width"])
+    assert sahi_a_l_echelle(SAHI, 1.0, gsd_entree) == SAHI          # enclos : rien à mettre à l'échelle
+    a, b = en_px({}, gsd_entree), en_px({}, 1.0)
+    a.pop("resolution_m"), b.pop("resolution_m")
+    assert a == b
+
+
+def test_bruit_de_resolution_pas_d_avertissement_d_echelle():
+    enclos = _modele("enclos", 1.0, (5.0, 10.0))
+    assert avertissements_echelle([enclos], 0.999989, en_px({}, 0.999989)) == []
+
+
+def test_bruit_de_resolution_lot_homogene_au_preflight():
+    from pipeline.ingest_plan import plan_from_specs
+    from pipeline.tilespec import TileSpec
+
+    def t(nom, pas, x):
+        return TileSpec.from_values(source_path=Path(nom), bounds=(x, 0, x + 1000, 1000), pixel_size_x=pas,
+                                    pixel_size_y=-pas, width_px=1000, height_px=1000, crs="EPSG:2157")
+    plan = plan_from_specs([t("a.tif", 0.999989, 0), t("b.tif", 1.0, 1000), t("c.tif", 0.999993, 2000)],
+                           model_resolution=1.0)
+    assert plan.warnings == [] and plan.mosaicable
+
+
+def test_bruit_de_resolution_pas_de_note_processing():
+    from pipeline.ign.products.indices import _avertir_rayons_processing
+    logs = []
+    _avertir_rayons_processing({"resolution_m": 0.499996}, logs.append)
+    assert logs == []
+
+
+def test_fenetre_au_plancher_signalee_bornee():
+    """Plancher de 32 px : la fenêtre ne couvre plus le terrain d'entraînement, ``borne`` le dit."""
+    s = sahi_a_l_echelle({"slice_height": 64, "slice_width": 64}, 0.5, 2.0)
+    assert s["slice_width"] == 32 and s["borne"]
+    assert "borne" not in sahi_a_l_echelle({"slice_height": 252, "slice_width": 252}, 0.5, 2.0)
+
+
+def test_fenetre_bornee_avertissement_dit_la_vraie_surface():
+    """Cratères (252 px à 0,5 m = 126 m) sur un MNT à 5 m : 25,2 px demandés, 32 px tenus → 160 m de terrain.
+    Le message ne dit pas « la même surface qu'à l'entraînement » ; un par cause, modèles listés."""
+    crateres = _modele("Cratères", 0.5, None, 252)
+    (msg,) = avertissements_echelle([crateres], 5.0, en_px({}, 5.0))
+    assert msg == ("Vos données sont à 5 m/pixel ; le modèle « Cratères » a appris à 0,5 m/pixel. Sa fenêtre "
+                   "d'analyse ne peut pas être ramenée à la surface d'entraînement : elle couvre 160 m de terrain "
+                   "au lieu de 126 m. L'échelle d'entraînement n'est pas respectée : ses détections seront "
+                   "dégradées.")
+    lin = _modele("Linéaires", 0.5, None, 648)        # 648 → 81 px (borne de 8 fois) = 405 m au lieu de 324 m
+    (msg,) = avertissements_echelle([crateres, lin], 5.0, en_px({}, 5.0))
+    assert msg.startswith("Vos données sont à 5 m/pixel ; 2 modèles ont appris à 0,5 m/pixel : Cratères (160 m "
+                          "de terrain au lieu de 126 m), Linéaires (405 m de terrain au lieu de 324 m). Leurs "
+                          "fenêtres d'analyse")
+    assert "la même surface" not in msg
+    # modèle non borné à la même résolution : message de résolution ordinaire, à part
+    msgs = avertissements_echelle([crateres, _modele("Enclos", 1.0, None, 648)], 5.0, en_px({}, 5.0))
+    assert len(msgs) == 2 and "la même surface au sol" in msgs[1] and "Enclos" in msgs[1]
+
+
+def test_fenetre_bornee_journal_technique_dit_la_vraie_surface(tmp_path):
+    import yaml
+    from pipeline.cv.runner import _sahi_a_la_resolution
+    m = tmp_path / "m"
+    (m / "weights").mkdir(parents=True)
+    (m / "weights" / "best.onnx").write_bytes(b"x")
+    (m / "training_params.json").write_text(json.dumps({"mnt": {"resolution": 0.5}}), encoding="utf-8")
+    (m / "args.yaml").write_text(yaml.safe_dump({"sahi": {"slice_width": 252, "slice_height": 252}}),
+                                 encoding="utf-8")
+    logs = []
+    cfg = {"selected_model": str(m / "weights" / "best.onnx"), "sahi": {"slice_width": 252, "slice_height": 252}}
+    _sahi_a_la_resolution(cfg, {"a": (5.0, -5.0, 500000.0, 6000000.0)}, None, logs.append)
+    texte = "\n".join(logs)
+    assert "comme à l'entraînement" not in texte
+    assert "32 px" in texte and "160 m de terrain au lieu de 126 m" in texte and "pas respectée" in texte
+    logs.clear()
+    _sahi_a_la_resolution(cfg, {"a": (0.999989, -0.999989, 500000.0, 6000000.0)}, None, logs.append)
+    assert not any("252 px au lieu de 252 px" in x for x in logs)

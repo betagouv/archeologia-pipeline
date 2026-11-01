@@ -116,6 +116,7 @@ class DonneesRapport:
     couleurs: Mapping[str, Mapping[str, str]] = field(default_factory=dict)   # couche → {niveau: #rrggbb}
     motif_detection: str = ""                           # « Détection impossible » : la cause (lot 0d)
     crs: str = ""                                       # système de coordonnées des couches (2026-10-31)
+    horodatage: str = ""                                # <ts> de metadata_<ts>.json et pipeline_log_<ts>.txt
 
 
 # ----------------------------------------------------------------------
@@ -635,7 +636,7 @@ def construire_html(d: DonneesRapport) -> str:
 {_avertissements(d.avertissements)}
 <h2>Sources</h2>
 {_sources(d)}
-<p class=sous>La configuration complète est dans <code>metadata.json</code>, le journal détaillé dans <code>pipeline_log_*.txt</code>, tous deux dans le dossier du traitement. Les durées sont chronométrées, les effectifs comptés, la surface mesurée : aucun chiffre de ce rapport n'est une estimation.</p>
+<p class=sous>La configuration complète est dans <code>metadata_{_e(d.horodatage or "*")}.json</code>, le journal détaillé dans <code>pipeline_log_{_e(d.horodatage or "*")}.txt</code>, tous deux dans <code>technique/journaux/</code> du dossier du traitement. Les durées sont chronométrées, les effectifs comptés, la surface mesurée : aucun chiffre de ce rapport n'est une estimation.</p>
 </body></html>
 """
 

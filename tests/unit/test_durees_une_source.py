@@ -49,3 +49,12 @@ def test_finalisation_une_seule_mesure(tmp_path, monkeypatch):
         for n in ast.walk(fin):
             if isinstance(n, ast.Call) and getattr(n.func, "attr", "") == appel:
                 assert {k.arg for k in n.keywords} >= {"duree_s"}, appel
+
+
+def test_rapport_nomme_la_trace_et_le_journal_du_lancement():
+    """Le rapport citait « metadata.json », fichier qui n'existe pas (arborescence v3 : metadata_<ts>.json)."""
+    h = construire_html(DonneesRapport(version="x", date="d", mode="m", horodatage="20261101_012122"))
+    assert "metadata_20261101_012122.json" in h and "technique/journaux/" in h and "pipeline_log_20261101_012122.txt" in h
+    assert "metadata.json" not in h
+    sans = construire_html(DonneesRapport(version="x", date="d", mode="m"))
+    assert "metadata_*.json" in sans and "metadata.json" not in sans

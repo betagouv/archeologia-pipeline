@@ -540,6 +540,7 @@ def _ecrire_rapport_run(
         bilan=tuple(ligne.to_dict() for ligne in bilan), etapes=tuple(etapes),
         avertissements=tuple(avertissements), vignette=vignette, motif_detection=motif_detection,
         couleurs=couleurs, crs=crs,
+        horodatage=journaux[-1].stem[len("pipeline_log_"):] if journaux else "",
     )
     ecrire_rapport(livrable_dir(Path(output_dir)), donnees)
     return f"{DIR_LIVRABLE}/{NOM_RAPPORT}"

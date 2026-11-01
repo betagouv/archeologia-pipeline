@@ -293,7 +293,7 @@ def retirer_publication_remplacee(
     CRS du run, lu dans le fichier — un dossier de sortie partagé avec un vrai run français garde ses dalles
     Lambert-93 aux mêmes km. TIF absent, illisible ou de CRS indécidable : rien n'est retiré. Vrai si retiré."""
     try:  # fallback standalone (tests : src/ sur le path)
-        from ...app.run_context import chemin_dans
+        from ....app.run_context import chemin_dans
     except ImportError:  # pragma: no cover
         from app.run_context import chemin_dans
 

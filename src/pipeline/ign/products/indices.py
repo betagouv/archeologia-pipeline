@@ -100,8 +100,9 @@ def _avertir_rayons_processing(rvt_params: Dict[str, Any], log: LogFn) -> None:
         from ....app.services.indices_metres import RESOLUTION_REFERENCE_M, resolution_de
     except ImportError:  # pragma: no cover - tests (src/ sur le chemin)
         from app.services.indices_metres import RESOLUTION_REFERENCE_M, resolution_de
+    from ...cv.model_config import meme_resolution
     res = resolution_de(rvt_params)
-    if abs(res - RESOLUTION_REFERENCE_M) > 1e-9:
+    if not meme_resolution(res, RESOLUTION_REFERENCE_M):
         log(f"Mode de secours Processing : rayons internes du mélange laissés aux pixels de rvt-qgis (calibrés pour "
             f"0,5 m), ici à {res:g} m/px — l'image n'est pas à l'échelle du moteur intégré.")
 

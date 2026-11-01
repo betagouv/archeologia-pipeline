@@ -281,44 +281,109 @@ def noms_remplaces(
 
 
 #: Fichiers d'une publication, par dossier : TIF publié et ses annexes, PNG d'inférence et son world file,
-#: détections en cache (``technique/detection/<modèle>/raw_detections/``, relues par la conversion).
+#: détections en cache (``technique/detection/<modèle>/raw_detections/``, relues par la conversion) et images
+#: annotées (``…/annotated_images/<nom>_detections.png``, jamais relues).
 _ANNEXES_TIF = (".tif", ".tif.aux.xml", ".tif.ovr")
 _ANNEXES_PNG = (".png", ".pgw", ".png.aux.xml")
 _ANNEXES_CACHE = (".txt", ".json")
+_ANNEXES_ANNOTEES = ("_detections.png", "_detections.pgw")
 
 
-def retirer_publication_remplacee(
-    nom: str, *, tif_dir: Path, png_dir: Path, output_dir: Path, crs: Any, sources: Sequence[Path] = (),
-    log: LogFn = lambda _: None,
-) -> bool:
-    """Retire la publication ``nom`` (sans extension) que ce run remplace : TIF et annexes, PNG et world file,
-    détections en cache de tous les modèles. Deux gardes (audit 2026-11-01) : rien n'est retiré dans (ou sous) un
-    dossier SOURCE de l'utilisateur (préflight : « jamais déplacé ni supprimé ») ; et seulement si le TIF porte le
-    CRS du run, lu dans le fichier — un dossier de sortie partagé avec un vrai run français garde ses dalles
-    Lambert-93 aux mêmes km. TIF absent, illisible ou de CRS indécidable : rien n'est retiré. Vrai si retiré."""
+def _supprimer(fichiers: Sequence[Path], sources: Sequence[Path], log: LogFn) -> int:
+    """Supprime ``fichiers`` (chacun une fois), jamais dans un dossier source ; rend le nombre supprimé."""
     try:  # fallback standalone (tests : src/ sur le path)
         from ....app.run_context import chemin_dans
     except ImportError:  # pragma: no cover
         from app.run_context import chemin_dans
 
-    tif = tif_dir / f"{nom}.tif"
-    if not tif.is_file() or any(chemin_dans(tif, s) for s in sources):
-        return False
-    spec = TileSpec.from_raster(tif)
-    if spec is None or meme_crs(spec.effective_crs, crs) is not True:
-        return False
-    caches = sorted((technique_dir(output_dir) / DIR_DETECTION).glob("*/raw_detections"))
-    cibles = ([tif_dir / f"{nom}{e}" for e in _ANNEXES_TIF] + [png_dir / f"{nom}{e}" for e in _ANNEXES_PNG]
-              + [d / f"{nom}{e}" for d in caches for e in _ANNEXES_CACHE])
-    for f in cibles:
-        if not f.exists() or any(chemin_dans(f, s) for s in sources):
+    n = 0
+    for f in dict.fromkeys(fichiers):
+        if not f.is_file() or any(chemin_dans(f, s) for s in sources):
             continue
         try:
             f.unlink()
-            log(f"Publication remplacée retirée : {f.name}")
+            n += 1
         except OSError as e:
-            log(f"⚠️ Publication remplacée non retirée ({f.name}) : {e}")
+            log(f"⚠️ Fichier remplacé non retiré ({f.name}) : {e}")
+    return n
+
+
+def _du_crs_du_run(tif: Path, crs: Any, sources: Sequence[Path]) -> bool:
+    """Garde commune aux retraits : ``tif`` existe, hors des dossiers source, et porte le CRS du run (lu dans le
+    fichier ; illisible ou indécidable → faux)."""
+    try:  # fallback standalone (tests : src/ sur le path)
+        from ....app.run_context import chemin_dans
+    except ImportError:  # pragma: no cover
+        from app.run_context import chemin_dans
+
+    if not tif.is_file() or any(chemin_dans(tif, s) for s in sources):
+        return False
+    spec = TileSpec.from_raster(tif)
+    return spec is not None and meme_crs(spec.effective_crs, crs) is True
+
+
+def retirer_publication_remplacee(
+    nom: str, *, tif_dir: Path, png_dir: Path, output_dir: Path, crs: Any, sources: Sequence[Path] = (),
+    log: LogFn = lambda _: None, temp_dir: Path | None = None,
+) -> bool:
+    """Retire la publication ``nom`` (sans extension) que ce run remplace : TIF et annexes, PNG et world file,
+    détections en cache et images annotées de tous les modèles. Deux gardes (audit 2026-11-01) : rien n'est retiré
+    dans (ou sous) un dossier SOURCE de l'utilisateur (préflight : « jamais déplacé ni supprimé ») ; et seulement si
+    le TIF porte le CRS du run, lu dans le fichier — un dossier de sortie partagé avec un vrai run français garde
+    ses dalles Lambert-93 aux mêmes km. Le TIF lu est le publié, ou à défaut l'intermédiaire rogné du même nom dans
+    ``temp_dir`` (publication déjà retirée par une version antérieure, images annotées restées). Aucun TIF
+    lisible du CRS du run : rien n'est retiré. Une ligne de journal par publication. Vrai si retiré."""
+    refs = [tif_dir / f"{nom}.tif"] + ([temp_dir / f"{nom}.tif"] if temp_dir is not None else [])
+    ref = next((t for t in refs if t.is_file()), None)
+    if ref is None or not _du_crs_du_run(ref, crs, sources):
+        return False
+    detection = technique_dir(output_dir) / DIR_DETECTION
+    caches = sorted(detection.glob("*/raw_detections"))
+    annotees = sorted(detection.glob("*/annotated_images"))
+    n = _supprimer([tif_dir / f"{nom}{e}" for e in _ANNEXES_TIF] + [png_dir / f"{nom}{e}" for e in _ANNEXES_PNG]
+                   + [d / f"{nom}{e}" for d in caches for e in _ANNEXES_CACHE]
+                   + [d / f"{nom}{e}" for d in annotees for e in _ANNEXES_ANNOTEES], sources, log)
+    if n:
+        log(f"Publication remplacée retirée : {nom} ({n} fichier{'s' if n > 1 else ''})")
     return True
+
+
+def intermediaires_lambert93(noms: Sequence[str], current_tile_name: str, x: str, y: str, name_suffix: str,
+                             crs: Any) -> List[str]:
+    """PUR. Parmi ``noms`` (contenu de ``technique/intermediaires``), ceux de CETTE dalle sous le nom Lambert-93
+    qu'une version antérieure donnait à une donnée étrangère : ``<ancienne dalle>_*`` (MNT copié, indices non
+    rognés, ``.calcul``) et les rognés ``<préfixe L93>_…_LAMB93[_IGN69]<suffixe>.tif`` (+ annexes). Vide en
+    EPSG:2154 ou si le nom de la dalle ne porte pas le préfixe du CRS du run."""
+    from .rvt_naming import est_lambert93, prefixe_dalle
+
+    pre = prefixe_dalle(x, y, crs)
+    if est_lambert93(crs) or not current_tile_name.startswith(pre):
+        return []
+    pre_l93 = prefixe_dalle(x, y, "EPSG:2154")
+    ancienne = pre_l93 + current_tile_name[len(pre):] + "_"
+    fins = tuple(f"{j}{name_suffix}{e}" for j in ("_LAMB93", "_LAMB93_IGN69") for e in _ANNEXES_TIF + (".tif.calcul",))
+    return [n for n in noms if n.startswith(ancienne) or (n.startswith(pre_l93 + "_") and n.endswith(fins))]
+
+
+def retirer_intermediaires_remplaces(
+    temp_dir: Path, current_tile_name: str, x: str, y: str, name_suffix: str, crs: Any, *,
+    sources: Sequence[Path] = (), log: LogFn = lambda _: None,
+) -> int:
+    """Retire les intermédiaires Lambert-93 de la dalle (:func:`intermediaires_lambert93`), jamais relus : tout ou
+    rien, seulement si CHAQUE TIF du lot porte le CRS du run (mêmes gardes que les publications). Une ligne de
+    journal par dalle ; rend le nombre de fichiers retirés."""
+    try:
+        noms = os.listdir(temp_dir)
+    except OSError:
+        return 0
+    lot = [temp_dir / n for n in intermediaires_lambert93(noms, current_tile_name, x, y, name_suffix, crs)]
+    tifs = [f for f in lot if f.suffix == ".tif"]
+    if not tifs or not all(_du_crs_du_run(f, crs, sources) for f in tifs):
+        return 0
+    n = _supprimer(lot, sources, log)
+    if n:
+        log(f"Intermédiaires remplacés retirés (nom Lambert-93 de {current_tile_name}) : {n} fichier{'s' if n > 1 else ''}")
+    return n
 
 
 def copy_final_products_to_results(
@@ -397,7 +462,8 @@ def copy_final_products_to_results(
                 for ancien in noms_remplaces(tif_dir, product_name, current_tile_name, x, y, rvt_params,
                                              name_suffix, crs, output_base):
                     retirer_publication_remplacee(ancien, tif_dir=tif_dir, png_dir=indice_png_dir(output_dir, folder_name),
-                                                  output_dir=output_dir, crs=crs, sources=sources, log=log)
+                                                  output_dir=output_dir, crs=crs, sources=sources, log=log,
+                                                  temp_dir=temp_dir)
             if input_path_cropped.exists() and needs_refresh(input_path_cropped, tif_path):
                 shutil.copy2(str(input_path_cropped), str(tif_path))
                 log(f"TIF rogné copié: {tif_path.relative_to(idx_dir)}")
@@ -450,6 +516,9 @@ def copy_final_products_to_results(
                         f"Échec conversion TIF->PNG: {input_path_uncropped.relative_to(temp_dir)} -> {jpg_path.relative_to(idx_dir)}"
                     )
 
+    # Intermédiaires de la même dalle sous son nom Lambert-93 d'avant la correction (2026-10-31) : jamais relus,
+    # ils restaient (run de_sh relancé : 2 460 fichiers, 505 Mo). Après les publications, qui s'en servent de garde.
+    retirer_intermediaires_remplaces(temp_dir, current_tile_name, x, y, name_suffix, crs, sources=sources, log=log)
     return {
         "created_jpgs": created_jpgs,
         "created_jpgs_by_product": created_jpgs_by_product,

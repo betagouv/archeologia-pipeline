@@ -93,7 +93,8 @@ ANCIEN_LD = "LHD_FXX_0455_6057_LD_A15_Rmin5_Rmax10_H1p7_V1_A_LAMB93_u"
 NOUVEAU_LD = "EPSG_25832_0455_6057_LD_A15_Rmin5_Rmax10_H1p7_V1_A_u"
 
 
-def _publier(tmp_path, monkeypatch, produit, rvt, *, sources=(), prepare=lambda tif_dir, png_dir: None, **k):
+def _publier(tmp_path, monkeypatch, produit, rvt, *, sources=(), prepare=lambda tif_dir, png_dir: None,
+             log=lambda _: None, **k):
     """Publie une dalle EPSG:25832 (uid ``_u``) après ``prepare`` ; rend (dossier TIF, dossier PNG, dossier sortie)."""
     import pipeline.ign.products.results as results_mod
     from pipeline.ign.products.rvt_naming import get_rvt_folder_name
@@ -113,7 +114,7 @@ def _publier(tmp_path, monkeypatch, produit, rvt, *, sources=(), prepare=lambda 
     results_mod.copy_final_products_to_results(
         temp_dir=temp, output_dir=out, current_tile_name=tuile, products={produit: True}, output_structure={},
         output_formats={"tif": True}, rvt_params=rvt, name_suffix="_u", crs="EPSG:25832",
-        sources=tuple(s(tif_dir) for s in sources), **k)
+        sources=tuple(s(tif_dir) for s in sources), log=log, **k)
     return tif_dir, png_dir, out
 
 
@@ -232,3 +233,55 @@ def test_rapport_anonymise_tout_prefixe_de_dalle(message, attendu):
     """Audit 2026-11-01 : le motif générique effaçait un code EPSG à 4 chiffres et laissait fuir le y."""
     from app.services.rapport_run import anonymiser
     assert anonymiser(message) == attendu
+
+
+ANCIENNE_TUILE = "LHD_FXX_0455_6057_EXT_mnt_1066"
+
+
+def _orphelins(tif_dir, crs="EPSG:25832"):
+    """État d'un dossier relancé après la 0.19.0 : publication Lambert-93 déjà retirée, mais intermédiaires et
+    images annotées sous l'ancien nom encore là (run de_sh du 2026-11-01 : 3 370 fichiers, ≈ 615 Mo)."""
+    temp, out = tif_dir.parents[4] / "temp", tif_dir.parents[3]
+    for n in (f"{ANCIENNE_TUILE}_MNT.tif", f"{ANCIENNE_TUILE}_LD_A15_Rmin5_Rmax10_H1p7_V1.tif", f"{ANCIEN_LD}.tif",
+              "LHD_FXX_0455_6057_MNT_A_1M00_LAMB93_IGN69_u.tif"):
+        _tif(temp / n, (455000.0, 6057000.0), 300.0, crs)
+    (temp / f"{ANCIENNE_TUILE}_VAT_T0_B0.tif.calcul").write_bytes(b"x")
+    _tif(temp / "LHD_FXX_0455_6057_EXT_mnt_10660_MNT.tif", (455000.0, 6057000.0), 300.0, crs)   # autre dalle
+    for modele in ("enclos_fr_seg_ld_v1", "lineaires_seg_v3_1"):
+        ann = out / "technique" / "detection" / modele / "annotated_images"
+        ann.mkdir(parents=True)
+        for f in (f"{ANCIEN_LD}_detections.png", f"{ANCIEN_LD}_detections.pgw", "legend.png"):
+            (ann / f).write_bytes(b"x")
+    return temp, out
+
+
+def test_relance_retire_intermediaires_et_images_annotees_lambert93(tmp_path, monkeypatch):
+    journal: list = []
+    etat: dict = {}
+
+    def prepare(tif_dir, png_dir):
+        etat["temp"], etat["out"] = _orphelins(tif_dir)
+
+    _publier(tmp_path, monkeypatch, "LD", LD, prepare=prepare, log=journal.append)
+    restants = sorted(p.name for p in etat["temp"].iterdir())
+    assert restants == ["EPSG_25832_0455_6057_LD_A15_Rmin5_Rmax10_H1p7_V1_A_u.tif",     # l'entrée du run
+                        "LHD_FXX_0455_6057_EXT_mnt_10660_MNT.tif"]                       # autre dalle : gardée
+    for modele in ("enclos_fr_seg_ld_v1", "lineaires_seg_v3_1"):
+        ann = etat["out"] / "technique" / "detection" / modele / "annotated_images"
+        assert [p.name for p in ann.iterdir()] == ["legend.png"]
+    # Une ligne par publication et une par dalle d'intermédiaires, jamais une par fichier (2 870 lignes pour
+    # 1 640 noms : le même nom de cache existe dans chaque dossier de modèle).
+    retraits = [m for m in journal if "retiré" in m]
+    assert len(retraits) == 2 and "(4 fichiers)" in retraits[0] and retraits[1].endswith(": 5 fichiers")
+
+
+def test_intermediaires_d_un_vrai_run_lambert93_gardes(tmp_path, monkeypatch):
+    etat: dict = {}
+
+    def prepare(tif_dir, png_dir):
+        etat["temp"], etat["out"] = _orphelins(tif_dir, crs="EPSG:2154")
+
+    _publier(tmp_path, monkeypatch, "LD", LD, prepare=prepare)
+    assert len(list(etat["temp"].iterdir())) == 7       # rien de Lambert-93 n'a bougé (+ l'entrée du run)
+    ann = etat["out"] / "technique" / "detection" / "enclos_fr_seg_ld_v1" / "annotated_images"
+    assert len(list(ann.iterdir())) == 3

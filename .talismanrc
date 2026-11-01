@@ -1,4 +1,6 @@
 fileignoreconfig:
+- filename: tests/unit/test_nom_analyse.py
+  checksum: c69d6537b7ea24171949a3d92cc2154bace4c7923e815261826f3a76a203fe84
 - filename: tests/unit/test_preprocess_ecriture_atomique.py
   checksum: 805381d978369f295b9bd100976d24370ac873902c04f2707bbf9f7d349a0992
 - filename: tests/unit/test_opns.py
@@ -44,7 +46,7 @@ fileignoreconfig:
 - filename: src/app/services/fiabilite.py
   checksum: fd1ebc36630598bddd6c24b2bdf2ff1c98380668984fe59862b581458bd4e4f3
 - filename: src/app/services/finalize_service.py
-  checksum: 87f98208a0b9b9c261187be1e518d1ce2e40eee0b6dc5b2f2dd957b5cdd461a7
+  checksum: 90034f914f09e8675194ad525e57b2a55d44cc356aa796cfaf111301165c3760
 - filename: src/app/services/indices_model.py
   checksum: f18a1a5ecd866ac7ef0c80f8b5cd8608685dd71201e15e57ca7f04c9ac5e0682
 - filename: src/app/services/model_orchestrator.py
@@ -56,7 +58,7 @@ fileignoreconfig:
 - filename: src/app/services/source_modes.py
   checksum: a04dd6688b494330c624a0b4639cb08b4ee4d0f73713799aa2244ff9befd18d6
 - filename: src/config/config_manager.py
-  checksum: 527a3d808c4d33d5df3517e1d0323e5d4925b83bc61d5df107bd9030fa1d2746
+  checksum: b550e8e7a766a0736d9ec3b536326e2857e83ad5a06c0bdad2aa3169e07aeb9c
 - filename: src/pipeline/coverage_polygons.py
   checksum: 8af2d1c7973b36884a4615f57e4c2abbbcd4bd3757ab48ed3a2bbe0840516e37
 - filename: src/pipeline/cv/alignment.py
@@ -104,13 +106,13 @@ fileignoreconfig:
 - filename: src/ui/icons.py
   checksum: df0d068fd896cf1361d0a6286e537fc015e473c5bc58924f9d79c3813df543b0
 - filename: src/ui/layer_loader.py
-  checksum: 043c7b7660f69410e334904b0c0f3882d326c446b312bf59f7b325f1faee355d
+  checksum: 89d6803271eee74b1766f990bad801e3c68b4eac2441efb7a1e068d4af895837
 - filename: src/ui/map_tools/tile_picker_tool.py
   checksum: 54f1e09233be20b03558ae316ea804f793a795112149ef19584b552aaaeeed26
 - filename: src/ui/qgs_writer.py
-  checksum: c2b609f453fd3b0174b824ebcc55b25bdb694aa7deddcf70966a1e7a29cdd28b
+  checksum: 8259ef0a49c128076a8ec621ec9b13f90b1448add71911a16d128bc43b768cdf
 - filename: src/ui/steps/step_1_source.py
-  checksum: 2f30a52eebbbb6521c56d08cc0ac17db5b312687e5ba87e044de1437d7f54242
+  checksum: 0f0270e74440204355cfa43739a2cbe12a442ae012ef80ee3aa7c5043e555c61
 - filename: src/ui/steps/step_2_indices.py
   checksum: 63fe585e6fddbf566678a8aebe584e69fa73c443e5fee88b116c1e202364aa49
 - filename: src/ui/steps/step_3_detection.py
@@ -124,7 +126,7 @@ fileignoreconfig:
 - filename: src/ui/wizard_dialog.py
   checksum: 64577fe3ec55b9c8390842275fedfd9ba650ca348b34f19a987cd6db44b7d4f0
 - filename: tests/TESTS_MANUELS_QGIS.md
-  checksum: 334a31c4d3aa31fc55620229504471de5e98122e43f575b62d9dd19ed1f397d6
+  checksum: 10bf164f31fd0b584799b320016631b3b90329673fe0d01e71e21dc2db8992cf
 - filename: tests/integration/test_existing_mnt_runner_finalize.py
   checksum: e67c2e4c83cea0937bdfb39e8eec7aa7476f30648d4d858589e2308ad0565d63
 - filename: tests/integration/test_existing_rvt_runner_isolation.py
@@ -154,7 +156,7 @@ fileignoreconfig:
 - filename: tests/unit/test_existing_rvt_runner.py
   checksum: bc54f1b752d2d3d1c99ca7511607065283150683e94ce21418ebc32761542050
 - filename: tests/unit/test_finalize_service.py
-  checksum: c8b4a5f475f88317f8b2ea541ca76f83d34f63826efd06d4d0265afff8a4f2be
+  checksum: 2962c64e41a482f1d3de8bfc387833de0f08a5b62fc7506f75f40c18e165f803
 - filename: tests/unit/test_indices_model.py
   checksum: c73d398fdb224ce33d5472f87ea804b8abf2aa21a978991fb32e8c895c18624b
 - filename: tests/unit/test_ingest_plan.py
@@ -246,7 +248,7 @@ fileignoreconfig:
 - filename: .claude/commands/livraison.md
   checksum: 498e642842583cf7d377223b7bfe16da0f82042b4a442d88e05ae3542ecf1d65
 - filename: aide/08-resultats.md
-  checksum: 2df2479a2ee2e4dd28e9c103619d31d40ee8619994450b745ee27de212ad03bd
+  checksum: ffdee902f961aec3e560191724571a8dd6534ca05c293d129ed7c7475a633c50
 - filename: aide/04-etape-2-produits.md
   checksum: 60b42d19de49a468c4370ff78ec66a386fd203d272a90fe76e2376ed7e4e530c
 - filename: aide/09-depannage.md
@@ -384,13 +386,13 @@ fileignoreconfig:
 - filename: src/app/services/sorties_prevues.py
   checksum: 3ded5ec72803f9b6c4994357cecdd9cfbea602e9e0c84be63a23b85c0c58a219
 - filename: aide/07-etape-5-traitement.md
-  checksum: 364617a1a203d4e9a6712fab25563452bb5163c6a6d1518e1a63eb77b98b5504
+  checksum: 421bcbd73cc590d4f3d67992065b4f5778743d3acce3cb7decb980d3695fdddb
 - filename: tests/unit/test_sorties_prevues.py
   checksum: b25f3282553a6d5fe6ecfee0eec124a5a73dc44fff637e14c7883d972ab976df
 - filename: src/app/services/vocabulaire.py
   checksum: 5288d07b4ae09a4b0d78b663e24b2b8a4fba61843d6bb2f7e61bc941c5bf040e
 - filename: aide/03-etape-1-source.md
-  checksum: 920a083042363cab1a738eba80c2b4e875ab10d1973c79053038b17940dbc0bb
+  checksum: fca4e9c6abecf06f868f0a1eaa9a1839328cdea9456ac4d892700176efb7a58d
 - filename: tests/unit/test_vocabulaire.py
   checksum: 4bc0b459da9b209d87510f53cb65be48b85398df0eeb79d76021cc7ff8fb28dc
 - filename: src/app/user_narrator.py
@@ -428,5 +430,5 @@ fileignoreconfig:
 - filename: src/app/services/cv_post_service.py
   checksum: 6963918eaffbb95c74062acf36fc8b1157aa8ecf91ce561b61b8f09013a9fdbc
 - filename: src/app/services/rapport_run.py
-  checksum: bd77f5abd99a3ad309fbd68320d3e8e43dd705d9937067376717702da4805bda
+  checksum: 372c2fff35c00ddb2c49311c8455964f8b81bc818498ecf96937f7ac421c7f98
 version: '1.0'

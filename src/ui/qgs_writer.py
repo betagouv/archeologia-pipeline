@@ -16,12 +16,13 @@ import logging
 from pathlib import Path
 from typing import List, Optional
 
-from ..app.services.finalize_service import GROUPE_STRUCTURES
+from ..app.services.nom_analyse import groupe_analyse, groupe_indices, groupe_structures
 from ..app.services.vocabulaire import titre_dossier_image
 from ..pipeline.cv.class_color_registry import color_for_class
 from .layer_loader import (
     _ensure_layer_crs,
     _parse_gpkg_source,
+    _rvt_type_of,
     apply_coverage_raster_symbology,
     build_detection_vector_layer,
     build_low_coverage_vector_layer,
@@ -41,17 +42,12 @@ _READONLY = ("model_pred", "model_name", "confidence", "conf_bin", "conf_color",
              "fiabilite", "fiabilite_pct")
 
 
-def _rvt_type_of(vrt) -> str:
-    """Type de produit RVT depuis le chemin du VRT (ex. ``MNT``, ``LD_...``, ``HS_...``)."""
-    vp = Path(str(vrt))
-    return vp.parent.parent.name if vp.parent.name == "tif" else vp.parent.name
-
-
 def _add_rasters(
     proj, root, vrt_paths: List[str], logger: logging.Logger,
     coverage_threshold_percent: float = 30.0,
 ) -> None:
-    """Ajoute les VRT comme couches raster (à plat, sous les vecteurs).
+    """Ajoute les VRT comme couches raster (groupe « Indices » de l'analyse, sous les vecteurs ;
+    à plat sans titre d'analyse).
 
     Le MNT est placé **en dernier** → tout en bas de l'arbre (sous les indices),
     car ``root.addLayer`` ajoute en fin de liste = bas de l'arbre. Le MNT (modèle
@@ -73,7 +69,7 @@ def _add_rasters(
         if rvt_type == "COUVERTURE":
             apply_coverage_raster_symbology(layer, coverage_threshold_percent, logger)
         proj.addMapLayer(layer, False)
-        root.addLayer(layer)
+        groupe_indices(root).addLayer(layer)
 
 
 def _apply_validation_form(layer, all_classes: List[str], logger: logging.Logger) -> None:
@@ -179,8 +175,12 @@ def write_validation_project(
     coverage_threshold_percent: float = 30.0,
     logger: logging.Logger,
     crs_authid: Optional[str] = None,
+    titre_analyse: str = "",
 ) -> Optional[Path]:
     """Écrit ``qgs_path`` (le projet de validation consolidé) via ``QgsProject.write()``.
+
+    Même arbre que le chargement en direct (0.19.0) : tout sous le groupe ``titre_analyse``
+    (couche QA, « Structures », « Indices ») ; sans titre, à la racine comme avant.
 
     Construit un ``QgsProject`` dédié (pas le singleton), y ajoute les vecteurs de détection
     (sous le groupe « Structures », sous-groupe par entité dérivée ou comparée) puis les rasters VRT, fixe le CRS projet (WKT
@@ -207,7 +207,7 @@ def write_validation_project(
         proj = QgsProject()
         proj.setFileName(str(qgs_path))  # ancre les chemins relatifs
         proj.writeEntry("Paths", "/Absolute", False)  # datasources relatives au .qgs
-        root = proj.layerTreeRoot()
+        root = groupe_analyse(proj.layerTreeRoot(), titre_analyse)
 
         extent = QgsRectangle()
         extent.setMinimal()
@@ -232,12 +232,8 @@ def write_validation_project(
                 continue
             _apply_validation_form(layer, all_classes or [], logger)
             proj.addMapLayer(layer, False)
-            structures = root.findGroup(GROUPE_STRUCTURES) or root.insertGroup(0, GROUPE_STRUCTURES)
-            parent = structures
-            if slug in derived_slugs:
-                label = entity_labels.get(slug, slug)
-                parent = structures.findGroup(label) or structures.insertGroup(0, label)
-            parent.addLayer(layer)
+            sous = entity_labels.get(slug, slug) if slug in derived_slugs else ""
+            groupe_structures(root, sous).addLayer(layer)
             ext = layer.extent()
             if ext is not None and not ext.isEmpty():
                 extent.combineExtentWith(ext)

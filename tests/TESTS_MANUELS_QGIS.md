@@ -1243,3 +1243,16 @@ Lot 3 du chantier d'accélération (2026-10-15) : une dalle lue en entier reçoi
 - [ ] **71.7 Non-régression France** : un MNT existant en EPSG:2154 et un traitement Téléchargement IGN donnent les mêmes couches qu'avant (SCR EPSG:2154, `"crs": "EPSG:2154"` dans la trace).
 - [ ] **71.8 Manuel** : F1 à l'étape 1 → section « Système de coordonnées des rasters fournis » (tout CRS projeté en mètres, pas de reprojection, trois refus) ; Dépannage « CRS des rasters » refusé décrit les trois causes.
 - [ ] **71.9 Relance dans un dossier d'un autre CRS** : relancer en MNT existant (fenêtres EPSG:25832) dans un dossier de sortie déjà calculé en EPSG:2154 → ligne « Système de coordonnées du dossier de sortie » en avertissement (« relance dans un dossier calculé en EPSG:2154 (entrées en EPSG:25832) : … choisissez un nouveau dossier de sortie ») ; le lancement reste possible ; même dossier, mêmes entrées : pas d'avertissement.
+
+## 72. Nom de l'analyse : champ de l'étape 1, groupe parent dans QGIS, titre du rapport ⭐ P1
+
+> Joué hors écran le 2026-11-01 (QGIS 3.44 et 4.0.3, plugin chargé comme paquet : champ, arbre réel, deux analyses,
+> rechargement, purge, `.qgs` relu) : reste à voir dans QGIS de bureau.
+
+- [ ] **72.1 Pré-remplissage** : étape 1, dossier de sortie `…\_crash_tests\be_vl\indices` → « Nom de l'analyse » = « be_vl · indices » ; changer le dossier → le nom suit.
+- [ ] **72.2 Saisie conservée** : écrire « Flandre », changer le dossier → « Flandre » reste ; vider le champ, changer le dossier → la proposition revient.
+- [ ] **72.3 Persistance** : fermer/rouvrir l'assistant, « Enregistrer sous… » puis « Charger », « Importer un fichier… », « Relancer avec un seuil changé » (étape 6) → le nom revient ; une configuration enregistrée avant 0.19.0 → la proposition.
+- [ ] **72.4 Groupe parent** : fin de traitement, « Ajouter au projet QGIS courant » → un groupe « Flandre — JJ/MM/AAAA HH:MM » en haut du panneau ; dedans : zones mal couvertes (si couverture), « Structures », « Indices » (MNT en bas).
+- [ ] **72.5 Deux analyses, rechargement** : ajouter un second traitement → second groupe au-dessus ; étape 6, « Ajouter » du premier → rien de dupliqué, même après avoir renommé son groupe.
+- [ ] **72.6 Purge** : relancer dans le même dossier → les couches du précédent et son groupe vide disparaissent au lancement ; un groupe à vous (vide ou non) reste.
+- [ ] **72.7 Projet et rapport** : `livrable/projet.qgs` montre le même groupe ; `rapport.html` a pour titre le nom ; `traitement.json` porte `"nom_analyse"`.

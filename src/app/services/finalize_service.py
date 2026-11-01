@@ -432,14 +432,13 @@ def _journal_relatif(output_dir: Path) -> str:
 def _ecrire_rapport_run(
     *, output_dir: Path, vrt_paths: List[str], cv_runs: Any, cv_cfg: Any, cv_stats: List[Dict[str, Any]],
     bilan: Any, rvt_params: Dict[str, Any], active_products: List[str], ui_config: Dict[str, Any],
-    outcome: str, start_time: float, tiles_processed: int, tiles_total: Optional[int], meta_date: str,
+    outcome: str, duree_s: float, tiles_processed: int, tiles_total: Optional[int], meta_date: str,
     reporter: Any = None, motif_detection: str = "", crs: str = "",
 ) -> str:
     """Assemble et écrit ``rapport.html`` ; renvoie son nom. Thread worker (GDAL pour
     la vignette et la surface, aucun Qt). Rien ne situe la zone : ni nom de dalle, ni
     chemin ; les durées par étape viennent du chronomètre posé sur le reporter."""
     import datetime as _dt
-    import time as _time
 
     from ..plugin_metadata import get_plugin_version
     from ..progress_stages import STAGE_LABELS, Stage
@@ -532,7 +531,7 @@ def _ecrire_rapport_run(
     donnees = DonneesRapport(
         version=get_plugin_version(), date=date,
         mode=mode_info(mode).banner_label if mode else "", data_mode=mode,
-        issue=outcome, duree_s=max(0.0, _time.time() - start_time),
+        issue=outcome, duree_s=max(0.0, duree_s),
         tiles_processed=tiles_processed, tiles_total=tiles_total,
         surface_km2=surface_km2_depuis_vrt(vrt_paths),
         produits=tuple((p, PRODUCT_LABELS.get(p, p)) for p in active_products),
@@ -611,7 +610,7 @@ def finalize_pipeline(
         from pipeline.output_paths import indices_dir, detections_dir
     from ..progress_reporter import report_busy, report_stage_id
     from ..progress_stages import Stage
-    from ..user_narrator import create_user_narrator
+    from ..user_narrator import _format_duration, create_user_narrator
 
     narrator = create_user_narrator(reporter)
 
@@ -699,6 +698,10 @@ def finalize_pipeline(
     # 3d. Moteur de détection (lot 0d) : "none" et le motif dès qu'un run n'a pas
     # pu détecter — sous QGIS, sans le binaire, il n'y a pas de repli.
     cv_engine, cv_motif = moteur_detection(cv_stats)
+
+    # Durée du run, mesurée UNE fois : rapport, journal et écran disent la même (crash tests du 2026-11-01 :
+    # 24min 12s au journal, 24min 05s ailleurs).
+    elapsed = time.time() - start_time
 
     # 4. Génération du fichier metadata.json
     try:
@@ -788,7 +791,7 @@ def finalize_pipeline(
                 cv_stats=cv_stats or [], bilan=bilan, rvt_params=rvt_params or {},
                 active_products=active_products or [], ui_config=ui_config or {},
                 outcome=("detection_impossible" if outcome == "success" and cv_engine == "none" else outcome),
-                motif_detection=cv_motif if cv_engine == "none" else "", start_time=start_time,
+                motif_detection=cv_motif if cv_engine == "none" else "", duree_s=elapsed,
                 tiles_processed=tiles_processed,
                 tiles_total=tiles_total, meta_date=meta["date"], reporter=reporter, crs=crs,
             )
@@ -814,7 +817,6 @@ def finalize_pipeline(
         reporter.info(f"Note: métadonnées non écrites ({_meta_e})")
 
     # 5. Logs de fin de pipeline — conditionnés par l'issue réelle (ROB-14).
-    elapsed = time.time() - start_time
     products_list = active_products or []
     total = tiles_total if tiles_total is not None else tiles_processed
     success = outcome == "success"
@@ -840,12 +842,13 @@ def finalize_pipeline(
             tiles_processed=tiles_processed,
             tiles_total=total,
             products=products_list,
+            duree_s=elapsed,
         )
     # Annonce narrative à l'utilisateur (visible dans la fenêtre QGIS).
     # « ⏹ Traitement annulé » est émis par le runner après la finalisation —
     # rien à annoncer ici dans le cas cancelled.
     if outcome == "failed":
-        narrator.pipeline_failed("erreur inattendue pendant le traitement", start_time=start_time,
+        narrator.pipeline_failed("erreur inattendue pendant le traitement", duree_s=elapsed,
                                  journal=_journal_relatif(output_dir))
     elif outcome == "success" and detection_impossible:
         from .rapport_run import suite_detection_impossible
@@ -854,13 +857,13 @@ def finalize_pipeline(
             f"Les produits sont calculés ; {suite_detection_impossible(cv_stats or [])}"
         )
     elif outcome == "success" and all_tiles_failed:
-        narrator.pipeline_failed("aucune dalle n'a produit de sortie", start_time=start_time,
+        narrator.pipeline_failed("aucune dalle n'a produit de sortie", duree_s=elapsed,
                                  journal=_journal_relatif(output_dir))
     elif success:
         narrator.pipeline_complete(
             tiles_processed=tiles_processed,
             products=products_list,
-            start_time=start_time,
+            duree_s=elapsed,
         )
     if not slog:
         reporter.info("")
@@ -872,7 +875,7 @@ def finalize_pipeline(
         else:
             reporter.info("❌ PIPELINE TERMINÉ AVEC ERREURS")
         reporter.info("════════════════════════════════════════════════════════════")
-        reporter.info(f"  ⏱️ Durée totale : {elapsed:.1f}s")
+        reporter.info(f"  ⏱️ Durée totale : {_format_duration(elapsed)}")
         if extra_label:
             reporter.info(f"  📄 {extra_label} : {tiles_processed}")
         elif tiles_processed > 0:

@@ -313,13 +313,10 @@ def _dec(x: Any, decimales: int = 1) -> str:
 
 
 def format_duree(secondes: float) -> str:
-    s = int(round(secondes))
-    h, m = s // 3600, (s % 3600) // 60
-    if h:
-        return f"{h}h {m:02d}min"
-    if m:
-        return f"{m}min {s % 60:02d}s"
-    return f"{s}s"
+    """Le format des durées du plugin (``user_narrator._format_duration``) : rapport, écran et journal concordent."""
+    from ..user_narrator import _format_duration
+
+    return _format_duration(secondes)
 
 
 def _bruit(n: Any) -> str:
@@ -542,9 +539,9 @@ def _cv_runs(runs: Sequence[Mapping[str, Any]]) -> str:
         else:
             analyse = f"{_nb(images)} image{'s' if images > 1 else ''} en {format_duree(float(secondes or 0))}"
             if images > 1 and secondes:
-                par_image = float(secondes) / images
-                analyse += (f" (≈ {_dec(par_image, 1)} s par image)" if par_image < 10
-                            else f" (≈ {format_duree(par_image)} par image)")
+                from ..user_narrator import format_par_image
+
+                analyse += f" (≈ {format_par_image(float(secondes), images)} par image)"
         if r.get("appareil") == "carte_graphique":
             analyse += " sur la carte graphique" + (f" « {_e(r['carte'])} »" if r.get("carte") else "")
         elif r.get("repli"):

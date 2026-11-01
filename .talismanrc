@@ -90,7 +90,7 @@ fileignoreconfig:
 - filename: src/pipeline/ign/products/indices.py
   checksum: 4be4dd2b74270c2bbdb9a55af6abba598aa1ac90bcbef08a1677757b02e00b1b
 - filename: src/pipeline/ign/products/results.py
-  checksum: 376c23bf29e510152282564823559ed703b980f65a7508cbc7257308e28a956d
+  checksum: 44ae87d44c4951496daccc72fe78b3a945a4e8e06c3295af6ad9b22912598d0c
 - filename: src/pipeline/modes/local_laz.py
   checksum: aa12c4a804b54e7b3dfe451251813a3a731790033acc95a5ad3691cb4ff138fd
 - filename: src/pipeline/output_paths.py

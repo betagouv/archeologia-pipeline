@@ -450,6 +450,7 @@ def _ecrire_rapport_run(
         ecrire_rapport,
         extraire_avertissements,
         seuils_par_classe,
+        planche_du_lot,
         surface_km2_depuis_vrt,
         vignette_depuis_vrt,
     )
@@ -496,8 +497,14 @@ def _ecrire_rapport_run(
         except OSError:
             avertissements = []
     vrt = choisir_vrt_vignette(vrt_paths)
-    vignette = (vignette_depuis_vrt(vrt, livrable_dir(Path(output_dir)) / NOM_VIGNETTE, log=reporter.info)
-                if vrt else None)
+    cases, n_fenetres = planche_du_lot(vrt) if vrt else ([], 0)
+    vignette = (vignette_depuis_vrt(vrt, livrable_dir(Path(output_dir)) / NOM_VIGNETTE, log=reporter.info,
+                                    planche=cases) if vrt else None)
+    legende = ""
+    if cases and vignette:
+        quoi = (f"Les {len(cases)} plus grandes des {n_fenetres} fenêtres" if len(cases) < n_fenetres
+                else f"Les {n_fenetres} fenêtres")
+        legende = f"{quoi}, côte à côte et sans leur position relative : les sites traités sont dispersés."
     etapes: List[tuple] = []
     chrono = getattr(reporter, "chrono", None)
     if chrono is not None:
@@ -538,7 +545,8 @@ def _ecrire_rapport_run(
         rvt_params=rvt_params, processing=dict((ui_config or {}).get("processing") or {}),
         cv_runs=tuple(runs_rapport),
         bilan=tuple(ligne.to_dict() for ligne in bilan), etapes=tuple(etapes),
-        avertissements=tuple(avertissements), vignette=vignette, motif_detection=motif_detection,
+        avertissements=tuple(avertissements), vignette=vignette, vignette_legende=legende,
+        motif_detection=motif_detection,
         couleurs=couleurs, crs=crs,
         horodatage=journaux[-1].stem[len("pipeline_log_"):] if journaux else "",
     )

@@ -354,3 +354,22 @@ def test_seuils_par_classe_affiches_et_jamais_arrondis_a_tort():
     h = construire_html(d)
     assert "Chemins creux 0,245 · Parcellaire 0,26 · Talus et fossés 0,25" in h
     assert "<td class=num>0,245</td>" in h and "0,24<" not in h
+
+
+def test_planche_pour_un_lot_de_sites_disperses():
+    """Crash test de_sh : la vue d'ensemble d'un lot multi-sites n'était que 33 carrés gris de 4-5 px. Sous 25 %
+    de l'emprise couverte, la vignette devient une planche des fenêtres (les 12 plus grandes)."""
+    from app.services.rapport_run import cases_de_planche
+    grille = [(f"{i}_{j}", (i * 1000.0, j * 1000.0, i * 1000.0 + 1000, j * 1000.0 + 1000))
+              for i in range(3) for j in range(3)]
+    assert cases_de_planche(grille) == []                                  # lot compact : vue d'ensemble
+    sites = [(f"s{i:02d}", (i * 20_000.0, 0.0, i * 20_000.0 + 351 + i, 351.0)) for i in range(15)]
+    cases = cases_de_planche(sites)
+    assert cases == [f"s{i:02d}" for i in range(3, 15)]                   # les 12 plus grandes, par nom
+    assert cases_de_planche(sites[:1]) == []
+
+
+def test_legende_de_la_planche():
+    h = construire_html(DonneesRapport(version="x", date="d", mode="m", vignette="v.png",
+                                       vignette_legende="Les 33 fenêtres, côte à côte"))
+    assert '<img class=vignette src="v.png"' in h and "Les 33 fenêtres, côte à côte" in h

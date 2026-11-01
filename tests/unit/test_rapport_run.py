@@ -8,6 +8,8 @@ import time
 import types
 from pathlib import Path
 
+import pytest
+
 from app.progress_reporter import NullProgressReporter
 from app.services import finalize_service
 from app.services.rapport_run import (
@@ -84,10 +86,37 @@ def test_surface_mesuree_sur_les_rasters(tmp_path, monkeypatch):
     osgeo.gdal = gdal
     monkeypatch.setitem(sys.modules, "osgeo", osgeo)
     monkeypatch.setitem(sys.modules, "osgeo.gdal", gdal)
-    assert surface_km2_depuis_vrt([vrt]) == 3.0                    # trois dalles de 1 km²
+    assert surface_km2_depuis_vrt([vrt]) == 1.0      # trois dalles de 1 km² au MÊME endroit : 1 km² couvert
     assert surface_km2_depuis_vrt([]) is None
     assert surface_km2_depuis_vrt([str(tmp_path / "vide.vrt")]) is None
 
+
+
+def test_surface_union_des_emprises(tmp_path, monkeypatch):
+    """Run de_sh : 205 fenêtres qui se recouvrent, 47,7 km² en somme et 36,7 km² distincts ; le rapport, qui
+    affirme qu'aucun chiffre n'est une estimation (et en tire des densités par km²), donne l'union."""
+    tif = tmp_path / "indices" / "LD" / "tif"
+    tif.mkdir(parents=True)
+    origines = {"a.tif": (0.0, 1000.0), "b.tif": (500.0, 1500.0), "c.tif": (0.0, 1000.0), "d.tif": (5000.0, 9000.0)}
+    for n in origines:
+        (tif / n).write_bytes(b"")
+
+    class _Ds:
+        RasterXSize, RasterYSize = 2000, 2000
+
+        def __init__(self, p):
+            self.x0, self.y0 = origines[Path(p).name]
+
+        def GetGeoTransform(self):  # noqa: N802 (API GDAL)
+            return (self.x0, 0.5, 0.0, self.y0, 0.0, -0.5)
+
+    gdal = types.SimpleNamespace(UseExceptions=lambda: None, Open=_Ds)
+    osgeo = types.ModuleType("osgeo")
+    osgeo.gdal = gdal
+    monkeypatch.setitem(sys.modules, "osgeo", osgeo)
+    monkeypatch.setitem(sys.modules, "osgeo.gdal", gdal)
+    # a et c identiques, b recouvre un quart de a, d à l'écart : 1 + 0,75 + 1 = 2,75 km² (somme : 4).
+    assert surface_km2_depuis_vrt([str(tif / "index_LD.vrt")]) == pytest.approx(2.75)
 
 def test_vignette_et_formats(tmp_path):
     vrt = str(tmp_path / "indices" / "SVF_R10" / "tif" / "index_SVF.vrt")

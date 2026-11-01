@@ -164,10 +164,27 @@ def _tifs_de_la_mosaique(vrt_paths: Sequence[str]) -> List[Path]:
     return []
 
 
+def aire_union(rects: Sequence[Tuple[float, float, float, float]]) -> float:
+    """Aire de l'union de rectangles ``(xmin, ymin, xmax, ymax)`` alignés sur les axes : balayage en x, union des
+    intervalles en y dans chaque bande. Des dalles jointives (grille IGN) partagent leurs abscisses : peu de bandes."""
+    xs = sorted({x for r in rects for x in (r[0], r[2])})
+    total = 0.0
+    for x0, x1 in zip(xs, xs[1:]):
+        fin = None
+        for y0, y1 in sorted((r[1], r[3]) for r in rects if r[0] <= x0 and r[2] >= x1):
+            if fin is None or y0 > fin:
+                total += (x1 - x0) * (y1 - y0)
+                fin = y1
+            elif y1 > fin:
+                total += (x1 - x0) * (y1 - fin)
+                fin = y1
+    return total
+
+
 def surface_km2_depuis_vrt(vrt_paths: Sequence[str]) -> Optional[float]:
-    """Surface couverte par les dalles de la première mosaïque, en km², mesurée
-    sur chaque raster (emprise = taille × résolution ; les dalles rognées ne se
-    recouvrent pas). Sans GDAL ou sans raster → ``None``."""
+    """Surface couverte par les dalles de la première mosaïque, en km² : UNION des emprises lues sur chaque raster
+    (des fenêtres qui se recouvrent ne comptent qu'une fois : de_sh, 47,7 km² en somme, 36,7 km² distincts).
+    Sans GDAL ou sans raster → ``None``."""
     tifs = _tifs_de_la_mosaique(vrt_paths)
     if not tifs:
         return None
@@ -177,17 +194,20 @@ def surface_km2_depuis_vrt(vrt_paths: Sequence[str]) -> Optional[float]:
         gdal.UseExceptions()
     except ImportError:
         return None
-    total = 0.0
+    rects = []
     for tif in tifs:
         try:
             ds = gdal.Open(str(tif))
             if ds is None:
                 continue
             gt = ds.GetGeoTransform()
-            total += abs(gt[1] * ds.RasterXSize * gt[5] * ds.RasterYSize)
+            xa, xb = gt[0], gt[0] + gt[1] * ds.RasterXSize
+            ya, yb = gt[3], gt[3] + gt[5] * ds.RasterYSize
+            rects.append((min(xa, xb), min(ya, yb), max(xa, xb), max(ya, yb)))
             ds = None
         except Exception:  # noqa: BLE001 — un raster illisible ne compte pas
             continue
+    total = aire_union(rects)
     return total / 1e6 if total > 0 else None
 
 

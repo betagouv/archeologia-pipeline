@@ -26,7 +26,7 @@ import html
 import re
 from dataclasses import dataclass, field, replace
 from pathlib import Path
-from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
+from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence, Tuple
 
 from .bilan_fiabilite import texte_niveaux_effectifs
 from .vocabulaire import niveau
@@ -113,9 +113,11 @@ class DonneesRapport:
     etapes: Tuple[Tuple[str, str, float], ...] = ()     # (étape, détail, secondes mesurées)
     avertissements: Tuple[Avertissement, ...] = ()
     vignette: Optional[str] = None                      # chemin relatif au rapport
+    vignette_legende: str = ""                          # planche : ce qu'elle montre
     couleurs: Mapping[str, Mapping[str, str]] = field(default_factory=dict)   # couche → {niveau: #rrggbb}
     motif_detection: str = ""                           # « Détection impossible » : la cause (lot 0d)
     crs: str = ""                                       # système de coordonnées des couches (2026-10-31)
+    horodatage: str = ""                                # <ts> de metadata_<ts>.json et pipeline_log_<ts>.txt
 
 
 # ----------------------------------------------------------------------
@@ -164,10 +166,27 @@ def _tifs_de_la_mosaique(vrt_paths: Sequence[str]) -> List[Path]:
     return []
 
 
+def aire_union(rects: Sequence[Tuple[float, float, float, float]]) -> float:
+    """Aire de l'union de rectangles ``(xmin, ymin, xmax, ymax)`` alignés sur les axes : balayage en x, union des
+    intervalles en y dans chaque bande. Des dalles jointives (grille IGN) partagent leurs abscisses : peu de bandes."""
+    xs = sorted({x for r in rects for x in (r[0], r[2])})
+    total = 0.0
+    for x0, x1 in zip(xs, xs[1:]):
+        fin = None
+        for y0, y1 in sorted((r[1], r[3]) for r in rects if r[0] <= x0 and r[2] >= x1):
+            if fin is None or y0 > fin:
+                total += (x1 - x0) * (y1 - y0)
+                fin = y1
+            elif y1 > fin:
+                total += (x1 - x0) * (y1 - fin)
+                fin = y1
+    return total
+
+
 def surface_km2_depuis_vrt(vrt_paths: Sequence[str]) -> Optional[float]:
-    """Surface couverte par les dalles de la première mosaïque, en km², mesurée
-    sur chaque raster (emprise = taille × résolution ; les dalles rognées ne se
-    recouvrent pas). Sans GDAL ou sans raster → ``None``."""
+    """Surface couverte par les dalles de la première mosaïque, en km² : UNION des emprises lues sur chaque raster
+    (des fenêtres qui se recouvrent ne comptent qu'une fois : de_sh, 47,7 km² en somme, 36,7 km² distincts).
+    Sans GDAL ou sans raster → ``None``."""
     tifs = _tifs_de_la_mosaique(vrt_paths)
     if not tifs:
         return None
@@ -177,18 +196,48 @@ def surface_km2_depuis_vrt(vrt_paths: Sequence[str]) -> Optional[float]:
         gdal.UseExceptions()
     except ImportError:
         return None
-    total = 0.0
+    total = aire_union([r for _t, r in _emprises(gdal, tifs)])
+    return total / 1e6 if total > 0 else None
+
+
+def _emprises(gdal: Any, tifs: Sequence[Path]) -> List[Tuple[Path, Tuple[float, float, float, float]]]:
+    """``(tif, (xmin, ymin, xmax, ymax))`` lus sur chaque raster ; un raster illisible ne compte pas."""
+    out = []
     for tif in tifs:
         try:
             ds = gdal.Open(str(tif))
             if ds is None:
                 continue
             gt = ds.GetGeoTransform()
-            total += abs(gt[1] * ds.RasterXSize * gt[5] * ds.RasterYSize)
+            xa, xb = gt[0], gt[0] + gt[1] * ds.RasterXSize
+            ya, yb = gt[3], gt[3] + gt[5] * ds.RasterYSize
+            out.append((tif, (min(xa, xb), min(ya, yb), max(xa, xb), max(ya, yb))))
             ds = None
-        except Exception:  # noqa: BLE001 — un raster illisible ne compte pas
+        except Exception:  # noqa: BLE001
             continue
-    return total / 1e6 if total > 0 else None
+    return out
+
+
+#: Sous cette part de l'emprise de la mosaïque couverte par ses dalles, la vue d'ensemble n'est qu'une poussière
+#: de points (crash test de_sh : 33 carrés gris de 4-5 px) : la vignette devient une planche des fenêtres.
+PART_COUVERTE_MIN = 0.25
+#: Fenêtres au plus sur la planche (les plus grandes).
+CASES_MAX = 12
+
+
+def cases_de_planche(emprises: Sequence[Tuple[Any, Tuple[float, float, float, float]]],
+                     n_max: int = CASES_MAX) -> List[Any]:
+    """PUR. Les fenêtres à mettre côte à côte quand la mosaïque est dispersée (union < ``PART_COUVERTE_MIN`` de
+    son emprise), les ``n_max`` plus grandes rangées par nom ; ``[]`` pour une mosaïque compacte (vue d'ensemble)."""
+    if len(emprises) < 2:
+        return []
+    rects = [r for _t, r in emprises]
+    boite = (min(r[0] for r in rects), min(r[1] for r in rects), max(r[2] for r in rects), max(r[3] for r in rects))
+    if aire_union(rects) >= PART_COUVERTE_MIN * (boite[2] - boite[0]) * (boite[3] - boite[1]):
+        return []
+    aire = lambda r: (r[2] - r[0]) * (r[3] - r[1])  # noqa: E731
+    grandes = sorted(emprises, key=lambda e: (-aire(e[1]), str(e[0])))[:n_max]
+    return sorted((t for t, _r in grandes), key=str)
 
 
 def choisir_vrt_vignette(vrt_paths: Sequence[str]) -> Optional[str]:
@@ -206,38 +255,92 @@ def choisir_vrt_vignette(vrt_paths: Sequence[str]) -> Optional[str]:
     return next(iter(par_produit.values()), None)
 
 
-def vignette_depuis_vrt(vrt: str, png: Path, cote: int = 720) -> Optional[str]:
-    """Rend la mosaïque en PNG 8 bits de ``cote`` px de plus grand côté (étirement
-    min-max approché), sans GDAL ou en cas d'échec → ``None``. Thread worker, aucun Qt."""
+def planche_du_lot(vrt: str) -> Tuple[List[Path], int]:
+    """``(fenêtres de la planche, nombre de fenêtres de la mosaïque)`` ; planche vide = vue d'ensemble lisible
+    (ou pas de GDAL)."""
     try:
         from osgeo import gdal
 
         gdal.UseExceptions()
-        src = gdal.Open(str(vrt))
-        if src is None:
-            return None
-        bande = src.GetRasterBand(1)
-        mn, mx = bande.ComputeRasterMinMax(True)      # approché : overviews / échantillon
+    except ImportError:
+        return [], 0
+    emprises = _emprises(gdal, sorted(Path(vrt).parent.glob("*.tif")))
+    return cases_de_planche(emprises), len(emprises)
+
+
+def _planche(gdal: Any, tifs: Sequence[Path], cote: int) -> Any:
+    """Jeu MEM float32 : les ``tifs`` réduits chacun dans une case carrée, côte à côte (sans leur position
+    relative), séparés par du sans-donnée."""
+    import math
+
+    import numpy as np
+
+    cols = math.ceil(math.sqrt(len(tifs)))
+    lignes = math.ceil(len(tifs) / cols)
+    case = max(16, cote // cols)
+    vide = -3.4e38
+    plan = np.full((lignes * case, cols * case), vide, dtype=np.float32)
+    for i, tif in enumerate(tifs):
+        src = gdal.Open(str(tif))
+        portrait = src.RasterYSize > src.RasterXSize
+        r = gdal.Translate("", src, options=gdal.TranslateOptions(
+            format="MEM", outputType=gdal.GDT_Float32,
+            width=0 if portrait else case - 4, height=case - 4 if portrait else 0))
+        a = r.GetRasterBand(1).ReadAsArray().astype(np.float32)
+        nd = r.GetRasterBand(1).GetNoDataValue()
+        if nd is not None:
+            a[a == nd] = vide
+        y0, x0 = (i // cols) * case + 2, (i % cols) * case + 2
+        plan[y0:y0 + a.shape[0], x0:x0 + a.shape[1]] = a
+    ds = gdal.GetDriverByName("MEM").Create("", plan.shape[1], plan.shape[0], 1, gdal.GDT_Float32)
+    ds.GetRasterBand(1).WriteArray(plan)
+    ds.GetRasterBand(1).SetNoDataValue(vide)
+    return ds
+
+
+def vignette_depuis_vrt(vrt: str, png: Path, cote: int = 720,
+                        log: Callable[[str], None] = lambda _: None, planche: Sequence[Path] = ()) -> Optional[str]:
+    """Rend la mosaïque en PNG 8 bits de ``cote`` px de plus grand côté, sans GDAL ou en cas d'échec → ``None``
+    (la cause va à ``log``, le journal technique). Étirement min-max EXACT, mesuré sur la mosaïque d'abord
+    réduite à la taille de la vignette : l'échantillon approché de GDAL ne trouvait aucun pixel sur une mosaïque
+    de fenêtres dispersées (0,34 % couverts, run flamand du 2026-11-01). ``planche`` (:func:`planche_du_lot`) :
+    ces fenêtres côte à côte au lieu de la vue d'ensemble, illisible pour un lot de sites dispersés (33 carrés
+    de 4-5 px, crash test de_sh). Thread worker, aucun Qt."""
+    try:
+        from osgeo import gdal
+
+        gdal.UseExceptions()
+        if planche:
+            reduite = _planche(gdal, planche, cote)
+        else:
+            src = gdal.Open(str(vrt))
+            if src is None:
+                return None
+            portrait = src.RasterYSize > src.RasterXSize
+            reduite = gdal.Translate("", src, options=gdal.TranslateOptions(
+                format="MEM", width=0 if portrait else cote, height=cote if portrait else 0))
+        bande = reduite.GetRasterBand(1)
+        mn, mx = bande.ComputeRasterMinMax(False)
         if mx <= mn:
+            log(f"Vignette du rapport non rendue (mosaïque uniforme, valeur {mn})")
             return None
         nodata = bande.GetNoDataValue()
-        portrait = src.RasterYSize > src.RasterXSize
         options = gdal.TranslateOptions(
-            format="PNG", width=0 if portrait else cote, height=cote if portrait else 0,
-            outputType=gdal.GDT_Byte, scaleParams=[[mn, mx, 1, 255]],
+            format="PNG", outputType=gdal.GDT_Byte, scaleParams=[[mn, mx, 1, 255]],
             **({"noData": nodata} if nodata is not None else {}),
         )
         png.parent.mkdir(parents=True, exist_ok=True)
         pam = gdal.GetConfigOption("GDAL_PAM_ENABLED")
         gdal.SetConfigOption("GDAL_PAM_ENABLED", "NO")     # pas de .aux.xml à côté du PNG
         try:
-            if gdal.Translate(str(png), src, options=options) is None:
+            if gdal.Translate(str(png), reduite, options=options) is None:
                 return None
         finally:
             gdal.SetConfigOption("GDAL_PAM_ENABLED", pam)
-        src = None
+        reduite = None
         return png.name if png.is_file() else None
-    except Exception:  # noqa: BLE001 — la vignette est un confort
+    except Exception as e:  # noqa: BLE001 — la vignette est un confort, mais l'échec se dit
+        log(f"Vignette du rapport non rendue ({e})")
         return None
 
 
@@ -287,13 +390,10 @@ def _dec(x: Any, decimales: int = 1) -> str:
 
 
 def format_duree(secondes: float) -> str:
-    s = int(round(secondes))
-    h, m = s // 3600, (s % 3600) // 60
-    if h:
-        return f"{h}h {m:02d}min"
-    if m:
-        return f"{m}min {s % 60:02d}s"
-    return f"{s}s"
+    """Le format des durées du plugin (``user_narrator._format_duration``) : rapport, écran et journal concordent."""
+    from ..user_narrator import _format_duration
+
+    return _format_duration(secondes)
 
 
 def _bruit(n: Any) -> str:
@@ -516,9 +616,9 @@ def _cv_runs(runs: Sequence[Mapping[str, Any]]) -> str:
         else:
             analyse = f"{_nb(images)} image{'s' if images > 1 else ''} en {format_duree(float(secondes or 0))}"
             if images > 1 and secondes:
-                par_image = float(secondes) / images
-                analyse += (f" (≈ {_dec(par_image, 1)} s par image)" if par_image < 10
-                            else f" (≈ {format_duree(par_image)} par image)")
+                from ..user_narrator import format_par_image
+
+                analyse += f" (≈ {format_par_image(float(secondes), images)} par image)"
         if r.get("appareil") == "carte_graphique":
             analyse += " sur la carte graphique" + (f" « {_e(r['carte'])} »" if r.get("carte") else "")
         elif r.get("repli"):
@@ -580,6 +680,7 @@ def construire_html(d: DonneesRapport) -> str:
     classe_issue = {"success": "ok", "cancelled": "annule"}.get(d.issue, "ko")
     issue = _ISSUES.get(d.issue, d.issue)
     vignette = (f'<img class=vignette src="{_a(d.vignette)}" alt="Vignette de la zone traitée">'
+                + (f"<p class=sous>{_e(d.vignette_legende)}</p>" if d.vignette_legende else "")
                 if d.vignette else "<p class=sous>Pas de vignette (mosaïque indisponible).</p>")
     if d.cv_runs or d.bilan:
         garde = ("Les détections sont des hypothèses produites par des modèles d'apprentissage : chacune se "
@@ -612,7 +713,7 @@ def construire_html(d: DonneesRapport) -> str:
 {_avertissements(d.avertissements)}
 <h2>Sources</h2>
 {_sources(d)}
-<p class=sous>La configuration complète est dans <code>metadata.json</code>, le journal détaillé dans <code>pipeline_log_*.txt</code>, tous deux dans le dossier du traitement. Les durées sont chronométrées, les effectifs comptés, la surface mesurée : aucun chiffre de ce rapport n'est une estimation.</p>
+<p class=sous>La configuration complète est dans <code>metadata_{_e(d.horodatage or "*")}.json</code>, le journal détaillé dans <code>pipeline_log_{_e(d.horodatage or "*")}.txt</code>, tous deux dans <code>technique/journaux/</code> du dossier du traitement. Les durées sont chronométrées, les effectifs comptés, la surface mesurée : aucun chiffre de ce rapport n'est une estimation.</p>
 </body></html>
 """
 

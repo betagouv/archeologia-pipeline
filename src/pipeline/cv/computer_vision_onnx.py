@@ -55,6 +55,14 @@ def _tile_progress_due(done: int, total: int) -> bool:
 logger = logging.getLogger(__name__)
 
 
+def sigmoide(x):
+    """Sigmoïde ``1 / (1 + exp(-x))``. Pour un logit très négatif, ``exp(-x)`` déborde vers l'infini et le
+    résultat vaut exactement 0, sa vraie limite : seul l'avertissement « overflow encountered in exp » était faux
+    (une ligne par modèle au journal). Il est tu ; la sortie est identique au bit, débordement compris."""
+    with np.errstate(over="ignore"):
+        return 1.0 / (1.0 + np.exp(-x))
+
+
 def _load_onnx_model(model_path: str, providers=None):
     """
     Charge un modèle ONNX avec onnxruntime.
@@ -293,7 +301,7 @@ def _postprocess_rfdetr(
         logger.debug(f"RF-DETR: boxes shape={boxes.shape}, logits shape={logits.shape}")
         
         # Appliquer sigmoid pour convertir logits en probabilités
-        scores = 1 / (1 + np.exp(-logits))  # sigmoid
+        scores = sigmoide(logits)
         
         # Trouver la meilleure classe et son score pour chaque détection
         max_scores = scores.max(axis=1)
@@ -527,7 +535,7 @@ def _run_rfdetr_seg_with_sahi(
         logits_out = outputs[1][0]   # [N, num_classes]
         masks_out  = outputs[2][0]   # [N, Mh, Mw]
 
-        scores     = 1.0 / (1.0 + np.exp(-logits_out))  # sigmoid [N, C]
+        scores     = sigmoide(logits_out)  # [N, C]
         max_scores = scores.max(axis=1)                   # [N]
         class_ids  = scores.argmax(axis=1)                # [N]
 
@@ -598,7 +606,7 @@ def _run_rfdetr_seg_with_sahi(
                         round(gh / SNAP) * SNAP)
 
             mask_logit = masks_out[i]                        # [Mh, Mw]
-            mask_prob  = 1.0 / (1.0 + np.exp(-mask_logit))  # sigmoid, float [Mh, Mw]
+            mask_prob  = sigmoide(mask_logit)  # float [Mh, Mw]
 
             # Upscale vers la taille de la slice (float → lisse)
             mask_prob_slice = cv2.resize(

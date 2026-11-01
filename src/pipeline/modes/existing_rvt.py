@@ -422,7 +422,7 @@ def run_existing_rvt(
             except OSError:
                 pass
         if not jpg_path.exists():
-            log(f"Conversion TIF->PNG (existing_rvt): {inference_src.name} -> {jpg_path.name}")
+            log(f"Conversion TIF->PNG : {inference_src.name} -> {jpg_path.name}")
             _convert_tif_to_png_with_world(inference_src, jpg_path)
         res["jpg"] = jpg_path
 

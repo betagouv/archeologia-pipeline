@@ -108,7 +108,7 @@ class TestFreshPublication:
 
         messages = self._publish(tmp_path, monkeypatch)
 
-        assert any("copié" in m for m in messages)
+        assert any("TIF publié" in m for m in messages)
         assert published.stat().st_mtime == pytest.approx(t + 10)
 
     def test_up_to_date_final_is_not_recopied(self, tmp_path, monkeypatch):
@@ -116,7 +116,7 @@ class TestFreshPublication:
         self._write_source(tmp_path)
         self._publish(tmp_path, monkeypatch)
         messages = self._publish(tmp_path, monkeypatch)
-        assert not any("copié" in m for m in messages)
+        assert not any("TIF publié" in m for m in messages)
 
     def test_published_tif_keeps_source_mtime_despite_pyramids(self, tmp_path, monkeypatch):
         # gdaladdo (overviews internes) « rajeunit » le TIF publié → sur les

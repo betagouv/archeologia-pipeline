@@ -8,6 +8,8 @@ import time
 import types
 from pathlib import Path
 
+import pytest
+
 from app.progress_reporter import NullProgressReporter
 from app.services import finalize_service
 from app.services.rapport_run import (
@@ -84,10 +86,37 @@ def test_surface_mesuree_sur_les_rasters(tmp_path, monkeypatch):
     osgeo.gdal = gdal
     monkeypatch.setitem(sys.modules, "osgeo", osgeo)
     monkeypatch.setitem(sys.modules, "osgeo.gdal", gdal)
-    assert surface_km2_depuis_vrt([vrt]) == 3.0                    # trois dalles de 1 km²
+    assert surface_km2_depuis_vrt([vrt]) == 1.0      # trois dalles de 1 km² au MÊME endroit : 1 km² couvert
     assert surface_km2_depuis_vrt([]) is None
     assert surface_km2_depuis_vrt([str(tmp_path / "vide.vrt")]) is None
 
+
+
+def test_surface_union_des_emprises(tmp_path, monkeypatch):
+    """Run de_sh : 205 fenêtres qui se recouvrent, 47,7 km² en somme et 36,7 km² distincts ; le rapport, qui
+    affirme qu'aucun chiffre n'est une estimation (et en tire des densités par km²), donne l'union."""
+    tif = tmp_path / "indices" / "LD" / "tif"
+    tif.mkdir(parents=True)
+    origines = {"a.tif": (0.0, 1000.0), "b.tif": (500.0, 1500.0), "c.tif": (0.0, 1000.0), "d.tif": (5000.0, 9000.0)}
+    for n in origines:
+        (tif / n).write_bytes(b"")
+
+    class _Ds:
+        RasterXSize, RasterYSize = 2000, 2000
+
+        def __init__(self, p):
+            self.x0, self.y0 = origines[Path(p).name]
+
+        def GetGeoTransform(self):  # noqa: N802 (API GDAL)
+            return (self.x0, 0.5, 0.0, self.y0, 0.0, -0.5)
+
+    gdal = types.SimpleNamespace(UseExceptions=lambda: None, Open=_Ds)
+    osgeo = types.ModuleType("osgeo")
+    osgeo.gdal = gdal
+    monkeypatch.setitem(sys.modules, "osgeo", osgeo)
+    monkeypatch.setitem(sys.modules, "osgeo.gdal", gdal)
+    # a et c identiques, b recouvre un quart de a, d à l'écart : 1 + 0,75 + 1 = 2,75 km² (somme : 4).
+    assert surface_km2_depuis_vrt([str(tif / "index_LD.vrt")]) == pytest.approx(2.75)
 
 def test_vignette_et_formats(tmp_path):
     vrt = str(tmp_path / "indices" / "SVF_R10" / "tif" / "index_SVF.vrt")
@@ -99,6 +128,70 @@ def test_vignette_et_formats(tmp_path):
     assert choisir_vrt_vignette([mnt]) == mnt and choisir_vrt_vignette([]) is None
     assert vignette_depuis_vrt(str(tmp_path / "absent.vrt"), tmp_path / "v.png") is None   # sans GDAL / absent : None
     assert format_duree(7) == "7s" and format_duree(247) == "4min 07s" and format_duree(3725) == "1h 02min"
+
+
+def _faux_gdal(monkeypatch, minmax):
+    """GDAL simulé : ``ComputeRasterMinMax(approx)`` délègue à ``minmax(approx)`` ; les appels sont notés."""
+    appels: list = []
+
+    class _Bande:
+        def ComputeRasterMinMax(self, approx):  # noqa: N802 (API GDAL)
+            appels.append(("minmax", approx))
+            return minmax(approx)
+
+        def GetNoDataValue(self):  # noqa: N802
+            return 255.0
+
+    class _Ds:
+        RasterXSize, RasterYSize = 202_000, 100_000
+
+        def GetRasterBand(self, i):  # noqa: N802
+            return _Bande()
+
+    def translate(dest, src, options=None):
+        appels.append(("translate", dest, options))
+        if options and options.get("format") == "PNG":
+            Path(dest).write_bytes(b"png")
+        return _Ds()
+
+    gdal = types.SimpleNamespace(
+        UseExceptions=lambda: None, Open=lambda p: _Ds(), Translate=translate, TranslateOptions=lambda **k: k,
+        GDT_Byte=1, GetConfigOption=lambda k: None, SetConfigOption=lambda k, v: None,
+    )
+    osgeo = types.ModuleType("osgeo")
+    osgeo.gdal = gdal
+    monkeypatch.setitem(sys.modules, "osgeo", osgeo)
+    monkeypatch.setitem(sys.modules, "osgeo.gdal", gdal)
+    return appels
+
+
+def test_vignette_de_fenetres_dispersees(tmp_path, monkeypatch):
+    """Run flamand du 2026-11-01 : mosaïque couverte à 0,34 %, l'échantillon approché de GDAL ne trouve aucun
+    pixel (« no valid pixels found in sampling ») et le rapport sortait sans vignette, sans rien dire. Le
+    min-max est désormais EXACT, mesuré sur la mosaïque déjà réduite à la taille de la vignette."""
+    def minmax(approx):
+        if approx:
+            raise RuntimeError("Failed to compute min/max, no valid pixels found in sampling.")
+        return (3.0, 200.0)
+
+    appels = _faux_gdal(monkeypatch, minmax)
+    journal: list = []
+    assert vignette_depuis_vrt("m.vrt", tmp_path / "v.png", log=journal.append) == "v.png"
+    assert ("minmax", True) not in appels and ("minmax", False) in appels
+    (reduite,) = [a for a in appels if a[0] == "translate" and a[2]["format"] == "MEM"]
+    assert reduite[2]["width"] == 720 and reduite[2]["height"] == 0       # réduite AVANT la mesure
+    (png,) = [a for a in appels if a[0] == "translate" and a[2]["format"] == "PNG"]
+    assert png[2]["scaleParams"] == [[3.0, 200.0, 1, 255]] and journal == []
+
+
+def test_vignette_impossible_est_journalisee(tmp_path, monkeypatch):
+    def minmax(approx):
+        raise RuntimeError("no valid pixels")
+
+    _faux_gdal(monkeypatch, minmax)
+    journal: list = []
+    assert vignette_depuis_vrt("m.vrt", tmp_path / "v.png", log=journal.append) is None
+    assert len(journal) == 1 and "Vignette du rapport non rendue" in journal[0] and "no valid pixels" in journal[0]
 
 
 def test_decrire_reglages_en_mots():
@@ -261,3 +354,22 @@ def test_seuils_par_classe_affiches_et_jamais_arrondis_a_tort():
     h = construire_html(d)
     assert "Chemins creux 0,245 · Parcellaire 0,26 · Talus et fossés 0,25" in h
     assert "<td class=num>0,245</td>" in h and "0,24<" not in h
+
+
+def test_planche_pour_un_lot_de_sites_disperses():
+    """Crash test de_sh : la vue d'ensemble d'un lot multi-sites n'était que 33 carrés gris de 4-5 px. Sous 25 %
+    de l'emprise couverte, la vignette devient une planche des fenêtres (les 12 plus grandes)."""
+    from app.services.rapport_run import cases_de_planche
+    grille = [(f"{i}_{j}", (i * 1000.0, j * 1000.0, i * 1000.0 + 1000, j * 1000.0 + 1000))
+              for i in range(3) for j in range(3)]
+    assert cases_de_planche(grille) == []                                  # lot compact : vue d'ensemble
+    sites = [(f"s{i:02d}", (i * 20_000.0, 0.0, i * 20_000.0 + 351 + i, 351.0)) for i in range(15)]
+    cases = cases_de_planche(sites)
+    assert cases == [f"s{i:02d}" for i in range(3, 15)]                   # les 12 plus grandes, par nom
+    assert cases_de_planche(sites[:1]) == []
+
+
+def test_legende_de_la_planche():
+    h = construire_html(DonneesRapport(version="x", date="d", mode="m", vignette="v.png",
+                                       vignette_legende="Les 33 fenêtres, côte à côte"))
+    assert '<img class=vignette src="v.png"' in h and "Les 33 fenêtres, côte à côte" in h

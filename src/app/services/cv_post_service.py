@@ -169,14 +169,14 @@ def avertissements_remplissage(stats: List[Dict[str, Any]]) -> List[str]:
                else f"Fournissez des rasters d'au moins {grand['fenetre_px']} px de côté.")
     if len(lus) == 1:
         nom, r = lus[0]
-        return [f"{r['n']} images sur {r['total']} sont plus petites que la fenêtre d'analyse du modèle « {nom} » "
-                f"({_cote(r)}) : l'image n'en occupe en moyenne que {round(100 * r['part_moyenne'])} %, le reste est "
+        return [f"{r['n']} images sur {r['total']} occupent moins de la moitié de la fenêtre d'analyse du modèle "
+                f"« {nom} » ({_cote(r)}) : {round(100 * r['part_moyenne'])} % en moyenne, le reste est "
                 "complété par du vide, ce que le modèle n'a pas vu à l'entraînement : relisez ses détections avec "
                 f"prudence. {conseil}"]
     detail = " ; ".join(f"« {nom} » ({_cote(r)}) : {r['n']} images sur {r['total']}, "
                         f"{round(100 * r['part_moyenne'])} % en moyenne" for nom, r in lus)
-    return [f"Des images sont plus petites que la fenêtre d'analyse de {len(lus)} modèles — {detail}. L'image "
-            "n'occupe qu'une partie de la fenêtre, le reste est complété par du vide, ce que ces modèles n'ont pas vu "
+    return [f"Des images occupent moins de la moitié de la fenêtre d'analyse de {len(lus)} modèles — {detail}. "
+            "L'image n'occupe qu'une partie de la fenêtre, le reste est complété par du vide, ce que ces modèles n'ont pas vu "
             f"à l'entraînement : relisez leurs détections avec prudence. {conseil}"]
 
 

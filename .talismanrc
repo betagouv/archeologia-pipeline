@@ -18,7 +18,7 @@ fileignoreconfig:
 - filename: tests/unit/test_indices_freshness.py
   checksum: 5d6193f34ee53622336bf4dbac572ea706c2b64729aef8e5209854a99044ce4e
 - filename: tests/unit/test_results_freshness.py
-  checksum: e2e9b89dd08e5332ca0379af2dc2ae3ed33d2c5b8236389a40c6b400adda7fc9
+  checksum: 45ef259e17d6635335893f418cef5841cb7cee7465df34dd92cd626ef4c58f43
 - filename: .githooks/pre-push
   checksum: c3ba1eb42246b032f6a556dd8813efdeab7151044c6e9942a252822ca56905da
 - filename: CLAUDE.md
@@ -429,4 +429,6 @@ fileignoreconfig:
   checksum: 7751a969f197668ce83ce544acce39f5db9e2821442162a352be83ba7d16b168
 - filename: src/app/services/rapport_run.py
   checksum: a02345e53af5aec418acf7bdd557eac3ae4fb38002c7afd5d9cc6a479389a068
+- filename: tests/unit/test_durees_une_source.py
+  checksum: 8ee11f714b13423944e89e5d847350fee0019da10507aecb472535fd92d37b50
 version: '1.0'

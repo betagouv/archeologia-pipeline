@@ -21,9 +21,9 @@ from ..types import CancelCheckFn, LogFn
 from .neighbor_halo import DEFAULT_HALO_MARGIN_M, _gdal_extract, _is_fresh, fenetre_dans_enveloppe, halo_inputs
 
 
-# Tolérance d'alignement sur la grille IGN 1 km (mètres). Un MNT dont
-# les bornes s'écartent de plus de cette valeur du multiple de 1 km le plus
-# proche est considéré "small" (emprise native préservée, pas de crop).
+# Marge (mètres) au-delà de 1 km d'emprise qui fait passer un MNT en "large", et qui fait dire
+# « d'environ 1 km » au motif d'une petite emprise. Elle ne décide PLUS du "standard" (2026-11-02) :
+# une dalle n'est standard que si son rognage à la cellule km ne perd ni n'ajoute aucun pixel.
 _ALIGN_TOLERANCE_M = 50
 
 
@@ -109,6 +109,7 @@ def _large_tile_name_for(
 def _classify_mnt_layout(
     bounds: Tuple[float, float, float, float],
     *,
+    pixel_m: Optional[float] = None,
     tile_size_m: int = IGN_TILE_SIZE_M,
     tol_m: float = _ALIGN_TOLERANCE_M,
 ) -> str:
@@ -119,9 +120,13 @@ def _classify_mnt_layout(
       à SAHI qui fera son propre slicing 640 × 640 à l'inférence). Pas de
       pré-découpage en sous-dalles 1 km : évite les bordures NoData inutiles
       et garantit la cohérence des indices RVT au travers de la scène.
-    - ``"standard"`` : ≈ 1 km aligné sur la grille IGN → comportement d'origine
-      (crop 1 km qui est essentiellement un no-op).
-    - ``"small"``  : < 1 km ou non aligné → pas de crop, on conserve l'emprise
+    - ``"standard"`` : la cellule km elle-même, chaque bord à ½ pixel (``pixel_m``) au plus de la
+      grille (dalle LiDAR HD IGN : coins à 0,25 m pour des pixels de 0,5 m) → nommage IGN, marge
+      inter-dalles et rognage à la cellule, qui ne perd ni n'ajoute alors aucun pixel. Décision du
+      2026-11-02 (point 32) : la tolérance de 50 m rangeait ici une fenêtre de 1 010 m décalée de
+      18-26 m (gb_sct), que le rognage amputait de 6 % avec des bandes NoData. ``pixel_m`` inconnu :
+      bords exacts exigés.
+    - ``"small"``  : tout le reste sous la limite du « large » → pas de crop, on conserve l'emprise
       native pour ne pas introduire de NoData autour.
     """
     xmin, ymin, xmax, ymax = bounds
@@ -131,16 +136,14 @@ def _classify_mnt_layout(
     if width > tile_size_m + tol_m or height > tile_size_m + tol_m:
         return "large"
 
-    dim_ok = abs(width - tile_size_m) <= tol_m and abs(height - tile_size_m) <= tol_m
-    align_ok = (
-        abs(xmin - round(xmin / tile_size_m) * tile_size_m) <= tol_m
-        and abs(ymax - round(ymax / tile_size_m) * tile_size_m) <= tol_m
-    )
-    if dim_ok and align_ok:
+    demi_px = abs(pixel_m or 0.0) / 2 + 1e-6
+    x0 = round(xmin / tile_size_m) * tile_size_m
+    y1 = round(ymax / tile_size_m) * tile_size_m
+    if all(abs(bord - grille) <= demi_px for bord, grille in (
+            (xmin, x0), (xmax, x0 + tile_size_m), (ymax, y1), (ymin, y1 - tile_size_m))):
         return "standard"
 
     return "small"
-
 
 
 def _motif_petite_emprise(
@@ -153,6 +156,25 @@ def _motif_petite_emprise(
     if abs(w - tile_size_m) <= tol_m and abs(h - tile_size_m) <= tol_m:
         return f"{taille} non alignée sur la grille de 1 km"
     return f"{taille}, plus petite qu'une dalle de 1 km"
+
+def _bilan_marge(etendues: int, sans_voisine: int, seuls: int) -> str:
+    """Ligne de bilan de la marge inter-dalles, sur TOUT le lot (point 33, 2026-11-02 : « 0 dalle(s) étendue(s)
+    …, 1 sans voisin » taisait les 33 fenêtres hors grille). Vide si aucun MNT n'a été traité."""
+    def n(k: int, un: str, plusieurs: str) -> str:
+        return f"{k} {un if k == 1 else plusieurs}"
+
+    parts = []
+    if etendues:
+        m = f"de {DEFAULT_HALO_MARGIN_M:g} m depuis"
+        parts.append(n(etendues, f"dalle étendue {m} ses voisines", f"dalles étendues {m} leurs voisines"))
+    if sans_voisine:
+        parts.append(n(sans_voisine, "dalle de 1 km sans voisine", "dalles de 1 km sans voisine"))
+    if seuls:
+        if not (etendues or sans_voisine):
+            parts.append("aucune dalle de 1 km sur la grille")
+        parts.append(n(seuls, "MNT hors grille du km, traité seul", "MNT hors grille du km, traités seuls"))
+    return "Marge inter-dalles : " + " ; ".join(parts) if parts else ""
+
 
 def _copy_source_mnt_to_temp(
     *,
@@ -398,7 +420,7 @@ def run_existing_mnt(
     warned_context: set[str] = set()
     # Halo des indices (audit Fable 2026-11-02, P2) : emprises lues une fois ; dalles STANDARD étendues / seules.
     tiles = {p: b for p in mnt_files if (b := get_raster_bounds(p)) is not None}
-    marge_dalles = {"etendues": 0, "sans_voisin": 0}
+    marge_dalles = {"etendues": 0, "sans_voisin": 0, "seuls": 0}
     from ..batch import process_items_isolated
 
     def _process_one_mnt(idx: int, mnt_path: Path) -> None:
@@ -427,7 +449,8 @@ def run_existing_mnt(
         # 1) Inspecter l'emprise du MNT pour choisir le flux adapté
         bounds = get_raster_bounds(mnt_path)
         if bounds is not None:
-            layout = _classify_mnt_layout(bounds)
+            layout = _classify_mnt_layout(
+                bounds, pixel_m=max(abs(spec.pixel_size_x), abs(spec.pixel_size_y)) if spec is not None else None)
             width = bounds[2] - bounds[0]
             height = bounds[3] - bounds[1]
             log(
@@ -479,6 +502,7 @@ def run_existing_mnt(
                 log=log,
                 cancel_check=cancel_check,
             )
+            marge_dalles["seuls"] += 1
             log(
                 f"MNT {mnt_path.name}: emprise > 1 km → RVT et CV sur le "
                 f"raster complet (pas de pré-découpage, SAHI assure le slicing)"
@@ -529,8 +553,7 @@ def run_existing_mnt(
         # STANDARD : dalle + 50 m depuis les MNT voisins (P2) ; sinon (SMALL, dalle isolée, échec) copie seule.
         etendue = (not skip_crop) and _materialiser_mnt_avec_marge(
             mnt_path, tiles, temp_mnt_path, DEFAULT_HALO_MARGIN_M, log)
-        if not skip_crop:
-            marge_dalles["etendues" if etendue else "sans_voisin"] += 1
+        marge_dalles["seuls" if skip_crop else "etendues" if etendue else "sans_voisin"] += 1
         if not etendue:
             _copy_source_mnt_to_temp(
                 source_path=mnt_path,
@@ -574,9 +597,8 @@ def run_existing_mnt(
     )
     if cancel_check is not None and cancel_check():
         log("Annulation demandée, arrêt du traitement MNT.")
-    if marge_dalles["etendues"] or marge_dalles["sans_voisin"]:
-        log(f"Marge inter-dalles : {marge_dalles['etendues']} dalle(s) étendue(s) de {DEFAULT_HALO_MARGIN_M:g} m "
-            f"depuis leurs voisines, {marge_dalles['sans_voisin']} sans voisin")
+    if bilan := _bilan_marge(marge_dalles["etendues"], marge_dalles["sans_voisin"], marge_dalles["seuls"]):
+        log(bilan)
 
     if failures:
         err(

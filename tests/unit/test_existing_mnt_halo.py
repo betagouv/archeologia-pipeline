@@ -128,7 +128,7 @@ def test_marge_cote_voisin_seulement_et_publie_a_la_cellule(tmp_path, monkeypatc
     _lancer(seule, tmp_path / "sortie_seule", monkeypatch)
     assert np.array_equal(_lire(_publie(out, "MNT", "0700_6601"))[0],
                           _lire(_publie(tmp_path / "sortie_seule", "MNT", "0700_6601"))[0])
-    assert any("Marge inter-dalles : 4 dalle(s) étendue(s) de 50 m depuis leurs voisines, 0 sans voisin" in m
+    assert any(m == "Marge inter-dalles : 4 dalles étendues de 50 m depuis leurs voisines"
                for m in journal)
 
 
@@ -168,7 +168,7 @@ def test_dalle_isolee_copie_a_l_octet(tmp_path, monkeypatch):
     temp = _inter(out, "MNT_EXT_0700_6601_MNT.tif")
     assert filecmp.cmp(seule, temp, shallow=False)
     assert not _inter(out, "MNT_EXT_0700_6601_MNT.inputs.json").exists()
-    assert any("0 dalle(s) étendue(s) de 50 m depuis leurs voisines, 1 sans voisin" in m for m in journal)
+    assert "Marge inter-dalles : 1 dalle de 1 km sans voisine" in journal
 
 
 def test_voisine_retiree_retour_a_la_copie(tmp_path, monkeypatch):

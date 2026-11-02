@@ -49,8 +49,8 @@ Vous fournissez un dossier de modèles de terrain. Le plugin calcule les produit
 
 Le plugin inspecte l'emprise de chaque raster :
 
-- **dalle** d'un kilomètre, alignée sur le kilomètre (comme les dalles de l'IGN) : traitement habituel ;
-- **petit raster**, moins d'un kilomètre ou non aligné : l'emprise est conservée telle quelle ;
+- **dalle** : exactement un carré d'un kilomètre de la grille, chaque bord à moins d'un demi-pixel du kilomètre (comme les dalles de l'IGN) : traitement habituel, publiée à son kilomètre sans perdre ni ajouter de pixel ;
+- **petit raster** : moins d'un kilomètre, ou d'environ un kilomètre mais hors de la grille (une fenêtre de 1 010 m décalée de 20 m) : l'emprise est conservée telle quelle, sans rognage ;
 - **grand raster**, plus d'un kilomètre dans une dimension : aucun pré-découpage, les produits sont calculés sur toute l'emprise et la détection découpe elle-même l'indice en fenêtres d'analyse.
 
 **Une seule résolution par dossier.** Les rayons des indices et les fenêtres de détection sont réglés en mètres et convertis en pixels à la résolution des rasters, une fois par traitement. Un dossier qui mêle des rasters à 1 m et à 0,5 m est refusé par la vérification de l'étape 4 (« Résolution des rasters »), qui compte les rasters de chaque résolution : rangez-les dans un dossier par résolution et lancez un traitement par dossier, chacun avec son dossier de sortie. Des pas qui ne diffèrent que d'un arrondi (0,999993 m et 1 m) comptent pour une seule résolution. Même règle pour les indices existants.

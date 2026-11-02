@@ -141,6 +141,18 @@ def _classify_mnt_layout(
     return "small"
 
 
+
+def _motif_petite_emprise(
+    bounds: Tuple[float, float, float, float], *, tile_size_m: int = IGN_TILE_SIZE_M, tol_m: float = _ALIGN_TOLERANCE_M,
+) -> str:
+    """Pourquoi un MNT est classé « small » (:func:`_classify_mnt_layout`), en mots : trop petit, ou d'environ
+    1 km mais non aligné (un 1 011 m était annoncé « < 1 km », de_sh 2026-11-01)."""
+    w, h = bounds[2] - bounds[0], bounds[3] - bounds[1]
+    taille = f"emprise {round(w):,} × {round(h):,} m".replace(",", " ")
+    if abs(w - tile_size_m) <= tol_m and abs(h - tile_size_m) <= tol_m:
+        return f"{taille} non alignée sur la grille de 1 km"
+    return f"{taille}, plus petite qu'une dalle de 1 km"
+
 def _copy_source_mnt_to_temp(
     *,
     source_path: Path,
@@ -443,7 +455,7 @@ def run_existing_mnt(
             current_tile_name = _large_tile_name_for(mnt_path, bounds, crs)
             name_suffix = "_" + disambiguate(make_uid(mnt_path), seen_uids)
             log(
-                f"MNT {mnt_path.name}: emprise < 1 km (ou non alignée IGN) → "
+                f"MNT {mnt_path.name}: {_motif_petite_emprise(bounds)} → "
                 f"crop sauté, emprise native conservée (uid={name_suffix[1:]})."
             )
         else:

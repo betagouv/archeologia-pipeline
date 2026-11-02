@@ -55,8 +55,16 @@ class StructuredLogger:
         self._log(f"  Démarré à   : {time.strftime('%H:%M:%S')}")
         self._log("")
 
-    def end_pipeline(self, success: bool = True, tiles_processed: int = 0, tiles_total: int = 0, products: Optional[list] = None) -> None:
-        duration = self._format_duration(self._start_time)
+    def end_pipeline(self, success: bool = True, tiles_processed: int = 0, tiles_total: int = 0, products: Optional[list] = None,
+                     duree_s: Optional[float] = None) -> None:
+        """``duree_s`` : la durée du run mesurée par la finalisation (celle de l'écran et du rapport), à défaut le
+        chronomètre de :meth:`start_pipeline` — démarré plus tôt, il donnait 7 s de plus que l'écran (2026-11-01)."""
+        if duree_s is not None:
+            from .user_narrator import _format_duration
+
+            duration = _format_duration(duree_s)
+        else:
+            duration = self._format_duration(self._start_time)
         self._log("")
         self._log(self.SEPARATOR)
         if success:
@@ -175,17 +183,9 @@ class StructuredLogger:
     def _format_duration(self, start_time: Optional[float]) -> str:
         if start_time is None:
             return "N/A"
-        elapsed = time.time() - start_time
-        if elapsed < 60:
-            return f"{elapsed:.1f}s"
-        elif elapsed < 3600:
-            mins = int(elapsed // 60)
-            secs = int(elapsed % 60)
-            return f"{mins}min {secs}s"
-        else:
-            hours = int(elapsed // 3600)
-            mins = int((elapsed % 3600) // 60)
-            return f"{hours}h {mins}min"
+        from .user_narrator import _format_duration
+
+        return _format_duration(time.time() - start_time)
 
 
 def create_structured_logger(log_func: LogFunc) -> StructuredLogger:

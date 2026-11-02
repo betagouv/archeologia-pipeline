@@ -196,7 +196,11 @@ def _parse_runner_stdout(
         try:
             parts = line.replace("summary:", "").strip().split()
             info = {p.split("=")[0]: p.split("=")[1] for p in parts}
-            log(f"Computer Vision: Terminé - {info.get('success', '?')} images traitées, {info.get('total_detections', '?')} détections au total")
+            # ``success`` = images AVEC détections ; ``processed`` = images analysées (absent d'un vieux binaire).
+            analysees = info.get("processed", info.get("success", "?"))
+            cache = f", {info['skipped']} reprises du cache" if info.get("skipped", "0") != "0" else ""
+            log(f"Computer Vision: Terminé - {analysees} images analysées, dont {info.get('success', '?')} avec "
+                f"détections{cache}, {info.get('total_detections', '?')} détections au total")
             td = info.get("total_detections")
             if td is not None:
                 try:

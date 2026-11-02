@@ -2,7 +2,7 @@
 
 La frise du haut représente la chaîne de traitement (le [schéma complet](premier-traitement.md#ce-que-fait-le-plugin) est au chapitre Premier traitement). Cliquez sur ce que vous possédez déjà : c'est le **point de départ** du traitement, marqué d'un badge et rappelé dans un bandeau. Les étapes qui le précèdent sont ignorées et disent « sautée » : le traitement ne passe pas par là. Le champ de vos fichiers s'adapte. Il n'y a pas de liste déroulante ; au clavier, la touche Tab passe d'un point de départ à l'autre et Espace le choisit.
 
-[![Étape 1 : la frise des points d'entrée, le bandeau du point de départ, la source et le dossier de sortie](img/etape1-source.png)](img/etape1-source.png)
+[![Étape 1 : la frise des points d'entrée, le bandeau du point de départ, la source, le dossier de sortie et le nom de l'analyse](img/etape1-source.png)](img/etape1-source.png)
 
 ## Les quatre points de départ
 
@@ -18,6 +18,12 @@ Les deux premiers points de départ exécutent toute la chaîne. Depuis un MNT e
 Dans tous les cas, indiquez un **dossier de sortie**, de préférence vide. Relancer dans le même dossier est possible : voir [Relancer dans le même dossier](etape-5-traitement.md#relancer-dans-le-meme-dossier).
 
 Sous chaque champ, une ligne dit ce qui manque et le geste à faire : « Indiquez la zone d'étude… », « Ce dossier est introuvable : vérifiez le chemin », « Ce dossier est dans le dossier de vos données : choisissez un dossier de sortie à part ». Elle disparaît quand le champ est bon, et dit « 3 dalles choisies sur la carte » après une sélection sur la carte. Le rail de gauche marque « à corriger » l'étape qui porte encore un problème.
+
+## Nom de l'analyse
+
+Sous le dossier de sortie, le **nom de l'analyse** est proposé d'après lui : le dossier qui le contient, puis le dossier de sortie, « be_vl · indices » pour un dossier de sortie `…\be_vl\indices`. Il suit le dossier de sortie tant que vous ne l'avez pas écrit vous-même ; une fois saisi, il ne bouge plus. Videz le champ pour revenir à la proposition.
+
+Ce nom, suivi de la date et de l'heure du traitement, « be_vl · indices — 01/11/2026 14:05 », est celui du groupe qui réunit les couches du traitement dans QGIS (voir [Le projet de validation](resultats.md#le-projet-de-validation)) ; il titre aussi le rapport et figure dans la trace `traitement.json`. Il est enregistré avec la configuration et revient avec elle, comme avec **Relancer avec un seuil changé** ; une configuration enregistrée avant ce champ reprend la proposition.
 
 ## Téléchargement IGN
 

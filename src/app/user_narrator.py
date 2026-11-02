@@ -300,10 +300,10 @@ class UserNarrator:
     # ------------------------------------------------------------------
     def cv_start(self, n_runs: int) -> None:
         if n_runs == 1:
-            self._r.user_info("🤖 Détection automatique en cours…")
+            self._r.user_info("🔍 Détection automatique en cours…")
         else:
             self._r.user_info(
-                f"🤖 Détection automatique en cours ({n_runs} modèles configurés)…"
+                f"🔍 Détection automatique en cours ({n_runs} modèles configurés)…"
             )
 
     def cv_run_start(self, run_idx: int, total: int, model_name: str, target_rvt: str) -> None:
@@ -320,7 +320,7 @@ class UserNarrator:
         qui renvoie au Dépannage."""
         msg = str(decision.get("message") or decision.get("motif") or decision.get("appareil") or "")
         if decision.get("appareil") == "carte_graphique":
-            self._r.user_info(f"   🎮 « {model_name} » : {msg}")
+            self._r.user_info(f"   ⚡ « {model_name} » : {msg}")
         else:
             self._r.user_warning(f"⚠️ « {model_name} » : {msg}")
 
@@ -376,10 +376,10 @@ class UserNarrator:
 
     def cv_complete(self, n_detections: int) -> None:
         if n_detections == 0:
-            self._r.user_info("🤖 Détection terminée : aucune zone d'intérêt détectée")
+            self._r.user_info("🔍 Détection terminée : aucune zone d'intérêt détectée")
         else:
             self._r.user_info(
-                f"🤖 Détection terminée : "
+                f"🔍 Détection terminée : "
                 f"{_human_count(n_detections, 'détection dans les couches', 'détections dans les couches')}"
             )
 

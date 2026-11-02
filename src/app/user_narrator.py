@@ -42,16 +42,23 @@ def _human_count(n: int, singular: str, plural: Optional[str] = None) -> str:
 
 
 def _format_duration(seconds: float) -> str:
-    """Format humain d'une durée (en secondes)."""
-    if seconds < 60:
-        return f"{int(seconds)}s"
-    if seconds < 3600:
-        mins = int(seconds // 60)
-        secs = int(seconds % 60)
-        return f"{mins}min {secs:02d}s" if secs else f"{mins}min"
-    hours = int(seconds // 3600)
-    mins = int((seconds % 3600) // 60)
-    return f"{hours}h {mins:02d}min"
+    """Format humain d'une durée (en secondes), arrondie à la seconde. SEUL format de durée du plugin : écran,
+    journal (``structured_logger``), rapport (``rapport_run.format_duree``) et vue d'exécution l'emploient."""
+    s = int(round(max(0.0, seconds)))
+    if s < 60:
+        return f"{s}s"
+    if s < 3600:
+        return f"{s // 60}min {s % 60:02d}s" if s % 60 else f"{s // 60}min"
+    return f"{s // 3600}h {(s % 3600) // 60:02d}min"
+
+
+def format_par_image(seconds: float, n_images: int) -> str:
+    """Durée moyenne par image, même texte à l'écran et au rapport : au dixième sous 10 s (« 2,6 s »), sinon au
+    format des durées (« 21s »)."""
+    p = seconds / n_images
+    if p >= 10:
+        return _format_duration(p)
+    return f"{p:.1f}".rstrip("0").rstrip(".").replace(".", ",") + " s"
 
 
 class UserNarrator:
@@ -118,14 +125,17 @@ class UserNarrator:
         tiles_processed: int = 0,
         products: Optional[list] = None,
         start_time: Optional[float] = None,
+        duree_s: Optional[float] = None,
     ) -> None:
-        """Annonce la fin du pipeline.
+        """Annonce la fin du pipeline. ``duree_s`` (mesurée une fois par la finalisation) prime sur ``start_time``.
 
         ``start_time`` peut être passé explicitement quand le narrateur
         utilisé n'est pas celui qui a vu ``pipeline_starting`` (cas
         typique : narrateur instancié dans :mod:`finalize_service`).
         """
-        if start_time is not None:
+        if duree_s is not None:
+            duration = _format_duration(duree_s)
+        elif start_time is not None:
             duration = _format_duration(time.time() - start_time)
         else:
             duration = self._elapsed_str()
@@ -137,11 +147,14 @@ class UserNarrator:
             parts.append("produits : " + ", ".join(labels))
         self._r.user_success(" — ".join(parts))
 
-    def pipeline_failed(self, message: str, start_time: Optional[float] = None, journal: str = "") -> None:
+    def pipeline_failed(self, message: str, start_time: Optional[float] = None, journal: str = "",
+                        duree_s: Optional[float] = None) -> None:
         # Même logique que pipeline_complete : ``start_time`` explicite quand le
         # narrateur n'est pas celui qui a vu ``pipeline_starting`` (cas typique :
         # narrateur instancié dans finalize_service — sinon durée « 0s »).
-        if start_time is not None:
+        if duree_s is not None:
+            duration = _format_duration(duree_s)
+        elif start_time is not None:
             duration = _format_duration(time.time() - start_time)
         else:
             duration = self._elapsed_str()
@@ -326,7 +339,7 @@ class UserNarrator:
             f"en {_format_duration(seconds)}"
         )
         if n_images > 1:
-            msg += f" (≈ {_format_duration(round(seconds / n_images))} par image)"
+            msg += f" (≈ {format_par_image(seconds, n_images)} par image)"
         if appareil == "carte_graphique":
             msg += " sur la carte graphique"
         self._r.user_info(msg)

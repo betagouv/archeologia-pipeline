@@ -126,7 +126,7 @@ fileignoreconfig:
 - filename: src/ui/wizard_dialog.py
   checksum: 64577fe3ec55b9c8390842275fedfd9ba650ca348b34f19a987cd6db44b7d4f0
 - filename: tests/TESTS_MANUELS_QGIS.md
-  checksum: 28c13b46febfeda3e6db618d9eecf85211338076652e0c86dd7f2a09972d5e05
+  checksum: b3cca6659783f8b2e1a11b5cd43b5436417dd64f48903ffb8b571b50fe978db0
 - filename: tests/integration/test_existing_mnt_runner_finalize.py
   checksum: e67c2e4c83cea0937bdfb39e8eec7aa7476f30648d4d858589e2308ad0565d63
 - filename: tests/integration/test_existing_rvt_runner_isolation.py
@@ -396,7 +396,7 @@ fileignoreconfig:
 - filename: tests/unit/test_vocabulaire.py
   checksum: 4bc0b459da9b209d87510f53cb65be48b85398df0eeb79d76021cc7ff8fb28dc
 - filename: src/app/user_narrator.py
-  checksum: aea019fdca2d0736d661e6959673a7e95fada504697911ab1e934d2934f79f95
+  checksum: eb71790f7bb0101ef16a6887b0ca56a26595bc73a82760ecbb1f3928597f2942
 - filename: src/ui/widgets/stage_button.py
   checksum: 905e2324563a29a6145ac92d0f2b0cba09c2c703dbbeeac881e646ad4265d32c
 - filename: src/ui/widgets/stepper_rail.py

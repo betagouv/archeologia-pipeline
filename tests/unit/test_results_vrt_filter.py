@@ -66,3 +66,26 @@ class TestVrtBoundsLookSuspect:
 
     def test_none_is_not_suspect(self):
         assert _vrt_bounds_look_suspect(None) is False
+
+
+def test_vrt_index_a_la_resolution_la_plus_fine(monkeypatch, tmp_path):
+    """Audit Fable 2026-11-02 (A4, #29) : gdalbuildvrt sans -resolution prend la MOYENNE des pas ; une relance à
+    une autre résolution dans le même dossier mêle des dalles _0M50_ et _1M00_ → -resolution highest."""
+    import subprocess
+
+    import pipeline.ign.products.results as results
+
+    for nom in ("a.tif", "b.tif"):
+        (tmp_path / nom).write_bytes(b"x")
+    vus = []
+
+    class _R:
+        returncode, stdout, stderr = 0, "", ""
+
+    monkeypatch.setattr(results.shutil, "which", lambda _n: "gdalbuildvrt")
+    monkeypatch.setattr(subprocess, "run", lambda cmd, **k: vus.append(cmd) or _R())
+    monkeypatch.setattr(results, "get_raster_bounds", lambda _p: None)
+    assert results.build_vrt_index(tmp_path, exclude_degenerate=False) is True
+    (cmd,) = vus
+    i = cmd.index("-resolution")
+    assert cmd[i + 1] == "highest"

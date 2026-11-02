@@ -287,9 +287,9 @@ def test_indices_fournis_reconnus_par_leur_nom():
     assert "pas connus" in msg
 
 
-def test_preflight_lot_de_resolutions_melees_dit_la_resolution_retenue():
-    """Audit 4 : un lot mêlé est calculé avec les rayons et la fenêtre de détection de la PREMIÈRE dalle
-    (ingest_plan.resolution_des_entrees) ; le préflight le dit."""
+def test_preflight_lot_de_resolutions_melees_est_refuse():
+    """Audit Fable 2026-11-02 (P1-A) : un lot mêlé n'est plus calculé avec les rayons de la première dalle ; le
+    message compte les dalles par résolution et demande un dossier et un traitement par résolution."""
     from pathlib import Path
     from pipeline.ingest_plan import plan_from_specs
     from pipeline.tilespec import TileSpec
@@ -298,9 +298,12 @@ def test_preflight_lot_de_resolutions_melees_dit_la_resolution_retenue():
         return TileSpec.from_values(source_path=Path(nom), bounds=(x, 0, x + 100, 100), pixel_size_x=pas,
                                     pixel_size_y=-pas, width_px=int(100 / pas), height_px=int(100 / pas),
                                     crs="EPSG:25832")
-    plan = plan_from_specs([t("b.tif", 0.5, 1000), t("a.tif", 1.0, 0)])
+    plan = plan_from_specs([t("b.tif", 0.5, 1000), t("a.tif", 1.0, 0), t("c.tif", 1.0, 2000)])
     (msg,) = [w for w in plan.warnings if "hétérogènes" in w]
-    assert "a.tif" in msg and "1 m" in msg and "rayons" in msg and "fenêtres" in msg
+    assert "2 dalle(s) à 1 m" in msg and "1 dalle(s) à 0,5 m" in msg
+    assert "séparez" in msg and "rayons" in msg and "fenêtres" in msg
+    assert "convertis à" not in msg and "a.tif" not in msg
+    assert len(plan.resolutions) == 2
 
 
 # ── run réel 2026-10-31 (MNT allemands à 1 m) : « fenêtre remplie à 71 % » disait le contraire du fait ───────

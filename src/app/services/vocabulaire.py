@@ -41,6 +41,7 @@ ENVIRONNEMENT: Dict[str, str] = {
     "python:geopandas": "Bibliothèque de géométries (geopandas)",
     "CRS des rasters": "Système de coordonnées des rasters",
     "CRS du dossier de sortie": "Système de coordonnées du dossier de sortie",
+    "Résolution des rasters": "Résolution des rasters",
     "Dalles dégénérées": "Dalles trop petites",
     "Dossier de sortie": "Dossier de sortie",
     # Les entrées de l'étape 1, nommées par ``_check_input_path`` (recette 65.5).
@@ -50,6 +51,26 @@ ENVIRONNEMENT: Dict[str, str] = {
     "Dossier MNT existants": "Dossier des MNT existants",
     "Dossier RVT existants": "Dossier des indices existants",
 }
+
+
+#: Contrôles des DONNÉES fournies (et non de l'environnement) : leur échec ne se règle pas en installant un outil.
+CONTROLES_DONNEES = frozenset({"CRS des rasters", "Résolution des rasters"})
+
+
+def bandeau_controles_en_echec(noms) -> str:
+    """Bandeau rouge de l'étape 4 pour des contrôles bloquants en échec (``noms`` = noms techniques) : les
+    contrôles de données disent que les données ne passent pas en l'état, les autres qu'un outil manque, avec
+    le renvoi au Dépannage (audit Fable 2026-11-02, A3)."""
+    donnees = [libelle_environnement(n) for n in noms if n in CONTROLES_DONNEES]
+    outils = [libelle_environnement(n) for n in noms if n not in CONTROLES_DONNEES]
+    parts = []
+    if donnees:
+        parts.append(f"<b>Les données fournies ne peuvent pas être traitées en l'état : {', '.join(donnees)}</b>"
+                     " — détail en infobulle du contrôle.")
+    if outils or not donnees:
+        parts.append(f"<b>Un outil manque : {', '.join(outils) or 'un outil'}.</b>&nbsp;&nbsp;"
+                     "<a href=\"manuel:depannage#les-verifications-prealables-ont-echoue\">Voir l'aide › Dépannage</a>")
+    return "<br>".join(parts)
 
 
 def titre_image(key: str) -> str:

@@ -59,7 +59,7 @@ def _gdal_extract(inputs: Sequence[Path], window: Bounds, dst: Path) -> None:
     # par dalle qui noierait le journal QGIS sans rien changer au résultat.
     gdal.PushErrorHandler("CPLQuietErrorHandler")
     try:
-        vrt = gdal.BuildVRT(vrt_path, [str(p) for p in inputs], outputBounds=window)
+        vrt = gdal.BuildVRT(vrt_path, [str(p) for p in inputs], outputBounds=window, resolution="highest")
         if vrt is None:
             raise RuntimeError(f"gdal.BuildVRT a échoué ({gdal.GetLastErrorMsg()})")
         try:

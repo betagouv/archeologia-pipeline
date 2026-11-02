@@ -13,7 +13,7 @@ _SECTION_ICONS_FALLBACK = {
     "download": "📥",
     "process": "🔧",
     "mnt": "🔧",
-    "cv": "🤖",
+    "cv": "🔍",
     "info": "ℹ️",
 }
 

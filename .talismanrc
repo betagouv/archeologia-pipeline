@@ -1,4 +1,6 @@
 fileignoreconfig:
+- filename: tests/unit/test_existing_mnt_halo.py
+  checksum: 8abc041e72ad2da755a87a4fb7690787daf0cf14b51eb0f6d840eb39fa230159
 - filename: tests/unit/test_results_vrt_filter.py
   checksum: 9ab6f8ff1958e2092e4fdf7ab0c3b061fb0f4b4643984da7d05cda97e65e587e
 - filename: tests/unit/test_geometries_imbriquees.py
@@ -20,7 +22,7 @@ fileignoreconfig:
 - filename: src/pipeline/ign/products/mnt.py
   checksum: d67d32e54a9730691413766859a849893bb35247ad2d970670ef66ccfcad7c07
 - filename: tests/unit/test_neighbor_halo.py
-  checksum: 64e47d182bea9e054bee3e30e9870d522472eeb3bf14fcf92996892dc0e785af
+  checksum: 0a887ff031c3c6b87b65e06881633d2e18f176873938040b485b5d1252bb3fa5
 - filename: tests/unit/test_merge_inputs_freshness.py
   checksum: f22da81d19eb8211793400d91f6a4b8e18a31a21a3953ad17b70b9fde37680ce
 - filename: tests/unit/test_cache_guard.py
@@ -32,7 +34,7 @@ fileignoreconfig:
 - filename: .githooks/pre-push
   checksum: c3ba1eb42246b032f6a556dd8813efdeab7151044c6e9942a252822ca56905da
 - filename: CLAUDE.md
-  checksum: ef4d83630d14a70b434620c0a0fc66c772f4d12263a1fe421fb402df75afa579
+  checksum: c8f82e9956954dd8581657a37afd864dad610059f3e6b9233c59cbd8e0459d26
 - filename: README.md
   checksum: 2c1afc856098a0466375944b285b8bad1650932d35da36c53c1b05bdbf19aff1
 - filename: dev/docs/documentation_utilisateur_v1.docx
@@ -134,9 +136,9 @@ fileignoreconfig:
 - filename: src/ui/wizard_dialog.py
   checksum: 64577fe3ec55b9c8390842275fedfd9ba650ca348b34f19a987cd6db44b7d4f0
 - filename: tests/TESTS_MANUELS_QGIS.md
-  checksum: 5998f892da6bdd05ae99703fdc609d7c424afe08b656df89e2f9aa931e8e6998
+  checksum: b1fb02d0853b1eb26218dd44ec3faa2b95ddc9274d95caca555c8603c49352de
 - filename: tests/integration/test_existing_mnt_runner_finalize.py
-  checksum: e67c2e4c83cea0937bdfb39e8eec7aa7476f30648d4d858589e2308ad0565d63
+  checksum: 09edbe48be7d273624e9d95354e3273c07a648491880cdb33c590782900510db
 - filename: tests/integration/test_existing_rvt_runner_isolation.py
   checksum: e2afe699b2ec6df1f97f99b790b1c5fc3e31f64237422927db109ed0cfab96d6
 - filename: tests/integration/test_ign_runner_finalize.py
@@ -258,9 +260,9 @@ fileignoreconfig:
 - filename: aide/08-resultats.md
   checksum: af76e503603ea8736df010a244c1034745c788cf2ac4a5448f822589ddb8b8eb
 - filename: aide/04-etape-2-produits.md
-  checksum: 60b42d19de49a468c4370ff78ec66a386fd203d272a90fe76e2376ed7e4e530c
+  checksum: 99b03d6c9b6d65557765340ee10515f8aeb135970bbd1f9341e307db9eeb3e77
 - filename: aide/09-depannage.md
-  checksum: 5a04d920bea8bad2dd66ae36cfe9f5b61691547f2e7b0f7238fea981b3f60edb
+  checksum: 3496ce82f73f4b14c258605fb455fba3e77f8c98c64c8c6746aaa8685c8a8c5a
 - filename: src/ui/widgets/carte_zones.py
   checksum: acb325e398a8bb1c2e2480257b1bc967a563693f9c8c2f0a02f6204b5209f874
 - filename: tests/unit/test_aide.py
@@ -400,7 +402,7 @@ fileignoreconfig:
 - filename: src/app/services/vocabulaire.py
   checksum: f9f2c4ff0a3137c45fe85324e6729d7e6823d710f55b69a71c00346f9b3f29f2
 - filename: aide/03-etape-1-source.md
-  checksum: dd8558e7bf8620c3500df9bb7e0eff833159441d32d6445dd6cb928a7f2e306e
+  checksum: 51eae0a3da32ddcb50bc61e44011956e815b150bcde936b96808620a6a6c2545
 - filename: tests/unit/test_vocabulaire.py
   checksum: 0b4cbc2973f5b953d252b060d9ebd98eabcaf5656b88d508c68ea04e03beb662
 - filename: src/app/user_narrator.py
@@ -436,7 +438,7 @@ fileignoreconfig:
 - filename: tests/unit/test_nommage_crs.py
   checksum: e16fe12dadb3a30cc4ddc296da4aeecfbd32a90726b2d23175fbf20e0a711a29
 - filename: src/app/services/cv_post_service.py
-  checksum: 7751a969f197668ce83ce544acce39f5db9e2821442162a352be83ba7d16b168
+  checksum: 57345307700503278bbbeb43c0152f2b701521203da6cd85aa34cdc0b7282c39
 - filename: src/app/services/rapport_run.py
   checksum: 482b329cf22b758340e3afb6e1884e5cd84cc8c3910d276f25c57b122a882116
 - filename: tests/unit/test_durees_une_source.py

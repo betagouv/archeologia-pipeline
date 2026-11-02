@@ -343,7 +343,8 @@ def _etape4_donnees_refusees(app, w, sortie: Path, log, fichiers) -> bool:
 def _etape4_donnees_grossieres(app, w, sortie: Path, log, fichiers) -> bool:
     """<sortie>/etape4-donnees-grossieres.png : MNT existants à 5 m, SVF + LD cochés → bandeau orange qui liste
     « LD : rayon de 1 à 2 px à 5 m/pixel… » et la ligne SVF, bouton Lancer actif (crash test it_piemonte,
-    2026-11-02 : rien ne le disait avant le journal)."""
+    2026-11-02 : rien ne le disait avant le journal) ; récapitulatif à « 5,00 m/pixel », pas le réglage de
+    l'étape 2 (#39)."""
     import re
     import tempfile
     import time
@@ -373,14 +374,17 @@ def _etape4_donnees_grossieres(app, w, sortie: Path, log, fichiers) -> bool:
     w.grab().save(str(sortie / "etape4-donnees-grossieres.png"))
     bandeau = re.sub("<[^>]+>", " ", w._launch_page._banner.text())
     etat = w._launch_page._banner.property("state")
-    log("étape 4 données grossières : préflight =", w._launch_page._preflight_status, "| état :", etat,
+    from qgis.PyQt.QtWidgets import QLabel
+    textes = [lbl.text() for lbl in w._launch_page.findChildren(QLabel)]
+    recap_ok = "5,00 m/pixel" in textes and "0,50 m/pixel" not in textes   # #39 : résolution des MNT fournis
+    log("étape 4 données grossières : récapitulatif à 5 m :", recap_ok, "| préflight =", w._launch_page._preflight_status, "| état :", etat,
         "| bandeau :", bandeau.strip(), "| bouton actif :", w._next_btn.isEnabled(),
         "| largeur bandeau :", w._launch_page._banner.width(), "/", w.width())
     fichiers.clear()
     fichiers.update(sauve)
     w._source_page.load_from(w._config)
     w._refresh_validation()
-    return (etat == "warn" and "LD : rayon de 1 à 2 px à 5 m/pixel" in bandeau
+    return (recap_ok and etat == "warn" and "LD : rayon de 1 à 2 px à 5 m/pixel" in bandeau
             and "SVF : rayon de 1 px à 5 m/pixel" in bandeau and w._next_btn.isEnabled())
 
 

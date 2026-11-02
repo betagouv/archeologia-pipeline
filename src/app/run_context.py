@@ -661,6 +661,23 @@ def resolution_du_run(ctx: RunContext) -> float:
     return resolution_des_entrees(dossier, ("tif", "tiff", "asc"))
 
 
+def resolution_affichee(ctx: RunContext) -> Optional[float]:
+    """Résolution à montrer avant le lancement (récapitulatif de l'étape 4, frise) : le réglage en mode LiDAR,
+    celle des rasters fournis sinon, ``None`` quand elle est inconnue — jamais le 0,5 m supposé de
+    :func:`resolution_du_run`, ni le réglage de l'étape 2 que ces modes n'utilisent pas (#39 des crash tests,
+    2026-11-02 : « 0,50 m/pixel » affiché pour des MNT à 5 m). Mode pas encore choisi : le réglage."""
+    if ctx.mode not in ("existing_mnt", "existing_rvt"):
+        return float(ctx.processing.mnt_resolution)
+    dossier = ctx.files.existing_mnt_dir if ctx.mode == "existing_mnt" else ctx.files.existing_rvt_dir
+    if dossier is None:
+        return None
+    try:
+        from ..pipeline.ingest_plan import resolution_des_entrees
+    except ImportError:  # pragma: no cover - tests (src/ sur le chemin)
+        from pipeline.ingest_plan import resolution_des_entrees
+    return resolution_des_entrees(dossier, ("tif", "tiff", "asc"), defaut=0.0) or None
+
+
 def rvt_params_du_run(ctx: RunContext, resolution_m: Optional[float] = None) -> Dict[str, Any]:
     """Les réglages des indices EN PIXELS à la résolution du run (``indices_metres.en_px``) : ce que reçoivent
     le calcul, le nommage des dossiers et les contrôles de noyau. ``resolution_m`` évite de relire les

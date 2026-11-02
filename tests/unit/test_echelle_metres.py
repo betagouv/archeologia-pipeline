@@ -349,13 +349,17 @@ def test_avertissement_remplissage_un_message_modeles_listes():
     r_enclos = {"n": 159, "total": 205, "part_moyenne": 0.33, "fenetre_px": 648, "fenetre_m": 648.0}
     (msg,) = avertissements_remplissage([{"modele": "Enclos (LD)", "remplissage": r_enclos},
                                          {"modele": "Linéaires", "remplissage": None}])
-    assert msg.startswith("159 images sur 205 sont plus petites que la fenêtre d'analyse du modèle « Enclos (LD) » "
-                          "(648 m de côté) : l'image n'en occupe en moyenne que 33 %")
+    # Le compte est celui des images remplies à moins de 50 % (175 sur de_sh), pas des images plus petites que la
+    # fenêtre (186) : le texte dit ce qui est compté (2026-11-01).
+    assert msg.startswith("159 images sur 205 occupent moins de la moitié de la fenêtre d'analyse du modèle "
+                          "« Enclos (LD) » (648 m de côté) : 33 % en moyenne")
+    assert "plus petites" not in msg
     assert "complété par du vide" in msg and "relisez ses détections avec prudence" in msg
     assert "Fournissez des MNT d'au moins 648 m de côté." in msg
     r_b = {"n": 10, "total": 205, "part_moyenne": 0.4, "fenetre_px": 324, "fenetre_m": 324.0}
     (msg,) = avertissements_remplissage([{"modele": "A", "remplissage": r_enclos}, {"modele": "B", "remplissage": r_b}])
-    assert "2 modèles" in msg and "« A » (648 m de côté) : 159 images sur 205, 33 % en moyenne" in msg
+    assert "occupent moins de la moitié de la fenêtre d'analyse de 2 modèles" in msg and "plus petites" not in msg
+    assert "« A » (648 m de côté) : 159 images sur 205, 33 % en moyenne" in msg
     assert "« B » (324 m de côté) : 10 images sur 205, 40 % en moyenne" in msg and "leurs détections" in msg
     assert "au moins 648 m de côté" in msg
     (msg,) = avertissements_remplissage([{"modele": "A", "remplissage": {**r_enclos, "fenetre_m": None}}])

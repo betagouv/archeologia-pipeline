@@ -432,14 +432,13 @@ def _journal_relatif(output_dir: Path) -> str:
 def _ecrire_rapport_run(
     *, output_dir: Path, vrt_paths: List[str], cv_runs: Any, cv_cfg: Any, cv_stats: List[Dict[str, Any]],
     bilan: Any, rvt_params: Dict[str, Any], active_products: List[str], ui_config: Dict[str, Any],
-    outcome: str, start_time: float, tiles_processed: int, tiles_total: Optional[int], meta_date: str,
+    outcome: str, duree_s: float, tiles_processed: int, tiles_total: Optional[int], meta_date: str,
     reporter: Any = None, motif_detection: str = "", crs: str = "",
 ) -> str:
     """Assemble et écrit ``rapport.html`` ; renvoie son nom. Thread worker (GDAL pour
     la vignette et la surface, aucun Qt). Rien ne situe la zone : ni nom de dalle, ni
     chemin ; les durées par étape viennent du chronomètre posé sur le reporter."""
     import datetime as _dt
-    import time as _time
 
     from ..plugin_metadata import get_plugin_version
     from ..progress_stages import STAGE_LABELS, Stage
@@ -451,6 +450,7 @@ def _ecrire_rapport_run(
         ecrire_rapport,
         extraire_avertissements,
         seuils_par_classe,
+        planche_du_lot,
         surface_km2_depuis_vrt,
         vignette_depuis_vrt,
     )
@@ -497,7 +497,14 @@ def _ecrire_rapport_run(
         except OSError:
             avertissements = []
     vrt = choisir_vrt_vignette(vrt_paths)
-    vignette = vignette_depuis_vrt(vrt, livrable_dir(Path(output_dir)) / NOM_VIGNETTE) if vrt else None
+    cases, n_fenetres = planche_du_lot(vrt) if vrt else ([], 0)
+    vignette = (vignette_depuis_vrt(vrt, livrable_dir(Path(output_dir)) / NOM_VIGNETTE, log=reporter.info,
+                                    planche=cases) if vrt else None)
+    legende = ""
+    if cases and vignette:
+        quoi = (f"Les {len(cases)} plus grandes des {n_fenetres} fenêtres" if len(cases) < n_fenetres
+                else f"Les {n_fenetres} fenêtres")
+        legende = f"{quoi}, côte à côte et sans leur position relative : les sites traités sont dispersés."
     etapes: List[tuple] = []
     chrono = getattr(reporter, "chrono", None)
     if chrono is not None:
@@ -531,30 +538,57 @@ def _ecrire_rapport_run(
     donnees = DonneesRapport(
         version=get_plugin_version(), date=date,
         mode=mode_info(mode).banner_label if mode else "", data_mode=mode,
-        issue=outcome, duree_s=max(0.0, _time.time() - start_time),
+        issue=outcome, duree_s=max(0.0, duree_s),
         tiles_processed=tiles_processed, tiles_total=tiles_total,
         surface_km2=surface_km2_depuis_vrt(vrt_paths),
         produits=tuple((p, PRODUCT_LABELS.get(p, p)) for p in active_products),
         rvt_params=rvt_params, processing=dict((ui_config or {}).get("processing") or {}),
         cv_runs=tuple(runs_rapport),
         bilan=tuple(ligne.to_dict() for ligne in bilan), etapes=tuple(etapes),
-        avertissements=tuple(avertissements), vignette=vignette, motif_detection=motif_detection,
+        avertissements=tuple(avertissements), vignette=vignette, vignette_legende=legende,
+        motif_detection=motif_detection,
         couleurs=couleurs, crs=crs,
+        horodatage=journaux[-1].stem[len("pipeline_log_"):] if journaux else "",
     )
     ecrire_rapport(livrable_dir(Path(output_dir)), donnees)
     return f"{DIR_LIVRABLE}/{NOM_RAPPORT}"
 
 def _ui_config_trace(ui_config: Optional[Dict[str, Any]]) -> Dict[str, Any]:
-    """Configuration de l'assistant telle que la trace complète l'enregistre. Hors modes LiDAR, la résolution du
-    MNT à calculer (étape 2) est sans effet : retirée de la copie pour ne pas contredire ``resolution_m`` (un MNT
-    à 1 m tracé « mnt_resolution 0.5 », run réel du 2026-10-31) ; une relance depuis ce résultat retombe sur le
-    défaut. La configuration de l'appelant n'est pas modifiée."""
+    """Configuration de l'assistant telle que la trace complète l'enregistre : seulement ce qui s'applique au mode
+    (crash tests du 2026-11-01). Le dossier d'entrée des autres modes (un « MNT existants » traçait le dossier
+    d'indices d'un vieux run) ; hors modes LiDAR, la résolution du MNT à calculer, celle de la densité, le filtre
+    LAS et le seuil de couverture (un MNT à 1 m tracé « mnt_resolution 0.5 », run réel du 2026-10-31) ; en LiDAR,
+    la résolution de densité et le seuil de couverture quand ces produits ne sont pas calculés ; les réglages des
+    indices non calculés. « Relancer » reprend cette configuration, fusionnée avec les défauts : ce qui manque est
+    ce que le run n'a pas employé. La configuration de l'appelant n'est pas modifiée."""
     import copy
 
+    from .reglages_defaut import SECTION_PRODUIT
+
     cfg = copy.deepcopy(ui_config or {})
-    mode = str(((cfg.get("app") or {}).get("files") or {}).get("data_mode") or "")
-    if mode in ("existing_mnt", "existing_rvt") and isinstance(cfg.get("processing"), dict):
-        cfg["processing"].pop("mnt_resolution", None)
+    files = (cfg.get("app") or {}).get("files")
+    mode = str((files or {}).get("data_mode") or "")
+    entrees = {"ign_laz": "input_file", "local_laz": "local_laz_dir", "existing_mnt": "existing_mnt_dir",
+               "existing_rvt": "existing_rvt_dir"}
+    if mode not in entrees:
+        return cfg
+    for m, cle in entrees.items():
+        if m != mode and isinstance(files, dict):
+            files.pop(cle, None)
+    processing = cfg.get("processing") if isinstance(cfg.get("processing"), dict) else {}
+    produits = processing.get("products") if isinstance(processing.get("products"), dict) else {}
+    lidar = mode in ("ign_laz", "local_laz")
+    retires = [] if lidar else ["mnt_resolution", "filter_expression"]
+    if not (lidar and produits.get("DENSITE")):
+        retires.append("density_resolution")
+    if not (lidar and produits.get("COUVERTURE")):
+        retires.append("coverage_threshold_percent")
+    for cle in retires:
+        processing.pop(cle, None)
+    if isinstance(cfg.get("rvt_params"), dict) and produits:
+        sections = {**SECTION_PRODUIT, "city": "CITY"}
+        cfg["rvt_params"] = {k: v for k, v in cfg["rvt_params"].items()
+                             if k not in sections or produits.get(sections[k])}
     return cfg
 
 
@@ -610,7 +644,7 @@ def finalize_pipeline(
         from pipeline.output_paths import indices_dir, detections_dir
     from ..progress_reporter import report_busy, report_stage_id
     from ..progress_stages import Stage
-    from ..user_narrator import create_user_narrator
+    from ..user_narrator import _format_duration, create_user_narrator
 
     narrator = create_user_narrator(reporter)
 
@@ -698,6 +732,10 @@ def finalize_pipeline(
     # 3d. Moteur de détection (lot 0d) : "none" et le motif dès qu'un run n'a pas
     # pu détecter — sous QGIS, sans le binaire, il n'y a pas de repli.
     cv_engine, cv_motif = moteur_detection(cv_stats)
+
+    # Durée du run, mesurée UNE fois : rapport, journal et écran disent la même (crash tests du 2026-11-01 :
+    # 24min 12s au journal, 24min 05s ailleurs).
+    elapsed = time.time() - start_time
 
     # 4. Génération du fichier metadata.json
     try:
@@ -787,7 +825,7 @@ def finalize_pipeline(
                 cv_stats=cv_stats or [], bilan=bilan, rvt_params=rvt_params or {},
                 active_products=active_products or [], ui_config=ui_config or {},
                 outcome=("detection_impossible" if outcome == "success" and cv_engine == "none" else outcome),
-                motif_detection=cv_motif if cv_engine == "none" else "", start_time=start_time,
+                motif_detection=cv_motif if cv_engine == "none" else "", duree_s=elapsed,
                 tiles_processed=tiles_processed,
                 tiles_total=tiles_total, meta_date=meta["date"], reporter=reporter, crs=crs,
             )
@@ -813,7 +851,6 @@ def finalize_pipeline(
         reporter.info(f"Note: métadonnées non écrites ({_meta_e})")
 
     # 5. Logs de fin de pipeline — conditionnés par l'issue réelle (ROB-14).
-    elapsed = time.time() - start_time
     products_list = active_products or []
     total = tiles_total if tiles_total is not None else tiles_processed
     success = outcome == "success"
@@ -839,12 +876,13 @@ def finalize_pipeline(
             tiles_processed=tiles_processed,
             tiles_total=total,
             products=products_list,
+            duree_s=elapsed,
         )
     # Annonce narrative à l'utilisateur (visible dans la fenêtre QGIS).
     # « ⏹ Traitement annulé » est émis par le runner après la finalisation —
     # rien à annoncer ici dans le cas cancelled.
     if outcome == "failed":
-        narrator.pipeline_failed("erreur inattendue pendant le traitement", start_time=start_time,
+        narrator.pipeline_failed("erreur inattendue pendant le traitement", duree_s=elapsed,
                                  journal=_journal_relatif(output_dir))
     elif outcome == "success" and detection_impossible:
         from .rapport_run import suite_detection_impossible
@@ -853,13 +891,13 @@ def finalize_pipeline(
             f"Les produits sont calculés ; {suite_detection_impossible(cv_stats or [])}"
         )
     elif outcome == "success" and all_tiles_failed:
-        narrator.pipeline_failed("aucune dalle n'a produit de sortie", start_time=start_time,
+        narrator.pipeline_failed("aucune dalle n'a produit de sortie", duree_s=elapsed,
                                  journal=_journal_relatif(output_dir))
     elif success:
         narrator.pipeline_complete(
             tiles_processed=tiles_processed,
             products=products_list,
-            start_time=start_time,
+            duree_s=elapsed,
         )
     if not slog:
         reporter.info("")
@@ -871,7 +909,7 @@ def finalize_pipeline(
         else:
             reporter.info("❌ PIPELINE TERMINÉ AVEC ERREURS")
         reporter.info("════════════════════════════════════════════════════════════")
-        reporter.info(f"  ⏱️ Durée totale : {elapsed:.1f}s")
+        reporter.info(f"  ⏱️ Durée totale : {_format_duration(elapsed)}")
         if extra_label:
             reporter.info(f"  📄 {extra_label} : {tiles_processed}")
         elif tiles_processed > 0:
@@ -883,7 +921,7 @@ def finalize_pipeline(
     # 5. Chargement des couches dans QGIS
     if vrt_paths or shapefile_paths or qa_paths:
         reporter.stage("Chargement des couches")
-        reporter.info(f"Chargement de {len(vrt_paths)} VRT et {len(shapefile_paths)} shapefile(s) dans QGIS...")
+        reporter.info(f"Chargement de {len(vrt_paths)} VRT et {len(shapefile_paths)} GeoPackage de détections dans QGIS...")
         # ``colors_param`` conservé (signature de load_layers) mais désormais
         # ignoré côté UI : la couleur dérive du nom de classe via le registre.
         colors_param: list = []

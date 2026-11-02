@@ -18,7 +18,7 @@ fileignoreconfig:
 - filename: tests/unit/test_indices_freshness.py
   checksum: 5d6193f34ee53622336bf4dbac572ea706c2b64729aef8e5209854a99044ce4e
 - filename: tests/unit/test_results_freshness.py
-  checksum: e2e9b89dd08e5332ca0379af2dc2ae3ed33d2c5b8236389a40c6b400adda7fc9
+  checksum: 45ef259e17d6635335893f418cef5841cb7cee7465df34dd92cd626ef4c58f43
 - filename: .githooks/pre-push
   checksum: c3ba1eb42246b032f6a556dd8813efdeab7151044c6e9942a252822ca56905da
 - filename: CLAUDE.md
@@ -44,7 +44,7 @@ fileignoreconfig:
 - filename: src/app/services/fiabilite.py
   checksum: fd1ebc36630598bddd6c24b2bdf2ff1c98380668984fe59862b581458bd4e4f3
 - filename: src/app/services/finalize_service.py
-  checksum: 87f98208a0b9b9c261187be1e518d1ce2e40eee0b6dc5b2f2dd957b5cdd461a7
+  checksum: 1cd9d3440feaf336aa01fad49165086efa1f8d0085c7947a16698b4e1085770e
 - filename: src/app/services/indices_model.py
   checksum: f18a1a5ecd866ac7ef0c80f8b5cd8608685dd71201e15e57ca7f04c9ac5e0682
 - filename: src/app/services/model_orchestrator.py
@@ -68,11 +68,11 @@ fileignoreconfig:
 - filename: src/pipeline/cv/clustering_bounds.py
   checksum: a53968cd2a888ddf1a432388d8fec82c1ec669c7e451499d43107ff0cdadb770
 - filename: src/pipeline/cv/computer_vision_onnx.py
-  checksum: 319b0888956aa9aea5b47260d30169ab0280392ecf91409d1e0b4f04613a1abd
+  checksum: 0ab6e78d68b9632bcb4e5ca30477f1ad1382ac2cd049c659b0e69b81f09873ac
 - filename: src/pipeline/cv/computer_vision_rfdetr.py
   checksum: 3c3de1d9bab52f155e9cc9f5f54a60f43c2ea784d485f8959603bbdc5e07d768
 - filename: src/pipeline/cv/conversion_shp.py
-  checksum: 238a99c9b55ede90606943b52258c13ada0e26a99c1fdb1a36431d0588302dc0
+  checksum: 61b708781e7d976a86a5469553700732e0b81154f08014f2414c38440fa95b58
 - filename: src/pipeline/cv/model_config.py
   checksum: d80802772f5312f8da933d43cb9b896c70ff1f2d08d40d681c027c1b6fe22a21
 - filename: src/pipeline/cv/model_profile.py
@@ -90,7 +90,7 @@ fileignoreconfig:
 - filename: src/pipeline/ign/products/indices.py
   checksum: 265a7e7e258d58a14c629e63fe3fb08314a9562edfdfc553b5b0a85246f32c1c
 - filename: src/pipeline/ign/products/results.py
-  checksum: 44ae87d44c4951496daccc72fe78b3a945a4e8e06c3295af6ad9b22912598d0c
+  checksum: b5a2ccabfd2571a0c21fb969e0541896aaa5e3100a4994dd128712644b818236
 - filename: src/pipeline/modes/local_laz.py
   checksum: aa12c4a804b54e7b3dfe451251813a3a731790033acc95a5ad3691cb4ff138fd
 - filename: src/pipeline/output_paths.py
@@ -124,7 +124,7 @@ fileignoreconfig:
 - filename: src/ui/wizard_dialog.py
   checksum: 64577fe3ec55b9c8390842275fedfd9ba650ca348b34f19a987cd6db44b7d4f0
 - filename: tests/TESTS_MANUELS_QGIS.md
-  checksum: 334a31c4d3aa31fc55620229504471de5e98122e43f575b62d9dd19ed1f397d6
+  checksum: 9031480a2b8625bc7c004460fa7d31d67450192f801767ce18a79888675dd799
 - filename: tests/integration/test_existing_mnt_runner_finalize.py
   checksum: e67c2e4c83cea0937bdfb39e8eec7aa7476f30648d4d858589e2308ad0565d63
 - filename: tests/integration/test_existing_rvt_runner_isolation.py
@@ -278,13 +278,13 @@ fileignoreconfig:
 - filename: tests/unit/test_fiabilite_observee.py
   checksum: 0b5cfd75eef0ccf415d46f9a2d0e59f09f1a0d94e4ed7ae884f2e90348810918
 - filename: tests/unit/test_rapport_run.py
-  checksum: df5622d79f7f8c215b379386ca619971fd3bd6c230b4361703155eb4082e270b
+  checksum: 4c496ce7ef7012f9993f0d4d5f81122aa60068ecf4fcb985e2369de2f8bcfb5c
 - filename: tests/unit/test_bilan_fiabilite.py
   checksum: d74fb9642159deb862872f3e6a102c95e33bb6c120a3fcfb1380f6e9d956742c
 - filename: aide/img/etape3-fiche-classe.png
   checksum: 366d3e4d8f21219753142e13983ffb77d14f6c33ade117776e465ad6192af1b6
 - filename: data/third_party/cv_runner_onnx/windows/build_info.json
-  checksum: 23b2adc8e6ce78a92201c6cd4dd2cd37bb797f4b6d88eeee164df43bbfe5e72c
+  checksum: e6c255d793fa2b4805a1ae00c5e1a7fa1eb0e2ec1d4363afec1b80fc2bbef69e
 - filename: dev/rendu_hors_ecran.py
   checksum: c17413a7757f3736db6d02453061771d1bca2461e149a9c27577695972d357a2
 - filename: aide/img/etape2-produits.png
@@ -384,7 +384,7 @@ fileignoreconfig:
 - filename: src/app/services/sorties_prevues.py
   checksum: 3ded5ec72803f9b6c4994357cecdd9cfbea602e9e0c84be63a23b85c0c58a219
 - filename: aide/07-etape-5-traitement.md
-  checksum: 364617a1a203d4e9a6712fab25563452bb5163c6a6d1518e1a63eb77b98b5504
+  checksum: d6f3d227d3940c32734c4397c206d36a6fde508147f7e724d63e4b6e3bf7b93a
 - filename: tests/unit/test_sorties_prevues.py
   checksum: b25f3282553a6d5fe6ecfee0eec124a5a73dc44fff637e14c7883d972ab976df
 - filename: src/app/services/vocabulaire.py
@@ -394,7 +394,7 @@ fileignoreconfig:
 - filename: tests/unit/test_vocabulaire.py
   checksum: 4bc0b459da9b209d87510f53cb65be48b85398df0eeb79d76021cc7ff8fb28dc
 - filename: src/app/user_narrator.py
-  checksum: 61c3db3139ea8256c3cedccdc8c6148aab601f4dc1f75b90a4bfbc416fa38df0
+  checksum: aea019fdca2d0736d661e6959673a7e95fada504697911ab1e934d2934f79f95
 - filename: src/ui/widgets/stage_button.py
   checksum: 905e2324563a29a6145ac92d0f2b0cba09c2c703dbbeeac881e646ad4265d32c
 - filename: src/ui/widgets/stepper_rail.py
@@ -420,13 +420,15 @@ fileignoreconfig:
 - filename: dev/runner_onnx/cv_runner_onnx_cli.py
   checksum: 4ab62c6132fd04f8b0a83199ddd3c8e6fd7626dc226ff9b63482c9adc5c4b4ac
 - filename: tests/unit/test_echelle_metres.py
-  checksum: b51c39a24a544329e2b7d7f66a1a78afad495909e97fe610b74657891b294b57
+  checksum: 2f69cb91b087497a1fe13caa9210eb223d8c28f29dbfca168cb606d697e96924
 - filename: src/pipeline/ingest_plan.py
   checksum: ac6a6ae54d6b5b8980a888596fd0753fe31daf44dc814d271860a8dff0062290
 - filename: tests/unit/test_nommage_crs.py
-  checksum: 2fefb919b6e423e97379e7bb200e7e316cb9be0aa236939c5ba8a0af691a76ea
+  checksum: e16fe12dadb3a30cc4ddc296da4aeecfbd32a90726b2d23175fbf20e0a711a29
 - filename: src/app/services/cv_post_service.py
-  checksum: 6963918eaffbb95c74062acf36fc8b1157aa8ecf91ce561b61b8f09013a9fdbc
+  checksum: 7751a969f197668ce83ce544acce39f5db9e2821442162a352be83ba7d16b168
 - filename: src/app/services/rapport_run.py
-  checksum: bd77f5abd99a3ad309fbd68320d3e8e43dd705d9937067376717702da4805bda
+  checksum: a02345e53af5aec418acf7bdd557eac3ae4fb38002c7afd5d9cc6a479389a068
+- filename: tests/unit/test_durees_une_source.py
+  checksum: 8ee11f714b13423944e89e5d847350fee0019da10507aecb472535fd92d37b50
 version: '1.0'

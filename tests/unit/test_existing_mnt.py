@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from pipeline.modes.existing_mnt import _classify_mnt_layout, _large_tile_name_for
+from pipeline.modes.existing_mnt import _classify_mnt_layout, _large_tile_name_for, _motif_petite_emprise
 
 
 class TestClassifyMntLayout:
@@ -27,3 +27,10 @@ class TestLargeTileNameFor:
         )
 
         assert name == "LHD_FXX_0700_6600_EXT_site_arch_o"
+
+
+def test_motif_d_une_petite_emprise_dit_la_vraie_cause():
+    """de_sh 2026-11-01 : « emprise < 1 km (ou non alignée IGN) » affiché pour un MNT de 1 011 m non aligné."""
+    assert _motif_petite_emprise((455300.0, 6056000.0, 456311.0, 6057011.0)) ==         "emprise 1 011 × 1 011 m non alignée sur la grille de 1 km"
+    assert _motif_petite_emprise((455300.0, 6056000.0, 455651.0, 6056351.0)) ==         "emprise 351 × 351 m, plus petite qu'une dalle de 1 km"
+

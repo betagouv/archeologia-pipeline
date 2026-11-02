@@ -3,6 +3,7 @@
   "app": {
     "files": {
       "output_dir": "<chemin/vers/dossier_de_sortie>",
+      "nom_analyse": "",
       "data_mode": "ign_laz",
       "input_file": "<chemin/vers/zone.shp>",
       "local_laz_dir": "<chemin/vers/dossier_laz>",

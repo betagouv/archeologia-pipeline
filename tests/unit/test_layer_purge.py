@@ -96,9 +96,10 @@ def test_la_purge_retire_les_groupes_qu_elle_a_vides():
     « Regroupement de cratères » restaient vides dans l'arbre de QGIS. La purge retire les groupes
     du plugin qu'elle a vidés — jamais un groupe de l'utilisateur, jamais un groupe encore peuplé."""
     src = (Path(__file__).resolve().parents[2] / "src" / "ui" / "layer_loader.py").read_text(encoding="utf-8")
+    # La règle (groupe de l'analyse, Structures, Indices, ancien Structures de la racine) est
+    # testée sur un arbre simulé dans test_nom_analyse.py ; ici, son branchement.
     helper = src[src.index("def _retirer_groupes_vides("):src.index("def purge_output_dir_layers(")]
-    assert "findGroup(GROUPE_STRUCTURES)" in helper and "removeChildNode(" in helper
-    assert "QgsLayerTree.isGroup(" in helper and "not sous.children()" in helper and "not structures.children()" in helper
+    assert "retirer_groupes_vides(project.layerTreeRoot(), QgsLayerTree.isGroup)" in helper
     purge = src[src.index("def purge_output_dir_layers("):src.index("def _deferred_zoom(")]
     assert "_retirer_groupes_vides(project)" in purge
 

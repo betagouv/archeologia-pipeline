@@ -18,6 +18,14 @@ from .class_utils import detect_indexing_offset
 
 logger = logging.getLogger(__name__)
 
+
+def resume_couches_ecrites(refs) -> str:
+    """« N couches écrites dans K GeoPackage : a.gpkg, b.gpkg » depuis des références ``<gpkg>|layername=<c>``."""
+    fichiers = sorted({Path(str(r).split("|")[0]).name for r in refs})
+    n = len(refs)
+    return (f"{n} couche{'s' if n > 1 else ''} écrite{'s' if n > 1 else ''} dans {len(fichiers)} GeoPackage : "
+            + ", ".join(fichiers))
+
 import pandas as pd
 from shapely.geometry import Polygon
 import geopandas as gpd
@@ -1752,7 +1760,7 @@ def create_shapefile_from_detections(
             
             logger.info(f"📊 {len(detections)} détections de classe '{class_name}'")
         
-        logger.info(f"🎯 {len(created_shapefiles)} couche(s) GeoPackage créée(s) dans {gpkg_path.name}")
+        logger.info(f"🎯 {resume_couches_ecrites(created_shapefiles)}")
         logger.info(f"📊 {total_detections} détections dans {processed_files} fichiers")
 
         # Le projet QGIS consolidé est généré par finalize_service à la racine de detections/

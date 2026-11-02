@@ -589,7 +589,8 @@ def test_groupe_structures_dans_les_deux_chemins():
     racine = Path(__file__).resolve().parents[2]
     for rel in ("src/ui/layer_loader.py", "src/ui/qgs_writer.py"):
         src = (racine / rel).read_text(encoding="utf-8")
-        assert "GROUPE_STRUCTURES" in src and "titre_dossier_image(" in src, rel
+        # 0.19.0 : le placement passe par nom_analyse.groupe_structures (même arbre, groupe de l'analyse).
+        assert "groupe_structures(" in src and "titre_dossier_image(" in src, rel
         assert 'f"index_{rvt_type}"' not in src and "Dalles RVT" not in src, rel
 
 

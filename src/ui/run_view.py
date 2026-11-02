@@ -43,6 +43,7 @@ from ..app.services.bilan_fiabilite import collecter as collecter_bilan
 from ..app.services.fiabilite_observee import enregistrer_run
 from ..app.services.arborescence import appliquer, decrire, non_reconnus, plan_migration
 from ..app.services.finalize_service import crs_du_traitement, echec_detection
+from ..app.services.nom_analyse import titre_du_livrable
 from ..app.services.rapport_run import NOM_RAPPORT
 from ..app.services.source_modes import mode_info
 from ..pipeline.output_paths import detections_dir, journaux_dir, livrable_dir, projet_qgs_path
@@ -1136,6 +1137,7 @@ class RunView(QWidget):
                 entity_labels=entity_labels, derived_slugs=derived_slugs,
                 min_conf_by_slug=min_conf_by_slug,
                 qa_paths=qa_paths, coverage_threshold_percent=cov_thr,
+                titre_analyse=titre_du_livrable(self._output_dir()) if self._output_dir() else "",
             )
         finally:
             QApplication.restoreOverrideCursor()
@@ -1168,6 +1170,7 @@ class RunView(QWidget):
                     min_conf_by_slug=min_conf_by_slug,
                     qa_paths=list(qa_paths or []), coverage_threshold_percent=cov_thr,
                     logger=self._logger, crs_authid=crs_du_traitement(out_dir),
+                    titre_analyse=titre_du_livrable(out_dir),
                 )
         except Exception as e:  # noqa: BLE001
             self._logger.warning(f"Écriture du projet QGIS non effectuée : {e}")

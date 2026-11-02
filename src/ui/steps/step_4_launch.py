@@ -33,7 +33,7 @@ from qgis.PyQt.QtWidgets import (
 
 from ...app.services.aide import AIDE_DIRNAME, CLE_DEPANNAGE, resoudre_cible
 from ...app.services.carte_graphique import oublier, phrase_decision, registre_path
-from ...app.services.validation_ui import classer_erreurs
+from ...app.services.validation_ui import bandeau_pret, classer_erreurs
 from ...app.services.vocabulaire import bandeau_controles_en_echec, libelle_environnement, pluriel, resume_detail
 from ..widgets.card import build_card
 from ..widgets.collapsible import CollapsibleSection
@@ -132,6 +132,7 @@ class LaunchPage(QWidget):
         self._carte = True   # = ConfigManager (computer_vision.carte_graphique), cochée par défaut (2026-10-26)
         self._preflight_gen = 0
         self._validation_errors: List[str] = []
+        self._validation_avertissements: List[str] = []
         # État des vérifications pour le bandeau : pending | ok | warn | err, avec les
         # libellés des contrôles manquants (critiques) et des avertissements. Le bandeau
         # ne doit pas dire « prêt à lancer » (vert) au-dessus d'un contrôle rouge.
@@ -407,9 +408,11 @@ class LaunchPage(QWidget):
         self._recap_rows.append(row)
         return row
 
-    def set_validation(self, errors: list) -> None:
-        """Mémorise les points à corriger (bloquants) et met à jour le bandeau."""
+    def set_validation(self, errors: list, avertissements: Optional[list] = None) -> None:
+        """Mémorise les points à corriger (bloquants) et les avertissements de configuration (non bloquants,
+        ``validate_run_context``), puis met à jour le bandeau."""
         self._validation_errors = list(errors or [])
+        self._validation_avertissements = list(avertissements or [])
         self._update_banner()
 
     def _update_banner(self) -> None:
@@ -419,7 +422,8 @@ class LaunchPage(QWidget):
         - configuration valide mais vérification en cours → neutre ;
         - un outil manque → rouge, avec le renvoi au Dépannage ; des données refusées (CRS,
           résolution) → rouge, sans parler d'outil (``bandeau_controles_en_echec``) ;
-        - un contrôle en avertissement → orange, en le nommant ;
+        - un contrôle en avertissement, ou un avertissement de configuration → orange, en les nommant
+          (``validation_ui.bandeau_pret``) ;
         - sinon → vert « Prêt à lancer. ».
         """
         if self._validation_errors:
@@ -437,13 +441,11 @@ class LaunchPage(QWidget):
             # Contrôle de données (CRS, résolution) ≠ outil manquant (audit Fable 2026-11-02, A3).
             self._banner.setText(bandeau_controles_en_echec(self._pf_manquants))
             self._banner.setProperty("state", "tool_missing")
-        elif self._preflight_status == "warn":
-            quoi = ", ".join(self._pf_avertissements) or "un contrôle"
-            self._banner.setText(f"Prêt à lancer, avec un avertissement : {quoi}.")
-            self._banner.setProperty("state", "warn")
         else:
-            self._banner.setText("Prêt à lancer.")
-            self._banner.setProperty("state", "ok")
+            poste = (self._pf_avertissements or ["un contrôle"]) if self._preflight_status == "warn" else []
+            etat, texte = bandeau_pret(poste, self._validation_avertissements)
+            self._banner.setText(texte)
+            self._banner.setProperty("state", etat)
         self._banner.setVisible(True)
         self._banner.style().unpolish(self._banner)
         self._banner.style().polish(self._banner)

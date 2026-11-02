@@ -117,6 +117,7 @@ class WizardDialog(QDialog):
         self._last_config_name = ""
         self._loading = False
         self._validation_errors: list = []
+        self._validation_warnings: list = []
 
         version = get_plugin_version() or ""
         suffix = f" — v{version}" if version else ""
@@ -700,9 +701,11 @@ class WizardDialog(QDialog):
         try:
             from ..app.run_context import build_run_context, validate_run_context
             ctx = build_run_context(self._config)
-            errors, _warnings = validate_run_context(ctx)
+            errors, warnings = validate_run_context(ctx)
+            self._validation_warnings = list(warnings)   # non bloquants : bandeau de l'étape 4
             return list(errors)
         except Exception as e:  # noqa: BLE001
+            self._validation_warnings = []
             return [f"Configuration illisible : {e}"]
 
     def _apply_validation(self) -> None:
@@ -711,7 +714,7 @@ class WizardDialog(QDialog):
         errors = self._compute_errors()
         self._validation_errors = errors
         self._sync_rail()
-        self._launch_page.set_validation(errors)
+        self._launch_page.set_validation(errors, self._validation_warnings)
         self._update_launch_button()
 
     def _sync_rail(self) -> None:

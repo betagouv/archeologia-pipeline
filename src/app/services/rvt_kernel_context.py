@@ -192,6 +192,32 @@ def tiled_context_warnings(
     return messages
 
 
+#: Rayon (le plus grand du produit) en dessous duquel l'indice ne voit plus qu'une courbure locale.
+RAYON_MIN_PX = 3
+
+
+def rayons_courts_warnings(products: Optional[Mapping], rvt_params: Optional[Mapping]) -> List[str]:
+    """Produits dont le rayon, à la résolution du run, tombe sous :data:`RAYON_MIN_PX` (crash test it_piemonte,
+    2026-11-02 : à 5 m/pixel, LD 5–10 m = 1–2 px, et rien ne le disait). Les structures de moins de deux pixels
+    ne se distinguent plus. ``rvt_params`` en pixels avec ``resolution_m`` (:func:`indices_metres.en_px`).
+    VAT, CVAT, PRISM et CRIM n'ont pas de rayon réglable (hors de :data:`KERNEL_PARAMS`)."""
+    res = resolution_de(rvt_params)
+    messages: List[str] = []
+    for product in KERNEL_PARAMS:
+        if not _requested(products, product):
+            continue
+        radius = kernel_radius_px(product, rvt_params)
+        if radius is None or radius >= RAYON_MIN_PX:
+            continue
+        rayon = f"{radius} px"
+        if product == "LD":
+            rmin = _as_int(_section(rvt_params, "ldo").get("min_radius", 10), 10)
+            rayon = f"{rmin} à {radius} px" if rmin != radius else rayon
+        messages.append(f"{product} : rayon de {rayon} à {format_m(res)[:-2]} m/pixel, l'indice ne distingue plus "
+                        f"les structures de moins de ~{format_m(2 * res)}.")
+    return messages
+
+
 def raster_context_warnings(
     products: Optional[Mapping],
     rvt_params: Optional[Mapping],

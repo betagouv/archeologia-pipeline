@@ -576,6 +576,10 @@ def validate_run_context(ctx: RunContext) -> Tuple[List[str], List[str]]:
             )
         )
 
+    # Rayon réduit à 1-2 px par des données grossières (5 m/pixel) : l'indice ne voit plus les petites structures.
+    # Affiché à l'étape 4 et écrit au journal au lancement (pipeline_controller), donc repris par le rapport.
+    warnings.extend(rvt_kernel_context.rayons_courts_warnings(products_dict, rvt_px))
+
     # Réglages d'échelle que rvt.vis.mstp refuse : bloquant, sinon la faute
     # n'apparaît qu'au calcul de la première dalle — après le téléchargement.
     errors.extend(rvt_kernel_context.mstp_scale_errors(products_dict, rvt_px))

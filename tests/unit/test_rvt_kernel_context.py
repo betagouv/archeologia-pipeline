@@ -233,3 +233,20 @@ def test_defauts_mstp_miroir_de_rvt_naming():
     for prefixe, _lib, lo, hi, pas in _MSTP_BANDS:
         assert (lo, hi, pas) == tuple(MSTP_DEFAUTS[f"{prefixe}_{k}"] for k in ("min", "max", "step"))
     assert KERNEL_PARAMS["MSTP"].default == MSTP_DEFAUTS["broad_scale_max"]
+
+
+def test_rayon_sous_trois_pixels_averti():
+    """Crash test it_piemonte (5 m/pixel, 2026-11-02) : LD 5–10 m = 1–2 px, l'indice ne voit plus que la courbure
+    locale et rien ne le disait. Sous 3 px, avertissement aux vérifications (étape 4) et au journal (rapport)."""
+    from app.services.indices_metres import en_px
+    from app.services.rvt_kernel_context import rayons_courts_warnings
+    produits = {"LD": True, "SVF": True, "SLRM": True, "VAT": True, "MSTP": True}
+    msgs = rayons_courts_warnings(produits, en_px({}, 5.0))
+    assert ("LD : rayon de 1 à 2 px à 5 m/pixel, l'indice ne distingue plus les structures de moins de ~10 m."
+            in msgs)
+    assert "SVF : rayon de 1 px à 5 m/pixel, l'indice ne distingue plus les structures de moins de ~10 m." in msgs
+    assert "SLRM : rayon de 2 px à 5 m/pixel, l'indice ne distingue plus les structures de moins de ~10 m." in msgs
+    assert not any(m.startswith(("VAT", "MSTP")) for m in msgs)   # noyaux figés ou échelles larges
+    assert rayons_courts_warnings(produits, en_px({}, 2.0)) == []   # LD 3–5 px, SVF 3 px : à la limite, pas d'alerte
+    assert rayons_courts_warnings(produits, en_px({}, 0.5)) == []
+    assert rayons_courts_warnings({"LD": False}, en_px({}, 5.0)) == []   # produit non demandé

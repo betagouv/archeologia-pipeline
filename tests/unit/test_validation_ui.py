@@ -68,3 +68,17 @@ def test_etat_rail():
     assert [etat_rail(n, 1, erreurs) for n in range(1, 6)] == ["active", "a_corriger", "a_venir", "a_venir", "a_venir"]
     assert [etat_rail(n, 4, erreurs) for n in range(1, 6)] == ["ok", "a_corriger", "ok", "active", "a_venir"]
     assert [etat_rail(n, 3, {}) for n in range(1, 6)] == ["ok", "ok", "active", "a_venir", "a_venir"]
+
+
+def test_bandeau_pret_liste_les_avertissements_de_configuration():
+    """Crash test it_piemonte (2026-11-02) : « LD : rayon de 1 à 2 px à 5 m/pixel… » n'apparaissait qu'au journal,
+    après le lancement ; l'étape 4 jetait les avertissements de validate_run_context. Ils passent au bandeau,
+    orange, sans bloquer."""
+    from app.services.validation_ui import bandeau_pret
+    assert bandeau_pret([], []) == ("ok", "Prêt à lancer.")
+    assert bandeau_pret(["Carte graphique"], []) == ("warn", "Prêt à lancer, avec un avertissement : Carte graphique.")
+    etat, texte = bandeau_pret([], ["LD : rayon de 1 à 2 px à 5 m/pixel, l'indice ne distingue plus les structures "
+                                    "de moins de ~10 m."])
+    assert etat == "warn" and texte.startswith("<b>Prêt à lancer, avec un avertissement :</b><br>• LD : rayon de 1")
+    etat, texte = bandeau_pret(["Carte graphique"], ["a < b", "c"])
+    assert texte == "<b>Prêt à lancer, avec 3 avertissements :</b><br>• Carte graphique<br>• a &lt; b<br>• c"

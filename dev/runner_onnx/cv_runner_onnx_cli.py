@@ -204,7 +204,9 @@ def main() -> int:
 
     if generate_annotated_images:
         annotated_output_dir.mkdir(parents=True, exist_ok=True)
-    if generate_shapefiles:
+    # shapefiles/ seulement quand le CLI y écrit lui-même : le plugin passe run_shapefile_dedup=False et écrit les
+    # GeoPackage d'entité de son côté (dossier vide laissé dans chaque technique/detection/<modèle>/, 2026-11-02).
+    if generate_shapefiles and run_shapefile_dedup:
         shapefile_output_dir.mkdir(parents=True, exist_ok=True)
 
     _ensure_src_on_sys_path()

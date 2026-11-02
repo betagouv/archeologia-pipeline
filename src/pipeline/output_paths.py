@@ -129,11 +129,6 @@ def detection_model_dir(output_dir: Path, model_slug: str) -> Path:
     return detection_technique_dir(output_dir, model_slug)
 
 
-def detection_shapefiles_dir(output_dir: Path, model_slug: str) -> Path:
-    """Shapefiles d'un modèle : ``<output>/detections/<model>/shapefiles/``."""
-    return detection_model_dir(output_dir, model_slug) / "shapefiles"
-
-
 def detection_par_dalle_dir(output_dir: Path, model_slug: str) -> Path:
     """Labels bruts par dalle : ``<output>/detections/<model>/par_dalle/``."""
     return detection_model_dir(output_dir, model_slug) / "par_dalle"

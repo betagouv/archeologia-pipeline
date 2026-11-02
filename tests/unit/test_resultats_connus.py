@@ -7,6 +7,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 from app.services.fiabilite_observee import enregistrer_run
 from app.services.resultats_connus import (
     Resultat,
@@ -99,6 +101,27 @@ def test_chemins_du_livrable(tmp_path):
     assert vrt == [str(d / "livrable" / "indices" / "SVF_R10" / "tif" / "index_SVF.vrt")]
     assert gpkg == [str(d / "livrable" / "detections" / "parcellaire" / "parcellaire.gpkg")]
     assert qa == [str(d / "livrable" / "indices" / "COUVERTURE" / "zones_mal_couvertes.gpkg")]
+
+
+def test_chemins_du_livrable_nomment_chaque_couche_comme_la_fin_du_traitement(tmp_path):
+    """Retour utilisateur 2026-11-02 : « Ajouter au projet QGIS courant » (étape 6) chargeait
+    ``charbonnieres.gpkg`` nu → couche nommée d'après le fichier (« charbonnieres »),
+    ``fiabilite.json`` (indexé par nom de couche) introuvable → légende en tranches de score,
+    toutes cochées. Il faut la même référence ``<gpkg>|layername=<couche>`` qu'en fin de
+    traitement (``finalize_service._collect_shapefiles``), une par couche non vide."""
+    gpd = pytest.importorskip("geopandas")
+    box = pytest.importorskip("shapely.geometry").box
+
+    d = _dossier(tmp_path, "r", "2026-10-24T09:30:00")
+    g = d / "livrable" / "detections" / "talus_et_fosses" / "talus_et_fosses.gpkg"
+    g.parent.mkdir(parents=True)
+    for nom in ("Talus et fossés · talus", "Talus et fossés · fossé"):
+        gpd.GeoDataFrame({"fiabilite": ["Probable"]}, geometry=[box(0, 0, 1, 1)], crs="EPSG:27700").to_file(
+            g, layer=nom, driver="GPKG")
+    r = Resultat(d, "d", "", (), (), 0, d / "livrable" / "projet.qgs", d / "livrable" / "rapport.html", None)
+    _, gpkg, _ = chemins_du_livrable(r)
+    assert sorted(s for s in gpkg if "talus" in s) == sorted(
+        f"{g}|layername={nom}" for nom in ("Talus et fossés · talus", "Talus et fossés · fossé"))
 
 
 def test_trace_avec_app_nul_ne_vide_pas_la_liste(tmp_path):

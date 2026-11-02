@@ -128,7 +128,7 @@ def test_marge_cote_voisin_seulement_et_publie_a_la_cellule(tmp_path, monkeypatc
     _lancer(seule, tmp_path / "sortie_seule", monkeypatch)
     assert np.array_equal(_lire(_publie(out, "MNT", "0700_6601"))[0],
                           _lire(_publie(tmp_path / "sortie_seule", "MNT", "0700_6601"))[0])
-    assert any("Marge inter-dalles : 4 dalle(s) étendue(s) de 50 m depuis leurs voisines, 0 sans voisin" in m
+    assert any(m == "Marge inter-dalles : 4 dalles étendues de 50 m depuis leurs voisines"
                for m in journal)
 
 
@@ -159,6 +159,45 @@ def test_relance_a_l_identique_ne_recalcule_rien_et_voisin_touche_re_extrait(tmp
     assert ext.stat().st_mtime_ns != avant[0] and ld.stat().st_mtime_ns != avant[1]
 
 
+def test_lot_en_l_chaque_dalle_avec_voisine_est_etendue(tmp_path, monkeypatch):
+    """Lot en L (vu sur 3 dalles LHD réelles, 0223_6844 / 0224_6844 / 0224_6843) : la voisine DIAGONALE retenue par
+    ``halo_inputs`` ne faisait que toucher la fenêtre étendue d'un seul côté → BuildVRT la sautait → « 1 source(s)
+    sautée(s) » → repli sur la dalle seule (couture). Seules les dalles qui intersectent la fenêtre servent."""
+    dalles = _bloc(tmp_path / "mnt")
+    dalles.pop((0, 1)).unlink()   # reste (0,0) NW, (1,0) NE, (1,1) SE
+    out = tmp_path / "sortie"
+    res, journal = _lancer(tmp_path / "mnt", out, monkeypatch)
+    assert res.total == 3
+    assert not any("impossible" in m for m in journal)
+    assert "Marge inter-dalles : 3 dalles étendues de 50 m depuis leurs voisines" in journal
+    # NW : voisine à l'est seulement ; la diagonale SE n'est pas une source.
+    assert get_raster_bounds(_inter(out, "MNT_EXT_0700_6601_MNT.tif")) == pytest.approx(
+        (700000.0, 6600000.0, 701050.0, 6601000.0))
+    side = json.loads(_inter(out, "MNT_EXT_0700_6601_MNT.inputs.json").read_text(encoding="utf-8"))
+    assert side["voisins"] == sorted(p.name for k, p in dalles.items() if k in ((0, 0), (1, 0)))
+    # SE : voisine au nord seulement.
+    assert get_raster_bounds(_inter(out, "MNT_EXT_0701_6600_MNT.tif")) == pytest.approx(
+        (701000.0, 6599000.0, 702000.0, 6600050.0))
+
+
+def test_coin_diagonal_seul_pas_de_voisine_ni_d_erreur(tmp_path, monkeypatch):
+    """Deux dalles qui ne se touchent que par un coin : aucune n'a de voisine (pas de marge), et rien d'« impossible »
+    au journal — copie seule, comme une dalle isolée."""
+    dalles = _bloc(tmp_path / "mnt")
+    dalles.pop((1, 0)).unlink()
+    dalles.pop((0, 1)).unlink()
+    out = tmp_path / "sortie"
+    appels = []
+    monkeypatch.setattr(em, "tiled_context_warnings", lambda *a, **k: appels.append("tiled") or [])
+    monkeypatch.setattr(em, "raster_context_warnings", lambda *a, **k: appels.append("raster") or [])
+    _, journal = _lancer(tmp_path / "mnt", out, monkeypatch)
+    assert not any("impossible" in m for m in journal)
+    assert "Marge inter-dalles : 2 dalles de 1 km sans voisine" in journal
+    # D2 (audit 2026-11-02) : chaque dalle est calculée seule → avertissements du raster seul, pas de la couture.
+    assert appels == ["raster", "raster"]
+    assert filecmp.cmp(dalles[(0, 0)], _inter(out, "MNT_EXT_0700_6601_MNT.tif"), shallow=False)
+
+
 def test_dalle_isolee_copie_a_l_octet(tmp_path, monkeypatch):
     mnt = tmp_path / "mnt"
     mnt.mkdir()
@@ -168,7 +207,7 @@ def test_dalle_isolee_copie_a_l_octet(tmp_path, monkeypatch):
     temp = _inter(out, "MNT_EXT_0700_6601_MNT.tif")
     assert filecmp.cmp(seule, temp, shallow=False)
     assert not _inter(out, "MNT_EXT_0700_6601_MNT.inputs.json").exists()
-    assert any("0 dalle(s) étendue(s) de 50 m depuis leurs voisines, 1 sans voisin" in m for m in journal)
+    assert "Marge inter-dalles : 1 dalle de 1 km sans voisine" in journal
 
 
 def test_voisine_retiree_retour_a_la_copie(tmp_path, monkeypatch):

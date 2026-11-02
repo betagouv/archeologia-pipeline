@@ -101,6 +101,27 @@ def test_chemins_du_livrable(tmp_path):
     assert qa == [str(d / "livrable" / "indices" / "COUVERTURE" / "zones_mal_couvertes.gpkg")]
 
 
+def test_chemins_du_livrable_nomment_chaque_couche_comme_la_fin_du_traitement(tmp_path):
+    """Retour utilisateur 2026-11-02 : « Ajouter au projet QGIS courant » (étape 6) chargeait
+    ``charbonnieres.gpkg`` nu → couche nommée d'après le fichier (« charbonnieres »),
+    ``fiabilite.json`` (indexé par nom de couche) introuvable → légende en tranches de score,
+    toutes cochées. Il faut la même référence ``<gpkg>|layername=<couche>`` qu'en fin de
+    traitement (``finalize_service._collect_shapefiles``), une par couche non vide."""
+    import geopandas as gpd
+    from shapely.geometry import box
+
+    d = _dossier(tmp_path, "r", "2026-10-24T09:30:00")
+    g = d / "livrable" / "detections" / "talus_et_fosses" / "talus_et_fosses.gpkg"
+    g.parent.mkdir(parents=True)
+    for nom in ("Talus et fossés · talus", "Talus et fossés · fossé"):
+        gpd.GeoDataFrame({"fiabilite": ["Probable"]}, geometry=[box(0, 0, 1, 1)], crs="EPSG:27700").to_file(
+            g, layer=nom, driver="GPKG")
+    r = Resultat(d, "d", "", (), (), 0, d / "livrable" / "projet.qgs", d / "livrable" / "rapport.html", None)
+    _, gpkg, _ = chemins_du_livrable(r)
+    assert sorted(s for s in gpkg if "talus" in s) == sorted(
+        f"{g}|layername={nom}" for nom in ("Talus et fossés · talus", "Talus et fossés · fossé"))
+
+
 def test_trace_avec_app_nul_ne_vide_pas_la_liste(tmp_path):
     """Une trace dont ``ui_config.app`` vaut explicitement null ne doit pas faire tomber
     toute la liste : le point de départ est simplement inconnu."""

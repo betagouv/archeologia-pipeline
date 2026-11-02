@@ -207,6 +207,8 @@ def write_validation_project(
         proj = QgsProject()
         proj.setFileName(str(qgs_path))  # ancre les chemins relatifs
         proj.writeEntry("Paths", "/Absolute", False)  # datasources relatives au .qgs
+        if titre_analyse:
+            proj.setTitle(titre_analyse)  # le titre du groupe de l'analyse : « <nom> — JJ/MM/AAAA HH:MM »
         root = groupe_analyse(proj.layerTreeRoot(), titre_analyse)
 
         extent = QgsRectangle()
@@ -273,6 +275,8 @@ def write_validation_project(
             pass
 
         if proj.write():
+            from ..app.services.finalize_service import anonymiser_projet_qgs
+            anonymiser_projet_qgs(qgs_path)  # livrable partageable : sans le nom de l'utilisateur du poste
             logger.info(f"Projet QGIS de validation écrit: {qgs_path}")
             return qgs_path
         logger.warning(f"Échec de l'écriture du projet QGIS: {qgs_path}")

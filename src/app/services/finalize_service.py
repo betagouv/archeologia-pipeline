@@ -416,6 +416,19 @@ def crs_du_projet(authids_des_couches: List[str], crs_trace: Optional[str]) -> s
     return next((a for a in authids_des_couches if a), None) or crs_trace or "EPSG:2154"
 
 
+def anonymiser_projet_qgs(qgs_path: Path) -> None:
+    """Retire du ``.qgs`` écrit le nom de l'utilisateur du poste : attributs ``saveUser``/``saveUserFull`` de la
+    racine et auteur des métadonnées du projet. QGIS (3.44 comme 4.0.3) les pose à chaque ``write()``, même avec un
+    auteur mis à vide avant ; ``livrable/projet.qgs`` se transmet. Le reste du fichier est laissé à l'octet près."""
+    import re
+
+    texte = Path(qgs_path).read_bytes().decode("utf-8")
+    texte = re.sub(r"<qgis\b[^>]*>", lambda m: re.sub(r'\s+saveUser(?:Full)?="[^"]*"', "", m.group(0)),
+                   texte, count=1)
+    texte = re.sub(r"(<projectMetadata>(?:(?!</projectMetadata>).)*?<author>)[^<]*(</author>)", r"\1\2", texte, count=1, flags=re.S)
+    Path(qgs_path).write_bytes(texte.encode("utf-8"))
+
+
 def _journal_relatif(output_dir: Path) -> str:
     """``technique/journaux/pipeline_log_<ts>.txt`` du dernier lancement, ``""`` sans journal."""
     try:

@@ -34,7 +34,7 @@ from qgis.PyQt.QtWidgets import (
 from ...app.services.aide import AIDE_DIRNAME, CLE_DEPANNAGE, resoudre_cible
 from ...app.services.carte_graphique import oublier, phrase_decision, registre_path
 from ...app.services.validation_ui import classer_erreurs
-from ...app.services.vocabulaire import libelle_environnement, pluriel, resume_detail
+from ...app.services.vocabulaire import bandeau_controles_en_echec, libelle_environnement, pluriel, resume_detail
 from ..widgets.card import build_card
 from ..widgets.collapsible import CollapsibleSection
 from ..widgets.no_wheel import NoWheelSpinBox
@@ -417,7 +417,8 @@ class LaunchPage(QWidget):
 
         - points à corriger → rouge, rangés par étape ;
         - configuration valide mais vérification en cours → neutre ;
-        - un outil manque → rouge, avec le renvoi au Dépannage ;
+        - un outil manque → rouge, avec le renvoi au Dépannage ; des données refusées (CRS,
+          résolution) → rouge, sans parler d'outil (``bandeau_controles_en_echec``) ;
         - un contrôle en avertissement → orange, en le nommant ;
         - sinon → vert « Prêt à lancer. ».
         """
@@ -433,11 +434,8 @@ class LaunchPage(QWidget):
             self._banner.setText("Vérification de l'environnement…")
             self._banner.setProperty("state", "pending")
         elif self._preflight_status == "err":
-            quoi = ", ".join(self._pf_manquants) or "un outil"
-            self._banner.setText(
-                f"<b>Un outil manque : {quoi}.</b>&nbsp;&nbsp;"
-                '<a href="manuel:depannage#les-verifications-prealables-ont-echoue">Voir l\'aide › Dépannage</a>'
-            )
+            # Contrôle de données (CRS, résolution) ≠ outil manquant (audit Fable 2026-11-02, A3).
+            self._banner.setText(bandeau_controles_en_echec(self._pf_manquants))
             self._banner.setProperty("state", "tool_missing")
         elif self._preflight_status == "warn":
             quoi = ", ".join(self._pf_avertissements) or "un contrôle"
@@ -623,7 +621,7 @@ class LaunchPage(QWidget):
             else:
                 status, glyph = "err", "✗"
                 n_critical_fail += 1
-                self._pf_manquants.append(libelle)
+                self._pf_manquants.append(r.name)
 
             icon = QLabel(glyph)
             icon.setObjectName("PreflightIcon")

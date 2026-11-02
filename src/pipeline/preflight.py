@@ -137,7 +137,9 @@ def _check_raster_crs(dir_path, exts, results: List["CheckResult"], declared_crs
             alerte_relance_autre_crs,
             normaliser_crs,
             IngestValidationError,
+            _metres,
             _short_crs,
+            message_resolutions,
             plan_raster_inputs,
         )
         # « declared_crs » (configuration seule, pour un raster sans CRS dans ses métadonnées, un .asc) : lu par
@@ -164,6 +166,15 @@ def _check_raster_crs(dir_path, exts, results: List["CheckResult"], declared_crs
                 name="CRS des rasters", ok=False,
                 details="; ".join(plan.warnings) or "CRS non vérifiable", critical=False,
             ))
+        # Une seule résolution par traitement (audit Fable 2026-11-02, P1-A) : rayons des indices et fenêtres
+        # de détection se convertissent à UNE résolution — un lot mêlé est refusé, jamais calculé à moitié faux.
+        if len(plan.resolutions) > 1:
+            results.append(CheckResult(name="Résolution des rasters", ok=False, critical=True,
+                                       details=message_resolutions(plan.resolutions)))
+        elif plan.resolutions:
+            pas, n = plan.resolutions[0]
+            results.append(CheckResult(name="Résolution des rasters", ok=True, critical=True,
+                                       details=f"{_metres(pas)} m · {n} dalle(s)"))
         if plan.crs_verified and output_dir is not None:
             import json as _json
             from .output_paths import traitement_json_path
@@ -187,8 +198,9 @@ def _check_raster_crs(dir_path, exts, results: List["CheckResult"], declared_crs
         results.append(CheckResult(
             name="CRS des rasters", ok=False, details=str(e), critical=True,
         ))
-    except Exception:
-        pass  # lecture impossible / autre : ne pas bloquer le préflight
+    except Exception as exc:  # lecture impossible / autre : ne pas bloquer le préflight, mais le dire (R1)
+        import logging
+        logging.getLogger(__name__).warning("Contrôle des rasters fournis impossible : %s", exc)
 
 
 def check_output_dir_creatable(output_dir: Path) -> tuple[bool, str]:

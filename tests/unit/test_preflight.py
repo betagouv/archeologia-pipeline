@@ -365,6 +365,37 @@ class TestCheckRasterCrs:
         _check_raster_crs(str(tmp_path), ("tif",), results, declared_crs="EPSG:2154")
         assert results[0].ok is True and results[0].critical is True
 
+    @staticmethod
+    def _raster(path, pas, x0):
+        rasterio = pytest.importorskip("rasterio")
+        import numpy as np
+        from rasterio.transform import from_origin
+        n = int(round(20 / pas))
+        with rasterio.open(path, "w", driver="GTiff", width=n, height=n, count=1, dtype="float32",
+                           crs="EPSG:2154", transform=from_origin(x0, 6600020.0, pas, pas)) as dst:
+            dst.write(np.ones((1, n, n), dtype="float32"))
+
+    def test_resolutions_melees_bloquent(self, tmp_path):
+        """Audit Fable 2026-11-02 (A2) : un lot à résolutions mêlées est REFUSÉ au préflight (ok=False,
+        critique), en existing_mnt comme en existing_rvt — plus d'avertissement lu par personne."""
+        self._raster(tmp_path / "a.tif", 0.5, 700000.0)
+        self._raster(tmp_path / "b.tif", 1.0, 700020.0)
+        self._raster(tmp_path / "c.tif", 1.0, 700040.0)
+        results = []
+        _check_raster_crs(str(tmp_path), ("tif",), results)
+        (r,) = [x for x in results if x.name == "Résolution des rasters"]
+        assert r.ok is False and r.critical is True
+        assert "2 dalle(s) à 1 m, 1 dalle(s) à 0,5 m" in r.details and "séparez" in r.details
+
+    def test_lot_homogene_affiche_la_resolution(self, tmp_path):
+        self._raster(tmp_path / "a.tif", 1.0, 700000.0)
+        self._raster(tmp_path / "b.tif", 1.0, 700020.0)
+        results = []
+        _check_raster_crs(str(tmp_path), ("tif",), results)
+        (r,) = [x for x in results if x.name == "Résolution des rasters"]
+        assert r.ok is True and r.critical is True
+        assert r.details == "1 m · 2 dalle(s)"
+
     def test_no_degenerate_result_when_none(self, monkeypatch, tmp_path):
         (tmp_path / "mnt.tif").write_bytes(b"x")
         import pipeline.ingest_plan as ip

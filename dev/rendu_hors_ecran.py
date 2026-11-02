@@ -10,7 +10,7 @@
 
 Monte un ``QgsApplication`` en ``QT_QPA_PLATFORM=offscreen`` avec le thème QSS du plugin, puis :
 
-- ``captures`` : l'assistant aux étapes 1 à 4 (la 4 à corriger, puis prête), la ligne d'une structure en réglages, les fiches en fenêtre
+- ``captures`` : l'assistant aux étapes 1 à 4 (la 4 à corriger, puis prête, puis données refusées dans ``--sortie``), la ligne d'une structure en réglages, les fiches en fenêtre
   ouvert sur une image puis sur une structure, et la vue d'exécution (en cours, puis à la fin avec
   « Par où commencer »), avec des
   chemins neutres dans les champs et quelques produits cochés, en **double résolution**
@@ -294,6 +294,52 @@ def _etape4_a_corriger(app, w, img: Path, log, fichiers) -> bool:
     return ok
 
 
+def _etape4_donnees_refusees(app, w, sortie: Path, log, fichiers) -> bool:
+    """<sortie>/etape4-donnees-refusees.png : MNT existants à deux résolutions (0,5 et 1 m) → bandeau rouge
+    « Les données fournies ne peuvent pas être traitées en l'état : Résolution des rasters », sans renvoi
+    « Un outil manque » (audit Fable 2026-11-02, A3)."""
+    import re
+    import tempfile
+    import time
+
+    from osgeo import gdal
+
+    dossier = Path(tempfile.mkdtemp(prefix="archeo_resolutions_"))
+    for nom, pas, x0 in (("a_0m50.tif", 0.5, 700000), ("b_1m.tif", 1.0, 700100), ("c_1m.tif", 1.0, 700200)):
+        n = int(100 / pas)
+        ds = gdal.GetDriverByName("GTiff").Create(str(dossier / nom), n, n, 1, gdal.GDT_Float32)
+        ds.SetGeoTransform((x0, pas, 0, 6700100, 0, -pas))
+        ds.SetProjection("EPSG:2154")
+        ds.GetRasterBand(1).Fill(100.0)
+        ds = None
+    sauve = dict(fichiers)
+    fichiers.update({"data_mode": "existing_mnt", "existing_mnt_dir": str(dossier)})
+    w._source_page.load_from(w._config)
+    w._refresh_validation()
+    w._goto_step(1)
+    w._goto_step(4)
+    limite = time.monotonic() + 120
+    while w._launch_page._preflight_status == "pending" and time.monotonic() < limite:
+        app.processEvents()
+        time.sleep(0.05)
+    for _ in range(8):
+        app.processEvents()
+    sortie.mkdir(parents=True, exist_ok=True)
+    w.grab().save(str(sortie / "etape4-donnees-refusees.png"))
+    brut = w._launch_page._banner.text()
+    bandeau = re.sub("<[^>]+>", " ", brut)
+    statut = w._launch_page._preflight_status
+    log("étape 4 données refusées : préflight =", statut, "| bandeau :", bandeau.strip(),
+        "| largeur bandeau :", w._launch_page._banner.width(), "/", w.width())
+    fichiers.clear()
+    fichiers.update(sauve)
+    w._source_page.load_from(w._config)
+    w._refresh_validation()
+    return (statut == "err" and "Les données fournies ne peuvent pas être traitées en l'état" in bandeau
+            and "Résolution des rasters" in bandeau and "outil manque" not in bandeau
+            and "manuel:depannage" not in brut)
+
+
 def _etape6(app, w, img: Path, log) -> bool:
     """aide/img/etape6-resultats.png : deux traitements fictifs de ce poste, avec leurs gestes."""
     from archeo.src.app.services.resultats_connus import Resultat
@@ -440,10 +486,13 @@ def captures(app, sortie: Path, log) -> int:
     # Après l'étape 4 prête : un second passage lance une vérification de fond pendant que
     # Processing s'initialise, et la première finissait en « QGIS processing » manquant.
     corriger_ok = _etape4_a_corriger(app, w, img, log, fichiers) if fichiers is not None else False
+    refus_ok = _etape4_donnees_refusees(app, w, sortie, log, fichiers) if fichiers is not None else False
     log("captures écrites dans", img, "— taille de l'assistant :", w.width(), "x", w.height())
     log("contrôles : structures", bool(n), "| fin", fin_ok, "| ligne", ligne_ok, "| fiches", fiche_ok,
-        "| à corriger", corriger_ok, "| étape 4", etape4_ok, "| étape 6", etape6_ok, "| flux", flux_ok)
-    return 0 if n and fin_ok and ligne_ok and fiche_ok and corriger_ok and etape4_ok and etape6_ok and flux_ok else 1
+        "| à corriger", corriger_ok, "| étape 4", etape4_ok, "| étape 6", etape6_ok, "| flux", flux_ok,
+        "| données refusées", refus_ok)
+    return 0 if (n and fin_ok and ligne_ok and fiche_ok and corriger_ok and etape4_ok and etape6_ok and flux_ok
+                 and refus_ok) else 1
 
 
 def manuel(app, sortie: Path, log, chapitre: str, ancre: str, recherche: str = "", tous: bool = False) -> int:

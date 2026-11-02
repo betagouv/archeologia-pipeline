@@ -53,7 +53,11 @@ Le plugin inspecte l'emprise de chaque raster :
 - **petit raster**, moins d'un kilomètre ou non aligné : l'emprise est conservée telle quelle ;
 - **grand raster**, plus d'un kilomètre dans une dimension : aucun pré-découpage, les produits sont calculés sur toute l'emprise et la détection découpe elle-même l'indice en fenêtres d'analyse.
 
-Chaque raster est calculé seul, sans voisin : sur un lot de petites dalles, les indices à grand rayon peuvent montrer une couture entre deux dalles. La carte **Marge entre dalles** de l'étape 2 signale quand le rayon d'un indice dépasse ce que la dalle peut fournir.
+**Une seule résolution par dossier.** Les rayons des indices et les fenêtres de détection sont réglés en mètres et convertis en pixels à la résolution des rasters, une fois par traitement. Un dossier qui mêle des rasters à 1 m et à 0,5 m est refusé par la vérification de l'étape 4 (« Résolution des rasters »), qui compte les rasters de chaque résolution : rangez-les dans un dossier par résolution et lancez un traitement par dossier, chacun avec son dossier de sortie. Des pas qui ne diffèrent que d'un arrondi (0,999993 m et 1 m) comptent pour une seule résolution. Même règle pour les indices existants.
+
+**Dalles jointives.** Une dalle d'un kilomètre dont les voisines sont dans le dossier est calculée avec 50 m de terrain pris sur ces voisines, puis recoupée à son kilomètre : les indices se raccordent d'une dalle à l'autre, sans couture au joint. La marge n'est prise que du côté où une voisine existe ; une dalle isolée, un petit raster ou un grand raster sont calculés seuls, comme avant. Les mêmes images avec marge servent à la détection, pour que les objets à cheval sur deux dalles soient vus entiers. Par rapport à la version précédente, les indices d'un lot de dalles jointives changent sur les 10 premiers mètres de part et d'autre des joints (France comprise) ; le MNT publié ne change pas.
+
+Un petit raster ou un raster isolé reste calculé sans voisin : face à un indice à grand rayon, la carte **Marge entre dalles** de l'étape 2 signale quand le rayon dépasse ce que le raster peut fournir.
 
 ## Indices de visualisation existants
 

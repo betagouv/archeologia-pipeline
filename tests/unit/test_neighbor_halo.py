@@ -158,3 +158,35 @@ class TestDefaultMargin:
         # 2000 px + 2 × marge (0,5 m/px) doit rester sous 648 + 3 × 518 = 2202 px :
         # la grille SAHI 4×4 des modèles 648/672 px n'ajoute aucune tuile.
         assert 2000 + 2 * DEFAULT_HALO_MARGIN_M / 0.5 <= 2202
+
+
+def test_fenetre_etendue_du_seul_cote_des_voisines():
+    """Audit Fable 2026-11-02 (P2, précision 1) : une marge sans donnée abaisserait le LD sur 10 m — la fenêtre du
+    MNT étendu ne déborde que là où une autre dalle fournie touche la bande de marge."""
+    from pipeline.modes.neighbor_halo import fenetre_dans_enveloppe
+
+    c = _cell(700, 6601)
+    assert fenetre_dans_enveloppe(c, 50.0, []) == c
+    est_sud = [_cell(701, 6601), _cell(700, 6600), _cell(701, 6600)]
+    assert fenetre_dans_enveloppe(c, 50.0, est_sud) == (700000.0, 6599950.0, 701050.0, 6601000.0)
+    tour = [_cell(x, y) for x in (699, 700, 701) for y in (6600, 6601, 6602) if (x, y) != (700, 6601)]
+    assert fenetre_dans_enveloppe(c, 50.0, tour) == halo_window(c, 50.0)
+    # Une voisine en diagonale seulement ne donne aucun côté (sa bande de coin serait seule à avoir des données).
+    assert fenetre_dans_enveloppe(c, 50.0, [_cell(701, 6600)]) == c
+
+
+def test_gdal_extract_refuse_une_source_sautee(tmp_path):
+    """Audit Fable 2026-11-02 (P2.1) : gdal.BuildVRT saute en silence une source illisible ; l'extraction le
+    détecte (sources du VRT ≠ entrées) et lève, l'appelant retombe sur la dalle seule."""
+    gdal = pytest.importorskip("osgeo.gdal")
+    bonne = tmp_path / "a.tif"
+    ds = gdal.GetDriverByName("GTiff").Create(str(bonne), 10, 10, 1, gdal.GDT_Float32)
+    ds.SetGeoTransform((0.0, 1.0, 0.0, 10.0, 0.0, -1.0))
+    ds = None
+    cassee = tmp_path / "b.tif"
+    cassee.write_bytes(b"pas un raster")
+    with pytest.raises(RuntimeError, match="saut"):
+        nh._gdal_extract([bonne, cassee], (0.0, 0.0, 10.0, 10.0), tmp_path / "out.tif")
+    nh._gdal_extract([bonne], (-5.0, 0.0, 10.0, 10.0), tmp_path / "ok.tif", nodata=-9999.0)
+    out = gdal.Open(str(tmp_path / "ok.tif"))
+    assert out.RasterXSize == 15 and out.GetRasterBand(1).GetNoDataValue() == -9999.0

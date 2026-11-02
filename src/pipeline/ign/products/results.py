@@ -123,7 +123,9 @@ def build_vrt_index(
             filelist_path = f.name
         
         try:
-            cmd = [str(gdalbuildvrt), "-input_file_list", filelist_path, str(vrt_path)]
+            # -resolution highest (audit Fable 2026-11-02, #29) : sans lui gdalbuildvrt prend la MOYENNE des pas,
+            # et une relance à une autre résolution dans le même dossier mêle dalles _0M50_ et _1M00_.
+            cmd = [str(gdalbuildvrt), "-resolution", "highest", "-input_file_list", filelist_path, str(vrt_path)]
             r = subprocess.run(cmd, capture_output=True, text=True, **subprocess_kwargs_no_window())
         finally:
             try:

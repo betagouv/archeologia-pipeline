@@ -49,8 +49,30 @@ def halo_inputs(target: Path, tiles: Dict[Path, Bounds], margin_m: float) -> Lis
     )
 
 
-def _gdal_extract(inputs: Sequence[Path], window: Bounds, dst: Path) -> None:
-    """Mosaïque VRT des entrées, découpée à ``window`` → GeoTIFF ``dst``."""
+def fenetre_dans_enveloppe(cellule: Bounds, marge_m: float, voisins: Sequence[Bounds]) -> Bounds:
+    """Fenêtre « cellule + marge » étendue seulement du côté où une AUTRE dalle fournie touche la bande de marge
+    (audit Fable 2026-11-02, P2) : une marge sans donnée abaisserait le LD sur 10 m (``moteur_indices`` rembourre
+    en ``edge`` et NaN-ise le NoData) — côté sans voisine, le bord reste celui d'aujourd'hui. Pur."""
+    x0, y0, x1, y1 = cellule
+
+    def touche(bx0: float, by0: float, bx1: float, by1: float) -> bool:
+        return any(a < bx1 and c > bx0 and b < by1 and d > by0 for a, b, c, d in voisins)
+
+    return (
+        x0 - marge_m if touche(x0 - marge_m, y0, x0, y1) else x0,
+        y0 - marge_m if touche(x0, y0 - marge_m, x1, y0) else y0,
+        x1 + marge_m if touche(x1, y0, x1 + marge_m, y1) else x1,
+        y1 + marge_m if touche(x0, y1, x1, y1 + marge_m) else y1,
+    )
+
+
+def _gdal_extract(inputs: Sequence[Path], window: Bounds, dst: Path, *, nodata: Optional[float] = None) -> None:
+    """Mosaïque VRT des entrées, découpée à ``window`` → GeoTIFF ``dst``.
+
+    Pas le plus fin des entrées (``resolution="highest"``). ``nodata`` : valeur du non-couvert (sinon celle des
+    sources, à défaut 0 — une falaise pour un MNT : le halo des MNT la passe toujours). Une source que
+    ``gdal.BuildVRT`` saute en silence (illisible, incompatible) fait lever : le halo serait faux sans le dire.
+    """
     from osgeo import gdal
 
     vrt_path = f"/vsimem/halo_{dst.stem}.vrt"
@@ -59,10 +81,16 @@ def _gdal_extract(inputs: Sequence[Path], window: Bounds, dst: Path) -> None:
     # par dalle qui noierait le journal QGIS sans rien changer au résultat.
     gdal.PushErrorHandler("CPLQuietErrorHandler")
     try:
-        vrt = gdal.BuildVRT(vrt_path, [str(p) for p in inputs], outputBounds=window)
+        options = {"VRTNodata": nodata} if nodata is not None else {}
+        vrt = gdal.BuildVRT(vrt_path, [str(p) for p in inputs], outputBounds=window, resolution="highest",
+                            allowProjectionDifference=True, **options)
         if vrt is None:
             raise RuntimeError(f"gdal.BuildVRT a échoué ({gdal.GetLastErrorMsg()})")
         try:
+            sources = [f for f in (vrt.GetFileList() or []) if f != vrt_path]
+            if len(sources) != len(inputs):
+                raise RuntimeError(f"{len(inputs) - len(sources)} source(s) sautée(s) par gdal.BuildVRT "
+                                   f"({gdal.GetLastErrorMsg() or 'source illisible ou incompatible'})")
             out = gdal.Translate(str(dst), vrt, creationOptions=["COMPRESS=DEFLATE", "TILED=YES"])
             if out is None:
                 raise RuntimeError(f"gdal.Translate a échoué ({gdal.GetLastErrorMsg()})")

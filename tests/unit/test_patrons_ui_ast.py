@@ -161,7 +161,9 @@ def test_bandeau_quatre_etats():
     for etat in ("incomplete", "pending", "tool_missing", "warn", "ok"):
         assert f'setProperty("state", "{etat}")' in src, etat
     assert 'setProperty("state", "error")' not in src, "l'ancien état « error » est remplacé"
-    assert "manuel:depannage#" in src, "le bandeau « outil manquant » renvoie au Dépannage"
+    assert "bandeau_controles_en_echec(" in src, "outil manquant / données refusées : vocabulaire.py"
+    voc = (STEP4.parents[2] / "app" / "services" / "vocabulaire.py").read_text(encoding="utf-8")
+    assert "manuel:depannage#" in voc, "le bandeau « outil manquant » renvoie au Dépannage"
     assert "classer_erreurs(" in src, "les points à corriger sont rangés par étape"
 
 

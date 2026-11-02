@@ -136,7 +136,7 @@ fileignoreconfig:
 - filename: src/ui/wizard_dialog.py
   checksum: 64577fe3ec55b9c8390842275fedfd9ba650ca348b34f19a987cd6db44b7d4f0
 - filename: tests/TESTS_MANUELS_QGIS.md
-  checksum: b1fb02d0853b1eb26218dd44ec3faa2b95ddc9274d95caca555c8603c49352de
+  checksum: 6cbb32764decece1360640fa049db05c2ec87bde8a4839a1368b66b1dacb163c
 - filename: tests/integration/test_existing_mnt_runner_finalize.py
   checksum: 09edbe48be7d273624e9d95354e3273c07a648491880cdb33c590782900510db
 - filename: tests/integration/test_existing_rvt_runner_isolation.py
@@ -296,7 +296,7 @@ fileignoreconfig:
 - filename: aide/img/etape3-fiche-classe.png
   checksum: 366d3e4d8f21219753142e13983ffb77d14f6c33ade117776e465ad6192af1b6
 - filename: data/third_party/cv_runner_onnx/windows/build_info.json
-  checksum: b3e0b31c771c8752930e3d9f2287f21f0fb9d21de677dbd998cc56bde7e5e32c
+  checksum: ae7bb279d138fb64863b25df7ade8be8e5e4437a6f883540853c6bf254c3c66f
 - filename: dev/rendu_hors_ecran.py
   checksum: 6fc03d0764896d6241f97d512e3975942ef3a1aad5bd01af0c0696428d62def5
 - filename: aide/img/etape2-produits.png
@@ -396,7 +396,7 @@ fileignoreconfig:
 - filename: src/app/services/sorties_prevues.py
   checksum: 3ded5ec72803f9b6c4994357cecdd9cfbea602e9e0c84be63a23b85c0c58a219
 - filename: aide/07-etape-5-traitement.md
-  checksum: 1e2b3564e08d0e7f7aa30805dea2c333433f64e3dad24ea49400baf62027dcc5
+  checksum: ac89de5e5209a29d71648a322c0795fa0e5ef0fcf07e621d2980137f3255c843
 - filename: tests/unit/test_sorties_prevues.py
   checksum: b25f3282553a6d5fe6ecfee0eec124a5a73dc44fff637e14c7883d972ab976df
 - filename: src/app/services/vocabulaire.py
@@ -406,7 +406,7 @@ fileignoreconfig:
 - filename: tests/unit/test_vocabulaire.py
   checksum: 0b4cbc2973f5b953d252b060d9ebd98eabcaf5656b88d508c68ea04e03beb662
 - filename: src/app/user_narrator.py
-  checksum: eb71790f7bb0101ef16a6887b0ca56a26595bc73a82760ecbb1f3928597f2942
+  checksum: 84378c02130211647faa3a2fc92972e5718970c23c191f45f898278f206f64b9
 - filename: src/ui/widgets/stage_button.py
   checksum: 905e2324563a29a6145ac92d0f2b0cba09c2c703dbbeeac881e646ad4265d32c
 - filename: src/ui/widgets/stepper_rail.py

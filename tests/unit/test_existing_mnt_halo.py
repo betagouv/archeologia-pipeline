@@ -187,9 +187,14 @@ def test_coin_diagonal_seul_pas_de_voisine_ni_d_erreur(tmp_path, monkeypatch):
     dalles.pop((1, 0)).unlink()
     dalles.pop((0, 1)).unlink()
     out = tmp_path / "sortie"
+    appels = []
+    monkeypatch.setattr(em, "tiled_context_warnings", lambda *a, **k: appels.append("tiled") or [])
+    monkeypatch.setattr(em, "raster_context_warnings", lambda *a, **k: appels.append("raster") or [])
     _, journal = _lancer(tmp_path / "mnt", out, monkeypatch)
     assert not any("impossible" in m for m in journal)
     assert "Marge inter-dalles : 2 dalles de 1 km sans voisine" in journal
+    # D2 (audit 2026-11-02) : chaque dalle est calculée seule → avertissements du raster seul, pas de la couture.
+    assert appels == ["raster", "raster"]
     assert filecmp.cmp(dalles[(0, 0)], _inter(out, "MNT_EXT_0700_6601_MNT.tif"), shallow=False)
 
 

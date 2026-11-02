@@ -49,8 +49,9 @@ def test_bilan_de_marge_compte_tout_le_lot():
     """Point 33 : « 0 dalle(s) étendue(s) de 50 m depuis leurs voisines, 1 sans voisin » pour un lot de 34 MNT dont
     33 fenêtres hors grille : la ligne ne comptait que les dalles standard."""
     assert _bilan_marge(0, 1, 33) == ("Marge inter-dalles : 1 dalle de 1 km sans voisine ; "
-                                      "33 MNT hors grille du km, traités seuls")
-    assert _bilan_marge(0, 0, 1) == "Marge inter-dalles : aucune dalle de 1 km sur la grille ; 1 MNT hors grille du km, traité seul"
+                                      "33 MNT traités seuls (hors grille du km ou plus grands qu'une dalle)")
+    assert _bilan_marge(0, 0, 1) == ("Marge inter-dalles : aucune dalle de 1 km sur la grille ; "
+                                     "1 MNT traité seul (hors grille du km ou plus grand qu'une dalle)")
     assert _bilan_marge(4, 0, 0) == "Marge inter-dalles : 4 dalles étendues de 50 m depuis leurs voisines"
     assert _bilan_marge(1, 2, 0) == ("Marge inter-dalles : 1 dalle étendue de 50 m depuis ses voisines ; "
                                      "2 dalles de 1 km sans voisine")
@@ -60,5 +61,8 @@ def test_bilan_de_marge_compte_tout_le_lot():
 def test_motif_d_une_petite_emprise_dit_la_vraie_cause():
     """de_sh 2026-11-01 : « emprise < 1 km (ou non alignée IGN) » affiché pour un MNT de 1 011 m non aligné."""
     assert _motif_petite_emprise((455300.0, 6056000.0, 456311.0, 6057011.0)) ==         "emprise 1 011 × 1 011 m non alignée sur la grille de 1 km"
+    # D4 (audit 2026-11-02) : alignée mais d'un pixel trop large — « non alignée » était faux.
+    assert _motif_petite_emprise((700000.0, 6599000.0, 701000.5, 6600000.0)) == (
+        "emprise 1 000 × 1 000 m : pas exactement la cellule du km (un bord à plus d'un demi-pixel)")
     assert _motif_petite_emprise((455300.0, 6056000.0, 455651.0, 6056351.0)) ==         "emprise 351 × 351 m, plus petite qu'une dalle de 1 km"
 

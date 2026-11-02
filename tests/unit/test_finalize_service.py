@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from app.services import finalize_service
 
 
@@ -617,3 +619,41 @@ class TestTraceResolutionReelle:
         _finalize(tmp_path, monkeypatch, tiles_processed=1, rvt_params={"resolution_m": 0.5}, ui_config=ui)
         tr, md = self._metas(tmp_path)
         assert tr["resolution_m"] == 0.5 and md["ui_config"]["processing"]["mnt_resolution"] == 0.5
+
+def test_collect_exclut_l_echafaudage_technique(tmp_path, monkeypatch):
+    """D6 (audit 2026-11-02) : l'exclusion visait « technique » alors que le dossier est ``detections/_technique/``."""
+    det = tmp_path / "detections"
+    for rel in ("_technique/modele/repli.gpkg", "cratere/cratere.gpkg"):
+        (det / rel).parent.mkdir(parents=True, exist_ok=True)
+        (det / rel).write_bytes(b"gpkg")
+    monkeypatch.setattr(finalize_service, "_list_gpkg_layers", lambda _p: ["Cratères"])
+    monkeypatch.setattr(finalize_service, "_gpkg_layer_feature_count", lambda _p, _l: 3)
+    assert finalize_service._collect_shapefiles(det) == [f"{det / 'cratere' / 'cratere.gpkg'}|layername=Cratères"]
+
+
+def test_collect_gpkg_verrouille_repli_sur_fiabilite_json(tmp_path, caplog):
+    """D7 : GeoPackage verrouillé (QGIS en édition) → liste des couches illisible ; on ne retombe plus sur le
+    chemin nu (couche nommée d'après le fichier, légende en tranches) mais sur les couches de ``fiabilite.json``,
+    et le repli est journalisé."""
+    import json
+    import logging
+    import sqlite3
+
+    gpd = pytest.importorskip("geopandas")
+    box = pytest.importorskip("shapely.geometry").box
+    g = tmp_path / "detections" / "charbonnieres" / "charbonnieres.gpkg"
+    g.parent.mkdir(parents=True)
+    gpd.GeoDataFrame({"fiabilite": ["Probable"]}, geometry=[box(0, 0, 1, 1)], crs="EPSG:2154").to_file(
+        g, layer="Charbonnières", driver="GPKG")
+    (g.parent / "fiabilite.json").write_text(json.dumps({"Charbonnières": {"categories": []}}), encoding="utf-8")
+    con = sqlite3.connect(g, isolation_level=None)
+    con.execute("PRAGMA journal_mode=DELETE")
+    con.execute("BEGIN EXCLUSIVE")
+    try:
+        with caplog.at_level(logging.WARNING):
+            refs = finalize_service._collect_shapefiles(tmp_path / "detections")
+    finally:
+        con.execute("ROLLBACK")
+        con.close()
+    assert refs == [f"{g}|layername=Charbonnières"]
+    assert any("fiabilite.json" in r.getMessage() for r in caplog.records)

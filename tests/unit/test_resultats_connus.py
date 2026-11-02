@@ -7,6 +7,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 from app.services.fiabilite_observee import enregistrer_run
 from app.services.resultats_connus import (
     Resultat,
@@ -107,8 +109,8 @@ def test_chemins_du_livrable_nomment_chaque_couche_comme_la_fin_du_traitement(tm
     ``fiabilite.json`` (indexé par nom de couche) introuvable → légende en tranches de score,
     toutes cochées. Il faut la même référence ``<gpkg>|layername=<couche>`` qu'en fin de
     traitement (``finalize_service._collect_shapefiles``), une par couche non vide."""
-    import geopandas as gpd
-    from shapely.geometry import box
+    gpd = pytest.importorskip("geopandas")
+    box = pytest.importorskip("shapely.geometry").box
 
     d = _dossier(tmp_path, "r", "2026-10-24T09:30:00")
     g = d / "livrable" / "detections" / "talus_et_fosses" / "talus_et_fosses.gpkg"

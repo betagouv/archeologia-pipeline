@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple, TYPE_CHECKING
 
@@ -280,6 +281,17 @@ def _gpkg_layer_feature_count(gpkg_path: Path, layer: str) -> int:
         return -1
 
 
+def _couches_du_sidecar(gpkg_file: Path) -> List[str]:
+    """Noms de couches décrits par ``fiabilite.json`` à côté du GeoPackage (repli de :func:`_collect_shapefiles`)."""
+    import json
+
+    try:
+        data = json.loads((gpkg_file.parent / "fiabilite.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return []
+    return [str(k) for k in data] if isinstance(data, dict) else []
+
+
 def _collect_shapefiles(det_dir: Path) -> List[str]:
     """Collecte les couches GeoPackage de détection CV (organisation entité-centrée).
 
@@ -289,21 +301,26 @@ def _collect_shapefiles(det_dir: Path) -> List[str]:
     (0 entité — p.ex. vidées par le filtre d'aire minimale) : une couche vide ne
     doit être ni chargée ni écrite dans le ``.qgs``. Reste tolérant aux anciens
     layouts (``shapefiles/``) tant qu'ils ne sont pas sous ``_technique/``.
+
+    Couches illisibles (GeoPackage verrouillé par QGIS en édition…) : repli sur les couches que décrit
+    ``fiabilite.json`` à côté, journalisé ; le chemin nu (couche nommée d'après le fichier, légende en
+    tranches de score) n'est plus que le dernier recours.
     """
     shapefile_paths: List[str] = []
     if not det_dir.exists():
         return shapefile_paths
 
-    try:
-        from ...pipeline.output_paths import DIR_TECHNIQUE
-    except ImportError:
-        from pipeline.output_paths import DIR_TECHNIQUE
-
     for gpkg_file in sorted(det_dir.rglob("*.gpkg")):
-        # Exclure l'échafaudage technique (detections/_technique/…)
-        if DIR_TECHNIQUE in gpkg_file.relative_to(det_dir).parts:
+        # Exclure l'échafaudage technique (detections/_technique/…) — « technique » (DIR_TECHNIQUE) ne
+        # l'excluait jamais (audit 2026-11-02, D6).
+        if "_technique" in gpkg_file.relative_to(det_dir).parts:
             continue
         layers = _list_gpkg_layers(gpkg_file)
+        if not layers:
+            layers = _couches_du_sidecar(gpkg_file)
+            if layers:
+                logging.getLogger("archeologia_pipeline").warning(
+                    f"Couches de {gpkg_file.name} illisibles (fichier verrouillé ?) : noms repris de fiabilite.json")
         if layers:
             for layer in layers:
                 # Sauter les couches vides (comptage == 0 ; -1 = inconnu → on garde).

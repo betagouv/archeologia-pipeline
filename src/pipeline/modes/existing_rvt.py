@@ -102,7 +102,9 @@ def _classify_rvt_layout(
 ) -> str:
     """Classifie l'emprise d'un raster RVT pour choisir le flux de traitement.
 
-    Sémantique identique à :func:`_classify_mnt_layout` dans ``existing_mnt.py`` :
+    Même découpage que :func:`_classify_mnt_layout` (``existing_mnt.py``) SAUF le « standard » : ici la tolérance
+    de 50 m demeure (un RVT n'est jamais rogné, « standard » ne change que le nommage), alors que le mode MNT
+    exige depuis le 2026-11-02 la cellule km à ½ pixel près (son rognage perdait du terrain) :
 
     - ``"large"``  : largeur ou hauteur > 1 km + tolérance → on applique SAHI
       directement sur le raster complet (slicing 640 × 640 en mémoire à

@@ -153,6 +153,8 @@ def _motif_petite_emprise(
     1 km mais non aligné (un 1 011 m était annoncé « < 1 km », de_sh 2026-11-01)."""
     w, h = bounds[2] - bounds[0], bounds[3] - bounds[1]
     taille = f"emprise {round(w):,} × {round(h):,} m".replace(",", " ")
+    if round(w) == round(h) == tile_size_m:   # cellule à l'arrondi près, mais un bord à plus d'½ pixel
+        return f"{taille} : pas exactement la cellule du km (un bord à plus d'un demi-pixel)"
     if abs(w - tile_size_m) <= tol_m and abs(h - tile_size_m) <= tol_m:
         return f"{taille} non alignée sur la grille de 1 km"
     return f"{taille}, plus petite qu'une dalle de 1 km"
@@ -172,7 +174,8 @@ def _bilan_marge(etendues: int, sans_voisine: int, seuls: int) -> str:
     if seuls:
         if not (etendues or sans_voisine):
             parts.append("aucune dalle de 1 km sur la grille")
-        parts.append(n(seuls, "MNT hors grille du km, traité seul", "MNT hors grille du km, traités seuls"))
+        parts.append(n(seuls, "MNT traité seul (hors grille du km ou plus grand qu'une dalle)",
+                       "MNT traités seuls (hors grille du km ou plus grands qu'une dalle)"))
     return "Marge inter-dalles : " + " ; ".join(parts) if parts else ""
 
 
@@ -227,6 +230,29 @@ def _copy_source_mnt_to_temp(
         raise ValueError(f"Format MNT non supporté: {source_path.suffix}")
 
 
+def _marge_au_pixel(spec: Optional[TileSpec], margin_m: float) -> float:
+    """Marge arrondie au pixel de la dalle (la grille du MNT étendu reste celle de la dalle)."""
+    pas = abs(float(spec.pixel_size_x)) if spec is not None and spec.pixel_size_x else 0.0
+    return round(margin_m / pas) * pas if pas else margin_m
+
+
+def _voisines_utiles(
+    mnt_path: Path, tiles: Dict[Path, Tuple[float, float, float, float]], marge_m: float,
+) -> Tuple[list, Optional[Tuple[float, float, float, float]]]:
+    """``(sources, fenêtre)`` de la marge inter-dalles d'une dalle, ou ``([], None)`` sans voisine utile. Pur.
+
+    ``halo_inputs`` → :func:`fenetre_dans_enveloppe` → seules les dalles qui INTERSECTENT la fenêtre (aire > 0) :
+    une diagonale retenue par ``halo_inputs`` ne fait que toucher une fenêtre étendue d'un seul côté, BuildVRT la
+    sautait (lot en L, 2026-11-02). Source unique du « avec voisines » : extraction ET avertissements de noyau."""
+    if mnt_path not in tiles:
+        return [], None
+    inputs = halo_inputs(mnt_path, tiles, marge_m)
+    fx0, fy0, fx1, fy1 = fenetre = fenetre_dans_enveloppe(
+        tiles[mnt_path], marge_m, [tiles[p] for p in inputs if p != mnt_path])
+    inputs = [p for p in inputs if tiles[p][0] < fx1 and tiles[p][2] > fx0 and tiles[p][1] < fy1 and tiles[p][3] > fy0]
+    return (inputs, fenetre) if len(inputs) >= 2 else ([], None)
+
+
 def _materialiser_mnt_avec_marge(
     mnt_path: Path,
     tiles: Dict[Path, Tuple[float, float, float, float]],
@@ -252,18 +278,9 @@ def _materialiser_mnt_avec_marge(
             sidecar.unlink(missing_ok=True)
         return False
 
-    inputs = halo_inputs(mnt_path, tiles, margin_m) if mnt_path in tiles else []
-    if len(inputs) < 2:
-        return _abandon()
     spec = TileSpec.from_raster(mnt_path)
-    pas = abs(float(spec.pixel_size_x)) if spec is not None and spec.pixel_size_x else 0.0
-    marge = round(margin_m / pas) * pas if pas else margin_m
-    fenetre = fenetre_dans_enveloppe(tiles[mnt_path], marge, [tiles[p] for p in inputs if p != mnt_path])
-    # Seules les dalles qui INTERSECTENT la fenêtre (aire > 0) servent : une diagonale retenue par halo_inputs ne fait
-    # que toucher une fenêtre étendue d'un seul côté, BuildVRT la saute et l'extraction échouait (lot en L, 2026-11-02).
-    fx0, fy0, fx1, fy1 = fenetre
-    inputs = [p for p in inputs if tiles[p][0] < fx1 and tiles[p][2] > fx0 and tiles[p][1] < fy1 and tiles[p][3] > fy0]
-    if len(inputs) < 2:
+    inputs, fenetre = _voisines_utiles(mnt_path, tiles, _marge_au_pixel(spec, margin_m))
+    if not inputs:
         return _abandon()
     attendu = {"marge_m": float(margin_m), "voisins": sorted(p.name for p in inputs)}
     if temp_mnt_path.exists() and _is_fresh(temp_mnt_path, sidecar, attendu, inputs):
@@ -473,8 +490,8 @@ def run_existing_mnt(
         #    face à un grand noyau, le produit est majoritairement fabriqué et AUCUNE couture ne le signale
         #    (échec silencieux, cf. app.services.rvt_kernel_context). Dédoublonné : un lot de rasters de même
         #    taille ne doit pas répéter 100 fois la même ligne.
-        avec_voisines = (layout == "standard" and mnt_path in tiles
-                         and len(halo_inputs(mnt_path, tiles, DEFAULT_HALO_MARGIN_M)) >= 2)
+        avec_voisines = layout == "standard" and bool(
+            _voisines_utiles(mnt_path, tiles, _marge_au_pixel(spec, DEFAULT_HALO_MARGIN_M))[0])
         if spec is not None:
             if avec_voisines:
                 messages = tiled_context_warnings(products, rvt_params, tile_overlap_percent=5.0,

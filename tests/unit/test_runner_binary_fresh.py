@@ -59,3 +59,22 @@ def test_binaire_windows_avec_directml(exiger_ou_sauter):
         f"binaire sans DirectML ({ort}) : recompiler avec python dev/runner_onnx/build.py"
     )
     assert ort.get("version") == _module_build().ORT_DIRECTML.split("==")[1]
+
+
+def test_empreinte_des_sources_independante_des_fins_de_ligne(tmp_path):
+    """#27 des crash tests (2026-11-02) : un binaire compilé dans un worktree (LF) était vu PÉRIMÉ dans le profil
+    QGIS (CRLF) — mêmes sources, autre empreinte. L'empreinte se calcule sur les fins de ligne normalisées."""
+    cv = tmp_path / "src" / "pipeline" / "cv"
+    cli = tmp_path / "dev" / "runner_onnx" / "cv_runner_onnx_cli.py"
+    cv.mkdir(parents=True)
+    cli.parent.mkdir(parents=True)
+    build = _module_build()
+
+    def ecrire(fin):
+        (cv / "a.py").write_bytes(fin.join([b"x = 1", b"y = 2", b""]))
+        cli.write_bytes(fin.join([b"print('cli')", b""]))
+        return build.hash_cv_sources(tmp_path)
+    lf, crlf = ecrire(b"\n"), ecrire(b"\r\n")
+    assert lf == crlf
+    (cv / "a.py").write_bytes(b"x = 2\n")
+    assert build.hash_cv_sources(tmp_path) != lf, "un vrai changement de source change toujours l'empreinte"

@@ -430,7 +430,14 @@ def decrire_reglages(section: str, valeurs: Optional[Mapping[str, Any]],
         else:
             metres = defaut_m
         px = int(g(cle)) if cle in valeurs and f"{cle}_m" in valeurs else px_de_m(metres, res)
-        return _dec(metres), px
+        return _dec(metres), px, metres
+
+    def soit(*reglages: Tuple[float, int]) -> str:
+        """« , soit 6 à 10 m au pixel près » quand l'arrondi au pixel change la distance calculée (5 m à 2 m/px
+        = 3 px = 6 m, crash test ie_smr_2m) ; rien quand les pixels tombent juste."""
+        if all(abs(px * res - metres) < 1e-6 for metres, px in reglages):
+            return ""
+        return ", soit " + " à ".join(_dec(px * res) for _, px in reglages) + " m au pixel près"
     if section == "hs":
         m += [f"azimut solaire {_dec(g('sun_azimuth', 315), 0)}°", f"élévation solaire {_dec(g('sun_elevation', 35), 0)}°"]
     elif section == "mdh":
@@ -440,19 +447,19 @@ def decrire_reglages(section: str, valeurs: Optional[Mapping[str, Any]],
     elif section in ("svf", "opns"):
         if section == "opns":
             m.append("ouverture négative, les creux" if int(g("opns_type", 0) or 0) == 1 else "ouverture positive, les saillies")
-        r, px = dist("radius", 5.0)
-        m += [f"rayon {r} m ({px} px)", f"{_nb(int(g('num_directions', 16)))} directions", _bruit(g("noise_remove", 0))]
+        r, px, rm = dist("radius", 5.0)
+        m += [f"rayon {r} m ({px} px{soit((rm, px))})", f"{_nb(int(g('num_directions', 16)))} directions", _bruit(g("noise_remove", 0))]
     elif section == "slope":
         # 2 = pourcentage ; 1 est ce qu'envoyait « Pourcentage » avant la 0.15.0, relu comme tel (rvt_naming.slope_unit)
         m.append("en pourcentage" if int(g("unit", 0) or 0) in (1, 2) else "en degrés")
     elif section == "ldo":
-        (lo, plo), (hi, phi) = dist("min_radius", 5.0), dist("max_radius", 10.0)
-        m += [f"rayon de {lo} à {hi} m ({plo} à {phi} px)",
+        (lo, plo, lom), (hi, phi, him) = dist("min_radius", 5.0), dist("max_radius", 10.0)
+        m += [f"rayon de {lo} à {hi} m ({plo} à {phi} px{soit((lom, plo), (him, phi))})",
               f"résolution angulaire {_dec(g('angular_res', 15), 0)}°",
               f"hauteur d'observateur {_dec(g('observer_h', 1.7))} m"]
     elif section == "slrm":
-        r, px = dist("radius", 10.0)
-        m.append(f"rayon {r} m ({px} px)")
+        r, px, rm = dist("radius", 10.0)
+        m.append(f"rayon {r} m ({px} px{soit((rm, px))})")
     elif section in ("vat", "prism"):
         m.append(_TERRAIN.get(int(g("terrain_type", 0) or 0), "terrain général"))
     elif section == "crim":
@@ -462,8 +469,8 @@ def decrire_reglages(section: str, valeurs: Optional[Mapping[str, Any]],
     elif section == "mstp":
         for nom, cle, d in (("locale", "local", (1.5, 10.5, 1.0)), ("méso", "meso", (11.5, 101.5, 9.0)),
                             ("large", "broad", (50.0, 200.0, 30.0))):
-            (lo, plo), (hi, phi), (pas, ppas) = (dist(f"{cle}_scale_{k}", v) for k, v in zip(("min", "max", "step"), d))
-            m.append(f"échelle {nom} de {lo} à {hi} m par pas de {pas} m ({plo} à {phi} px, pas de {ppas})")
+            (lo, plo, lom), (hi, phi, him), (pas, ppas, _) = (dist(f"{cle}_scale_{k}", v) for k, v in zip(("min", "max", "step"), d))
+            m.append(f"échelle {nom} de {lo} à {hi} m par pas de {pas} m ({plo} à {phi} px, pas de {ppas}{soit((lom, plo), (him, phi))})")
         m.append(f"luminosité {_dec(g('lightness', 0.9))}")
     ve = None if section == "mstp" else g("ve_factor")   # MSTP : l'exagération s'annule, plus de champ
     if ve is not None and float(ve) != 1.0:

@@ -175,6 +175,7 @@ class ResultatsPage(QWidget):
         """Le même chargement qu'à la fin d'un traitement, depuis le livrable et la
         configuration de la trace (seuils par structure, regroupements)."""
         from ...app.services.finalize_service import build_entity_grouping, build_min_confidence_by_slug
+        from ...app.services.nom_analyse import titre_du_livrable
         from ..layer_loader import load_result_layers
 
         vrt, gpkg, qa = chemins_du_livrable(r)
@@ -200,6 +201,7 @@ class ResultatsPage(QWidget):
                 vrt, gpkg, None, logger, conf,
                 entity_labels=entity_labels, derived_slugs=derived_slugs,
                 min_conf_by_slug=min_conf, qa_paths=qa, coverage_threshold_percent=cov,
+                titre_analyse=titre_du_livrable(r.dossier),   # le même groupe qu'à la fin du traitement
             )
         finally:
             QApplication.restoreOverrideCursor()

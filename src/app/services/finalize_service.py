@@ -454,6 +454,7 @@ def _ecrire_rapport_run(
         surface_km2_depuis_vrt,
         vignette_depuis_vrt,
     )
+    from .nom_analyse import nom_de_config
     from .source_modes import mode_info
 
     try:
@@ -547,7 +548,7 @@ def _ecrire_rapport_run(
         bilan=tuple(ligne.to_dict() for ligne in bilan), etapes=tuple(etapes),
         avertissements=tuple(avertissements), vignette=vignette, vignette_legende=legende,
         motif_detection=motif_detection,
-        couleurs=couleurs, crs=crs,
+        couleurs=couleurs, crs=crs, nom_analyse=nom_de_config(ui_config),
         horodatage=journaux[-1].stem[len("pipeline_log_"):] if journaux else "",
     )
     ecrire_rapport(livrable_dir(Path(output_dir)), donnees)
@@ -753,12 +754,15 @@ def finalize_pipeline(
                 VERSION_ARBORESCENCE, journaux_dir, livrable_dir,
             )
         from ..plugin_metadata import get_plugin_version
+        from .nom_analyse import nom_de_config
 
         meta = {
             "pipeline_version": "2.0",
             "plugin_version": get_plugin_version(),
             "arborescence": VERSION_ARBORESCENCE,
             "date": _dt.datetime.now().isoformat(timespec="seconds"),
+            # Nom de l'analyse (étape 1, 0.19.0) : groupe parent des couches dans QGIS, titre du rapport.
+            "nom_analyse": nom_de_config(ui_config),
             "tiles_processed": tiles_processed,
             # Système de coordonnées de TOUTES les sorties (celui des entrées, jamais reprojeté).
             "crs": crs,

@@ -10,7 +10,12 @@ from pathlib import Path
 from typing import List, Optional
 
 from ..app.progress_reporter import USER_INFO
-from ..app.services.finalize_service import GROUPE_STRUCTURES
+from ..app.services.nom_analyse import (
+    groupe_analyse,
+    groupe_indices,
+    groupe_structures,
+    retirer_groupes_vides,
+)
 from ..app.services.vocabulaire import titre_dossier_image
 
 
@@ -359,10 +364,15 @@ def load_result_layers(
     min_conf_by_slug: Optional[dict] = None,
     qa_paths: Optional[list] = None,
     coverage_threshold_percent: float = 30.0,
+    titre_analyse: str = "",
 ) -> None:
     """Charge les VRT (raster) et vecteurs (détections) dans le projet QGIS,
     applique la symbologie, puis zoome sur l'étendue combinée (déféré).
 
+    Tout va sous le groupe de l'analyse ``titre_analyse`` (« <nom> — JJ/MM/AAAA HH:MM »,
+    ``nom_analyse.titre_du_livrable``, 0.19.0) : la couche QA en tête, « Structures », puis
+    « Indices » (les mosaïques, MNT en dernier) ; deux analyses = deux groupes, recharger la même
+    réutilise son groupe et ses couches (``_reuse_existing``). Sans titre : arbre à plat d'avant.
     Toutes les couches de détection vont sous le groupe « Structures » (N-02, 2026-10-25) ;
     ``derived_slugs`` (slugs d'entités dérivées ou comparées) + ``entity_labels``
     (slug→libellé) y font un **sous-groupe** par libellé (zone + constituants ensemble,
@@ -389,13 +399,10 @@ def load_result_layers(
         # via le registre) ; le paramètre est conservé pour ne pas casser les
         # appelants existants.
 
-        # ── Rasters (VRT d'indices) ──
-        for vrt_path in vrt_paths:
-            if not vrt_path:
-                continue
+        # ── Rasters (VRT d'indices) ── MNT en dernier = en bas du groupe, comme dans le .qgs.
+        for vrt_path in sorted((v for v in vrt_paths if v), key=lambda v: _rvt_type_of(v).upper() == "MNT"):
             vrt_path_str = str(vrt_path)
-            _vp = Path(vrt_path_str)
-            rvt_type = _vp.parent.parent.name if _vp.parent.name == "tif" else _vp.parent.name
+            rvt_type = _rvt_type_of(vrt_path_str)
             layer_name = titre_dossier_image(rvt_type)   # « SVF · Creux & dépressions · R10_… » (N-03)
 
             if _reuse_existing(project, layer_name, vrt_path_str, loaded_layers, combined_extent):
@@ -407,7 +414,8 @@ def load_result_layers(
                 _ensure_layer_crs(layer, logger)
                 if rvt_type == "COUVERTURE":
                     apply_coverage_raster_symbology(layer, coverage_threshold_percent, logger)
-                project.addMapLayer(layer)
+                project.addMapLayer(layer, False)
+                groupe_indices(groupe_analyse(root, titre_analyse)).addLayer(layer)
                 loaded_layers.append(layer)
                 combined_extent = _combine(combined_extent, layer.extent())
                 loaded_count += 1
@@ -439,16 +447,12 @@ def load_result_layers(
                 confidence_threshold=layer_conf, logger=logger,
             )
             if layer is not None:
-                # Toutes les détections sous « Structures » (insertGroup(0) : EN HAUT de
-                # l'arbre, au-dessus des mosaïques) ; une entité dérivée ou comparée y a
-                # son sous-groupe (zone + constituants ensemble). Même arbre que le .qgs.
+                # Toutes les détections sous « Structures » (en haut du groupe de l'analyse,
+                # au-dessus des mosaïques) ; une entité dérivée ou comparée y a son
+                # sous-groupe (zone + constituants ensemble). Même arbre que le .qgs.
                 project.addMapLayer(layer, False)  # pas à la racine
-                structures = root.findGroup(GROUPE_STRUCTURES) or root.insertGroup(0, GROUPE_STRUCTURES)
-                parent = structures
-                if slug in derived_slugs:
-                    label = entity_labels.get(slug, slug)
-                    parent = structures.findGroup(label) or structures.insertGroup(0, label)
-                parent.addLayer(layer)
+                sous = entity_labels.get(slug, slug) if slug in derived_slugs else ""
+                groupe_structures(groupe_analyse(root, titre_analyse), sous).addLayer(layer)
                 loaded_layers.append(layer)
                 combined_extent = _combine(combined_extent, layer.extent())
                 loaded_count += 1
@@ -473,7 +477,7 @@ def load_result_layers(
                 logger.warning(f"Impossible de charger la couche QA: {qa_str}")
                 continue
             project.addMapLayer(layer, False)
-            root.insertLayer(0, layer)  # au-dessus des groupes d'entités et des rasters
+            groupe_analyse(root, titre_analyse).insertLayer(0, layer)  # au-dessus des structures et des rasters
             loaded_layers.append(layer)
             combined_extent = _combine(combined_extent, layer.extent())
             loaded_count += 1
@@ -494,6 +498,12 @@ def load_result_layers(
 
 
 # ── helpers ─────────────────────────────────────────────────────────
+
+
+def _rvt_type_of(vrt) -> str:
+    """Type de produit RVT depuis le chemin du VRT (ex. ``MNT``, ``LD_...``, ``HS_...``)."""
+    vp = Path(str(vrt))
+    return vp.parent.parent.name if vp.parent.name == "tif" else vp.parent.name
 
 
 def _combine(extent, new_extent):
@@ -555,21 +565,13 @@ def _reuse_existing(project, layer_name, source, loaded_layers, combined_extent)
 
 
 def _retirer_groupes_vides(project) -> None:
-    """Les groupes que la purge vient de vider — « Structures » et ses sous-groupes, jamais un
-    groupe de l'utilisateur, jamais un groupe encore peuplé — ne restent pas vides dans l'arbre
-    (constat de recette 68.4, 2026-10-26 : « Structures » et « Regroupement de cratères » vides
-    après le lancement d'un re-run). « Ajouter » les recrée au besoin (findGroup ou insertGroup)."""
+    """Les groupes que la purge vient de vider — celui de l'analyse, ses « Structures » (et
+    sous-groupes) et « Indices », l'ancien « Structures » de la racine ; jamais un groupe de
+    l'utilisateur, jamais un groupe encore peuplé — ne restent pas vides dans l'arbre (constat de
+    recette 68.4, 2026-10-26). Règle pure : ``nom_analyse.retirer_groupes_vides``."""
     from qgis.core import QgsLayerTree
 
-    root = project.layerTreeRoot()
-    structures = root.findGroup(GROUPE_STRUCTURES)
-    if structures is None:
-        return
-    for sous in list(structures.children()):
-        if QgsLayerTree.isGroup(sous) and not sous.children():
-            structures.removeChildNode(sous)
-    if not structures.children():
-        root.removeChildNode(structures)
+    retirer_groupes_vides(project.layerTreeRoot(), QgsLayerTree.isGroup)
 
 
 def purge_output_dir_layers(output_dir, logger: logging.Logger) -> int:

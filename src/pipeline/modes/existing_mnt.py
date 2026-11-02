@@ -259,6 +259,12 @@ def _materialiser_mnt_avec_marge(
     pas = abs(float(spec.pixel_size_x)) if spec is not None and spec.pixel_size_x else 0.0
     marge = round(margin_m / pas) * pas if pas else margin_m
     fenetre = fenetre_dans_enveloppe(tiles[mnt_path], marge, [tiles[p] for p in inputs if p != mnt_path])
+    # Seules les dalles qui INTERSECTENT la fenêtre (aire > 0) servent : une diagonale retenue par halo_inputs ne fait
+    # que toucher une fenêtre étendue d'un seul côté, BuildVRT la saute et l'extraction échouait (lot en L, 2026-11-02).
+    fx0, fy0, fx1, fy1 = fenetre
+    inputs = [p for p in inputs if tiles[p][0] < fx1 and tiles[p][2] > fx0 and tiles[p][1] < fy1 and tiles[p][3] > fy0]
+    if len(inputs) < 2:
+        return _abandon()
     attendu = {"marge_m": float(margin_m), "voisins": sorted(p.name for p in inputs)}
     if temp_mnt_path.exists() and _is_fresh(temp_mnt_path, sidecar, attendu, inputs):
         return True

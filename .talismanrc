@@ -1,6 +1,8 @@
 fileignoreconfig:
+- filename: src/pipeline/modes/existing_mnt.py
+  checksum: ac376cc3cff150a4a7a4f6ba3eb3898810b5dbd29d0373e715bf72504ba1a603
 - filename: tests/unit/test_existing_mnt_halo.py
-  checksum: 8abc041e72ad2da755a87a4fb7690787daf0cf14b51eb0f6d840eb39fa230159
+  checksum: 57c7b87ec5bb7e6c184ac715b8999a8ab608d31268de988371a0776ca0d0c1af
 - filename: tests/unit/test_results_vrt_filter.py
   checksum: 9ab6f8ff1958e2092e4fdf7ab0c3b061fb0f4b4643984da7d05cda97e65e587e
 - filename: tests/unit/test_geometries_imbriquees.py
@@ -34,7 +36,7 @@ fileignoreconfig:
 - filename: .githooks/pre-push
   checksum: c3ba1eb42246b032f6a556dd8813efdeab7151044c6e9942a252822ca56905da
 - filename: CLAUDE.md
-  checksum: c8f82e9956954dd8581657a37afd864dad610059f3e6b9233c59cbd8e0459d26
+  checksum: fcdf18a8e3dbf5a58c5561cbc59c267bb6d8adf98ad6a33e8eaec9115135bf35
 - filename: README.md
   checksum: 826fc2543c11864d1ae91f39c5af8c3616d9bac649d2a1d2337a3ffc6b863ee5
 - filename: dev/docs/documentation_utilisateur_v1.docx
@@ -136,7 +138,7 @@ fileignoreconfig:
 - filename: src/ui/wizard_dialog.py
   checksum: 64577fe3ec55b9c8390842275fedfd9ba650ca348b34f19a987cd6db44b7d4f0
 - filename: tests/TESTS_MANUELS_QGIS.md
-  checksum: d94d2f5ac41e424930ac500a821c89025c7b349087d836e86a4f056d413f75f7
+  checksum: 716b5ae00e516d42938846f5405846ed8842704818fb1c307cf01a63ede5eea8
 - filename: tests/integration/test_existing_mnt_runner_finalize.py
   checksum: 09edbe48be7d273624e9d95354e3273c07a648491880cdb33c590782900510db
 - filename: tests/integration/test_existing_rvt_runner_isolation.py
@@ -390,7 +392,7 @@ fileignoreconfig:
 - filename: tests/unit/test_tile_resolver.py
   checksum: ea17cec8a1bb72fb3e9c51bc5cf203cfbe7cbba4ea848643d3642ac5426022e9
 - filename: src/app/services/resultats_connus.py
-  checksum: 1c8a648d3b0b5b77cb0a8b57b0db9d0fc7887d7164711728f0d2af6835e18405
+  checksum: 86f5bb650b70353b26e3c8d3328a98ceeefc652a7cc7d96e208d631d85d04a28
 - filename: src/app/services/couleurs_couches.py
   checksum: a96a6102dfd2b92cdccbfafc2095047070435c88c03752b6193e2f31abbaccf1
 - filename: src/app/services/sorties_prevues.py
@@ -402,7 +404,7 @@ fileignoreconfig:
 - filename: src/app/services/vocabulaire.py
   checksum: f9f2c4ff0a3137c45fe85324e6729d7e6823d710f55b69a71c00346f9b3f29f2
 - filename: aide/03-etape-1-source.md
-  checksum: 51eae0a3da32ddcb50bc61e44011956e815b150bcde936b96808620a6a6c2545
+  checksum: fa3a28c151b235fa6b1fc205cff29d83b7863876a342da92ec9698874f6cfebc
 - filename: tests/unit/test_vocabulaire.py
   checksum: 0b4cbc2973f5b953d252b060d9ebd98eabcaf5656b88d508c68ea04e03beb662
 - filename: src/app/user_narrator.py

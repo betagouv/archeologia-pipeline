@@ -62,7 +62,7 @@ Sous les réglages, une ligne de diagnostic compare cette marge au rayon le plus
 - **✓ Contexte fourni aux noyaux** : la marge couvre le rayon, rien à faire.
 - **⚠** suivi du nom d'un indice : son rayon dépasse la marge. Au-delà de la marge, l'algorithme reconstruit le voisinage par symétrie et les dalles ne se raccordent plus. Réduisez le rayon indiqué, ou augmentez la marge.
 
-En MNT existant comme en Indices de visualisation existants, le champ de marge est masqué. En MNT existant, chaque raster est calculé sans voisin, la marge n'aurait aucun effet, et le diagnostic dit quelle part de l'emprise aura un voisinage complet. Sur un lot, le réglage vaut pour toutes les dalles ; ne réduisez un rayon que si la plupart des rasters ont cette taille.
+En MNT existant comme en Indices de visualisation existants, le champ de marge est masqué. En MNT existant, une dalle d'un kilomètre reçoit une marge fixe de 50 m prise sur ses voisines du dossier (le champ n'a pas d'effet) ; un raster sans voisine est calculé seul, et le diagnostic dit quelle part de son emprise aura un voisinage complet. Sur un lot, le réglage vaut pour toutes les dalles ; ne réduisez un rayon que si la plupart des rasters ont cette taille.
 
 ## Point de départ MNT existant
 

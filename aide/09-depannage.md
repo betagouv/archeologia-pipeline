@@ -58,7 +58,7 @@ Le rayon d'un indice dépasse la marge entre dalles, ou la taille d'un raster en
 
 ## Une couture entre deux dalles
 
-Sur un indice à grand rayon, une ligne droite visible à la frontière de deux dalles vient d'une marge insuffisante : même cause et même remède que ci-dessus. En MNT existant, chaque raster est calculé sans voisin et la couture est possible : fournissez une mosaïque plutôt que des dalles découpées si vous le pouvez.
+Sur un indice à grand rayon, une ligne droite visible à la frontière de deux dalles vient d'une marge insuffisante : même cause et même remède que ci-dessus. En MNT existant, des dalles d'un kilomètre jointives reçoivent 50 m de leurs voisines et ne cousent plus ; une couture reste possible entre des rasters plus petits ou non alignés sur le kilomètre, calculés seuls : fournissez alors une mosaïque plutôt que des morceaux.
 
 ## Une dalle est abandonnée
 

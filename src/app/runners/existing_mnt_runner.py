@@ -33,9 +33,11 @@ class ExistingMntRunner:
         try:  # fallback standalone (tests : src/ sur le path)
             from ...pipeline.ingest_plan import crs_des_entrees, resolution_des_entrees
             from ...pipeline.modes.existing_mnt import run_existing_mnt
+            from ...pipeline.output_paths import intermediaires_dir
         except ImportError:  # pragma: no cover
             from pipeline.ingest_plan import crs_des_entrees, resolution_des_entrees
             from pipeline.modes.existing_mnt import run_existing_mnt
+            from pipeline.output_paths import intermediaires_dir
 
         start_time = time.time()
 
@@ -123,6 +125,9 @@ class ExistingMntRunner:
                         cancel=cancel,
                         slog=slog,
                         cv_band=plan.cv,
+                        # Audit Fable 2026-11-02 (P2) : les indices non rognés d'intermediaires/ (dalle + 50 m
+                        # depuis les MNT voisins) servent à l'inférence, comme en ign_laz.
+                        halo_source_dir=intermediaires_dir(ctx.output_dir),
                         stats_out=cv_stats,
                         crs=crs,
                     )

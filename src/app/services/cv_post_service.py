@@ -120,7 +120,10 @@ def resolve_uncropped_tif(
     read_bounds = bounds_fn or get_raster_bounds
     tail = get_rvt_temp_filename(target_rvt, "", rvt_params or {})
     tol = _CELL_TOLERANCE_M
+    cellule = f"_{xy.x_km:04d}_{xy.y_km:04d}_"   # pré-filtre par nom (audit Fable 2026-11-02, R3 : O(N²) sinon)
     for cand in sorted(Path(temp_dir).glob(f"*{tail}")):
+        if cellule not in cand.name:
+            continue
         b = read_bounds(cand)
         if b is None:
             continue

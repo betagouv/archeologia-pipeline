@@ -57,6 +57,25 @@ class TestPlanFromSpecs:
         assert plan.mosaicable is False
         assert any("hétérogènes" in w for w in plan.warnings)
 
+    def test_groupes_de_resolution_a_la_tolerance(self):
+        """Audit Fable 2026-11-02 (A1) : 0,999993 / 1,0 / 1,000003 m sont UNE résolution (meme_resolution),
+        pas trois ; le message compte les dalles par résolution et ne parle plus de « première dalle »."""
+        from pipeline.ingest_plan import groupes_de_resolution
+
+        tiles = [_spec("a.tif", px=0.999993), _spec("b.tif", px=1.0), _spec("c.tif", px=1.000003),
+                 _spec("d.tif", px=0.5)]
+        assert groupes_de_resolution(tiles) == [(0.5, 1), (0.999993, 3)]
+        assert groupes_de_resolution(tiles[:3]) == [(0.999993, 3)]
+        plan = plan_from_specs(tiles)
+        assert plan.resolutions == ((0.5, 1), (0.999993, 3))
+        (msg,) = [w for w in plan.warnings if "hétérogènes" in w]
+        assert "3 dalle(s) à 1 m, 1 dalle(s) à 0,5 m" in msg
+        assert "première dalle" not in msg and "convertis à" not in msg
+        assert "un dossier et un traitement" in msg
+        homogene = plan_from_specs(tiles[:3])
+        assert homogene.resolutions == ((0.999993, 3),)
+        assert not any("hétérogènes" in w for w in homogene.warnings)
+
     def test_model_resolution_mismatch_warns(self):
         plan = plan_from_specs([_spec("a.tif", px=1.0), _spec("b.tif", px=1.0)], model_resolution=0.5)
         assert any("entraînement du modèle" in w for w in plan.warnings)

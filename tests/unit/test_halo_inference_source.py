@@ -103,3 +103,19 @@ class TestResolveUncroppedTif:
         )
 
         assert resolved is None
+
+
+def test_prefiltre_par_cellule_avant_lecture_des_emprises(tmp_path):
+    """Audit Fable 2026-11-02 (P2.4, R3) : seuls les candidats dont le nom porte la cellule sont lus (O(N²) sinon,
+    une ouverture de raster par candidat et par dalle)."""
+    for x in range(860, 880):
+        _mk(tmp_path, f"LHD_FXX_{x:04d}_6904_PTS_C_LAMB93_IGN69{_LD_TAIL}")
+    lus = []
+
+    def bounds(p):
+        lus.append(p.name)
+        return _UNCROPPED_BOUNDS
+
+    got = resolve_uncropped_tif(tmp_path / _CROPPED, tmp_path, "LD", bounds_fn=bounds)
+    assert got is not None and got.name.startswith("LHD_FXX_0872_6904_")
+    assert lus == [got.name]

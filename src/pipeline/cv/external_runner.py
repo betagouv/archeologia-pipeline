@@ -328,9 +328,41 @@ def run_external_cv_runner(
         t0 = time.monotonic()
         n_done = 0
 
+        # Carte demandée : le moteur ne décide de l'appareil qu'après la sonde de la première
+        # image inférée. La progression est différée jusque-là (seule la dernière ligne
+        # d'image est gardée, les fenêtres de l'image sondée — rejouée sur la carte — sont
+        # tues) pour que la ligne de l'appareil suive « Modèle N/T » et que la ligne d'image,
+        # réécrite en place dans le panneau, ne soit pas coupée en deux. Libérée par la
+        # décision, par la fin d'une image sans décision (vieux binaire, sonde impossible)
+        # ou par la fin du flux (tout en cache).
+        cg = (cv_config or {}).get("carte_graphique")
+        attente = isinstance(cg, dict) and bool(cg.get("demande")) and on_appareil is not None
+        differee: list = []
+
+        def _liberer() -> None:
+            nonlocal attente
+            attente = False
+            if differee and image_progress is not None:
+                try:
+                    image_progress(*differee.pop())
+                except Exception:
+                    pass
+
+        def _on_image_progress(i: int, t: int, n: str) -> None:
+            if attente:
+                differee[:] = [(i, t, n)]
+            elif image_progress is not None:
+                image_progress(i, t, n)
+
+        def _on_tile_progress(c: int, t: int) -> None:
+            if not attente and tile_progress is not None:
+                tile_progress(c, t)
+
         def _on_image_done(_i: int, _t: int, _n: str) -> None:
             nonlocal n_done
             n_done += 1
+            if attente:
+                _liberer()
 
         def _on_appareil(decision: Dict[str, Any]) -> None:
             if stats is not None:
@@ -339,6 +371,8 @@ def run_external_cv_runner(
                     stats["appareil_repli"] = decision
             if on_appareil is not None:
                 on_appareil(decision)
+            if attente:
+                _liberer()
 
         if process.stdout:
             for line in process.stdout:
@@ -356,12 +390,13 @@ def run_external_cv_runner(
                 if not line:
                     continue
                 parsed = _parse_runner_stdout(
-                    line, log, image_progress=image_progress, tile_progress=tile_progress,
-                    image_done=_on_image_done if stats is not None else None,
-                    on_appareil=_on_appareil,
+                    line, log, image_progress=_on_image_progress, tile_progress=_on_tile_progress,
+                    image_done=_on_image_done, on_appareil=_on_appareil,
                 )
                 if parsed is not None:
                     total_detections = parsed
+        if attente and not cancelled:
+            _liberer()
 
         if stats is not None:
             stats["images_inferees"] = n_done

@@ -31,6 +31,7 @@ Le panneau **Environnement** de l'étape 4 nomme ce qui manque :
 - **Algorithmes RVT** absents : n'apparaît que si l'ancien calcul par l'extension a été forcé pour un diagnostic (variable d'environnement `ARCHEO_INDICES_MOTEUR=processing`) ; installez alors Relief Visualization Toolbox, puis relancez QGIS. Ce mode de secours garde les comportements de l'extension : pente « Pourcentage » étirée de 0 à 51 % en 8 bits, nombre de directions du M-HS limité à 64 même en 8 bits ; ses images sont réutilisées d'une relance à l'autre tant qu'on y reste, et recalculées une fois au retour du calcul intégré.
 - « cv_runner_onnx (external) » en ✗, puis « python:onnxruntime » signalé : le moteur de détection manque, voir l'alerte antivirus ci-dessus.
 - « CRS des rasters » refusé : le message dit pourquoi — système géographique (en degrés), système projeté qui n'est pas en mètres, ou plusieurs systèmes différents dans le même dossier. Reprojetez les rasters dans un seul système projeté en mètres (Lambert-93 en France, UTM, British National Grid…) ; ils n'ont pas besoin d'être en Lambert-93.
+- « Résolution des rasters » refusée : le dossier mêle des rasters de résolutions différentes, par exemple « 25 dalle(s) à 1 m, 5 dalle(s) à 0,5 m ». Les rayons des indices et les fenêtres de détection ne se convertissent qu'à une résolution par traitement : rangez les rasters dans un dossier par résolution et lancez un traitement par dossier, avec un dossier de sortie distinct pour chacun.
 - **Dossier** introuvable ou vide : le chemin, ou l'extension des fichiers attendue par le point de départ.
 
 ## Impossible de lancer, corrigez
@@ -57,7 +58,7 @@ Le rayon d'un indice dépasse la marge entre dalles, ou la taille d'un raster en
 
 ## Une couture entre deux dalles
 
-Sur un indice à grand rayon, une ligne droite visible à la frontière de deux dalles vient d'une marge insuffisante : même cause et même remède que ci-dessus. En MNT existant, chaque raster est calculé sans voisin et la couture est possible : fournissez une mosaïque plutôt que des dalles découpées si vous le pouvez.
+Sur un indice à grand rayon, une ligne droite visible à la frontière de deux dalles vient d'une marge insuffisante : même cause et même remède que ci-dessus. En MNT existant, des dalles d'un kilomètre jointives reçoivent 50 m de leurs voisines et ne cousent plus ; une couture reste possible entre des rasters plus petits ou non alignés sur le kilomètre, calculés seuls : fournissez alors une mosaïque plutôt que des morceaux.
 
 ## Une dalle est abandonnée
 

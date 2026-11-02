@@ -126,3 +126,19 @@ def test_diagnostic_non_bloquant_route_en_avertissement(
     )
     assert reporter.warnings == ["noyau trop large pour ce raster"]
     assert reporter.errors == []
+
+
+def test_halo_des_indices_sert_a_la_detection(config_with_output_dir, tmp_path, monkeypatch, finalized):
+    """Audit Fable 2026-11-02 (P2.3) : les TIF non rognés d'intermediaires/ (dalle + 50 m depuis les MNT voisins)
+    sont la source d'inférence, comme en ign_laz — NeighborHalo ne refait plus le halo dans les LD publiés."""
+    import dataclasses
+
+    from pipeline.output_paths import intermediaires_dir
+
+    ctx = _ctx(config_with_output_dir, tmp_path)
+    ctx = dataclasses.replace(ctx, cv=dataclasses.replace(ctx.cv, enabled=True))
+    vus = []
+    monkeypatch.setattr("app.services.cv_post_service.run_cv_post_loop", lambda **kw: vus.append(kw))
+    _run(ctx, monkeypatch, finalized, lambda **kw: SimpleNamespace(total=1, candidates=1))
+    (kw,) = vus
+    assert kw["halo_source_dir"] == intermediaires_dir(ctx.output_dir)

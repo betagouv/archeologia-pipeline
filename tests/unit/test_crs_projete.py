@@ -86,7 +86,8 @@ def test_preflight_accepte_un_crs_etranger_et_l_affiche(tmp_path, crs):
     d = _dossier(tmp_path, crs)
     results = []
     _check_raster_crs(str(d), ("tif",), results)
-    assert [(r.name, r.ok, r.critical) for r in results] == [("CRS des rasters", True, True)]
+    assert [(r.name, r.ok, r.critical) for r in results] == [("CRS des rasters", True, True),
+                                                              ("Résolution des rasters", True, True)]
     assert results[0].details == f"{crs} · 2 dalle(s)"
 
 

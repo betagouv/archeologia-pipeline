@@ -134,8 +134,7 @@ def _merge_touching_same_class(
             if not mp.is_valid:
                 mp = make_valid(mp)
                 if mp.geom_type != "Polygon":
-                    candidates = [g for g in getattr(mp, "geoms", [])
-                                  if g.geom_type == "Polygon"]
+                    candidates = _polygones(mp)   # à toute profondeur (GeometryCollection imbriquée)
                     mp = max(candidates, key=lambda g: g.area) if candidates else mp
             if mp.is_empty or mp.area < min_area:
                 continue
@@ -467,9 +466,21 @@ def _regenerate_annotated_image(
 #  Post-processing global en coordonnées géographiques                 #
 # ------------------------------------------------------------------ #
 
-def _validate_class_dets(detections, make_valid_fn, min_area_m2: float) -> list:
+def _polygones(geom) -> list:
+    """Tous les Polygon non vides de ``geom``, à toute profondeur (``make_valid`` peut rendre une
+    GeometryCollection qui contient une MultiPolygon : crash test gb_eng, 2026-11-02)."""
+    if geom.geom_type == "Polygon":
+        return [] if geom.is_empty else [geom]
+    return [p for g in getattr(geom, "geoms", []) for p in _polygones(g)]
+
+
+def _validate_class_dets(detections, make_valid_fn, min_area_m2: float, class_name: str = "") -> list:
     """
     Filtre + répare les géométries d'une classe avant fusion.
+
+    Une géométrie réparée en plusieurs polygones donne une détection par polygone (même confiance) : la
+    fusion intra-classe les rejoint quand ils se touchent. Toute détection écartée pour sa géométrie (vide,
+    irréparable, sans polygone) est journalisée ; le filtre d'aire minimale, volontaire, ne l'est pas.
 
     Returns:
         Liste des détections valides (Polygon, non vides, aire ≥ ``min_area_m2``).
@@ -477,24 +488,25 @@ def _validate_class_dets(detections, make_valid_fn, min_area_m2: float) -> list:
     valid = []
     for det in detections:
         geom = det.get("geometry")
+        cause = ""
         if geom is None or geom.is_empty:
-            continue
-        if not geom.is_valid:
+            cause = "géométrie vide"
+        elif not geom.is_valid:
             try:
                 geom = make_valid_fn(geom)
-                det = dict(det, geometry=geom)
-            except Exception:
-                continue
-        if geom.geom_type != "Polygon":
-            candidates = [g for g in getattr(geom, "geoms", [])
-                          if g.geom_type == "Polygon" and not g.is_empty]
-            if not candidates:
-                continue
-            geom = max(candidates, key=lambda g: g.area)
-            det = dict(det, geometry=geom)
-        if min_area_m2 > 0 and geom.area < min_area_m2:
+            except Exception as e:  # noqa: BLE001
+                cause = f"géométrie irréparable ({e})"
+        parts = [] if cause else _polygones(geom)
+        if not cause and not parts:
+            cause = f"aucun polygone après réparation ({geom.geom_type})"
+        if cause:
+            logger.info(f"Post-traitement géo: détection écartée — {class_name or '?'}, "
+                        f"confiance {float(det.get('confidence', 0.0) or 0.0):.2f} : {cause}")
             continue
-        valid.append(det)
+        for part in parts:
+            if min_area_m2 > 0 and part.area < min_area_m2:
+                continue
+            valid.append(det if part is det.get("geometry") else dict(det, geometry=part))
     return valid
 
 
@@ -680,8 +692,7 @@ def _merge_intra_class_components(
             if not mp.is_valid:
                 mp = make_valid_fn(mp)
                 if mp.geom_type != "Polygon":
-                    candidates = [g for g in getattr(mp, "geoms", [])
-                                  if g.geom_type == "Polygon"]
+                    candidates = _polygones(mp)   # à toute profondeur (GeometryCollection imbriquée)
                     if not candidates:
                         continue
                     mp = max(candidates, key=lambda g: g.area)
@@ -1004,9 +1015,12 @@ def postprocess_geo_detections(
     # ── Étape 1 : validation des géométries (toujours) ───────────────
     validated_by_class: Dict[str, List[Dict]] = {}
     for class_name, detections in data_by_class_name.items():
-        valid_dets = _validate_class_dets(detections, make_valid, min_area_m2)
+        valid_dets = _validate_class_dets(detections, make_valid, min_area_m2, class_name)
         if valid_dets:
             validated_by_class[class_name] = valid_dets
+    # Le compte part du brut : sans cette ligne, « 111 brutes » était suivi de « 110 -> 87 » (gb_eng).
+    logger.info(f"Post-traitement géo: validation des géométries {total_before} -> "
+                f"{sum(len(v) for v in validated_by_class.values())} polygones")
 
     # ── Étape 2 : fusion intra-classe ────────────────────────────────
     if do_merge and STRtree is not None:

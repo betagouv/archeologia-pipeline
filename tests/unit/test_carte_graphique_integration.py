@@ -111,7 +111,9 @@ class TestNarrateur:
         n, r = self._narr()
         n.cv_appareil("Cratères", ap.decision_memorisee(1, "RTX"))
         r.user_info.assert_called_once()
-        assert "« Cratères »" in r.user_info.call_args[0][0] and "RTX" in r.user_info.call_args[0][0]
+        # Juste sous « Modèle N/T » (2026-11-02) : le nom du modèle n'est pas répété.
+        assert r.user_info.call_args[0][0].startswith("   ⚡ détection sur la carte graphique")
+        assert "RTX" in r.user_info.call_args[0][0] and "Cratères" not in r.user_info.call_args[0][0]
         r.user_warning.assert_not_called()
 
     def test_carte_ecartee_en_avertissement(self):

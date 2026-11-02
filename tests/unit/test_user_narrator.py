@@ -460,8 +460,18 @@ class TestNewNarratorEvents:
         narrator.cv_run_tile_progress(10, 144)
         msg, group = reporter.user_info_transient.call_args[0]
         assert "img1.png" in msg
-        assert "10/144" in msg
+        assert msg.endswith("(fenêtre d'analyse 10/144)")
         assert group == "cv_image_progress"
+
+    def test_cv_run_tile_progress_derniere_fenetre_dit_le_total_en_clair(self):
+        """« analyse 16/16 » ne disait pas ce qui était compté : les fenêtres SAHI de
+        l'image en cours (2026-11-02). À la dernière, la ligne dit le total."""
+        narrator, reporter = self._make()
+        narrator.cv_run_image_progress("m", 9, 9, "EPSG_27700_0412_0143_LD_A15_Rmin10.png")
+        narrator.cv_run_tile_progress(16, 16)
+        msg, _group = reporter.user_info_transient.call_args[0]
+        assert msg == "      ↳ Image 9/9 : EPSG_27700_0412_0143_LD_A15… (16 fenêtres d'analyse)"
+        assert "analyse 16/16" not in msg
 
     def test_cv_run_tile_progress_without_prior_image_does_not_raise(self):
         narrator, reporter = self._make()

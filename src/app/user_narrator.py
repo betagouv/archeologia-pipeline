@@ -317,10 +317,15 @@ class UserNarrator:
         écartée, ou repli sur le processeur en cours de run. La phrase vient du moteur
         ou du registre (``pipeline.cv.appareil``, ``app.services.carte_graphique``) :
         mesurée, jamais estimée. Une carte écartée ou un repli est un avertissement,
-        qui renvoie au Dépannage."""
+        qui renvoie au Dépannage.
+
+        La ligne ⚡ tombe juste sous « Modèle N/T » (``run_external_cv_runner`` diffère la
+        progression jusqu'à la décision) : elle ne répète pas le nom du modèle. Le ⚠ le
+        garde : la pastille ⚠ du journal n'affiche que les avertissements, sans la ligne
+        « Modèle N/T », et un repli tombe en cours de run, sous une ligne d'image."""
         msg = str(decision.get("message") or decision.get("motif") or decision.get("appareil") or "")
         if decision.get("appareil") == "carte_graphique":
-            self._r.user_info(f"   ⚡ « {model_name} » : {msg}")
+            self._r.user_info(f"   ⚡ {msg}")
         else:
             self._r.user_warning(f"⚠️ « {model_name} » : {msg}")
 
@@ -361,18 +366,18 @@ class UserNarrator:
         self._metric(index, total, "images")
 
     def cv_run_tile_progress(self, current: int, total: int) -> None:
-        """Sous-progression tuile SAHI au sein d'une image (grands rasters).
+        """Sous-progression des fenêtres d'analyse (SAHI) de l'image en cours.
 
         Réécrit la MÊME ligne transiente que :meth:`cv_run_image_progress`
-        en y ajoutant « — analyse X/Y » : une grande dalle (centaines de
-        tuiles, plusieurs minutes CPU) ne fige plus l'affichage sur
-        « Image i/N » pendant toute son inférence.
+        en y ajoutant « (fenêtre d'analyse X/Y) », puis « (Y fenêtres d'analyse) »
+        à la dernière : une grande dalle (centaines de fenêtres, plusieurs minutes
+        CPU) ne fige plus l'affichage sur « Image i/N » pendant toute son inférence.
+        Le moteur n'en relaie qu'une sur dix, plus la dernière.
         """
         base = self._last_cv_image_msg or "      ↳ Analyse de l'image"
-        self._user_info_transient(
-            f"{base} — analyse {current}/{total}",
-            group="cv_image_progress",
-        )
+        quoi = (_human_count(total, "fenêtre d'analyse", "fenêtres d'analyse") if current >= total
+                else f"fenêtre d'analyse {current}/{total}")
+        self._user_info_transient(f"{base} ({quoi})", group="cv_image_progress")
 
     def cv_complete(self, n_detections: int) -> None:
         if n_detections == 0:

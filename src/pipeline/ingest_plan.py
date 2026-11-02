@@ -1,8 +1,8 @@
 """Planification de l'ingestion des entrées raster (placement métadonnées-first).
 
 Construit un :class:`~pipeline.tilespec.TileSpec` par raster, valide le CRS
-(un seul CRS **projeté** par run — décision 2), avertit sur les résolutions
-hétérogènes (décision 4), ignore les rasters illisibles/vides avec un résumé
+(un seul CRS **projeté** par run — décision 2), groupe les dalles par résolution
+(un lot mêlé est refusé par le préflight, audit Fable 2026-11-02), ignore les rasters illisibles/vides avec un résumé
 (décision 6), et décide si l'entrée est **mosaïcable** (chemin primaire) ou doit
 passer par le repli par dalle.
 
@@ -72,6 +72,8 @@ class IngestPlan:
     skipped: List[Tuple[Path, str]]     # (chemin, raison)
     warnings: List[str]
     crs_verified: bool = True           # False si CRS accepté faute de pouvoir le classer
+    # (pas en m, effectif) par résolution, à meme_resolution près, pas croissant (groupes_de_resolution).
+    resolutions: Tuple[Tuple[float, int], ...] = ()
 
     @property
     def summary(self) -> str:
@@ -81,6 +83,41 @@ class IngestPlan:
         parts.append(f"CRS={self.crs}")
         parts.append("mosaïque" if self.mosaicable else "par-dalle")
         return ", ".join(parts)
+
+
+def groupes_de_resolution(tiles: Sequence[TileSpec]) -> List[Tuple[float, int]]:
+    """Dalles groupées par résolution, à la tolérance de ``model_config.meme_resolution`` près
+    (0,999993 / 1 / 1,000003 m = un seul groupe) : ``[(pas, effectif), ...]`` par pas croissant, le pas
+    étant celui de la première dalle du groupe arrondi à 6 décimales. Pur."""
+    from .cv.model_config import meme_resolution
+
+    groupes: List[List] = []   # [dalle représentante, effectif]
+    for t in tiles:
+        for g in groupes:
+            if meme_resolution(t.pixel_size_x, g[0].pixel_size_x) and meme_resolution(t.pixel_size_y,
+                                                                                     g[0].pixel_size_y):
+                g[1] += 1
+                break
+        else:
+            groupes.append([t, 1])
+    return sorted((round(abs(float(g[0].pixel_size_x)), 6), g[1]) for g in groupes)
+
+
+def _metres(pas: float) -> str:
+    """« 0,5 », « 1 » : pas affiché au millimètre (0,999993 m se lit « 1 m »)."""
+    return f"{round(pas, 3):g}".replace(".", ",")
+
+
+def message_resolutions(resolutions: Sequence[Tuple[float, int]]) -> str:
+    """Refus d'un lot à résolutions mêlées (audit Fable 2026-11-02, P1-A) : dalles comptées par résolution,
+    de la plus nombreuse à la moins nombreuse."""
+    comptes = ", ".join(f"{n} dalle(s) à {_metres(pas)} m"
+                        for pas, n in sorted(resolutions, key=lambda r: (-r[1], -r[0])))
+    return (
+        f"Résolutions hétérogènes : {comptes} — les rayons des indices et les fenêtres de détection ne se "
+        "convertissent qu'à une seule résolution par traitement : séparez les dalles par résolution, un dossier "
+        "et un traitement (dossier de sortie distinct) par résolution."
+    )
 
 
 def plan_from_specs(
@@ -198,30 +235,15 @@ def plan_from_specs(
                     f"Reprojetez vos entrées en {expected_crs}."
                 )
 
-    # --- Résolution : avertir seulement (décision 4) ---
-    # Même résolution à la tolérance relative partagée près (model_config.meme_resolution) : 0,999989 m (GSI) = 1 m.
+    # --- Résolution : groupes à meme_resolution près (0,999989 m (GSI) = 1 m) ---
+    # Un lot mêlé est REFUSÉ par le préflight (« Résolution des rasters », audit Fable 2026-11-02) : rayons et
+    # fenêtres de détection ne se convertissent qu'à une résolution par run. Ici on ne lève pas : on décrit.
     from .cv.model_config import meme_resolution
 
-    t0 = tiles[0]
-    uniform_res = all(
-        meme_resolution(t.pixel_size_x, t0.pixel_size_x) and meme_resolution(t.pixel_size_y, t0.pixel_size_y)
-        for t in tiles
-    )
+    resolutions = tuple(groupes_de_resolution(tiles))
+    uniform_res = len(resolutions) == 1
     if not uniform_res:
-        resolutions = {
-            (round(abs(t.pixel_size_x), 6), round(abs(t.pixel_size_y), 6)) for t in tiles
-        }
-        listed = ", ".join(f"{rx}×{ry} m" for rx, ry in sorted(resolutions))
-        # Rayons (réglés en mètres) et fenêtres de détection sont convertis UNE fois par run, à la résolution
-        # de la première dalle par nom (resolution_des_entrees, runner._gsd_des_images) — audit 2026-10-31.
-        premiere = min(tiles, key=lambda t: t.source_path.name)
-        warnings.append(
-            f"Résolutions hétérogènes ({listed}) — RVT à la résolution native ; "
-            "pas de mosaïque inter-résolution. Les rayons des indices et les fenêtres de détection sont "
-            f"convertis à la résolution de la première dalle ({premiere.source_path.name}, "
-            f"{f'{abs(premiere.pixel_size_x):g}'.replace('.', ',')} m) : séparez les dalles par résolution "
-            "pour que chacune ait les siens."
-        )
+        warnings.append(message_resolutions(resolutions))
     if model_resolution is not None:
         off = [
             t for t in tiles
@@ -242,6 +264,7 @@ def plan_from_specs(
         skipped=skipped_list,
         warnings=warnings,
         crs_verified=crs_verified,
+        resolutions=resolutions,
     )
 
 
@@ -350,8 +373,8 @@ def resolution_des_entrees(dir_path, exts: Sequence[str], defaut: float = 0.5) -
     """Résolution (m/px) d'un run ``existing_mnt``/``existing_rvt`` : celle de la première dalle exploitable,
     comme :func:`crs_des_entrees` (SOURCE UNIQUE, calculée une fois par le runner). Sert à convertir en pixels
     les réglages des indices, réglés en mètres (``app.services.indices_metres``), et à mettre les fenêtres de
-    détection à l'échelle. Un lot de résolutions mêlées est signalé au préflight (:func:`plan_from_specs`) ;
-    les rayons y sont convertis à la résolution de la première dalle. Ne lève jamais : ``defaut`` sinon."""
+    détection à l'échelle. Un lot de résolutions mêlées est refusé au préflight (« Résolution des rasters »,
+    :func:`groupes_de_resolution`) : une dalle vaut alors pour toutes. Ne lève jamais : ``defaut`` sinon."""
     try:
         from .tilespec import is_degenerate_tile
 

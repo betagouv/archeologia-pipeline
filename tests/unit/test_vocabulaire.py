@@ -8,6 +8,7 @@ import pytest
 
 from app.services.vocabulaire import (
     ENVIRONNEMENT,
+    bandeau_controles_en_echec,
     libelle_environnement,
     niveau,
     nombre,
@@ -135,3 +136,17 @@ def test_lexique_visualisation_du_relief_et_produits():
     assert '{"label": "Visualisation du relief"' in src and '2: ("Visualisation du relief"' in src
     etape2 = (RACINE / "src" / "ui" / "steps" / "step_2_indices.py").read_text(encoding="utf-8")
     assert "'image')" not in etape2 and "du relief\"" not in etape2   # « MNT + 2 indices », pas « images du relief »
+
+
+def test_bandeau_controles_en_echec_distingue_donnees_et_outils():
+    """Audit Fable 2026-11-02 (A3) : un contrôle de DONNÉES en échec n'est pas « un outil manque »."""
+    assert "Résolution des rasters" in ENVIRONNEMENT
+    donnees = bandeau_controles_en_echec(["Résolution des rasters"])
+    assert "Les données fournies ne peuvent pas être traitées en l'état" in donnees
+    assert ENVIRONNEMENT["Résolution des rasters"] in donnees and "infobulle" in donnees
+    assert "outil manque" not in donnees and "manuel:depannage" not in donnees
+    outil = bandeau_controles_en_echec(["pdal (CLI)"])
+    assert "Un outil manque : Lecteur de nuages de points (pdal)." in outil and "manuel:depannage" in outil
+    les_deux = bandeau_controles_en_echec(["CRS des rasters", "gdalwarp"])
+    assert "Système de coordonnées des rasters" in les_deux and "Un outil manque : Reprojection" in les_deux
+    assert "Un outil manque : un outil." in bandeau_controles_en_echec([])

@@ -53,6 +53,8 @@ Le plugin inspecte l'emprise de chaque raster :
 - **petit raster**, moins d'un kilomètre ou non aligné : l'emprise est conservée telle quelle ;
 - **grand raster**, plus d'un kilomètre dans une dimension : aucun pré-découpage, les produits sont calculés sur toute l'emprise et la détection découpe elle-même l'indice en fenêtres d'analyse.
 
+**Une seule résolution par dossier.** Les rayons des indices et les fenêtres de détection sont réglés en mètres et convertis en pixels à la résolution des rasters, une fois par traitement. Un dossier qui mêle des rasters à 1 m et à 0,5 m est refusé par la vérification de l'étape 4 (« Résolution des rasters »), qui compte les rasters de chaque résolution : rangez-les dans un dossier par résolution et lancez un traitement par dossier, chacun avec son dossier de sortie. Des pas qui ne diffèrent que d'un arrondi (0,999993 m et 1 m) comptent pour une seule résolution. Même règle pour les indices existants.
+
 Chaque raster est calculé seul, sans voisin : sur un lot de petites dalles, les indices à grand rayon peuvent montrer une couture entre deux dalles. La carte **Marge entre dalles** de l'étape 2 signale quand le rayon d'un indice dépasse ce que la dalle peut fournir.
 
 ## Indices de visualisation existants

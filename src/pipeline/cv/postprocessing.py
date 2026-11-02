@@ -478,14 +478,16 @@ def _validate_class_dets(detections, make_valid_fn, min_area_m2: float, class_na
     """
     Filtre + répare les géométries d'une classe avant fusion.
 
-    Une géométrie réparée en plusieurs polygones donne une détection par polygone (même confiance) : la
-    fusion intra-classe les rejoint quand ils se touchent. Toute détection écartée pour sa géométrie (vide,
-    irréparable, sans polygone) est journalisée ; le filtre d'aire minimale, volontaire, ne l'est pas.
+    Une détection reste UNE détection (les enclos ne fusionnent pas : un masque coupé en deux compterait deux
+    objets) : réparée en plusieurs polygones, elle garde le plus grand, cherché à toute profondeur ; les
+    fragments laissés sont comptés au journal. Toute détection écartée pour sa géométrie (vide, irréparable,
+    sans polygone) est journalisée ; le filtre d'aire minimale, volontaire, ne l'est pas.
 
     Returns:
         Liste des détections valides (Polygon, non vides, aire ≥ ``min_area_m2``).
     """
     valid = []
+    n_fragments, aire_fragments = 0, 0.0
     for det in detections:
         geom = det.get("geometry")
         cause = ""
@@ -503,10 +505,15 @@ def _validate_class_dets(detections, make_valid_fn, min_area_m2: float, class_na
             logger.info(f"Post-traitement géo: détection écartée — {class_name or '?'}, "
                         f"confiance {float(det.get('confidence', 0.0) or 0.0):.2f} : {cause}")
             continue
-        for part in parts:
-            if min_area_m2 > 0 and part.area < min_area_m2:
-                continue
-            valid.append(det if part is det.get("geometry") else dict(det, geometry=part))
+        poly = max(parts, key=lambda g: g.area)
+        n_fragments += len(parts) - 1
+        aire_fragments += sum(g.area for g in parts) - poly.area
+        if min_area_m2 > 0 and poly.area < min_area_m2:
+            continue
+        valid.append(det if poly is det.get("geometry") else dict(det, geometry=poly))
+    if n_fragments:
+        logger.info(f"Post-traitement géo: {class_name or '?'} — {n_fragments} fragment(s) de réparation laissé(s) "
+                    f"à côté du polygone principal de leur détection ({aire_fragments:.1f} m² au total)")
     return valid
 
 

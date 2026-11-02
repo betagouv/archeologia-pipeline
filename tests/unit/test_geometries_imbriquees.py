@@ -22,14 +22,19 @@ def _carre(x0, cote=6.0):
 
 
 def _imbriquee(_g):
-    return GeometryCollection([MultiPolygon([_carre(0), _carre(20)]), LineString([(0, 0), (1, 1)])])
+    """Ce que make_valid a rendu pour l'enclos perdu : GeometryCollection[MultiPolygon, LineString]."""
+    return GeometryCollection([MultiPolygon([_carre(0), _carre(20, cote=1.0)]), LineString([(0, 0), (1, 1)])])
 
 
-def test_collection_imbriquee_garde_tous_les_polygones():
+def test_collection_imbriquee_garde_la_detection(caplog):
+    """Une détection reste une détection (enclos sans fusion) : le plus grand polygone, cherché en profondeur ;
+    le fragment laissé est dit au journal."""
     det = {"geometry": NOEUD, "confidence": 0.59}
-    valides = _validate_class_dets([det], _imbriquee, 0.0)
-    assert sorted(round(d["geometry"].area) for d in valides) == [36, 36]
-    assert all(d["geometry"].geom_type == "Polygon" and d["confidence"] == 0.59 for d in valides)
+    with caplog.at_level(logging.INFO, logger="pipeline.cv.postprocessing"):
+        valides = _validate_class_dets([det], _imbriquee, 0.0, "enclos")
+    assert len(valides) == 1 and valides[0]["confidence"] == 0.59
+    assert valides[0]["geometry"].geom_type == "Polygon" and valides[0]["geometry"].area == 36
+    assert "1 fragment(s)" in caplog.text and "1.0 m²" in caplog.text
 
 
 def test_geometrie_ecartee_journalisee_et_compte_depuis_le_brut(monkeypatch, caplog):
@@ -40,7 +45,7 @@ def test_geometrie_ecartee_journalisee_et_compte_depuis_le_brut(monkeypatch, cap
                        {"geometry": _carre(100), "confidence": 0.7}]}
     with caplog.at_level(logging.INFO, logger="pipeline.cv.postprocessing"):
         out = postprocess_geo_detections(dets, do_merge=False, overlap_strategy="relation")
-    assert len(out["enclos"]) == 3                       # 2 morceaux du papillon + le carré
+    assert len(out["enclos"]) == 2                       # le papillon réparé + le carré
     texte = caplog.text
     assert "écartée" in texte and "enclos" in texte and "0.40" in texte    # la seule vraiment perdue, dite
-    assert "validation des géométries 3 -> 3" in texte
+    assert "validation des géométries 3 -> 2" in texte

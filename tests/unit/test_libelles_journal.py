@@ -32,11 +32,15 @@ def test_fin_de_detection_compte_les_images_analysees():
     from pipeline.cv.external_runner import _parse_runner_stdout
     logs: list = []
     assert _parse_runner_stdout("summary: success=29 processed=33 skipped=0 total_detections=486", logs.append) == 486
-    assert logs == ["Computer Vision: Terminé - 33 images analysées, dont 29 avec détections, 486 détections au total"]
+    assert logs == ["Computer Vision: Terminé - 33 images analysées, dont 29 avec détections, "
+                    "486 détections brutes (avant fusion des polygones)"]
     logs.clear()
     _parse_runner_stdout("summary: success=2 processed=2 skipped=5 total_detections=3", logs.append)
     assert logs == ["Computer Vision: Terminé - 2 images analysées, dont 2 avec détections, 5 reprises du cache, "
-                    "3 détections au total"]
+                    "3 détections brutes (avant fusion des polygones)"]
+    # Relance de_sh (2026-11-02) : « 2043 détections au total » pour une couche de 1 865 cratères —
+    # le nombre du moteur est le brut, la couche compte les polygones fusionnés : jamais « au total ».
+    assert all("au total" not in m for m in logs)
 
 
 def test_sigmoide_sans_debordement_et_identique_au_bit():

@@ -137,9 +137,15 @@ def deduplicate_cv_shapefiles_final(
     # douteux/possible/probable/quasi_certain au seuil effectif de chaque classe).
     fiabilite = (cv_config or {}).get("fiabilite") if isinstance(cv_config, dict) else None
     if isinstance(fiabilite, dict):
+        try:
+            from ...app.services.fiabilite import LABELS_FR
+        except ImportError:
+            from app.services.fiabilite import LABELS_FR  # type: ignore[no-redef]
         for _cl, _cats in (fiabilite.get("par_classe") or {}).items():
+            # Libellés affichés (« très probable »), jamais l'identifiant interne quasi_certain (gb_eng, 2026-11-02).
             log("Computer Vision: fiabilité " + str(_cl) + " : " + " · ".join(
-                f"{c.get('categorie')} dès {c.get('seuil')}" for c in _cats if isinstance(c, dict)))
+                f"{LABELS_FR.get(str(c.get('categorie')), str(c.get('categorie'))).lower()} dès {c.get('seuil')}"
+                for c in _cats if isinstance(c, dict)))
     else:
         fiabilite = None
         log("Computer Vision: pas de table de fiabilité pour ce modèle — tranches de confiance historiques")

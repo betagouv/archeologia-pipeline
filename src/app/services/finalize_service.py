@@ -416,6 +416,19 @@ def crs_du_projet(authids_des_couches: List[str], crs_trace: Optional[str]) -> s
     return next((a for a in authids_des_couches if a), None) or crs_trace or "EPSG:2154"
 
 
+def anonymiser_projet_qgs(qgs_path: Path) -> None:
+    """Retire du ``.qgs`` écrit le nom de l'utilisateur du poste : attributs ``saveUser``/``saveUserFull`` de la
+    racine et auteur des métadonnées du projet. QGIS (3.44 comme 4.0.3) les pose à chaque ``write()``, même avec un
+    auteur mis à vide avant ; ``livrable/projet.qgs`` se transmet. Le reste du fichier est laissé à l'octet près."""
+    import re
+
+    texte = Path(qgs_path).read_bytes().decode("utf-8")
+    texte = re.sub(r"<qgis\b[^>]*>", lambda m: re.sub(r'\s+saveUser(?:Full)?="[^"]*"', "", m.group(0)),
+                   texte, count=1)
+    texte = re.sub(r"(<projectMetadata>(?:(?!</projectMetadata>).)*?<author>)[^<]*(</author>)", r"\1\2", texte, count=1, flags=re.S)
+    Path(qgs_path).write_bytes(texte.encode("utf-8"))
+
+
 def _journal_relatif(output_dir: Path) -> str:
     """``technique/journaux/pipeline_log_<ts>.txt`` du dernier lancement, ``""`` sans journal."""
     try:
@@ -564,8 +577,6 @@ def _ui_config_trace(ui_config: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     ce que le run n'a pas employé. La configuration de l'appelant n'est pas modifiée."""
     import copy
 
-    from .reglages_defaut import SECTION_PRODUIT
-
     cfg = copy.deepcopy(ui_config or {})
     files = (cfg.get("app") or {}).get("files")
     mode = str((files or {}).get("data_mode") or "")
@@ -587,10 +598,21 @@ def _ui_config_trace(ui_config: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     for cle in retires:
         processing.pop(cle, None)
     if isinstance(cfg.get("rvt_params"), dict) and produits:
-        sections = {**SECTION_PRODUIT, "city": "CITY"}
-        cfg["rvt_params"] = {k: v for k, v in cfg["rvt_params"].items()
-                             if k not in sections or produits.get(sections[k])}
+        cfg["rvt_params"] = rvt_params_des_produits(cfg["rvt_params"], [p for p, actif in produits.items() if actif])
     return cfg
+
+
+def rvt_params_des_produits(rvt_params: Optional[Dict[str, Any]], produits: List[str]) -> Dict[str, Any]:
+    """Les réglages des seuls indices calculés : une section d'indice dont le produit n'est pas dans
+    ``produits`` est retirée ; les autres clés (``resolution_m``, section inconnue) restent. Sans produit
+    nommé, rien n'est retiré. Partagée par la configuration tracée et ``rvt_params`` de la trace."""
+    from .reglages_defaut import SECTION_PRODUIT
+
+    rvt_params = dict(rvt_params or {})
+    if not produits:
+        return rvt_params
+    sections = {**SECTION_PRODUIT, "city": "CITY"}
+    return {k: v for k, v in rvt_params.items() if k not in sections or sections[k] in produits}
 
 
 def finalize_pipeline(
@@ -774,7 +796,8 @@ def finalize_pipeline(
             **({"pdal_version": pdal_version} if pdal_version else {}),
             **({"fusion_laz": fusion} if fusion else {}),
             "active_products": active_products or [],
-            "rvt_params": rvt_params or {},
+            # Réglages des seuls indices calculés (relance de_sh, 2026-11-02 : 13 sections pour 3 indices).
+            "rvt_params": rvt_params_des_produits(rvt_params, active_products or []),
             "cv_runs": [
                 {
                     "model": r.get("selected_model", ""),

@@ -54,7 +54,9 @@ def hash_cv_sources(plugin_root: Path = PLUGIN_ROOT) -> str:
     fichiers.append(plugin_root / "dev" / "runner_onnx" / "cv_runner_onnx_cli.py")
     for f in fichiers:
         h.update(f.name.encode("utf-8"))
-        h.update(f.read_bytes())
+        # fins de ligne normalisées : une copie CRLF (profil QGIS) et une copie LF (worktree) des mêmes sources
+        # ont la même empreinte (#27 des crash tests, 2026-11-02)
+        h.update(f.read_bytes().replace(b"\r\n", b"\n"))
     return h.hexdigest()
 
 

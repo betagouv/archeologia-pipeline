@@ -576,6 +576,10 @@ def validate_run_context(ctx: RunContext) -> Tuple[List[str], List[str]]:
             )
         )
 
+    # Rayon réduit à 1-2 px par des données grossières (5 m/pixel) : l'indice ne voit plus les petites structures.
+    # Affiché à l'étape 4 et écrit au journal au lancement (pipeline_controller), donc repris par le rapport.
+    warnings.extend(rvt_kernel_context.rayons_courts_warnings(products_dict, rvt_px))
+
     # Réglages d'échelle que rvt.vis.mstp refuse : bloquant, sinon la faute
     # n'apparaît qu'au calcul de la première dalle — après le téléchargement.
     errors.extend(rvt_kernel_context.mstp_scale_errors(products_dict, rvt_px))
@@ -655,6 +659,23 @@ def resolution_du_run(ctx: RunContext) -> float:
     except ImportError:  # pragma: no cover - tests (src/ sur le chemin)
         from pipeline.ingest_plan import resolution_des_entrees
     return resolution_des_entrees(dossier, ("tif", "tiff", "asc"))
+
+
+def resolution_affichee(ctx: RunContext) -> Optional[float]:
+    """Résolution à montrer avant le lancement (récapitulatif de l'étape 4, frise) : le réglage en mode LiDAR,
+    celle des rasters fournis sinon, ``None`` quand elle est inconnue — jamais le 0,5 m supposé de
+    :func:`resolution_du_run`, ni le réglage de l'étape 2 que ces modes n'utilisent pas (#39 des crash tests,
+    2026-11-02 : « 0,50 m/pixel » affiché pour des MNT à 5 m). Mode pas encore choisi : le réglage."""
+    if ctx.mode not in ("existing_mnt", "existing_rvt"):
+        return float(ctx.processing.mnt_resolution)
+    dossier = ctx.files.existing_mnt_dir if ctx.mode == "existing_mnt" else ctx.files.existing_rvt_dir
+    if dossier is None:
+        return None
+    try:
+        from ..pipeline.ingest_plan import resolution_des_entrees
+    except ImportError:  # pragma: no cover - tests (src/ sur le chemin)
+        from pipeline.ingest_plan import resolution_des_entrees
+    return resolution_des_entrees(dossier, ("tif", "tiff", "asc"), defaut=0.0) or None
 
 
 def rvt_params_du_run(ctx: RunContext, resolution_m: Optional[float] = None) -> Dict[str, Any]:

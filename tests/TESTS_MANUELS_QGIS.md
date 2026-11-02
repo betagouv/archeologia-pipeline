@@ -1257,3 +1257,14 @@ Lot 3 du chantier d'accélération (2026-10-15) : une dalle lue en entier reçoi
 - [ ] **72.5 Deux analyses, rechargement** : ajouter un second traitement → second groupe au-dessus ; étape 6, « Ajouter » du premier → rien de dupliqué, même après avoir renommé son groupe.
 - [ ] **72.6 Purge** : relancer dans le même dossier → les couches du précédent et son groupe vide disparaissent au lancement ; un groupe à vous (vide ou non) reste.
 - [ ] **72.7 Projet et rapport** : `livrable/projet.qgs` montre le même groupe ; `rapport.html` a pour titre le nom ; `traitement.json` porte `"nom_analyse"`.
+
+## 73. Données grossières : avertissement net de la détection, rayons sous 3 px, avertissements à l'étape 4 ⭐ P1
+
+> Issu des crash tests étrangers du 2026-11-02 (ie_smr_2m à 2 m : 1 enclos sur 18 ; it_piemonte à 5 m : 0 sur 4,
+> LD à 1–2 px).
+
+- [ ] **73.1 Étape 4 à 5 m** : MNT existant `…\_crash_tests\it_piemonte\mnt`, LD + SVF cochés → bandeau orange « Prêt à lancer, avec N avertissements » listant « LD : rayon de 1 à 2 px à 5 m/pixel, l'indice ne distingue plus les structures de moins de ~10 m. » et la ligne SVF ; le bouton Lancer reste actif. Le récapitulatif affiche « 5,00 m/pixel » (résolution des MNT fournis) et la frise de l'étape 5 aussi, pas le réglage de l'étape 2.
+- [ ] **73.2 Étape 4 à 0,5 m ou 1 m** : aucun de ces avertissements (bandeau vert si le poste est complet).
+- [ ] **73.3 Rapport** : après le run à 5 m, « Avertissements du journal » reprend les lignes LD/SVF et, pour les enclos, « À cette résolution, ce(s) modèle(s) ne retrouve(nt) presque plus rien (crash tests : 1/18 à 2 m, 0/4 à 5 m). » ; plus de « relisez avec prudence » pour eux.
+- [ ] **73.4 Rapport à 2 m** (`…\ie_smr_2m\mnt`) : rayon du LD « 5 à 10 m (3 à 5 px, soit 6 à 10 m au pixel près) » ; avertissement net des enclos ; aucun avertissement de rayon (3 px).
+- [ ] **73.5 Données à 1 m sur les modèles appris à 0,5 m** (`…\de_sh\mnt`) : toujours « relisez … avec prudence », pas l'avertissement net.

@@ -340,6 +340,54 @@ def _etape4_donnees_refusees(app, w, sortie: Path, log, fichiers) -> bool:
             and "manuel:depannage" not in brut)
 
 
+def _etape4_donnees_grossieres(app, w, sortie: Path, log, fichiers) -> bool:
+    """<sortie>/etape4-donnees-grossieres.png : MNT existants à 5 m, SVF + LD cochés → bandeau orange qui liste
+    « LD : rayon de 1 à 2 px à 5 m/pixel… » et la ligne SVF, bouton Lancer actif (crash test it_piemonte,
+    2026-11-02 : rien ne le disait avant le journal) ; récapitulatif à « 5,00 m/pixel », pas le réglage de
+    l'étape 2 (#39)."""
+    import re
+    import tempfile
+    import time
+
+    from osgeo import gdal
+
+    dossier = Path(tempfile.mkdtemp(prefix="archeo_grossier_"))
+    for i in range(3):
+        ds = gdal.GetDriverByName("GTiff").Create(str(dossier / f"mnt_{i}.tif"), 200, 200, 1, gdal.GDT_Float32)
+        ds.SetGeoTransform((700000 + 3000 * i, 5.0, 0, 6701000, 0, -5.0))
+        ds.SetProjection("EPSG:2154")
+        ds.GetRasterBand(1).Fill(100.0)
+        ds = None
+    sauve = dict(fichiers)
+    fichiers.update({"data_mode": "existing_mnt", "existing_mnt_dir": str(dossier)})
+    w._source_page.load_from(w._config)
+    w._refresh_validation()
+    w._goto_step(1)
+    w._goto_step(4)
+    limite = time.monotonic() + 120
+    while w._launch_page._preflight_status == "pending" and time.monotonic() < limite:
+        app.processEvents()
+        time.sleep(0.05)
+    for _ in range(8):
+        app.processEvents()
+    sortie.mkdir(parents=True, exist_ok=True)
+    w.grab().save(str(sortie / "etape4-donnees-grossieres.png"))
+    bandeau = re.sub("<[^>]+>", " ", w._launch_page._banner.text())
+    etat = w._launch_page._banner.property("state")
+    from qgis.PyQt.QtWidgets import QLabel
+    textes = [lbl.text() for lbl in w._launch_page.findChildren(QLabel)]
+    recap_ok = "5,00 m/pixel" in textes and "0,50 m/pixel" not in textes   # #39 : résolution des MNT fournis
+    log("étape 4 données grossières : récapitulatif à 5 m :", recap_ok, "| préflight =", w._launch_page._preflight_status, "| état :", etat,
+        "| bandeau :", bandeau.strip(), "| bouton actif :", w._next_btn.isEnabled(),
+        "| largeur bandeau :", w._launch_page._banner.width(), "/", w.width())
+    fichiers.clear()
+    fichiers.update(sauve)
+    w._source_page.load_from(w._config)
+    w._refresh_validation()
+    return (recap_ok and etat == "warn" and "LD : rayon de 1 à 2 px à 5 m/pixel" in bandeau
+            and "SVF : rayon de 1 px à 5 m/pixel" in bandeau and w._next_btn.isEnabled())
+
+
 def _etape6(app, w, img: Path, log) -> bool:
     """aide/img/etape6-resultats.png : deux traitements fictifs de ce poste, avec leurs gestes."""
     from archeo.src.app.services.resultats_connus import Resultat
@@ -487,12 +535,13 @@ def captures(app, sortie: Path, log) -> int:
     # Processing s'initialise, et la première finissait en « QGIS processing » manquant.
     corriger_ok = _etape4_a_corriger(app, w, img, log, fichiers) if fichiers is not None else False
     refus_ok = _etape4_donnees_refusees(app, w, sortie, log, fichiers) if fichiers is not None else False
+    grossier_ok = _etape4_donnees_grossieres(app, w, sortie, log, fichiers) if fichiers is not None else False
     log("captures écrites dans", img, "— taille de l'assistant :", w.width(), "x", w.height())
     log("contrôles : structures", bool(n), "| fin", fin_ok, "| ligne", ligne_ok, "| fiches", fiche_ok,
         "| à corriger", corriger_ok, "| étape 4", etape4_ok, "| étape 6", etape6_ok, "| flux", flux_ok,
-        "| données refusées", refus_ok)
+        "| données refusées", refus_ok, "| données grossières", grossier_ok)
     return 0 if (n and fin_ok and ligne_ok and fiche_ok and corriger_ok and etape4_ok and etape6_ok and flux_ok
-                 and refus_ok) else 1
+                 and refus_ok and grossier_ok) else 1
 
 
 def manuel(app, sortie: Path, log, chapitre: str, ancre: str, recherche: str = "", tous: bool = False) -> int:

@@ -66,3 +66,10 @@ def test_selection_sur_carte_sans_minimiser():
     src = STEP1.read_text(encoding="utf-8")
     assert "showMinimized" not in src
     assert "_geometrie_avant_carte" in src and "availableGeometry()" in src
+
+
+def test_l_etape_4_recoit_les_avertissements_de_configuration():
+    """Les avertissements de validate_run_context vont au bandeau de l'étape 4 (crash test it_piemonte, 2026-11-02)."""
+    src = WIZARD.read_text(encoding="utf-8")
+    assert "errors, _warnings = validate_run_context" not in src
+    assert "self._launch_page.set_validation(errors, self._validation_warnings)" in src

@@ -200,7 +200,8 @@ def _parse_runner_stdout(
             analysees = info.get("processed", info.get("success", "?"))
             cache = f", {info['skipped']} reprises du cache" if info.get("skipped", "0") != "0" else ""
             log(f"Computer Vision: Terminé - {analysees} images analysées, dont {info.get('success', '?')} avec "
-                f"détections{cache}, {info.get('total_detections', '?')} détections au total")
+                f"détections{cache}, {info.get('total_detections', '?')} détections brutes (avant fusion des polygones)")
+            # « brutes » : la couche compte les polygones fusionnés (relance de_sh : 2 043 ici, 1 865 dans la couche).
             td = info.get("total_detections")
             if td is not None:
                 try:

@@ -110,3 +110,12 @@ def test_slug_du_modele_du_run():
     assert _run_model_slug({"selected_model": "C:/m/crateres_seg_ld_v1/weights/best.onnx"}) == "crateres_seg_ld_v1"
     assert _run_model_slug({"selected_model": "lineaires_seg_v3_1"}) == "lineaires_seg_v3_1"
     assert _run_model_slug({}) is None and _run_model_slug(None) is None
+
+
+def test_journal_de_fiabilite_en_libelles_affiches(env, modele):
+    """Crash test gb_eng (2026-11-02) : le journal disait « quasi_certain dès 0.65 » — l'identifiant interne,
+    jamais montré ailleurs ; c'est « très probable », comme la légende et le rapport."""
+    _ecrire(env, [Detection(0, 0.9, (20.0, 20.0, 60.0, 60.0))])
+    fiab = {"par_classe": {"four": [{"categorie": "probable", "seuil": 0.3}, {"categorie": "quasi_certain", "seuil": 0.65}]}}
+    ligne = next(m for m in _lancer(env, modele, fiabilite=fiab) if "fiabilité four" in m)
+    assert ligne == "Computer Vision: fiabilité four : probable dès 0.3 · très probable dès 0.65"

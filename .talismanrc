@@ -1,4 +1,10 @@
 fileignoreconfig:
+- filename: tests/unit/test_geometries_imbriquees.py
+  checksum: baf77eb947d9ccb1bf9d63e34a0b09a2fbe0311a1c27252d2f861da68d3b1e4a
+- filename: tests/unit/test_trace_ui_config_du_mode.py
+  checksum: 17e190157781d7591e3acabf94ad05d2d7b913f95b034ba7b3d13ecef19e95ba
+- filename: tests/unit/test_pas_de_dossier_shapefiles_vide.py
+  checksum: d8faff3aea45c414b81d6cad8c40223da61265116d1220710d44de0efb7e0849
 - filename: tests/unit/test_nom_analyse.py
   checksum: c69d6537b7ea24171949a3d92cc2154bace4c7923e815261826f3a76a203fe84
 - filename: tests/unit/test_preprocess_ecriture_atomique.py
@@ -46,7 +52,7 @@ fileignoreconfig:
 - filename: src/app/services/fiabilite.py
   checksum: fd1ebc36630598bddd6c24b2bdf2ff1c98380668984fe59862b581458bd4e4f3
 - filename: src/app/services/finalize_service.py
-  checksum: bf1ba8c60b11aa0cf0a3d8da2b91d03b13bf5b000bf5d586297bf8b26aa686c7
+  checksum: ee4bcea8f6230766a5ae202dd424d67cbf82b278c91c3f3d639addb3c4d52094
 - filename: src/app/services/indices_model.py
   checksum: f18a1a5ecd866ac7ef0c80f8b5cd8608685dd71201e15e57ca7f04c9ac5e0682
 - filename: src/app/services/model_orchestrator.py
@@ -80,7 +86,7 @@ fileignoreconfig:
 - filename: src/pipeline/cv/model_profile.py
   checksum: 4ecddfb93286c9de8b5bf6201aa967d14f3211a155eda0c045a481ac5026a28f
 - filename: src/pipeline/cv/postprocessing.py
-  checksum: 9c7bbcf0bdd0c17bc34301ecb6d2e2eb284114c88d328714c8a1826acc218ca4
+  checksum: 90ab9ff7467ba562c6186a493b6baa1866a55a295b423eb6f190e5bc89e78ae3
 - filename: src/pipeline/ign/coords_fallback.py
   checksum: b1997408c2011b138fc5ffc525a10fa88a37848ffa763f355892b9d5dd0c1450
 - filename: src/pipeline/ign/downloader.py
@@ -96,7 +102,7 @@ fileignoreconfig:
 - filename: src/pipeline/modes/local_laz.py
   checksum: aa12c4a804b54e7b3dfe451251813a3a731790033acc95a5ad3691cb4ff138fd
 - filename: src/pipeline/output_paths.py
-  checksum: 253c5a0aea74deb983c99f6a84d36ff873f7664e5b6273f06d7d8852f6f69079
+  checksum: 2c8ed2f82a870d62f54ec9393c8a716af87755a6cbacd5ed72572667aa172a17
 - filename: src/pipeline/preflight.py
   checksum: cc5422a4276d27e20e2f0e9009e1cdd3a1f64eb98f41ea244e4d2e52be26b92a
 - filename: src/pipeline/types.py
@@ -110,7 +116,7 @@ fileignoreconfig:
 - filename: src/ui/map_tools/tile_picker_tool.py
   checksum: 54f1e09233be20b03558ae316ea804f793a795112149ef19584b552aaaeeed26
 - filename: src/ui/qgs_writer.py
-  checksum: 8259ef0a49c128076a8ec621ec9b13f90b1448add71911a16d128bc43b768cdf
+  checksum: 291f03403bb25d9b75d823babd83b54dbfd63adb15e521525028d2eed521c9c8
 - filename: src/ui/steps/step_1_source.py
   checksum: 0f0270e74440204355cfa43739a2cbe12a442ae012ef80ee3aa7c5043e555c61
 - filename: src/ui/steps/step_2_indices.py
@@ -248,7 +254,7 @@ fileignoreconfig:
 - filename: .claude/commands/livraison.md
   checksum: 498e642842583cf7d377223b7bfe16da0f82042b4a442d88e05ae3542ecf1d65
 - filename: aide/08-resultats.md
-  checksum: ffdee902f961aec3e560191724571a8dd6534ca05c293d129ed7c7475a633c50
+  checksum: af76e503603ea8736df010a244c1034745c788cf2ac4a5448f822589ddb8b8eb
 - filename: aide/04-etape-2-produits.md
   checksum: 60b42d19de49a468c4370ff78ec66a386fd203d272a90fe76e2376ed7e4e530c
 - filename: aide/09-depannage.md
@@ -286,7 +292,7 @@ fileignoreconfig:
 - filename: aide/img/etape3-fiche-classe.png
   checksum: 366d3e4d8f21219753142e13983ffb77d14f6c33ade117776e465ad6192af1b6
 - filename: data/third_party/cv_runner_onnx/windows/build_info.json
-  checksum: e6c255d793fa2b4805a1ae00c5e1a7fa1eb0e2ec1d4363afec1b80fc2bbef69e
+  checksum: b3e0b31c771c8752930e3d9f2287f21f0fb9d21de677dbd998cc56bde7e5e32c
 - filename: dev/rendu_hors_ecran.py
   checksum: c17413a7757f3736db6d02453061771d1bca2461e149a9c27577695972d357a2
 - filename: aide/img/etape2-produits.png
@@ -420,7 +426,7 @@ fileignoreconfig:
 - filename: dev/docs/crs_projete.md
   checksum: e49ee1a636a8029dfdb90c6dad13984278d9ba6aaff5978b787276c27c3d468d
 - filename: dev/runner_onnx/cv_runner_onnx_cli.py
-  checksum: 4ab62c6132fd04f8b0a83199ddd3c8e6fd7626dc226ff9b63482c9adc5c4b4ac
+  checksum: 9cefbb15220a613bdd1d71e50cab63a3341c1395d95f7f04b68061c118ad7de5
 - filename: tests/unit/test_echelle_metres.py
   checksum: 2f69cb91b087497a1fe13caa9210eb223d8c28f29dbfca168cb606d697e96924
 - filename: src/pipeline/ingest_plan.py

@@ -45,3 +45,33 @@ def test_lidar_garde_ses_reglages_selon_les_produits():
 def test_mode_inconnu_trace_tout():
     ui = _ui("")
     assert _ui_config_trace(ui)["app"] == ui["app"]
+
+
+def test_rvt_params_racine_ne_garde_que_les_produits_calcules(tmp_path, monkeypatch):
+    """Relance du crash test de_sh (2026-11-02) : ``rvt_params`` à la RACINE de traitement.json et de
+    metadata_*.json gardait les réglages des 13 indices alors que LD, VAT et CVAT seuls étaient calculés."""
+    import json
+    import time
+
+    from app.services import finalize_service
+
+    monkeypatch.setattr(finalize_service, "_collect_vrt_paths_and_build", lambda *a, **k: [])
+    monkeypatch.setattr(finalize_service, "_build_coverage_polygons", lambda *a, **k: None)
+
+    class _R:
+        def __getattr__(self, _n):
+            return lambda *a, **k: None
+
+    out = tmp_path / "sortie"
+    out.mkdir()
+    rvt = {**{k: dict(v) for k, v in RVT.items()}, "city": {"terrain_type": 1}, "resolution_m": 1.0}
+    finalize_service.finalize_pipeline(output_dir=out, cv_cfg={}, rvt_params=rvt, reporter=_R(),
+                                       start_time=time.time(), tiles_processed=1,
+                                       active_products=["MNT", "LD", "VAT", "CVAT"], ui_config=_ui("existing_mnt"))
+    attendu = {"ldo", "vat", "cvat", "inconnue", "resolution_m"}
+    trace = json.loads((out / "livrable" / "traitement.json").read_text(encoding="utf-8"))
+    assert set(trace["rvt_params"]) == attendu
+    assert trace["resolution_m"] == 1.0
+    meta = json.loads(next((out / "technique" / "journaux").glob("metadata_*.json")).read_text(encoding="utf-8"))
+    assert set(meta["rvt_params"]) == attendu
+    assert set(rvt) > attendu                              # l'appelant n'est pas touché

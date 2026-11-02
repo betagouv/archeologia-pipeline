@@ -114,10 +114,18 @@ def config_du_resultat(r: Resultat) -> Optional[Dict[str, Any]]:
 
 def chemins_du_livrable(r: Resultat) -> Tuple[List[str], List[str], List[str]]:
     """``(mosaïques VRT, GeoPackages de détections, GeoPackages de contrôle)`` du
-    livrable, dans l'arborescence v3 — ce que « Ajouter au projet QGIS courant » charge."""
+    livrable, dans l'arborescence v3 — ce que « Ajouter au projet QGIS courant » charge.
+
+    Les détections sont des références ``<gpkg>|layername=<couche>``, une par couche non vide,
+    collectées comme en fin de traitement (``finalize_service._collect_shapefiles``) : un
+    GeoPackage nu donnait une couche nommée d'après le fichier (« charbonnieres »), que
+    ``fiabilite.json`` (indexé par nom de couche) ne décrit pas → légende en tranches de score,
+    toutes cochées (retour utilisateur 2026-11-02)."""
+    from .finalize_service import _collect_shapefiles
+
     livrable = r.dossier / DIR_LIVRABLE
     vrt = sorted(str(p) for p in livrable.glob("indices/*/tif/index_*.vrt"))
-    gpkg = sorted(str(p) for p in livrable.glob("detections/*/*.gpkg"))
+    gpkg = _collect_shapefiles(livrable / "detections")
     qa_fichier = livrable / QA_COUVERTURE
     qa = [str(qa_fichier)] if qa_fichier.is_file() else []
     return vrt, gpkg, qa

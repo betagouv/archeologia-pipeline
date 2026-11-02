@@ -174,8 +174,8 @@ The V2 UI (étape 3) doesn't pick models — the user checks **entities** (parce
 ### Large rasters (`existing_mnt` / `existing_rvt` regime)
 
 `_classify_mnt_layout` / `_classify_rvt_layout` (in `src/pipeline/modes/`) inspect raster bounds:
-- **standard** (~1×1 km, IGN-aligned): legacy crop + IGN naming
-- **small** (<1 km or unaligned): no crop, native extent preserved
+- **standard** (exactly the 1 km cell, every edge within ½ pixel of the km grid — an IGN LiDAR HD tile sits at 0.25 m for 0.5 m pixels): legacy crop + IGN naming + inter-tile margin; the crop then loses or adds no pixel (`existing_mnt` only, decision 2026-11-02: the former 50 m tolerance cropped a 1 010 m window shifted by 18–26 m, gb_sct, losing 6 % of it; `existing_rvt` keeps 50 m, it never crops)
+- **small** (<1 km, or off the km grid): no crop, native extent preserved
 - **large** (>1.05 km in any dim): no pre-tile-splitting at all — RVT computed on the full raster, SAHI handles 640×640 slicing in memory at inference. `Image.MAX_IMAGE_PIXELS = None` is set in `convert_tif_to_png.py` and `computer_vision_onnx.py`. The km thresholds are in CRS units: valid in any metric CRS.
 
 Don't reintroduce pre-tile-splitting for the large regime — it was removed deliberately to avoid NoData artifacts on sub-tile borders.

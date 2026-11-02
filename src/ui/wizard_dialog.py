@@ -11,6 +11,7 @@ from __future__ import annotations
 import copy
 import json
 from pathlib import Path
+from typing import Optional
 
 from qgis.PyQt.QtCore import QSize, QTimer, Qt
 from qgis.PyQt.QtGui import QIcon, QKeySequence
@@ -117,6 +118,7 @@ class WizardDialog(QDialog):
         self._last_config_name = ""
         self._loading = False
         self._validation_errors: list = []
+        self._validation_warnings: list = []
 
         version = get_plugin_version() or ""
         suffix = f" — v{version}" if version else ""
@@ -568,8 +570,9 @@ class WizardDialog(QDialog):
         sections = [RecapSection("Données", badges=[mode_info(mode).banner_label], step=1)]
 
         prods = self._indices_page.recap_products()
-        res = self._indices_page.resolution()
-        sections.append(RecapSection("Visualisation du relief", badges=prods, value=f"{nombre(res, 2)} m/pixel", step=2))
+        res = self._resolution_affichee()
+        sections.append(RecapSection("Visualisation du relief", badges=prods,
+                                     value=f"{nombre(res, 2)} m/pixel" if res else "", step=2))
 
         if not cv.get("enabled"):
             sections.append(RecapSection("Structures", value="détection désactivée", step=3))
@@ -604,19 +607,24 @@ class WizardDialog(QDialog):
         else:
             self._run_view.preview(self._config)
 
+    def _resolution_affichee(self) -> Optional[float]:
+        """Résolution du récapitulatif et de la frise : le réglage de l'étape 2 en mode LiDAR, celle des rasters
+        fournis en mode existant, rien si inconnue (``run_context.resolution_affichee``)."""
+        try:
+            from ..app.run_context import build_run_context, resolution_affichee
+            return resolution_affichee(build_run_context(self._config))
+        except Exception:  # noqa: BLE001 — jamais bloquant pour l'affichage
+            return None
+
     def _step_subtitles(self) -> dict:
         """Sous-libellés statiques de la timeline (depuis la config courante)."""
-        proc = self._config.get("processing") or {}
         cv = self._config.get("computer_vision") or {}
-        try:
-            res = float(proc.get("mnt_resolution", 0.5) or 0.5)
-        except (TypeError, ValueError):
-            res = 0.5
+        res = self._resolution_affichee()
         active = self._indices_page.active_rvt_keys()
         rvt_tags = [product(k).tag for k in rvt_keys() if k in active]
         # Pastille « Produits » = MNT + indices fusionnés : on combine la
         # résolution et les tags RVT en un seul sous-libellé.
-        products_sub = " · ".join([f"{nombre(res, 2)} m/pixel", *rvt_tags])
+        products_sub = " · ".join([f"{nombre(res, 2)} m/pixel"] * bool(res) + rvt_tags)
         subs = {
             Stage.DOWNLOAD: "",  # téléchargement : comptage de dalles différé (préflight)
             Stage.PRODUCTS: products_sub,
@@ -700,9 +708,11 @@ class WizardDialog(QDialog):
         try:
             from ..app.run_context import build_run_context, validate_run_context
             ctx = build_run_context(self._config)
-            errors, _warnings = validate_run_context(ctx)
+            errors, warnings = validate_run_context(ctx)
+            self._validation_warnings = list(warnings)   # non bloquants : bandeau de l'étape 4
             return list(errors)
         except Exception as e:  # noqa: BLE001
+            self._validation_warnings = []
             return [f"Configuration illisible : {e}"]
 
     def _apply_validation(self) -> None:
@@ -711,7 +721,7 @@ class WizardDialog(QDialog):
         errors = self._compute_errors()
         self._validation_errors = errors
         self._sync_rail()
-        self._launch_page.set_validation(errors)
+        self._launch_page.set_validation(errors, self._validation_warnings)
         self._update_launch_button()
 
     def _sync_rail(self) -> None:

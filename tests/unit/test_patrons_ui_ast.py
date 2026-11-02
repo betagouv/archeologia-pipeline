@@ -158,8 +158,10 @@ STEP4 = UI / "steps" / "step_4_launch.py"
 
 def test_bandeau_quatre_etats():
     src = STEP4.read_text(encoding="utf-8")
-    for etat in ("incomplete", "pending", "tool_missing", "warn", "ok"):
+    for etat in ("incomplete", "pending", "tool_missing"):
         assert f'setProperty("state", "{etat}")' in src, etat
+    # « warn » et « ok » : posés par validation_ui.bandeau_pret (testé dans test_validation_ui, 2026-11-02)
+    assert "etat, texte = bandeau_pret(" in src and 'setProperty("state", etat)' in src
     assert 'setProperty("state", "error")' not in src, "l'ancien état « error » est remplacé"
     assert "bandeau_controles_en_echec(" in src, "outil manquant / données refusées : vocabulaire.py"
     voc = (STEP4.parents[2] / "app" / "services" / "vocabulaire.py").read_text(encoding="utf-8")

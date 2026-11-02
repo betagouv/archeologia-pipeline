@@ -61,3 +61,18 @@ def etat_rail(etape: int, courante: int, erreurs: Mapping[int, Sequence[str]]) -
     if erreurs.get(etape):
         return "a_corriger"
     return "ok" if etape < courante else "a_venir"
+
+
+def bandeau_pret(avertissements_poste: Sequence[str], avertissements_config: Sequence[str]) -> Tuple[str, str]:
+    """(état, texte) du bandeau de l'étape 4 quand rien ne bloque : vert « Prêt à lancer. », ou orange avec les
+    contrôles du poste en avertissement (nommés) et les avertissements de ``validate_run_context`` (rayon réduit à
+    1-2 px par des données grossières, crash test it_piemonte 2026-11-02 ; avant, ils n'apparaissaient qu'au
+    journal, après le lancement). Texte riche : les messages sont échappés."""
+    from html import escape
+    if not avertissements_poste and not avertissements_config:
+        return "ok", "Prêt à lancer."
+    if not avertissements_config:
+        return "warn", f"Prêt à lancer, avec un avertissement : {', '.join(avertissements_poste)}."
+    tous = [*avertissements_poste, *avertissements_config]
+    titre = "un avertissement" if len(tous) == 1 else f"{len(tous)} avertissements"
+    return "warn", f"<b>Prêt à lancer, avec {titre} :</b><br>" + "<br>".join(f"• {escape(m)}" for m in tous)

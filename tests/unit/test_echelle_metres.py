@@ -496,9 +496,9 @@ def test_fenetre_bornee_avertissement_dit_la_vraie_surface():
                           "de terrain au lieu de 126 m), Linéaires (405 m de terrain au lieu de 324 m). Leurs "
                           "fenêtres d'analyse")
     assert "la même surface" not in msg
-    # modèle non borné à la même résolution : message de résolution ordinaire, à part
+    # modèle non borné à la même résolution : message à part, l'avertissement net des données à 2 m ou plus
     msgs = avertissements_echelle([crateres, _modele("Enclos", 1.0, None, 648)], 5.0, en_px({}, 5.0))
-    assert len(msgs) == 2 and "la même surface au sol" in msgs[1] and "Enclos" in msgs[1]
+    assert len(msgs) == 2 and "presque plus rien" in msgs[1] and "Enclos" in msgs[1]
 
 
 def test_fenetre_bornee_journal_technique_dit_la_vraie_surface(tmp_path):
@@ -519,3 +519,20 @@ def test_fenetre_bornee_journal_technique_dit_la_vraie_surface(tmp_path):
     logs.clear()
     _sahi_a_la_resolution(cfg, {"a": (0.999989, -0.999989, 500000.0, 6000000.0)}, None, logs.append)
     assert not any("252 px au lieu de 252 px" in x for x in logs)
+
+
+def test_donnees_deux_fois_plus_grossieres_avertissement_net():
+    """Crash tests 2026-11-02 (enclos appris à 1 m) : 1/18 retrouvés à 2 m (ie_smr_2m), 0/4 à 5 m (it_piemonte).
+    Dès 2 m de pixel (décision utilisateur), plus de « relisez avec prudence » : le modèle ne retrouve presque rien."""
+    (msg,) = avertissements_echelle([_modele("Enclos (LD)", 1.0, (5.0, 10.0))], 2.0, en_px({}, 2.0))
+    assert msg.startswith("Vos données sont à 2 m/pixel ; le modèle « Enclos (LD) » a appris à 1 m/pixel. ")
+    assert "ne retrouve presque plus rien (crash tests : 1/18 à 2 m, 0/4 à 5 m)" in msg and "prudence" not in msg
+    modeles = [_modele("Enclos (LD)", 1.0, (5.0, 10.0)), _modele("Enclos circulaires (LD)", 1.0, (5.0, 10.0))]
+    (msg,) = avertissements_echelle(modeles, 5.0, en_px({}, 5.0))
+    assert "2 modèles ont appris à 1 m/pixel : Enclos (LD), Enclos circulaires (LD)." in msg
+    assert "ces modèles ne retrouvent presque plus rien (crash tests : 1/18 à 2 m, 0/4 à 5 m)" in msg
+    # sous 2 m (1,5 m pour 1 m ; 1 m pour 0,5 m, deux fois plus grossier mais des sites encore retrouvés) ou
+    # données plus fines (0,25 m pour 1 m) : l'avertissement de prudence reste
+    for gsd, res in ((1.0, 1.5), (0.5, 1.0), (1.0, 0.25)):
+        (msg,) = avertissements_echelle([_modele("Enclos (LD)", gsd, (5.0, 10.0))], res, en_px({}, res))
+        assert "relisez ses détections avec prudence" in msg and "presque plus rien" not in msg

@@ -164,3 +164,20 @@ def test_resolution_des_entrees_ecarte_l_invraisemblable(tmp_path):
     from pipeline.ingest_plan import resolution_des_entrees
     _raster(tmp_path / "deg.tif", 1e-5)
     assert resolution_des_entrees(tmp_path, ("tif",)) == 0.5
+
+
+def test_resolution_affichee_au_recapitulatif(tmp_path):
+    """#39 des crash tests (2026-11-02) : en MNT existant à 5 m, le récapitulatif de l'étape 4 affichait
+    « 0,50 m/pixel », le réglage de l'étape 2 que ce mode n'utilise pas. Il affiche la résolution des rasters
+    fournis, rien quand elle est inconnue (jamais un 0,5 m supposé), le réglage pour les modes LiDAR."""
+    from app.run_context import build_run_context, resolution_affichee
+    _raster(tmp_path / "mnt.tif", 5.0)
+
+    def ctx(mode, dossier):
+        cle = "existing_mnt_dir" if mode == "existing_mnt" else "existing_rvt_dir"
+        return build_run_context({"app": {"files": {"data_mode": mode, cle: dossier, "output_dir": str(tmp_path / "o")}},
+                                  "processing": {"mnt_resolution": 0.5}})
+    assert resolution_affichee(ctx("existing_mnt", str(tmp_path))) == 5.0
+    assert resolution_affichee(ctx("existing_rvt", str(tmp_path))) == 5.0
+    assert resolution_affichee(ctx("existing_mnt", str(tmp_path / "vide"))) is None
+    assert resolution_affichee(build_run_context({"processing": {"mnt_resolution": 0.5}})) == 0.5

@@ -108,7 +108,7 @@ fileignoreconfig:
 - filename: src/pipeline/modes/local_laz.py
   checksum: aa12c4a804b54e7b3dfe451251813a3a731790033acc95a5ad3691cb4ff138fd
 - filename: src/pipeline/output_paths.py
-  checksum: 2c8ed2f82a870d62f54ec9393c8a716af87755a6cbacd5ed72572667aa172a17
+  checksum: 67ea1dbb7a3c8b77d5b84190760e631d934273115771256c8822714b512eea33
 - filename: src/pipeline/preflight.py
   checksum: 28b0f27832e7223ed0b96dedddb87c04cdb6e90b1b367a0a7146badfac3c3515
 - filename: src/pipeline/types.py
@@ -138,7 +138,7 @@ fileignoreconfig:
 - filename: src/ui/wizard_dialog.py
   checksum: e34ab838d8aec3bb4b2bc864f147b7144153d09234dc16e61981a152835263b9
 - filename: tests/TESTS_MANUELS_QGIS.md
-  checksum: 35b3f8ac7a3c858b2ecfbe29d89eb1369072117d0b38c40707e519baa0c56720
+  checksum: 18297b399438a726aea175f890cdb6f59263aedc3b704302d572da7750e56275
 - filename: tests/integration/test_existing_mnt_runner_finalize.py
   checksum: 09edbe48be7d273624e9d95354e3273c07a648491880cdb33c590782900510db
 - filename: tests/integration/test_existing_rvt_runner_isolation.py
@@ -398,7 +398,7 @@ fileignoreconfig:
 - filename: src/app/services/sorties_prevues.py
   checksum: 3ded5ec72803f9b6c4994357cecdd9cfbea602e9e0c84be63a23b85c0c58a219
 - filename: aide/07-etape-5-traitement.md
-  checksum: ac89de5e5209a29d71648a322c0795fa0e5ef0fcf07e621d2980137f3255c843
+  checksum: dce6c7bbdeb7dccf3fcadb4fbc741be9df46f9e3313f289f361fb020a7386009
 - filename: tests/unit/test_sorties_prevues.py
   checksum: b25f3282553a6d5fe6ecfee0eec124a5a73dc44fff637e14c7883d972ab976df
 - filename: src/app/services/vocabulaire.py

@@ -1268,3 +1268,12 @@ Lot 3 du chantier d'accélération (2026-10-15) : une dalle lue en entier reçoi
 - [ ] **73.3 Rapport** : après le run à 5 m, « Avertissements du journal » reprend les lignes LD/SVF et, pour les enclos, « À cette résolution, ce(s) modèle(s) ne retrouve(nt) presque plus rien (crash tests : 1/18 à 2 m, 0/4 à 5 m). » ; plus de « relisez avec prudence » pour eux.
 - [ ] **73.4 Rapport à 2 m** (`…\ie_smr_2m\mnt`) : rayon du LD « 5 à 10 m (3 à 5 px, soit 6 à 10 m au pixel près) » ; avertissement net des enclos ; aucun avertissement de rayon (3 px).
 - [ ] **73.5 Données à 1 m sur les modèles appris à 0,5 m** (`…\de_sh\mnt`) : toujours « relisez … avec prudence », pas l'avertissement net.
+
+## 74. Relance dans un dossier d'une version précédente : une seule couche par structure ⭐ P1
+
+> Fénétrange, 2026-11-03 : relance 0.20.0 sur `D:\pipeline_results\output_pipeline_plugin_fenetrange` (0.13.1) → 6 couches de détections chargées au lieu de 4, enclos 111 = 68 + 43, parcellaire 1 433 = 716 + 717.
+
+- [ ] **74.1 Couches renommées** : relancer les mêmes structures dans un dossier dont les GeoPackages portent les anciens noms de couche (`charbonniere`, `enclos`…) → à la fin, chaque `livrable/detections/<structure>/*.gpkg` n'a qu'une couche, au nom affiché (« Charbonnières »), et l'effectif du bilan est celui du journal de ce run.
+- [ ] **74.2 Journal** : « N GeoPackage(s) d'une relance précédente remplacé(s) » une fois par modèle concerné.
+- [ ] **74.3 Structure non relancée** : décocher une structure présente dans le dossier → son GeoPackage et sa couche restent tels quels.
+- [ ] **74.4 Verdicts** : des verdicts saisis dans une structure relancée sont perdus (le manuel le dit, § Relancer dans le même dossier) ; ceux d'une structure non relancée restent.

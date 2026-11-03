@@ -51,6 +51,7 @@ Vous pouvez relancer un traitement dans un dossier de sortie déjà utilisé, pa
 - un produit relancé avec d'autres réglages va dans un dossier distinct, dont le nom porte les réglages ;
 - une détection relancée avec un autre modèle, un autre seuil ou après une mise à jour du moteur de détection est refaite ; à réglages identiques, les images déjà analysées ne le sont pas de nouveau ;
 - les mosaïques sont régénérées et les couches périmées retirées du projet QGIS au lancement, pour que les nouvelles dalles apparaissent ;
+- une structure relancée repart de zéro : son GeoPackage est remplacé, verdicts compris, voir [Valider les détections](resultats.md#valider-les-detections) ; les structures qui ne font pas partie de la relance gardent le leur ;
 - un dossier calculé par une version précédente du plugin, ou des réglages de fusion ou de MNT changés depuis, refont une fois la fusion, le MNT et les indices : le journal le dit par « ⚠️ Méthode de calcul mise à jour » ou « ⚠️ Paramètres de traitement modifiés », voir [Méthode de calcul mise à jour](depannage.md#methode-de-calcul-mise-a-jour).
 
 Les sorties intermédiaires ne sont jamais supprimées par le plugin : vous pouvez les effacer vous-même une fois satisfait, voir [Faire de la place](resultats.md#faire-de-la-place).

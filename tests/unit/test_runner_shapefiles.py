@@ -119,3 +119,49 @@ def test_journal_de_fiabilite_en_libelles_affiches(env, modele):
     fiab = {"par_classe": {"four": [{"categorie": "probable", "seuil": 0.3}, {"categorie": "quasi_certain", "seuil": 0.65}]}}
     ligne = next(m for m in _lancer(env, modele, fiabilite=fiab) if "fiabilité four" in m)
     assert ligne == "Computer Vision: fiabilité four : probable dès 0.3 · très probable dès 0.65"
+
+
+def _gpkg_ancien(dossier: Path, slug: str, couche: str) -> Path:
+    """Un GeoPackage d'un run précédent : deux entités sous un nom de couche d'avant."""
+    from shapely.geometry import box
+    dossier.mkdir(parents=True, exist_ok=True)
+    chemin = dossier / f"{slug}.gpkg"
+    gpd.GeoDataFrame({"a": [1, 2]}, geometry=[box(0, 0, 1, 1), box(2, 2, 3, 3)], crs="EPSG:2154").to_file(
+        chemin, layer=couche, driver="GPKG", engine="pyogrio")
+    return chemin
+
+
+def _couches(gpkg: Path) -> list:
+    import pyogrio
+    return pyogrio.list_layers(gpkg)[:, 0].tolist()
+
+
+def test_relance_dans_le_meme_dossier_repart_de_zero(env, modele):
+    """Fénétrange, 2026-11-03 : relance 0.20.0 sur un dossier écrit par la 0.13.1, dont les couches ont été
+    renommées depuis (N-01, « Charbonnières »). L'ancienne couche restait à côté de la nouvelle dans le même
+    GeoPackage, et à nom égal à la casse près (« enclos » / « Enclos ») l'écriture échouait puis le repli ogr2ogr
+    AJOUTAIT les nouvelles détections aux anciennes (68 + 43 enclos, 716 + 717 parcellaires). Le GeoPackage d'une
+    entité du run repart de zéro ; celui d'une entité absente du run reste intact."""
+    _ecrire(env, [Detection(0, 0.9, (20.0, 20.0, 60.0, 60.0)), Detection(1, 0.8, (120.0, 120.0, 180.0, 180.0))])
+    detections = env["out"] / "livrable" / "detections"
+    _gpkg_ancien(detections / "fours", "fours", "four")          # renommée depuis : « Fours »
+    _gpkg_ancien(detections / "tertres", "tertres", "tumulus")   # renommée à la casse près : « Tumulus »
+    _gpkg_ancien(detections / "murs", "murs", "mur")             # entité absente de la relance
+    entites = [{"id": "fours", "slug": "fours", "classes": ["four"], "layer_names": {"four": "Fours"}, "is_derived": False},
+               {"id": "tertres", "slug": "tertres", "classes": ["tumulus"], "layer_names": {"tumulus": "Tumulus"}, "is_derived": False}]
+    journal = _lancer(env, modele, entities=entites)
+    assert any("GeoPackage(s) d'une relance précédente" in m for m in journal), journal
+    assert _couches(detections / "fours" / "fours.gpkg") == ["Fours"]
+    assert len(gpd.read_file(detections / "fours" / "fours.gpkg", layer="Fours")) == 1
+    assert _couches(detections / "tertres" / "tertres.gpkg") == ["Tumulus"]
+    assert len(gpd.read_file(detections / "tertres" / "tertres.gpkg", layer="Tumulus")) == 1
+    assert _couches(detections / "murs" / "murs.gpkg") == ["mur"]
+    assert len(gpd.read_file(detections / "murs" / "murs.gpkg", layer="mur")) == 2
+
+
+def test_relance_repli_modele_centre_repart_de_zero(env, modele):
+    """Même règle pour le repli sans « entities » : detections/<modèle>/<modèle>.gpkg est remplacé."""
+    _ecrire(env, [Detection(0, 0.9, (20.0, 20.0, 60.0, 60.0))])
+    gpkg = _gpkg_ancien(env["out"] / "livrable" / "detections" / "mon_modele", "mon_modele", "ancienne")
+    _lancer(env, modele)
+    assert _couches(gpkg) == ["four"]

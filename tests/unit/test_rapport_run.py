@@ -224,6 +224,15 @@ def test_decrire_reglages_en_metres_a_la_resolution_du_run():
     assert decrire_reglages("svf", {"radius_m": 5.0}, 0.25).startswith("rayon 5 m (20 px)")
 
 
+def test_decrire_reglages_dit_le_rayon_arrondi_au_pixel():
+    """Crash test ie_smr_2m (2026-11-02) : à 2 m, 5 m = 2,5 px arrondis à 3 px, soit 6 m calculés ; le rapport
+    disait « 5 à 10 m (3 à 5 px) » sans le dire. Rien ne change quand les pixels tombent juste."""
+    ld = {"angular_res": 15, "min_radius_m": 5.0, "max_radius_m": 10.0, "observer_h": 1.7}
+    assert decrire_reglages("ldo", ld, 2.0).startswith("rayon de 5 à 10 m (3 à 5 px, soit 6 à 10 m au pixel près)")
+    assert decrire_reglages("svf", {"radius_m": 5.0}, 2.0).startswith("rayon 5 m (3 px, soit 6 m au pixel près)")
+    assert decrire_reglages("ldo", ld, 1.0).startswith("rayon de 5 à 10 m (5 à 10 px), ")
+
+
 def test_construire_html_ne_situe_pas_et_couvre_les_sections():
     d = DonneesRapport(
         version="0.14.0", date="8 octobre 2026 à 10:42", mode="Téléchargement IGN", data_mode="ign_laz",

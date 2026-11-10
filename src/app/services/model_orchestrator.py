@@ -329,6 +329,14 @@ def _echelle_entrainement(card: Dict[str, Any], model_dir: Path) -> Tuple[Option
     return gsd, anneau_m(params, gsd)
 
 
+#: Pixel (m) à partir duquel des données plus grossières qu'à l'entraînement reçoivent l'avertissement net
+#: (décision utilisateur 2026-11-02 : « dès 2 m de pixel », pas « 2 fois la résolution », qui aurait visé tous
+#: les runs à 1 m sur les modèles appris à 0,5 m).
+RESOLUTION_GROSSIERE_M = 2.0
+#: Ce qui fonde l'avertissement net (crash tests étrangers du 2026-11-02, modèles d'enclos appris à 1 m).
+CONSTAT_GROSSIER = "crash tests : 1/18 à 2 m, 0/4 à 5 m"
+
+
 def avertissements_echelle(models: Sequence["InstalledModel"], resolution_m: float,
                            rvt_params_px: Optional[Dict[str, Any]], *, indices_calcules: bool = True,
                            anneau_fourni_px: Optional[Tuple[int, int]] = None) -> List[str]:
@@ -336,6 +344,8 @@ def avertissements_echelle(models: Sequence["InstalledModel"], resolution_m: flo
     2026-10-31), UN par cause et par run, modèles concernés listés (retour utilisateur 2026-10-31 : un message
     par modèle était trop long) :
 
+    - données à :data:`RESOLUTION_GROSSIERE_M` ou plus, plus grossières qu'à l'entraînement : avertissement net,
+      « presque plus rien » (crash tests 2026-11-02) au lieu de « relisez avec prudence » ;
     - résolution des données ≠ résolution d'entraînement (un message par résolution d'entraînement) : les
       fenêtres de détection sont mises à l'échelle (le détail en pixels va au journal technique,
       ``runner.run_cv_on_folder``), mais le modèle n'a jamais vu de données à cette résolution ; même
@@ -365,7 +375,11 @@ def avertissements_echelle(models: Sequence["InstalledModel"], resolution_m: flo
             if fen.get("borne"):   # fenêtre bornée (facteur 8 ou plancher 32 px) : pas le terrain d'entraînement
                 surfaces[nom] = (format_m(fen["slice_width"] * resolution_m),
                                  format_m(m.sahi_slice_px * m.gsd_m))
-            cause = "borne" if fen.get("borne") else "resolution"
+            # données à 2 m/pixel ou plus, plus grossières qu'à l'entraînement : avertissement net, mesuré (crash
+            # tests 2026-11-02, enclos appris à 1 m : 1/18 retrouvés à 2 m, 0/4 à 5 m). À 1 m sur un modèle appris
+            # à 0,5 m, les crash tests retrouvent encore une partie des sites : « relisez avec prudence » reste
+            grossier = resolution_m >= RESOLUTION_GROSSIERE_M - 1e-6 and resolution_m > m.gsd_m
+            cause = "borne" if fen.get("borne") else ("grossier" if grossier else "resolution")
             groupes.setdefault((cause, format_m(m.gsd_m)[:-2]), []).append(nom)
         if m.target_rvt != "LD" or m.anneau_m is None:
             continue
@@ -400,6 +414,10 @@ def avertissements_echelle(models: Sequence["InstalledModel"], resolution_m: flo
             msgs.append(f"Vos données sont à {format_m(resolution_m)[:-2]} m/pixel ; {qui} appris à {args[0]} "
                         f"m/pixel{liste}. {fen} la même surface au sol qu'à l'entraînement, mais {il_n_a} "
                         f"jamais vu cette résolution : relisez {ses} détections avec prudence.")
+        elif cause == "grossier":
+            ne = "ce modèle ne retrouve" if un else "ces modèles ne retrouvent"
+            msgs.append(f"Vos données sont à {format_m(resolution_m)[:-2]} m/pixel ; {qui} appris à {args[0]} "
+                        f"m/pixel{liste}. À cette résolution, {ne} presque plus rien ({CONSTAT_GROSSIER}).")
         elif cause == "borne":
             if un:
                 reel, attendu = surfaces[noms[0]]

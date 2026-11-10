@@ -203,3 +203,13 @@ class TestSelectStaleEntityVariantDirs:
         assert select_stale_entity_variant_dirs(tmp_path, None) == []
         assert select_stale_entity_variant_dirs(
             tmp_path, self._runs("parcellaire")) == []
+
+
+def test_purger_geopackages_du_run(tmp_path):
+    """Relance dans le même dossier (Fénétrange, 2026-11-03) : les GeoPackages des entités du run sont supprimés
+    avant la conversion — un existant une seule fois, un absent sans erreur ; retour = ceux supprimés."""
+    from pipeline.output_paths import purger_geopackages_du_run
+    a, b = tmp_path / "a.gpkg", tmp_path / "b.gpkg"
+    a.write_bytes(b"x")
+    assert purger_geopackages_du_run([str(a), b, str(a)]) == [a]
+    assert not a.exists() and purger_geopackages_du_run([a]) == []

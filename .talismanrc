@@ -56,7 +56,7 @@ fileignoreconfig:
 - filename: src/app/run_context.py
   checksum: 9843bdd07ca31d29f02035759b468f13b7194c01cbbabd64778fbd711f520f44
 - filename: src/app/services/fiabilite.py
-  checksum: fd1ebc36630598bddd6c24b2bdf2ff1c98380668984fe59862b581458bd4e4f3
+  checksum: 2a2bd4cb867e4b1f92392fd116fe1ead8e5817c37ebbdf5acf5277af720d014c
 - filename: src/app/services/finalize_service.py
   checksum: eb6a9cd633d29027193c39b035ad2359b32a71b2e0ad722376e4323d54760d07
 - filename: src/app/services/indices_model.py
@@ -118,7 +118,7 @@ fileignoreconfig:
 - filename: src/ui/icons.py
   checksum: df0d068fd896cf1361d0a6286e537fc015e473c5bc58924f9d79c3813df543b0
 - filename: src/ui/layer_loader.py
-  checksum: 89d6803271eee74b1766f990bad801e3c68b4eac2441efb7a1e068d4af895837
+  checksum: 00f5545f8d75845c046153afba8a36aef6b0dd14ef032a57709ecb074d969d73
 - filename: src/ui/map_tools/tile_picker_tool.py
   checksum: 54f1e09233be20b03558ae316ea804f793a795112149ef19584b552aaaeeed26
 - filename: src/ui/qgs_writer.py
@@ -138,7 +138,7 @@ fileignoreconfig:
 - filename: src/ui/wizard_dialog.py
   checksum: 28265150c06a3b7b1aa695a23d54d27d98238fc53836c3766340055e3253c9de
 - filename: tests/TESTS_MANUELS_QGIS.md
-  checksum: a4b8409de97d050abf633b23d8db76e0b7b29f62a39096f5397c80c6f95650fb
+  checksum: cf5a88b94d66bad22bc20e77448ddada61d39f6342448870ce78711893ad889f
 - filename: tests/integration/test_existing_mnt_runner_finalize.py
   checksum: 09edbe48be7d273624e9d95354e3273c07a648491880cdb33c590782900510db
 - filename: tests/integration/test_existing_rvt_runner_isolation.py
@@ -260,7 +260,7 @@ fileignoreconfig:
 - filename: .claude/commands/livraison.md
   checksum: 498e642842583cf7d377223b7bfe16da0f82042b4a442d88e05ae3542ecf1d65
 - filename: aide/08-resultats.md
-  checksum: af76e503603ea8736df010a244c1034745c788cf2ac4a5448f822589ddb8b8eb
+  checksum: 9766d40ba878355740dbaf86060398945ea7188e16baabde3acc07d3e7a12b1e
 - filename: aide/04-etape-2-produits.md
   checksum: b00eeb5592d450add200c2f22431ea2ac22a9353eeb0f01d4be43f3fa1dafeec
 - filename: aide/09-depannage.md
@@ -282,7 +282,7 @@ fileignoreconfig:
 - filename: dev/build_quadrillage_from_wfs.py
   checksum: 5286a1495ce8a7a8bf350eb5bcff2c2827dca6e2c50454ef6b3210995610e3f6
 - filename: docs/contrats.md
-  checksum: f8a05a4e6c695172fa48e2ab7e59f9f5f880c9b032d745234ead8605520cda4b
+  checksum: 33775fc95ee64a1c3187e316b5cea53873deb63c20a709f69b57e3b3e8b5a414
 - filename: src/app/services/arborescence.py
   checksum: c5e606980a36c45a1741ce2471bb8eae676f7dab2f222ab8cb75a360a074f91c
 - filename: src/app/services/carte_zones.py

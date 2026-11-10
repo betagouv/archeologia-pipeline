@@ -117,21 +117,29 @@ def deduplicate_cv_shapefiles_final(
     out_shp = shp_dir / f"detections_{target_rvt}.gpkg"
     entities = (cv_config or {}).get("entities") if isinstance(cv_config, dict) else None
     if output_dir is not None and entities:
-        from ..output_paths import build_entity_class_targets
+        from ..output_paths import build_entity_class_targets, purger_geopackages_du_run
         # Routage classe → [(gpkg d'entité, nom_de_couche)] (helper pur testé) :
         # gère les classes partagées et la déduplication source/dérivée (ex. la
         # classe 'cratere', quand « Regroupement de cratères » est sélectionné,
         # n'apparaît qu'une fois — couche renommée « Cratères » dans le groupe).
         class_targets = build_entity_class_targets(output_dir, entities)
-        _n_gpkg = len({gp for lst in class_targets.values() for gp, _ in lst})
-        log(f"Computer Vision: routage par entité actif ({_n_gpkg} GeoPackage(s) d'entité)")
+        _gpkgs = {gp for lst in class_targets.values() for gp, _ in lst}
+        log(f"Computer Vision: routage par entité actif ({len(_gpkgs)} GeoPackage(s) d'entité)")
+        # Relance dans le même dossier : les GeoPackages de CE run repartent de zéro (couches renommées
+        # depuis, ou complétées au lieu d'être remplacées — Fénétrange, 2026-11-03).
+        _remplaces = purger_geopackages_du_run(_gpkgs)
+        if _remplaces:
+            log(f"Computer Vision: {len(_remplaces)} GeoPackage(s) d'une relance précédente remplacé(s) : "
+                + ", ".join(p.name for p in _remplaces))
     elif output_dir is not None:
         from .runner_cache import get_model_slug
-        from ..output_paths import detection_entity_dir
+        from ..output_paths import detection_entity_dir, purger_geopackages_du_run
         slug = get_model_slug(cv_config or {})
         out_shp = detection_entity_dir(output_dir, slug) / f"{slug}.gpkg"
         out_shp.parent.mkdir(parents=True, exist_ok=True)
         log(f"Computer Vision: run sans 'entities' — repli modèle-centré detections/{slug}/")
+        if purger_geopackages_du_run([out_shp]):
+            log(f"Computer Vision: 1 GeoPackage(s) d'une relance précédente remplacé(s) : {out_shp.name}")
 
     # Fiabilité affichée (bloc du run posé par l'orchestrateur : catégories
     # douteux/possible/probable/quasi_certain au seuil effectif de chaque classe).

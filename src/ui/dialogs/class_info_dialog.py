@@ -360,6 +360,8 @@ class _CorpsFiche(QWidget):
             lay.addWidget(_label("Profil des scores à l'évaluation", "FicheSousTitre"))
             lay.addWidget(figure)
             legende = (
+                "Effectifs du banc d'évaluation du modèle, pas de votre traitement (le vôtre se lit dans "
+                "le bilan de fin de traitement et le rapport). "
                 "Vraies détections en couleur, fausses en gris, par bande de score de 0,05. "
                 "Les niveaux commencent là où la part de vrais objets atteint 35, 60 et 85 %. "
                 "La ligne pointillée est le point d'équilibre entre précision et rappel (F1) ; "

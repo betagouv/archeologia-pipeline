@@ -418,6 +418,18 @@ def test_le_widget_suit_le_seuil_et_les_fiches_posent_les_zones():
     assert "def phrase_precision_rappel" in widget and "def ligne_essai_seuil" in widget
 
 
+def test_les_effectifs_du_profil_sont_dits_du_banc():
+    """Constat du 2026-11-10 : « écartées 105 290 » lu comme un effectif du traitement (c'est le banc
+    d'évaluation du modèle, toutes les prédictions ≥ 0,05 sous le seuil). Le dire là où on le lit."""
+    racine = Path(__file__).resolve().parents[2]
+    widget = (racine / "src/ui/widgets/profil_scores.py").read_text(encoding="utf-8")
+    assert "au banc" in widget
+    fiche = (racine / "src/ui/dialogs/class_info_dialog.py").read_text(encoding="utf-8")
+    assert "banc d'évaluation" in fiche and "pas de votre traitement" in fiche
+    model_info = (racine / "src/ui/dialogs/model_info_dialog.py").read_text(encoding="utf-8")
+    assert "Profil des scores au banc" in model_info
+
+
 def test_ligne_entite_selection_par_le_haut_et_vignette_vers_la_structure():
     """Garde-fou sans QGIS : la vignette ouvre la fiche de la STRUCTURE, comme le « i », et
     consomme son clic (demande du 2026-10-26, qui remplace la fiche du modèle du 2026-10-25) ;

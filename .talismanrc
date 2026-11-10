@@ -136,7 +136,7 @@ fileignoreconfig:
 - filename: src/ui/widgets/entity_card.py
   checksum: e4cfcd4527dd4fa24c315215fb5391cfdd96a3f29893ab5edb4050c4b767bac3
 - filename: src/ui/wizard_dialog.py
-  checksum: 2a8e87788c0b000223a12cbf87812e48e2505dc248ae87f7e1590749aa5b9bbe
+  checksum: 28265150c06a3b7b1aa695a23d54d27d98238fc53836c3766340055e3253c9de
 - filename: tests/TESTS_MANUELS_QGIS.md
   checksum: a4b8409de97d050abf633b23d8db76e0b7b29f62a39096f5397c80c6f95650fb
 - filename: tests/integration/test_existing_mnt_runner_finalize.py
@@ -262,7 +262,7 @@ fileignoreconfig:
 - filename: aide/08-resultats.md
   checksum: af76e503603ea8736df010a244c1034745c788cf2ac4a5448f822589ddb8b8eb
 - filename: aide/04-etape-2-produits.md
-  checksum: 2e8ca5b643dd573ea1d0c9c5cd3fb9eff658d6afc4e71333c6b517b33f9da6ec
+  checksum: b00eeb5592d450add200c2f22431ea2ac22a9353eeb0f01d4be43f3fa1dafeec
 - filename: aide/09-depannage.md
   checksum: 3496ce82f73f4b14c258605fb455fba3e77f8c98c64c8c6746aaa8685c8a8c5a
 - filename: src/ui/widgets/carte_zones.py

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import copy
 import json
+import logging
 from pathlib import Path
 from typing import Optional
 
@@ -40,6 +41,7 @@ from qgis.PyQt.QtWidgets import (
 
 from ..app.progress_stages import Stage
 from ..app.services.indices_model import product, rvt_keys
+from ..app.services.indices_metres import resume_migration
 from ..app.services.source_modes import mode_info
 from ..app.services.config_store import ConfigStore
 from ..config.config_manager import ConfigManager
@@ -71,6 +73,9 @@ try:
 except Exception:  # pragma: no cover - défensif (hors QGIS)
     def get_plugin_version() -> str:
         return ""
+
+
+logger = logging.getLogger(__name__)
 
 
 class WizardDialog(QDialog):
@@ -1004,7 +1009,11 @@ class WizardDialog(QDialog):
         migrations = list(getattr(self._cm, "migrations", None) or [])
         self._cm.migrations = []
         if migrations:
-            lignes += ["Rayons enregistrés en pixels, convertis en mètres :", *migrations]
+            # Une ligne à l'écran (14 messages concaténés faisaient un bloc noir, constat du 2026-11-10), le
+            # détail au journal Python.
+            for m in migrations:
+                logger.warning(m)
+            lignes.append(resume_migration(migrations))
         if lignes:
             show_toast(self, "\n".join(lignes), duration=10000 if migrations else 8000)
 

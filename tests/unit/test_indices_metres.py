@@ -181,3 +181,26 @@ def test_resolution_affichee_au_recapitulatif(tmp_path):
     assert resolution_affichee(ctx("existing_rvt", str(tmp_path))) == 5.0
     assert resolution_affichee(ctx("existing_mnt", str(tmp_path / "vide"))) is None
     assert resolution_affichee(build_run_context({"processing": {"mnt_resolution": 0.5}})) == 0.5
+
+
+def test_resume_migration_tient_en_une_ligne():
+    """Toute configuration d'avant le 2026-10-31 porte 14 clés px : le toast du démarrage concaténait les
+    14 messages (≈ 1 800 caractères, un bloc noir de 380 × 550 px pendant 10 s, constat du 2026-11-10)."""
+    ancien = {}
+    for _p, section, cle_px, _m, _d, _l in im.REGLAGES_SPATIAUX:
+        ancien.setdefault(section, {})[cle_px] = 10
+    msgs = im.migrer_px_vers_m(ancien)
+    assert len(msgs) == 14
+    r = im.resume_migration(msgs)
+    assert "\n" not in r and len(r) < 200
+    assert "14 réglages" in r and "SVF, OPNS, LD, SLRM, MSTP" in r and "étape 2" in r
+    assert im.resume_migration([]) == ""
+    un = im.resume_migration(msgs[:1])
+    assert un.startswith("1 réglage ") and "(SVF)" in un and "réglages" not in un
+
+
+def test_l_assistant_resume_la_migration_en_une_ligne():
+    """Le toast ne concatène plus un message par réglage (lu en source : src/ui est hors pytest)."""
+    from pathlib import Path
+    src = (Path(__file__).resolve().parents[2] / "src" / "ui" / "wizard_dialog.py").read_text(encoding="utf-8")
+    assert "resume_migration(" in src and "*migrations" not in src

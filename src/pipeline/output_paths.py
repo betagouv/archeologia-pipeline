@@ -225,6 +225,24 @@ def select_stale_entity_variant_dirs(output_dir: Path, cv_runs: Any) -> list:
     return stale
 
 
+def purger_geopackages_du_run(chemins: Any) -> list:
+    """Relance dans le même dossier de sortie : les GeoPackages des entités DU RUN repartent de zéro.
+
+    Sans cela (Fénétrange, 2026-11-03 : relance 0.20.0 sur un dossier du 0.13.1), une couche renommée depuis
+    (N-01, ``charbonniere`` → « Charbonnières ») restait à côté de la nouvelle dans le même fichier, et à nom
+    égal à la casse près (``enclos`` / « Enclos ») l'écriture échouait puis le repli ``ogr2ogr -append``
+    AJOUTAIT les détections aux anciennes (68 + 43). Les entités absentes du run ne sont pas touchées
+    (:func:`select_stale_entity_variant_dirs`). Retourne les fichiers supprimés, chacun une fois ; un fichier
+    absent est ignoré.
+    """
+    supprimes: list = []
+    for chemin in dict.fromkeys(Path(c) for c in (chemins or [])):
+        if chemin.is_file():
+            chemin.unlink()
+            supprimes.append(chemin)
+    return supprimes
+
+
 def build_entity_class_targets(output_dir: Path, entities: Any):
     """Routage ``classe → [(gpkg, nom_de_couche)]`` pour la sortie entité-centrée.
 

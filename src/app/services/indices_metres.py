@@ -25,7 +25,7 @@ from __future__ import annotations
 
 import copy
 import math
-from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
+from typing import Any, Dict, List, Mapping, Optional, Tuple
 
 #: Résolution sur laquelle les anciens réglages en pixels avaient été calibrés (LiDAR HD IGN).
 RESOLUTION_REFERENCE_M = 0.5
@@ -134,23 +134,6 @@ def migrer_px_vers_m(rvt_params: Optional[Dict[str, Any]]) -> List[str]:
         rvt_params["migration_px_vers_m"] = ("Réglages en pixels convertis en mètres (0,5 m/px supposé) : "
                                              + " ; ".join(messages))
     return messages
-
-
-def resume_migration(messages: Sequence[str]) -> str:
-    """Une phrase pour l'écran (le toast du démarrage) ; le détail, un message par réglage, va au journal.
-    Constat du 2026-11-10 : les 14 messages d'une configuration d'avant le 2026-10-31, concaténés, faisaient un
-    bloc noir de 380 × 550 px pendant 10 s — « un gros message noir qui liste les options chargées »."""
-    if not messages:
-        return ""
-    produits: List[str] = []
-    for m in messages:
-        p = m.split(" / ", 1)[0]
-        if p not in produits:
-            produits.append(p)
-    n = len(messages)
-    s = "s" if n > 1 else ""
-    return (f"{n} réglage{s} d'indice enregistré{s} en pixels ({', '.join(produits)}) converti{s} en mètres, "
-            "0,5 m/px supposé : à vérifier à l'étape 2.")
 
 
 def format_m(metres: float) -> str:

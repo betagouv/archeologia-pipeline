@@ -1052,6 +1052,7 @@ Lot 3 du chantier d'accélération (2026-10-15) : une dalle lue en entier reçoi
 - [ ] **57.2 Chargement direct** : depuis la vue d'exécution, « Ouvrir le projet QGIS » → même état des cases.
 - [ ] **57.3 Rien de perdu** : le nombre d'entités de la couche (propriétés › Information, ou la table d'attributs) et le bilan de fin de traitement comptent aussi les détections possibles et douteuses.
 - [ ] **57.4 Modèle sans fiabilité** : une couche catégorisée par tranches de score (`conf_bin`) garde toutes ses tranches cochées.
+- [ ] **57.5 Parcellaire** (2026-11-10) : dans un traitement avec parcellaire (Fénétrange), la couche « Parcellaire » s'ouvre avec « Possible » **coché** (« Douteux » décoché) ; les autres structures du même traitement (enclos, charbonnières, talus) gardent « Possible » décoché — projet `.qgs` comme « Ajouter au projet QGIS courant ».
 
 ## 58. Manuel : schéma de la chaîne, légende, Qt6, renvois du journal ⭐ P1
 

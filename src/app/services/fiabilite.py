@@ -69,10 +69,17 @@ STYLE_SPEC: Dict[str, Dict[str, Any]] = {
 # restent toutes dans le GeoPackage, le bilan et le rapport.
 NIVEAUX_DECOCHES_PAR_DEFAUT: Tuple[str, ...] = ("possible", "douteux")
 
+# Exceptions par classe (demande de l'utilisateur du 2026-11-10) : pour les parcellaires,
+# « possible » est coché d'emblée. Clé = nom de classe du sidecar ``fiabilite.json``.
+NIVEAUX_COCHES_PAR_CLASSE: Dict[str, Tuple[str, ...]] = {"parcellaire": ("possible",)}
 
-def visible_par_defaut(categorie: str) -> bool:
-    """Vrai si la catégorie de fiabilité est cochée à l'ouverture de la couche."""
-    return str(categorie) not in NIVEAUX_DECOCHES_PAR_DEFAUT
+
+def visible_par_defaut(categorie: str, classe: Optional[str] = "") -> bool:
+    """Vrai si la catégorie de fiabilité est cochée à l'ouverture de la couche de ``classe``."""
+    c = str(categorie)
+    if c in NIVEAUX_COCHES_PAR_CLASSE.get(str(classe or ""), ()):
+        return True
+    return c not in NIVEAUX_DECOCHES_PAR_DEFAUT
 
 
 @dataclass(frozen=True)

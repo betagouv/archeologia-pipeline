@@ -105,14 +105,15 @@ def _fiabilite_symbol(base_color, spec):
     })
 
 
-def _apply_fiabilite_style(layer, base_color, cats, logger: logging.Logger) -> None:
+def _apply_fiabilite_style(layer, base_color, cats, logger: logging.Logger, classe: str = "") -> None:
     """Symbologie catégorisée sur ``fiabilite`` (2026-09-09) : contour seul dans la
     couleur de la classe, déclinée en luminosité par catégorie — exactement le
     rendu historique de ``_apply_confidence_style``, avec les catégories de
     fiabilité à la place des tranches de score (``app.services.fiabilite.STYLE_SPEC``).
     Libellés de légende = niveau garanti (« Probable · ≥ 60 % de vrais »),
     catégorie la plus sûre en tête. Les niveaux « possible » et « douteux » sont
-    présents mais décochés à l'ouverture (``fiabilite.visible_par_defaut``) : l'état
+    présents mais décochés à l'ouverture (``fiabilite.visible_par_defaut``, sauf exception
+    de la ``classe`` : « possible » coché pour les parcellaires, 2026-11-10) : l'état
     est enregistré dans le projet .qgs comme dans la couche chargée en direct."""
     try:
         from qgis.core import QgsCategorizedSymbolRenderer, QgsRendererCategory
@@ -124,7 +125,7 @@ def _apply_fiabilite_style(layer, base_color, cats, logger: logging.Logger) -> N
         for c in sorted(cats, key=lambda x: x.seuil, reverse=True):
             symbol = _fiabilite_symbol(base_color, STYLE_SPEC[c.categorie])
             categorie = QgsRendererCategory(c.label, symbol, labels.get(c.categorie, c.label))
-            categorie.setRenderState(visible_par_defaut(c.categorie))
+            categorie.setRenderState(visible_par_defaut(c.categorie, classe))
             categories.append(categorie)
         if not categories:
             return
@@ -244,7 +245,8 @@ def build_detection_vector_layer(
         # la portent ; sinon tranches de confiance historiques (conf_bin).
         entree, cats = _fiabilite_for_source(ogr_source, layer)
         if cats:
-            _apply_fiabilite_style(layer, base_color, cats, logger)
+            _apply_fiabilite_style(layer, base_color, cats, logger,
+                                   classe=str((entree or {}).get("classe") or ""))
             _apply_fiabilite_notices(layer, entree, cats, logger)
         else:
             _apply_confidence_style(layer, base_color, confidence_threshold, logger)

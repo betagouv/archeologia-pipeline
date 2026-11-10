@@ -8,7 +8,7 @@ même format que ``resolve_tiles_from_polygon``.
 """
 from __future__ import annotations
 
-from app.services.tile_selection import estimate_download_size, format_dalles_urls
+from app.services.tile_selection import estimate_download_size, format_dalles_urls, urls_de_la_liste
 
 # Le nom de fichier enregistré DOIT être le basename de l'URL (avec extension),
 # pas le nom_pkk (sans extension) — sinon PDAL ne peut pas lire le fichier.
@@ -94,3 +94,26 @@ class TestEstimateDownloadSize:
     def test_threshold_three_tiles_is_gigabytes(self):
         # 3 dalles : max = 1200 Mo ≥ 1000 → bascule en Go.
         assert "Go" in estimate_download_size(3)
+
+
+def test_urls_de_la_liste_suit_la_regle_du_telechargeur():
+    """Lignes « nom,url » ou « url », vides et « # » ignorées (parse_ign_input_file) : ce que le run
+    téléchargera, ni plus ni moins — pour compter sous le champ et resélectionner sur la carte."""
+    texte = format_dalles_urls([("A", "https://x/a.copc.laz"), ("B", "https://x/b.copc.laz"),
+                                ("A2", "https://x/a.copc.laz"), ("C", ""), ("D", "ftp://x/d")])
+    assert urls_de_la_liste(texte) == ["https://x/a.copc.laz", "https://x/b.copc.laz"]
+    assert urls_de_la_liste("# en-tête\n\nhttps://x/seule.laz\nnom,url\n  n,https://x/n.laz  \n") == [
+        "https://x/seule.laz", "https://x/n.laz"]
+    assert urls_de_la_liste("") == [] and urls_de_la_liste(None) == []
+
+
+def test_la_page_relit_la_liste_et_suit_la_couche():
+    """Garde-fou sans QGIS (lu en source). Constats du 2026-11-10 : « 0 dalle sur la carte alors que 25
+    sélectionnées » (rouvrir « Choisir sur la carte » repartait d'une sélection vide, la liste du champ jamais
+    relue) ; libellé « 5 dalles choisies » figé après une seconde validation (setText d'un chemin inchangé
+    n'émet pas textChanged) ; compteur du bouton aveugle à une sélection faite autrement que par l'outil."""
+    from pathlib import Path as _P
+    src = (_P(__file__).resolve().parents[2] / "src/ui/steps/step_1_source.py").read_text(encoding="utf-8")
+    assert "urls_de_la_liste(" in src
+    assert "selectionChanged.connect(" in src and "selectionChanged.disconnect(" in src
+    assert "self._source_edit.setText(str(out_path))\n        self._refresh_source_validation()" in src

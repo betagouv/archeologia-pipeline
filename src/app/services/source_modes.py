@@ -216,8 +216,10 @@ def message_champ(mode: str, texte: str, state: str, *, sortie: bool = False, so
     if state == "warn":
         return "Extension inattendue : attendu .shp, .gpkg, .geojson ou une liste .txt."
     if mode == "ign_laz" and Path(texte).name == _NOM_LISTE_CARTE:
+        from .tile_selection import urls_de_la_liste
+
         try:
-            n = sum(1 for ligne in Path(texte).read_text(encoding="utf-8").splitlines() if ligne.strip())
+            n = len(urls_de_la_liste(Path(texte).read_text(encoding="utf-8")))
         except OSError:
             return ""
         return f"{pluriel(n, 'dalle')} choisie{'s' if n > 1 else ''} sur la carte"

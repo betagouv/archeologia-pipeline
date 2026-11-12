@@ -307,7 +307,8 @@ class ProfilScoresWidget(QWidget):
         etiquettes: List[_Etiquette] = []
         if x(seuil) - x(xmin) > 24:
             n_ecartees = sum(b.total for b in (self._p.fines or self._p.bandes) if b.hi <= seuil + 1e-9)
-            etiquettes.append(_Etiquette("écartées", "" if mini else _nb(n_ecartees),
+            # « au banc » : lu comme un effectif du traitement sinon (105 290, constat du 2026-11-10).
+            etiquettes.append(_Etiquette("écartées", "" if mini else f"{_nb(n_ecartees)} au banc",
                                          x(xmin), x(seuil), _ENCRE_DOUCE, _GRIS_BARRE))
         for i, c in enumerate(cats):
             fin = cats[i + 1].seuil if i + 1 < len(cats) else xmax

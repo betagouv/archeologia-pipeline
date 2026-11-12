@@ -34,6 +34,18 @@ def test_dalles_choisies_sur_la_carte(tmp_path):
     assert message_champ("ign_laz", str(liste), "ok") == "1 dalle choisie sur la carte"
 
 
+def test_compte_les_dalles_du_fichier_ecrit_par_la_carte(tmp_path):
+    """L'en-tête « # N dalle(s)… » que format_dalles_urls écrit toujours était comptée : « 26 dalles choisies »
+    pour 25 (constat du 2026-11-10 ; « 5 » pour 4 à l'ouverture)."""
+    from app.services.tile_selection import format_dalles_urls
+    liste = tmp_path / "dalles_selection.txt"
+    liste.write_text(format_dalles_urls([("A", "https://x/a.copc.laz"), ("B", "https://x/b.copc.laz")]),
+                     encoding="utf-8")
+    assert message_champ("ign_laz", str(liste), "ok") == "2 dalles choisies sur la carte"
+    liste.write_text(format_dalles_urls([("A", "https://x/a.copc.laz")]), encoding="utf-8")
+    assert message_champ("ign_laz", str(liste), "ok") == "1 dalle choisie sur la carte"
+
+
 def test_chemin_valide_ne_dit_rien():
     assert message_champ("local_laz", "C:/data/laz", "ok") == ""
 

@@ -15,7 +15,7 @@ Module pur (aucun import QGIS) → collectable et testable hors QGIS.
 from __future__ import annotations
 
 from pathlib import PurePosixPath
-from typing import Iterable, Optional, Tuple
+from typing import Iterable, List, Optional, Tuple
 from urllib.parse import urlparse
 
 # Bornes de taille observées d'une dalle LiDAR HD (cf. downloader.py:90-93).
@@ -60,6 +60,22 @@ def format_dalles_urls(tiles: Iterable[Tuple[Optional[str], Optional[str]]]) -> 
 
     header = f"# {len(lines)} dalle(s) sélectionnée(s) sur la carte"
     return "\n".join([header, *lines]) + "\n"
+
+
+def urls_de_la_liste(texte: Optional[str]) -> List[str]:
+    """URLs d'une liste ``dalles_urls.txt``, dans l'ordre : lignes ``nom,url`` ou ``url``, lignes vides et
+    commentaires ``#`` ignorés — la règle de ``parse_ign_input_file``, donc ce que le run téléchargera.
+    Pour compter sous le champ de l'étape 1 et resélectionner les dalles sur la carte. L'en-tête ``#`` écrit
+    par :func:`format_dalles_urls` était comptée comme une dalle (constat du 2026-11-10 : « 26 » pour 25)."""
+    urls: List[str] = []
+    for ligne in (texte or "").splitlines():
+        ligne = ligne.strip()
+        if not ligne or ligne.startswith("#"):
+            continue
+        url = ligne.split(",", 1)[1].strip() if "," in ligne else ligne
+        if url.startswith(("http://", "https://")):
+            urls.append(url)
+    return urls
 
 
 def estimate_download_size(n: int) -> str:

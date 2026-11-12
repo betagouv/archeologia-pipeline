@@ -204,7 +204,7 @@ def _figures_fiabilite(section: Section, card: Dict[str, Any], model_dir: Option
         fig = figure_profil(model_dir, classe, cats)
         if fig is None:
             continue
-        titre = QLabel(f"Profil des scores — {classe}")
+        titre = QLabel(f"Profil des scores au banc — {classe}")
         titre.setObjectName("ModelInfoRowLabel")
         titre.setContentsMargins(0, 10, 0, 2)
         # Essai de seuil (sans effet sur le traitement) : ligne, niveaux,

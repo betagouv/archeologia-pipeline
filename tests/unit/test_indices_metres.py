@@ -181,3 +181,13 @@ def test_resolution_affichee_au_recapitulatif(tmp_path):
     assert resolution_affichee(ctx("existing_rvt", str(tmp_path))) == 5.0
     assert resolution_affichee(ctx("existing_mnt", str(tmp_path / "vide"))) is None
     assert resolution_affichee(build_run_context({"processing": {"mnt_resolution": 0.5}})) == 0.5
+
+
+
+def test_l_assistant_n_affiche_pas_la_migration():
+    """Les 14 messages d'une configuration d'avant le 2026-10-31 faisaient un bloc noir à l'ouverture
+    (constat du 2026-11-10) : la migration va au journal Python, jamais à l'écran (lu en source, src/ui hors pytest)."""
+    from pathlib import Path
+    src = (Path(__file__).resolve().parents[2] / "src" / "ui" / "wizard_dialog.py").read_text(encoding="utf-8")
+    assert "logger.warning(m)" in src
+    assert "*migrations" not in src and "resume_migration" not in src and "Rayons enregistrés en pixels" not in src

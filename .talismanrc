@@ -82,7 +82,7 @@ fileignoreconfig:
 - filename: src/pipeline/cv/clustering_bounds.py
   checksum: a53968cd2a888ddf1a432388d8fec82c1ec669c7e451499d43107ff0cdadb770
 - filename: src/pipeline/cv/computer_vision_onnx.py
-  checksum: 0ab6e78d68b9632bcb4e5ca30477f1ad1382ac2cd049c659b0e69b81f09873ac
+  checksum: 7c7b48a8f06eecb25ddc15745a7a5d98778238ba4807d0b86d8693b7b7af10a5
 - filename: src/pipeline/cv/computer_vision_rfdetr.py
   checksum: 3c3de1d9bab52f155e9cc9f5f54a60f43c2ea784d485f8959603bbdc5e07d768
 - filename: src/pipeline/cv/conversion_shp.py
@@ -298,7 +298,7 @@ fileignoreconfig:
 - filename: aide/img/etape3-fiche-classe.png
   checksum: 366d3e4d8f21219753142e13983ffb77d14f6c33ade117776e465ad6192af1b6
 - filename: data/third_party/cv_runner_onnx/windows/build_info.json
-  checksum: 58957cee6bb1779dcd2efaf33ab6dfe36367208c928ff7c7b31ccd9e0021024e
+  checksum: f1ca9b860b1ab18006785fe1a78a1606462c711fb92dfd5c666eae43108efd92
 - filename: dev/rendu_hors_ecran.py
   checksum: 221e3b44a163ef91b4e74c7aca8f0f381d79841a13b6aff38260b462dd559f67
 - filename: aide/img/etape2-produits.png

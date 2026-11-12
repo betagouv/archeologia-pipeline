@@ -82,7 +82,7 @@ fileignoreconfig:
 - filename: src/pipeline/cv/clustering_bounds.py
   checksum: a53968cd2a888ddf1a432388d8fec82c1ec669c7e451499d43107ff0cdadb770
 - filename: src/pipeline/cv/computer_vision_onnx.py
-  checksum: 0ab6e78d68b9632bcb4e5ca30477f1ad1382ac2cd049c659b0e69b81f09873ac
+  checksum: 7c7b48a8f06eecb25ddc15745a7a5d98778238ba4807d0b86d8693b7b7af10a5
 - filename: src/pipeline/cv/computer_vision_rfdetr.py
   checksum: 3c3de1d9bab52f155e9cc9f5f54a60f43c2ea784d485f8959603bbdc5e07d768
 - filename: src/pipeline/cv/conversion_shp.py

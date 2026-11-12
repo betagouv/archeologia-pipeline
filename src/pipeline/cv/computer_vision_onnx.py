@@ -303,6 +303,12 @@ def _postprocess_rfdetr(
         # Appliquer sigmoid pour convertir logits en probabilités
         scores = sigmoide(logits)
         
+        # RF-DETR sort TOUJOURS du cxcywh normalisé (même constat que côté segmentation) : l'ancien test
+        # `boxes.max() <= 1.0` basculait dès qu'UNE des 300 requêtes, même vide (score 0,04), débordait de
+        # 0,04 % — toutes les boîtes de la fenêtre étaient alors lues en pixels, passaient sous 10 px et
+        # étaient jetées sans message (Vosges 2026-11-12 : 3 fenêtres sur 320, 26 charbonnières d'un coup).
+        boxes_normalized = True
+
         # Trouver la meilleure classe et son score pour chaque détection
         max_scores = scores.max(axis=1)
         class_ids = scores.argmax(axis=1)
@@ -321,11 +327,11 @@ def _postprocess_rfdetr(
         else:
             max_scores = scores_raw.max(axis=1)
             class_ids = scores_raw.argmax(axis=1)
+        # Export à trois sorties (boîtes, scores, étiquettes) : format non garanti, on le devine encore.
+        boxes_normalized = boxes.max() <= 1.0
     else:
         return detections
     
-    # Vérifier si les boxes sont normalisées (0-1)
-    boxes_normalized = boxes.max() <= 1.0
     
     for i in range(len(max_scores)):
         confidence = float(max_scores[i])
